@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Layout from '../components/layout/Layout';
 import NotificationsList from '../components/contacts/NotificationsList';
 import styled from 'styled-components';
+import { supabase } from '../lib/supabaseClient';
 
 const StatsContainer = styled.div`
   display: grid;
@@ -29,20 +30,73 @@ const StatLabel = styled.div`
 `;
 
 const Dashboard = () => {
+  const [stats, setStats] = useState({
+    todayCount: 0,
+    weekCount: 0,
+    totalCount: 0
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  async function fetchStats() {
+    setLoading(true);
+    
+    try {
+      // Get total contacts
+      const { count: totalCount, error: totalError } = await supabase
+        .from('contacts')
+        .select('*', { count: 'exact', head: true });
+      
+      // Get today's contacts
+      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      const { count: todayCount, error: todayError } = await supabase
+        .from('contacts')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', today);
+      
+      // Get this week's contacts
+      const weekStart = new Date();
+      weekStart.setDate(weekStart.getDate() - 7);
+      const weekStartStr = weekStart.toISOString().split('T')[0];
+      
+      const { count: weekCount, error: weekError } = await supabase
+        .from('contacts')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', weekStartStr);
+      
+      if (totalError || todayError || weekError) {
+        console.error("Error fetching stats:", { totalError, todayError, weekError });
+      } else {
+        setStats({
+          todayCount: todayCount || 0,
+          weekCount: weekCount || 0,
+          totalCount: totalCount || 0
+        });
+      }
+    } catch (error) {
+      console.error("Exception fetching stats:", error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <Layout>
       <h1>Dashboard</h1>
       <StatsContainer>
         <StatCard>
-          <StatValue>0</StatValue>
+          <StatValue>{loading ? '...' : stats.todayCount}</StatValue>
           <StatLabel>New Contacts Today</StatLabel>
         </StatCard>
         <StatCard>
-          <StatValue>0</StatValue>
+          <StatValue>{loading ? '...' : stats.weekCount}</StatValue>
           <StatLabel>Contacts This Week</StatLabel>
         </StatCard>
         <StatCard>
-          <StatValue>0</StatValue>
+          <StatValue>{loading ? '...' : stats.totalCount}</StatValue>
           <StatLabel>Total Contacts</StatLabel>
         </StatCard>
       </StatsContainer>
