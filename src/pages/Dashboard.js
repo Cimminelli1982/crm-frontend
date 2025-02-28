@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Layout from '../components/layout/Layout';
 import NotificationsList from '../components/contacts/NotificationsList';
+import RecentContactsList from '../components/contacts/RecentContactsList';
 import styled from 'styled-components';
 import { supabase } from '../lib/supabaseClient';
 
@@ -102,6 +103,8 @@ const Dashboard = () => {
       </StatsContainer>
       
       <NotificationsList />
+      
+      <RecentContactsList />
     </Layout>
   );
 };
