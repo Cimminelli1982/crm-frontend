@@ -239,25 +239,61 @@ const RecentContactsList = () => {
              </tr>
            </TableHead>
            <TableBody>
-             {contacts.map(contact => (
-               <tr key={contact.id}>
-                 <td>{`${contact.first_name || ''} ${contact.last_name || ''}`}</td>
-                 <td>{contact.email || '-'}</td>
-                 <td>{contact.mobile || '-'}</td>
-                 <td>{contact.contact_category || '-'}</td>
-                 <td>
-                   <Link to={`/contacts/edit/${contact.id}`}>
-                     <ActionButton>Edit</ActionButton>
-                   </Link>
-                   <ActionButton 
-                     skip 
-                     onClick={() => handleSkipContact(contact.id)}
-                   >
-                     Skip
-                   </ActionButton>
-                 </td>
-               </tr>
-             ))}
+{contacts.map(contact => (
+  <tr key={contact.id}>
+    <td>
+      {contact.first_name || contact.last_name ? (
+        <a 
+          href={`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`} 
+          target="_blank" 
+          rel="noopener noreferrer"
+        >
+          {`${contact.first_name || ''} ${contact.last_name || ''}`}
+        </a>
+      ) : (
+        '-'
+      )}
+    </td>
+    <td>
+      {contact.email ? (
+        <a 
+          href={`https://mail.superhuman.com/search/${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`} 
+          target="_blank" 
+          rel="noopener noreferrer"
+        >
+          {contact.email}
+        </a>
+      ) : (
+        '-'
+      )}
+    </td>
+    <td>
+      {contact.mobile ? (
+        <a 
+          href={`https://wa.me/${contact.mobile.replace(/\D/g, '')}`} 
+          target="_blank" 
+          rel="noopener noreferrer"
+        >
+          {contact.mobile}
+        </a>
+      ) : (
+        '-'
+      )}
+    </td>
+    <td>{contact.contact_category || '-'}</td>
+    <td>
+      <Link to={`/contacts/edit/${contact.id}`}>
+        <ActionButton>Edit</ActionButton>
+      </Link>
+      <ActionButton 
+        skip 
+        onClick={() => handleSkipContact(contact.id)}
+      >
+        Skip
+      </ActionButton>
+    </td>
+  </tr>
+))}
            </TableBody>
          </ContactTable>
          
