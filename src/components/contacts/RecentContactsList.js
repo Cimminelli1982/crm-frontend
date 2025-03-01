@@ -90,15 +90,21 @@ const RecentContactsList = () => {
   const rowsPerPage = 20;
   
   const getContactsCount = useCallback(async () => {
-    const { count, error } = await supabase
-      .from('contacts')
-      .select('*', { count: 'exact', head: true })
-      .neq('contact_category', 'Skip');
+    try {
+      const { count, error } = await supabase
+        .from('contacts')
+        .select('*', { count: 'exact', head: true })
+        .neq('contact_category', 'Skip');
+        
+      console.log('Total contacts count:', count);
       
-    console.log('Total contacts count:', count);
-    
-    if (!error) {
-      setTotalCount(count || 0);
+      if (error) {
+        console.error('Error getting count:', error);
+      } else {
+        setTotalCount(count || 0);
+      }
+    } catch (err) {
+      console.error('Exception in getContactsCount:', err);
     }
   }, []);
   
@@ -119,6 +125,7 @@ const RecentContactsList = () => {
       if (error) {
         console.error('Error fetching recent contacts:', error);
       } else {
+        console.log(`Retrieved ${data?.length || 0} contacts`);
         setContacts(data || []);
       }
     } catch (error) {
@@ -160,6 +167,7 @@ const RecentContactsList = () => {
   }, [currentPage, fetchRecentContacts, getContactsCount]);
   
   const totalPages = Math.ceil(totalCount / rowsPerPage);
+  console.log('Total pages calculated:', totalPages);
   
   return (
     <Container>
@@ -206,39 +214,39 @@ const RecentContactsList = () => {
             </TableBody>
           </ContactTable>
           
-          {(totalCount > rowsPerPage) && (
-            <PaginationControls>
-              <PageButton 
-                onClick={() => setCurrentPage(0)} 
-                disabled={currentPage === 0}
-              >
-                First
-              </PageButton>
-              <PageButton 
-                onClick={() => setCurrentPage(prev => Math.max(0, prev - 1))} 
-                disabled={currentPage === 0}
-              >
-                Previous
-              </PageButton>
-              
-              <span style={{ padding: '0.5rem' }}>
-                Page {currentPage + 1} of {totalPages > 0 ? totalPages : 1}
-              </span>
-              
-              <PageButton 
-                onClick={() => setCurrentPage(prev => Math.min(totalPages - 1, prev + 1))} 
-                disabled={currentPage >= totalPages - 1}
-              >
-                Next
-              </PageButton>
-              <PageButton 
-                onClick={() => setCurrentPage(totalPages > 0 ? totalPages - 1 : 0)} 
-                disabled={currentPage >= totalPages - 1}
-              >
-                Last
-              </PageButton>
-            </PaginationControls>
-          )}
+          {/* Always show pagination if there are any contacts */}
+          <PaginationControls>
+            <PageButton 
+              onClick={() => setCurrentPage(0)} 
+              disabled={currentPage === 0}
+            >
+              First
+            </PageButton>
+            <PageButton 
+              onClick={() => setCurrentPage(prev => Math.max(0, prev - 1))} 
+              disabled={currentPage === 0}
+            >
+              Previous
+            </PageButton>
+            
+            <span style={{ padding: '0.5rem' }}>
+              Page {currentPage + 1} of {totalPages > 0 ? totalPages : 1}
+              {' '} (Total: {totalCount})
+            </span>
+            
+            <PageButton 
+              onClick={() => setCurrentPage(prev => Math.min(totalPages - 1, prev + 1))} 
+              disabled={currentPage >= totalPages - 1}
+            >
+              Next
+            </PageButton>
+            <PageButton 
+              onClick={() => setCurrentPage(totalPages > 0 ? totalPages - 1 : 0)} 
+              disabled={currentPage >= totalPages - 1}
+            >
+              Last
+            </PageButton>
+          </PaginationControls>
         </>
       )}
     </Container>
