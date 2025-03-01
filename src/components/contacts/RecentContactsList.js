@@ -1,4 +1,3 @@
-// src/components/contacts/RecentContactsList.js
 import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import styled from 'styled-components';
@@ -96,6 +95,8 @@ const RecentContactsList = () => {
       .select('*', { count: 'exact', head: true })
       .neq('contact_category', 'Skip');
       
+    console.log('Total contacts count:', count);
+    
     if (!error) {
       setTotalCount(count || 0);
     }
@@ -104,11 +105,14 @@ const RecentContactsList = () => {
   const fetchRecentContacts = useCallback(async () => {
     setLoading(true);
     
+    console.log('Fetching page:', currentPage);
+    console.log('Range:', currentPage * rowsPerPage, 'to', (currentPage + 1) * rowsPerPage - 1);
+    
     try {
       const { data, error } = await supabase
         .from('contacts')
         .select('*')
-        .neq('contact_category', 'Skip') // Don't show contacts with Skip category
+        .neq('contact_category', 'Skip')
         .order('created_at', { ascending: false })
         .range(currentPage * rowsPerPage, (currentPage + 1) * rowsPerPage - 1);
         
@@ -128,32 +132,6 @@ const RecentContactsList = () => {
     fetchRecentContacts();
     getContactsCount();
   }, [currentPage, fetchRecentContacts, getContactsCount]);
-  
-  const handleSkipContact = async (contactId) => {
-    if (!window.confirm('Are you sure you want to mark this contact as Skip?')) {
-      return;
-    }
-    
-    try {
-      const { error } = await supabase
-        .from('contacts')
-        .update({ contact_category: 'Skip' })
-        .eq('id', contactId);
-          
-      if (error) {
-        console.error('Error updating contact:', error);
-        alert('Failed to mark contact as Skip');
-      } else {
-        // Remove the contact from the current view
-        setContacts(contacts.filter(c => c.id !== contactId));
-        // Update total count
-        setTotalCount(prev => prev - 1);
-      }
-    } catch (error) {
-      console.error('Exception skipping contact:', error);
-      alert('Failed to mark contact as Skip');
-    }
-  };
   
   const totalPages = Math.ceil(totalCount / rowsPerPage);
   
@@ -176,7 +154,6 @@ const RecentContactsList = () => {
                 <th>Email</th>
                 <th>Mobile</th>
                 <th>Category</th>
-                <th>Actions</th>
               </tr>
             </TableHead>
             <TableBody>
@@ -186,23 +163,12 @@ const RecentContactsList = () => {
                   <td>{contact.email || '-'}</td>
                   <td>{contact.mobile || '-'}</td>
                   <td>{contact.contact_category || '-'}</td>
-                  <td>
-                    <Link to={`/contacts/edit/${contact.id}`}>
-                      <ActionButton>Edit</ActionButton>
-                    </Link>
-                    <ActionButton 
-                      skip 
-                      onClick={() => handleSkipContact(contact.id)}
-                    >
-                      Skip
-                    </ActionButton>
-                  </td>
                 </tr>
               ))}
             </TableBody>
           </ContactTable>
           
-          {totalPages > 1 && (
+          {(totalCount > rowsPerPage) && (
             <PaginationControls>
               <PageButton 
                 onClick={() => setCurrentPage(0)} 
@@ -218,18 +184,18 @@ const RecentContactsList = () => {
               </PageButton>
               
               <span style={{ padding: '0.5rem' }}>
-                Page {currentPage + 1} of {totalPages}
+                Page {currentPage + 1} of {totalPages > 0 ? totalPages : 1}
               </span>
               
               <PageButton 
                 onClick={() => setCurrentPage(prev => Math.min(totalPages - 1, prev + 1))} 
-                disabled={currentPage === totalPages - 1}
+                disabled={currentPage >= totalPages - 1}
               >
                 Next
               </PageButton>
               <PageButton 
-                onClick={() => setCurrentPage(totalPages - 1)} 
-                disabled={currentPage === totalPages - 1}
+                onClick={() => setCurrentPage(totalPages > 0 ? totalPages - 1 : 0)} 
+                disabled={currentPage >= totalPages - 1}
               >
                 Last
               </PageButton>
