@@ -39,7 +39,7 @@ const KEEP_IN_TOUCH_FREQUENCIES = [
   'Monthly',
   'Quarterly',
   'Twice a Year',
-  'Once a Year'
+  'Once a Year',
   'Do not keep in touch'
 ];
 
