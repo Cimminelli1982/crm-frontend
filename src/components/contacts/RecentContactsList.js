@@ -24,19 +24,21 @@ const Container = styled.div`
   border-radius: 12px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
   padding: 2rem;
-  margin: 2rem auto;
-  max-width: 1200px;
+  margin: 2rem 0;
+  width: 100%;
 `;
 
 const Header = styled.div`
+  width: 100%;
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1.5rem;
+  padding: 0 1rem;
   h2 {
     font-size: 1.5rem;
     font-weight: 600;
-    color: #1a202c;
+    color: #2d3748;
   }
 `;
 
@@ -80,14 +82,15 @@ const ActionButton = styled.button`
   background-color: ${props => props.skip ? '#e53e3e' : props.merge ? '#f6e05e' : '#3182ce'};
   color: ${props => props.merge ? '#2d3748' : 'white'};
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 0.5rem 1rem;
   cursor: pointer;
   font-size: 0.85rem;
   font-weight: 500;
-  transition: background-color 0.2s ease;
+  transition: background-color 0.2s ease, transform 0.1s ease;
   &:hover {
     background-color: ${props => props.skip ? '#c53030' : props.merge ? '#ecc94b' : '#2b6cb0'};
+    transform: translateY(-2px);
   }
 `;
 
@@ -106,12 +109,13 @@ const PageButton = styled.button`
   border: 1px solid #e2e8f0;
   background: ${props => props.active ? '#3182ce' : 'white'};
   color: ${props => props.active ? 'white' : '#4a5568'};
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
   opacity: ${props => props.disabled ? 0.5 : 1};
-  transition: background-color 0.2s ease;
+  transition: background-color 0.2s ease, transform 0.1s ease;
   &:hover:not(:disabled) {
     background: ${props => props.active ? '#2b6cb0' : '#edf2f7'};
+    transform: translateY(-2px);
   }
 `;
 
@@ -136,7 +140,7 @@ const Modal = styled.div`
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.5);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -150,16 +154,14 @@ const Modal = styled.div`
 
 const ModalContent = styled.div`
   background: #fff;
-  padding: 2rem;
+  padding: 1.5rem;
   border-radius: 12px;
   width: 90%;
-  max-width: 600px;
-  max-height: 80vh;
-  overflow-y: auto;
-  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
-  transform: scale(0.95);
+  max-width: 500px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   animation: scaleIn 0.2s ease-out forwards;
   @keyframes scaleIn {
+    from { transform: scale(0.95); }
     to { transform: scale(1); }
   }
 `;
@@ -172,14 +174,14 @@ const ModalHeader = styled.div`
   h2 {
     font-size: 1.25rem;
     font-weight: 600;
-    color: #1a202c;
+    color: #2d3748;
   }
 `;
 
 const CloseButton = styled.button`
   background: none;
   border: none;
-  font-size: 1.75rem;
+  font-size: 1.5rem;
   color: #a0aec0;
   cursor: pointer;
   transition: color 0.2s ease;
@@ -187,20 +189,21 @@ const CloseButton = styled.button`
 `;
 
 const SearchContainer = styled.div`
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
 `;
 
 const SearchInput = styled.input`
-  padding: 0.75rem 1rem;
+  padding: 0.75rem;
   border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  border-radius: 8px;
   width: 100%;
   font-size: 0.95rem;
   color: #2d3748;
-  transition: border-color 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
   &:focus {
     outline: none;
     border-color: #3182ce;
+    box-shadow: 0 0 0 2px rgba(49, 130, 206, 0.2);
   }
 `;
 
@@ -209,7 +212,7 @@ const SearchResults = styled.div`
   max-height: 200px;
   overflow-y: auto;
   border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  border-radius: 8px;
   background: #fff;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 `;
@@ -220,19 +223,21 @@ const SearchResultItem = styled.div`
   cursor: pointer;
   font-size: 0.9rem;
   color: #2d3748;
-  transition: background-color 0.2s ease;
-  &:hover { background-color: #f7fafc; }
+  transition: background-color 0.2s ease, transform 0.1s ease;
+  &:hover {
+    background-color: #f7fafc;
+    transform: translateX(2px);
+  }
   &:last-child { border-bottom: none; }
 `;
 
 const MergeForm = styled.div`
   display: grid;
-  grid-template-columns: 1fr 1fr;
   gap: 1rem;
 `;
 
 const FormGroup = styled.div`
-  margin-bottom: 1.25rem;
+  margin-bottom: 1rem;
 `;
 
 const Label = styled.label`
@@ -244,31 +249,33 @@ const Label = styled.label`
 `;
 
 const Input = styled.input`
-  padding: 0.75rem 1rem;
+  padding: 0.75rem;
   border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  border-radius: 8px;
   width: 100%;
   font-size: 0.95rem;
   color: #2d3748;
-  transition: border-color 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
   &:focus {
     outline: none;
     border-color: #3182ce;
+    box-shadow: 0 0 0 2px rgba(49, 130, 206, 0.2);
   }
 `;
 
 const Select = styled.select`
-  padding: 0.75rem 1rem;
+  padding: 0.75rem;
   border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  border-radius: 8px;
   width: 100%;
   font-size: 0.95rem;
   color: #2d3748;
   background: #fff;
-  transition: border-color 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
   &:focus {
     outline: none;
     border-color: #3182ce;
+    box-shadow: 0 0 0 2px rgba(49, 130, 206, 0.2);
   }
 `;
 
@@ -284,7 +291,7 @@ const ColumnTitle = styled.h3`
   margin-bottom: 0.75rem;
   font-size: 1rem;
   font-weight: 600;
-  color: #1a202c;
+  color: #2d3748;
   padding-bottom: 0.5rem;
   border-bottom: 1px solid #e2e8f0;
 `;
@@ -298,30 +305,32 @@ const ButtonGroup = styled.div`
 
 const Button = styled.button`
   padding: 0.75rem 1.5rem;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 0.95rem;
   font-weight: 500;
   cursor: pointer;
   border: none;
   background-color: ${props => props.primary ? '#3182ce' : '#edf2f7'};
   color: ${props => props.primary ? 'white' : '#4a5568'};
-  transition: background-color 0.2s ease;
+  transition: background-color 0.2s ease, transform 0.1s ease;
   &:hover {
     background-color: ${props => props.primary ? '#2b6cb0' : '#e2e8f0'};
+    transform: translateY(-2px);
   }
 `;
 
 const CompanyInput = styled.input`
-  padding: 0.75rem 1rem;
+  padding: 0.75rem;
   border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  border-radius: 8px;
   width: 100%;
   font-size: 0.95rem;
   color: #2d3748;
-  transition: border-color 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
   &:focus {
     outline: none;
     border-color: #3182ce;
+    box-shadow: 0 0 0 2px rgba(49, 130, 206, 0.2);
   }
 `;
 
@@ -332,7 +341,7 @@ const CompanyDropdown = styled.div`
   right: 0;
   background: #fff;
   border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  border-radius: 8px;
   max-height: 200px;
   overflow-y: auto;
   z-index: 10;
@@ -344,8 +353,11 @@ const CompanyOption = styled.div`
   cursor: pointer;
   font-size: 0.9rem;
   color: #2d3748;
-  transition: background-color 0.2s ease;
-  &:hover { background-color: #f7fafc; }
+  transition: background-color 0.2s ease, transform 0.1s ease;
+  &:hover {
+    background-color: #f7fafc;
+    transform: translateX(2px);
+  }
 `;
 
 const UnlinkButton = styled.button`
@@ -355,8 +367,11 @@ const UnlinkButton = styled.button`
   font-size: 1.1rem;
   color: #e53e3e;
   cursor: pointer;
-  transition: color 0.2s ease;
-  &:hover { color: #c53030; }
+  transition: color 0.2s ease, transform 0.1s ease;
+  &:hover {
+    color: #c53030;
+    transform: translateY(-2px);
+  }
 `;
 
 const EditButton = styled.span`
@@ -364,8 +379,11 @@ const EditButton = styled.span`
   cursor: pointer;
   color: #3182ce;
   font-size: 1.1rem;
-  transition: color 0.2s ease;
-  &:hover { color: #2b6cb0; }
+  transition: color 0.2s ease, transform 0.1s ease;
+  &:hover {
+    color: #2b6cb0;
+    transform: translateY(-2px);
+  }
 `;
 
 const EmailButton = styled.span`
@@ -373,8 +391,11 @@ const EmailButton = styled.span`
   cursor: pointer;
   color: #3182ce;
   font-size: 1.1rem;
-  transition: color 0.2s ease;
-  &:hover { color: #2b6cb0; }
+  transition: color 0.2s ease, transform 0.1s ease;
+  &:hover {
+    color: #2b6cb0;
+    transform: translateY(-2px);
+  }
 `;
 
 const RecentContactsList = () => {
@@ -920,9 +941,6 @@ const RecentContactsList = () => {
                     </Select>
                   </td>
                   <td>
-                    <Link to={`/contacts/edit/${contact.id}`}>
-                      <ActionButton>Edit</ActionButton>
-                    </Link>
                     <ActionButton merge onClick={() => handleOpenMerge(contact)}>Merge</ActionButton>
                     <ActionButton skip onClick={() => handleSkipContact(contact.id)}>Skip</ActionButton>
                   </td>
@@ -975,7 +993,7 @@ const RecentContactsList = () => {
                 <MergeForm>
                   <MergeColumn>
                     <ColumnTitle>Primary Contact</ColumnTitle>
-                    <p>
+                    <p style={{ fontSize: '0.95rem', color: '#2d3748' }}>
                       <strong>Name:</strong> {selectedContact.first_name || ''} {selectedContact.last_name || ''}<br />
                       <strong>Email:</strong> {selectedContact.email || 'None'}<br />
                       <strong>Mobile:</strong> {selectedContact.mobile || 'None'}<br />
@@ -985,7 +1003,7 @@ const RecentContactsList = () => {
                   </MergeColumn>
                   <MergeColumn>
                     <ColumnTitle>Secondary Contact (will be deleted)</ColumnTitle>
-                    <p>
+                    <p style={{ fontSize: '0.95rem', color: '#2d3748' }}>
                       <strong>Name:</strong> {targetContact.first_name || ''} {targetContact.last_name || ''}<br />
                       <strong>Email:</strong> {targetContact.email || 'None'}<br />
                       <strong>Mobile:</strong> {targetContact.mobile || 'None'}<br />
@@ -994,7 +1012,7 @@ const RecentContactsList = () => {
                     </p>
                   </MergeColumn>
                 </MergeForm>
-                <h3 style={{ margin: '1.5rem 0', fontSize: '1.1rem', fontWeight: 600, color: '#1a202c' }}>
+                <h3 style={{ margin: '1.5rem 0', fontSize: '1.1rem', fontWeight: 600, color: '#2d3748' }}>
                   Merged Contact Information
                 </h3>
                 <MergeForm>
@@ -1111,14 +1129,14 @@ const RecentContactsList = () => {
               <h2>Add/Edit Company</h2>
               <CloseButton onClick={() => setShowCompanyModal(false)}>×</CloseButton>
             </ModalHeader>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#1a202c', marginBottom: '1rem' }}>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#2d3748', marginBottom: '1rem' }}>
               Contact Details
             </h3>
             <p style={{ fontSize: '0.95rem', color: '#2d3748', marginBottom: '1.5rem' }}>
               <strong>Name:</strong> {currentContact?.first_name} {currentContact?.last_name}<br />
               <strong>Email:</strong> {currentContact?.email}
             </p>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#1a202c', marginBottom: '1rem' }}>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#2d3748', marginBottom: '1rem' }}>
               Company Information
             </h3>
             <MergeForm>
