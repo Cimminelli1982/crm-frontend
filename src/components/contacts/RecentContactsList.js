@@ -980,7 +980,9 @@ const RecentContactsList = () => {
                   </td>
                   <td>
                     <ActionButton merge onClick={() => handleOpenMerge(contact)}>Merge</ActionButton>
-                    <ActionButton skip onClick={() => handleSkipContact(contact.id)}>Skip</ActionButton>
+                    {!contact.keep_in_touch_frequency && (
+                      <ActionButton skip onClick={() => handleSkipContact(contact.id)}>Skip</ActionButton>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -1050,7 +1052,7 @@ const RecentContactsList = () => {
                     </p>
                   </MergeColumn>
                 </MergeForm>
-                <h3 style={{ margin: '1rem 0', fontSize: '1rem', font-weight: 600, color: '#2d3748' }}>
+                <h3 style={{ margin: '1rem 0', fontSize: '1rem', fontWeight: 600, color: '#2d3748' }}>
                   Merged Contact Information
                 </h3>
                 <MergeForm>
@@ -1167,14 +1169,14 @@ const RecentContactsList = () => {
               <h2>Add/Edit Company</h2>
               <CloseButton onClick={() => setShowCompanyModal(false)}>×</CloseButton>
             </ModalHeader>
-            <h3 style={{ fontSize: '1rem', font-weight: 600, color: '#2d3748', margin-bottom: '0.75rem' }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#2d3748', marginBottom: '0.75rem' }}>
               Contact Details
             </h3>
-            <p style={{ font-size: '0.875rem', color: '#2d3748', margin-bottom: '1rem' }}>
+            <p style={{ fontSize: '0.875rem', color: '#2d3748', marginBottom: '1rem' }}>
               <strong>Name:</strong> {currentContact?.first_name} {currentContact?.last_name}<br />
               <strong>Email:</strong> {currentContact?.email}
             </p>
-            <h3 style={{ font-size: '1rem', font-weight: 600, color: '#2d3748', margin-bottom: '0.75rem' }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#2d3748', marginBottom: '0.75rem' }}>
               Company Information
             </h3>
             <MergeForm>
