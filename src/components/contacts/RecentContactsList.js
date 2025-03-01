@@ -128,22 +128,22 @@ const RecentContactsList = () => {
    
    try {
      // Fetch count and contacts in parallel
-     const [countResponse, contactsResponse] = await Promise.all([
-       supabase
-         .from('contacts')
-         .select('*', { count: 'exact', head: true })
-         .gte('created_at', getThirtyDaysAgoRange.start)
-         .lte('created_at', getThirtyDaysAgoRange.end)
-         .not('contact_category', 'eq', 'Skip'),
-       supabase
-         .from('contacts')
-         .select('*')
-         .gte('created_at', getThirtyDaysAgoRange.start)
-         .lte('created_at', getThirtyDaysAgoRange.end)
-         .not('contact_category', 'eq', 'Skip')
-         .order('created_at', { ascending: false })
-         .range(currentPage * rowsPerPage, (currentPage + 1) * rowsPerPage - 1)
-     ]);
+ const [countResponse, contactsResponse] = await Promise.all([
+  supabase
+    .from('contacts')
+    .select('*', { count: 'exact', head: true })
+    .gte('created_at', getThirtyDaysAgoRange.start)
+    .lte('created_at', getThirtyDaysAgoRange.end)
+    .or(`contact_category.neq.Skip,contact_category.is.null`),
+  supabase
+    .from('contacts')
+    .select('*')
+    .gte('created_at', getThirtyDaysAgoRange.start)
+    .lte('created_at', getThirtyDaysAgoRange.end)
+    .or(`contact_category.neq.Skip,contact_category.is.null`)
+    .order('created_at', { ascending: false })
+    .range(currentPage * rowsPerPage, (currentPage + 1) * rowsPerPage - 1)
+]);
      
      // Handle count
      if (countResponse.error) {
