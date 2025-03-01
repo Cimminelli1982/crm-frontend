@@ -18,6 +18,19 @@ exports.handler = async function(event, context) {
   }
 
   try {
+    // Log the incoming request for debugging
+    console.log('Incoming request path:', event.path);
+    console.log('Incoming request method:', event.httpMethod);
+    console.log('Incoming request query params:', JSON.stringify(event.queryStringParameters));
+    
+    if (event.body) {
+      try {
+        console.log('Incoming request body:', event.body);
+      } catch (e) {
+        console.log('Could not log request body');
+      }
+    }
+
     // Get HubSpot credentials from environment variables
     const HUBSPOT_API_KEY = process.env.REACT_APP_HUBSPOT_API_KEY || process.env.HUBSPOT_API_KEY || '';
     const HUBSPOT_ACCESS_TOKEN = process.env.REACT_APP_HUBSPOT_ACCESS_TOKEN || process.env.HUBSPOT_ACCESS_TOKEN || '';
@@ -44,12 +57,19 @@ exports.handler = async function(event, context) {
     // Parse the request body if it exists
     let requestBody = {};
     if (event.body) {
-      requestBody = JSON.parse(event.body);
+      try {
+        requestBody = JSON.parse(event.body);
+      } catch (e) {
+        console.log('Error parsing request body:', e.message);
+      }
     }
 
     // Get the HubSpot endpoint from the path parameter
     const path = event.path.replace('/.netlify/functions/hubspot-proxy', '');
-    const endpoint = path || requestBody.endpoint || '/crm/v3/objects/contacts';
+    // Default to contacts endpoint if no path is provided
+    const endpoint = path && path !== '/' ? path : requestBody.endpoint || '/crm/v3/objects/contacts';
+    
+    console.log('Resolved endpoint:', endpoint);
 
     // Determine if we're using EU tokens
     const isEuToken = HUBSPOT_ACCESS_TOKEN.startsWith('pat-eu1-');
@@ -80,7 +100,15 @@ exports.handler = async function(event, context) {
       config.data = requestBody.data;
     }
 
-    // Add query parameters
+    // Add query parameters from the original request
+    if (event.queryStringParameters) {
+      config.params = {
+        ...config.params,
+        ...event.queryStringParameters
+      };
+    }
+
+    // Add query parameters from the request body
     if (requestBody.params) {
       config.params = {
         ...config.params,
@@ -90,7 +118,9 @@ exports.handler = async function(event, context) {
 
     console.log('Making request to HubSpot:', endpoint);
     console.log('Request method:', config.method);
+    console.log('Request params:', JSON.stringify(config.params));
     console.log('Using EU token:', isEuToken);
+    console.log('Full request URL:', `${baseUrl}${endpoint}`);
 
     // Make the request to HubSpot
     const response = await axios(config);
@@ -106,6 +136,18 @@ exports.handler = async function(event, context) {
   } catch (error) {
     console.error('HubSpot Proxy Error:', error.message);
     console.error('Error details:', error.response?.data || 'No detailed error data');
+    
+    if (error.config) {
+      console.error('Request config that failed:', JSON.stringify({
+        url: error.config.url,
+        method: error.config.method,
+        params: error.config.params,
+        headers: {
+          ...error.config.headers,
+          Authorization: error.config.headers?.Authorization ? 'Bearer [REDACTED]' : undefined
+        }
+      }));
+    }
     
     // Return error response
     return {
