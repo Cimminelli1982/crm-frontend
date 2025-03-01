@@ -8,9 +8,8 @@ import axios from 'axios'; // Import axios for API calls
 
 // Add Hubspot API configuration
 const HUBSPOT_API_CONFIG = {
-  baseURL: 'https://api.hubapi.com',
-  apiKeyParamName: 'hapikey', // For API Key auth (Private App approach)
-  // For OAuth, you would use a different approach with tokens
+  // Use our Netlify function as a proxy to avoid CORS issues
+  baseURL: '/.netlify/functions/hubspot-proxy',
   timeout: 10000,
 };
 
@@ -24,23 +23,7 @@ const hubspotClient = axios.create({
   timeout: HUBSPOT_API_CONFIG.timeout,
 });
 
-// Add a request interceptor to include auth in every request
-hubspotClient.interceptors.request.use((config) => {
-  // If using API key auth
-  if (HUBSPOT_API_KEY) {
-    config.params = {
-      ...config.params,
-      [HUBSPOT_API_CONFIG.apiKeyParamName]: HUBSPOT_API_KEY,
-    };
-  }
-  
-  // If using OAuth token auth
-  if (HUBSPOT_ACCESS_TOKEN) {
-    config.headers.Authorization = `Bearer ${HUBSPOT_ACCESS_TOKEN}`;
-  }
-  
-  return config;
-});
+// No need for auth interceptor as our serverless function will handle authentication
 
 const COMPANY_CATEGORIES = [
   'Advisor', 'Corporate', 'Institution', 'Professional Investor', 'SKIP', 'SME',
@@ -1454,8 +1437,8 @@ const RecentContactsList = () => {
           return;
         }
         
-        // Test the credentials by making a simple API call
-        const response = await hubspotClient.get('/crm/v3/objects/contacts', {
+        // Test the credentials by making a simple API call through our proxy
+        const response = await hubspotClient.get('', {
           params: { limit: 1 }
         });
         
@@ -1486,23 +1469,27 @@ const RecentContactsList = () => {
     try {
       // Search by email first if available
       if (contact.email) {
-        const emailResponse = await hubspotClient.post('/crm/v3/objects/contacts/search', {
-          filterGroups: [
-            {
-              filters: [
-                {
-                  propertyName: 'email',
-                  operator: 'EQ',
-                  value: contact.email
-                }
-              ]
-            }
-          ],
-          properties: [
-            'firstname', 'lastname', 'email', 'work_email', 'mobilephone', 
-            'phone', 'hs_lead_status', 'linkedin_profile', 'hubspot_score'
-          ],
-          limit: 10
+        const emailResponse = await hubspotClient.post('', {
+          endpoint: '/crm/v3/objects/contacts/search',
+          method: 'POST',
+          data: {
+            filterGroups: [
+              {
+                filters: [
+                  {
+                    propertyName: 'email',
+                    operator: 'EQ',
+                    value: contact.email
+                  }
+                ]
+              }
+            ],
+            properties: [
+              'firstname', 'lastname', 'email', 'work_email', 'mobilephone', 
+              'phone', 'hs_lead_status', 'linkedin_profile', 'hubspot_score'
+            ],
+            limit: 10
+          }
         });
         
         if (emailResponse.data.results && emailResponse.data.results.length > 0) {
@@ -1535,17 +1522,21 @@ const RecentContactsList = () => {
           });
         }
         
-        const nameResponse = await hubspotClient.post('/crm/v3/objects/contacts/search', {
-          filterGroups: [
-            {
-              filters: nameFilters
-            }
-          ],
-          properties: [
-            'firstname', 'lastname', 'email', 'work_email', 'mobilephone', 
-            'phone', 'hs_lead_status', 'linkedin_profile', 'hubspot_score'
-          ],
-          limit: 10
+        const nameResponse = await hubspotClient.post('', {
+          endpoint: '/crm/v3/objects/contacts/search',
+          method: 'POST',
+          data: {
+            filterGroups: [
+              {
+                filters: nameFilters
+              }
+            ],
+            properties: [
+              'firstname', 'lastname', 'email', 'work_email', 'mobilephone', 
+              'phone', 'hs_lead_status', 'linkedin_profile', 'hubspot_score'
+            ],
+            limit: 10
+          }
         });
         
         if (nameResponse.data.results && nameResponse.data.results.length > 0) {
