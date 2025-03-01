@@ -1,102 +1,28 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
-import styled from 'styled-components';
-import { supabase } from '../../lib/supabaseClient';
-
-const Container = styled.div`
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  padding: 1.5rem;
-  margin-top: 2rem;
-`;
-
-const Header = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-`;
-
-const ContactTable = styled.table`
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 1rem;
-`;
-
-const TableHead = styled.thead`
-  background-color: #f8f9fa;
-  
-  th {
-    padding: 0.75rem;
-    text-align: left;
-    border-bottom: 2px solid #dee2e6;
-  }
-`;
-
-const TableBody = styled.tbody`
-  tr {
-    &:hover {
-      background-color: #f8f9fa;
-    }
-  }
-  
-  td {
-    padding: 0.75rem;
-    border-bottom: 1px solid #dee2e6;
-  }
-`;
-
-const ActionButton = styled.button`
-  background-color: ${props => props.skip ? '#dc3545' : '#0070f3'};
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 0.4rem 0.75rem;
-  cursor: pointer;
-  margin-right: 0.5rem;
-  
-  &:hover {
-    background-color: ${props => props.skip ? '#c82333' : '#0060df'};
-  }
-`;
-
-const PaginationControls = styled.div`
-  display: flex;
-  justify-content: center;
-  gap: 0.5rem;
-  margin-top: 1.5rem;
-`;
-
-const PageButton = styled.button`
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #ddd;
-  background: ${props => props.active ? '#0070f3' : 'white'};
-  color: ${props => props.active ? 'white' : '#333'};
-  border-radius: 4px;
-  cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
-  opacity: ${props => props.disabled ? 0.6 : 1};
-  
-  &:hover:not(:disabled) {
-    background: ${props => props.active ? '#0060df' : '#f8f9fa'};
-  }
-`;
-
 const RecentContactsList = () => {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
-  const rowsPerPage = 20;
+  const rowsPerPage = 5; // Changed to 5 to enable pagination with fewer contacts
+  
+  // Calculate the date 30 days ago
+  const getThirtyDaysAgo = () => {
+    const date = new Date();
+    date.setDate(date.getDate() - 30);
+    return date.toISOString();
+  };
+  
+  const thirtyDaysAgo = getThirtyDaysAgo();
   
   const getContactsCount = useCallback(async () => {
     try {
       const { count, error } = await supabase
         .from('contacts')
         .select('*', { count: 'exact', head: true })
-        .neq('contact_category', 'Skip');
+        .neq('contact_category', 'Skip')
+        .gte('created_at', thirtyDaysAgo); // Only count contacts from last 30 days
         
-      console.log('Total contacts count:', count);
+      console.log('Total contacts count in last 30 days:', count);
       
       if (error) {
         console.error('Error getting count:', error);
@@ -106,26 +32,28 @@ const RecentContactsList = () => {
     } catch (err) {
       console.error('Exception in getContactsCount:', err);
     }
-  }, []);
+  }, [thirtyDaysAgo]);
   
   const fetchRecentContacts = useCallback(async () => {
     setLoading(true);
     
     console.log('Fetching page:', currentPage);
     console.log('Range:', currentPage * rowsPerPage, 'to', (currentPage + 1) * rowsPerPage - 1);
+    console.log('Date filter:', thirtyDaysAgo);
     
     try {
       const { data, error } = await supabase
         .from('contacts')
         .select('*')
         .neq('contact_category', 'Skip')
+        .gte('created_at', thirtyDaysAgo) // Only get contacts from last 30 days
         .order('created_at', { ascending: false })
         .range(currentPage * rowsPerPage, (currentPage + 1) * rowsPerPage - 1);
         
       if (error) {
         console.error('Error fetching recent contacts:', error);
       } else {
-        console.log(`Retrieved ${data?.length || 0} contacts`);
+        console.log(`Retrieved ${data?.length || 0} contacts from the last 30 days`);
         setContacts(data || []);
       }
     } catch (error) {
@@ -133,7 +61,7 @@ const RecentContactsList = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, rowsPerPage]);
+  }, [currentPage, rowsPerPage, thirtyDaysAgo]);
   
   const handleSkipContact = async (contactId) => {
     if (!window.confirm('Are you sure you want to mark this contact as Skip?')) {
@@ -172,13 +100,13 @@ const RecentContactsList = () => {
   return (
     <Container>
       <Header>
-        <h2>Recently Added Contacts</h2>
+        <h2>Contacts Added in Last 30 Days</h2>
       </Header>
       
       {loading ? (
         <p>Loading recent contacts...</p>
       ) : contacts.length === 0 ? (
-        <p>No contacts found.</p>
+        <p>No contacts found in the last 30 days.</p>
       ) : (
         <>
           <ContactTable>
@@ -252,5 +180,3 @@ const RecentContactsList = () => {
     </Container>
   );
 };
-
-export default RecentContactsList;
