@@ -2,6 +2,26 @@
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
+## Hubspot Integration
+
+This application includes integration with Hubspot CRM. To use this feature:
+
+1. Get your Hubspot API credentials:
+   - For private apps, get an API key from your Hubspot developer account
+   - For public apps, set up OAuth authentication
+
+2. Add your credentials to the `.env` file:
+   ```
+   REACT_APP_HUBSPOT_API_KEY=your_hubspot_api_key_here
+   REACT_APP_HUBSPOT_ACCESS_TOKEN=your_hubspot_oauth_token_here
+   ```
+
+3. Restart your development server after updating the `.env` file
+
+4. The fire icon (🔥) in the contacts table will search Hubspot for matching contacts
+
+Note: For security, never commit your actual API keys to version control. The `.env` file should be in your `.gitignore`.
+
 ## Available Scripts
 
 In the project directory, you can run:

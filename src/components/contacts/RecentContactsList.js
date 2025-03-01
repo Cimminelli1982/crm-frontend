@@ -3,7 +3,44 @@ import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faWhatsapp } from '@fortawesome/free-brands-svg-icons';
-import { faEnvelope, faSearch, faPlus } from '@fortawesome/free-solid-svg-icons';
+import { faEnvelope, faSearch, faPlus, faFire } from '@fortawesome/free-solid-svg-icons';
+import axios from 'axios'; // Import axios for API calls
+
+// Add Hubspot API configuration
+const HUBSPOT_API_CONFIG = {
+  baseURL: 'https://api.hubapi.com',
+  apiKeyParamName: 'hapikey', // For API Key auth (Private App approach)
+  // For OAuth, you would use a different approach with tokens
+  timeout: 10000,
+};
+
+// Hubspot credentials - in a real app, these should be stored in environment variables
+const HUBSPOT_API_KEY = process.env.REACT_APP_HUBSPOT_API_KEY || '';
+const HUBSPOT_ACCESS_TOKEN = process.env.REACT_APP_HUBSPOT_ACCESS_TOKEN || '';
+
+// Create a Hubspot API client
+const hubspotClient = axios.create({
+  baseURL: HUBSPOT_API_CONFIG.baseURL,
+  timeout: HUBSPOT_API_CONFIG.timeout,
+});
+
+// Add a request interceptor to include auth in every request
+hubspotClient.interceptors.request.use((config) => {
+  // If using API key auth
+  if (HUBSPOT_API_KEY) {
+    config.params = {
+      ...config.params,
+      [HUBSPOT_API_CONFIG.apiKeyParamName]: HUBSPOT_API_KEY,
+    };
+  }
+  
+  // If using OAuth token auth
+  if (HUBSPOT_ACCESS_TOKEN) {
+    config.headers.Authorization = `Bearer ${HUBSPOT_ACCESS_TOKEN}`;
+  }
+  
+  return config;
+});
 
 const COMPANY_CATEGORIES = [
   'Advisor', 'Corporate', 'Institution', 'Professional Investor', 'SKIP', 'SME',
@@ -575,6 +612,19 @@ const MergeIcon = styled.span`
   }
 `;
 
+const HubspotIcon = styled.span`
+  margin-right: 0.625rem;
+  cursor: pointer;
+  color: #ff7a59; /* Hubspot orange */
+  font-size: 0.875rem;
+  transition: color 0.2s ease, transform 0.1s ease;
+  
+  &:hover {
+    color: #ff5c39; /* Darker Hubspot orange */
+    transform: translateY(-2px);
+  }
+`;
+
 const EditContactForm = styled.div`
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -771,6 +821,12 @@ const RecentContactsList = () => {
   const [tagInput, setTagInput] = useState({});
   const [tagSuggestions, setTagSuggestions] = useState({});
   const [allTags, setAllTags] = useState([]);
+  const [hubspotLoading, setHubspotLoading] = useState({});
+  const [hubspotAuthStatus, setHubspotAuthStatus] = useState({
+    isAuthenticated: false,
+    isLoading: true,
+    error: null
+  });
 
   const getThirtyDaysAgoRange = useMemo(() => {
     const now = new Date();
@@ -1384,6 +1440,262 @@ const RecentContactsList = () => {
     }
   }, []);
 
+  // Check Hubspot authentication on component mount
+  useEffect(() => {
+    const checkHubspotAuth = async () => {
+      try {
+        // If we have no credentials, we're not authenticated
+        if (!HUBSPOT_API_KEY && !HUBSPOT_ACCESS_TOKEN) {
+          setHubspotAuthStatus({
+            isAuthenticated: false,
+            isLoading: false,
+            error: "No Hubspot credentials found. Configure API key or OAuth token."
+          });
+          return;
+        }
+        
+        // Test the credentials by making a simple API call
+        const response = await hubspotClient.get('/crm/v3/objects/contacts', {
+          params: { limit: 1 }
+        });
+        
+        if (response.status === 200) {
+          setHubspotAuthStatus({
+            isAuthenticated: true,
+            isLoading: false,
+            error: null
+          });
+        } else {
+          throw new Error('Failed to authenticate with Hubspot');
+        }
+      } catch (error) {
+        console.error('Hubspot authentication error:', error);
+        setHubspotAuthStatus({
+          isAuthenticated: false,
+          isLoading: false,
+          error: error.message || 'Failed to authenticate with Hubspot'
+        });
+      }
+    };
+    
+    checkHubspotAuth();
+  }, []);
+
+  // Function to search for a contact in Hubspot
+  const searchHubspotContact = async (contact) => {
+    try {
+      // Search by email first if available
+      if (contact.email) {
+        const emailResponse = await hubspotClient.post('/crm/v3/objects/contacts/search', {
+          filterGroups: [
+            {
+              filters: [
+                {
+                  propertyName: 'email',
+                  operator: 'EQ',
+                  value: contact.email
+                }
+              ]
+            }
+          ],
+          properties: [
+            'firstname', 'lastname', 'email', 'work_email', 'mobilephone', 
+            'phone', 'hs_lead_status', 'linkedin_profile', 'hubspot_score'
+          ],
+          limit: 10
+        });
+        
+        if (emailResponse.data.results && emailResponse.data.results.length > 0) {
+          return {
+            found: true,
+            nameMatch: true, // Assuming email is unique enough
+            contact: emailResponse.data.results[0]
+          };
+        }
+      }
+      
+      // If no results by email, search by name
+      if (contact.first_name || contact.last_name) {
+        // Build the search query based on available name parts
+        const nameFilters = [];
+        
+        if (contact.first_name) {
+          nameFilters.push({
+            propertyName: 'firstname',
+            operator: 'EQ',
+            value: contact.first_name
+          });
+        }
+        
+        if (contact.last_name) {
+          nameFilters.push({
+            propertyName: 'lastname',
+            operator: 'EQ',
+            value: contact.last_name
+          });
+        }
+        
+        const nameResponse = await hubspotClient.post('/crm/v3/objects/contacts/search', {
+          filterGroups: [
+            {
+              filters: nameFilters
+            }
+          ],
+          properties: [
+            'firstname', 'lastname', 'email', 'work_email', 'mobilephone', 
+            'phone', 'hs_lead_status', 'linkedin_profile', 'hubspot_score'
+          ],
+          limit: 10
+        });
+        
+        if (nameResponse.data.results && nameResponse.data.results.length > 0) {
+          // Check if first name and last name match
+          const result = nameResponse.data.results[0];
+          const firstNameMatch = !contact.first_name || 
+            (result.properties.firstname && 
+             result.properties.firstname.toLowerCase() === contact.first_name.toLowerCase());
+          const lastNameMatch = !contact.last_name || 
+            (result.properties.lastname && 
+             result.properties.lastname.toLowerCase() === contact.last_name.toLowerCase());
+          
+          return {
+            found: true,
+            nameMatch: firstNameMatch && lastNameMatch,
+            contact: result
+          };
+        }
+      }
+      
+      // No matching contact found
+      return {
+        found: false,
+        nameMatch: false,
+        contact: null
+      };
+    } catch (error) {
+      console.error('Error searching Hubspot:', error);
+      throw error;
+    }
+  };
+  
+  // Function to map Hubspot contact properties to our data model
+  const mapHubspotContactToOurModel = (hubspotContact) => {
+    const properties = hubspotContact.properties;
+    
+    // Map Hubspot properties to our data model
+    return {
+      email: properties.email || '',
+      email2: properties.work_email || '',
+      email3: '', // Hubspot might not have a third email field
+      mobile: properties.mobilephone || '',
+      mobile2: properties.phone || '', // Using phone as secondary mobile
+      linkedin: properties.linkedin_profile || '',
+      // Map Hubspot lead status to our contact category if possible
+      contact_category: mapHubspotStatusToCategory(properties.hs_lead_status),
+      // Default to quarterly for keep in touch frequency
+      keep_in_touch_frequency: 'Quarterly',
+      // Map Hubspot score to our score (assuming 0-100 scale)
+      score: mapHubspotScoreToOurScore(properties.hubspot_score)
+    };
+  };
+  
+  // Helper function to map Hubspot lead status to our contact category
+  const mapHubspotStatusToCategory = (hubspotStatus) => {
+    if (!hubspotStatus) return '';
+    
+    // Define mapping from Hubspot lead statuses to our categories
+    const statusMap = {
+      'NEW': 'Founder',
+      'OPEN': 'Professional Investor',
+      'IN PROGRESS': 'Manager',
+      'OPEN DEAL': 'Professional Investor',
+      'UNQUALIFIED': 'Do not keep in touch',
+      'CUSTOMER': 'Advisor',
+      'EVANGELIST': 'Friend or Family'
+    };
+    
+    return statusMap[hubspotStatus.toUpperCase()] || 'Professional Investor';
+  };
+  
+  // Helper function to map Hubspot score to our 1-5 scale
+  const mapHubspotScoreToOurScore = (hubspotScore) => {
+    if (!hubspotScore) return 3; // Default to middle score
+    
+    const score = parseInt(hubspotScore, 10);
+    if (isNaN(score)) return 3;
+    
+    // Map 0-100 scale to 1-5 scale
+    if (score < 20) return 1;
+    if (score < 40) return 2;
+    if (score < 60) return 3;
+    if (score < 80) return 4;
+    return 5;
+  };
+  
+  // Updated handleSearchHubspot function to use real Hubspot API
+  const handleSearchHubspot = useCallback(async (contact) => {
+    if (!contact.first_name && !contact.last_name) {
+      alert("Contact must have a name to search in Hubspot");
+      return;
+    }
+    
+    // Check if we're authenticated with Hubspot
+    if (!hubspotAuthStatus.isAuthenticated) {
+      alert("Not authenticated with Hubspot. Please check your API credentials.");
+      return;
+    }
+    
+    // Set loading state for this specific contact
+    setHubspotLoading(prev => ({ ...prev, [contact.id]: true }));
+    
+    try {
+      // Search for the contact in Hubspot
+      const hubspotResult = await searchHubspotContact(contact);
+      
+      // Check if the contact was found and names match
+      if (hubspotResult.found && hubspotResult.nameMatch) {
+        // Map Hubspot data to our model
+        const hubspotData = mapHubspotContactToOurModel(hubspotResult.contact);
+        
+        // Update Supabase with the data from Hubspot
+        const { error } = await supabase
+          .from('contacts')
+          .update({
+            email: hubspotData.email || contact.email,
+            email2: hubspotData.email2 || contact.email2,
+            email3: hubspotData.email3 || contact.email3,
+            mobile: hubspotData.mobile || contact.mobile,
+            mobile2: hubspotData.mobile2 || contact.mobile2,
+            linkedin: hubspotData.linkedin || contact.linkedin,
+            contact_category: hubspotData.contact_category || contact.contact_category,
+            keep_in_touch_frequency: hubspotData.keep_in_touch_frequency || contact.keep_in_touch_frequency,
+            score: hubspotData.score || contact.score
+          })
+          .eq('id', contact.id);
+        
+        if (error) throw error;
+        
+        // TODO: Update Airtable if needed
+        console.log("Updating Airtable with the same data (Airtable integration needed)");
+        
+        // Refresh data to show updated contact
+        await fetchData();
+        
+        alert(`Contact data updated from Hubspot for ${contact.first_name} ${contact.last_name}`);
+      } else if (hubspotResult.found && !hubspotResult.nameMatch) {
+        alert(`Found contact in Hubspot but names don't match for ${contact.first_name} ${contact.last_name}`);
+      } else {
+        alert(`No matching contact found in Hubspot for ${contact.first_name} ${contact.last_name}`);
+      }
+    } catch (error) {
+      console.error("Error searching Hubspot:", error);
+      alert(`Failed to search Hubspot: ${error.message}`);
+    } finally {
+      // Clear loading state for this contact
+      setHubspotLoading(prev => ({ ...prev, [contact.id]: false }));
+    }
+  }, [fetchData, hubspotAuthStatus.isAuthenticated]);
+
   return (
     <Container>
       {loading && (
@@ -1434,6 +1746,16 @@ const RecentContactsList = () => {
                       '-'
                     )}
                     <EditButton onClick={() => handleOpenContactEdit(contact)}>✎</EditButton>
+                    <HubspotIcon 
+                      onClick={() => handleSearchHubspot(contact)} 
+                      title="Search in Hubspot and import data"
+                    >
+                      {hubspotLoading[contact.id] ? (
+                        "..."
+                      ) : (
+                        <FontAwesomeIcon icon={faFire} />
+                      )}
+                    </HubspotIcon>
                     <MergeIcon onClick={() => handleOpenMerge(contact)}>⚏</MergeIcon>
                     {!contact.keep_in_touch_frequency && (
                       <SkipIcon onClick={() => handleSkipContact(contact.id)}>✕</SkipIcon>
@@ -2214,6 +2536,18 @@ const RecentContactsList = () => {
             </ButtonGroup>
           </ModalContent>
         </Modal>
+      )}
+      {!hubspotAuthStatus.isAuthenticated && !hubspotAuthStatus.isLoading && (
+        <div style={{ 
+          background: '#FEF2F2', 
+          color: '#B91C1C', 
+          padding: '0.5rem 1rem', 
+          borderRadius: '0.375rem',
+          margin: '0 0 1rem 0',
+          fontSize: '0.875rem'
+        }}>
+          Hubspot integration is not configured: {hubspotAuthStatus.error}
+        </div>
       )}
     </Container>
   );
