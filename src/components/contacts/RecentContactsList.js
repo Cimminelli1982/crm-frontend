@@ -269,7 +269,6 @@ const RecentContactsList = () => {
     city: '',
     nation: ''
   });
-  const [companySearchResults, setCompanySearchResults] = useState([]);
 
   const getThirtyDaysAgoRange = useMemo(() => {
     const now = new Date();
@@ -409,7 +408,7 @@ const RecentContactsList = () => {
         .delete()
         .eq('id', targetContact.id);
       if (deleteError) throw deleteError;
-      const { error: interactionError } = await supabase
+      await supabase
         .from('interactions')
         .update({ contact_id: selectedContact.id })
         .eq('contact_id', targetContact.id);
@@ -483,11 +482,10 @@ const RecentContactsList = () => {
         .single();
       let companyId;
       if (existingCompany) {
-        const { data: updatedCompany } = await supabase
+        await supabase
           .from('companies')
           .update(companyData)
-          .eq('id', existingCompany.id)
-          .single();
+          .eq('id', existingCompany.id);
         companyId = existingCompany.id;
       } else {
         const { data: newCompany } = await supabase
