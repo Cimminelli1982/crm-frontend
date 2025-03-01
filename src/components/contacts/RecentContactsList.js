@@ -1713,6 +1713,9 @@ const RecentContactsList = () => {
         'hs_linkedin_url'
       ];
       
+      // Flag to determine if we're searching by email only (no names provided)
+      const isEmailOnlySearch = (!contact.first_name && !contact.last_name && contact.email);
+      
       // Search by email first if available
       if (contact.email) {
         const emailResponse = await hubspotClient.post('/crm/v3/objects/contacts/search', {
@@ -1794,7 +1797,7 @@ const RecentContactsList = () => {
           
           return {
             found: true,
-            nameMatch: true, // Assuming email is unique enough
+            nameMatch: isEmailOnlySearch ? true : (contactWithAllProperties.firstname && contactWithAllProperties.lastname ? true : false),
             contact: contactWithAllProperties,
             company: companyData
           };
@@ -1904,7 +1907,7 @@ const RecentContactsList = () => {
           
           return {
             found: true,
-            nameMatch: firstNameMatch && lastNameMatch,
+            nameMatch: isEmailOnlySearch ? true : (firstNameMatch && lastNameMatch),
             contact: contactWithAllProperties,
             company: companyData
           };
@@ -2308,8 +2311,9 @@ const RecentContactsList = () => {
 
   // Updated handleSearchHubspot function to use real Hubspot API
   const handleSearchHubspot = useCallback(async (contact) => {
-    if (!contact.first_name && !contact.last_name) {
-      alert("Contact must have a name to search in Hubspot");
+    // Check if we have either name or email to search with
+    if ((!contact.first_name && !contact.last_name) && !contact.email) {
+      alert("Contact must have either a name or email to search in Hubspot");
       return;
     }
     
@@ -2326,8 +2330,11 @@ const RecentContactsList = () => {
       // Search for the contact in Hubspot
       const hubspotResult = await searchHubspotContact(contact);
       
-      // Check if the contact was found and names match
-      if (hubspotResult.found && hubspotResult.nameMatch) {
+      // Check if the contact was found
+      // Only check nameMatch if names are provided
+      const nameMatchCheck = (contact.first_name || contact.last_name) ? hubspotResult.nameMatch : true;
+      
+      if (hubspotResult.found && nameMatchCheck) {
         // Map Hubspot data to our model
         const hubspotData = mapHubspotContactToOurModel(hubspotResult.contact, hubspotResult.company);
         
