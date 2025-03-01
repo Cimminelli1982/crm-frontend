@@ -2,8 +2,8 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faWhatsapp } from '@fortawesome/free-brands-svg-icons';
-import { faEnvelope, faSearch, faPlus, faFire, faSpinner, faHubspot } from '@fortawesome/free-solid-svg-icons';
+import { faWhatsapp, faHubspot } from '@fortawesome/free-brands-svg-icons';
+import { faEnvelope, faSearch, faPlus, faFire, faSpinner } from '@fortawesome/free-solid-svg-icons';
 import axios from 'axios'; // Import axios for API calls
 
 // Add Hubspot API configuration
