@@ -1576,10 +1576,10 @@ const RecentContactsList = () => {
       console.error('Error searching Hubspot:', error);
       throw error;
     }
-  }, []);
+  }, [hubspotClient]);
   
-  // Helper function to map Hubspot status categories - doesn't need useCallback as it's pure
-  const mapHubspotStatusToCategory = (hubspotStatus) => {
+  // Helper function to map Hubspot status categories - wrapped in useCallback to prevent dependency warnings
+  const mapHubspotStatusToCategory = useCallback((hubspotStatus) => {
     if (!hubspotStatus) return '';
     
     // Define mapping from Hubspot lead statuses to our categories
@@ -1594,10 +1594,10 @@ const RecentContactsList = () => {
     };
     
     return statusMap[hubspotStatus.toUpperCase()] || 'Professional Investor';
-  };
+  }, []);
   
-  // Helper function to map Hubspot score - doesn't need useCallback as it's pure
-  const mapHubspotScoreToOurScore = (hubspotScore) => {
+  // Helper function to map Hubspot score - wrapped in useCallback to prevent dependency warnings
+  const mapHubspotScoreToOurScore = useCallback((hubspotScore) => {
     if (!hubspotScore) return 3; // Default to middle score
     
     const score = parseInt(hubspotScore, 10);
@@ -1609,7 +1609,7 @@ const RecentContactsList = () => {
     if (score < 60) return 3;
     if (score < 80) return 4;
     return 5;
-  };
+  }, []);
   
   // Function to map Hubspot contact properties to our data model - wrapped in useCallback
   const mapHubspotContactToOurModel = useCallback((hubspotContact) => {
