@@ -2458,46 +2458,48 @@ const RecentContactsList = () => {
               {contacts.map(contact => (
                 <tr key={contact.id}>
                   <td>
-                    {contact.first_name || contact.last_name ? (
-                      <ContactNameWrapper>
-                        {contact.linkedin ? (
-                          <a href={contact.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#2d3748', textDecoration: 'none', fontWeight: '600' }}>
-                            {`${contact.first_name || ''} ${contact.last_name || ''}`}
-                          </a>
-                        ) : (
-                          <a
-                            href={`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ color: '#2d3748', textDecoration: 'none', fontWeight: '600' }}
-                          >
-                            {`${contact.first_name || ''} ${contact.last_name || ''}`}
-                          </a>
-                        )}
-                        {contact.about_the_contact && (
-                          <Tooltip className="tooltip">
-                            {contact.about_the_contact}
-                          </Tooltip>
-                        )}
-                        <EditButton onClick={() => handleOpenContactEdit(contact)}>✎</EditButton>
-                        <HubspotIcon 
-                          onClick={() => handleSearchHubspot(contact)} 
-                          title="Search in Hubspot and import data"
-                        >
-                          {hubspotLoading[contact.id] ? (
-                            <FontAwesomeIcon icon={faSpinner} spin />
+                    <ContactNameWrapper>
+                      {contact.first_name || contact.last_name ? (
+                        <>
+                          {contact.linkedin ? (
+                            <a href={contact.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#2d3748', textDecoration: 'none', fontWeight: '600' }}>
+                              {`${contact.first_name || ''} ${contact.last_name || ''}`}
+                            </a>
                           ) : (
-                            <FontAwesomeIcon icon={faHubspot} />
+                            <a
+                              href={`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: '#2d3748', textDecoration: 'none', fontWeight: '600' }}
+                            >
+                              {`${contact.first_name || ''} ${contact.last_name || ''}`}
+                            </a>
                           )}
-                        </HubspotIcon>
-                        <MergeIcon onClick={() => handleOpenMerge(contact)}>⚏</MergeIcon>
-                        {!contact.keep_in_touch_frequency && (
-                          <SkipIcon onClick={() => handleSkipContact(contact.id)}>✕</SkipIcon>
+                        </>
+                      ) : (
+                        <span style={{ color: '#a0aec0', fontStyle: 'italic' }}>No name</span>
+                      )}
+                      {contact.about_the_contact && (
+                        <Tooltip className="tooltip">
+                          {contact.about_the_contact}
+                        </Tooltip>
+                      )}
+                      <EditButton onClick={() => handleOpenContactEdit(contact)}>✎</EditButton>
+                      <HubspotIcon 
+                        onClick={() => handleSearchHubspot(contact)} 
+                        title="Search in Hubspot and import data"
+                      >
+                        {hubspotLoading[contact.id] ? (
+                          <FontAwesomeIcon icon={faSpinner} spin />
+                        ) : (
+                          <FontAwesomeIcon icon={faHubspot} />
                         )}
-                      </ContactNameWrapper>
-                    ) : (
-                      '-'
-                    )}
+                      </HubspotIcon>
+                      <MergeIcon onClick={() => handleOpenMerge(contact)}>⚏</MergeIcon>
+                      {!contact.keep_in_touch_frequency && (
+                        <SkipIcon onClick={() => handleSkipContact(contact.id)}>✕</SkipIcon>
+                      )}
+                    </ContactNameWrapper>
                   </td>
                   <td>
                   {contact.companies ? (
