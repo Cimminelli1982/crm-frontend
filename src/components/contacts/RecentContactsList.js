@@ -12,6 +12,13 @@ const Container = styled.div`
   margin-top: 2rem;
 `;
 
+const Header = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+`;
+
 const ContactTable = styled.table`
   width: 100%;
   border-collapse: collapse;
@@ -42,7 +49,7 @@ const TableBody = styled.tbody`
 `;
 
 const ActionButton = styled.button`
-  background-color: #0070f3;
+  background-color: ${props => props.skip ? '#dc3545' : '#0070f3'};
   color: white;
   border: none;
   border-radius: 4px;
@@ -51,17 +58,53 @@ const ActionButton = styled.button`
   margin-right: 0.5rem;
   
   &:hover {
-    background-color: #0060df;
+    background-color: ${props => props.skip ? '#c82333' : '#0060df'};
+  }
+`;
+
+const PaginationControls = styled.div`
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+`;
+
+const PageButton = styled.button`
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #ddd;
+  background: ${props => props.active ? '#0070f3' : 'white'};
+  color: ${props => props.active ? 'white' : '#333'};
+  border-radius: 4px;
+  cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
+  opacity: ${props => props.disabled ? 0.6 : 1};
+  
+  &:hover:not(:disabled) {
+    background: ${props => props.active ? '#0060df' : '#f8f9fa'};
   }
 `;
 
 const RecentContactsList = () => {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
+  const [currentPage, setCurrentPage] = useState(0);
+  const rowsPerPage = 20;
   
   useEffect(() => {
     fetchRecentContacts();
-  }, []);
+    getContactsCount();
+  }, [currentPage]);
+  
+  async function getContactsCount() {
+    const { count, error } = await supabase
+      .from('contacts')
+      .select('*', { count: 'exact', head: true })
+      .neq('contact_category', 'Skip');
+      
+    if (!error) {
+      setTotalCount(count || 0);
+    }
+  }
   
   async function fetchRecentContacts() {
     setLoading(true);
@@ -70,8 +113,9 @@ const RecentContactsList = () => {
       const { data, error } = await supabase
         .from('contacts')
         .select('*')
+        .neq('contact_category', 'Skip') // Don't show contacts with Skip category
         .order('created_at', { ascending: false })
-        .limit(5);
+        .range(currentPage * rowsPerPage, (currentPage + 1) * rowsPerPage - 1);
         
       if (error) {
         console.error('Error fetching recent contacts:', error);
@@ -85,39 +129,113 @@ const RecentContactsList = () => {
     }
   }
   
+  async function handleSkipContact(contactId) {
+    if (!confirm('Are you sure you want to mark this contact as Skip?')) {
+      return;
+    }
+    
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .update({ contact_category: 'Skip' })
+        .eq('id', contactId);
+        
+      if (error) {
+        console.error('Error updating contact:', error);
+        alert('Failed to mark contact as Skip');
+      } else {
+        // Remove the contact from the current view
+        setContacts(contacts.filter(c => c.id !== contactId));
+        // Update total count
+        setTotalCount(prev => prev - 1);
+      }
+    } catch (error) {
+      console.error('Exception skipping contact:', error);
+      alert('Failed to mark contact as Skip');
+    }
+  }
+  
+  const totalPages = Math.ceil(totalCount / rowsPerPage);
+  
   return (
     <Container>
-      <h2>Recently Added Contacts</h2>
+      <Header>
+        <h2>Recently Added Contacts</h2>
+      </Header>
       
       {loading ? (
         <p>Loading recent contacts...</p>
       ) : contacts.length === 0 ? (
         <p>No contacts found.</p>
       ) : (
-        <ContactTable>
-          <TableHead>
-            <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Category</th>
-              <th>Actions</th>
-            </tr>
-          </TableHead>
-          <TableBody>
-            {contacts.map(contact => (
-              <tr key={contact.id}>
-                <td>{`${contact.first_name || ''} ${contact.last_name || ''}`}</td>
-                <td>{contact.email}</td>
-                <td>{contact.contact_category || '-'}</td>
-                <td>
-                  <Link to={`/contacts/edit/${contact.id}`}>
-                    <ActionButton>Edit</ActionButton>
-                  </Link>
-                </td>
+        <>
+          <ContactTable>
+            <TableHead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Mobile</th>
+                <th>Category</th>
+                <th>Actions</th>
               </tr>
-            ))}
-          </TableBody>
-        </ContactTable>
+            </TableHead>
+            <TableBody>
+              {contacts.map(contact => (
+                <tr key={contact.id}>
+                  <td>{`${contact.first_name || ''} ${contact.last_name || ''}`}</td>
+                  <td>{contact.email || '-'}</td>
+                  <td>{contact.mobile || '-'}</td>
+                  <td>{contact.contact_category || '-'}</td>
+                  <td>
+                    <Link to={`/contacts/edit/${contact.id}`}>
+                      <ActionButton>Edit</ActionButton>
+                    </Link>
+                    <ActionButton 
+                      skip 
+                      onClick={() => handleSkipContact(contact.id)}
+                    >
+                      Skip
+                    </ActionButton>
+                  </td>
+                </tr>
+              ))}
+            </TableBody>
+          </ContactTable>
+          
+          {totalPages > 1 && (
+            <PaginationControls>
+              <PageButton 
+                onClick={() => setCurrentPage(0)} 
+                disabled={currentPage === 0}
+              >
+                First
+              </PageButton>
+              <PageButton 
+                onClick={() => setCurrentPage(prev => Math.max(0, prev - 1))} 
+                disabled={currentPage === 0}
+              >
+                Previous
+              </PageButton>
+              
+              <span style={{ padding: '0.5rem' }}>
+                Page {currentPage + 1} of {totalPages}
+              </span>
+              
+              <PageButton 
+                onClick={() => setCurrentPage(prev => Math.min(totalPages - 1, prev + 1))} 
+                disabled={currentPage === totalPages - 1}
+              >
+                Next
+              </PageButton>
+              <PageButton 
+                onClick={() => setCurrentPage(totalPages - 1)} 
+                disabled={currentPage === totalPages - 1}
+              >
+                Last
+              </PageButton>
+            </PaginationControls>
+          )}
+        </>
       )}
     </Container>
   );
