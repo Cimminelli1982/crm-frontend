@@ -129,17 +129,16 @@ const RecentContactsList = () => {
     }
   }
   
-  async function handleSkipContact(contactId) {
+  async function handleSkipContact(contactId) {  // <-- Add 'async' keyword here
   if (!window.confirm('Are you sure you want to mark this contact as Skip?')) {
-  return;
-}
-    }
-    
-    try {
-      const { error } = await supabase
-        .from('contacts')
-        .update({ contact_category: 'Skip' })
-        .eq('id', contactId);
+    return;
+  }
+  
+  try {
+    const { error } = await supabase
+      .from('contacts')
+      .update({ contact_category: 'Skip' })
+      .eq('id', contactId);
         
       if (error) {
         console.error('Error updating contact:', error);
