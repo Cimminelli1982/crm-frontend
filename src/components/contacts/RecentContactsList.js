@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router-dom'; // eslint-disable-line no-unused-vars
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 
