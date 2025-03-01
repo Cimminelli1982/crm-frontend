@@ -913,6 +913,38 @@ const formatLinkedInUrl = (url) => {
   return '';
 };
 
+// Utility function to format website URLs
+const formatWebsiteUrl = (url) => {
+  if (!url) return '';
+  
+  console.log(`Formatting website URL: "${url}"`);
+  
+  // Don't process email addresses
+  if (url.includes('@')) {
+    console.log('Input appears to be an email, not formatting as website URL');
+    return '';
+  }
+  
+  // Remove any protocol (http://, https://, etc.)
+  let domain = url.replace(/^(https?:\/\/)?(www\.)?/i, '');
+  
+  // Remove any path, query parameters, or hash
+  domain = domain.split('/')[0].split('?')[0].split('#')[0];
+  
+  // Remove trailing dots and extra spaces
+  domain = domain.replace(/\.$/, '').trim();
+  
+  if (!domain) {
+    console.log('Could not extract a valid domain');
+    return '';
+  }
+  
+  // Format as www.domain.com
+  const formatted = `www.${domain.replace(/^www\./i, '')}`;
+  console.log(`Reformatted website URL: "${formatted}"`);
+  return formatted;
+};
+
 const RecentContactsList = () => {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1200,36 +1232,69 @@ const RecentContactsList = () => {
 
   const handleSaveCompany = useCallback(async () => {
     try {
-      const { data: existingCompany } = await supabase
+      // Format the website URL before saving
+      const formattedWebsite = formatWebsiteUrl(companyData.website);
+      const updatedCompanyData = {
+        ...companyData,
+        website: formattedWebsite
+      };
+      
+      // Check if a company with the same formatted website already exists
+      const { data: existingByWebsite, error: websiteError } = await supabase
         .from('companies')
         .select('*')
-        .eq('website', companyData.website)
-        .single();
+        .ilike('website', `%${formattedWebsite.replace(/^www\./i, '')}%`);
+
+      if (websiteError) throw websiteError;
+      
       let companyId;
-      if (existingCompany) {
-        await supabase
-          .from('companies')
-          .update(companyData)
-          .eq('id', existingCompany.id);
-        companyId = existingCompany.id;
+      
+      if (existingByWebsite && existingByWebsite.length > 0) {
+        // Company with similar website exists
+        const existingCompany = existingByWebsite[0];
+        console.log(`Found existing company with similar website: ${existingCompany.name} (${existingCompany.website})`);
+        
+        // Confirm with user if they want to update the existing company or create a new one
+        if (window.confirm(`A company with a similar website already exists (${existingCompany.name}). Do you want to update it instead of creating a new one?`)) {
+          await supabase
+            .from('companies')
+            .update(updatedCompanyData)
+            .eq('id', existingCompany.id);
+          companyId = existingCompany.id;
+          console.log(`Updated existing company: ${existingCompany.name}`);
+        } else {
+          // User chose to create a new company despite the duplicate
+          const { data: newCompany } = await supabase
+            .from('companies')
+            .insert(updatedCompanyData)
+            .select()
+            .single();
+          companyId = newCompany.id;
+          console.log(`Created new company despite duplicate: ${newCompany.name}`);
+        }
       } else {
+        // No duplicate website found, proceed with normal flow
         const { data: newCompany } = await supabase
           .from('companies')
-          .insert(companyData)
+          .insert(updatedCompanyData)
           .select()
           .single();
         companyId = newCompany.id;
+        console.log(`Created new company: ${newCompany.name}`);
       }
+      
       await supabase
         .from('contacts')
         .update({ company_id: companyId })
         .eq('id', currentContact.id);
+        
       fetchData();
       setShowCompanyModal(false);
     } catch (error) {
-      alert('Failed to save company');
+      console.error('Failed to save company:', error);
+      alert('Failed to save company: ' + error.message);
     }
-  }, [companyData, currentContact, fetchData]);
+  }, [companyData, currentContact, fetchData, formatWebsiteUrl]);
 
   const handleCompanySearch = useCallback(async (contactId, term) => {
     setCompanySearchTerm(prev => ({ ...prev, [contactId]: term }));
@@ -2218,7 +2283,7 @@ const RecentContactsList = () => {
       const companyProperties = hubspotCompany.properties;
       companyData = {
         name: companyProperties.name || '',
-        website: companyProperties.website || '',
+        website: formatWebsiteUrl(companyProperties.website || ''),
         description: companyProperties.description || '',
         city: companyProperties.city || '',
         nation: companyProperties.country || '',
@@ -2232,7 +2297,7 @@ const RecentContactsList = () => {
       contactData,
       companyData
     };
-  }, [mapHubspotStatusToCategory, mapHubspotFrequencyToOurFrequency, mapHubspotScoreToOurScore, formatPhoneNumber, formatLinkedInUrl]);
+  }, [mapHubspotStatusToCategory, mapHubspotFrequencyToOurFrequency, mapHubspotScoreToOurScore, formatPhoneNumber, formatLinkedInUrl, formatWebsiteUrl]);
 
   // Updated handleSearchHubspot function to use real Hubspot API
   const handleSearchHubspot = useCallback(async (contact) => {
@@ -2289,19 +2354,24 @@ const RecentContactsList = () => {
           let companyId = null;
           
           if (hubspotData.companyData.website) {
-            const { data: existingCompany } = await supabase
+            // Format for consistent matching
+            const formattedWebsite = hubspotData.companyData.website; // Already formatted in mapHubspotContactToOurModel
+            
+            // Search for companies with similar website patterns
+            const { data: existingCompanies } = await supabase
               .from('companies')
-              .select('id')
-              .eq('website', hubspotData.companyData.website)
-              .maybeSingle();
+              .select('*')
+              .ilike('website', `%${formattedWebsite.replace(/^www\./i, '')}%`);
               
-            if (existingCompany) {
+            if (existingCompanies && existingCompanies.length > 0) {
               // Update existing company
-              companyId = existingCompany.id;
+              companyId = existingCompanies[0].id;
               await supabase
                 .from('companies')
                 .update(hubspotData.companyData)
                 .eq('id', companyId);
+                
+              console.log(`Updated existing company: ${existingCompanies[0].name}`);
             } else {
               // Create new company
               const { data: newCompany, error: companyError } = await supabase
@@ -2312,6 +2382,7 @@ const RecentContactsList = () => {
                 
               if (companyError) throw companyError;
               companyId = newCompany.id;
+              console.log(`Created new company: ${newCompany.name}`);
             }
             
             // Link the contact to the company
@@ -2416,25 +2487,25 @@ const RecentContactsList = () => {
                   </td>
                   <td>
                   {contact.companies ? (
-  <div>
-    <a
-      href={
-        contact.companies.website
-          ? contact.companies.website.startsWith('http')
-            ? contact.companies.website
-            : `https://${contact.companies.website}`
-          : '#'
-      }
-      target="_blank"
-      rel="noopener noreferrer"
-                          style={{ color: '#2d3748', textDecoration: 'none' }}
-    >
-      {contact.companies.name}
-    </a>
-    <EditButton onClick={() => handleEditCompany(contact)}>✎</EditButton>
-    <UnlinkButton onClick={() => handleUnlinkCompany(contact.id)}>✕</UnlinkButton>
-  </div>
-) : (
+    <div>
+      <a
+        href={
+          contact.companies.website
+            ? contact.companies.website.startsWith('http')
+              ? contact.companies.website
+              : `https://${contact.companies.website}`
+            : '#'
+        }
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ color: '#2d3748', textDecoration: 'none' }}
+      >
+        {contact.companies.name}
+      </a>
+      <EditButton onClick={() => handleEditCompany(contact)}>✎</EditButton>
+      <UnlinkButton onClick={() => handleUnlinkCompany(contact.id)}>✕</UnlinkButton>
+    </div>
+  ) : (
   <div>
     <CompanyInput
       value={companySearchTerm[contact.id] || ''}
@@ -3026,7 +3097,16 @@ const RecentContactsList = () => {
             id="website"
             type="text"
             value={companyData.website}
-            onChange={(e) => setCompanyData(prev => ({ ...prev, website: e.target.value }))}
+            onChange={(e) => {
+              const inputValue = e.target.value;
+              // Only format when user has stopped typing or when there's a blurring event
+              setCompanyData(prev => ({ ...prev, website: inputValue }));
+            }}
+            onBlur={(e) => {
+              // Format the website on blur
+              const formatted = formatWebsiteUrl(e.target.value);
+              setCompanyData(prev => ({ ...prev, website: formatted }));
+            }}
             placeholder="e.g., company.com"
           />
         </FormGroup>
