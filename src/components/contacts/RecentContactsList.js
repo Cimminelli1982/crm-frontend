@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
@@ -82,114 +82,134 @@ const PageButton = styled.button`
   }
 `;
 
+const LoadingOverlay = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+`;
+
 const RecentContactsList = () => {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
-  const rowsPerPage = 5; // Changed to 5 to enable pagination with fewer contacts
   
-  // Calculate the date 30 days ago
-  const getThirtyDaysAgo = () => {
+  // Memoize static values
+  const rowsPerPage = useMemo(() => 10, []); // Increased for better UX
+  
+  // Memoize date calculation
+  const thirtyDaysAgo = useMemo(() => {
     const date = new Date();
     date.setDate(date.getDate() - 30);
     return date.toISOString();
-  };
+  }, []);
   
-  const thirtyDaysAgo = getThirtyDaysAgo();
-  
-  const getContactsCount = useCallback(async () => {
-    try {
-      const { count, error } = await supabase
-        .from('contacts')
-        .select('*', { count: 'exact', head: true })
-        .neq('contact_category', 'Skip')
-        .gte('created_at', thirtyDaysAgo); // Only count contacts from last 30 days
-        
-      console.log('Total contacts count in last 30 days:', count);
-      
-      if (error) {
-        console.error('Error getting count:', error);
-      } else {
-        setTotalCount(count || 0);
-      }
-    } catch (err) {
-      console.error('Exception in getContactsCount:', err);
-    }
-  }, [thirtyDaysAgo]);
-  
-  const fetchRecentContacts = useCallback(async () => {
+  // Centralized fetch logic with error handling
+  const fetchData = useCallback(async () => {
     setLoading(true);
     
-    console.log('Fetching page:', currentPage);
-    console.log('Range:', currentPage * rowsPerPage, 'to', (currentPage + 1) * rowsPerPage - 1);
-    console.log('Date filter:', thirtyDaysAgo);
-    
     try {
-      const { data, error } = await supabase
-        .from('contacts')
-        .select('*')
-        .neq('contact_category', 'Skip')
-        .gte('created_at', thirtyDaysAgo) // Only get contacts from last 30 days
-        .order('created_at', { ascending: false })
-        .range(currentPage * rowsPerPage, (currentPage + 1) * rowsPerPage - 1);
-        
-      if (error) {
-        console.error('Error fetching recent contacts:', error);
+      // Fetch count and contacts in parallel
+      const [countResponse, contactsResponse] = await Promise.all([
+        supabase
+          .from('contacts')
+          .select('*', { count: 'exact', head: true })
+          .neq('contact_category', 'Skip')
+          .gte('created_at', thirtyDaysAgo),
+        supabase
+          .from('contacts')
+          .select('*')
+          .neq('contact_category', 'Skip')
+          .gte('created_at', thirtyDaysAgo)
+          .order('created_at', { ascending: false })
+          .range(currentPage * rowsPerPage, (currentPage + 1) * rowsPerPage - 1)
+      ]);
+      
+      // Handle count
+      if (countResponse.error) {
+        console.error('Error getting count:', countResponse.error);
+        setTotalCount(0);
       } else {
-        console.log(`Retrieved ${data?.length || 0} contacts from the last 30 days`);
-        setContacts(data || []);
+        setTotalCount(countResponse.count || 0);
+      }
+      
+      // Handle contacts
+      if (contactsResponse.error) {
+        console.error('Error fetching contacts:', contactsResponse.error);
+        setContacts([]);
+      } else {
+        setContacts(contactsResponse.data || []);
       }
     } catch (error) {
-      console.error('Exception fetching recent contacts:', error);
+      console.error('Exception in fetchData:', error);
+      setContacts([]);
+      setTotalCount(0);
     } finally {
       setLoading(false);
     }
   }, [currentPage, rowsPerPage, thirtyDaysAgo]);
   
-  const handleSkipContact = async (contactId) => {
-    if (!window.confirm('Are you sure you want to mark this contact as Skip?')) {
-      return;
-    }
+  // Optimize useEffect to minimize unnecessary calls
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+  
+  // Memoize pagination calculation
+  const totalPages = useMemo(() => 
+    Math.ceil(totalCount / rowsPerPage), 
+    [totalCount, rowsPerPage]
+  );
+  
+  // Optimized skip contact handler
+  const handleSkipContact = useCallback(async (contactId) => {
+    if (!window.confirm('Are you sure you want to mark this contact as Skip?')) return;
     
     try {
       const { error } = await supabase
         .from('contacts')
         .update({ contact_category: 'Skip' })
         .eq('id', contactId);
-          
-      if (error) {
-        console.error('Error updating contact:', error);
-        alert('Failed to mark contact as Skip');
-      } else {
-        // Remove the contact from the current view
-        setContacts(contacts.filter(c => c.id !== contactId));
-        // Update total count
-        setTotalCount(prev => prev - 1);
-      }
+      
+      if (error) throw error;
+      
+      // Update state optimistically
+      setContacts(prev => prev.filter(c => c.id !== contactId));
+      setTotalCount(prev => prev - 1);
     } catch (error) {
-      console.error('Exception skipping contact:', error);
+      console.error('Failed to skip contact:', error);
       alert('Failed to mark contact as Skip');
     }
-  };
+  }, []);
   
-  useEffect(() => {
-    fetchRecentContacts();
-    getContactsCount();
-  }, [currentPage, fetchRecentContacts, getContactsCount]);
-  
-  const totalPages = Math.ceil(totalCount / rowsPerPage);
-  console.log('Total pages calculated:', totalPages);
+  // Pagination handlers
+  const goToFirstPage = useCallback(() => setCurrentPage(0), []);
+  const goToPreviousPage = useCallback(() => 
+    setCurrentPage(prev => Math.max(0, prev - 1)), []);
+  const goToNextPage = useCallback(() => 
+    setCurrentPage(prev => Math.min(totalPages - 1, prev + 1)), [totalPages]);
+  const goToLastPage = useCallback(() => 
+    setCurrentPage(totalPages > 0 ? totalPages - 1 : 0), [totalPages]);
   
   return (
-    <Container>
+    <Container style={{ position: 'relative' }}>
+      {loading && (
+        <LoadingOverlay>
+          <p>Loading contacts...</p>
+        </LoadingOverlay>
+      )}
+      
       <Header>
         <h2>Contacts Added in Last 30 Days</h2>
       </Header>
       
-      {loading ? (
-        <p>Loading recent contacts...</p>
-      ) : contacts.length === 0 ? (
+      {!loading && contacts.length === 0 ? (
         <p>No contacts found in the last 30 days.</p>
       ) : (
         <>
@@ -226,16 +246,15 @@ const RecentContactsList = () => {
             </TableBody>
           </ContactTable>
           
-          {/* Always show pagination if there are any contacts */}
           <PaginationControls>
             <PageButton 
-              onClick={() => setCurrentPage(0)} 
+              onClick={goToFirstPage} 
               disabled={currentPage === 0}
             >
               First
             </PageButton>
             <PageButton 
-              onClick={() => setCurrentPage(prev => Math.max(0, prev - 1))} 
+              onClick={goToPreviousPage} 
               disabled={currentPage === 0}
             >
               Previous
@@ -247,13 +266,13 @@ const RecentContactsList = () => {
             </span>
             
             <PageButton 
-              onClick={() => setCurrentPage(prev => Math.min(totalPages - 1, prev + 1))} 
+              onClick={goToNextPage} 
               disabled={currentPage >= totalPages - 1}
             >
               Next
             </PageButton>
             <PageButton 
-              onClick={() => setCurrentPage(totalPages > 0 ? totalPages - 1 : 0)} 
+              onClick={goToLastPage} 
               disabled={currentPage >= totalPages - 1}
             >
               Last
