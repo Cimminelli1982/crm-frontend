@@ -1,3 +1,8 @@
+import React, { useEffect, useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
+import styled from 'styled-components';
+import { supabase } from '../../lib/supabaseClient';
+
 const RecentContactsList = () => {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -180,3 +185,5 @@ const RecentContactsList = () => {
     </Container>
   );
 };
+
+export default RecentContactsList;  // Make sure this line is added
