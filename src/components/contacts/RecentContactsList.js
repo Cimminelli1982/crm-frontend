@@ -40,6 +40,7 @@ const KEEP_IN_TOUCH_FREQUENCIES = [
   'Quarterly',
   'Twice a Year',
   'Once a Year'
+  'Do not keep in touch'
 ];
 
 const TableBody = styled.tbody`
