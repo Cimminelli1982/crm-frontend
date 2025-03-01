@@ -57,8 +57,8 @@ const TableBody = styled.tbody`
 `;
 
 const ActionButton = styled.button`
-  background-color: ${props => props.skip ? '#dc3545' : '#0070f3'};
-  color: white;
+  background-color: ${props => props.skip ? '#dc3545' : props.merge ? '#ffc107' : '#0070f3'};
+  color: ${props => props.merge ? '#212529' : 'white'};
   border: none;
   border-radius: 4px;
   padding: 0.4rem 0.75rem;
@@ -66,7 +66,7 @@ const ActionButton = styled.button`
   margin-right: 0.5rem;
   
   &:hover {
-    background-color: ${props => props.skip ? '#c82333' : '#0060df'};
+    background-color: ${props => props.skip ? '#c82333' : props.merge ? '#e0a800' : '#0060df'};
   }
 `;
 
@@ -104,6 +104,134 @@ const LoadingOverlay = styled.div`
   z-index: 10;
 `;
 
+// Modal components for Merge functionality
+const Modal = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+`;
+
+const ModalContent = styled.div`
+  background-color: white;
+  padding: 2rem;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 1000px;
+  max-height: 90vh;
+  overflow-y: auto;
+`;
+
+const ModalHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+`;
+
+const CloseButton = styled.button`
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  &:hover {
+    color: #0070f3;
+  }
+`;
+
+const SearchContainer = styled.div`
+  margin-bottom: 1.5rem;
+`;
+
+const SearchInput = styled.input`
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  width: 100%;
+  font-size: 1rem;
+`;
+
+const SearchResults = styled.div`
+  margin-top: 1rem;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+`;
+
+const SearchResultItem = styled.div`
+  padding: 0.75rem;
+  border-bottom: 1px solid #ddd;
+  cursor: pointer;
+  &:hover {
+    background-color: #f8f9fa;
+  }
+  &:last-child {
+    border-bottom: none;
+  }
+`;
+
+const MergeForm = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+`;
+
+const FormGroup = styled.div`
+  margin-bottom: 1rem;
+`;
+
+const Label = styled.label`
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+`;
+
+const Input = styled.input`
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  width: 100%;
+`;
+
+const MergeColumn = styled.div`
+  padding: 1rem;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+`;
+
+const ColumnTitle = styled.h3`
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #ddd;
+`;
+
+const ButtonGroup = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 1.5rem;
+`;
+
+const Button = styled.button`
+  padding: 0.75rem 1.5rem;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+  border: none;
+  background-color: ${props => props.primary ? '#0070f3' : '#f8f9fa'};
+  color: ${props => props.primary ? 'white' : '#333'};
+  &:hover {
+    background-color: ${props => props.primary ? '#0060df' : '#e9ecef'};
+  }
+`;
+
 const CONTACT_CATEGORIES = [
   'Professional Investor',
   'Founder',
@@ -120,6 +248,14 @@ const RecentContactsList = () => {
   const [loading, setLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
+  
+  // Merge state
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [selectedContact, setSelectedContact] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [targetContact, setTargetContact] = useState(null);
+  const [mergedData, setMergedData] = useState({});
   
   // Improved date range calculation
   const getThirtyDaysAgoRange = useMemo(() => {
@@ -222,6 +358,120 @@ const RecentContactsList = () => {
       alert('Failed to mark contact as Skip');
     }
   }, []);
+  
+  // Merge functionality handlers
+  const handleOpenMerge = useCallback((contact) => {
+    setSelectedContact(contact);
+    setShowMergeModal(true);
+    setMergedData({
+      first_name: contact.first_name || '',
+      last_name: contact.last_name || '',
+      email: contact.email || '',
+      email2: contact.email2 || '',
+      email3: contact.email3 || '',
+      mobile: contact.mobile || '',
+      linkedin: contact.linkedin || '',
+      contact_category: contact.contact_category || '',
+      keep_in_touch_frequency: contact.keep_in_touch_frequency || ''
+    });
+  }, []);
+
+  const handleSearch = useCallback(async (term) => {
+    if (!term || term.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .or(
+          `first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%`,
+        )
+        .neq('id', selectedContact?.id) // Exclude the selected contact
+        .limit(10);
+      
+      if (error) throw error;
+      setSearchResults(data || []);
+    } catch (error) {
+      console.error('Error searching contacts:', error);
+      setSearchResults([]);
+    }
+  }, [selectedContact]);
+
+  const handleSelectTarget = useCallback((contact) => {
+    setTargetContact(contact);
+    setSearchResults([]);
+    setSearchTerm('');
+  }, []);
+
+  const handleInputChange = useCallback((field, value) => {
+    setMergedData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  }, []);
+
+  const handleMerge = useCallback(async () => {
+    if (!selectedContact || !targetContact) return;
+    
+    const confirmMessage = `Are you sure you want to merge these contacts?\n\nThis will update ${selectedContact.first_name || ''} ${selectedContact.last_name || ''} with the merged data and delete ${targetContact.first_name || ''} ${targetContact.last_name || ''}.`;
+    
+    if (!window.confirm(confirmMessage)) return;
+    
+    try {
+      // First update the selected contact with merged data
+      const { error: updateError } = await supabase
+        .from('contacts')
+        .update(mergedData)
+        .eq('id', selectedContact.id);
+      
+      if (updateError) throw updateError;
+      
+      // Then delete the target contact
+      const { error: deleteError } = await supabase
+        .from('contacts')
+        .delete()
+        .eq('id', targetContact.id);
+      
+      if (deleteError) throw deleteError;
+      
+      // Update interactions to point to the remaining contact
+      const { error: interactionError } = await supabase
+        .from('interactions')
+        .update({ contact_id: selectedContact.id })
+        .eq('contact_id', targetContact.id);
+      
+      if (interactionError) {
+        console.error('Error updating interactions:', interactionError);
+        // Continue anyway as this is not critical
+      }
+      
+      // Update the contacts list
+      setContacts(prev => prev.map(c => 
+        c.id === selectedContact.id 
+          ? { ...c, ...mergedData } 
+          : c.id === targetContact.id 
+            ? null 
+            : c
+      ).filter(Boolean));
+      
+      // Close the modal
+      setShowMergeModal(false);
+      setSelectedContact(null);
+      setTargetContact(null);
+      setMergedData({});
+      
+      alert('Contacts merged successfully!');
+      
+      // Refresh the data
+      fetchData();
+    } catch (error) {
+      console.error('Error merging contacts:', error);
+      alert('Failed to merge contacts: ' + error.message);
+    }
+  }, [selectedContact, targetContact, mergedData, fetchData]);
   
   // Pagination handlers
   const goToFirstPage = useCallback(() => setCurrentPage(0), []);
@@ -350,49 +600,55 @@ const RecentContactsList = () => {
                       ))}
                     </select>
                   </td>
-                      <td>
-  <select
-    value={contact.keep_in_touch_frequency || ''}
-    onChange={(e) => {
-      const newFrequency = e.target.value;
-      
-      const updateFrequency = async () => {
-        try {
-          const { error } = await supabase
-            .from('contacts')
-            .update({ keep_in_touch_frequency: newFrequency || null })
-            .eq('id', contact.id);
-          
-          if (error) throw error;
-          
-          // Optimistically update local state
-          setContacts(prev => prev.map(c => 
-            c.id === contact.id 
-              ? { ...c, keep_in_touch_frequency: newFrequency || null } 
-              : c
-          ));
-        } catch (error) {
-          console.error('Error updating keep in touch frequency:', error);
-          alert('Failed to update keep in touch frequency');
-        }
-      };
-      
-      updateFrequency();
-    }}
-    style={{ width: '100%' }}
-  >
-    <option value="">Select Frequency</option>
-    {KEEP_IN_TOUCH_FREQUENCIES.map(frequency => (
-      <option key={frequency} value={frequency}>
-        {frequency}
-      </option>
-    ))}
-  </select>
-</td>
+                  <td>
+                    <select
+                      value={contact.keep_in_touch_frequency || ''}
+                      onChange={(e) => {
+                        const newFrequency = e.target.value;
+                        
+                        const updateFrequency = async () => {
+                          try {
+                            const { error } = await supabase
+                              .from('contacts')
+                              .update({ keep_in_touch_frequency: newFrequency || null })
+                              .eq('id', contact.id);
+                            
+                            if (error) throw error;
+                            
+                            // Optimistically update local state
+                            setContacts(prev => prev.map(c => 
+                              c.id === contact.id 
+                                ? { ...c, keep_in_touch_frequency: newFrequency || null } 
+                                : c
+                            ));
+                          } catch (error) {
+                            console.error('Error updating keep in touch frequency:', error);
+                            alert('Failed to update keep in touch frequency');
+                          }
+                        };
+                        
+                        updateFrequency();
+                      }}
+                      style={{ width: '100%' }}
+                    >
+                      <option value="">Select Frequency</option>
+                      {KEEP_IN_TOUCH_FREQUENCIES.map(frequency => (
+                        <option key={frequency} value={frequency}>
+                          {frequency}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
                   <td>
                     <Link to={`/contacts/edit/${contact.id}`}>
                       <ActionButton>Edit</ActionButton>
                     </Link>
+                    <ActionButton 
+                      merge
+                      onClick={() => handleOpenMerge(contact)}
+                    >
+                      Merge
+                    </ActionButton>
                     <ActionButton 
                       skip 
                       onClick={() => handleSkipContact(contact.id)}
@@ -438,6 +694,193 @@ const RecentContactsList = () => {
             </PageButton>
           </PaginationControls>
         </>
+      )}
+
+      {/* Merge Modal */}
+      {showMergeModal && selectedContact && (
+        <Modal>
+          <ModalContent>
+            <ModalHeader>
+              <h2>Merge Contacts</h2>
+              <CloseButton onClick={() => setShowMergeModal(false)}>×</CloseButton>
+            </ModalHeader>
+            
+            <SearchContainer>
+              <Label>Search for a contact to merge with:</Label>
+              <SearchInput
+                type="text"
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  handleSearch(e.target.value);
+                }}
+                placeholder="Type to search..."
+              />
+              
+              {searchResults.length > 0 && (
+                <SearchResults>
+                  {searchResults.map(contact => (
+                    <SearchResultItem 
+                      key={contact.id}
+                      onClick={() => handleSelectTarget(contact)}
+                    >
+                      {`${contact.first_name || ''} ${contact.last_name || ''}`} - {contact.email || 'No email'}
+                    </SearchResultItem>
+                  ))}
+                </SearchResults>
+              )}
+            </SearchContainer>
+            
+            {targetContact && (
+              <>
+                <MergeForm>
+                  <MergeColumn>
+                    <ColumnTitle>Primary Contact</ColumnTitle>
+                    <p>
+                      <strong>Name:</strong> {selectedContact.first_name || ''} {selectedContact.last_name || ''}<br />
+                      <strong>Email:</strong> {selectedContact.email || 'None'}<br />
+                      <strong>Mobile:</strong> {selectedContact.mobile || 'None'}<br />
+                      <strong>Category:</strong> {selectedContact.contact_category || 'None'}<br />
+                      <strong>Keep in Touch:</strong> {selectedContact.keep_in_touch_frequency || 'None'}
+                    </p>
+                  </MergeColumn>
+                  
+                  <MergeColumn>
+                    <ColumnTitle>Secondary Contact (will be deleted)</ColumnTitle>
+                    <p>
+                      <strong>Name:</strong> {targetContact.first_name || ''} {targetContact.last_name || ''}<br />
+                      <strong>Email:</strong> {targetContact.email || 'None'}<br />
+                      <strong>Mobile:</strong> {targetContact.mobile || 'None'}<br />
+                      <strong>Category:</strong> {targetContact.contact_category || 'None'}<br />
+                      <strong>Keep in Touch:</strong> {targetContact.keep_in_touch_frequency || 'None'}
+                    </p>
+                  </MergeColumn>
+                </MergeForm>
+                
+                <h3 style={{ margin: '1.5rem 0' }}>Merged Contact Information</h3>
+                
+                <MergeForm>
+                  <FormGroup>
+                    <Label>First Name</Label>
+                    <Input
+                      type="text"
+                      value={mergedData.first_name || ''}
+                      onChange={(e) => handleInputChange('first_name', e.target.value)}
+                    />
+                  </FormGroup>
+                  
+                  <FormGroup>
+                    <Label>Last Name</Label>
+                    <Input
+                      type="text"
+                      value={mergedData.last_name || ''}
+                      onChange={(e) => handleInputChange('last_name', e.target.value)}
+                    />
+                  </FormGroup>
+                  
+                  <FormGroup>
+                    <Label>Primary Email</Label>
+                    <Input
+                      type="email"
+                      value={mergedData.email || ''}
+                      onChange={(e) => handleInputChange('email', e.target.value)}
+                    />
+                  </FormGroup>
+                  
+                  <FormGroup>
+                    <Label>Secondary Email</Label>
+                    <Input
+                      type="email"
+                      value={mergedData.email2 || ''}
+                      onChange={(e) => handleInputChange('email2', e.target.value)}
+                    />
+                  </FormGroup>
+                  
+                  <FormGroup>
+                    <Label>Third Email</Label>
+                    <Input
+                      type="email"
+                      value={mergedData.email3 || ''}
+                      onChange={(e) => handleInputChange('email3', e.target.value)}
+                    />
+                  </FormGroup>
+                  
+                  <FormGroup>
+                    <Label>Mobile</Label>
+                    <Input
+                      type="text"
+                      value={mergedData.mobile || ''}
+                      onChange={(e) => handleInputChange('mobile', e.target.value)}
+                    />
+                  </FormGroup>
+                  
+                  <FormGroup>
+                    <Label>LinkedIn</Label>
+                    <Input
+                      type="text"
+                      value={mergedData.linkedin || ''}
+                      onChange={(e) => handleInputChange('linkedin', e.target.value)}
+                    />
+                  </FormGroup>
+                  
+                  <FormGroup>
+                    <Label>Category</Label>
+                    <select
+                      value={mergedData.contact_category || ''}
+                      onChange={(e) => handleInputChange('contact_category', e.target.value)}
+                      style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                    >
+                      <option value="">Select Category</option>
+                      {CONTACT_CATEGORIES.map(category => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                    </select>
+                  </FormGroup>
+                  
+                  <FormGroup>
+                    <Label>Keep in Touch</Label>
+                    <select
+                      value={mergedData.keep_in_touch_frequency || ''}
+                      onChange={(e) => handleInputChange('keep_in_touch_frequency', e.target.value)}
+                      style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                    >
+                      <option value="">Select Frequency</option>
+                      {KEEP_IN_TOUCH_FREQUENCIES.map(frequency => (
+                        <option key={frequency} value={frequency}>
+                          {frequency}
+                        </option>
+                      ))}
+                    </select>
+                  </FormGroup>
+                </MergeForm>
+                
+                <ButtonGroup>
+                  <Button onClick={() => {
+                    setTargetContact(null);
+                    setMergedData({
+                      first_name: selectedContact.first_name || '',
+                      last_name: selectedContact.last_name || '',
+                      email: selectedContact.email || '',
+                      email2: selectedContact.email2 || '',
+                      email3: selectedContact.email3 || '',
+                      mobile: selectedContact.mobile || '',
+                      linkedin: selectedContact.linkedin || '',
+                      contact_category: selectedContact.contact_category || '',
+                      keep_in_touch_frequency: selectedContact.keep_in_touch_frequency || ''
+                    });
+                  }}>
+                    Cancel
+                  </Button>
+                  <Button primary onClick={handleMerge}>
+                    Merge Contacts
+                  </Button>
+                </ButtonGroup>
+              </>
+            )}
+          </ModalContent>
+        </Modal>
       )}
     </Container>
   );
