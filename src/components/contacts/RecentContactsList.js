@@ -830,41 +830,47 @@ const formatLinkedInUrl = (url) => {
   
   console.log(`Formatting LinkedIn URL: "${url}"`);
   
-  // Check if it's already properly formatted
+  // Don't process email addresses
+  if (url.includes('@')) {
+    console.log('Input appears to be an email, not formatting as LinkedIn URL');
+    return '';
+  }
+  
+  // Check if it's already properly formatted with https://www.linkedin.com/in/
   if (url.startsWith('https://www.linkedin.com/in/')) {
     console.log('LinkedIn URL already properly formatted');
     return url;
   }
   
-  // Extract username/profile ID
   let username = '';
   
-  // Check for various LinkedIn URL formats
+  // Extract username from different possible formats
   if (url.includes('linkedin.com/in/')) {
-    // Handle linkedin.com/in/username format (with or without https, www, etc.)
-    username = url.split('linkedin.com/in/')[1];
-  } else if (url.includes('linkedin.com/profile/')) {
-    // Handle linkedin.com/profile/view?id=XXX format
-    username = url.split('linkedin.com/profile/')[1];
-  } else if (!url.includes('linkedin.com') && !url.includes('/') && !url.includes(' ')) {
-    // If it's just a username without domain
-    username = url;
-  } else if (url.includes('@')) {
-    // It might be an email - do not try to format as LinkedIn URL
-    console.log('Input appears to be an email, not formatting as LinkedIn URL');
-    return url;
+    // Extract username from linkedin.com/in/ format
+    const parts = url.split('linkedin.com/in/')[1];
+    if (parts) {
+      username = parts.split('/')[0].split('?')[0].trim();
+    }
+  } else if (url.includes('/')) {
+    // URL contains slashes but not in the linkedin.com/in/ format
+    // Consider it not a valid LinkedIn URL
+    console.log('Not a recognized LinkedIn URL format');
+    return '';
   } else {
-    // For any other format, try to use as is
-    username = url;
+    // Assume it's just the username
+    username = url.trim();
   }
   
-  // Clean up the username by removing trailing parts
-  username = username.split('/')[0].split('?')[0].trim();
+  // If we have a valid username, format the URL
+  if (username) {
+    const formatted = `https://www.linkedin.com/in/${username}`;
+    console.log(`Reformatted LinkedIn URL: "${formatted}"`);
+    return formatted;
+  }
   
-  // Create properly formatted URL
-  const formatted = `https://www.linkedin.com/in/${username}`;
-  console.log(`Reformatted LinkedIn URL: "${formatted}"`);
-  return formatted;
+  // If we couldn't extract a valid username, return empty string
+  console.log('Could not extract a valid LinkedIn username');
+  return '';
 };
 
 const RecentContactsList = () => {
@@ -1631,7 +1637,7 @@ const RecentContactsList = () => {
             endpoint: `/crm/v3/objects/contacts/${contactId}`,
             method: 'GET',
             params: {
-              properties: 'email,firstname,lastname,hs_additional_emails,work_email,email2,email3,secondary_email,alternate_email,personal_email,additional_email,other_email,mobilephone,phone,work_phone,home_phone,cell_phone,mobile_phone,hs_linkedin_url,linkedin_profile'
+              properties: 'email,firstname,lastname,hs_additional_emails,work_email,email2,email3,secondary_email,alternate_email,personal_email,additional_email,other_email,mobilephone,phone,work_phone,home_phone,cell_phone,mobile_phone,hs_linkedin_url,linkedin_profile,keep_in_touch_frequency'
             }
           });
           
@@ -1741,7 +1747,7 @@ const RecentContactsList = () => {
             endpoint: `/crm/v3/objects/contacts/${contactId}`,
             method: 'GET',
             params: {
-              properties: 'email,firstname,lastname,hs_additional_emails,work_email,email2,email3,secondary_email,alternate_email,personal_email,additional_email,other_email,mobilephone,phone,work_phone,home_phone,cell_phone,mobile_phone,hs_linkedin_url,linkedin_profile'
+              properties: 'email,firstname,lastname,hs_additional_emails,work_email,email2,email3,secondary_email,alternate_email,personal_email,additional_email,other_email,mobilephone,phone,work_phone,home_phone,cell_phone,mobile_phone,hs_linkedin_url,linkedin_profile,keep_in_touch_frequency'
             }
           });
           
@@ -1828,6 +1834,29 @@ const RecentContactsList = () => {
     };
     
     return statusMap[hubspotStatus.toUpperCase()] || 'Professional Investor';
+  }, []);
+  
+  // Helper function to map Hubspot frequency values to our frequency values
+  const mapHubspotFrequencyToOurFrequency = useCallback((hubspotFrequency) => {
+    if (!hubspotFrequency) {
+      console.log('No frequency value found in HubSpot, using default "Quarterly"');
+      return 'Quarterly'; // Default value
+    }
+    
+    console.log(`Mapping HubSpot frequency value: "${hubspotFrequency}"`);
+    
+    // Define mapping from Hubspot frequency values to our values
+    const frequencyMap = {
+      'DON\'T KEEP IN TOUCH': 'Do not keep in touch',
+      'MONTHLY': 'Monthly',
+      'QUARTERLY': 'Quarterly',
+      'YEARLY': 'Once a Year'
+    };
+    
+    const mappedValue = frequencyMap[hubspotFrequency.toUpperCase()] || 'Quarterly';
+    console.log(`Mapped to Supabase frequency value: "${mappedValue}"`);
+    
+    return mappedValue;
   }, []);
   
   // Helper function to map Hubspot score - wrapped in useCallback to prevent dependency warnings
@@ -2070,7 +2099,7 @@ const RecentContactsList = () => {
       // Map Hubspot lead status to our contact category if possible
       contact_category: mapHubspotStatusToCategory(properties.hs_lead_status),
       // Default to quarterly for keep in touch frequency
-      keep_in_touch_frequency: properties.keep_in_touch_frequency || 'Quarterly',
+      keep_in_touch_frequency: mapHubspotFrequencyToOurFrequency(properties.keep_in_touch_frequency),
       // Map Hubspot score to our score (assuming 0-100 scale)
       score: mapHubspotScoreToOurScore(properties.hubspot_score),
       // Additional fields
@@ -2111,6 +2140,11 @@ const RecentContactsList = () => {
     console.log('LinkedIn URL source:', properties.hs_linkedin_url ? 'hs_linkedin_url' : (properties.linkedin_profile ? 'linkedin_profile' : 'None'));
     console.log('LinkedIn URL mapped to contactData.linkedin:', contactData.linkedin);
     
+    // Add frequency mapping summary
+    console.log('===== FREQUENCY MAPPING SUMMARY =====');
+    console.log('HubSpot frequency value:', properties.keep_in_touch_frequency || 'None');
+    console.log('Supabase frequency value:', contactData.keep_in_touch_frequency);
+    
     // Log the final mapped data
     console.log('===== MAPPED DATA TO OUR MODEL =====');
     console.log('Contact Data:', contactData);
@@ -2135,7 +2169,7 @@ const RecentContactsList = () => {
       contactData,
       companyData
     };
-  }, [mapHubspotStatusToCategory, mapHubspotScoreToOurScore, formatPhoneNumber, formatLinkedInUrl]);
+  }, [mapHubspotStatusToCategory, mapHubspotFrequencyToOurFrequency, mapHubspotScoreToOurScore, formatPhoneNumber, formatLinkedInUrl]);
 
   // Updated handleSearchHubspot function to use real Hubspot API
   const handleSearchHubspot = useCallback(async (contact) => {
