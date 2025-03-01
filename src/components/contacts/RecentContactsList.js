@@ -4,14 +4,17 @@ import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 
 const COMPANY_CATEGORIES = [
-  'Tech',
-  'Finance',
-  'Consulting',
+  'Advisor',
+  'Corporate',
+  'Institution',
+  'Professional Investor',
+  'SKIP',
+  'SME',
   'Startup',
-  'Enterprise',
-  'Non-Profit',
-  'Education',
-  'Healthcare'
+  'Supplier',
+  'Media',
+  'Team',
+  'Angels Sharing Society'
 ];
 
 const CONTACT_CATEGORIES = [
@@ -275,6 +278,18 @@ const CompanyOption = styled.div`
   cursor: pointer;
   &:hover {
     background-color: #f8f9fa;
+  }
+`;
+
+const UnlinkButton = styled.button`
+  margin-left: 0.5rem;
+  background: none;
+  border: none;
+  font-size: 1rem;
+  color: #dc3545;
+  cursor: pointer;
+  &:hover {
+    color: #c82333;
   }
 `;
 
@@ -575,6 +590,19 @@ const RecentContactsList = () => {
     }
   }, [contacts, handleOpenCompanyModal, fetchData]);
 
+  const handleUnlinkCompany = useCallback(async (contactId) => {
+    if (!window.confirm('Are you sure you want to unlink this company from the contact?')) return;
+    try {
+      await supabase
+        .from('contacts')
+        .update({ company_id: null })
+        .eq('id', contactId);
+      fetchData();
+    } catch (error) {
+      alert('Failed to unlink company');
+    }
+  }, [fetchData]);
+
   const goToFirstPage = useCallback(() => setCurrentPage(0), []);
   const goToPreviousPage = useCallback(() => 
     setCurrentPage(prev => Math.max(0, prev - 1)), []);
@@ -637,18 +665,21 @@ const RecentContactsList = () => {
                   </td>
                   <td>
                     {contact.companies ? (
-                      <a 
-                        href={contact.companies.website ? 
-                          (contact.companies.website.startsWith('http') ? 
-                            contact.companies.website : 
-                            `https://${contact.companies.website}`) : 
-                          '#'
-                        } 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                      >
-                        {contact.companies.name}
-                      </a>
+                      <div>
+                        <a 
+                          href={contact.companies.website ? 
+                            (contact.companies.website.startsWith('http') ? 
+                              contact.companies.website : 
+                              `https://${contact.companies.website}`) : 
+                            '#'
+                          } 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                        >
+                          {contact.companies.name}
+                        </a>
+                        <UnlinkButton onClick={() => handleUnlinkCompany(contact.id)}>✕</UnlinkButton>
+                      </div>
                     ) : (
                       <div>
                         <CompanyInput
