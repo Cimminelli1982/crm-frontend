@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import NewContacts from './pages/NewContacts';
 import Contacts from './pages/Contacts';
 import ContactEdit from './pages/ContactEdit';
+import HubSpotTest from './components/HubSpotTest';
 import './App.css';
 
 // Protected route component
@@ -52,6 +53,7 @@ function App() {
               <ContactEdit />
             </ProtectedRoute>
           } />
+          <Route path="/hubspot-test" element={<HubSpotTest />} />
         </Routes>
       </Router>
     </AuthProvider>
