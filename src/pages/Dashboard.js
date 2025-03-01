@@ -50,7 +50,7 @@ async function fetchStats() {
     const { count: totalCount, error: totalError } = await supabase
       .from('contacts')
       .select('*', { count: 'exact', head: true })
-      .not('contact_category', 'eq', 'Skip');
+      .or('contact_category.is.null,contact_category.neq.Skip');
     
     // Get today's contacts (excluding Skip)
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
@@ -58,7 +58,7 @@ async function fetchStats() {
       .from('contacts')
       .select('*', { count: 'exact', head: true })
       .gte('created_at', today)
-      .not('contact_category', 'eq', 'Skip');
+      .or('contact_category.is.null,contact_category.neq.Skip');
     
     // Get this week's contacts (excluding Skip)
     const weekStart = new Date();
@@ -69,7 +69,7 @@ async function fetchStats() {
       .from('contacts')
       .select('*', { count: 'exact', head: true })
       .gte('created_at', weekStartStr)
-      .not('contact_category', 'eq', 'Skip');
+      .or('contact_category.is.null,contact_category.neq.Skip');
     
     if (totalError || todayError || weekError) {
       console.error("Error fetching stats:", { totalError, todayError, weekError });
@@ -86,7 +86,6 @@ async function fetchStats() {
     setLoading(false);
   }
 }
-
   return (
     <Layout>
       <h1>Dashboard</h1>
