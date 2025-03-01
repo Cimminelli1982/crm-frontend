@@ -1,5 +1,5 @@
 // src/components/contacts/RecentContactsList.js
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
@@ -90,12 +90,7 @@ const RecentContactsList = () => {
   const [currentPage, setCurrentPage] = useState(0);
   const rowsPerPage = 20;
   
-  useEffect(() => {
-    fetchRecentContacts();
-    getContactsCount();
-  }, [currentPage]);
-  
-  async function getContactsCount() {
+  const getContactsCount = useCallback(async () => {
     const { count, error } = await supabase
       .from('contacts')
       .select('*', { count: 'exact', head: true })
@@ -104,9 +99,9 @@ const RecentContactsList = () => {
     if (!error) {
       setTotalCount(count || 0);
     }
-  }
+  }, []);
   
-  async function fetchRecentContacts() {
+  const fetchRecentContacts = useCallback(async () => {
     setLoading(true);
     
     try {
@@ -127,19 +122,24 @@ const RecentContactsList = () => {
     } finally {
       setLoading(false);
     }
-  }
+  }, [currentPage, rowsPerPage]);
   
-  async function handleSkipContact(contactId) {  // <-- Add 'async' keyword here
-  if (!window.confirm('Are you sure you want to mark this contact as Skip?')) {
-    return;
-  }
+  useEffect(() => {
+    fetchRecentContacts();
+    getContactsCount();
+  }, [currentPage, fetchRecentContacts, getContactsCount]);
   
-  try {
-    const { error } = await supabase
-      .from('contacts')
-      .update({ contact_category: 'Skip' })
-      .eq('id', contactId);
-        
+  const handleSkipContact = async (contactId) => {
+    if (!window.confirm('Are you sure you want to mark this contact as Skip?')) {
+      return;
+    }
+    
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .update({ contact_category: 'Skip' })
+        .eq('id', contactId);
+          
       if (error) {
         console.error('Error updating contact:', error);
         alert('Failed to mark contact as Skip');
@@ -153,7 +153,7 @@ const RecentContactsList = () => {
       console.error('Exception skipping contact:', error);
       alert('Failed to mark contact as Skip');
     }
-  }
+  };
   
   const totalPages = Math.ceil(totalCount / rowsPerPage);
   
