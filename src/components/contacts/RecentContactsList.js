@@ -72,7 +72,8 @@ const TableBody = styled.tbody`
     border-bottom: 1px solid #e5e7eb;
     font-size: 0.9rem;
     color: #2d3748;
-    vertical-align: middle;
+    vvertical-align: middle;
+    position: relative; // Ensure relative positioning for absolute child (CompanyDropdown)
   }
 `;
 
@@ -138,7 +139,7 @@ const Modal = styled.div`
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.6);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -152,198 +153,182 @@ const Modal = styled.div`
 
 const ModalContent = styled.div`
   background: #fff;
-  padding: 1.5rem;
   border-radius: 12px;
-  width: 90%;
-  max-width: 450px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  animation: scaleIn 0.2s ease-out forwards;
-  @keyframes scaleIn {
-    from { transform: scale(0.95); }
-    to { transform: scale(1); }
-  }
-`;
-
-const EditContactModalContent = styled.div`
-  background: #fff;
-  padding: 1.5rem;
-  border-radius: 12px;
-  width: 90%;
-  max-width: 900px; // Doubled width as requested
-  max-height: 60vh; // Halved height (approximately 60% of viewport height)
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  overflow-y: auto; // Add scroll if content exceeds height
-  animation: scaleIn 0.2s ease-out forwards;
-  @keyframes scaleIn {
-    from { transform: scale(0.95); }
-    to { transform: scale(1); }
-  }
-`;
-
-const ModalHeader = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1.25rem;
-  h2 {
-    font-size: 1.125rem;
-    font-weight: 600;
-    color: #2d3748;
-  }
-`;
-
-const CloseButton = styled.button`
-  background: none;
-  border: none;
-  font-size: 1.25rem;
-  color: #9ca3af;
-  cursor: pointer;
-  transition: color 0.2s ease;
-  &:hover { color: #3b82f6; }
-`;
-
-const SearchContainer = styled.div`
-  margin-bottom: 1rem;
-`;
-
-const SearchInput = styled.input`
-  padding: 0.625rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  width: 100%;
-  font-size: 0.875rem;
-  color: #2d3748;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-  &:focus {
-    outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
-  }
-`;
-
-const SearchResults = styled.div`
-  margin-top: 0.5rem;
-  max-height: 150px;
+  width: ${props => props.narrow ? '35%' : '70%'};
+  max-width: ${props => props.narrow ? '500px' : '1000px'};
+  height: auto;
+  max-height: 90vh;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   overflow-y: auto;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-`;
-
-const SearchResultItem = styled.div`
-  padding: 0.625rem 0.875rem;
-  border-bottom: 1px solid #e5e7eb;
-  cursor: pointer;
-  font-size: 0.875rem;
-  color: #2d3748;
-  transition: background-color 0.2s ease, transform 0.1s ease;
-  &:hover {
-    background-color: #f9fafb;
-    transform: translateX(2px);
-  }
-  &:last-child { border-bottom: none; }
-`;
-
-const MergeForm = styled.div`
+  animation: scaleIn 0.2s ease-out forwards;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  padding: 1.5rem;
+  margin: auto;
+  position: relative;
+  
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+    
+    &:hover {
+      background: #a1a1a1;
+    }
+  }
+  
+  @keyframes scaleIn {
+    from { transform: scale(0.95); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
 `;
 
-const EditContactForm = styled.div`
+const ContactDetailsSection = styled.div`
+  background: #f8fafc;
+  margin: 1.5rem;
+  padding: 1.25rem;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+`;
+
+const ContactDetailsGrid = styled.div`
   display: grid;
-  grid-template-columns: 1fr 1fr; // Two columns
-  gap: 1.5rem; // Increased spacing between columns and rows
-  margin-bottom: 1.5rem; // Space from the buttons
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  margin-top: 0.5rem;
+`;
+
+const ContactDetailItem = styled.div`
+  font-size: 0.875rem;
+  color: #475569;
+  
+  span.label {
+    font-weight: 500;
+    color: #334155;
+    margin-right: 0.5rem;
+  }
+`;
+
+const SectionTitle = styled.h3`
+  font-size: 1rem;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 0.75rem;
+`;
+
+const CompanyForm = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+  padding: 0 1.5rem 1.5rem;
+  
+  @media (max-width: 640px) {
+    grid-template-columns: 1fr;
+  }
+  
+  .full-width {
+    grid-column: span 2;
+    
+    @media (max-width: 640px) {
+      grid-column: span 1;
+    }
+  }
 `;
 
 const FormGroup = styled.div`
-  margin-bottom: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  margin-bottom: 1.5rem;
+  position: relative;
+  
+  &:last-child {
+    margin-bottom: 0;
+  }
 `;
 
 const Label = styled.label`
-  display: block;
-  margin-bottom: 0.5rem;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   font-weight: 500;
-  color: #4a5568;
+  color: #334155;
 `;
 
 const Input = styled.input`
-  padding: 0.625rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  width: 100%;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
   font-size: 0.875rem;
-  color: #2d3748;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  color: #1f2937;
+  width: 100%;
+  height: 22px;
+  background-color: white;
+  transition: all 0.2s ease;
+  
   &:focus {
     outline: none;
     border-color: #3b82f6;
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+  
+  &::placeholder {
+    color: #94a3b8;
   }
 `;
 
-const Select = styled.select`
-  padding: 0.625rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  width: 100%;
+const TextArea = styled.textarea`
+  padding: 0.625rem 0.875rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
   font-size: 0.875rem;
-  color: #2d3748;
-  background: #fff;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  color: #1f2937;
+  transition: all 0.2s ease;
+  width: 94%;
+  min-height: 100px;
+  resize: vertical;
+  
   &:focus {
     outline: none;
     border-color: #3b82f6;
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
   }
-`;
-
-const MissingText = styled.span`
-  color: #f87171; // Light red
-  font-size: 0.9rem;
-`;
-
-const MergeColumn = styled.div`
-  padding: 0.75rem;
-  background: #f9fafb;
-  border-radius: 8px;
-  margin-bottom: 0.75rem;
-  font-size: 0.875rem;
-  color: #2d3748;
-`;
-
-const ColumnTitle = styled.h3`
-  margin-bottom: 0.5rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #2d3748;
-  padding-bottom: 0.25rem;
-  border-bottom: 1px solid #e5e7eb;
 `;
 
 const ButtonGroup = styled.div`
   display: flex;
   justify-content: flex-end;
   gap: 1rem;
-  margin-top: 1.25rem;
+  padding: .5rem;
+  margin-top: 1rem;
 `;
 
 const Button = styled.button`
-  padding: 0.625rem 1rem;
-  border-radius: 8px;
+  padding: 0.625rem 1.25rem;
+  border-radius: 6px;
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
-  border: none;
-  background-color: ${props => props.primary ? '#3b82f6' : '#e5e7eb'};
-  color: ${props => props.primary ? 'white' : '#4a5568'};
-  transition: background-color 0.2s ease, transform 0.1s ease;
+  transition: all 0.2s ease;
+  
+  background-color: ${props => props.primary ? '#3b82f6' : 'white'};
+  color: ${props => props.primary ? 'white' : '#374151'};
+  border: ${props => props.primary ? 'none' : '1px solid #d1d5db'};
+  
   &:hover {
-    background-color: ${props => props.primary ? '#2563eb' : '#d1d5db'};
-    transform: translateY(-2px);
+    background-color: ${props => props.primary ? '#2563eb' : '#f9fafb'};
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  }
+  
+  &:active {
+    transform: translateY(0);
   }
 `;
 
@@ -351,7 +336,7 @@ const CompanyInput = styled.input`
   padding: 0.625rem;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  width: 50%; // Halved width as requested
+  width: 75%; // Halved width as requested
   font-size: 0.875rem;
   color: #2d3748;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
@@ -374,7 +359,7 @@ const CompanyDropdown = styled.div`
   overflow-y: auto;
   z-index: 10;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  width: 50%; // Matches CompanyInput width
+  width: 75%; // Matches CompanyInput width
 `;
 
 const CompanyOption = styled.div`
@@ -424,6 +409,245 @@ const EmailButton = styled.span`
   &:hover {
     color: #2563eb;
     transform: translateY(-2px);
+  }
+`;
+
+const Select = styled.select`
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  color: ${props => !props.value ? '#dc2626' : '#1f2937'};
+  width: 100%;
+  height: 28px;
+  background-color: ${props => !props.value ? '#fee2e2' : 'white'};
+  transition: all 0.2s ease;
+  appearance: menulist;
+  
+  &:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+`;
+
+const MissingText = styled.span`
+  color: #f87171;
+  font-size: 0.9rem;
+`;
+
+const ModalHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.25rem 1.5rem;
+  
+  h2 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #1f2937;
+    margin: 0;
+  }
+`;
+
+const CloseButton = styled.button`
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+  
+  &:hover { 
+    color: #ef4444; 
+  }
+`;
+
+const SearchContainer = styled.div`
+  margin-bottom: 1rem;
+  padding: 0 1.5rem;
+`;
+
+const SearchInput = styled.input`
+  padding: 0.625rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  width: 50%;
+  font-size: 0.875rem;
+  color: #2d3748;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  
+  &:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+  }
+`;
+
+const SearchResults = styled.div`
+  margin-top: 0.5rem;
+  max-height: 150px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  width: 50%;
+`;
+
+const SearchResultItem = styled.div`
+  padding: 0.625rem 0.875rem;
+  border-bottom: 1px solid #e2e8f0;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: #2d3748;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+  
+  &:hover {
+    background-color: #f9fafb;
+    transform: translateX(2px);
+  }
+  
+  &:last-child { 
+    border-bottom: none; 
+  }
+`;
+
+const TransferArrow = styled.span`
+  position: absolute;
+  left: -20px;
+  top: calc(50% + 10px);
+  transform: translateY(-50%);
+  color: #3b82f6;
+  font-size: 1.25rem;
+  cursor: pointer;
+  transition: color 0.2s ease, transform 0.1s ease;
+  
+  &:hover {
+    color: #2563eb;
+    transform: translateY(-50%) scale(1.2);
+  }
+`;
+
+const MergeFormGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2rem;
+  padding: 0 1.5rem;
+`;
+
+const MergeFormColumn = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+`;
+
+const MergeFormSection = styled.div`
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 2rem;
+  border: 1px solid #e2e8f0;
+`;
+
+const MergeSectionTitle = styled.h3`
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #e2e8f0;
+`;
+
+const StarContainer = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+`;
+
+const Star = styled.span`
+  cursor: pointer;
+  color: ${props => props.filled ? '#fbbf24' : '#e5e7eb'};
+  font-size: 1.25rem;
+  transition: color 0.2s ease, transform 0.1s ease;
+  
+  &:hover {
+    color: #fbbf24;
+    transform: translateY(-2px);
+  }
+`;
+
+const MergeIcon = styled.span`
+  margin-right: 0.625rem;
+  cursor: pointer;
+  color: #3b82f6;
+  font-size: 1.25rem;
+  transition: color 0.2s ease, transform 0.1s ease;
+  
+  &:hover {
+    color: #2563eb;
+    transform: translateY(-2px);
+  }
+`;
+
+const EditContactModalContent = styled(ModalContent)`
+  max-width: 600px;
+  padding: 2rem;
+`;
+
+const EditContactForm = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  padding: 0 1.5rem;
+  
+  @media (max-width: 640px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const SkipIcon = styled.span`
+  margin-left: 0.625rem;
+  cursor: pointer;
+  color: #ef4444;
+  font-size: 1.25rem;
+  transition: color 0.2s ease, transform 0.1s ease;
+  
+  &:hover {
+    color: #dc2626;
+    transform: translateY(-2px);
+  }
+`;
+
+const MergeModalContent = styled(ModalContent)`
+  width: ${props => !props.hasTarget ? '35%' : '70%'};
+  max-width: ${props => !props.hasTarget ? '500px' : '1000px'};
+  padding: 1.5rem;
+  height: auto;
+  max-height: 90vh;
+  position: relative;
+  margin: auto;
+  overflow-y: auto;
+  
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+    
+    &:hover {
+      background: #a1a1a1;
+    }
   }
 `;
 
@@ -720,6 +944,44 @@ const RecentContactsList = () => {
     }
   }, [contacts, handleOpenCompanyModal, fetchData]);
 
+  const handleCompanyCreateOnEnter = useCallback(async (event, contactId) => {
+    if (event.key === 'Enter' && companySearchTerm[contactId] && companySearchTerm[contactId].length >= 4) {
+      const suggestions = companySuggestions[contactId];
+      if (suggestions && suggestions.length > 0 && suggestions[0].isAddOption) {
+        // Create a new company using the input text
+        const newCompany = {
+          name: companySearchTerm[contactId],
+          website: '', // You can modify this to infer a website or leave it empty
+          category: '', // Default or inferred category (you can customize)
+          city: '',
+          nation: '',
+          description: ''
+        };
+        try {
+          const { data: createdCompany, error } = await supabase
+            .from('companies')
+            .insert(newCompany)
+            .select()
+            .single();
+          if (error) throw error;
+          await supabase
+            .from('contacts')
+            .update({ company_id: createdCompany.id })
+            .eq('id', contactId);
+          fetchData(); // Refresh the contacts list
+          setCompanySearchTerm(prev => ({ ...prev, [contactId]: '' }));
+          setCompanySuggestions(prev => ({ ...prev, [contactId]: [] }));
+          // Open the "Add/Edit Company" modal for the newly created company
+          setCurrentContact(contacts.find(c => c.id === contactId));
+          setCompanyData(createdCompany);
+          setShowCompanyModal(true);
+        } catch (error) {
+          alert('Failed to create company: ' + error.message);
+        }
+      }
+    }
+  }, [companySearchTerm, companySuggestions, fetchData, contacts]);
+  
   const handleUnlinkCompany = useCallback(async (contactId) => {
     if (!window.confirm('Are you sure you want to unlink this company from the contact?')) return;
     try {
@@ -810,6 +1072,22 @@ const RecentContactsList = () => {
     return () => window.removeEventListener('keydown', handleEsc);
   }, []);
 
+  // Add ESC key handler for merge modal
+  useEffect(() => {
+    const handleEscForMergeModal = (event) => {
+      if (event.key === 'Escape' && showMergeModal) {
+        setShowMergeModal(false);
+        setSelectedContact(null);
+        setTargetContact(null);
+        setMergedData({});
+        setSearchTerm('');
+        setSearchResults([]);
+      }
+    };
+    window.addEventListener('keydown', handleEscForMergeModal);
+    return () => window.removeEventListener('keydown', handleEscForMergeModal);
+  }, [showMergeModal]);
+
   return (
     <Container>
       {loading && (
@@ -833,6 +1111,7 @@ const RecentContactsList = () => {
                 <th>Mobile</th>
                 <th>Category</th>
                 <th>Keep in Touch</th>
+                <th>Score</th>
                 <th>Actions</th>
               </tr>
             </TableHead>
@@ -842,7 +1121,7 @@ const RecentContactsList = () => {
                   <td>
                     {contact.first_name || contact.last_name ? (
                       contact.linkedin ? (
-                        <a href={contact.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#9333ea', textDecoration: 'underline' }}>
+                        <a href={contact.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#2d3748', textDecoration: 'none', fontWeight: '600' }}>
                           {`${contact.first_name || ''} ${contact.last_name || ''}`}
                         </a>
                       ) : (
@@ -850,7 +1129,7 @@ const RecentContactsList = () => {
                           href={`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          style={{ color: '#9333ea', textDecoration: 'underline' }}
+                          style={{ color: '#2d3748', textDecoration: 'none', fontWeight: '600' }}
                         >
                           {`${contact.first_name || ''} ${contact.last_name || ''}`}
                         </a>
@@ -861,60 +1140,61 @@ const RecentContactsList = () => {
                     <EditButton onClick={() => handleOpenContactEdit(contact)}>✎</EditButton>
                   </td>
                   <td>
-                    {contact.companies ? (
-                      <div>
-                        <a
-                          href={
-                            contact.companies.website
-                              ? contact.companies.website.startsWith('http')
-                                ? contact.companies.website
-                                : `https://${contact.companies.website}`
-                              : '#'
-                          }
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ color: '#3b82f6', textDecoration: 'underline' }}
-                        >
-                          {contact.companies.name}
-                        </a>
-                        <EditButton onClick={() => handleEditCompany(contact)}>✎</EditButton>
-                        <UnlinkButton onClick={() => handleUnlinkCompany(contact.id)}>✕</UnlinkButton>
-                      </div>
-                    ) : (
-                      <div>
-                        <CompanyInput
-                          value={companySearchTerm[contact.id] || ''}
-                          onChange={(e) => handleCompanySearch(contact.id, e.target.value)}
-                          placeholder="Add a company"
-                        />
-                        {companySuggestions[contact.id]?.length > 0 && (
-                          <CompanyDropdown>
-                            {companySuggestions[contact.id].map((company, index) => (
-                              <CompanyOption
-                                key={index}
-                                onClick={() => handleCompanySelect(contact.id, company)}
-                              >
-                                {company.name}
-                              </CompanyOption>
-                            ))}
-                          </CompanyDropdown>
-                        )}
-                      </div>
-                    )}
+                  {contact.companies ? (
+  <div>
+    <a
+      href={
+        contact.companies.website
+          ? contact.companies.website.startsWith('http')
+            ? contact.companies.website
+            : `https://${contact.companies.website}`
+          : '#'
+      }
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{ color: '#2d3748', textDecoration: 'none' }}
+    >
+      {contact.companies.name}
+    </a>
+    <EditButton onClick={() => handleEditCompany(contact)}>✎</EditButton>
+    <UnlinkButton onClick={() => handleUnlinkCompany(contact.id)}>✕</UnlinkButton>
+  </div>
+) : (
+  <div>
+    <CompanyInput
+      value={companySearchTerm[contact.id] || ''}
+      onChange={(e) => handleCompanySearch(contact.id, e.target.value)}
+      onKeyPress={(e) => handleCompanyCreateOnEnter(e, contact.id)}
+      placeholder="Add a company"
+    />
+    {companySuggestions[contact.id]?.length > 0 && (
+      <CompanyDropdown>
+        {companySuggestions[contact.id].map((company, index) => (
+          <CompanyOption
+            key={index}
+            onClick={() => handleCompanySelect(contact.id, company)}
+          >
+            {company.name}
+          </CompanyOption>
+        ))}
+      </CompanyDropdown>
+    )}
+  </div>
+)}
                   </td>
                   <td>
                     {contact.email ? (
                       <>
                         <a
-                          href={`https://mail.superhuman.com/search/${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`}
+                          href={`mailto:${contact.email}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          style={{ color: '#3b82f6', textDecoration: 'underline' }}
+                          style={{ color: '#2d3748', textDecoration: 'none' }}
                         >
                           {contact.email}
                         </a>
                         <EmailButton>
-                          <a href={`mailto:${contact.email}`} target="_blank" rel="noopener noreferrer">✉</a>
+                          <a href={`https://mail.superhuman.com/search/${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`} target="_blank" rel="noopener noreferrer">✉</a>
                         </EmailButton>
                       </>
                     ) : (
@@ -923,7 +1203,7 @@ const RecentContactsList = () => {
                   </td>
                   <td>
                     {contact.mobile ? (
-                      <a href={`https://wa.me/${contact.mobile.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', textDecoration: 'underline' }}>
+                      <a href={`https://wa.me/${contact.mobile.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" style={{ color: '#2d3748', textDecoration: 'none' }}>
                         {contact.mobile}
                       </a>
                     ) : (
@@ -931,43 +1211,39 @@ const RecentContactsList = () => {
                         href={`https://app.timelines.ai/search/?s=${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        style={{ color: '#3b82f6', textDecoration: 'underline' }}
+                        style={{ color: '#2d3748', textDecoration: 'none' }}
                       >
                         Search
                       </a>
                     )}
                   </td>
                   <td>
-                    {contact.contact_category ? (
-                      <Select
-                        value={contact.contact_category}
-                        onChange={(e) => {
-                          const newCategory = e.target.value;
-                          const updateCategory = async () => {
-                            try {
-                              const { error } = await supabase
-                                .from('contacts')
-                                .update({ contact_category: newCategory || null })
-                                .eq('id', contact.id);
-                              if (error) throw error;
-                              setContacts(prev => prev.map(c =>
-                                c.id === contact.id ? { ...c, contact_category: newCategory || null } : c
-                              ));
-                            } catch (error) {
-                              alert('Failed to update category');
-                            }
-                          };
-                          updateCategory();
-                        }}
-                      >
-                        <option value="">Select Category</option>
-                        {CONTACT_CATEGORIES.map(category => (
-                          <option key={category} value={category}>{category}</option>
-                        ))}
-                      </Select>
-                    ) : (
-                      <MissingText>Missing</MissingText>
-                    )}
+                    <Select
+                      value={contact.contact_category || ''}
+                      onChange={(e) => {
+                        const newCategory = e.target.value;
+                        const updateCategory = async () => {
+                          try {
+                            const { error } = await supabase
+                              .from('contacts')
+                              .update({ contact_category: newCategory || null })
+                              .eq('id', contact.id);
+                            if (error) throw error;
+                            setContacts(prev => prev.map(c =>
+                              c.id === contact.id ? { ...c, contact_category: newCategory || null } : c
+                            ));
+                          } catch (error) {
+                            alert('Failed to update category');
+                          }
+                        };
+                        updateCategory();
+                      }}
+                    >
+                      <option value="">Missing</option>
+                      {CONTACT_CATEGORIES.map(category => (
+                        <option key={category} value={category}>{category}</option>
+                      ))}
+                    </Select>
                   </td>
                   <td>
                     {contact.keep_in_touch_frequency ? (
@@ -998,13 +1274,64 @@ const RecentContactsList = () => {
                         ))}
                       </Select>
                     ) : (
-                      <MissingText>Missing</MissingText>
+                      <Select
+                        value=""
+                        onChange={(e) => {
+                          const newFrequency = e.target.value;
+                          const updateFrequency = async () => {
+                            try {
+                              const { error } = await supabase
+                                .from('contacts')
+                                .update({ keep_in_touch_frequency: newFrequency || null })
+                                .eq('id', contact.id);
+                              if (error) throw error;
+                              setContacts(prev => prev.map(c =>
+                                c.id === contact.id ? { ...c, keep_in_touch_frequency: newFrequency || null } : c
+                              ));
+                            } catch (error) {
+                              alert('Failed to update keep in touch frequency');
+                            }
+                          };
+                          updateFrequency();
+                        }}
+                      >
+                        <option value="">Missing</option>
+                        {KEEP_IN_TOUCH_FREQUENCIES.map(frequency => (
+                          <option key={frequency} value={frequency}>{frequency}</option>
+                        ))}
+                      </Select>
                     )}
                   </td>
                   <td>
-                    <ActionButton merge onClick={() => handleOpenMerge(contact)}>Merge</ActionButton>
+                    <StarContainer>
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <Star
+                          key={star}
+                          filled={contact.score >= star}
+                          onClick={async () => {
+                            try {
+                              const { error } = await supabase
+                                .from('contacts')
+                                .update({ score: star })
+                                .eq('id', contact.id);
+                              if (error) throw error;
+                              setContacts(prev => prev.map(c =>
+                                c.id === contact.id ? { ...c, score: star } : c
+                              ));
+                            } catch (error) {
+                              alert('Failed to update score');
+                            }
+                          }}
+                        >
+                          ★
+                        </Star>
+                      ))}
+                    </StarContainer>
+                  </td>
+                  <td>
+                    <MergeIcon onClick={() => handleOpenMerge(contact)}>⚏</MergeIcon>
                     {!contact.keep_in_touch_frequency && (
-                      <ActionButton skip onClick={() => handleSkipContact(contact.id)}>Skip</ActionButton>
+                      <SkipIcon onClick={() => handleSkipContact(contact.id)}>✕</SkipIcon>
                     )}
                   </td>
                 </tr>
@@ -1025,155 +1352,293 @@ const RecentContactsList = () => {
 
       {showMergeModal && selectedContact && (
         <Modal>
-          <ModalContent>
+          <MergeModalContent hasTarget={!!targetContact}>
             <ModalHeader>
               <h2>Merge Contacts</h2>
               <CloseButton onClick={() => setShowMergeModal(false)}>×</CloseButton>
             </ModalHeader>
-            <SearchContainer>
-              <Label>Search for a contact to merge with:</Label>
-              <SearchInput
-                type="text"
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  handleSearch(e.target.value);
-                }}
-                placeholder="Type to search..."
-              />
-              {searchResults.length > 0 && (
-                <SearchResults>
-                  {searchResults.map(contact => (
-                    <SearchResultItem key={contact.id} onClick={() => handleSelectTarget(contact)}>
-                      {`${contact.first_name || ''} ${contact.last_name || ''}`} - {contact.email || 'No email'}
-                    </SearchResultItem>
-                  ))}
-                </SearchResults>
-              )}
-            </SearchContainer>
+            
+            {!targetContact && (
+              <SearchContainer>
+                <Label>Search for a contact to merge with:</Label>
+                <SearchInput
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    handleSearch(e.target.value);
+                  }}
+                  placeholder="Type to search..."
+                />
+                {searchResults.length > 0 && (
+                  <SearchResults>
+                    {searchResults.map(contact => (
+                      <SearchResultItem key={contact.id} onClick={() => handleSelectTarget(contact)}>
+                        {`${contact.first_name || ''} ${contact.last_name || ''}`} - {contact.email || 'No email'}
+                      </SearchResultItem>
+                    ))}
+                  </SearchResults>
+                )}
+              </SearchContainer>
+            )}
+
             {targetContact && (
               <>
-                <MergeForm>
-                  <MergeColumn>
-                    <ColumnTitle>Primary Contact</ColumnTitle>
-                    <p style={{ fontSize: '0.875rem', color: '#2d3748' }}>
-                      <strong>Name:</strong> {selectedContact.first_name || ''} {selectedContact.last_name || ''}<br />
-                      <strong>Email:</strong> {selectedContact.email || 'None'}<br />
-                      <strong>Mobile:</strong> {selectedContact.mobile || 'None'}<br />
-                      <strong>Category:</strong> {selectedContact.contact_category || 'None'}<br />
-                      <strong>Keep in Touch:</strong> {selectedContact.keep_in_touch_frequency || 'None'}
-                    </p>
-                  </MergeColumn>
-                  <MergeColumn>
-                    <ColumnTitle>Secondary Contact (will be deleted)</ColumnTitle>
-                    <p style={{ fontSize: '0.875rem', color: '#2d3748' }}>
-                      <strong>Name:</strong> {targetContact.first_name || ''} {targetContact.last_name || ''}<br />
-                      <strong>Email:</strong> {targetContact.email || 'None'}<br />
-                      <strong>Mobile:</strong> {targetContact.mobile || 'None'}<br />
-                      <strong>Category:</strong> {targetContact.contact_category || 'None'}<br />
-                      <strong>Keep in Touch:</strong> {targetContact.keep_in_touch_frequency || 'None'}
-                    </p>
-                  </MergeColumn>
-                </MergeForm>
-                <h3 style={{ margin: '1rem 0', fontSize: '1rem', fontWeight: 600, color: '#2d3748' }}>
-                  Merged Contact Information
-                </h3>
-                <MergeForm>
-                  <FormGroup>
-                    <Label>First Name</Label>
-                    <Input
-                      type="text"
-                      value={mergedData.first_name || ''}
-                      onChange={(e) => handleInputChange('first_name', e.target.value)}
-                    />
-                  </FormGroup>
-                  <FormGroup>
-                    <Label>Last Name</Label>
-                    <Input
-                      type="text"
-                      value={mergedData.last_name || ''}
-                      onChange={(e) => handleInputChange('last_name', e.target.value)}
-                    />
-                  </FormGroup>
-                  <FormGroup>
-                    <Label>Primary Email</Label>
-                    <Input
-                      type="email"
-                      value={mergedData.email || ''}
-                      onChange={(e) => handleInputChange('email', e.target.value)}
-                    />
-                  </FormGroup>
-                  <FormGroup>
-                    <Label>Secondary Email</Label>
-                    <Input
-                      type="email"
-                      value={mergedData.email2 || ''}
-                      onChange={(e) => handleInputChange('email2', e.target.value)}
-                    />
-                  </FormGroup>
-                  <FormGroup>
-                    <Label>Third Email</Label>
-                    <Input
-                      type="email"
-                      value={mergedData.email3 || ''}
-                      onChange={(e) => handleInputChange('email3', e.target.value)}
-                    />
-                  </FormGroup>
-                  <FormGroup>
-                    <Label>Mobile</Label>
-                    <Input
-                      type="text"
-                      value={mergedData.mobile || ''}
-                      onChange={(e) => handleInputChange('mobile', e.target.value)}
-                    />
-                  </FormGroup>
-                  <FormGroup>
-                    <Label>LinkedIn</Label>
-                    <Input
-                      type="text"
-                      value={mergedData.linkedin || ''}
-                      onChange={(e) => handleInputChange('linkedin', e.target.value)}
-                    />
-                  </FormGroup>
-                  <FormGroup>
-                    <Label>Category</Label>
-                    <Select
-                      value={mergedData.contact_category || ''}
-                      onChange={(e) => handleInputChange('contact_category', e.target.value)}
-                    >
-                      <option value="">Select Category</option>
-                      {CONTACT_CATEGORIES.map(category => (
-                        <option key={category} value={category}>{category}</option>
-                      ))}
-                    </Select>
-                  </FormGroup>
-                  <FormGroup>
-                    <Label>Keep in Touch</Label>
-                    <Select
-                      value={mergedData.keep_in_touch_frequency || ''}
-                      onChange={(e) => handleInputChange('keep_in_touch_frequency', e.target.value)}
-                    >
-                      <option value="">Select Frequency</option>
-                      {KEEP_IN_TOUCH_FREQUENCIES.map(frequency => (
-                        <option key={frequency} value={frequency}>{frequency}</option>
-                      ))}
-                    </Select>
-                  </FormGroup>
-                </MergeForm>
+                <MergeFormGrid>
+                  <MergeFormColumn>
+                    <MergeFormSection>
+                      <MergeSectionTitle>Original Contact (Will be updated)</MergeSectionTitle>
+                      <FormGroup>
+                        <Label>First Name</Label>
+                        <Input
+                          type="text"
+                          value={mergedData.first_name || ''}
+                          onChange={(e) => handleInputChange('first_name', e.target.value)}
+                        />
+                      </FormGroup>
+                      <FormGroup>
+                        <Label>Last Name</Label>
+                        <Input
+                          type="text"
+                          value={mergedData.last_name || ''}
+                          onChange={(e) => handleInputChange('last_name', e.target.value)}
+                        />
+                      </FormGroup>
+                      <FormGroup>
+                        <Label>Primary Email</Label>
+                        <Input
+                          type="email"
+                          value={mergedData.email || ''}
+                          onChange={(e) => handleInputChange('email', e.target.value)}
+                        />
+                      </FormGroup>
+                      <FormGroup>
+                        <Label>Secondary Email</Label>
+                        <Input
+                          type="email"
+                          value={mergedData.email2 || ''}
+                          onChange={(e) => handleInputChange('email2', e.target.value)}
+                        />
+                      </FormGroup>
+                      <FormGroup>
+                        <Label>Third Email</Label>
+                        <Input
+                          type="email"
+                          value={mergedData.email3 || ''}
+                          onChange={(e) => handleInputChange('email3', e.target.value)}
+                        />
+                      </FormGroup>
+                      <FormGroup>
+                        <Label>Mobile</Label>
+                        <Input
+                          type="text"
+                          value={mergedData.mobile || ''}
+                          onChange={(e) => handleInputChange('mobile', e.target.value)}
+                        />
+                      </FormGroup>
+                      <FormGroup>
+                        <Label>LinkedIn</Label>
+                        <Input
+                          type="text"
+                          value={mergedData.linkedin || ''}
+                          onChange={(e) => handleInputChange('linkedin', e.target.value)}
+                        />
+                      </FormGroup>
+                      <FormGroup>
+                        <Label>Category</Label>
+                        <Select
+                          value={mergedData.contact_category || ''}
+                          onChange={(e) => handleInputChange('contact_category', e.target.value)}
+                        >
+                          <option value="">Select Category</option>
+                          {CONTACT_CATEGORIES.map(category => (
+                            <option key={category} value={category}>{category}</option>
+                          ))}
+                        </Select>
+                      </FormGroup>
+                      <FormGroup>
+                        <Label>Keep in Touch</Label>
+                        <Select
+                          value={mergedData.keep_in_touch_frequency || ''}
+                          onChange={(e) => handleInputChange('keep_in_touch_frequency', e.target.value)}
+                        >
+                          <option value="">Select Frequency</option>
+                          {KEEP_IN_TOUCH_FREQUENCIES.map(frequency => (
+                            <option key={frequency} value={frequency}>{frequency}</option>
+                          ))}
+                        </Select>
+                      </FormGroup>
+                    </MergeFormSection>
+                  </MergeFormColumn>
+
+                  <MergeFormColumn>
+                    <MergeFormSection>
+                      <MergeSectionTitle>Duplicate Contact (Will be deleted)</MergeSectionTitle>
+                      <FormGroup style={{ position: 'relative' }}>
+                        <Label>First Name</Label>
+                        <Input
+                          type="text"
+                          value={targetContact.first_name || ''}
+                          disabled
+                          style={{ backgroundColor: '#f3f4f6' }}
+                        />
+                        {targetContact.first_name && (
+                          <TransferArrow 
+                            onClick={() => handleInputChange('first_name', targetContact.first_name)}
+                            title="Copy to original contact"
+                          >
+                            ←
+                          </TransferArrow>
+                        )}
+                      </FormGroup>
+                      <FormGroup style={{ position: 'relative' }}>
+                        <Label>Last Name</Label>
+                        <Input
+                          type="text"
+                          value={targetContact.last_name || ''}
+                          disabled
+                          style={{ backgroundColor: '#f3f4f6' }}
+                        />
+                        {targetContact.last_name && (
+                          <TransferArrow 
+                            onClick={() => handleInputChange('last_name', targetContact.last_name)}
+                            title="Copy to original contact"
+                          >
+                            ←
+                          </TransferArrow>
+                        )}
+                      </FormGroup>
+                      <FormGroup style={{ position: 'relative' }}>
+                        <Label>Primary Email</Label>
+                        <Input
+                          type="email"
+                          value={targetContact.email || ''}
+                          disabled
+                          style={{ backgroundColor: '#f3f4f6' }}
+                        />
+                        {targetContact.email && (
+                          <TransferArrow 
+                            onClick={() => handleInputChange('email', targetContact.email)}
+                            title="Copy to original contact"
+                          >
+                            ←
+                          </TransferArrow>
+                        )}
+                      </FormGroup>
+                      <FormGroup style={{ position: 'relative' }}>
+                        <Label>Secondary Email</Label>
+                        <Input
+                          type="email"
+                          value={targetContact.email2 || ''}
+                          disabled
+                          style={{ backgroundColor: '#f3f4f6' }}
+                        />
+                        {targetContact.email2 && (
+                          <TransferArrow 
+                            onClick={() => handleInputChange('email2', targetContact.email2)}
+                            title="Copy to original contact"
+                          >
+                            ←
+                          </TransferArrow>
+                        )}
+                      </FormGroup>
+                      <FormGroup style={{ position: 'relative' }}>
+                        <Label>Third Email</Label>
+                        <Input
+                          type="email"
+                          value={targetContact.email3 || ''}
+                          disabled
+                          style={{ backgroundColor: '#f3f4f6' }}
+                        />
+                        {targetContact.email3 && (
+                          <TransferArrow 
+                            onClick={() => handleInputChange('email3', targetContact.email3)}
+                            title="Copy to original contact"
+                          >
+                            ←
+                          </TransferArrow>
+                        )}
+                      </FormGroup>
+                      <FormGroup style={{ position: 'relative' }}>
+                        <Label>Mobile</Label>
+                        <Input
+                          type="text"
+                          value={targetContact.mobile || ''}
+                          disabled
+                          style={{ backgroundColor: '#f3f4f6' }}
+                        />
+                        {targetContact.mobile && (
+                          <TransferArrow 
+                            onClick={() => handleInputChange('mobile', targetContact.mobile)}
+                            title="Copy to original contact"
+                          >
+                            ←
+                          </TransferArrow>
+                        )}
+                      </FormGroup>
+                      <FormGroup>
+                        <Label>LinkedIn</Label>
+                        <Input
+                          type="text"
+                          value={targetContact.linkedin || ''}
+                          disabled
+                          style={{ backgroundColor: '#f3f4f6' }}
+                        />
+                        {targetContact.linkedin && (
+                          <TransferArrow 
+                            onClick={() => handleInputChange('linkedin', targetContact.linkedin)}
+                            title="Copy to original contact"
+                          >
+                            ←
+                          </TransferArrow>
+                        )}
+                      </FormGroup>
+                      <FormGroup>
+                        <Label>Category</Label>
+                        <Input
+                          type="text"
+                          value={targetContact.contact_category || ''}
+                          disabled
+                          style={{ backgroundColor: '#f3f4f6' }}
+                        />
+                        {targetContact.contact_category && (
+                          <TransferArrow 
+                            onClick={() => handleInputChange('contact_category', targetContact.contact_category)}
+                            title="Copy to original contact"
+                          >
+                            ←
+                          </TransferArrow>
+                        )}
+                      </FormGroup>
+                      <FormGroup>
+                        <Label>Keep in Touch</Label>
+                        <Input
+                          type="text"
+                          value={targetContact.keep_in_touch_frequency || ''}
+                          disabled
+                          style={{ backgroundColor: '#f3f4f6' }}
+                        />
+                        {targetContact.keep_in_touch_frequency && (
+                          <TransferArrow 
+                            onClick={() => handleInputChange('keep_in_touch_frequency', targetContact.keep_in_touch_frequency)}
+                            title="Copy to original contact"
+                          >
+                            ←
+                          </TransferArrow>
+                        )}
+                      </FormGroup>
+                    </MergeFormSection>
+                  </MergeFormColumn>
+                </MergeFormGrid>
+
                 <ButtonGroup>
                   <Button onClick={() => {
+                    setShowMergeModal(false);
+                    setSelectedContact(null);
                     setTargetContact(null);
-                    setMergedData({
-                      first_name: selectedContact.first_name || '',
-                      last_name: selectedContact.last_name || '',
-                      email: selectedContact.email || '',
-                      email2: selectedContact.email2 || '',
-                      email3: selectedContact.email3 || '',
-                      mobile: selectedContact.mobile || '',
-                      linkedin: selectedContact.linkedin || '',
-                      contact_category: selectedContact.contact_category || '',
-                      keep_in_touch_frequency: selectedContact.keep_in_touch_frequency || ''
-                    });
+                    setMergedData({});
+                    setSearchTerm('');
+                    setSearchResults([]);
                   }}>
                     Cancel
                   </Button>
@@ -1181,92 +1646,117 @@ const RecentContactsList = () => {
                 </ButtonGroup>
               </>
             )}
-          </ModalContent>
+          </MergeModalContent>
         </Modal>
       )}
 
-      {showCompanyModal && (
-        <Modal>
-          <ModalContent>
-            <ModalHeader>
-              <h2>Add/Edit Company</h2>
-              <CloseButton onClick={() => setShowCompanyModal(false)}>×</CloseButton>
-            </ModalHeader>
-            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#2d3748', marginBottom: '0.75rem' }}>
-              Contact Details
-            </h3>
-            <p style={{ fontSize: '0.875rem', color: '#2d3748', marginBottom: '1rem' }}>
-              <strong>Name:</strong> {currentContact?.first_name} {currentContact?.last_name}<br />
-              <strong>Email:</strong> {currentContact?.email}
-            </p>
-            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#2d3748', marginBottom: '0.75rem' }}>
-              Company Information
-            </h3>
-            <MergeForm>
-              <FormGroup>
-                <Label>Company Name</Label>
-                <Input
-                  type="text"
-                  value={companyData.name}
-                  onChange={(e) => setCompanyData(prev => ({ ...prev, name: e.target.value }))}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label>Website</Label>
-                <Input
-                  type="text"
-                  value={companyData.website}
-                  onChange={(e) => setCompanyData(prev => ({ ...prev, website: e.target.value }))}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label>Category</Label>
-                <Select
-                  value={companyData.category}
-                  onChange={(e) => setCompanyData(prev => ({ ...prev, category: e.target.value }))}
-                >
-                  <option value="">Select Category</option>
-                  {COMPANY_CATEGORIES.map(category => (
-                    <option key={category} value={category}>{category}</option>
-                  ))}
-                </Select>
-              </FormGroup>
-              <FormGroup>
-                <Label>City</Label>
-                <Input
-                  type="text"
-                  value={companyData.city}
-                  onChange={(e) => setCompanyData(prev => ({ ...prev, city: e.target.value }))}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label>Nation</Label>
-                <Input
-                  type="text"
-                  value={companyData.nation}
-                  onChange={(e) => setCompanyData(prev => ({ ...prev, nation: e.target.value }))}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label>Description</Label>
-                <Input
-                  type="text"
-                  value={companyData.description}
-                  onChange={(e) => setCompanyData(prev => ({ ...prev, description: e.target.value }))}
-                />
-              </FormGroup>
-            </MergeForm>
-            <ButtonGroup>
-              <Button onClick={() => setShowCompanyModal(false)}>Cancel</Button>
-              <Button primary onClick={handleSaveCompany}>Save Company</Button>
-            </ButtonGroup>
-          </ModalContent>
-        </Modal>
-      )}
+{showCompanyModal && (
+  <Modal>
+    <ModalContent>
+      <ModalHeader>
+        <h2>Add/Edit Company</h2>
+        <CloseButton onClick={() => setShowCompanyModal(false)}>×</CloseButton>
+      </ModalHeader>
+      
+      <ContactDetailsSection>
+        <SectionTitle>Contact Details</SectionTitle>
+        <ContactDetailsGrid>
+          <ContactDetailItem>
+            <span className="label">Name:</span>
+            {currentContact?.first_name} {currentContact?.last_name}
+          </ContactDetailItem>
+          <ContactDetailItem>
+            <span className="label">Email:</span>
+            {currentContact?.email}
+          </ContactDetailItem>
+        </ContactDetailsGrid>
+      </ContactDetailsSection>
+
+      <div style={{ padding: '0 1.5rem' }}>
+        <SectionTitle>Company Information</SectionTitle>
+      </div>
+      
+      <CompanyForm>
+        <FormGroup>
+          <Label htmlFor="company-name">Company Name</Label>
+          <Input
+            id="company-name"
+            type="text"
+            value={companyData.name}
+            onChange={(e) => setCompanyData(prev => ({ ...prev, name: e.target.value }))}
+            placeholder="Enter company name"
+          />
+        </FormGroup>
+        
+        <FormGroup>
+          <Label htmlFor="website">Website</Label>
+          <Input
+            id="website"
+            type="text"
+            value={companyData.website}
+            onChange={(e) => setCompanyData(prev => ({ ...prev, website: e.target.value }))}
+            placeholder="e.g., company.com"
+          />
+        </FormGroup>
+        
+        <FormGroup>
+          <Label htmlFor="category">Category</Label>
+          <Select
+            id="category"
+            value={companyData.category}
+            onChange={(e) => setCompanyData(prev => ({ ...prev, category: e.target.value }))}
+          >
+            <option value="">Select Category</option>
+            {COMPANY_CATEGORIES.map(category => (
+              <option key={category} value={category}>{category}</option>
+            ))}
+          </Select>
+        </FormGroup>
+        
+        <FormGroup>
+          <Label htmlFor="city">City</Label>
+          <Input
+            id="city"
+            type="text"
+            value={companyData.city}
+            onChange={(e) => setCompanyData(prev => ({ ...prev, city: e.target.value }))}
+            placeholder="Enter city"
+          />
+        </FormGroup>
+        
+        <FormGroup>
+          <Label htmlFor="nation">Country</Label>
+          <Input
+            id="nation"
+            type="text"
+            value={companyData.nation}
+            onChange={(e) => setCompanyData(prev => ({ ...prev, nation: e.target.value }))}
+            placeholder="Enter country"
+          />
+        </FormGroup>
+        
+        <FormGroup className="full-width">
+          <Label htmlFor="description">Description</Label>
+          <TextArea
+            id="description"
+            value={companyData.description}
+            onChange={(e) => setCompanyData(prev => ({ ...prev, description: e.target.value }))}
+            placeholder="Enter company description"
+          />
+        </FormGroup>
+      </CompanyForm>
+      
+      <ButtonGroup>
+        <Button onClick={() => setShowCompanyModal(false)}>Cancel</Button>
+        <Button primary onClick={handleSaveCompany}>Save Company</Button>
+      </ButtonGroup>
+    </ModalContent>
+  </Modal>
+)}
 
       {showContactEditModal && editingContact && (
         <Modal>
-          <EditContactModalContent>
+          <ModalContent narrow>
             <ModalHeader>
               <h2>Edit Contact</h2>
               <CloseButton onClick={() => setShowContactEditModal(false)}>×</CloseButton>
@@ -1365,7 +1855,7 @@ const RecentContactsList = () => {
               <Button onClick={() => setShowContactEditModal(false)}>Cancel</Button>
               <Button primary onClick={handleSaveContactEdit}>Save</Button>
             </ButtonGroup>
-          </EditContactModalContent>
+          </ModalContent>
         </Modal>
       )}
     </Container>
