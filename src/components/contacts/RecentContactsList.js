@@ -18,65 +18,101 @@ const KEEP_IN_TOUCH_FREQUENCIES = [
   'Weekly', 'Monthly', 'Quarterly', 'Twice a Year', 'Once a Year', 'Do not keep in touch'
 ];
 
-// Existing Styled Components remain unchanged unless specified
+// Updated Styled Components
 const Container = styled.div`
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  padding: 1.5rem;
-  margin-top: 2rem;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  padding: 2rem;
+  margin: 2rem auto;
+  max-width: 1200px;
 `;
 
 const Header = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  margin-bottom: 1.5rem;
+  h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #1a202c;
+  }
 `;
 
 const ContactTable = styled.table`
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   margin-top: 1rem;
 `;
 
 const TableHead = styled.thead`
-  background-color: #f8f9fa;
-  th { padding: 0.75rem; text-align: left; border-bottom: 2px solid #dee2e6; }
+  background: #f7fafc;
+  th {
+    padding: 1rem 1.5rem;
+    text-align: left;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #4a5568;
+    text-transform: uppercase;
+    border-bottom: 2px solid #e2e8f0;
+  }
 `;
 
 const TableBody = styled.tbody`
-  tr:hover { background-color: #f8f9fa; }
-  td { padding: 0.75rem; border-bottom: 1px solid #dee2e6; position: relative; }
+  tr {
+    transition: background-color 0.2s ease;
+    &:hover {
+      background-color: #f7fafc;
+    }
+  }
+  td {
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid #edf2f7;
+    font-size: 0.95rem;
+    color: #2d3748;
+    vertical-align: middle;
+  }
 `;
 
 const ActionButton = styled.button`
-  background-color: ${props => props.skip ? '#dc3545' : props.merge ? '#ffc107' : '#0070f3'};
-  color: ${props => props.merge ? '#212529' : 'white'};
+  background-color: ${props => props.skip ? '#e53e3e' : props.merge ? '#f6e05e' : '#3182ce'};
+  color: ${props => props.merge ? '#2d3748' : 'white'};
   border: none;
-  border-radius: 4px;
-  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
   cursor: pointer;
-  margin-right: 0.5rem;
-  &:hover { background-color: ${props => props.skip ? '#c82333' : props.merge ? '#e0a800' : '#0060df'}; }
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: background-color 0.2s ease;
+  &:hover {
+    background-color: ${props => props.skip ? '#c53030' : props.merge ? '#ecc94b' : '#2b6cb0'};
+  }
 `;
 
 const PaginationControls = styled.div`
   display: flex;
   justify-content: center;
-  gap: 0.5rem;
-  margin-top: 1.5rem;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 2rem;
+  font-size: 0.9rem;
+  color: #718096;
 `;
 
 const PageButton = styled.button`
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #ddd;
-  background: ${props => props.active ? '#0070f3' : 'white'};
-  color: ${props => props.active ? 'white' : '#333'};
-  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  border: 1px solid #e2e8f0;
+  background: ${props => props.active ? '#3182ce' : 'white'};
+  color: ${props => props.active ? 'white' : '#4a5568'};
+  border-radius: 6px;
   cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
-  opacity: ${props => props.disabled ? 0.6 : 1};
-  &:hover:not(:disabled) { background: ${props => props.active ? '#0060df' : '#f8f9fa'}; }
+  opacity: ${props => props.disabled ? 0.5 : 1};
+  transition: background-color 0.2s ease;
+  &:hover:not(:disabled) {
+    background: ${props => props.active ? '#2b6cb0' : '#edf2f7'};
+  }
 `;
 
 const LoadingOverlay = styled.div`
@@ -85,11 +121,13 @@ const LoadingOverlay = styled.div`
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.8);
   display: flex;
   justify-content: center;
   align-items: center;
   z-index: 10;
+  font-size: 1rem;
+  color: #718096;
 `;
 
 const Modal = styled.div`
@@ -98,21 +136,32 @@ const Modal = styled.div`
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.6);
   display: flex;
   justify-content: center;
   align-items: center;
   z-index: 1000;
+  animation: fadeIn 0.2s ease-out;
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
 `;
 
 const ModalContent = styled.div`
-  background-color: white;
+  background: #fff;
   padding: 2rem;
-  border-radius: 8px;
+  border-radius: 12px;
   width: 90%;
-  max-width: 1000px;
-  max-height: 90vh;
+  max-width: 600px;
+  max-height: 80vh;
   overflow-y: auto;
+  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+  transform: scale(0.95);
+  animation: scaleIn 0.2s ease-out forwards;
+  @keyframes scaleIn {
+    to { transform: scale(1); }
+  }
 `;
 
 const ModalHeader = styled.div`
@@ -120,14 +169,21 @@ const ModalHeader = styled.div`
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1.5rem;
+  h2 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #1a202c;
+  }
 `;
 
 const CloseButton = styled.button`
   background: none;
   border: none;
-  font-size: 1.5rem;
+  font-size: 1.75rem;
+  color: #a0aec0;
   cursor: pointer;
-  &:hover { color: #0070f3; }
+  transition: color 0.2s ease;
+  &:hover { color: #3182ce; }
 `;
 
 const SearchContainer = styled.div`
@@ -135,62 +191,102 @@ const SearchContainer = styled.div`
 `;
 
 const SearchInput = styled.input`
-  padding: 0.75rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
   width: 100%;
-  font-size: 1rem;
+  font-size: 0.95rem;
+  color: #2d3748;
+  transition: border-color 0.2s ease;
+  &:focus {
+    outline: none;
+    border-color: #3182ce;
+  }
 `;
 
 const SearchResults = styled.div`
-  margin-top: 1rem;
+  margin-top: 0.5rem;
   max-height: 200px;
   overflow-y: auto;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 `;
 
 const SearchResultItem = styled.div`
-  padding: 0.75rem;
-  border-bottom: 1px solid #ddd;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #edf2f7;
   cursor: pointer;
-  &:hover { background-color: #f8f9fa; }
+  font-size: 0.9rem;
+  color: #2d3748;
+  transition: background-color 0.2s ease;
+  &:hover { background-color: #f7fafc; }
   &:last-child { border-bottom: none; }
 `;
 
 const MergeForm = styled.div`
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 1.5rem;
+  gap: 1rem;
 `;
 
 const FormGroup = styled.div`
-  margin-bottom: 1rem;
+  margin-bottom: 1.25rem;
 `;
 
 const Label = styled.label`
   display: block;
   margin-bottom: 0.5rem;
+  font-size: 0.9rem;
   font-weight: 500;
+  color: #4a5568;
 `;
 
 const Input = styled.input`
-  padding: 0.75rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
   width: 100%;
+  font-size: 0.95rem;
+  color: #2d3748;
+  transition: border-color 0.2s ease;
+  &:focus {
+    outline: none;
+    border-color: #3182ce;
+  }
+`;
+
+const Select = styled.select`
+  padding: 0.75rem 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  width: 100%;
+  font-size: 0.95rem;
+  color: #2d3748;
+  background: #fff;
+  transition: border-color 0.2s ease;
+  &:focus {
+    outline: none;
+    border-color: #3182ce;
+  }
 `;
 
 const MergeColumn = styled.div`
   padding: 1rem;
-  background-color: #f8f9fa;
+  background: #f7fafc;
   border-radius: 8px;
+  font-size: 0.9rem;
+  color: #2d3748;
 `;
 
 const ColumnTitle = styled.h3`
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1a202c;
   padding-bottom: 0.5rem;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid #e2e8f0;
 `;
 
 const ButtonGroup = styled.div`
@@ -202,20 +298,31 @@ const ButtonGroup = styled.div`
 
 const Button = styled.button`
   padding: 0.75rem 1.5rem;
-  border-radius: 4px;
-  font-size: 1rem;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-weight: 500;
   cursor: pointer;
   border: none;
-  background-color: ${props => props.primary ? '#0070f3' : '#f8f9fa'};
-  color: ${props => props.primary ? 'white' : '#333'};
-  &:hover { background-color: ${props => props.primary ? '#0060df' : '#e9ecef'}; }
+  background-color: ${props => props.primary ? '#3182ce' : '#edf2f7'};
+  color: ${props => props.primary ? 'white' : '#4a5568'};
+  transition: background-color 0.2s ease;
+  &:hover {
+    background-color: ${props => props.primary ? '#2b6cb0' : '#e2e8f0'};
+  }
 `;
 
 const CompanyInput = styled.input`
-  padding: 0.5rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
   width: 100%;
+  font-size: 0.95rem;
+  color: #2d3748;
+  transition: border-color 0.2s ease;
+  &:focus {
+    outline: none;
+    border-color: #3182ce;
+  }
 `;
 
 const CompanyDropdown = styled.div`
@@ -223,43 +330,51 @@ const CompanyDropdown = styled.div`
   top: 100%;
   left: 0;
   right: 0;
-  background: white;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
   max-height: 200px;
   overflow-y: auto;
   z-index: 10;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 `;
 
 const CompanyOption = styled.div`
-  padding: 0.5rem;
+  padding: 0.75rem 1rem;
   cursor: pointer;
-  &:hover { background-color: #f8f9fa; }
+  font-size: 0.9rem;
+  color: #2d3748;
+  transition: background-color 0.2s ease;
+  &:hover { background-color: #f7fafc; }
 `;
 
 const UnlinkButton = styled.button`
-  margin-left: 0.5rem;
+  margin-left: 0.75rem;
   background: none;
   border: none;
-  font-size: 1rem;
-  color: #dc3545;
+  font-size: 1.1rem;
+  color: #e53e3e;
   cursor: pointer;
-  &:hover { color: #c82333; }
+  transition: color 0.2s ease;
+  &:hover { color: #c53030; }
 `;
 
-// New Styled Components for the new features
 const EditButton = styled.span`
-  margin-left: 0.5rem;
+  margin-left: 0.75rem;
   cursor: pointer;
-  color: #0070f3;
-  &:hover { color: #0060df; }
+  color: #3182ce;
+  font-size: 1.1rem;
+  transition: color 0.2s ease;
+  &:hover { color: #2b6cb0; }
 `;
 
 const EmailButton = styled.span`
-  margin-left: 0.5rem;
+  margin-left: 0.75rem;
   cursor: pointer;
-  color: #0070f3;
-  &:hover { color: #0060df; }
+  color: #3182ce;
+  font-size: 1.1rem;
+  transition: color 0.2s ease;
+  &:hover { color: #2b6cb0; }
 `;
 
 const RecentContactsList = () => {
@@ -281,15 +396,14 @@ const RecentContactsList = () => {
     category: '',
     city: '',
     nation: '',
-    description: '' // Added description field
+    description: ''
   });
   const [companySearchTerm, setCompanySearchTerm] = useState({});
   const [companySuggestions, setCompanySuggestions] = useState({});
-  const [showContactEditModal, setShowContactEditModal] = useState(false); // New state for contact edit modal
-  const [editingContact, setEditingContact] = useState(null); // New state for editing contact
-  const [contactEditData, setContactEditData] = useState({}); // New state for contact edit data
+  const [showContactEditModal, setShowContactEditModal] = useState(false);
+  const [editingContact, setEditingContact] = useState(null);
+  const [contactEditData, setContactEditData] = useState({});
 
-  // Existing hooks remain unchanged unless specified
   const getThirtyDaysAgoRange = useMemo(() => {
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30);
@@ -574,7 +688,6 @@ const RecentContactsList = () => {
   const goToNextPage = useCallback(() => setCurrentPage(prev => Math.min(totalPages - 1, prev + 1)), [totalPages]);
   const goToLastPage = useCallback(() => setCurrentPage(totalPages > 0 ? totalPages - 1 : 0), [totalPages]);
 
-  // New functions for contact editing
   const handleOpenContactEdit = useCallback((contact) => {
     setEditingContact(contact);
     setContactEditData({
@@ -614,7 +727,6 @@ const RecentContactsList = () => {
     }
   }, [editingContact, contactEditData]);
 
-  // New function for company editing
   const handleEditCompany = useCallback((contact) => {
     setCurrentContact(contact);
     setCompanyData({
@@ -629,7 +741,7 @@ const RecentContactsList = () => {
   }, []);
 
   return (
-    <Container style={{ position: 'relative' }}>
+    <Container>
       {loading && (
         <LoadingOverlay>
           <p>Loading contacts...</p>
@@ -752,7 +864,7 @@ const RecentContactsList = () => {
                     )}
                   </td>
                   <td>
-                    <select
+                    <Select
                       value={contact.contact_category || ''}
                       onChange={(e) => {
                         const newCategory = e.target.value;
@@ -772,16 +884,15 @@ const RecentContactsList = () => {
                         };
                         updateCategory();
                       }}
-                      style={{ width: '100%' }}
                     >
                       <option value="">Select Category</option>
                       {CONTACT_CATEGORIES.map(category => (
                         <option key={category} value={category}>{category}</option>
                       ))}
-                    </select>
+                    </Select>
                   </td>
                   <td>
-                    <select
+                    <Select
                       value={contact.keep_in_touch_frequency || ''}
                       onChange={(e) => {
                         const newFrequency = e.target.value;
@@ -801,13 +912,12 @@ const RecentContactsList = () => {
                         };
                         updateFrequency();
                       }}
-                      style={{ width: '100%' }}
                     >
                       <option value="">Select Frequency</option>
                       {KEEP_IN_TOUCH_FREQUENCIES.map(frequency => (
                         <option key={frequency} value={frequency}>{frequency}</option>
                       ))}
-                    </select>
+                    </Select>
                   </td>
                   <td>
                     <Link to={`/contacts/edit/${contact.id}`}>
@@ -823,7 +933,7 @@ const RecentContactsList = () => {
           <PaginationControls>
             <PageButton onClick={goToFirstPage} disabled={currentPage === 0}>First</PageButton>
             <PageButton onClick={goToPreviousPage} disabled={currentPage === 0}>Previous</PageButton>
-            <span style={{ padding: '0.5rem' }}>
+            <span>
               Page {currentPage + 1} of {totalPages > 0 ? totalPages : 1} (Total: {totalCount})
             </span>
             <PageButton onClick={goToNextPage} disabled={currentPage >= totalPages - 1}>Next</PageButton>
@@ -832,7 +942,6 @@ const RecentContactsList = () => {
         </>
       )}
 
-      {/* Existing Merge Modal remains unchanged */}
       {showMergeModal && selectedContact && (
         <Modal>
           <ModalContent>
@@ -885,7 +994,9 @@ const RecentContactsList = () => {
                     </p>
                   </MergeColumn>
                 </MergeForm>
-                <h3 style={{ margin: '1.5rem 0' }}>Merged Contact Information</h3>
+                <h3 style={{ margin: '1.5rem 0', fontSize: '1.1rem', fontWeight: 600, color: '#1a202c' }}>
+                  Merged Contact Information
+                </h3>
                 <MergeForm>
                   <FormGroup>
                     <Label>First Name</Label>
@@ -945,29 +1056,27 @@ const RecentContactsList = () => {
                   </FormGroup>
                   <FormGroup>
                     <Label>Category</Label>
-                    <select
+                    <Select
                       value={mergedData.contact_category || ''}
                       onChange={(e) => handleInputChange('contact_category', e.target.value)}
-                      style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid #ddd' }}
                     >
                       <option value="">Select Category</option>
                       {CONTACT_CATEGORIES.map(category => (
                         <option key={category} value={category}>{category}</option>
                       ))}
-                    </select>
+                    </Select>
                   </FormGroup>
                   <FormGroup>
                     <Label>Keep in Touch</Label>
-                    <select
+                    <Select
                       value={mergedData.keep_in_touch_frequency || ''}
                       onChange={(e) => handleInputChange('keep_in_touch_frequency', e.target.value)}
-                      style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid #ddd' }}
                     >
                       <option value="">Select Frequency</option>
                       {KEEP_IN_TOUCH_FREQUENCIES.map(frequency => (
                         <option key={frequency} value={frequency}>{frequency}</option>
                       ))}
-                    </select>
+                    </Select>
                   </FormGroup>
                 </MergeForm>
                 <ButtonGroup>
@@ -995,7 +1104,6 @@ const RecentContactsList = () => {
         </Modal>
       )}
 
-      {/* Updated Company Modal with Description */}
       {showCompanyModal && (
         <Modal>
           <ModalContent>
@@ -1003,12 +1111,16 @@ const RecentContactsList = () => {
               <h2>Add/Edit Company</h2>
               <CloseButton onClick={() => setShowCompanyModal(false)}>×</CloseButton>
             </ModalHeader>
-            <h3>Contact Details</h3>
-            <p>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#1a202c', marginBottom: '1rem' }}>
+              Contact Details
+            </h3>
+            <p style={{ fontSize: '0.95rem', color: '#2d3748', marginBottom: '1.5rem' }}>
               <strong>Name:</strong> {currentContact?.first_name} {currentContact?.last_name}<br />
               <strong>Email:</strong> {currentContact?.email}
             </p>
-            <h3>Company Information</h3>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#1a202c', marginBottom: '1rem' }}>
+              Company Information
+            </h3>
             <MergeForm>
               <FormGroup>
                 <Label>Company Name</Label>
@@ -1028,16 +1140,15 @@ const RecentContactsList = () => {
               </FormGroup>
               <FormGroup>
                 <Label>Category</Label>
-                <select
+                <Select
                   value={companyData.category}
                   onChange={(e) => setCompanyData(prev => ({ ...prev, category: e.target.value }))}
-                  style={{ width: '100%', padding: '0.75rem' }}
                 >
                   <option value="">Select Category</option>
                   {COMPANY_CATEGORIES.map(category => (
                     <option key={category} value={category}>{category}</option>
                   ))}
-                </select>
+                </Select>
               </FormGroup>
               <FormGroup>
                 <Label>City</Label>
@@ -1072,7 +1183,6 @@ const RecentContactsList = () => {
         </Modal>
       )}
 
-      {/* New Contact Edit Modal */}
       {showContactEditModal && editingContact && (
         <Modal>
           <ModalContent>
@@ -1099,16 +1209,15 @@ const RecentContactsList = () => {
               </FormGroup>
               <FormGroup>
                 <Label>Contact Category</Label>
-                <select
+                <Select
                   value={contactEditData.contact_category}
                   onChange={(e) => handleContactInputChange('contact_category', e.target.value)}
-                  style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid #ddd' }}
                 >
                   <option value="">Select Category</option>
                   {CONTACT_CATEGORIES.map(category => (
                     <option key={category} value={category}>{category}</option>
                   ))}
-                </select>
+                </Select>
               </FormGroup>
               <FormGroup>
                 <Label>Mobile</Label>
@@ -1160,16 +1269,15 @@ const RecentContactsList = () => {
               </FormGroup>
               <FormGroup>
                 <Label>Keep in Touch Frequency</Label>
-                <select
+                <Select
                   value={contactEditData.keep_in_touch_frequency}
                   onChange={(e) => handleContactInputChange('keep_in_touch_frequency', e.target.value)}
-                  style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid #ddd' }}
                 >
                   <option value="">Select Frequency</option>
                   {KEEP_IN_TOUCH_FREQUENCIES.map(frequency => (
                     <option key={frequency} value={frequency}>{frequency}</option>
                   ))}
-                </select>
+                </Select>
               </FormGroup>
             </MergeForm>
             <ButtonGroup>
