@@ -34,6 +34,14 @@ const TableHead = styled.thead`
   }
 `;
 
+const KEEP_IN_TOUCH_FREQUENCIES = [
+  'Weekly',
+  'Monthly',
+  'Quarterly',
+  'Twice a Year',
+  'Once a Year'
+];
+
 const TableBody = styled.tbody`
   tr {
     &:hover {
@@ -246,6 +254,7 @@ const RecentContactsList = () => {
                 <th>Email</th>
                 <th>Mobile</th>
                 <th>Category</th>
+                <th>Keep in Touch</th>
                 <th>Actions</th>
               </tr>
             </TableHead>
@@ -340,6 +349,45 @@ const RecentContactsList = () => {
                       ))}
                     </select>
                   </td>
+                      <td>
+  <select
+    value={contact.keep_in_touch_frequency || ''}
+    onChange={(e) => {
+      const newFrequency = e.target.value;
+      
+      const updateFrequency = async () => {
+        try {
+          const { error } = await supabase
+            .from('contacts')
+            .update({ keep_in_touch_frequency: newFrequency || null })
+            .eq('id', contact.id);
+          
+          if (error) throw error;
+          
+          // Optimistically update local state
+          setContacts(prev => prev.map(c => 
+            c.id === contact.id 
+              ? { ...c, keep_in_touch_frequency: newFrequency || null } 
+              : c
+          ));
+        } catch (error) {
+          console.error('Error updating keep in touch frequency:', error);
+          alert('Failed to update keep in touch frequency');
+        }
+      };
+      
+      updateFrequency();
+    }}
+    style={{ width: '100%' }}
+  >
+    <option value="">Select Frequency</option>
+    {KEEP_IN_TOUCH_FREQUENCIES.map(frequency => (
+      <option key={frequency} value={frequency}>
+        {frequency}
+      </option>
+    ))}
+  </select>
+</td>
                   <td>
                     <Link to={`/contacts/edit/${contact.id}`}>
                       <ActionButton>Edit</ActionButton>
