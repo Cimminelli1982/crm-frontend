@@ -73,6 +73,7 @@ const TableBody = styled.tbody`
   td {
     padding: 0.75rem;
     border-bottom: 1px solid #dee2e6;
+    position: relative;
   }
 `;
 
@@ -249,6 +250,34 @@ const Button = styled.button`
   }
 `;
 
+const CompanyInput = styled.input`
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  width: 100%;
+`;
+
+const CompanyDropdown = styled.div`
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 10;
+`;
+
+const CompanyOption = styled.div`
+  padding: 0.5rem;
+  cursor: pointer;
+  &:hover {
+    background-color: #f8f9fa;
+  }
+`;
+
 const RecentContactsList = () => {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -269,6 +298,8 @@ const RecentContactsList = () => {
     city: '',
     nation: ''
   });
+  const [companySearchTerm, setCompanySearchTerm] = useState({});
+  const [companySuggestions, setCompanySuggestions] = useState({});
 
   const getThirtyDaysAgoRange = useMemo(() => {
     const now = new Date();
@@ -433,7 +464,7 @@ const RecentContactsList = () => {
   const handleOpenCompanyModal = useCallback(async (contact) => {
     setCurrentContact(contact);
     setCompanyData({
-      name: '',
+      name: companySearchTerm[contact.id] || '',
       website: '',
       category: '',
       city: '',
@@ -447,31 +478,29 @@ const RecentContactsList = () => {
         city: contact.companies.city || '',
         nation: contact.companies.nation || ''
       });
-    } else {
-      const emailDomain = contact.email 
-        ? contact.email.split('@')[1] 
-        : '';
-      if (emailDomain) {
-        try {
-          const { data: existingCompany } = await supabase
-            .from('companies')
-            .select('*')
-            .eq('website', emailDomain)
-            .single();
-          if (existingCompany) {
-            setCompanyData({
-              name: existingCompany.name || '',
-              website: existingCompany.website || '',
-              category: existingCompany.category || '',
-              city: existingCompany.city || '',
-              nation: existingCompany.nation || ''
-            });
-          }
-        } catch (error) {}
-      }
+    } else if (contact.email) {
+      const emailDomain = contact.email.split('@')[1];
+      try {
+        const { data: existingCompany } = await supabase
+          .from('companies')
+          .select('*')
+          .eq('website', emailDomain)
+          .single();
+        if (existingCompany) {
+          setCompanyData({
+            name: existingCompany.name || '',
+            website: existingCompany.website || '',
+            category: existingCompany.category || '',
+            city: existingCompany.city || '',
+            nation: existingCompany.nation || ''
+          });
+        }
+      } catch (error) {}
     }
+    setCompanySearchTerm(prev => ({ ...prev, [contact.id]: '' }));
+    setCompanySuggestions(prev => ({ ...prev, [contact.id]: [] }));
     setShowCompanyModal(true);
-  }, []);
+  }, [companySearchTerm]);
 
   const handleSaveCompany = useCallback(async () => {
     try {
@@ -505,6 +534,46 @@ const RecentContactsList = () => {
       alert('Failed to save company');
     }
   }, [companyData, currentContact, fetchData]);
+
+  const handleCompanySearch = useCallback(async (contactId, term) => {
+    setCompanySearchTerm(prev => ({ ...prev, [contactId]: term }));
+    if (term.length < 4) {
+      setCompanySuggestions(prev => ({ ...prev, [contactId]: [] }));
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('companies')
+        .select('*')
+        .ilike('name', `%${term}%`)
+        .limit(5);
+      if (error) throw error;
+      setCompanySuggestions(prev => ({
+        ...prev,
+        [contactId]: data.length > 0 ? data : [{ name: 'Add a company', isAddOption: true }]
+      }));
+    } catch (error) {
+      setCompanySuggestions(prev => ({ ...prev, [contactId]: [{ name: 'Add a company', isAddOption: true }] }));
+    }
+  }, []);
+
+  const handleCompanySelect = useCallback(async (contactId, company) => {
+    if (company.isAddOption) {
+      handleOpenCompanyModal(contacts.find(c => c.id === contactId));
+      return;
+    }
+    try {
+      await supabase
+        .from('contacts')
+        .update({ company_id: company.id })
+        .eq('id', contactId);
+      fetchData();
+      setCompanySearchTerm(prev => ({ ...prev, [contactId]: '' }));
+      setCompanySuggestions(prev => ({ ...prev, [contactId]: [] }));
+    } catch (error) {
+      alert('Failed to assign company');
+    }
+  }, [contacts, handleOpenCompanyModal, fetchData]);
 
   const goToFirstPage = useCallback(() => setCurrentPage(0), []);
   const goToPreviousPage = useCallback(() => 
@@ -581,9 +650,25 @@ const RecentContactsList = () => {
                         {contact.companies.name}
                       </a>
                     ) : (
-                      <ActionButton onClick={() => handleOpenCompanyModal(contact)}>
-                        Add Company
-                      </ActionButton>
+                      <div>
+                        <CompanyInput
+                          value={companySearchTerm[contact.id] || ''}
+                          onChange={(e) => handleCompanySearch(contact.id, e.target.value)}
+                          placeholder="Type company name..."
+                        />
+                        {companySuggestions[contact.id]?.length > 0 && (
+                          <CompanyDropdown>
+                            {companySuggestions[contact.id].map((company, index) => (
+                              <CompanyOption
+                                key={index}
+                                onClick={() => handleCompanySelect(contact.id, company)}
+                              >
+                                {company.name}
+                              </CompanyOption>
+                            ))}
+                          </CompanyDropdown>
+                        )}
+                      </div>
                     )}
                   </td>
                   <td>
