@@ -128,6 +128,32 @@ const RecentContactsList = () => {
     }
   }, [currentPage, rowsPerPage]);
   
+  const handleSkipContact = async (contactId) => {
+    if (!window.confirm('Are you sure you want to mark this contact as Skip?')) {
+      return;
+    }
+    
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .update({ contact_category: 'Skip' })
+        .eq('id', contactId);
+          
+      if (error) {
+        console.error('Error updating contact:', error);
+        alert('Failed to mark contact as Skip');
+      } else {
+        // Remove the contact from the current view
+        setContacts(contacts.filter(c => c.id !== contactId));
+        // Update total count
+        setTotalCount(prev => prev - 1);
+      }
+    } catch (error) {
+      console.error('Exception skipping contact:', error);
+      alert('Failed to mark contact as Skip');
+    }
+  };
+  
   useEffect(() => {
     fetchRecentContacts();
     getContactsCount();
@@ -154,6 +180,7 @@ const RecentContactsList = () => {
                 <th>Email</th>
                 <th>Mobile</th>
                 <th>Category</th>
+                <th>Actions</th>
               </tr>
             </TableHead>
             <TableBody>
@@ -163,6 +190,17 @@ const RecentContactsList = () => {
                   <td>{contact.email || '-'}</td>
                   <td>{contact.mobile || '-'}</td>
                   <td>{contact.contact_category || '-'}</td>
+                  <td>
+                    <Link to={`/contacts/edit/${contact.id}`}>
+                      <ActionButton>Edit</ActionButton>
+                    </Link>
+                    <ActionButton 
+                      skip 
+                      onClick={() => handleSkipContact(contact.id)}
+                    >
+                      Skip
+                    </ActionButton>
+                  </td>
                 </tr>
               ))}
             </TableBody>
