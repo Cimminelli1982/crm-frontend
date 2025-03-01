@@ -1529,7 +1529,10 @@ const RecentContactsList = () => {
         'firstname', 'lastname', 'email', 'work_email', 'mobilephone', 
         'phone', 'hs_lead_status', 'linkedin_profile', 'hubspot_score',
         'city', 'about', 'notes_last_updated', 'notes_last_contacted',
-        'contact_category', 'keep_in_touch_frequency', 'score'
+        'contact_category', 'keep_in_touch_frequency', 'score',
+        // Additional email properties that might exist in HubSpot
+        'email2', 'email3', 'secondary_email', 'alternate_email', 
+        'personal_email', 'additional_email', 'other_email'
       ];
       
       // Search by email first if available
@@ -1556,6 +1559,24 @@ const RecentContactsList = () => {
         if (emailResponse.data.results && emailResponse.data.results.length > 0) {
           // Also fetch associated companies for this contact
           const contactId = emailResponse.data.results[0].id;
+          
+          // Fetch all properties for this contact to discover all available email fields
+          const allPropertiesResponse = await hubspotClient.post('', {
+            endpoint: `/crm/v3/objects/contacts/${contactId}`,
+            method: 'GET',
+            params: {
+              properties: 'email,firstname,lastname' // This will actually return all properties
+            }
+          });
+          
+          let contactWithAllProperties = emailResponse.data.results[0];
+          
+          // If we got all properties, use that response instead
+          if (allPropertiesResponse.data && allPropertiesResponse.data.properties) {
+            contactWithAllProperties = allPropertiesResponse.data;
+            console.log('Retrieved all contact properties:', Object.keys(contactWithAllProperties.properties));
+          }
+          
           const companiesResponse = await hubspotClient.post('', {
             endpoint: `/crm/v3/objects/contacts/${contactId}/associations/companies`,
             method: 'GET'
@@ -1582,7 +1603,7 @@ const RecentContactsList = () => {
           return {
             found: true,
             nameMatch: true, // Assuming email is unique enough
-            contact: emailResponse.data.results[0],
+            contact: contactWithAllProperties,
             company: companyData
           };
         }
@@ -1634,6 +1655,24 @@ const RecentContactsList = () => {
           
           // Also fetch associated companies for this contact
           const contactId = result.id;
+          
+          // Fetch all properties for this contact to discover all available email fields
+          const allPropertiesResponse = await hubspotClient.post('', {
+            endpoint: `/crm/v3/objects/contacts/${contactId}`,
+            method: 'GET',
+            params: {
+              properties: 'email,firstname,lastname' // This will actually return all properties
+            }
+          });
+          
+          let contactWithAllProperties = result;
+          
+          // If we got all properties, use that response instead
+          if (allPropertiesResponse.data && allPropertiesResponse.data.properties) {
+            contactWithAllProperties = allPropertiesResponse.data;
+            console.log('Retrieved all contact properties:', Object.keys(contactWithAllProperties.properties));
+          }
+          
           const companiesResponse = await hubspotClient.post('', {
             endpoint: `/crm/v3/objects/contacts/${contactId}/associations/companies`,
             method: 'GET'
@@ -1660,7 +1699,7 @@ const RecentContactsList = () => {
           return {
             found: true,
             nameMatch: firstNameMatch && lastNameMatch,
-            contact: result,
+            contact: contactWithAllProperties,
             company: companyData
           };
         }
@@ -1716,13 +1755,45 @@ const RecentContactsList = () => {
   const mapHubspotContactToOurModel = useCallback((hubspotContact, hubspotCompany) => {
     const properties = hubspotContact.properties;
     
+    // Get all available emails from the contact properties
+    const emails = [];
+    
+    // Primary email is always first if available
+    if (properties.email) {
+      emails.push(properties.email);
+    }
+    
+    // Check for additional emails in various possible HubSpot properties
+    const additionalEmailFields = [
+      'work_email', 'email2', 'email3', 'secondary_email', 
+      'alternate_email', 'personal_email', 'additional_email', 'other_email'
+    ];
+    
+    // Log available email properties for debugging
+    console.log('HubSpot contact properties:', properties);
+    console.log('Available email fields:');
+    additionalEmailFields.forEach(field => {
+      if (properties[field]) {
+        console.log(`- ${field}: ${properties[field]}`);
+      }
+    });
+    
+    // Add any additional emails that exist and aren't duplicates
+    additionalEmailFields.forEach(field => {
+      if (properties[field] && !emails.includes(properties[field])) {
+        emails.push(properties[field]);
+      }
+    });
+    
+    console.log('Mapped emails:', emails);
+    
     // Map Hubspot properties to our data model
     const contactData = {
       first_name: properties.firstname || '',
       last_name: properties.lastname || '',
-      email: properties.email || '',
-      email2: properties.work_email || '',
-      email3: '', // Hubspot might not have a third email field
+      email: emails[0] || '', // Primary email
+      email2: emails[1] || '', // Second email if available
+      email3: emails[2] || '', // Third email if available
       mobile: properties.mobilephone || '',
       mobile2: properties.phone || '', // Using phone as secondary mobile
       linkedin: properties.linkedin_profile || '',
@@ -1783,6 +1854,7 @@ const RecentContactsList = () => {
         const hubspotData = mapHubspotContactToOurModel(hubspotResult.contact, hubspotResult.company);
         
         // Update Supabase with the contact data from Hubspot
+        // Only include fields that exist in the contacts table
         const { error } = await supabase
           .from('contacts')
           .update({
@@ -1796,9 +1868,8 @@ const RecentContactsList = () => {
             linkedin: hubspotData.contactData.linkedin || contact.linkedin,
             contact_category: hubspotData.contactData.contact_category || contact.contact_category,
             keep_in_touch_frequency: hubspotData.contactData.keep_in_touch_frequency || contact.keep_in_touch_frequency,
-            score: hubspotData.contactData.score || contact.score,
-            city: hubspotData.contactData.city || contact.city,
-            note: hubspotData.contactData.note || contact.note
+            score: hubspotData.contactData.score || contact.score
+            // Removed city and note fields as they don't exist in the contacts table
           })
           .eq('id', contact.id);
         
