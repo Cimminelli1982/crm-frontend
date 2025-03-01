@@ -1480,9 +1480,9 @@ const RecentContactsList = () => {
     
     checkHubspotAuth();
   }, []);
-
-  // Function to search for a contact in Hubspot
-  const searchHubspotContact = async (contact) => {
+  
+  // Function to search for a contact in Hubspot - wrapped in useCallback
+  const searchHubspotContact = useCallback(async (contact) => {
     try {
       // Search by email first if available
       if (contact.email) {
@@ -1576,30 +1576,9 @@ const RecentContactsList = () => {
       console.error('Error searching Hubspot:', error);
       throw error;
     }
-  };
+  }, []);
   
-  // Function to map Hubspot contact properties to our data model
-  const mapHubspotContactToOurModel = (hubspotContact) => {
-    const properties = hubspotContact.properties;
-    
-    // Map Hubspot properties to our data model
-    return {
-      email: properties.email || '',
-      email2: properties.work_email || '',
-      email3: '', // Hubspot might not have a third email field
-      mobile: properties.mobilephone || '',
-      mobile2: properties.phone || '', // Using phone as secondary mobile
-      linkedin: properties.linkedin_profile || '',
-      // Map Hubspot lead status to our contact category if possible
-      contact_category: mapHubspotStatusToCategory(properties.hs_lead_status),
-      // Default to quarterly for keep in touch frequency
-      keep_in_touch_frequency: 'Quarterly',
-      // Map Hubspot score to our score (assuming 0-100 scale)
-      score: mapHubspotScoreToOurScore(properties.hubspot_score)
-    };
-  };
-  
-  // Helper function to map Hubspot lead status to our contact category
+  // Helper function to map Hubspot status categories - doesn't need useCallback as it's pure
   const mapHubspotStatusToCategory = (hubspotStatus) => {
     if (!hubspotStatus) return '';
     
@@ -1617,7 +1596,7 @@ const RecentContactsList = () => {
     return statusMap[hubspotStatus.toUpperCase()] || 'Professional Investor';
   };
   
-  // Helper function to map Hubspot score to our 1-5 scale
+  // Helper function to map Hubspot score - doesn't need useCallback as it's pure
   const mapHubspotScoreToOurScore = (hubspotScore) => {
     if (!hubspotScore) return 3; // Default to middle score
     
@@ -1632,6 +1611,27 @@ const RecentContactsList = () => {
     return 5;
   };
   
+  // Function to map Hubspot contact properties to our data model - wrapped in useCallback
+  const mapHubspotContactToOurModel = useCallback((hubspotContact) => {
+    const properties = hubspotContact.properties;
+    
+    // Map Hubspot properties to our data model
+    return {
+      email: properties.email || '',
+      email2: properties.work_email || '',
+      email3: '', // Hubspot might not have a third email field
+      mobile: properties.mobilephone || '',
+      mobile2: properties.phone || '', // Using phone as secondary mobile
+      linkedin: properties.linkedin_profile || '',
+      // Map Hubspot lead status to our contact category if possible
+      contact_category: mapHubspotStatusToCategory(properties.hs_lead_status),
+      // Default to quarterly for keep in touch frequency
+      keep_in_touch_frequency: 'Quarterly',
+      // Map Hubspot score to our score (assuming 0-100 scale)
+      score: mapHubspotScoreToOurScore(properties.hubspot_score)
+    };
+  }, [mapHubspotStatusToCategory, mapHubspotScoreToOurScore]);
+
   // Updated handleSearchHubspot function to use real Hubspot API
   const handleSearchHubspot = useCallback(async (contact) => {
     if (!contact.first_name && !contact.last_name) {
