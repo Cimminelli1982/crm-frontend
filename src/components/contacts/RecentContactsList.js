@@ -1755,6 +1755,63 @@ const RecentContactsList = () => {
   const mapHubspotContactToOurModel = useCallback((hubspotContact, hubspotCompany) => {
     const properties = hubspotContact.properties;
     
+    // Log all available properties from HubSpot for debugging
+    console.log('===== HUBSPOT DATA AVAILABLE =====');
+    console.log('CONTACT PROPERTIES:');
+    
+    // Group properties by type for better readability
+    const contactPropertyGroups = {
+      'Basic Info': ['firstname', 'lastname', 'email', 'phone', 'mobilephone'],
+      'Additional Emails': ['work_email', 'email2', 'email3', 'secondary_email', 'alternate_email', 'personal_email', 'additional_email', 'other_email'],
+      'Social & Web': ['linkedin_profile', 'website', 'twitter_handle', 'facebook_profile'],
+      'Location': ['address', 'city', 'state', 'zip', 'country'],
+      'Company Info': ['company', 'jobtitle', 'industry'],
+      'Lead Info': ['hs_lead_status', 'hubspot_score', 'lifecyclestage'],
+      'Other': []
+    };
+    
+    // Categorize all properties
+    const categorizedProperties = {};
+    const allPropertyKeys = Object.keys(properties).sort();
+    
+    allPropertyKeys.forEach(key => {
+      let placed = false;
+      for (const category in contactPropertyGroups) {
+        if (contactPropertyGroups[category].includes(key)) {
+          if (!categorizedProperties[category]) categorizedProperties[category] = {};
+          categorizedProperties[category][key] = properties[key];
+          placed = true;
+          break;
+        }
+      }
+      
+      if (!placed) {
+        if (!categorizedProperties['Other']) categorizedProperties['Other'] = {};
+        categorizedProperties['Other'][key] = properties[key];
+      }
+    });
+    
+    // Log categorized properties
+    for (const category in categorizedProperties) {
+      console.log(`\n${category}:`);
+      const categoryProps = categorizedProperties[category];
+      for (const key in categoryProps) {
+        console.log(`  ${key}: ${categoryProps[key]}`);
+      }
+    }
+    
+    // Log company data if available
+    if (hubspotCompany) {
+      console.log('\nCOMPANY PROPERTIES:');
+      const companyProperties = hubspotCompany.properties;
+      const companyKeys = Object.keys(companyProperties).sort();
+      companyKeys.forEach(key => {
+        console.log(`  ${key}: ${companyProperties[key]}`);
+      });
+    }
+    
+    console.log('===== END HUBSPOT DATA =====');
+    
     // Get all available emails from the contact properties
     const emails = [];
     
@@ -1770,7 +1827,6 @@ const RecentContactsList = () => {
     ];
     
     // Log available email properties for debugging
-    console.log('HubSpot contact properties:', properties);
     console.log('Available email fields:');
     additionalEmailFields.forEach(field => {
       if (properties[field]) {
@@ -1805,8 +1861,12 @@ const RecentContactsList = () => {
       score: mapHubspotScoreToOurScore(properties.hubspot_score),
       // Additional fields
       city: properties.city || '',
-      note: properties.about || '' // Using about field for notes
+      note: properties.about || properties.notes || '' // Using about field for notes
     };
+    
+    // Log the final mapped data
+    console.log('MAPPED DATA TO OUR MODEL:');
+    console.log('Contact Data:', contactData);
     
     // If we have company data, prepare it for insertion/update
     let companyData = null;
@@ -1820,6 +1880,8 @@ const RecentContactsList = () => {
         nation: companyProperties.country || '',
         category: companyProperties.industry || companyProperties.category || ''
       };
+      
+      console.log('Company Data:', companyData);
     }
     
     return {
