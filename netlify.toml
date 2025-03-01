@@ -1,0 +1,11 @@
+[build]
+  command = "npm run build"
+  publish = "build"
+
+[build.environment]
+  BROWSER = "none"
+  PORT = "3000"
+  CI = "false"
+
+# Note: Sensitive environment variables like API keys should be set in the Netlify UI
+# This file only contains non-sensitive configuration 
