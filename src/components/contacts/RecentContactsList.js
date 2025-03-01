@@ -130,8 +130,9 @@ const RecentContactsList = () => {
   }
   
   async function handleSkipContact(contactId) {
-    if (!confirm('Are you sure you want to mark this contact as Skip?')) {
-      return;
+  if (!window.confirm('Are you sure you want to mark this contact as Skip?')) {
+  return;
+}
     }
     
     try {
