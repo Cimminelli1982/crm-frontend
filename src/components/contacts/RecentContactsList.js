@@ -1532,7 +1532,9 @@ const RecentContactsList = () => {
         'contact_category', 'keep_in_touch_frequency', 'score',
         // Additional email properties that might exist in HubSpot
         'email2', 'email3', 'secondary_email', 'alternate_email', 
-        'personal_email', 'additional_email', 'other_email'
+        'personal_email', 'additional_email', 'other_email',
+        // HubSpot's dedicated property for additional emails
+        'hs_additional_emails'
       ];
       
       // Search by email first if available
@@ -1565,7 +1567,7 @@ const RecentContactsList = () => {
             endpoint: `/crm/v3/objects/contacts/${contactId}`,
             method: 'GET',
             params: {
-              properties: 'email,firstname,lastname' // This will actually return all properties
+              properties: 'email,firstname,lastname,hs_additional_emails,work_email,email2,email3,secondary_email,alternate_email,personal_email,additional_email,other_email'
             }
           });
           
@@ -1574,7 +1576,11 @@ const RecentContactsList = () => {
           // If we got all properties, use that response instead
           if (allPropertiesResponse.data && allPropertiesResponse.data.properties) {
             contactWithAllProperties = allPropertiesResponse.data;
+            console.log('===== HUBSPOT API RESPONSE =====');
+            console.log('Contact ID:', contactId);
             console.log('Retrieved all contact properties:', Object.keys(contactWithAllProperties.properties));
+            console.log('Raw response data:', JSON.stringify(allPropertiesResponse.data, null, 2));
+            console.log('===== END HUBSPOT API RESPONSE =====');
           }
           
           const companiesResponse = await hubspotClient.post('', {
@@ -1661,7 +1667,7 @@ const RecentContactsList = () => {
             endpoint: `/crm/v3/objects/contacts/${contactId}`,
             method: 'GET',
             params: {
-              properties: 'email,firstname,lastname' // This will actually return all properties
+              properties: 'email,firstname,lastname,hs_additional_emails,work_email,email2,email3,secondary_email,alternate_email,personal_email,additional_email,other_email'
             }
           });
           
@@ -1670,7 +1676,11 @@ const RecentContactsList = () => {
           // If we got all properties, use that response instead
           if (allPropertiesResponse.data && allPropertiesResponse.data.properties) {
             contactWithAllProperties = allPropertiesResponse.data;
+            console.log('===== HUBSPOT API RESPONSE =====');
+            console.log('Contact ID:', contactId);
             console.log('Retrieved all contact properties:', Object.keys(contactWithAllProperties.properties));
+            console.log('Raw response data:', JSON.stringify(allPropertiesResponse.data, null, 2));
+            console.log('===== END HUBSPOT API RESPONSE =====');
           }
           
           const companiesResponse = await hubspotClient.post('', {
@@ -1762,7 +1772,7 @@ const RecentContactsList = () => {
     // Group properties by type for better readability
     const contactPropertyGroups = {
       'Basic Info': ['firstname', 'lastname', 'email', 'phone', 'mobilephone'],
-      'Additional Emails': ['work_email', 'email2', 'email3', 'secondary_email', 'alternate_email', 'personal_email', 'additional_email', 'other_email'],
+      'Additional Emails': ['work_email', 'email2', 'email3', 'secondary_email', 'alternate_email', 'personal_email', 'additional_email', 'other_email', 'hs_additional_emails'],
       'Social & Web': ['linkedin_profile', 'website', 'twitter_handle', 'facebook_profile'],
       'Location': ['address', 'city', 'state', 'zip', 'country'],
       'Company Info': ['company', 'jobtitle', 'industry'],
@@ -1820,28 +1830,122 @@ const RecentContactsList = () => {
       emails.push(properties.email);
     }
     
+    // Check specifically for HubSpot's additional emails property
+    if (properties.hs_additional_emails) {
+      console.log('========== ADDITIONAL EMAILS DEBUG ==========');
+      console.log('Found hs_additional_emails property:', properties.hs_additional_emails);
+      console.log('Type of hs_additional_emails:', typeof properties.hs_additional_emails);
+      
+      try {
+        // HubSpot's hs_additional_emails could be in various formats
+        let additionalEmails = [];
+        const rawValue = properties.hs_additional_emails;
+        
+        // Handle different potential formats
+        // 1. Try as JSON array
+        if (rawValue.startsWith('[')) {
+          try {
+            const parsed = JSON.parse(rawValue);
+            if (Array.isArray(parsed)) {
+              additionalEmails = parsed;
+              console.log('Successfully parsed as JSON array:', additionalEmails);
+            } else {
+              console.log('Parsed as JSON but not an array:', parsed);
+            }
+          } catch (e) {
+            console.log('Failed to parse as JSON array:', e.message);
+          }
+        }
+        // 2. Try as JSON object with email properties
+        else if (rawValue.startsWith('{')) {
+          try {
+            const parsed = JSON.parse(rawValue);
+            console.log('Parsed as JSON object:', parsed);
+            
+            // Extract email values from object properties
+            Object.values(parsed).forEach(value => {
+              if (typeof value === 'string' && value.includes('@')) {
+                additionalEmails.push(value);
+              }
+            });
+            console.log('Extracted emails from JSON object:', additionalEmails);
+          } catch (e) {
+            console.log('Failed to parse as JSON object:', e.message);
+          }
+        }
+        // 3. Try as semicolon-separated list (common format)
+        else if (rawValue.includes(';')) {
+          additionalEmails = rawValue.split(';').map(email => email.trim());
+          console.log('Parsed as semicolon-separated list:', additionalEmails);
+        }
+        // 4. Try as comma-separated list
+        else if (rawValue.includes(',')) {
+          additionalEmails = rawValue.split(',').map(email => email.trim());
+          console.log('Parsed as comma-separated list:', additionalEmails);
+        }
+        // 5. Treat as single email if it has @ symbol
+        else if (rawValue.includes('@')) {
+          additionalEmails = [rawValue.trim()];
+          console.log('Treating as single email:', additionalEmails);
+        }
+        // 6. Last resort - split by any whitespace or common separators
+        else {
+          additionalEmails = rawValue.split(/[\s,;|]+/).filter(item => item.includes('@'));
+          console.log('Split by multiple possible delimiters:', additionalEmails);
+        }
+        
+        // Filter out invalid emails and add to the emails list
+        additionalEmails.forEach((email, index) => {
+          if (email && email.includes('@') && !emails.includes(email)) {
+            emails.push(email);
+            console.log(`Added additional email at index ${index} to emails list:`, email);
+          }
+        });
+        
+        console.log('Emails list after processing hs_additional_emails:', emails);
+        console.log('========== END ADDITIONAL EMAILS DEBUG ==========');
+      } catch (e) {
+        console.error('Error processing hs_additional_emails:', e);
+      }
+    } else {
+      console.log('hs_additional_emails property not found in contact data');
+    }
+    
     // Check for additional emails in various possible HubSpot properties
-    const additionalEmailFields = [
+    const emailPropertyFields = [
       'work_email', 'email2', 'email3', 'secondary_email', 
       'alternate_email', 'personal_email', 'additional_email', 'other_email'
     ];
     
     // Log available email properties for debugging
-    console.log('Available email fields:');
-    additionalEmailFields.forEach(field => {
+    console.log('Checking known email fields:');
+    emailPropertyFields.forEach(field => {
       if (properties[field]) {
         console.log(`- ${field}: ${properties[field]}`);
       }
     });
     
     // Add any additional emails that exist and aren't duplicates
-    additionalEmailFields.forEach(field => {
+    emailPropertyFields.forEach(field => {
       if (properties[field] && !emails.includes(properties[field])) {
         emails.push(properties[field]);
       }
     });
     
-    console.log('Mapped emails:', emails);
+    // Check ALL properties for email-like values
+    console.log('Examining all properties for possible email addresses:');
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    
+    Object.keys(properties).forEach(key => {
+      const value = properties[key];
+      
+      if (typeof value === 'string' && emailRegex.test(value) && !emails.includes(value)) {
+        console.log(`Found email in property '${key}': ${value}`);
+        emails.push(value);
+      }
+    });
+    
+    console.log('All found emails:', emails);
     
     // Map Hubspot properties to our data model
     const contactData = {
@@ -1864,8 +1968,15 @@ const RecentContactsList = () => {
       note: properties.about || properties.notes || '' // Using about field for notes
     };
     
+    // Log the final mapped data with focus on emails
+    console.log('===== EMAIL MAPPING SUMMARY =====');
+    console.log('All emails found (in priority order):', emails);
+    console.log('Primary email mapped to contactData.email:', contactData.email);
+    console.log('Secondary email mapped to contactData.email2:', contactData.email2);
+    console.log('Tertiary email mapped to contactData.email3:', contactData.email3);
+    
     // Log the final mapped data
-    console.log('MAPPED DATA TO OUR MODEL:');
+    console.log('===== MAPPED DATA TO OUR MODEL =====');
     console.log('Contact Data:', contactData);
     
     // If we have company data, prepare it for insertion/update
