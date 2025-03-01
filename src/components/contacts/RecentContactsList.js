@@ -1694,7 +1694,7 @@ const RecentContactsList = () => {
       // Clear loading state for this contact
       setHubspotLoading(prev => ({ ...prev, [contact.id]: false }));
     }
-  }, [fetchData, hubspotAuthStatus.isAuthenticated]);
+  }, [fetchData, hubspotAuthStatus.isAuthenticated, mapHubspotContactToOurModel, searchHubspotContact]);
 
   return (
     <Container>
