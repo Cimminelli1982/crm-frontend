@@ -42,47 +42,50 @@ const Dashboard = () => {
     fetchStats();
   }, []);
 
-  async function fetchStats() {
-    setLoading(true);
+async function fetchStats() {
+  setLoading(true);
+  
+  try {
+    // Get total contacts (excluding Skip)
+    const { count: totalCount, error: totalError } = await supabase
+      .from('contacts')
+      .select('*', { count: 'exact', head: true })
+      .not('contact_category', 'eq', 'Skip');
     
-    try {
-      // Get total contacts
-      const { count: totalCount, error: totalError } = await supabase
-        .from('contacts')
-        .select('*', { count: 'exact', head: true });
-      
-      // Get today's contacts
-      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-      const { count: todayCount, error: todayError } = await supabase
-        .from('contacts')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', today);
-      
-      // Get this week's contacts
-      const weekStart = new Date();
-      weekStart.setDate(weekStart.getDate() - 7);
-      const weekStartStr = weekStart.toISOString().split('T')[0];
-      
-      const { count: weekCount, error: weekError } = await supabase
-        .from('contacts')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', weekStartStr);
-      
-      if (totalError || todayError || weekError) {
-        console.error("Error fetching stats:", { totalError, todayError, weekError });
-      } else {
-        setStats({
-          todayCount: todayCount || 0,
-          weekCount: weekCount || 0,
-          totalCount: totalCount || 0
-        });
-      }
-    } catch (error) {
-      console.error("Exception fetching stats:", error);
-    } finally {
-      setLoading(false);
+    // Get today's contacts (excluding Skip)
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const { count: todayCount, error: todayError } = await supabase
+      .from('contacts')
+      .select('*', { count: 'exact', head: true })
+      .gte('created_at', today)
+      .not('contact_category', 'eq', 'Skip');
+    
+    // Get this week's contacts (excluding Skip)
+    const weekStart = new Date();
+    weekStart.setDate(weekStart.getDate() - 7);
+    const weekStartStr = weekStart.toISOString().split('T')[0];
+    
+    const { count: weekCount, error: weekError } = await supabase
+      .from('contacts')
+      .select('*', { count: 'exact', head: true })
+      .gte('created_at', weekStartStr)
+      .not('contact_category', 'eq', 'Skip');
+    
+    if (totalError || todayError || weekError) {
+      console.error("Error fetching stats:", { totalError, todayError, weekError });
+    } else {
+      setStats({
+        todayCount: todayCount || 0,
+        weekCount: weekCount || 0,
+        totalCount: totalCount || 0
+      });
     }
+  } catch (error) {
+    console.error("Exception fetching stats:", error);
+  } finally {
+    setLoading(false);
   }
+}
 
   return (
     <Layout>
