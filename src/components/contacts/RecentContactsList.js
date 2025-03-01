@@ -2281,15 +2281,22 @@ const RecentContactsList = () => {
     let companyData = null;
     if (hubspotCompany) {
       const companyProperties = hubspotCompany.properties;
+      
+      // Determine company category from HubSpot values
+      const hubspotCategory = companyProperties.industry || companyProperties.category || '';
+      console.log('===== COMPANY CATEGORY MAPPING =====');
+      console.log('HubSpot category/industry value:', hubspotCategory);
+      
       companyData = {
         name: companyProperties.name || '',
         website: formatWebsiteUrl(companyProperties.website || ''),
         description: companyProperties.description || '',
         city: companyProperties.city || '',
         nation: companyProperties.country || '',
-        category: companyProperties.industry || companyProperties.category || ''
+        category: hubspotCategory // Directly map the HubSpot value without transformation
       };
       
+      console.log('Mapped category to Supabase company category:', companyData.category);
       console.log('Company Data:', companyData);
     }
     
