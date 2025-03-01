@@ -2,7 +2,6 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 
-// Constants remain unchanged
 const COMPANY_CATEGORIES = [
   'Advisor', 'Corporate', 'Institution', 'Professional Investor', 'SKIP', 'SME',
   'Startup', 'Supplier', 'Media', 'Team', 'Angels Sharing Society'
@@ -153,10 +152,10 @@ const Modal = styled.div`
 
 const ModalContent = styled.div`
   background: #fff;
-  padding: 1.25rem;
+  padding: 1.5rem;
   border-radius: 12px;
   width: 90%;
-  max-width: 400px;
+  max-width: 450px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   animation: scaleIn 0.2s ease-out forwards;
   @keyframes scaleIn {
@@ -169,9 +168,9 @@ const ModalHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  margin-bottom: 1.25rem;
   h2 {
-    font-size: 1rem;
+    font-size: 1.125rem;
     font-weight: 600;
     color: #2d3748;
   }
@@ -188,7 +187,7 @@ const CloseButton = styled.button`
 `;
 
 const SearchContainer = styled.div`
-  margin-bottom: 0.75rem;
+  margin-bottom: 1rem;
 `;
 
 const SearchInput = styled.input`
@@ -233,16 +232,16 @@ const SearchResultItem = styled.div`
 const MergeForm = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 1rem;
 `;
 
 const FormGroup = styled.div`
-  margin-bottom: 0.75rem;
+  margin-bottom: 1rem;
 `;
 
 const Label = styled.label`
   display: block;
-  margin-bottom: 0.375rem;
+  margin-bottom: 0.5rem;
   font-size: 0.75rem;
   font-weight: 500;
   color: #4a5568;
@@ -279,6 +278,11 @@ const Select = styled.select`
   }
 `;
 
+const MissingText = styled.span`
+  color: #f87171; // Light red
+  font-size: 0.9rem;
+`;
+
 const MergeColumn = styled.div`
   padding: 0.75rem;
   background: #f9fafb;
@@ -300,8 +304,8 @@ const ColumnTitle = styled.h3`
 const ButtonGroup = styled.div`
   display: flex;
   justify-content: flex-end;
-  gap: 0.75rem;
-  margin-top: 1rem;
+  gap: 1rem;
+  margin-top: 1.25rem;
 `;
 
 const Button = styled.button`
@@ -324,7 +328,7 @@ const CompanyInput = styled.input`
   padding: 0.625rem;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  width: 100%;
+  width: 50%; // Halved width as requested
   font-size: 0.875rem;
   color: #2d3748;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
@@ -347,6 +351,7 @@ const CompanyDropdown = styled.div`
   overflow-y: auto;
   z-index: 10;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  width: 50%; // Matches CompanyInput width
 `;
 
 const CompanyOption = styled.div`
@@ -762,6 +767,26 @@ const RecentContactsList = () => {
     setShowCompanyModal(true);
   }, []);
 
+  // Handle ESC key to close company input
+  useEffect(() => {
+    const handleEsc = (event) => {
+      if (event.key === 'Escape') {
+        setCompanySearchTerm(prev => {
+          const newTerm = { ...prev };
+          Object.keys(newTerm).forEach(key => newTerm[key] = '');
+          return newTerm;
+        });
+        setCompanySuggestions(prev => {
+          const newSuggestions = { ...prev };
+          Object.keys(newSuggestions).forEach(key => newSuggestions[key] = []);
+          return newSuggestions;
+        });
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, []);
+
   return (
     <Container>
       {loading && (
@@ -837,7 +862,7 @@ const RecentContactsList = () => {
                         <CompanyInput
                           value={companySearchTerm[contact.id] || ''}
                           onChange={(e) => handleCompanySearch(contact.id, e.target.value)}
-                          placeholder="Type company name..."
+                          placeholder="Add a company"
                         />
                         {companySuggestions[contact.id]?.length > 0 && (
                           <CompanyDropdown>
@@ -890,60 +915,68 @@ const RecentContactsList = () => {
                     )}
                   </td>
                   <td>
-                    <Select
-                      value={contact.contact_category || ''}
-                      onChange={(e) => {
-                        const newCategory = e.target.value;
-                        const updateCategory = async () => {
-                          try {
-                            const { error } = await supabase
-                              .from('contacts')
-                              .update({ contact_category: newCategory || null })
-                              .eq('id', contact.id);
-                            if (error) throw error;
-                            setContacts(prev => prev.map(c =>
-                              c.id === contact.id ? { ...c, contact_category: newCategory || null } : c
-                            ));
-                          } catch (error) {
-                            alert('Failed to update category');
-                          }
-                        };
-                        updateCategory();
-                      }}
-                    >
-                      <option value="">Select Category</option>
-                      {CONTACT_CATEGORIES.map(category => (
-                        <option key={category} value={category}>{category}</option>
-                      ))}
-                    </Select>
+                    {contact.contact_category ? (
+                      <Select
+                        value={contact.contact_category}
+                        onChange={(e) => {
+                          const newCategory = e.target.value;
+                          const updateCategory = async () => {
+                            try {
+                              const { error } = await supabase
+                                .from('contacts')
+                                .update({ contact_category: newCategory || null })
+                                .eq('id', contact.id);
+                              if (error) throw error;
+                              setContacts(prev => prev.map(c =>
+                                c.id === contact.id ? { ...c, contact_category: newCategory || null } : c
+                              ));
+                            } catch (error) {
+                              alert('Failed to update category');
+                            }
+                          };
+                          updateCategory();
+                        }}
+                      >
+                        <option value="">Select Category</option>
+                        {CONTACT_CATEGORIES.map(category => (
+                          <option key={category} value={category}>{category}</option>
+                        ))}
+                      </Select>
+                    ) : (
+                      <MissingText>Missing</MissingText>
+                    )}
                   </td>
                   <td>
-                    <Select
-                      value={contact.keep_in_touch_frequency || ''}
-                      onChange={(e) => {
-                        const newFrequency = e.target.value;
-                        const updateFrequency = async () => {
-                          try {
-                            const { error } = await supabase
-                              .from('contacts')
-                              .update({ keep_in_touch_frequency: newFrequency || null })
-                              .eq('id', contact.id);
-                            if (error) throw error;
-                            setContacts(prev => prev.map(c =>
-                              c.id === contact.id ? { ...c, keep_in_touch_frequency: newFrequency || null } : c
-                            ));
-                          } catch (error) {
-                            alert('Failed to update keep in touch frequency');
-                          }
-                        };
-                        updateFrequency();
-                      }}
-                    >
-                      <option value="">Select Frequency</option>
-                      {KEEP_IN_TOUCH_FREQUENCIES.map(frequency => (
-                        <option key={frequency} value={frequency}>{frequency}</option>
-                      ))}
-                    </Select>
+                    {contact.keep_in_touch_frequency ? (
+                      <Select
+                        value={contact.keep_in_touch_frequency}
+                        onChange={(e) => {
+                          const newFrequency = e.target.value;
+                          const updateFrequency = async () => {
+                            try {
+                              const { error } = await supabase
+                                .from('contacts')
+                                .update({ keep_in_touch_frequency: newFrequency || null })
+                                .eq('id', contact.id);
+                              if (error) throw error;
+                              setContacts(prev => prev.map(c =>
+                                c.id === contact.id ? { ...c, keep_in_touch_frequency: newFrequency || null } : c
+                              ));
+                            } catch (error) {
+                              alert('Failed to update keep in touch frequency');
+                            }
+                          };
+                          updateFrequency();
+                        }}
+                      >
+                        <option value="">Select Frequency</option>
+                        {KEEP_IN_TOUCH_FREQUENCIES.map(frequency => (
+                          <option key={frequency} value={frequency}>{frequency}</option>
+                        ))}
+                      </Select>
+                    ) : (
+                      <MissingText>Missing</MissingText>
+                    )}
                   </td>
                   <td>
                     <ActionButton merge onClick={() => handleOpenMerge(contact)}>Merge</ActionButton>
@@ -1017,7 +1050,7 @@ const RecentContactsList = () => {
                     </p>
                   </MergeColumn>
                 </MergeForm>
-                <h3 style={{ margin: '1rem 0', fontSize: '1rem', fontWeight: 600, color: '#2d3748' }}>
+                <h3 style={{ margin: '1rem 0', fontSize: '1rem', font-weight: 600, color: '#2d3748' }}>
                   Merged Contact Information
                 </h3>
                 <MergeForm>
@@ -1134,14 +1167,14 @@ const RecentContactsList = () => {
               <h2>Add/Edit Company</h2>
               <CloseButton onClick={() => setShowCompanyModal(false)}>×</CloseButton>
             </ModalHeader>
-            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#2d3748', marginBottom: '0.75rem' }}>
+            <h3 style={{ fontSize: '1rem', font-weight: 600, color: '#2d3748', margin-bottom: '0.75rem' }}>
               Contact Details
             </h3>
-            <p style={{ fontSize: '0.875rem', color: '#2d3748', marginBottom: '1rem' }}>
+            <p style={{ font-size: '0.875rem', color: '#2d3748', margin-bottom: '1rem' }}>
               <strong>Name:</strong> {currentContact?.first_name} {currentContact?.last_name}<br />
               <strong>Email:</strong> {currentContact?.email}
             </p>
-            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#2d3748', marginBottom: '0.75rem' }}>
+            <h3 style={{ font-size: '1rem', font-weight: 600, color: '#2d3748', margin-bottom: '0.75rem' }}>
               Company Information
             </h3>
             <MergeForm>
