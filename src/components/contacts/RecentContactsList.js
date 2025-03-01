@@ -95,6 +95,16 @@ const LoadingOverlay = styled.div`
  z-index: 10;
 `;
 
+const CONTACT_CATEGORIES = [
+  'Professional Investor',
+  'Founder',
+  'Manager',
+  'Team',
+  'Friend or Family',
+  'Media',
+  'Institution'
+];
+
 const RecentContactsList = () => {
  const [contacts, setContacts] = useState([]);
  const [loading, setLoading] = useState(true);
@@ -128,22 +138,22 @@ const RecentContactsList = () => {
    
    try {
      // Fetch count and contacts in parallel
- const [countResponse, contactsResponse] = await Promise.all([
-  supabase
-    .from('contacts')
-    .select('*', { count: 'exact', head: true })
-    .gte('created_at', getThirtyDaysAgoRange.start)
-    .lte('created_at', getThirtyDaysAgoRange.end)
-    .or(`contact_category.neq.Skip,contact_category.is.null`),
-  supabase
-    .from('contacts')
-    .select('*')
-    .gte('created_at', getThirtyDaysAgoRange.start)
-    .lte('created_at', getThirtyDaysAgoRange.end)
-    .or(`contact_category.neq.Skip,contact_category.is.null`)
-    .order('created_at', { ascending: false })
-    .range(currentPage * rowsPerPage, (currentPage + 1) * rowsPerPage - 1)
-]);
+     const [countResponse, contactsResponse] = await Promise.all([
+       supabase
+         .from('contacts')
+         .select('*', { count: 'exact', head: true })
+         .gte('created_at', getThirtyDaysAgoRange.start)
+         .lte('created_at', getThirtyDaysAgoRange.end)
+         .or(`contact_category.neq.Skip,contact_category.is.null`),
+       supabase
+         .from('contacts')
+         .select('*')
+         .gte('created_at', getThirtyDaysAgoRange.start)
+         .lte('created_at', getThirtyDaysAgoRange.end)
+         .or(`contact_category.neq.Skip,contact_category.is.null`)
+         .order('created_at', { ascending: false })
+         .range(currentPage * rowsPerPage, (currentPage + 1) * rowsPerPage - 1)
+     ]);
      
      // Handle count
      if (countResponse.error) {
@@ -239,110 +249,57 @@ const RecentContactsList = () => {
              </tr>
            </TableHead>
            <TableBody>
-{contacts.map(contact => (
-  <tr key={contact.id}>
-    <td>
-  {contact.first_name || contact.last_name ? (
-    contact.linkedin ? (
-      <a 
-        href={contact.linkedin} 
-        target="_blank" 
-        rel="noopener noreferrer"
-      >
-        {`${contact.first_name || ''} ${contact.last_name || ''}`}
-      </a>
-    ) : (
-      <a 
-        href={`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`} 
-        target="_blank" 
-        rel="noopener noreferrer"
-      >
-        {`${contact.first_name || ''} ${contact.last_name || ''}`}
-      </a>
-    )
-  ) : (
-    '-'
-  )}
-</td>
-    <td>
-      {contact.email ? (
-        <a 
-          href={`https://mail.superhuman.com/search/${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`} 
-          target="_blank" 
-          rel="noopener noreferrer"
-        >
-          {contact.email}
-        </a>
-      ) : (
-        '-'
-      )}
-    </td>
-    <td>
-      {contact.mobile ? (
-        <a 
-          href={`https://wa.me/${contact.mobile.replace(/\D/g, '')}`} 
-          target="_blank" 
-          rel="noopener noreferrer"
-        >
-          {contact.mobile}
-        </a>
-      ) : (
-        '-'
-      )}
-    </td>
-    <td>{contact.contact_category || '-'}</td>
-    <td>
-      <Link to={`/contacts/edit/${contact.id}`}>
-        <ActionButton>Edit</ActionButton>
-      </Link>
-      <ActionButton 
-        skip 
-        onClick={() => handleSkipContact(contact.id)}
-      >
-        Skip
-      </ActionButton>
-    </td>
-  </tr>
-))}
-           </TableBody>
-         </ContactTable>
-         
-         <PaginationControls>
-           <PageButton 
-             onClick={goToFirstPage} 
-             disabled={currentPage === 0}
-           >
-             First
-           </PageButton>
-           <PageButton 
-             onClick={goToPreviousPage} 
-             disabled={currentPage === 0}
-           >
-             Previous
-           </PageButton>
-           
-           <span style={{ padding: '0.5rem' }}>
-             Page {currentPage + 1} of {totalPages > 0 ? totalPages : 1}
-             {' '} (Total: {totalCount})
-           </span>
-           
-           <PageButton 
-             onClick={goToNextPage} 
-             disabled={currentPage >= totalPages - 1}
-           >
-             Next
-           </PageButton>
-           <PageButton 
-             onClick={goToLastPage} 
-             disabled={currentPage >= totalPages - 1}
-           >
-             Last
-           </PageButton>
-         </PaginationControls>
-       </>
-     )}
-   </Container>
- );
-};
-
-export default RecentContactsList;
+             {contacts.map(contact => (
+               <tr key={contact.id}>
+                 <td>
+                   {contact.first_name || contact.last_name ? (
+                     contact.linkedin ? (
+                       <a 
+                         href={contact.linkedin} 
+                         target="_blank" 
+                         rel="noopener noreferrer"
+                       >
+                         {`${contact.first_name || ''} ${contact.last_name || ''}`}
+                       </a>
+                     ) : (
+                       <a 
+                         href={`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`} 
+                         target="_blank" 
+                         rel="noopener noreferrer"
+                       >
+                         {`${contact.first_name || ''} ${contact.last_name || ''}`}
+                       </a>
+                     )
+                   ) : (
+                     '-'
+                   )}
+                 </td>
+                 <td>
+                   {contact.email ? (
+                     <a 
+                       href={`https://mail.superhuman.com/search/${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`} 
+                       target="_blank" 
+                       rel="noopener noreferrer"
+                     >
+                       {contact.email}
+                     </a>
+                   ) : (
+                     '-'
+                   )}
+                 </td>
+                 <td>
+                   {contact.mobile ? (
+                     <a 
+                       href={`https://wa.me/${contact.mobile.replace(/\D/g, '')}`} 
+                       target="_blank" 
+                       rel="noopener noreferrer"
+                     >
+                       {contact.mobile}
+                     </a>
+                   ) : (
+                     '-'
+                   )}
+                 </td>
+                 <td>
+                   <select
+                     val
