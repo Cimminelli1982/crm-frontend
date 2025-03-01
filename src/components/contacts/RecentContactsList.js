@@ -1438,7 +1438,7 @@ const RecentContactsList = () => {
         }
         
         // Test the credentials by making a simple API call through our proxy
-        const response = await hubspotClient.get('', {
+        const response = await hubspotClient.get('/crm/v3/objects/contacts', {
           params: { limit: 1 }
         });
         
@@ -1469,8 +1469,7 @@ const RecentContactsList = () => {
     try {
       // Search by email first if available
       if (contact.email) {
-        const emailResponse = await hubspotClient.post('', {
-          endpoint: '/crm/v3/objects/contacts/search',
+        const emailResponse = await hubspotClient.post('/crm/v3/objects/contacts/search', {
           method: 'POST',
           data: {
             filterGroups: [
@@ -1522,8 +1521,7 @@ const RecentContactsList = () => {
           });
         }
         
-        const nameResponse = await hubspotClient.post('', {
-          endpoint: '/crm/v3/objects/contacts/search',
+        const nameResponse = await hubspotClient.post('/crm/v3/objects/contacts/search', {
           method: 'POST',
           data: {
             filterGroups: [
