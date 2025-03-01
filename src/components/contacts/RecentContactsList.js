@@ -548,19 +548,25 @@ const RecentContactsList = () => {
                       '-'
                     )}
                   </td>
-                  <td>
-                    {contact.mobile ? (
-                      <a 
-                        href={`https://wa.me/${contact.mobile.replace(/\D/g, '')}`} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                      >
-                        {contact.mobile}
-                      </a>
-                    ) : (
-                      '-'
-                    )}
-                  </td>
+      <td>
+  {contact.mobile ? (
+    <a 
+      href={`https://wa.me/${contact.mobile.replace(/\D/g, '')}`} 
+      target="_blank" 
+      rel="noopener noreferrer"
+    >
+      {contact.mobile}
+    </a>
+  ) : (
+    <a 
+      href={`https://app.timelines.ai/search/?s=${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`} 
+      target="_blank" 
+      rel="noopener noreferrer"
+    >
+      Search
+    </a>
+  )}
+</td>
                   <td>
                     <select
                       value={contact.contact_category || ''}
