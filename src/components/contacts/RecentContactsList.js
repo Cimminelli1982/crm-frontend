@@ -1524,6 +1524,14 @@ const RecentContactsList = () => {
   // Function to search for a contact in Hubspot - wrapped in useCallback
   const searchHubspotContact = useCallback(async (contact) => {
     try {
+      // Define all the properties we want to fetch from HubSpot
+      const contactProperties = [
+        'firstname', 'lastname', 'email', 'work_email', 'mobilephone', 
+        'phone', 'hs_lead_status', 'linkedin_profile', 'hubspot_score',
+        'city', 'about', 'notes_last_updated', 'notes_last_contacted',
+        'contact_category', 'keep_in_touch_frequency', 'score'
+      ];
+      
       // Search by email first if available
       if (contact.email) {
         const emailResponse = await hubspotClient.post('/crm/v3/objects/contacts/search', {
@@ -1540,19 +1548,42 @@ const RecentContactsList = () => {
                 ]
               }
             ],
-            properties: [
-              'firstname', 'lastname', 'email', 'work_email', 'mobilephone', 
-              'phone', 'hs_lead_status', 'linkedin_profile', 'hubspot_score'
-            ],
+            properties: contactProperties,
             limit: 10
           }
         });
         
         if (emailResponse.data.results && emailResponse.data.results.length > 0) {
+          // Also fetch associated companies for this contact
+          const contactId = emailResponse.data.results[0].id;
+          const companiesResponse = await hubspotClient.post('', {
+            endpoint: `/crm/v3/objects/contacts/${contactId}/associations/companies`,
+            method: 'GET'
+          });
+          
+          let companyData = null;
+          
+          // If there are associated companies, fetch the first company's details
+          if (companiesResponse.data.results && companiesResponse.data.results.length > 0) {
+            const companyId = companiesResponse.data.results[0].id;
+            const companyResponse = await hubspotClient.post('', {
+              endpoint: `/crm/v3/objects/companies/${companyId}`,
+              method: 'GET',
+              params: {
+                properties: 'name,website,description,city,country,industry,category'
+              }
+            });
+            
+            if (companyResponse.data) {
+              companyData = companyResponse.data;
+            }
+          }
+          
           return {
             found: true,
             nameMatch: true, // Assuming email is unique enough
-            contact: emailResponse.data.results[0]
+            contact: emailResponse.data.results[0],
+            company: companyData
           };
         }
       }
@@ -1586,10 +1617,7 @@ const RecentContactsList = () => {
                 filters: nameFilters
               }
             ],
-            properties: [
-              'firstname', 'lastname', 'email', 'work_email', 'mobilephone', 
-              'phone', 'hs_lead_status', 'linkedin_profile', 'hubspot_score'
-            ],
+            properties: contactProperties,
             limit: 10
           }
         });
@@ -1604,10 +1632,36 @@ const RecentContactsList = () => {
             (result.properties.lastname && 
              result.properties.lastname.toLowerCase() === contact.last_name.toLowerCase());
           
+          // Also fetch associated companies for this contact
+          const contactId = result.id;
+          const companiesResponse = await hubspotClient.post('', {
+            endpoint: `/crm/v3/objects/contacts/${contactId}/associations/companies`,
+            method: 'GET'
+          });
+          
+          let companyData = null;
+          
+          // If there are associated companies, fetch the first company's details
+          if (companiesResponse.data.results && companiesResponse.data.results.length > 0) {
+            const companyId = companiesResponse.data.results[0].id;
+            const companyResponse = await hubspotClient.post('', {
+              endpoint: `/crm/v3/objects/companies/${companyId}`,
+              method: 'GET',
+              params: {
+                properties: 'name,website,description,city,country,industry,category'
+              }
+            });
+            
+            if (companyResponse.data) {
+              companyData = companyResponse.data;
+            }
+          }
+          
           return {
             found: true,
             nameMatch: firstNameMatch && lastNameMatch,
-            contact: result
+            contact: result,
+            company: companyData
           };
         }
       }
@@ -1616,7 +1670,8 @@ const RecentContactsList = () => {
       return {
         found: false,
         nameMatch: false,
-        contact: null
+        contact: null,
+        company: null
       };
     } catch (error) {
       console.error('Error searching Hubspot:', error);
@@ -1658,11 +1713,13 @@ const RecentContactsList = () => {
   }, []);
   
   // Function to map Hubspot contact properties to our data model - wrapped in useCallback
-  const mapHubspotContactToOurModel = useCallback((hubspotContact) => {
+  const mapHubspotContactToOurModel = useCallback((hubspotContact, hubspotCompany) => {
     const properties = hubspotContact.properties;
     
     // Map Hubspot properties to our data model
-    return {
+    const contactData = {
+      first_name: properties.firstname || '',
+      last_name: properties.lastname || '',
       email: properties.email || '',
       email2: properties.work_email || '',
       email3: '', // Hubspot might not have a third email field
@@ -1672,9 +1729,31 @@ const RecentContactsList = () => {
       // Map Hubspot lead status to our contact category if possible
       contact_category: mapHubspotStatusToCategory(properties.hs_lead_status),
       // Default to quarterly for keep in touch frequency
-      keep_in_touch_frequency: 'Quarterly',
+      keep_in_touch_frequency: properties.keep_in_touch_frequency || 'Quarterly',
       // Map Hubspot score to our score (assuming 0-100 scale)
-      score: mapHubspotScoreToOurScore(properties.hubspot_score)
+      score: mapHubspotScoreToOurScore(properties.hubspot_score),
+      // Additional fields
+      city: properties.city || '',
+      note: properties.about || '' // Using about field for notes
+    };
+    
+    // If we have company data, prepare it for insertion/update
+    let companyData = null;
+    if (hubspotCompany) {
+      const companyProperties = hubspotCompany.properties;
+      companyData = {
+        name: companyProperties.name || '',
+        website: companyProperties.website || '',
+        description: companyProperties.description || '',
+        city: companyProperties.city || '',
+        nation: companyProperties.country || '',
+        category: companyProperties.industry || companyProperties.category || ''
+      };
+    }
+    
+    return {
+      contactData,
+      companyData
     };
   }, [mapHubspotStatusToCategory, mapHubspotScoreToOurScore]);
 
@@ -1701,33 +1780,75 @@ const RecentContactsList = () => {
       // Check if the contact was found and names match
       if (hubspotResult.found && hubspotResult.nameMatch) {
         // Map Hubspot data to our model
-        const hubspotData = mapHubspotContactToOurModel(hubspotResult.contact);
+        const hubspotData = mapHubspotContactToOurModel(hubspotResult.contact, hubspotResult.company);
         
-        // Update Supabase with the data from Hubspot
+        // Update Supabase with the contact data from Hubspot
         const { error } = await supabase
           .from('contacts')
           .update({
-            email: hubspotData.email || contact.email,
-            email2: hubspotData.email2 || contact.email2,
-            email3: hubspotData.email3 || contact.email3,
-            mobile: hubspotData.mobile || contact.mobile,
-            mobile2: hubspotData.mobile2 || contact.mobile2,
-            linkedin: hubspotData.linkedin || contact.linkedin,
-            contact_category: hubspotData.contact_category || contact.contact_category,
-            keep_in_touch_frequency: hubspotData.keep_in_touch_frequency || contact.keep_in_touch_frequency,
-            score: hubspotData.score || contact.score
+            first_name: hubspotData.contactData.first_name || contact.first_name,
+            last_name: hubspotData.contactData.last_name || contact.last_name,
+            email: hubspotData.contactData.email || contact.email,
+            email2: hubspotData.contactData.email2 || contact.email2,
+            email3: hubspotData.contactData.email3 || contact.email3,
+            mobile: hubspotData.contactData.mobile || contact.mobile,
+            mobile2: hubspotData.contactData.mobile2 || contact.mobile2,
+            linkedin: hubspotData.contactData.linkedin || contact.linkedin,
+            contact_category: hubspotData.contactData.contact_category || contact.contact_category,
+            keep_in_touch_frequency: hubspotData.contactData.keep_in_touch_frequency || contact.keep_in_touch_frequency,
+            score: hubspotData.contactData.score || contact.score,
+            city: hubspotData.contactData.city || contact.city,
+            note: hubspotData.contactData.note || contact.note
           })
           .eq('id', contact.id);
         
         if (error) throw error;
         
-        // TODO: Update Airtable if needed
-        console.log("Updating Airtable with the same data (Airtable integration needed)");
+        // If we have company data, update or create the company
+        if (hubspotData.companyData) {
+          // Check if the company already exists
+          let companyId = null;
+          
+          if (hubspotData.companyData.website) {
+            const { data: existingCompany } = await supabase
+              .from('companies')
+              .select('id')
+              .eq('website', hubspotData.companyData.website)
+              .maybeSingle();
+              
+            if (existingCompany) {
+              // Update existing company
+              companyId = existingCompany.id;
+              await supabase
+                .from('companies')
+                .update(hubspotData.companyData)
+                .eq('id', companyId);
+            } else {
+              // Create new company
+              const { data: newCompany, error: companyError } = await supabase
+                .from('companies')
+                .insert(hubspotData.companyData)
+                .select()
+                .single();
+                
+              if (companyError) throw companyError;
+              companyId = newCompany.id;
+            }
+            
+            // Link the contact to the company
+            if (companyId) {
+              await supabase
+                .from('contacts')
+                .update({ company_id: companyId })
+                .eq('id', contact.id);
+            }
+          }
+        }
         
         // Refresh data to show updated contact
         await fetchData();
         
-        alert(`Contact data updated from Hubspot for ${contact.first_name} ${contact.last_name}`);
+        alert(`Contact and company data updated from Hubspot for ${contact.first_name} ${contact.last_name}`);
       } else if (hubspotResult.found && !hubspotResult.nameMatch) {
         alert(`Found contact in Hubspot but names don't match for ${contact.first_name} ${contact.last_name}`);
       } else {
