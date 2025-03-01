@@ -3,6 +3,85 @@ import { Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 
+const Container = styled.div`
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 1.5rem;
+  margin-top: 2rem;
+`;
+
+const Header = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+`;
+
+const ContactTable = styled.table`
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+`;
+
+const TableHead = styled.thead`
+  background-color: #f8f9fa;
+  
+  th {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 2px solid #dee2e6;
+  }
+`;
+
+const TableBody = styled.tbody`
+  tr {
+    &:hover {
+      background-color: #f8f9fa;
+    }
+  }
+  
+  td {
+    padding: 0.75rem;
+    border-bottom: 1px solid #dee2e6;
+  }
+`;
+
+const ActionButton = styled.button`
+  background-color: ${props => props.skip ? '#dc3545' : '#0070f3'};
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+  margin-right: 0.5rem;
+  
+  &:hover {
+    background-color: ${props => props.skip ? '#c82333' : '#0060df'};
+  }
+`;
+
+const PaginationControls = styled.div`
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+`;
+
+const PageButton = styled.button`
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #ddd;
+  background: ${props => props.active ? '#0070f3' : 'white'};
+  color: ${props => props.active ? 'white' : '#333'};
+  border-radius: 4px;
+  cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
+  opacity: ${props => props.disabled ? 0.6 : 1};
+  
+  &:hover:not(:disabled) {
+    background: ${props => props.active ? '#0060df' : '#f8f9fa'};
+  }
+`;
+
 const RecentContactsList = () => {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -186,4 +265,4 @@ const RecentContactsList = () => {
   );
 };
 
-export default RecentContactsList;  // Make sure this line is added
+export default RecentContactsList;
