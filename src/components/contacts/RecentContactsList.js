@@ -1,5 +1,4 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { Link } from 'react-router-dom'; // eslint-disable-line no-unused-vars
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 
@@ -50,15 +49,15 @@ const ContactTable = styled.table`
 `;
 
 const TableHead = styled.thead`
-  background: #f7fafc;
+  background: #f3f4f6;
   th {
-    padding: 1rem 1.5rem;
+    padding: 0.75rem 1rem;
     text-align: left;
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     font-weight: 600;
     color: #4a5568;
     text-transform: uppercase;
-    border-bottom: 2px solid #e2e8f0;
+    border-bottom: 2px solid #e5e7eb;
   }
 `;
 
@@ -66,30 +65,30 @@ const TableBody = styled.tbody`
   tr {
     transition: background-color 0.2s ease;
     &:hover {
-      background-color: #f7fafc;
+      background-color: #f9fafb;
     }
   }
   td {
-    padding: 1.25rem 1.5rem;
-    border-bottom: 1px solid #edf2f7;
-    font-size: 0.95rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 0.9rem;
     color: #2d3748;
     vertical-align: middle;
   }
 `;
 
 const ActionButton = styled.button`
-  background-color: ${props => props.skip ? '#e53e3e' : props.merge ? '#f6e05e' : '#3182ce'};
-  color: ${props => props.merge ? '#2d3748' : 'white'};
+  background-color: ${props => props.skip ? '#ef4444' : props.merge ? '#facc15' : '#3b82f6'};
+  color: ${props => props.merge ? '#1f2937' : 'white'};
   border: none;
   border-radius: 8px;
-  padding: 0.5rem 1rem;
+  padding: 0.5rem 0.875rem;
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 0.75rem;
   font-weight: 500;
   transition: background-color 0.2s ease, transform 0.1s ease;
   &:hover {
-    background-color: ${props => props.skip ? '#c53030' : props.merge ? '#ecc94b' : '#2b6cb0'};
+    background-color: ${props => props.skip ? '#dc2626' : props.merge ? '#e5a100' : '#2563eb'};
     transform: translateY(-2px);
   }
 `;
@@ -98,23 +97,23 @@ const PaginationControls = styled.div`
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 0.75rem;
-  margin-top: 2rem;
-  font-size: 0.9rem;
-  color: #718096;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+  font-size: 0.8rem;
+  color: #6b7280;
 `;
 
 const PageButton = styled.button`
-  padding: 0.5rem 1rem;
-  border: 1px solid #e2e8f0;
-  background: ${props => props.active ? '#3182ce' : 'white'};
+  padding: 0.5rem 0.875rem;
+  border: 1px solid #e5e7eb;
+  background: ${props => props.active ? '#3b82f6' : 'white'};
   color: ${props => props.active ? 'white' : '#4a5568'};
   border-radius: 8px;
   cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
   opacity: ${props => props.disabled ? 0.5 : 1};
   transition: background-color 0.2s ease, transform 0.1s ease;
   &:hover:not(:disabled) {
-    background: ${props => props.active ? '#2b6cb0' : '#edf2f7'};
+    background: ${props => props.active ? '#2563eb' : '#f9fafb'};
     transform: translateY(-2px);
   }
 `;
@@ -130,8 +129,8 @@ const LoadingOverlay = styled.div`
   justify-content: center;
   align-items: center;
   z-index: 10;
-  font-size: 1rem;
-  color: #718096;
+  font-size: 0.9rem;
+  color: #6b7280;
 `;
 
 const Modal = styled.div`
@@ -154,10 +153,10 @@ const Modal = styled.div`
 
 const ModalContent = styled.div`
   background: #fff;
-  padding: 1.5rem;
+  padding: 1.25rem;
   border-radius: 12px;
   width: 90%;
-  max-width: 500px;
+  max-width: 400px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   animation: scaleIn 0.2s ease-out forwards;
   @keyframes scaleIn {
@@ -170,9 +169,9 @@ const ModalHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
   h2 {
-    font-size: 1.25rem;
+    font-size: 1rem;
     font-weight: 600;
     color: #2d3748;
   }
@@ -181,156 +180,158 @@ const ModalHeader = styled.div`
 const CloseButton = styled.button`
   background: none;
   border: none;
-  font-size: 1.5rem;
-  color: #a0aec0;
+  font-size: 1.25rem;
+  color: #9ca3af;
   cursor: pointer;
   transition: color 0.2s ease;
-  &:hover { color: #3182ce; }
+  &:hover { color: #3b82f6; }
 `;
 
 const SearchContainer = styled.div`
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
 `;
 
 const SearchInput = styled.input`
-  padding: 0.75rem;
-  border: 1px solid #e2e8f0;
+  padding: 0.625rem;
+  border: 1px solid #e5e7eb;
   border-radius: 8px;
   width: 100%;
-  font-size: 0.95rem;
+  font-size: 0.875rem;
   color: #2d3748;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
   &:focus {
     outline: none;
-    border-color: #3182ce;
-    box-shadow: 0 0 0 2px rgba(49, 130, 206, 0.2);
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
   }
 `;
 
 const SearchResults = styled.div`
   margin-top: 0.5rem;
-  max-height: 200px;
+  max-height: 150px;
   overflow-y: auto;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #e5e7eb;
   border-radius: 8px;
   background: #fff;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 `;
 
 const SearchResultItem = styled.div`
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid #edf2f7;
+  padding: 0.625rem 0.875rem;
+  border-bottom: 1px solid #e5e7eb;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   color: #2d3748;
   transition: background-color 0.2s ease, transform 0.1s ease;
   &:hover {
-    background-color: #f7fafc;
+    background-color: #f9fafb;
     transform: translateX(2px);
   }
   &:last-child { border-bottom: none; }
 `;
 
 const MergeForm = styled.div`
-  display: grid;
-  gap: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 `;
 
 const FormGroup = styled.div`
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
 `;
 
 const Label = styled.label`
   display: block;
-  margin-bottom: 0.5rem;
-  font-size: 0.9rem;
+  margin-bottom: 0.375rem;
+  font-size: 0.75rem;
   font-weight: 500;
   color: #4a5568;
 `;
 
 const Input = styled.input`
-  padding: 0.75rem;
-  border: 1px solid #e2e8f0;
+  padding: 0.625rem;
+  border: 1px solid #e5e7eb;
   border-radius: 8px;
   width: 100%;
-  font-size: 0.95rem;
+  font-size: 0.875rem;
   color: #2d3748;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
   &:focus {
     outline: none;
-    border-color: #3182ce;
-    box-shadow: 0 0 0 2px rgba(49, 130, 206, 0.2);
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
   }
 `;
 
 const Select = styled.select`
-  padding: 0.75rem;
-  border: 1px solid #e2e8f0;
+  padding: 0.625rem;
+  border: 1px solid #e5e7eb;
   border-radius: 8px;
   width: 100%;
-  font-size: 0.95rem;
+  font-size: 0.875rem;
   color: #2d3748;
   background: #fff;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
   &:focus {
     outline: none;
-    border-color: #3182ce;
-    box-shadow: 0 0 0 2px rgba(49, 130, 206, 0.2);
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
   }
 `;
 
 const MergeColumn = styled.div`
-  padding: 1rem;
-  background: #f7fafc;
+  padding: 0.75rem;
+  background: #f9fafb;
   border-radius: 8px;
-  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.875rem;
   color: #2d3748;
 `;
 
 const ColumnTitle = styled.h3`
-  margin-bottom: 0.75rem;
-  font-size: 1rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: #2d3748;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid #e5e7eb;
 `;
 
 const ButtonGroup = styled.div`
   display: flex;
   justify-content: flex-end;
-  gap: 1rem;
-  margin-top: 1.5rem;
+  gap: 0.75rem;
+  margin-top: 1rem;
 `;
 
 const Button = styled.button`
-  padding: 0.75rem 1.5rem;
+  padding: 0.625rem 1rem;
   border-radius: 8px;
-  font-size: 0.95rem;
+  font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
   border: none;
-  background-color: ${props => props.primary ? '#3182ce' : '#edf2f7'};
+  background-color: ${props => props.primary ? '#3b82f6' : '#e5e7eb'};
   color: ${props => props.primary ? 'white' : '#4a5568'};
   transition: background-color 0.2s ease, transform 0.1s ease;
   &:hover {
-    background-color: ${props => props.primary ? '#2b6cb0' : '#e2e8f0'};
+    background-color: ${props => props.primary ? '#2563eb' : '#d1d5db'};
     transform: translateY(-2px);
   }
 `;
 
 const CompanyInput = styled.input`
-  padding: 0.75rem;
-  border: 1px solid #e2e8f0;
+  padding: 0.625rem;
+  border: 1px solid #e5e7eb;
   border-radius: 8px;
   width: 100%;
-  font-size: 0.95rem;
+  font-size: 0.875rem;
   color: #2d3748;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
   &:focus {
     outline: none;
-    border-color: #3182ce;
-    box-shadow: 0 0 0 2px rgba(49, 130, 206, 0.2);
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
   }
 `;
 
@@ -340,60 +341,60 @@ const CompanyDropdown = styled.div`
   left: 0;
   right: 0;
   background: #fff;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #e5e7eb;
   border-radius: 8px;
-  max-height: 200px;
+  max-height: 150px;
   overflow-y: auto;
   z-index: 10;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 `;
 
 const CompanyOption = styled.div`
-  padding: 0.75rem 1rem;
+  padding: 0.625rem 0.875rem;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   color: #2d3748;
   transition: background-color 0.2s ease, transform 0.1s ease;
   &:hover {
-    background-color: #f7fafc;
+    background-color: #f9fafb;
     transform: translateX(2px);
   }
 `;
 
 const UnlinkButton = styled.button`
-  margin-left: 0.75rem;
+  margin-left: 0.625rem;
   background: none;
   border: none;
-  font-size: 1.1rem;
-  color: #e53e3e;
+  font-size: 0.875rem;
+  color: #ef4444;
   cursor: pointer;
   transition: color 0.2s ease, transform 0.1s ease;
   &:hover {
-    color: #c53030;
+    color: #dc2626;
     transform: translateY(-2px);
   }
 `;
 
 const EditButton = styled.span`
-  margin-left: 0.75rem;
+  margin-left: 0.625rem;
   cursor: pointer;
-  color: #3182ce;
-  font-size: 1.1rem;
+  color: #3b82f6;
+  font-size: 0.875rem;
   transition: color 0.2s ease, transform 0.1s ease;
   &:hover {
-    color: #2b6cb0;
+    color: #2563eb;
     transform: translateY(-2px);
   }
 `;
 
 const EmailButton = styled.span`
-  margin-left: 0.75rem;
+  margin-left: 0.625rem;
   cursor: pointer;
-  color: #3182ce;
-  font-size: 1.1rem;
+  color: #3b82f6;
+  font-size: 0.875rem;
   transition: color 0.2s ease, transform 0.1s ease;
   &:hover {
-    color: #2b6cb0;
+    color: #2563eb;
     transform: translateY(-2px);
   }
 `;
@@ -793,7 +794,7 @@ const RecentContactsList = () => {
                   <td>
                     {contact.first_name || contact.last_name ? (
                       contact.linkedin ? (
-                        <a href={contact.linkedin} target="_blank" rel="noopener noreferrer">
+                        <a href={contact.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#9333ea', textDecoration: 'underline' }}>
                           {`${contact.first_name || ''} ${contact.last_name || ''}`}
                         </a>
                       ) : (
@@ -801,6 +802,7 @@ const RecentContactsList = () => {
                           href={`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`}
                           target="_blank"
                           rel="noopener noreferrer"
+                          style={{ color: '#9333ea', textDecoration: 'underline' }}
                         >
                           {`${contact.first_name || ''} ${contact.last_name || ''}`}
                         </a>
@@ -823,6 +825,7 @@ const RecentContactsList = () => {
                           }
                           target="_blank"
                           rel="noopener noreferrer"
+                          style={{ color: '#3b82f6', textDecoration: 'underline' }}
                         >
                           {contact.companies.name}
                         </a>
@@ -858,6 +861,7 @@ const RecentContactsList = () => {
                           href={`https://mail.superhuman.com/search/${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`}
                           target="_blank"
                           rel="noopener noreferrer"
+                          style={{ color: '#3b82f6', textDecoration: 'underline' }}
                         >
                           {contact.email}
                         </a>
@@ -871,7 +875,7 @@ const RecentContactsList = () => {
                   </td>
                   <td>
                     {contact.mobile ? (
-                      <a href={`https://wa.me/${contact.mobile.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer">
+                      <a href={`https://wa.me/${contact.mobile.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', textDecoration: 'underline' }}>
                         {contact.mobile}
                       </a>
                     ) : (
@@ -879,6 +883,7 @@ const RecentContactsList = () => {
                         href={`https://app.timelines.ai/search/?s=${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`}
                         target="_blank"
                         rel="noopener noreferrer"
+                        style={{ color: '#3b82f6', textDecoration: 'underline' }}
                       >
                         Search
                       </a>
@@ -993,7 +998,7 @@ const RecentContactsList = () => {
                 <MergeForm>
                   <MergeColumn>
                     <ColumnTitle>Primary Contact</ColumnTitle>
-                    <p style={{ fontSize: '0.95rem', color: '#2d3748' }}>
+                    <p style={{ fontSize: '0.875rem', color: '#2d3748' }}>
                       <strong>Name:</strong> {selectedContact.first_name || ''} {selectedContact.last_name || ''}<br />
                       <strong>Email:</strong> {selectedContact.email || 'None'}<br />
                       <strong>Mobile:</strong> {selectedContact.mobile || 'None'}<br />
@@ -1003,7 +1008,7 @@ const RecentContactsList = () => {
                   </MergeColumn>
                   <MergeColumn>
                     <ColumnTitle>Secondary Contact (will be deleted)</ColumnTitle>
-                    <p style={{ fontSize: '0.95rem', color: '#2d3748' }}>
+                    <p style={{ fontSize: '0.875rem', color: '#2d3748' }}>
                       <strong>Name:</strong> {targetContact.first_name || ''} {targetContact.last_name || ''}<br />
                       <strong>Email:</strong> {targetContact.email || 'None'}<br />
                       <strong>Mobile:</strong> {targetContact.mobile || 'None'}<br />
@@ -1012,7 +1017,7 @@ const RecentContactsList = () => {
                     </p>
                   </MergeColumn>
                 </MergeForm>
-                <h3 style={{ margin: '1.5rem 0', fontSize: '1.1rem', fontWeight: 600, color: '#2d3748' }}>
+                <h3 style={{ margin: '1rem 0', fontSize: '1rem', fontWeight: 600, color: '#2d3748' }}>
                   Merged Contact Information
                 </h3>
                 <MergeForm>
@@ -1129,14 +1134,14 @@ const RecentContactsList = () => {
               <h2>Add/Edit Company</h2>
               <CloseButton onClick={() => setShowCompanyModal(false)}>×</CloseButton>
             </ModalHeader>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#2d3748', marginBottom: '1rem' }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#2d3748', marginBottom: '0.75rem' }}>
               Contact Details
             </h3>
-            <p style={{ fontSize: '0.95rem', color: '#2d3748', marginBottom: '1.5rem' }}>
+            <p style={{ fontSize: '0.875rem', color: '#2d3748', marginBottom: '1rem' }}>
               <strong>Name:</strong> {currentContact?.first_name} {currentContact?.last_name}<br />
               <strong>Email:</strong> {currentContact?.email}
             </p>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#2d3748', marginBottom: '1rem' }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: '#2d3748', marginBottom: '0.75rem' }}>
               Company Information
             </h3>
             <MergeForm>
