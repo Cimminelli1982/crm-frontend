@@ -807,6 +807,23 @@ const getRandomColor = () => {
   return colors[Math.floor(Math.random() * colors.length)];
 };
 
+// Utility function to format phone numbers
+const formatPhoneNumber = (phoneNumber) => {
+  if (!phoneNumber) return '';
+  
+  console.log(`Formatting phone number: "${phoneNumber}"`);
+  
+  // Remove all non-digit characters
+  let cleaned = phoneNumber.replace(/\D/g, '');
+  console.log(`After removing non-digits: "${cleaned}"`);
+  
+  // Always add a + prefix to the cleaned number
+  const formatted = `+${cleaned}`;
+  console.log(`Final formatted number: "${formatted}"`);
+  
+  return formatted;
+};
+
 const RecentContactsList = () => {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1567,7 +1584,7 @@ const RecentContactsList = () => {
             endpoint: `/crm/v3/objects/contacts/${contactId}`,
             method: 'GET',
             params: {
-              properties: 'email,firstname,lastname,hs_additional_emails,work_email,email2,email3,secondary_email,alternate_email,personal_email,additional_email,other_email'
+              properties: 'email,firstname,lastname,hs_additional_emails,work_email,email2,email3,secondary_email,alternate_email,personal_email,additional_email,other_email,mobilephone,phone,work_phone,home_phone,cell_phone,mobile_phone'
             }
           });
           
@@ -1579,6 +1596,16 @@ const RecentContactsList = () => {
             console.log('===== HUBSPOT API RESPONSE =====');
             console.log('Contact ID:', contactId);
             console.log('Retrieved all contact properties:', Object.keys(contactWithAllProperties.properties));
+            
+            // Log phone-related properties specifically
+            console.log('Phone properties:');
+            const phoneProps = ['phone', 'mobilephone', 'work_phone', 'home_phone', 'cell_phone', 'mobile_phone'];
+            phoneProps.forEach(prop => {
+              if (contactWithAllProperties.properties[prop]) {
+                console.log(`- ${prop}: ${contactWithAllProperties.properties[prop]}`);
+              }
+            });
+            
             console.log('Raw response data:', JSON.stringify(allPropertiesResponse.data, null, 2));
             console.log('===== END HUBSPOT API RESPONSE =====');
           }
@@ -1667,7 +1694,7 @@ const RecentContactsList = () => {
             endpoint: `/crm/v3/objects/contacts/${contactId}`,
             method: 'GET',
             params: {
-              properties: 'email,firstname,lastname,hs_additional_emails,work_email,email2,email3,secondary_email,alternate_email,personal_email,additional_email,other_email'
+              properties: 'email,firstname,lastname,hs_additional_emails,work_email,email2,email3,secondary_email,alternate_email,personal_email,additional_email,other_email,mobilephone,phone,work_phone,home_phone,cell_phone,mobile_phone'
             }
           });
           
@@ -1679,6 +1706,16 @@ const RecentContactsList = () => {
             console.log('===== HUBSPOT API RESPONSE =====');
             console.log('Contact ID:', contactId);
             console.log('Retrieved all contact properties:', Object.keys(contactWithAllProperties.properties));
+            
+            // Log phone-related properties specifically
+            console.log('Phone properties:');
+            const phoneProps = ['phone', 'mobilephone', 'work_phone', 'home_phone', 'cell_phone', 'mobile_phone'];
+            phoneProps.forEach(prop => {
+              if (contactWithAllProperties.properties[prop]) {
+                console.log(`- ${prop}: ${contactWithAllProperties.properties[prop]}`);
+              }
+            });
+            
             console.log('Raw response data:', JSON.stringify(allPropertiesResponse.data, null, 2));
             console.log('===== END HUBSPOT API RESPONSE =====');
           }
@@ -1947,6 +1984,22 @@ const RecentContactsList = () => {
     
     console.log('All found emails:', emails);
     
+    // Get all possible phone numbers
+    const phones = [];
+    
+    // Check phone fields in priority order
+    const phoneFields = [
+      'mobilephone', 'phone', 'cell_phone', 'mobile_phone', 'work_phone', 'home_phone'
+    ];
+    
+    phoneFields.forEach(field => {
+      if (properties[field] && properties[field].trim() !== '') {
+        phones.push(properties[field]);
+      }
+    });
+    
+    console.log('All phone numbers found (in priority order):', phones);
+    
     // Map Hubspot properties to our data model
     const contactData = {
       first_name: properties.firstname || '',
@@ -1954,8 +2007,8 @@ const RecentContactsList = () => {
       email: emails[0] || '', // Primary email
       email2: emails[1] || '', // Second email if available
       email3: emails[2] || '', // Third email if available
-      mobile: properties.mobilephone || '',
-      mobile2: properties.phone || '', // Using phone as secondary mobile
+      mobile: formatPhoneNumber(properties.mobilephone || phones[0] || ''),
+      mobile2: formatPhoneNumber(properties.phone || phones[1] || ''),
       linkedin: properties.linkedin_profile || '',
       // Map Hubspot lead status to our contact category if possible
       contact_category: mapHubspotStatusToCategory(properties.hs_lead_status),
@@ -1968,12 +2021,27 @@ const RecentContactsList = () => {
       note: properties.about || properties.notes || '' // Using about field for notes
     };
     
+    // Log phone numbers for debugging
+    console.log('===== PHONE NUMBER MAPPING =====');
+    console.log('HubSpot mobilephone (raw):', properties.mobilephone);
+    console.log('HubSpot phone (raw):', properties.phone);
+    console.log('Primary mobile mapping:', 'mobilephone' in properties ? 'Using mobilephone' : 'Using fallback');
+    console.log('Secondary mobile mapping:', 'phone' in properties ? 'Using phone' : 'Using fallback');
+    console.log('Formatted primary mobile:', contactData.mobile);
+    console.log('Formatted secondary mobile:', contactData.mobile2);
+    
     // Log the final mapped data with focus on emails
     console.log('===== EMAIL MAPPING SUMMARY =====');
     console.log('All emails found (in priority order):', emails);
     console.log('Primary email mapped to contactData.email:', contactData.email);
     console.log('Secondary email mapped to contactData.email2:', contactData.email2);
     console.log('Tertiary email mapped to contactData.email3:', contactData.email3);
+    
+    // Add phone mapping summary
+    console.log('===== PHONE MAPPING SUMMARY =====');
+    console.log('All phone numbers found (in priority order):', phones);
+    console.log('Primary phone mapped to contactData.mobile:', contactData.mobile);
+    console.log('Secondary phone mapped to contactData.mobile2:', contactData.mobile2);
     
     // Log the final mapped data
     console.log('===== MAPPED DATA TO OUR MODEL =====');
@@ -1999,7 +2067,7 @@ const RecentContactsList = () => {
       contactData,
       companyData
     };
-  }, [mapHubspotStatusToCategory, mapHubspotScoreToOurScore]);
+  }, [mapHubspotStatusToCategory, mapHubspotScoreToOurScore, formatPhoneNumber]);
 
   // Updated handleSearchHubspot function to use real Hubspot API
   const handleSearchHubspot = useCallback(async (contact) => {
@@ -2174,47 +2242,47 @@ const RecentContactsList = () => {
                     )}
                   </td>
                   <td>
-                    {contact.companies ? (
-                      <div>
-                        <a
-                          href={
-                            contact.companies.website
-                              ? contact.companies.website.startsWith('http')
-                                ? contact.companies.website
-                                : `https://${contact.companies.website}`
-                              : '#'
-                          }
-                          target="_blank"
-                          rel="noopener noreferrer"
+                  {contact.companies ? (
+  <div>
+    <a
+      href={
+        contact.companies.website
+          ? contact.companies.website.startsWith('http')
+            ? contact.companies.website
+            : `https://${contact.companies.website}`
+          : '#'
+      }
+      target="_blank"
+      rel="noopener noreferrer"
                           style={{ color: '#2d3748', textDecoration: 'none' }}
-                        >
-                          {contact.companies.name}
-                        </a>
-                        <EditButton onClick={() => handleEditCompany(contact)}>✎</EditButton>
-                        <UnlinkButton onClick={() => handleUnlinkCompany(contact.id)}>✕</UnlinkButton>
-                      </div>
-                    ) : (
-                      <div>
-                        <CompanyInput
-                          value={companySearchTerm[contact.id] || ''}
-                          onChange={(e) => handleCompanySearch(contact.id, e.target.value)}
-                          onKeyPress={(e) => handleCompanyCreateOnEnter(e, contact.id)}
-                          placeholder="Add a company"
-                        />
-                        {companySuggestions[contact.id]?.length > 0 && (
-                          <CompanyDropdown>
-                            {companySuggestions[contact.id].map((company, index) => (
-                              <CompanyOption
-                                key={index}
-                                onClick={() => handleCompanySelect(contact.id, company)}
-                              >
-                                {company.name}
-                              </CompanyOption>
-                            ))}
-                          </CompanyDropdown>
-                        )}
-                      </div>
-                    )}
+    >
+      {contact.companies.name}
+    </a>
+    <EditButton onClick={() => handleEditCompany(contact)}>✎</EditButton>
+    <UnlinkButton onClick={() => handleUnlinkCompany(contact.id)}>✕</UnlinkButton>
+  </div>
+) : (
+  <div>
+    <CompanyInput
+      value={companySearchTerm[contact.id] || ''}
+      onChange={(e) => handleCompanySearch(contact.id, e.target.value)}
+      onKeyPress={(e) => handleCompanyCreateOnEnter(e, contact.id)}
+      placeholder="Add a company"
+    />
+    {companySuggestions[contact.id]?.length > 0 && (
+      <CompanyDropdown>
+        {companySuggestions[contact.id].map((company, index) => (
+          <CompanyOption
+            key={index}
+            onClick={() => handleCompanySelect(contact.id, company)}
+          >
+            {company.name}
+          </CompanyOption>
+        ))}
+      </CompanyDropdown>
+    )}
+  </div>
+)}
                   </td>
                   <td>
                     {contact.email ? (
@@ -2315,32 +2383,32 @@ const RecentContactsList = () => {
                     </TagsContainer>
                   </td>
                   <td>
-                    <Select
+                      <Select
                       value={contact.contact_category || ''}
-                      onChange={(e) => {
-                        const newCategory = e.target.value;
-                        const updateCategory = async () => {
-                          try {
-                            const { error } = await supabase
-                              .from('contacts')
-                              .update({ contact_category: newCategory || null })
-                              .eq('id', contact.id);
-                            if (error) throw error;
-                            setContacts(prev => prev.map(c =>
-                              c.id === contact.id ? { ...c, contact_category: newCategory || null } : c
-                            ));
-                          } catch (error) {
-                            alert('Failed to update category');
-                          }
-                        };
-                        updateCategory();
-                      }}
-                    >
+                        onChange={(e) => {
+                          const newCategory = e.target.value;
+                          const updateCategory = async () => {
+                            try {
+                              const { error } = await supabase
+                                .from('contacts')
+                                .update({ contact_category: newCategory || null })
+                                .eq('id', contact.id);
+                              if (error) throw error;
+                              setContacts(prev => prev.map(c =>
+                                c.id === contact.id ? { ...c, contact_category: newCategory || null } : c
+                              ));
+                            } catch (error) {
+                              alert('Failed to update category');
+                            }
+                          };
+                          updateCategory();
+                        }}
+                      >
                       <option value="">Missing</option>
-                      {CONTACT_CATEGORIES.map(category => (
-                        <option key={category} value={category}>{category}</option>
-                      ))}
-                    </Select>
+                        {CONTACT_CATEGORIES.map(category => (
+                          <option key={category} value={category}>{category}</option>
+                        ))}
+                      </Select>
                   </td>
                   <td>
                     {contact.keep_in_touch_frequency ? (
@@ -2450,27 +2518,27 @@ const RecentContactsList = () => {
             </ModalHeader>
             
             {!targetContact && (
-              <SearchContainer>
-                <Label>Search for a contact to merge with:</Label>
-                <SearchInput
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => {
-                    setSearchTerm(e.target.value);
-                    handleSearch(e.target.value);
-                  }}
-                  placeholder="Type to search..."
-                />
-                {searchResults.length > 0 && (
-                  <SearchResults>
-                    {searchResults.map(contact => (
-                      <SearchResultItem key={contact.id} onClick={() => handleSelectTarget(contact)}>
-                        {`${contact.first_name || ''} ${contact.last_name || ''}`} - {contact.email || 'No email'}
-                      </SearchResultItem>
-                    ))}
-                  </SearchResults>
-                )}
-              </SearchContainer>
+            <SearchContainer>
+              <Label>Search for a contact to merge with:</Label>
+              <SearchInput
+                type="text"
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  handleSearch(e.target.value);
+                }}
+                placeholder="Type to search..."
+              />
+              {searchResults.length > 0 && (
+                <SearchResults>
+                  {searchResults.map(contact => (
+                    <SearchResultItem key={contact.id} onClick={() => handleSelectTarget(contact)}>
+                      {`${contact.first_name || ''} ${contact.last_name || ''}`} - {contact.email || 'No email'}
+                    </SearchResultItem>
+                  ))}
+                </SearchResults>
+              )}
+            </SearchContainer>
             )}
 
             {targetContact && (
@@ -2479,86 +2547,86 @@ const RecentContactsList = () => {
                   <MergeFormColumn>
                     <MergeFormSection>
                       <MergeSectionTitle>Original Contact (Will be updated)</MergeSectionTitle>
-                      <FormGroup>
-                        <Label>First Name</Label>
-                        <Input
-                          type="text"
-                          value={mergedData.first_name || ''}
-                          onChange={(e) => handleInputChange('first_name', e.target.value)}
-                        />
-                      </FormGroup>
-                      <FormGroup>
-                        <Label>Last Name</Label>
-                        <Input
-                          type="text"
-                          value={mergedData.last_name || ''}
-                          onChange={(e) => handleInputChange('last_name', e.target.value)}
-                        />
-                      </FormGroup>
-                      <FormGroup>
-                        <Label>Primary Email</Label>
-                        <Input
-                          type="email"
-                          value={mergedData.email || ''}
-                          onChange={(e) => handleInputChange('email', e.target.value)}
-                        />
-                      </FormGroup>
-                      <FormGroup>
-                        <Label>Secondary Email</Label>
-                        <Input
-                          type="email"
-                          value={mergedData.email2 || ''}
-                          onChange={(e) => handleInputChange('email2', e.target.value)}
-                        />
-                      </FormGroup>
-                      <FormGroup>
-                        <Label>Third Email</Label>
-                        <Input
-                          type="email"
-                          value={mergedData.email3 || ''}
-                          onChange={(e) => handleInputChange('email3', e.target.value)}
-                        />
-                      </FormGroup>
-                      <FormGroup>
-                        <Label>Mobile</Label>
-                        <Input
-                          type="text"
-                          value={mergedData.mobile || ''}
-                          onChange={(e) => handleInputChange('mobile', e.target.value)}
-                        />
-                      </FormGroup>
-                      <FormGroup>
-                        <Label>LinkedIn</Label>
-                        <Input
-                          type="text"
-                          value={mergedData.linkedin || ''}
-                          onChange={(e) => handleInputChange('linkedin', e.target.value)}
-                        />
-                      </FormGroup>
-                      <FormGroup>
-                        <Label>Category</Label>
-                        <Select
-                          value={mergedData.contact_category || ''}
-                          onChange={(e) => handleInputChange('contact_category', e.target.value)}
-                        >
-                          <option value="">Select Category</option>
-                          {CONTACT_CATEGORIES.map(category => (
-                            <option key={category} value={category}>{category}</option>
-                          ))}
-                        </Select>
-                      </FormGroup>
-                      <FormGroup>
-                        <Label>Keep in Touch</Label>
-                        <Select
-                          value={mergedData.keep_in_touch_frequency || ''}
-                          onChange={(e) => handleInputChange('keep_in_touch_frequency', e.target.value)}
-                        >
-                          <option value="">Select Frequency</option>
-                          {KEEP_IN_TOUCH_FREQUENCIES.map(frequency => (
-                            <option key={frequency} value={frequency}>{frequency}</option>
-                          ))}
-                        </Select>
-                      </FormGroup>
+                  <FormGroup>
+                    <Label>First Name</Label>
+                    <Input
+                      type="text"
+                      value={mergedData.first_name || ''}
+                      onChange={(e) => handleInputChange('first_name', e.target.value)}
+                    />
+                  </FormGroup>
+                  <FormGroup>
+                    <Label>Last Name</Label>
+                    <Input
+                      type="text"
+                      value={mergedData.last_name || ''}
+                      onChange={(e) => handleInputChange('last_name', e.target.value)}
+                    />
+                  </FormGroup>
+                  <FormGroup>
+                    <Label>Primary Email</Label>
+                    <Input
+                      type="email"
+                      value={mergedData.email || ''}
+                      onChange={(e) => handleInputChange('email', e.target.value)}
+                    />
+                  </FormGroup>
+                  <FormGroup>
+                    <Label>Secondary Email</Label>
+                    <Input
+                      type="email"
+                      value={mergedData.email2 || ''}
+                      onChange={(e) => handleInputChange('email2', e.target.value)}
+                    />
+                  </FormGroup>
+                  <FormGroup>
+                    <Label>Third Email</Label>
+                    <Input
+                      type="email"
+                      value={mergedData.email3 || ''}
+                      onChange={(e) => handleInputChange('email3', e.target.value)}
+                    />
+                  </FormGroup>
+                  <FormGroup>
+                    <Label>Mobile</Label>
+                    <Input
+                      type="text"
+                      value={mergedData.mobile || ''}
+                      onChange={(e) => handleInputChange('mobile', e.target.value)}
+                    />
+                  </FormGroup>
+                  <FormGroup>
+                    <Label>LinkedIn</Label>
+                    <Input
+                      type="text"
+                      value={mergedData.linkedin || ''}
+                      onChange={(e) => handleInputChange('linkedin', e.target.value)}
+                    />
+                  </FormGroup>
+                  <FormGroup>
+                    <Label>Category</Label>
+                    <Select
+                      value={mergedData.contact_category || ''}
+                      onChange={(e) => handleInputChange('contact_category', e.target.value)}
+                    >
+                      <option value="">Select Category</option>
+                      {CONTACT_CATEGORIES.map(category => (
+                        <option key={category} value={category}>{category}</option>
+                      ))}
+                    </Select>
+                  </FormGroup>
+                  <FormGroup>
+                    <Label>Keep in Touch</Label>
+                    <Select
+                      value={mergedData.keep_in_touch_frequency || ''}
+                      onChange={(e) => handleInputChange('keep_in_touch_frequency', e.target.value)}
+                    >
+                      <option value="">Select Frequency</option>
+                      {KEEP_IN_TOUCH_FREQUENCIES.map(frequency => (
+                        <option key={frequency} value={frequency}>{frequency}</option>
+                      ))}
+                    </Select>
+                  </FormGroup>
                     </MergeFormSection>
                   </MergeFormColumn>
 
@@ -2754,11 +2822,11 @@ const RecentContactsList = () => {
         <ContactDetailsGrid>
           <ContactDetailItem>
             <span className="label">Name:</span>
-            {currentContact?.first_name} {currentContact?.last_name}
+              {currentContact?.first_name} {currentContact?.last_name}
           </ContactDetailItem>
           <ContactDetailItem>
             <span className="label">Email:</span>
-            {currentContact?.email}
+              {currentContact?.email}
           </ContactDetailItem>
         </ContactDetailsGrid>
       </ContactDetailsSection>
