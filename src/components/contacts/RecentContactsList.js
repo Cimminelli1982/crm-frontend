@@ -284,22 +284,22 @@ const RecentContactsList = () => {
     
     try {
       // Fetch count and contacts in parallel
-      const [countResponse, contactsResponse] = await Promise.all([
-        supabase
-          .from('contacts')
-          .select('*', { count: 'exact', head: true })
-          .gte('created_at', getThirtyDaysAgoRange.start)
-          .lte('created_at', getThirtyDaysAgoRange.end)
-          .or(`contact_category.neq.Skip,contact_category.is.null`),
-        supabase
-          .from('contacts')
-          .select('*')
-          .gte('created_at', getThirtyDaysAgoRange.start)
-          .lte('created_at', getThirtyDaysAgoRange.end)
-          .or(`contact_category.neq.Skip,contact_category.is.null`)
-          .order('created_at', { ascending: false })
-          .range(currentPage * rowsPerPage, (currentPage + 1) * rowsPerPage - 1)
-      ]);
+const [countResponse, contactsResponse] = await Promise.all([
+  supabase
+    .from('contacts')
+    .select('*, companies(name)', { count: 'exact', head: true })
+    .gte('created_at', getThirtyDaysAgoRange.start)
+    .lte('created_at', getThirtyDaysAgoRange.end)
+    .or(`contact_category.neq.Skip,contact_category.is.null`),
+  supabase
+    .from('contacts')
+    .select('*, companies(name)')
+    .gte('created_at', getThirtyDaysAgoRange.start)
+    .lte('created_at', getThirtyDaysAgoRange.end)
+    .or(`contact_category.neq.Skip,contact_category.is.null`)
+    .order('created_at', { ascending: false })
+    .range(currentPage * rowsPerPage, (currentPage + 1) * rowsPerPage - 1)
+]);
       
       // Handle count
       if (countResponse.error) {
@@ -505,6 +505,7 @@ const RecentContactsList = () => {
                 <th>Email</th>
                 <th>Mobile</th>
                 <th>Category</th>
+                <th>Company</th>
                 <th>Keep in Touch</th>
                 <th>Actions</th>
               </tr>
@@ -645,6 +646,9 @@ const RecentContactsList = () => {
                       ))}
                     </select>
                   </td>
+                      <td>
+  {contact.companies ? contact.companies.name : '-'}
+</td>
                   <td>
                     <Link to={`/contacts/edit/${contact.id}`}>
                       <ActionButton>Edit</ActionButton>
