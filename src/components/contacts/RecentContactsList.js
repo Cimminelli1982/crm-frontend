@@ -824,6 +824,49 @@ const formatPhoneNumber = (phoneNumber) => {
   return formatted;
 };
 
+// Utility function to format LinkedIn URLs
+const formatLinkedInUrl = (url) => {
+  if (!url) return '';
+  
+  console.log(`Formatting LinkedIn URL: "${url}"`);
+  
+  // Check if it's already properly formatted
+  if (url.startsWith('https://www.linkedin.com/in/')) {
+    console.log('LinkedIn URL already properly formatted');
+    return url;
+  }
+  
+  // Extract username/profile ID
+  let username = '';
+  
+  // Check for various LinkedIn URL formats
+  if (url.includes('linkedin.com/in/')) {
+    // Handle linkedin.com/in/username format (with or without https, www, etc.)
+    username = url.split('linkedin.com/in/')[1];
+  } else if (url.includes('linkedin.com/profile/')) {
+    // Handle linkedin.com/profile/view?id=XXX format
+    username = url.split('linkedin.com/profile/')[1];
+  } else if (!url.includes('linkedin.com') && !url.includes('/') && !url.includes(' ')) {
+    // If it's just a username without domain
+    username = url;
+  } else if (url.includes('@')) {
+    // It might be an email - do not try to format as LinkedIn URL
+    console.log('Input appears to be an email, not formatting as LinkedIn URL');
+    return url;
+  } else {
+    // For any other format, try to use as is
+    username = url;
+  }
+  
+  // Clean up the username by removing trailing parts
+  username = username.split('/')[0].split('?')[0].trim();
+  
+  // Create properly formatted URL
+  const formatted = `https://www.linkedin.com/in/${username}`;
+  console.log(`Reformatted LinkedIn URL: "${formatted}"`);
+  return formatted;
+};
+
 const RecentContactsList = () => {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1551,7 +1594,11 @@ const RecentContactsList = () => {
         'email2', 'email3', 'secondary_email', 'alternate_email', 
         'personal_email', 'additional_email', 'other_email',
         // HubSpot's dedicated property for additional emails
-        'hs_additional_emails'
+        'hs_additional_emails',
+        // Phone fields
+        'work_phone', 'home_phone', 'cell_phone', 'mobile_phone',
+        // LinkedIn URL
+        'hs_linkedin_url'
       ];
       
       // Search by email first if available
@@ -1584,7 +1631,7 @@ const RecentContactsList = () => {
             endpoint: `/crm/v3/objects/contacts/${contactId}`,
             method: 'GET',
             params: {
-              properties: 'email,firstname,lastname,hs_additional_emails,work_email,email2,email3,secondary_email,alternate_email,personal_email,additional_email,other_email,mobilephone,phone,work_phone,home_phone,cell_phone,mobile_phone'
+              properties: 'email,firstname,lastname,hs_additional_emails,work_email,email2,email3,secondary_email,alternate_email,personal_email,additional_email,other_email,mobilephone,phone,work_phone,home_phone,cell_phone,mobile_phone,hs_linkedin_url,linkedin_profile'
             }
           });
           
@@ -1694,7 +1741,7 @@ const RecentContactsList = () => {
             endpoint: `/crm/v3/objects/contacts/${contactId}`,
             method: 'GET',
             params: {
-              properties: 'email,firstname,lastname,hs_additional_emails,work_email,email2,email3,secondary_email,alternate_email,personal_email,additional_email,other_email,mobilephone,phone,work_phone,home_phone,cell_phone,mobile_phone'
+              properties: 'email,firstname,lastname,hs_additional_emails,work_email,email2,email3,secondary_email,alternate_email,personal_email,additional_email,other_email,mobilephone,phone,work_phone,home_phone,cell_phone,mobile_phone,hs_linkedin_url,linkedin_profile'
             }
           });
           
@@ -2000,6 +2047,16 @@ const RecentContactsList = () => {
     
     console.log('All phone numbers found (in priority order):', phones);
     
+    // Check for LinkedIn URL in HubSpot properties
+    let linkedinUrl = '';
+    if (properties.hs_linkedin_url) {
+      console.log('Found hs_linkedin_url property:', properties.hs_linkedin_url);
+      linkedinUrl = properties.hs_linkedin_url;
+    } else if (properties.linkedin_profile) {
+      console.log('Found linkedin_profile property:', properties.linkedin_profile);
+      linkedinUrl = properties.linkedin_profile;
+    }
+    
     // Map Hubspot properties to our data model
     const contactData = {
       first_name: properties.firstname || '',
@@ -2009,7 +2066,7 @@ const RecentContactsList = () => {
       email3: emails[2] || '', // Third email if available
       mobile: formatPhoneNumber(properties.mobilephone || phones[0] || ''),
       mobile2: formatPhoneNumber(properties.phone || phones[1] || ''),
-      linkedin: properties.linkedin_profile || '',
+      linkedin: formatLinkedInUrl(linkedinUrl),
       // Map Hubspot lead status to our contact category if possible
       contact_category: mapHubspotStatusToCategory(properties.hs_lead_status),
       // Default to quarterly for keep in touch frequency
@@ -2030,6 +2087,12 @@ const RecentContactsList = () => {
     console.log('Formatted primary mobile:', contactData.mobile);
     console.log('Formatted secondary mobile:', contactData.mobile2);
     
+    // Log LinkedIn URL processing
+    console.log('===== LINKEDIN URL MAPPING =====');
+    console.log('Original LinkedIn URL source:', properties.hs_linkedin_url ? 'hs_linkedin_url' : (properties.linkedin_profile ? 'linkedin_profile' : 'None'));
+    console.log('Original LinkedIn URL value:', linkedinUrl);
+    console.log('Formatted LinkedIn URL:', contactData.linkedin);
+    
     // Log the final mapped data with focus on emails
     console.log('===== EMAIL MAPPING SUMMARY =====');
     console.log('All emails found (in priority order):', emails);
@@ -2042,6 +2105,11 @@ const RecentContactsList = () => {
     console.log('All phone numbers found (in priority order):', phones);
     console.log('Primary phone mapped to contactData.mobile:', contactData.mobile);
     console.log('Secondary phone mapped to contactData.mobile2:', contactData.mobile2);
+    
+    // Add LinkedIn mapping summary
+    console.log('===== LINKEDIN MAPPING SUMMARY =====');
+    console.log('LinkedIn URL source:', properties.hs_linkedin_url ? 'hs_linkedin_url' : (properties.linkedin_profile ? 'linkedin_profile' : 'None'));
+    console.log('LinkedIn URL mapped to contactData.linkedin:', contactData.linkedin);
     
     // Log the final mapped data
     console.log('===== MAPPED DATA TO OUR MODEL =====');
@@ -2067,7 +2135,7 @@ const RecentContactsList = () => {
       contactData,
       companyData
     };
-  }, [mapHubspotStatusToCategory, mapHubspotScoreToOurScore, formatPhoneNumber]);
+  }, [mapHubspotStatusToCategory, mapHubspotScoreToOurScore, formatPhoneNumber, formatLinkedInUrl]);
 
   // Updated handleSearchHubspot function to use real Hubspot API
   const handleSearchHubspot = useCallback(async (contact) => {
