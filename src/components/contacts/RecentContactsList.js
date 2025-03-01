@@ -1,6 +1,9 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faWhatsapp } from '@fortawesome/free-brands-svg-icons';
+import { faEnvelope, faSearch, faPlus } from '@fortawesome/free-solid-svg-icons';
 
 const COMPANY_CATEGORIES = [
   'Advisor', 'Corporate', 'Institution', 'Professional Investor', 'SKIP', 'SME',
@@ -625,6 +628,118 @@ const MergeModalContent = styled(ModalContent)`
   }
 `;
 
+const TagsContainer = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+`;
+
+const Tag = styled.span`
+  background: ${props => props.color || '#e0f2fe'};
+  color: ${props => {
+    // Calculate contrasting text color based on background brightness
+    const color = props.color || '#e0f2fe';
+    const r = parseInt(color.slice(1, 3), 16);
+    const g = parseInt(color.slice(3, 5), 16);
+    const b = parseInt(color.slice(5, 7), 16);
+    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+    return brightness > 128 ? '#000000' : '#ffffff';
+  }};
+  font-size: 0.7rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  
+  &:hover {
+    filter: brightness(0.9);
+  }
+`;
+
+const TagDeleteButton = styled.span`
+  margin-left: 0.25rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  &:hover {
+    color: #ef4444;
+  }
+`;
+
+const AddTagButton = styled.button`
+  background: none;
+  border: none;
+  color: #6b7280;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem;
+  transition: color 0.2s ease;
+  
+  &:hover {
+    color: #3b82f6;
+  }
+`;
+
+const TagInput = styled.input`
+  padding: 0.2rem 0.4rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  width: 95%;
+  height: 22px;
+`;
+
+const TagDropdown = styled.div`
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  max-height: 150px;
+  overflow-y: auto;
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  width: 95%;
+`;
+
+const TagOption = styled.div`
+  padding: 0.4rem 0.5rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: #2d3748;
+  &:hover {
+    background-color: #f9fafb;
+  }
+`;
+
+const getRandomColor = () => {
+  // Array of vibrant colors for tags
+  const colors = [
+    '#F44336', // Red
+    '#E91E63', // Pink
+    '#9C27B0', // Purple
+    '#673AB7', // Deep Purple
+    '#3F51B5', // Indigo
+    '#2196F3', // Blue
+    '#03A9F4', // Light Blue
+    '#00BCD4', // Cyan
+    '#009688', // Teal
+    '#4CAF50', // Green
+    '#8BC34A', // Light Green
+    '#CDDC39', // Lime
+    '#FFEB3B', // Yellow
+    '#FFC107', // Amber
+    '#FF9800', // Orange
+    '#FF5722', // Deep Orange
+    '#795548', // Brown
+    '#607D8B'  // Blue Grey
+  ];
+  return colors[Math.floor(Math.random() * colors.length)];
+};
+
 const RecentContactsList = () => {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -651,6 +766,11 @@ const RecentContactsList = () => {
   const [showContactEditModal, setShowContactEditModal] = useState(false);
   const [editingContact, setEditingContact] = useState(null);
   const [contactEditData, setContactEditData] = useState({});
+  const [contactTags, setContactTags] = useState({});
+  const [isAddingTag, setIsAddingTag] = useState({});
+  const [tagInput, setTagInput] = useState({});
+  const [tagSuggestions, setTagSuggestions] = useState({});
+  const [allTags, setAllTags] = useState([]);
 
   const getThirtyDaysAgoRange = useMemo(() => {
     const now = new Date();
@@ -701,6 +821,60 @@ const RecentContactsList = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    const fetchTags = async () => {
+      try {
+        // Fetch all available tags
+        const { data: tagsData, error: tagsError } = await supabase
+          .from('tags')
+          .select('*');
+          
+        if (tagsError) throw tagsError;
+        
+        // Assign a random color to each tag
+        const tagsWithColors = tagsData.map(tag => ({
+          ...tag,
+          color: getRandomColor()
+        }));
+        
+        setAllTags(tagsWithColors || []);
+        
+        // For each contact, fetch their associated tags
+        const contactIds = contacts.map(contact => contact.id);
+        if (contactIds.length === 0) return;
+        
+        const { data: contactTagsData, error: contactTagsError } = await supabase
+          .from('contact_tags')
+          .select('contact_id, tags(*)')
+          .in('contact_id', contactIds);
+          
+        if (contactTagsError) throw contactTagsError;
+        
+        // Organize tags by contact_id and assign colors
+        const tagsByContact = {};
+        contactTagsData.forEach(item => {
+          if (!tagsByContact[item.contact_id]) {
+            tagsByContact[item.contact_id] = [];
+          }
+          // Assign a random color to each tag
+          const tagWithColor = {
+            ...item.tags,
+            color: getRandomColor()
+          };
+          tagsByContact[item.contact_id].push(tagWithColor);
+        });
+        
+        setContactTags(tagsByContact);
+      } catch (error) {
+        console.error('Error fetching tags:', error);
+      }
+    };
+    
+    if (contacts.length > 0) {
+      fetchTags();
+    }
+  }, [contacts]);
 
   const totalPages = useMemo(() => Math.ceil(totalCount / rowsPerPage), [totalCount, rowsPerPage]);
 
@@ -1062,6 +1236,154 @@ const RecentContactsList = () => {
     return () => window.removeEventListener('keydown', handleEscForMergeModal);
   }, [showMergeModal]);
 
+  const handleAddTagClick = useCallback((contactId) => {
+    setIsAddingTag(prev => ({ ...prev, [contactId]: true }));
+    setTagInput(prev => ({ ...prev, [contactId]: '' }));
+  }, []);
+
+  const handleTagInputChange = useCallback((contactId, value) => {
+    setTagInput(prev => ({ ...prev, [contactId]: value }));
+    
+    // Filter suggestions based on input
+    if (value.trim()) {
+      const suggestions = allTags.filter(tag => 
+        tag.name.toLowerCase().includes(value.toLowerCase())
+      );
+      setTagSuggestions(prev => ({ ...prev, [contactId]: suggestions }));
+    } else {
+      setTagSuggestions(prev => ({ ...prev, [contactId]: [] }));
+    }
+  }, [allTags]);
+
+  const handleTagSelect = useCallback(async (contactId, tag) => {
+    try {
+      // Check if tag already exists for this contact
+      const existingTags = contactTags[contactId] || [];
+      if (existingTags.some(t => t.id === tag.id)) {
+        // Tag already exists, don't add it again
+        setIsAddingTag(prev => ({ ...prev, [contactId]: false }));
+        setTagInput(prev => ({ ...prev, [contactId]: '' }));
+        setTagSuggestions(prev => ({ ...prev, [contactId]: [] }));
+        return;
+      }
+      
+      // Add tag to contact
+      const { error } = await supabase
+        .from('contact_tags')
+        .insert({ contact_id: contactId, tag_id: tag.id });
+        
+      if (error) throw error;
+      
+      // Assign a random color to this tag
+      const tagWithColor = {
+        ...tag,
+        color: getRandomColor()
+      };
+      
+      // Update local state
+      setContactTags(prev => {
+        const updatedTags = { ...prev };
+        if (!updatedTags[contactId]) {
+          updatedTags[contactId] = [];
+        }
+        updatedTags[contactId] = [...updatedTags[contactId], tagWithColor];
+        return updatedTags;
+      });
+      
+      setIsAddingTag(prev => ({ ...prev, [contactId]: false }));
+      setTagInput(prev => ({ ...prev, [contactId]: '' }));
+      setTagSuggestions(prev => ({ ...prev, [contactId]: [] }));
+    } catch (error) {
+      console.error('Error adding tag:', error);
+      alert('Failed to add tag');
+    }
+  }, [contactTags]);
+
+  const handleCreateTag = useCallback(async (contactId, tagName) => {
+    try {
+      // Create new tag
+      const { data: newTag, error: createError } = await supabase
+        .from('tags')
+        .insert({ name: tagName })
+        .select()
+        .single();
+        
+      if (createError) throw createError;
+      
+      // Add tag to contact
+      const { error: linkError } = await supabase
+        .from('contact_tags')
+        .insert({ contact_id: contactId, tag_id: newTag.id });
+        
+      if (linkError) throw linkError;
+      
+      // Assign a random color to the new tag
+      const tagWithColor = {
+        ...newTag,
+        color: getRandomColor()
+      };
+      
+      // Update local state
+      setAllTags(prev => [...prev, tagWithColor]);
+      setContactTags(prev => {
+        const updatedTags = { ...prev };
+        if (!updatedTags[contactId]) {
+          updatedTags[contactId] = [];
+        }
+        updatedTags[contactId] = [...updatedTags[contactId], tagWithColor];
+        return updatedTags;
+      });
+      
+      setIsAddingTag(prev => ({ ...prev, [contactId]: false }));
+      setTagInput(prev => ({ ...prev, [contactId]: '' }));
+      setTagSuggestions(prev => ({ ...prev, [contactId]: [] }));
+    } catch (error) {
+      console.error('Error creating tag:', error);
+      alert('Failed to create tag');
+    }
+  }, []);
+
+  const handleTagInputKeyDown = useCallback((e, contactId) => {
+    if (e.key === 'Enter' && tagInput[contactId]?.trim()) {
+      const suggestions = tagSuggestions[contactId] || [];
+      if (suggestions.length > 0) {
+        // Select the first suggestion
+        handleTagSelect(contactId, suggestions[0]);
+      } else {
+        // Create a new tag
+        handleCreateTag(contactId, tagInput[contactId].trim());
+      }
+    } else if (e.key === 'Escape') {
+      setIsAddingTag(prev => ({ ...prev, [contactId]: false }));
+      setTagInput(prev => ({ ...prev, [contactId]: '' }));
+      setTagSuggestions(prev => ({ ...prev, [contactId]: [] }));
+    }
+  }, [tagInput, tagSuggestions, handleTagSelect, handleCreateTag]);
+
+  const handleRemoveTag = useCallback(async (contactId, tagId) => {
+    try {
+      const { error } = await supabase
+        .from('contact_tags')
+        .delete()
+        .eq('contact_id', contactId)
+        .eq('tag_id', tagId);
+        
+      if (error) throw error;
+      
+      // Update local state
+      setContactTags(prev => {
+        const updatedTags = { ...prev };
+        if (updatedTags[contactId]) {
+          updatedTags[contactId] = updatedTags[contactId].filter(tag => tag.id !== tagId);
+        }
+        return updatedTags;
+      });
+    } catch (error) {
+      console.error('Error removing tag:', error);
+      alert('Failed to remove tag');
+    }
+  }, []);
+
   return (
     <Container>
       {loading && (
@@ -1083,10 +1405,10 @@ const RecentContactsList = () => {
                 <th>Company</th>
                 <th>Email</th>
                 <th>Mobile</th>
+                <th>Tags</th>
                 <th>Category</th>
                 <th>Keep in Touch</th>
                 <th>Score</th>
-                <th>Actions</th>
               </tr>
             </TableHead>
             <TableBody>
@@ -1112,49 +1434,53 @@ const RecentContactsList = () => {
                       '-'
                     )}
                     <EditButton onClick={() => handleOpenContactEdit(contact)}>✎</EditButton>
+                    <MergeIcon onClick={() => handleOpenMerge(contact)}>⚏</MergeIcon>
+                    {!contact.keep_in_touch_frequency && (
+                      <SkipIcon onClick={() => handleSkipContact(contact.id)}>✕</SkipIcon>
+                    )}
                   </td>
                   <td>
-                  {contact.companies ? (
-  <div>
-    <a
-      href={
-        contact.companies.website
-          ? contact.companies.website.startsWith('http')
-            ? contact.companies.website
-            : `https://${contact.companies.website}`
-          : '#'
-      }
-      target="_blank"
-      rel="noopener noreferrer"
-      style={{ color: '#2d3748', textDecoration: 'none' }}
-    >
-      {contact.companies.name}
-    </a>
-    <EditButton onClick={() => handleEditCompany(contact)}>✎</EditButton>
-    <UnlinkButton onClick={() => handleUnlinkCompany(contact.id)}>✕</UnlinkButton>
-  </div>
-) : (
-  <div>
-    <CompanyInput
-      value={companySearchTerm[contact.id] || ''}
-      onChange={(e) => handleCompanySearch(contact.id, e.target.value)}
-      onKeyPress={(e) => handleCompanyCreateOnEnter(e, contact.id)}
-      placeholder="Add a company"
-    />
-    {companySuggestions[contact.id]?.length > 0 && (
-      <CompanyDropdown>
-        {companySuggestions[contact.id].map((company, index) => (
-          <CompanyOption
-            key={index}
-            onClick={() => handleCompanySelect(contact.id, company)}
-          >
-            {company.name}
-          </CompanyOption>
-        ))}
-      </CompanyDropdown>
-    )}
-  </div>
-)}
+                    {contact.companies ? (
+                      <div>
+                        <a
+                          href={
+                            contact.companies.website
+                              ? contact.companies.website.startsWith('http')
+                                ? contact.companies.website
+                                : `https://${contact.companies.website}`
+                              : '#'
+                          }
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: '#2d3748', textDecoration: 'none' }}
+                        >
+                          {contact.companies.name}
+                        </a>
+                        <EditButton onClick={() => handleEditCompany(contact)}>✎</EditButton>
+                        <UnlinkButton onClick={() => handleUnlinkCompany(contact.id)}>✕</UnlinkButton>
+                      </div>
+                    ) : (
+                      <div>
+                        <CompanyInput
+                          value={companySearchTerm[contact.id] || ''}
+                          onChange={(e) => handleCompanySearch(contact.id, e.target.value)}
+                          onKeyPress={(e) => handleCompanyCreateOnEnter(e, contact.id)}
+                          placeholder="Add a company"
+                        />
+                        {companySuggestions[contact.id]?.length > 0 && (
+                          <CompanyDropdown>
+                            {companySuggestions[contact.id].map((company, index) => (
+                              <CompanyOption
+                                key={index}
+                                onClick={() => handleCompanySelect(contact.id, company)}
+                              >
+                                {company.name}
+                              </CompanyOption>
+                            ))}
+                          </CompanyDropdown>
+                        )}
+                      </div>
+                    )}
                   </td>
                   <td>
                     {contact.email ? (
@@ -1164,11 +1490,23 @@ const RecentContactsList = () => {
                           target="_blank"
                           rel="noopener noreferrer"
                           style={{ color: '#2d3748', textDecoration: 'none' }}
+                          title={contact.email}
                         >
-                          {contact.email}
+                          <FontAwesomeIcon icon={faEnvelope} />
                         </a>
                         <EmailButton>
-                          <a href={`https://mail.superhuman.com/search/${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`} target="_blank" rel="noopener noreferrer">✉</a>
+                          <a 
+                            href={`https://mail.superhuman.com/search/${encodeURIComponent(
+                              (contact.first_name || contact.last_name) 
+                                ? `${contact.first_name || ''} ${contact.last_name || ''}` 
+                                : contact.email
+                            )}`} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            title="Search in Superhuman"
+                          >
+                            <FontAwesomeIcon icon={faSearch} />
+                          </a>
                         </EmailButton>
                       </>
                     ) : (
@@ -1177,8 +1515,14 @@ const RecentContactsList = () => {
                   </td>
                   <td>
                     {contact.mobile ? (
-                      <a href={`https://wa.me/${contact.mobile.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" style={{ color: '#2d3748', textDecoration: 'none' }}>
-                        {contact.mobile}
+                      <a 
+                        href={`https://wa.me/${contact.mobile.replace(/\D/g, '')}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        style={{ color: '#25D366', textDecoration: 'none' }}
+                        title={`Chat on WhatsApp (${contact.mobile})`}
+                      >
+                        <FontAwesomeIcon icon={faWhatsapp} />
                       </a>
                     ) : (
                       <a
@@ -1186,10 +1530,55 @@ const RecentContactsList = () => {
                         target="_blank"
                         rel="noopener noreferrer"
                         style={{ color: '#2d3748', textDecoration: 'none' }}
+                        title="Search contact on Timelines.ai"
                       >
                         Search
                       </a>
                     )}
+                  </td>
+                  <td>
+                    <TagsContainer>
+                      {contactTags[contact.id]?.map(tag => (
+                        <Tag key={tag.id} color={tag.color}>
+                          {tag.name}
+                          <TagDeleteButton onClick={() => handleRemoveTag(contact.id, tag.id)}>×</TagDeleteButton>
+                        </Tag>
+                      ))}
+                      {isAddingTag[contact.id] ? (
+                        <div style={{ position: 'relative' }}>
+                          <TagInput
+                            value={tagInput[contact.id] || ''}
+                            onChange={(e) => handleTagInputChange(contact.id, e.target.value)}
+                            onKeyDown={(e) => handleTagInputKeyDown(e, contact.id)}
+                            placeholder="Type to search or create..."
+                            autoFocus
+                            onBlur={() => {
+                              // Small delay to allow clicking on suggestions
+                              setTimeout(() => {
+                                setIsAddingTag(prev => ({ ...prev, [contact.id]: false }));
+                                setTagSuggestions(prev => ({ ...prev, [contact.id]: [] }));
+                              }, 200);
+                            }}
+                          />
+                          {tagSuggestions[contact.id]?.length > 0 && (
+                            <TagDropdown>
+                              {tagSuggestions[contact.id].map(tag => (
+                                <TagOption 
+                                  key={tag.id} 
+                                  onClick={() => handleTagSelect(contact.id, tag)}
+                                >
+                                  {tag.name}
+                                </TagOption>
+                              ))}
+                            </TagDropdown>
+                          )}
+                        </div>
+                      ) : (
+                        <AddTagButton onClick={() => handleAddTagClick(contact.id)} title="Add tag">
+                          <FontAwesomeIcon icon={faPlus} />
+                        </AddTagButton>
+                      )}
+                    </TagsContainer>
                   </td>
                   <td>
                     <Select
@@ -1301,12 +1690,6 @@ const RecentContactsList = () => {
                         </Star>
                       ))}
                     </StarContainer>
-                  </td>
-                  <td>
-                    <MergeIcon onClick={() => handleOpenMerge(contact)}>⚏</MergeIcon>
-                    {!contact.keep_in_touch_frequency && (
-                      <SkipIcon onClick={() => handleSkipContact(contact.id)}>✕</SkipIcon>
-                    )}
                   </td>
                 </tr>
               ))}
