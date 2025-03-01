@@ -1854,7 +1854,7 @@ const RecentContactsList = () => {
         const hubspotData = mapHubspotContactToOurModel(hubspotResult.contact, hubspotResult.company);
         
         // Update Supabase with the contact data from Hubspot
-        // Only include fields that exist in the contacts table
+        // Include all fields that exist in the contacts table
         const { error } = await supabase
           .from('contacts')
           .update({
@@ -1868,8 +1868,9 @@ const RecentContactsList = () => {
             linkedin: hubspotData.contactData.linkedin || contact.linkedin,
             contact_category: hubspotData.contactData.contact_category || contact.contact_category,
             keep_in_touch_frequency: hubspotData.contactData.keep_in_touch_frequency || contact.keep_in_touch_frequency,
-            score: hubspotData.contactData.score || contact.score
-            // Removed city and note fields as they don't exist in the contacts table
+            score: hubspotData.contactData.score || contact.score,
+            city: hubspotData.contactData.city || contact.city,
+            note: hubspotData.contactData.note || contact.note
           })
           .eq('id', contact.id);
         
