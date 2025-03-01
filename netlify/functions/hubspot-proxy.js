@@ -19,8 +19,11 @@ exports.handler = async function(event, context) {
 
   try {
     // Get HubSpot credentials from environment variables
-    const HUBSPOT_API_KEY = process.env.REACT_APP_HUBSPOT_API_KEY || '';
-    const HUBSPOT_ACCESS_TOKEN = process.env.REACT_APP_HUBSPOT_ACCESS_TOKEN || '';
+    const HUBSPOT_API_KEY = process.env.HUBSPOT_API_KEY || '';
+    const HUBSPOT_ACCESS_TOKEN = process.env.HUBSPOT_ACCESS_TOKEN || '';
+    
+    console.log('API Key available:', !!HUBSPOT_API_KEY);
+    console.log('Access Token available:', !!HUBSPOT_ACCESS_TOKEN);
 
     if (!HUBSPOT_API_KEY && !HUBSPOT_ACCESS_TOKEN) {
       return {
@@ -71,8 +74,12 @@ exports.handler = async function(event, context) {
       };
     }
 
+    console.log('Making request to HubSpot:', endpoint);
+
     // Make the request to HubSpot
     const response = await axios(config);
+
+    console.log('HubSpot response status:', response.status);
 
     // Return the response
     return {
@@ -81,7 +88,8 @@ exports.handler = async function(event, context) {
       body: JSON.stringify(response.data)
     };
   } catch (error) {
-    console.error('HubSpot Proxy Error:', error);
+    console.error('HubSpot Proxy Error:', error.message);
+    console.error('Error details:', error.response?.data || 'No detailed error data');
     
     // Return error response
     return {

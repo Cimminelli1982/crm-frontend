@@ -92,7 +92,7 @@ const NotificationsList = () => {
     
     // Set up realtime subscription
     const subscription = supabase
-      .channel('public:contact_notifications')
+      .channel('public:contact_tags')
       .on('INSERT', payload => {
         fetchNotifications();
       })
@@ -106,7 +106,7 @@ const NotificationsList = () => {
   async function fetchNotifications() {
     setLoading(true);
     const { data, error } = await supabase
-      .from('contact_notifications')
+      .from('contact_tags')
       .select(`
         *,
         contacts:contact_id (
@@ -129,7 +129,7 @@ const NotificationsList = () => {
   
   async function markAsReviewed(id) {
     const { error } = await supabase
-      .from('contact_notifications')
+      .from('contact_tags')
       .update({ 
         reviewed: true,
         reviewed_at: new Date().toISOString()
