@@ -164,6 +164,22 @@ const ModalContent = styled.div`
   }
 `;
 
+const EditContactModalContent = styled.div`
+  background: #fff;
+  padding: 1.5rem;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 900px; // Doubled width as requested
+  max-height: 60vh; // Halved height (approximately 60% of viewport height)
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  overflow-y: auto; // Add scroll if content exceeds height
+  animation: scaleIn 0.2s ease-out forwards;
+  @keyframes scaleIn {
+    from { transform: scale(0.95); }
+    to { transform: scale(1); }
+  }
+`;
+
 const ModalHeader = styled.div`
   display: flex;
   justify-content: space-between;
@@ -235,8 +251,15 @@ const MergeForm = styled.div`
   gap: 1rem;
 `;
 
+const EditContactForm = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr; // Two columns
+  gap: 1.5rem; // Increased spacing between columns and rows
+  margin-bottom: 1.5rem; // Space from the buttons
+`;
+
 const FormGroup = styled.div`
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
 `;
 
 const Label = styled.label`
@@ -1243,12 +1266,12 @@ const RecentContactsList = () => {
 
       {showContactEditModal && editingContact && (
         <Modal>
-          <ModalContent>
+          <EditContactModalContent>
             <ModalHeader>
               <h2>Edit Contact</h2>
               <CloseButton onClick={() => setShowContactEditModal(false)}>×</CloseButton>
             </ModalHeader>
-            <MergeForm>
+            <EditContactForm>
               <FormGroup>
                 <Label>First Name</Label>
                 <Input
@@ -1337,12 +1360,12 @@ const RecentContactsList = () => {
                   ))}
                 </Select>
               </FormGroup>
-            </MergeForm>
+            </EditContactForm>
             <ButtonGroup>
               <Button onClick={() => setShowContactEditModal(false)}>Cancel</Button>
               <Button primary onClick={handleSaveContactEdit}>Save</Button>
             </ButtonGroup>
-          </ModalContent>
+          </EditContactModalContent>
         </Modal>
       )}
     </Container>
