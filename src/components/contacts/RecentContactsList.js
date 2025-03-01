@@ -100,6 +100,7 @@ const CONTACT_CATEGORIES = [
   'Founder',
   'Manager',
   'Team',
+  'Advisor',
   'Friend or Family',
   'Media',
   'Institution'
