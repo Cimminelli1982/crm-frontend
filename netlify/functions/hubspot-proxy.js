@@ -24,6 +24,14 @@ exports.handler = async function(event, context) {
     
     console.log('API Key available:', !!HUBSPOT_API_KEY);
     console.log('Access Token available:', !!HUBSPOT_ACCESS_TOKEN);
+    
+    // Log the first few characters of the tokens for debugging (don't log the full token)
+    if (HUBSPOT_API_KEY) {
+      console.log('API Key prefix:', HUBSPOT_API_KEY.substring(0, 7) + '...');
+    }
+    if (HUBSPOT_ACCESS_TOKEN) {
+      console.log('Access Token prefix:', HUBSPOT_ACCESS_TOKEN.substring(0, 7) + '...');
+    }
 
     if (!HUBSPOT_API_KEY && !HUBSPOT_ACCESS_TOKEN) {
       return {
@@ -43,10 +51,16 @@ exports.handler = async function(event, context) {
     const path = event.path.replace('/.netlify/functions/hubspot-proxy', '');
     const endpoint = path || requestBody.endpoint || '/crm/v3/objects/contacts';
 
+    // Determine if we're using EU tokens
+    const isEuToken = HUBSPOT_ACCESS_TOKEN.startsWith('pat-eu1-');
+    
+    // Set the base URL based on the token region
+    const baseUrl = isEuToken ? 'https://api.hubapi.com' : 'https://api.hubapi.com';
+
     // Prepare request config
     const config = {
       method: event.httpMethod || requestBody.method || 'GET',
-      url: `https://api.hubapi.com${endpoint}`,
+      url: `${baseUrl}${endpoint}`,
       headers: {
         'Content-Type': 'application/json'
       }
@@ -75,6 +89,8 @@ exports.handler = async function(event, context) {
     }
 
     console.log('Making request to HubSpot:', endpoint);
+    console.log('Request method:', config.method);
+    console.log('Using EU token:', isEuToken);
 
     // Make the request to HubSpot
     const response = await axios(config);
