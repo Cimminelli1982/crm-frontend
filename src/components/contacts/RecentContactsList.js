@@ -242,18 +242,28 @@ const RecentContactsList = () => {
 {contacts.map(contact => (
   <tr key={contact.id}>
     <td>
-      {contact.first_name || contact.last_name ? (
-        <a 
-          href={`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`} 
-          target="_blank" 
-          rel="noopener noreferrer"
-        >
-          {`${contact.first_name || ''} ${contact.last_name || ''}`}
-        </a>
-      ) : (
-        '-'
-      )}
-    </td>
+  {contact.first_name || contact.last_name ? (
+    contact.linkedin ? (
+      <a 
+        href={contact.linkedin} 
+        target="_blank" 
+        rel="noopener noreferrer"
+      >
+        {`${contact.first_name || ''} ${contact.last_name || ''}`}
+      </a>
+    ) : (
+      <a 
+        href={`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`} 
+        target="_blank" 
+        rel="noopener noreferrer"
+      >
+        {`${contact.first_name || ''} ${contact.last_name || ''}`}
+      </a>
+    )
+  ) : (
+    '-'
+  )}
+</td>
     <td>
       {contact.email ? (
         <a 
