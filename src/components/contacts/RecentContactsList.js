@@ -1576,7 +1576,7 @@ const RecentContactsList = () => {
       console.error('Error searching Hubspot:', error);
       throw error;
     }
-  }, [hubspotClient]);
+  }, []);
   
   // Helper function to map Hubspot status categories - wrapped in useCallback to prevent dependency warnings
   const mapHubspotStatusToCategory = useCallback((hubspotStatus) => {
