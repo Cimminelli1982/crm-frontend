@@ -3,7 +3,7 @@ import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faWhatsapp } from '@fortawesome/free-brands-svg-icons';
-import { faEnvelope, faSearch, faPlus, faFire } from '@fortawesome/free-solid-svg-icons';
+import { faEnvelope, faSearch, faPlus, faFire, faSpinner, faHubspot } from '@fortawesome/free-solid-svg-icons';
 import axios from 'axios'; // Import axios for API calls
 
 // Add Hubspot API configuration
@@ -782,6 +782,46 @@ const TagOption = styled.div`
   }
 `;
 
+const ContactNameWrapper = styled.div`
+  position: relative;
+  display: inline-block;
+  
+  &:hover .tooltip {
+    visibility: visible;
+    opacity: 1;
+  }
+`;
+
+const Tooltip = styled.div`
+  visibility: hidden;
+  position: absolute;
+  z-index: 100;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #1f2937;
+  color: white;
+  text-align: center;
+  padding: 8px 12px;
+  border-radius: 6px;
+  width: max-content;
+  max-width: 250px;
+  opacity: 0;
+  transition: opacity 0.3s;
+  font-size: 0.8rem;
+  
+  &::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #1f2937 transparent transparent transparent;
+  }
+`;
+
 const getRandomColor = () => {
   // Array of vibrant colors for tags
   const colors = [
@@ -1299,7 +1339,8 @@ const RecentContactsList = () => {
       email2: contact.email2 || '',
       email3: contact.email3 || '',
       linkedin: contact.linkedin || '',
-      keep_in_touch_frequency: contact.keep_in_touch_frequency || ''
+      keep_in_touch_frequency: contact.keep_in_touch_frequency || '',
+      about_the_contact: contact.about_the_contact || ''
     });
     setShowContactEditModal(true);
   }, []);
@@ -1637,7 +1678,7 @@ const RecentContactsList = () => {
             endpoint: `/crm/v3/objects/contacts/${contactId}`,
             method: 'GET',
             params: {
-              properties: 'email,firstname,lastname,hs_additional_emails,work_email,email2,email3,secondary_email,alternate_email,personal_email,additional_email,other_email,mobilephone,phone,work_phone,home_phone,cell_phone,mobile_phone,hs_linkedin_url,linkedin_profile,keep_in_touch_frequency'
+              properties: 'email,firstname,lastname,hs_additional_emails,work_email,email2,email3,secondary_email,alternate_email,personal_email,additional_email,other_email,mobilephone,phone,work_phone,home_phone,cell_phone,mobile_phone,hs_linkedin_url,linkedin_profile,keep_in_touch_frequency,about_the_contact,about,notes'
             }
           });
           
@@ -1747,7 +1788,7 @@ const RecentContactsList = () => {
             endpoint: `/crm/v3/objects/contacts/${contactId}`,
             method: 'GET',
             params: {
-              properties: 'email,firstname,lastname,hs_additional_emails,work_email,email2,email3,secondary_email,alternate_email,personal_email,additional_email,other_email,mobilephone,phone,work_phone,home_phone,cell_phone,mobile_phone,hs_linkedin_url,linkedin_profile,keep_in_touch_frequency'
+              properties: 'email,firstname,lastname,hs_additional_emails,work_email,email2,email3,secondary_email,alternate_email,personal_email,additional_email,other_email,mobilephone,phone,work_phone,home_phone,cell_phone,mobile_phone,hs_linkedin_url,linkedin_profile,keep_in_touch_frequency,about_the_contact,about,notes'
             }
           });
           
@@ -2086,6 +2127,19 @@ const RecentContactsList = () => {
       linkedinUrl = properties.linkedin_profile;
     }
     
+    // Check for contact description in HubSpot properties
+    let contactDescription = '';
+    if (properties.about_the_contact) {
+      console.log('Found about_the_contact property:', properties.about_the_contact);
+      contactDescription = properties.about_the_contact;
+    } else if (properties.about) {
+      console.log('Found about property:', properties.about);
+      contactDescription = properties.about;
+    } else if (properties.notes) {
+      console.log('Found notes property:', properties.notes);
+      contactDescription = properties.notes;
+    }
+    
     // Map Hubspot properties to our data model
     const contactData = {
       first_name: properties.firstname || '',
@@ -2104,7 +2158,8 @@ const RecentContactsList = () => {
       score: mapHubspotScoreToOurScore(properties.hubspot_score),
       // Additional fields
       city: properties.city || '',
-      note: properties.about || properties.notes || '' // Using about field for notes
+      about_the_contact: contactDescription,
+      note: properties.about || properties.notes || '' // Keep this for backward compatibility
     };
     
     // Log phone numbers for debugging
@@ -2144,6 +2199,14 @@ const RecentContactsList = () => {
     console.log('===== FREQUENCY MAPPING SUMMARY =====');
     console.log('HubSpot frequency value:', properties.keep_in_touch_frequency || 'None');
     console.log('Supabase frequency value:', contactData.keep_in_touch_frequency);
+    
+    // Add description mapping summary
+    console.log('===== DESCRIPTION MAPPING SUMMARY =====');
+    console.log('HubSpot description source:', 
+      properties.about_the_contact ? 'about_the_contact' : 
+      (properties.about ? 'about' : 
+      (properties.notes ? 'notes' : 'None')));
+    console.log('Description value:', contactData.about_the_contact);
     
     // Log the final mapped data
     console.log('===== MAPPED DATA TO OUR MODEL =====');
@@ -2213,6 +2276,7 @@ const RecentContactsList = () => {
             keep_in_touch_frequency: hubspotData.contactData.keep_in_touch_frequency || contact.keep_in_touch_frequency,
             score: hubspotData.contactData.score || contact.score,
             city: hubspotData.contactData.city || contact.city,
+            about_the_contact: hubspotData.contactData.about_the_contact || contact.about_the_contact,
             note: hubspotData.contactData.note || contact.note
           })
           .eq('id', contact.id);
@@ -2310,37 +2374,44 @@ const RecentContactsList = () => {
                 <tr key={contact.id}>
                   <td>
                     {contact.first_name || contact.last_name ? (
-                      contact.linkedin ? (
-                        <a href={contact.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#2d3748', textDecoration: 'none', fontWeight: '600' }}>
-                          {`${contact.first_name || ''} ${contact.last_name || ''}`}
-                        </a>
-                      ) : (
-                        <a
-                          href={`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ color: '#2d3748', textDecoration: 'none', fontWeight: '600' }}
+                      <ContactNameWrapper>
+                        {contact.linkedin ? (
+                          <a href={contact.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#2d3748', textDecoration: 'none', fontWeight: '600' }}>
+                            {`${contact.first_name || ''} ${contact.last_name || ''}`}
+                          </a>
+                        ) : (
+                          <a
+                            href={`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: '#2d3748', textDecoration: 'none', fontWeight: '600' }}
+                          >
+                            {`${contact.first_name || ''} ${contact.last_name || ''}`}
+                          </a>
+                        )}
+                        {contact.about_the_contact && (
+                          <Tooltip className="tooltip">
+                            {contact.about_the_contact}
+                          </Tooltip>
+                        )}
+                        <EditButton onClick={() => handleOpenContactEdit(contact)}>✎</EditButton>
+                        <HubspotIcon 
+                          onClick={() => handleSearchHubspot(contact)} 
+                          title="Search in Hubspot and import data"
                         >
-                          {`${contact.first_name || ''} ${contact.last_name || ''}`}
-                        </a>
-                      )
+                          {hubspotLoading[contact.id] ? (
+                            <FontAwesomeIcon icon={faSpinner} spin />
+                          ) : (
+                            <FontAwesomeIcon icon={faHubspot} />
+                          )}
+                        </HubspotIcon>
+                        <MergeIcon onClick={() => handleOpenMerge(contact)}>⚏</MergeIcon>
+                        {!contact.keep_in_touch_frequency && (
+                          <SkipIcon onClick={() => handleSkipContact(contact.id)}>✕</SkipIcon>
+                        )}
+                      </ContactNameWrapper>
                     ) : (
                       '-'
-                    )}
-                    <EditButton onClick={() => handleOpenContactEdit(contact)}>✎</EditButton>
-                    <HubspotIcon 
-                      onClick={() => handleSearchHubspot(contact)} 
-                      title="Search in Hubspot and import data"
-                    >
-                      {hubspotLoading[contact.id] ? (
-                        "..."
-                      ) : (
-                        <FontAwesomeIcon icon={faFire} />
-                      )}
-                    </HubspotIcon>
-                    <MergeIcon onClick={() => handleOpenMerge(contact)}>⚏</MergeIcon>
-                    {!contact.keep_in_touch_frequency && (
-                      <SkipIcon onClick={() => handleSkipContact(contact.id)}>✕</SkipIcon>
                     )}
                   </td>
                   <td>
@@ -3110,6 +3181,14 @@ const RecentContactsList = () => {
                     <option key={frequency} value={frequency}>{frequency}</option>
                   ))}
                 </Select>
+              </FormGroup>
+              <FormGroup className="full-width">
+                <Label>About the Contact</Label>
+                <TextArea
+                  value={contactEditData.about_the_contact || ''}
+                  onChange={(e) => handleContactInputChange('about_the_contact', e.target.value)}
+                  placeholder="Enter description or notes about this contact"
+                />
               </FormGroup>
             </EditContactForm>
             <ButtonGroup>
