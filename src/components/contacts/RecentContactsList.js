@@ -1,3 +1,8 @@
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import styled from 'styled-components';
+import { supabase } from '../../lib/supabaseClient';
+
 const COMPANY_CATEGORIES = [
   'Tech',
   'Finance',
@@ -8,6 +13,241 @@ const COMPANY_CATEGORIES = [
   'Education',
   'Healthcare'
 ];
+
+const CONTACT_CATEGORIES = [
+  'Professional Investor',
+  'Founder',
+  'Manager',
+  'Team',
+  'Advisor',
+  'Friend or Family',
+  'Media',
+  'Institution'
+];
+
+const KEEP_IN_TOUCH_FREQUENCIES = [
+  'Weekly',
+  'Monthly',
+  'Quarterly',
+  'Twice a Year',
+  'Once a Year',
+  'Do not keep in touch'
+];
+
+const Container = styled.div`
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 1.5rem;
+  margin-top: 2rem;
+`;
+
+const Header = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+`;
+
+const ContactTable = styled.table`
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+`;
+
+const TableHead = styled.thead`
+  background-color: #f8f9fa;
+  th {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 2px solid #dee2e6;
+  }
+`;
+
+const TableBody = styled.tbody`
+  tr {
+    &:hover {
+      background-color: #f8f9fa;
+    }
+  }
+  td {
+    padding: 0.75rem;
+    border-bottom: 1px solid #dee2e6;
+  }
+`;
+
+const ActionButton = styled.button`
+  background-color: ${props => props.skip ? '#dc3545' : props.merge ? '#ffc107' : '#0070f3'};
+  color: ${props => props.merge ? '#212529' : 'white'};
+  border: none;
+  border-radius: 4px;
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+  margin-right: 0.5rem;
+  &:hover {
+    background-color: ${props => props.skip ? '#c82333' : props.merge ? '#e0a800' : '#0060df'};
+  }
+`;
+
+const PaginationControls = styled.div`
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+`;
+
+const PageButton = styled.button`
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #ddd;
+  background: ${props => props.active ? '#0070f3' : 'white'};
+  color: ${props => props.active ? 'white' : '#333'};
+  border-radius: 4px;
+  cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
+  opacity: ${props => props.disabled ? 0.6 : 1};
+  &:hover:not(:disabled) {
+    background: ${props => props.active ? '#0060df' : '#f8f9fa'};
+  }
+`;
+
+const LoadingOverlay = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+`;
+
+const Modal = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+`;
+
+const ModalContent = styled.div`
+  background-color: white;
+  padding: 2rem;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 1000px;
+  max-height: 90vh;
+  overflow-y: auto;
+`;
+
+const ModalHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+`;
+
+const CloseButton = styled.button`
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  &:hover {
+    color: #0070f3;
+  }
+`;
+
+const SearchContainer = styled.div`
+  margin-bottom: 1.5rem;
+`;
+
+const SearchInput = styled.input`
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  width: 100%;
+  font-size: 1rem;
+`;
+
+const SearchResults = styled.div`
+  margin-top: 1rem;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+`;
+
+const SearchResultItem = styled.div`
+  padding: 0.75rem;
+  border-bottom: 1px solid #ddd;
+  cursor: pointer;
+  &:hover {
+    background-color: #f8f9fa;
+  }
+  &:last-child {
+    border-bottom: none;
+  }
+`;
+
+const MergeForm = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+`;
+
+const FormGroup = styled.div`
+  margin-bottom: 1rem;
+`;
+
+const Label = styled.label`
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+`;
+
+const Input = styled.input`
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  width: 100%;
+`;
+
+const MergeColumn = styled.div`
+  padding: 1rem;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+`;
+
+const ColumnTitle = styled.h3`
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #ddd;
+`;
+
+const ButtonGroup = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 1.5rem;
+`;
+
+const Button = styled.button`
+  padding: 0.75rem 1.5rem;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+  border: none;
+  background-color: ${props => props.primary ? '#0070f3' : '#f8f9fa'};
+  color: ${props => props.primary ? 'white' : '#333'};
+  &:hover {
+    background-color: ${props => props.primary ? '#0060df' : '#e9ecef'};
+  }
+`;
 
 const RecentContactsList = () => {
   const [contacts, setContacts] = useState([]);
@@ -62,13 +302,11 @@ const RecentContactsList = () => {
           .order('created_at', { ascending: false })
           .range(currentPage * rowsPerPage, (currentPage + 1) * rowsPerPage - 1)
       ]);
-      
       if (countResponse.error) {
         setTotalCount(0);
       } else {
         setTotalCount(countResponse.count || 0);
       }
-      
       if (contactsResponse.error) {
         setContacts([]);
       } else {
