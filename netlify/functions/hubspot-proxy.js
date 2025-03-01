@@ -47,10 +47,14 @@ exports.handler = async function(event, context) {
     }
 
     if (!HUBSPOT_API_KEY && !HUBSPOT_ACCESS_TOKEN) {
+      console.error('No HubSpot credentials found in environment variables');
       return {
         statusCode: 401,
         headers,
-        body: JSON.stringify({ error: 'No HubSpot credentials found' })
+        body: JSON.stringify({ 
+          error: 'No HubSpot credentials found',
+          details: 'Please check your environment variables for REACT_APP_HUBSPOT_API_KEY or REACT_APP_HUBSPOT_ACCESS_TOKEN'
+        })
       };
     }
 
@@ -59,12 +63,13 @@ exports.handler = async function(event, context) {
     if (event.body) {
       try {
         requestBody = JSON.parse(event.body);
+        console.log('Parsed request body:', JSON.stringify(requestBody));
       } catch (e) {
         console.log('Error parsing request body:', e.message);
       }
     }
 
-    // Get the HubSpot endpoint from the path parameter
+    // Get the HubSpot endpoint from the path parameter or request body
     const path = event.path.replace('/.netlify/functions/hubspot-proxy', '');
     // Default to contacts endpoint if no path is provided
     const endpoint = path && path !== '/' ? path : requestBody.endpoint || '/crm/v3/objects/contacts';
@@ -76,23 +81,24 @@ exports.handler = async function(event, context) {
     
     // Set the base URL based on the token region
     const baseUrl = isEuToken ? 'https://api.hubapi.com' : 'https://api.hubapi.com';
+    console.log('Using base URL:', baseUrl);
 
     // Prepare request config
     const config = {
-      method: event.httpMethod || requestBody.method || 'GET',
+      method: requestBody.method || event.httpMethod || 'GET',
       url: `${baseUrl}${endpoint}`,
       headers: {
         'Content-Type': 'application/json'
       }
     };
 
-    // Add authentication
-    if (HUBSPOT_API_KEY) {
-      config.params = { hapikey: HUBSPOT_API_KEY };
-    }
-    
+    // Add authentication - prefer access token over API key if both are present
     if (HUBSPOT_ACCESS_TOKEN) {
       config.headers.Authorization = `Bearer ${HUBSPOT_ACCESS_TOKEN}`;
+      console.log('Using access token authentication');
+    } else if (HUBSPOT_API_KEY) {
+      config.params = { hapikey: HUBSPOT_API_KEY };
+      console.log('Using API key authentication');
     }
 
     // Add request body for POST/PUT requests
@@ -126,6 +132,7 @@ exports.handler = async function(event, context) {
     const response = await axios(config);
 
     console.log('HubSpot response status:', response.status);
+    console.log('HubSpot response data preview:', JSON.stringify(response.data).substring(0, 200) + '...');
 
     // Return the response
     return {
@@ -135,7 +142,15 @@ exports.handler = async function(event, context) {
     };
   } catch (error) {
     console.error('HubSpot Proxy Error:', error.message);
-    console.error('Error details:', error.response?.data || 'No detailed error data');
+    
+    if (error.response) {
+      console.error('Error status:', error.response.status);
+      console.error('Error data:', JSON.stringify(error.response.data));
+    } else if (error.request) {
+      console.error('No response received from HubSpot API');
+    } else {
+      console.error('Error setting up request:', error.message);
+    }
     
     if (error.config) {
       console.error('Request config that failed:', JSON.stringify({
@@ -149,13 +164,15 @@ exports.handler = async function(event, context) {
       }));
     }
     
-    // Return error response
+    // Return error response with detailed information
     return {
       statusCode: error.response?.status || 500,
       headers,
       body: JSON.stringify({
         error: error.message,
-        details: error.response?.data || {}
+        status: error.response?.status,
+        details: error.response?.data || {},
+        path: error.config?.url || 'Unknown URL'
       })
     };
   }

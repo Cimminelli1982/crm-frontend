@@ -17,13 +17,47 @@ const HUBSPOT_API_CONFIG = {
 const HUBSPOT_API_KEY = process.env.REACT_APP_HUBSPOT_API_KEY || '';
 const HUBSPOT_ACCESS_TOKEN = process.env.REACT_APP_HUBSPOT_ACCESS_TOKEN || '';
 
+// Log credentials availability for debugging
+console.log('HubSpot credentials check:');
+console.log('- API Key available:', !!HUBSPOT_API_KEY);
+console.log('- Access Token available:', !!HUBSPOT_ACCESS_TOKEN);
+console.log('- Using EU token:', HUBSPOT_ACCESS_TOKEN.startsWith('pat-eu1-'));
+
 // Create a Hubspot API client
 const hubspotClient = axios.create({
   baseURL: HUBSPOT_API_CONFIG.baseURL,
   timeout: HUBSPOT_API_CONFIG.timeout,
 });
 
-// No need for auth interceptor as our serverless function will handle authentication
+// Add request interceptor for debugging
+hubspotClient.interceptors.request.use(
+  config => {
+    console.log('Making request to:', config.baseURL + config.url);
+    console.log('Request method:', config.method);
+    console.log('Request params:', config.params);
+    return config;
+  },
+  error => {
+    console.error('Request error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor for debugging
+hubspotClient.interceptors.response.use(
+  response => {
+    console.log('Response status:', response.status);
+    return response;
+  },
+  error => {
+    console.error('Response error:', error.message);
+    if (error.response) {
+      console.error('Error status:', error.response.status);
+      console.error('Error data:', error.response.data);
+    }
+    return Promise.reject(error);
+  }
+);
 
 const COMPANY_CATEGORIES = [
   'Advisor', 'Corporate', 'Institution', 'Professional Investor', 'SKIP', 'SME',
@@ -1426,38 +1460,61 @@ const RecentContactsList = () => {
   // Check Hubspot authentication on component mount
   useEffect(() => {
     const checkHubspotAuth = async () => {
+      console.log('Checking HubSpot authentication...');
+      
+      // Check if we have credentials
+      if (!HUBSPOT_API_KEY && !HUBSPOT_ACCESS_TOKEN) {
+        console.log('No HubSpot credentials found');
+        setHubspotAuthStatus({
+          isAuthenticated: false,
+          isLoading: false,
+          error: "No Hubspot credentials found. Configure API key or OAuth token."
+        });
+        return;
+      }
+      
       try {
-        // If we have no credentials, we're not authenticated
-        if (!HUBSPOT_API_KEY && !HUBSPOT_ACCESS_TOKEN) {
-          setHubspotAuthStatus({
-            isAuthenticated: false,
-            isLoading: false,
-            error: "No Hubspot credentials found. Configure API key or OAuth token."
-          });
-          return;
-        }
+        console.log('Making test request to HubSpot API...');
         
-        // Test the credentials by making a simple API call through our proxy
-        const response = await hubspotClient.get('/crm/v3/objects/contacts', {
+        // Explicitly specify the endpoint in the request
+        const response = await hubspotClient.post('', {
+          endpoint: '/crm/v3/objects/contacts',
+          method: 'GET',
           params: { limit: 1 }
         });
         
-        if (response.status === 200) {
-          setHubspotAuthStatus({
-            isAuthenticated: true,
-            isLoading: false,
-            error: null
-          });
-        } else {
-          throw new Error('Failed to authenticate with Hubspot');
-        }
+        console.log('HubSpot authentication successful!');
+        console.log('Response status:', response.status);
+        setHubspotAuthStatus({
+          isAuthenticated: true,
+          isLoading: false,
+          error: null
+        });
       } catch (error) {
-        console.error('Hubspot authentication error:', error);
+        console.error('HubSpot authentication failed:', error.message);
+        
+        if (error.response) {
+          console.error('Error status:', error.response.status);
+          console.error('Error data:', JSON.stringify(error.response.data));
+          
+          // Check for specific error types
+          if (error.response.status === 401) {
+            console.error('Authentication error: Invalid credentials or token expired');
+          } else if (error.response.status === 403) {
+            console.error('Authorization error: Insufficient permissions');
+          }
+        } else if (error.request) {
+          console.error('No response received from HubSpot API');
+        } else {
+          console.error('Error setting up request:', error.message);
+        }
+        
         setHubspotAuthStatus({
           isAuthenticated: false,
           isLoading: false,
           error: error.message || 'Failed to authenticate with Hubspot'
         });
+        throw new Error(`HubSpot authentication failed: ${error.response?.status || error.message}`);
       }
     };
     
