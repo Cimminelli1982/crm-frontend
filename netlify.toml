@@ -7,6 +7,8 @@
   BROWSER = "none"
   PORT = "3000"
   CI = "false"
+  # HubSpot environment variables should be set in the Netlify UI
+  # DO NOT add sensitive values here
 
 # Note: Sensitive environment variables like API keys should be set in the Netlify UI
 # This file only contains non-sensitive configuration 

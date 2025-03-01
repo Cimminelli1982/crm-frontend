@@ -19,8 +19,8 @@ exports.handler = async function(event, context) {
 
   try {
     // Get HubSpot credentials from environment variables
-    const HUBSPOT_API_KEY = process.env.HUBSPOT_API_KEY || '';
-    const HUBSPOT_ACCESS_TOKEN = process.env.HUBSPOT_ACCESS_TOKEN || '';
+    const HUBSPOT_API_KEY = process.env.REACT_APP_HUBSPOT_API_KEY || process.env.HUBSPOT_API_KEY || '';
+    const HUBSPOT_ACCESS_TOKEN = process.env.REACT_APP_HUBSPOT_ACCESS_TOKEN || process.env.HUBSPOT_ACCESS_TOKEN || '';
     
     console.log('API Key available:', !!HUBSPOT_API_KEY);
     console.log('Access Token available:', !!HUBSPOT_ACCESS_TOKEN);
