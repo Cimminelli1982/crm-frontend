@@ -160,14 +160,6 @@ const PageButton = styled.button`
   }
 `;
 
-const PageInfo = styled.div`
-  padding: 0.5rem 0.875rem;
-  color: #4a5568;
-  display: inline-block;
-  text-align: center;
-  min-width: 200px;
-`;
-
 const LoadingOverlay = styled.div`
   position: absolute;
   top: 0;
@@ -992,6 +984,9 @@ const RecentContactsList = () => {
     error: null
   });
   const [error, setError] = useState(null);
+  
+  // Add state to toggle between all contacts and recent interactions
+  const [showRecentOnly, setShowRecentOnly] = useState(true);
 
   const getLastThirtyDaysRange = useMemo(() => {
     const now = new Date();
@@ -1000,186 +995,626 @@ const RecentContactsList = () => {
     return { start: thirtyDaysAgo.toISOString(), end: now.toISOString() };
   }, []);
 
-  // Add pagination constants
+  const getLastSevenDaysRange = useMemo(() => {
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+    // Format as YYYY-MM-DD for Supabase comparison
+    const formattedDate = sevenDaysAgo.toISOString().split('T')[0];
+    return formattedDate;
+  }, []);
+
   const rowsPerPage = useMemo(() => 50, []);
-  
-  // Calculate total pages based on all contacts
-  const totalPages = useMemo(() => 
-    Math.ceil(contacts.length / rowsPerPage), 
-    [contacts.length, rowsPerPage]
-  );
-  
-  // Get current page of contacts for display
-  const currentContacts = useMemo(() => {
-    const startIndex = currentPage * rowsPerPage;
-    return contacts.slice(startIndex, startIndex + rowsPerPage);
-  }, [contacts, currentPage, rowsPerPage]);
-  
-  // Pagination controls
-  const goToFirstPage = useCallback(() => setCurrentPage(0), []);
-  const goToPreviousPage = useCallback(() => setCurrentPage(prev => Math.max(0, prev - 1)), []);
-  const goToNextPage = useCallback(() => setCurrentPage(prev => Math.min(totalPages - 1, prev + 1)), [totalPages]);
-  const goToLastPage = useCallback(() => setCurrentPage(totalPages > 0 ? totalPages - 1 : 0), [totalPages]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
+    console.log(showRecentOnly 
+      ? "Fetching contacts with last_interaction within the last 7 days..." 
+      : "Fetching all contacts...");
+    
     try {
-      console.log('Fetching ALL contacts with pagination...');
+      // Get the formatted date for 7 days ago
+      const sevenDaysAgo = getLastSevenDaysRange;
       
-      // Simple count query to get total number of contacts
-      const { count: totalContactCount, error: countError } = await supabase
+      // Build query
+      let query = supabase
         .from('contacts')
-        .select('*', { count: 'exact', head: true });
-        
-      if (countError) {
-        console.error('Count query error:', countError);
+        .select('*, companies(*)', { count: 'exact' })
+        .neq('contact_category', 'Skip');
+      
+      // Apply date filter only if showing recent contacts
+      if (showRecentOnly) {
+        console.log("Filtering contacts with last_interaction >= ", sevenDaysAgo);
+        query = query.gte('last_interaction', sevenDaysAgo);
+      }
+      
+      // Always order by last_interaction (most recent first), falling back to created_at for null values
+      query = query.order('last_interaction', { ascending: false, nullsLast: true });
+      
+      // Apply limit and execute query
+      const { data, error, count } = await query.limit(500);
+      
+      console.log("Query completed. Error:", error, "Count:", count, "Data length:", data?.length);
+      
+      if (error) {
+        console.error("Error fetching contacts:", error);
+        setError("Failed to load contacts: " + error.message);
+        setContacts([]);
+        setTotalCount(0);
       } else {
-        console.log('Total contacts in database:', totalContactCount);
-        // Store the actual total count
-        setTotalCount(totalContactCount || 0);
+        console.log("Successfully fetched contacts:", data.length);
+        setContacts(data || []);
+        setTotalCount(count || 0);
       }
-      
-      // Supabase has a 1000 record limit per query - We need to use pagination
-      let allContacts = [];
-      let page = 0;
-      const pageSize = 1000;
-      let hasMoreRecords = true;
-      
-      while (hasMoreRecords) {
-        console.log(`Fetching page ${page + 1}...`);
-        const from = page * pageSize;
-        const to = from + pageSize - 1;
-        
-        const { data, error: pageError } = await supabase
-          .from('contacts')
-          .select('id, first_name, last_name, email, contact_category')
-          .range(from, to);
-          
-        if (pageError) {
-          console.error(`Error fetching page ${page + 1}:`, pageError);
-          hasMoreRecords = false;
-        } else if (!data || data.length === 0) {
-          console.log(`No more records after page ${page + 1}`);
-          hasMoreRecords = false;
-        } else {
-          console.log(`Retrieved ${data.length} contacts from page ${page + 1}`);
-          allContacts = [...allContacts, ...data];
-          
-          // If we got fewer records than pageSize, we're done
-          if (data.length < pageSize) {
-            hasMoreRecords = false;
-          } else {
-            page++;
-          }
-        }
-      }
-      
-      console.log(`Successfully retrieved ${allContacts.length} contacts in total`);
-      setContacts(allContacts);
-      
     } catch (error) {
-      console.error('Error creating tag:', error);
-      alert('Failed to create tag');
+      console.error("Exception in fetchData:", error);
+      setError("An unexpected error occurred: " + error.message);
+      setContacts([]);
+      setTotalCount(0);
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  }, [getLastSevenDaysRange, showRecentOnly]);
 
-  // Add missing handler functions
-  const handleTagSelect = useCallback((contactId, tag) => {
-    console.log('Tag selected:', tag);
-    // Add your tag selection logic here
-  }, []);
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
-  const handleCreateTag = useCallback((contactId, tagName) => {
-    console.log('Create tag:', tagName);
-    // Add your tag creation logic here
-  }, []);
+  useEffect(() => {
+    const fetchTags = async () => {
+      try {
+        // Fetch all available tags
+        const { data: tagsData, error: tagsError } = await supabase
+          .from('tags')
+          .select('*');
+          
+        if (tagsError) throw tagsError;
+        
+        // Assign a random color to each tag
+        const tagsWithColors = tagsData.map(tag => ({
+          ...tag,
+          color: getRandomColor()
+        }));
+        
+        setAllTags(tagsWithColors || []);
+        
+        // For each contact, fetch their associated tags
+        const contactIds = contacts.map(contact => contact.id);
+        if (contactIds.length === 0) return;
+        
+        const { data: contactTagsData, error: contactTagsError } = await supabase
+          .from('contact_tags')
+          .select('contact_id, tags(*)')
+          .in('contact_id', contactIds);
+          
+        if (contactTagsError) throw contactTagsError;
+        
+        // Organize tags by contact_id and assign colors
+        const tagsByContact = {};
+        contactTagsData.forEach(item => {
+          if (!tagsByContact[item.contact_id]) {
+            tagsByContact[item.contact_id] = [];
+          }
+          // Assign a random color to each tag
+          const tagWithColor = {
+            ...item.tags,
+            color: getRandomColor()
+          };
+          tagsByContact[item.contact_id].push(tagWithColor);
+        });
+        
+        setContactTags(tagsByContact);
+      } catch (error) {
+        console.error('Error fetching tags:', error);
+      }
+    };
+    
+    if (contacts.length > 0) {
+      fetchTags();
+    }
+  }, [contacts]);
 
-  const handleTagInputChange = useCallback((e, contactId) => {
-    const value = e.target.value;
-    setTagInput(prev => ({ ...prev, [contactId]: value }));
-    // Add logic to update suggestions based on input
-  }, []);
+  const totalPages = useMemo(() => Math.ceil(totalCount / rowsPerPage), [totalCount, rowsPerPage]);
 
-  const handleAddTagClick = useCallback((contactId) => {
-    setIsAddingTag(prev => ({ ...prev, [contactId]: true }));
-  }, []);
-
-  const handleSearch = useCallback((e) => {
-    const value = e.target.value;
-    setSearchTerm(value);
-    // Add search logic here
-  }, []);
-
-  const handleSelectTarget = useCallback((contact) => {
-    setTargetContact(contact);
-  }, []);
-
-  const handleInputChange = useCallback((e) => {
-    const { name, value } = e.target;
-    // Add your input change logic here
-  }, []);
-
-  const handleMerge = useCallback(() => {
-    console.log('Merge contacts');
-    // Add your merge logic here
-  }, []);
-
-  const handleOpenContactEdit = useCallback((contact) => {
-    setEditingContact(contact);
-    setShowContactEditModal(true);
+  const handleSkipContact = useCallback(async (contactId) => {
+    if (!window.confirm('Are you sure you want to mark this contact as Skip?')) return;
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .update({ contact_category: 'Skip' })
+        .eq('id', contactId);
+      if (error) throw error;
+      setContacts(prev => prev.filter(c => c.id !== contactId));
+      setTotalCount(prev => prev - 1);
+    } catch (error) {
+      alert('Failed to mark contact as Skip');
+    }
   }, []);
 
   const handleOpenMerge = useCallback((contact) => {
     setSelectedContact(contact);
     setShowMergeModal(true);
+    setMergedData({
+      first_name: contact.first_name || '',
+      last_name: contact.last_name || '',
+      email: contact.email || '',
+      email2: contact.email2 || '',
+      email3: contact.email3 || '',
+      mobile: contact.mobile || '',
+      linkedin: contact.linkedin || '',
+      contact_category: contact.contact_category || '',
+      keep_in_touch_frequency: contact.keep_in_touch_frequency || ''
+    });
   }, []);
 
-  const handleSkipContact = useCallback((contact) => {
-    console.log('Skip contact:', contact);
-    // Add your skip contact logic here
+  const handleSearch = useCallback(async (term) => {
+    if (!term || term.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%`)
+        .neq('id', selectedContact?.id)
+        .limit(10);
+      if (error) throw error;
+      setSearchResults(data || []);
+    } catch (error) {
+      setSearchResults([]);
+    }
+  }, [selectedContact]);
+
+  const handleSelectTarget = useCallback((contact) => {
+    setTargetContact(contact);
+    setSearchResults([]);
+    setSearchTerm('');
   }, []);
 
-  const handleEditCompany = useCallback((company) => {
-    console.log('Edit company:', company);
-    // Add your company edit logic here
+  const handleInputChange = useCallback((field, value) => {
+    setMergedData(prev => ({ ...prev, [field]: value }));
   }, []);
 
-  const handleUnlinkCompany = useCallback((contactId, companyId) => {
-    console.log('Unlink company:', contactId, companyId);
-    // Add your company unlink logic here
-  }, []);
+  const handleMerge = useCallback(async () => {
+    if (!selectedContact || !targetContact) return;
+    const confirmMessage = `Are you sure you want to merge these contacts?\n\nThis will update ${selectedContact.first_name || ''} ${selectedContact.last_name || ''} with the merged data and delete ${targetContact.first_name || ''} ${targetContact.last_name || ''}.`;
+    if (!window.confirm(confirmMessage)) return;
+    try {
+      const { error: updateError } = await supabase
+        .from('contacts')
+        .update(mergedData)
+        .eq('id', selectedContact.id);
+      if (updateError) throw updateError;
+      const { error: deleteError } = await supabase
+        .from('contacts')
+        .delete()
+        .eq('id', targetContact.id);
+      if (deleteError) throw deleteError;
+      await supabase
+        .from('interactions')
+        .update({ contact_id: selectedContact.id })
+        .eq('contact_id', targetContact.id);
+      setContacts(prev => prev.map(c => 
+        c.id === selectedContact.id 
+          ? { ...c, ...mergedData } 
+          : c.id === targetContact.id 
+            ? null 
+            : c
+      ).filter(Boolean));
+      setShowMergeModal(false);
+      setSelectedContact(null);
+      setTargetContact(null);
+      setMergedData({});
+      alert('Contacts merged successfully!');
+      fetchData();
+    } catch (error) {
+      alert('Failed to merge contacts: ' + error.message);
+    }
+  }, [selectedContact, targetContact, mergedData, fetchData]);
 
-  const handleCompanySearch = useCallback((e) => {
-    const value = e.target.value;
-    setCompanySearchTerm(prev => ({ ...prev, [currentContact?.id]: value }));
-    // Add company search logic here
-  }, [currentContact]);
+  const handleOpenCompanyModal = useCallback(async (contact) => {
+    setCurrentContact(contact);
+    setCompanyData({
+      name: companySearchTerm[contact.id] || '',
+      website: '',
+      category: '',
+      city: '',
+      nation: '',
+      description: ''
+    });
+    if (contact.companies) {
+      setCompanyData({
+        name: contact.companies.name || '',
+        website: contact.companies.website || '',
+        category: contact.companies.category || '',
+        city: contact.companies.city || '',
+        nation: contact.companies.nation || '',
+        description: contact.companies.description || ''
+      });
+    } else if (contact.email) {
+      const emailDomain = contact.email.split('@')[1];
+      try {
+        const { data: existingCompany } = await supabase
+          .from('companies')
+          .select('*')
+          .eq('website', emailDomain)
+          .single();
+        if (existingCompany) {
+          setCompanyData({
+            name: existingCompany.name || '',
+            website: existingCompany.website || '',
+            category: existingCompany.category || '',
+            city: existingCompany.city || '',
+            nation: existingCompany.nation || '',
+            description: existingCompany.description || ''
+          });
+        }
+      } catch (error) {}
+    }
+    setCompanySearchTerm(prev => ({ ...prev, [contact.id]: '' }));
+    setCompanySuggestions(prev => ({ ...prev, [contact.id]: [] }));
+    setShowCompanyModal(true);
+  }, [companySearchTerm]);
 
-  const handleCompanyCreateOnEnter = useCallback((e) => {
-    if (e.key === 'Enter') {
-      // Add company creation logic here
+  // Helper function to save company data - wrapped in useCallback to prevent dependency warnings
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const handleSaveCompany = useCallback(async () => {
+    try {
+      // Format the website URL before saving
+      const formattedWebsite = formatWebsiteUrl(companyData.website);
+      const updatedCompanyData = {
+        ...companyData,
+        website: formattedWebsite
+      };
+      
+      // Check if a company with the same formatted website already exists
+      const { data: existingByWebsite, error: websiteError } = await supabase
+        .from('companies')
+        .select('*')
+        .ilike('website', `%${formattedWebsite.replace(/^www\./i, '')}%`);
+
+      if (websiteError) throw websiteError;
+      
+      let companyId;
+      
+      if (existingByWebsite && existingByWebsite.length > 0) {
+        // Company with similar website exists
+        const existingCompany = existingByWebsite[0];
+        console.log(`Found existing company with similar website: ${existingCompany.name} (${existingCompany.website})`);
+        
+        // Confirm with user if they want to update the existing company or create a new one
+        if (window.confirm(`A company with a similar website already exists (${existingCompany.name}). Do you want to update it instead of creating a new one?`)) {
+        await supabase
+          .from('companies')
+            .update(updatedCompanyData)
+          .eq('id', existingCompany.id);
+        companyId = existingCompany.id;
+          console.log(`Updated existing company: ${existingCompany.name}`);
+      } else {
+          // User chose to create a new company despite the duplicate
+        const { data: newCompany } = await supabase
+          .from('companies')
+            .insert(updatedCompanyData)
+          .select()
+          .single();
+        companyId = newCompany.id;
+          console.log(`Created new company despite duplicate: ${newCompany.name}`);
+        }
+      } else {
+        // No duplicate website found, proceed with normal flow
+        const { data: newCompany } = await supabase
+          .from('companies')
+          .insert(updatedCompanyData)
+          .select()
+          .single();
+        companyId = newCompany.id;
+        console.log(`Created new company: ${newCompany.name}`);
+      }
+      
+      await supabase
+        .from('contacts')
+        .update({ company_id: companyId })
+        .eq('id', currentContact.id);
+        
+      fetchData();
+      setShowCompanyModal(false);
+    } catch (error) {
+      console.error('Failed to save company:', error);
+      alert('Failed to save company: ' + error.message);
+    }
+  }, [companyData, currentContact, fetchData, formatWebsiteUrl]);
+
+  const handleCompanySearch = useCallback(async (contactId, term) => {
+    setCompanySearchTerm(prev => ({ ...prev, [contactId]: term }));
+    if (term.length < 4) {
+      setCompanySuggestions(prev => ({ ...prev, [contactId]: [] }));
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('companies')
+        .select('*')
+        .ilike('name', `%${term}%`)
+        .limit(5);
+      if (error) throw error;
+      setCompanySuggestions(prev => ({
+        ...prev,
+        [contactId]: data.length > 0 ? data : [{ name: 'Add a company', isAddOption: true }]
+      }));
+    } catch (error) {
+      setCompanySuggestions(prev => ({ ...prev, [contactId]: [{ name: 'Add a company', isAddOption: true }] }));
     }
   }, []);
 
-  const handleCompanySelect = useCallback((company) => {
-    console.log('Company selected:', company);
-    // Add company selection logic here
+  const handleCompanySelect = useCallback(async (contactId, company) => {
+    if (company.isAddOption) {
+      handleOpenCompanyModal(contacts.find(c => c.id === contactId));
+      return;
+    }
+    try {
+      await supabase
+        .from('contacts')
+        .update({ company_id: company.id })
+        .eq('id', contactId);
+      fetchData();
+      setCompanySearchTerm(prev => ({ ...prev, [contactId]: '' }));
+      setCompanySuggestions(prev => ({ ...prev, [contactId]: [] }));
+    } catch (error) {
+      alert('Failed to assign company');
+    }
+  }, [contacts, handleOpenCompanyModal, fetchData]);
+
+  const handleCompanyCreateOnEnter = useCallback(async (event, contactId) => {
+    if (event.key === 'Enter' && companySearchTerm[contactId] && companySearchTerm[contactId].length >= 4) {
+      const suggestions = companySuggestions[contactId];
+      if (suggestions && suggestions.length > 0 && suggestions[0].isAddOption) {
+        // Create a new company using the input text
+        const newCompany = {
+          name: companySearchTerm[contactId],
+          website: '', // You can modify this to infer a website or leave it empty
+          category: '', // Default or inferred category (you can customize)
+          city: '',
+          nation: '',
+          description: ''
+        };
+        try {
+          const { data: createdCompany, error } = await supabase
+            .from('companies')
+            .insert(newCompany)
+            .select()
+            .single();
+          if (error) throw error;
+          await supabase
+            .from('contacts')
+            .update({ company_id: createdCompany.id })
+            .eq('id', contactId);
+          fetchData(); // Refresh the contacts list
+          setCompanySearchTerm(prev => ({ ...prev, [contactId]: '' }));
+          setCompanySuggestions(prev => ({ ...prev, [contactId]: [] }));
+          // Open the "Add/Edit Company" modal for the newly created company
+          setCurrentContact(contacts.find(c => c.id === contactId));
+          setCompanyData(createdCompany);
+          setShowCompanyModal(true);
+        } catch (error) {
+          alert('Failed to create company: ' + error.message);
+        }
+      }
+    }
+  }, [companySearchTerm, companySuggestions, fetchData, contacts]);
+  
+  const handleUnlinkCompany = useCallback(async (contactId) => {
+    if (!window.confirm('Are you sure you want to unlink this company from the contact?')) return;
+    try {
+      await supabase
+        .from('contacts')
+        .update({ company_id: null })
+        .eq('id', contactId);
+      fetchData();
+    } catch (error) {
+      alert('Failed to unlink company');
+    }
+  }, [fetchData]);
+
+  const goToFirstPage = useCallback(() => setCurrentPage(0), []);
+  const goToPreviousPage = useCallback(() => setCurrentPage(prev => Math.max(0, prev - 1)), []);
+  const goToNextPage = useCallback(() => setCurrentPage(prev => Math.min(totalPages - 1, prev + 1)), [totalPages]);
+  const goToLastPage = useCallback(() => setCurrentPage(totalPages > 0 ? totalPages - 1 : 0), [totalPages]);
+
+  const handleOpenContactEdit = useCallback((contact) => {
+    setEditingContact(contact);
+    setContactEditData({
+      first_name: contact.first_name || '',
+      last_name: contact.last_name || '',
+      contact_category: contact.contact_category || '',
+      mobile: contact.mobile || '',
+      mobile2: contact.mobile2 || '',
+      email: contact.email || '',
+      email2: contact.email2 || '',
+      email3: contact.email3 || '',
+      linkedin: contact.linkedin || '',
+      keep_in_touch_frequency: contact.keep_in_touch_frequency || '',
+      about_the_contact: contact.about_the_contact || ''
+    });
+    setShowContactEditModal(true);
   }, []);
 
-  const handleSaveCompany = useCallback(() => {
-    console.log('Save company');
-    // Add company save logic here
+  const handleContactInputChange = useCallback((field, value) => {
+    setContactEditData(prev => ({ ...prev, [field]: value }));
   }, []);
 
-  const handleContactInputChange = useCallback((e) => {
-    const { name, value } = e.target;
-    setContactEditData(prev => ({ ...prev, [name]: value }));
+  const handleSaveContactEdit = useCallback(async () => {
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .update(contactEditData)
+        .eq('id', editingContact.id);
+      if (error) throw error;
+      setContacts(prev => prev.map(c =>
+        c.id === editingContact.id ? { ...c, ...contactEditData } : c
+      ));
+      setShowContactEditModal(false);
+      setEditingContact(null);
+      setContactEditData({});
+    } catch (error) {
+      alert('Failed to update contact: ' + error.message);
+    }
+  }, [editingContact, contactEditData]);
+
+  const handleEditCompany = useCallback((contact) => {
+    setCurrentContact(contact);
+    setCompanyData({
+      name: contact.companies?.name || '',
+      website: contact.companies?.website || '',
+      category: contact.companies?.category || '',
+      city: contact.companies?.city || '',
+      nation: contact.companies?.nation || '',
+      description: contact.companies?.description || ''
+    });
+    setShowCompanyModal(true);
   }, []);
 
-  const handleSaveContactEdit = useCallback(() => {
-    console.log('Save contact edit');
-    // Add contact edit save logic here
+  // Handle ESC key to close company input
+  useEffect(() => {
+    const handleEsc = (event) => {
+      if (event.key === 'Escape') {
+        setCompanySearchTerm(prev => {
+          const newTerm = { ...prev };
+          Object.keys(newTerm).forEach(key => newTerm[key] = '');
+          return newTerm;
+        });
+        setCompanySuggestions(prev => {
+          const newSuggestions = { ...prev };
+          Object.keys(newSuggestions).forEach(key => newSuggestions[key] = []);
+          return newSuggestions;
+        });
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, []);
+
+  // Add ESC key handler for merge modal
+  useEffect(() => {
+    const handleEscForMergeModal = (event) => {
+      if (event.key === 'Escape' && showMergeModal) {
+        setShowMergeModal(false);
+        setSelectedContact(null);
+        setTargetContact(null);
+        setMergedData({});
+        setSearchTerm('');
+        setSearchResults([]);
+      }
+    };
+    window.addEventListener('keydown', handleEscForMergeModal);
+    return () => window.removeEventListener('keydown', handleEscForMergeModal);
+  }, [showMergeModal]);
+
+  const handleAddTagClick = useCallback((contactId) => {
+    setIsAddingTag(prev => ({ ...prev, [contactId]: true }));
+    setTagInput(prev => ({ ...prev, [contactId]: '' }));
+  }, []);
+
+  const handleTagInputChange = useCallback((contactId, value) => {
+    setTagInput(prev => ({ ...prev, [contactId]: value }));
+    
+    // Filter suggestions based on input
+    if (value.trim()) {
+      const suggestions = allTags.filter(tag => 
+        tag.name.toLowerCase().includes(value.toLowerCase())
+      );
+      setTagSuggestions(prev => ({ ...prev, [contactId]: suggestions }));
+    } else {
+      setTagSuggestions(prev => ({ ...prev, [contactId]: [] }));
+    }
+  }, [allTags]);
+
+  const handleTagSelect = useCallback(async (contactId, tag) => {
+    try {
+      // Check if tag already exists for this contact
+      const existingTags = contactTags[contactId] || [];
+      if (existingTags.some(t => t.id === tag.id)) {
+        // Tag already exists, don't add it again
+        setIsAddingTag(prev => ({ ...prev, [contactId]: false }));
+        setTagInput(prev => ({ ...prev, [contactId]: '' }));
+        setTagSuggestions(prev => ({ ...prev, [contactId]: [] }));
+        return;
+      }
+      
+      // Add tag to contact
+      const { error } = await supabase
+        .from('contact_tags')
+        .insert({ contact_id: contactId, tag_id: tag.id });
+        
+      if (error) throw error;
+      
+      // Assign a random color to this tag
+      const tagWithColor = {
+        ...tag,
+        color: getRandomColor()
+      };
+      
+      // Update local state
+      setContactTags(prev => {
+        const updatedTags = { ...prev };
+        if (!updatedTags[contactId]) {
+          updatedTags[contactId] = [];
+        }
+        updatedTags[contactId] = [...updatedTags[contactId], tagWithColor];
+        return updatedTags;
+      });
+      
+      setIsAddingTag(prev => ({ ...prev, [contactId]: false }));
+      setTagInput(prev => ({ ...prev, [contactId]: '' }));
+      setTagSuggestions(prev => ({ ...prev, [contactId]: [] }));
+    } catch (error) {
+      console.error('Error adding tag:', error);
+      alert('Failed to add tag');
+    }
+  }, [contactTags]);
+
+  const handleCreateTag = useCallback(async (contactId, tagName) => {
+    try {
+      // Create new tag
+      const { data: newTag, error: createError } = await supabase
+        .from('tags')
+        .insert({ name: tagName })
+        .select()
+        .single();
+        
+      if (createError) throw createError;
+      
+      // Add tag to contact
+      const { error: linkError } = await supabase
+        .from('contact_tags')
+        .insert({ contact_id: contactId, tag_id: newTag.id });
+        
+      if (linkError) throw linkError;
+      
+      // Assign a random color to the new tag
+      const tagWithColor = {
+        ...newTag,
+        color: getRandomColor()
+      };
+      
+      // Update local state
+      setAllTags(prev => [...prev, tagWithColor]);
+      setContactTags(prev => {
+        const updatedTags = { ...prev };
+        if (!updatedTags[contactId]) {
+          updatedTags[contactId] = [];
+        }
+        updatedTags[contactId] = [...updatedTags[contactId], tagWithColor];
+        return updatedTags;
+      });
+      
+      setIsAddingTag(prev => ({ ...prev, [contactId]: false }));
+      setTagInput(prev => ({ ...prev, [contactId]: '' }));
+      setTagSuggestions(prev => ({ ...prev, [contactId]: [] }));
+    } catch (error) {
+      console.error('Error creating tag:', error);
+      alert('Failed to create tag');
+    }
   }, []);
 
   const handleTagInputKeyDown = useCallback((e, contactId) => {
@@ -1228,9 +1663,6 @@ const RecentContactsList = () => {
     const checkHubspotAuth = async () => {
       console.log('Checking HubSpot authentication...');
       
-      // Check if we're in local development (localhost)
-      const isLocalDevelopment = window.location.hostname === 'localhost';
-      
       // Check if we have credentials
       if (!HUBSPOT_API_KEY && !HUBSPOT_ACCESS_TOKEN) {
         console.log('No HubSpot credentials found');
@@ -1238,18 +1670,6 @@ const RecentContactsList = () => {
           isAuthenticated: false,
           isLoading: false,
           error: "No Hubspot credentials found. Configure API key or OAuth token."
-        });
-        return;
-      }
-      
-      // If we're in local development and the Netlify function isn't available,
-      // just set a default status to avoid errors
-      if (isLocalDevelopment) {
-        console.log('Running in local development - skipping HubSpot authentication check');
-        setHubspotAuthStatus({
-          isAuthenticated: false,
-          isLoading: false,
-          error: "HubSpot API proxy not available in local development. This is expected and can be ignored."
         });
         return;
       }
@@ -1295,8 +1715,7 @@ const RecentContactsList = () => {
           isLoading: false,
           error: error.message || 'Failed to authenticate with Hubspot'
         });
-        // Don't throw an error - just log it and continue
-        console.error(`HubSpot authentication failed: ${error.response?.status || error.message}`);
+        throw new Error(`HubSpot authentication failed: ${error.response?.status || error.message}`);
       }
     };
     
@@ -2046,21 +2465,57 @@ const RecentContactsList = () => {
         </LoadingOverlay>
       )}
       <Header>
-        <h2>All Contacts ({totalCount})</h2>
+        <h2>
+          {showRecentOnly 
+            ? `Last 7 Days Interactions ${!loading && totalCount > 0 ? `(${totalCount})` : ''}` 
+            : `All Active Contacts ${!loading && totalCount > 0 ? `(${totalCount})` : ''}`}
+          {showRecentOnly && (
+            <span 
+              style={{ 
+                marginLeft: '0.5rem', 
+                fontSize: '0.875rem', 
+                color: '#4A5568',
+                cursor: 'help',
+                position: 'relative',
+                display: 'inline-block'
+              }}
+              title="Shows contacts who have had an interaction recorded in the last 7 days, ordered by most recent interaction first."
+            >
+              <FontAwesomeIcon icon={faCircleInfo} />
+            </span>
+          )}
+        </h2>
+        <Button 
+          onClick={() => setShowRecentOnly(!showRecentOnly)} 
+          style={{ 
+            padding: '0.5rem 1rem',
+            marginLeft: '1rem',
+            background: showRecentOnly ? '#4A5568' : '#3182CE',
+            color: 'white',
+            border: 'none',
+            borderRadius: '0.375rem',
+            cursor: 'pointer',
+            fontSize: '0.875rem'
+          }}
+        >
+          {showRecentOnly ? 'Show All Contacts' : 'Show Recent Only'}
+        </Button>
       </Header>
+      
       {error && (
         <div style={{ 
-          background: '#FEEBC8', 
-          padding: '12px 16px', 
-          borderRadius: '4px', 
-          color: '#7B341E', 
-          marginBottom: '16px', 
-          border: '1px solid #ED8936'
+          background: '#FEF2F2', 
+          color: '#B91C1C', 
+          padding: '1rem', 
+          borderRadius: '0.375rem',
+          marginBottom: '1rem',
+          fontSize: '0.875rem'
         }}>
-          <strong>Error:</strong> {error}
+          <strong>Error loading contacts:</strong> {error}
         </div>
       )}
-      {!loading && !error && contacts.length === 0 ? (
+      
+      {!loading && contacts.length === 0 ? (
         <p>No contacts found.</p>
       ) : (
         <>
@@ -2078,7 +2533,7 @@ const RecentContactsList = () => {
               </tr>
             </TableHead>
             <TableBody>
-              {currentContacts.map(contact => (
+              {contacts.map(contact => (
                 <tr key={contact.id}>
                   <td>
                     <ContactNameWrapper>
@@ -2383,10 +2838,9 @@ const RecentContactsList = () => {
           <PaginationControls>
             <PageButton onClick={goToFirstPage} disabled={currentPage === 0}>First</PageButton>
             <PageButton onClick={goToPreviousPage} disabled={currentPage === 0}>Previous</PageButton>
-            <PageInfo>
-              Page {currentPage + 1} of {totalPages} 
-              (showing {currentContacts.length} of {contacts.length} contacts)
-            </PageInfo>
+            <span>
+              Page {currentPage + 1} of {totalPages > 0 ? totalPages : 1} (Total: {totalCount})
+            </span>
             <PageButton onClick={goToNextPage} disabled={currentPage >= totalPages - 1}>Next</PageButton>
             <PageButton onClick={goToLastPage} disabled={currentPage >= totalPages - 1}>Last</PageButton>
           </PaginationControls>
