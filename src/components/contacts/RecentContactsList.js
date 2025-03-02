@@ -996,29 +996,47 @@ const RecentContactsList = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
+      console.log('Fetching contacts...');
+      
+      // Try a simpler query first to see if we can get any contacts
+      const simpleQuery = await supabase
+        .from('contacts')
+        .select('count');
+      
+      console.log('Simple query result:', simpleQuery);
+      
       const [countResponse, contactsResponse] = await Promise.all([
         supabase
           .from('contacts')
-          .select('*, companies(*)', { count: 'exact', head: true })
-          .neq('contact_category', 'Skip'),
+          .select('*, companies(*)', { count: 'exact', head: true }),
         supabase
           .from('contacts')
           .select('*, companies(*)')
-          .neq('contact_category', 'Skip')
           .order('created_at', { ascending: false })
           .range(currentPage * rowsPerPage, (currentPage + 1) * rowsPerPage - 1)
       ]);
+      
+      console.log('Count response:', countResponse);
+      console.log('Contacts response:', contactsResponse);
+      
       if (countResponse.error) {
+        console.error('Count query error:', countResponse.error);
         setTotalCount(0);
       } else {
         setTotalCount(countResponse.count || 0);
+        console.log('Total contacts count:', countResponse.count);
       }
+      
       if (contactsResponse.error) {
+        console.error('Contacts query error:', contactsResponse.error);
         setContacts([]);
       } else {
+        console.log('Contacts data:', contactsResponse.data);
+        console.log('Number of contacts returned:', contactsResponse.data?.length || 0);
         setContacts(contactsResponse.data || []);
       }
     } catch (error) {
+      console.error('Error in fetchData:', error);
       setContacts([]);
       setTotalCount(0);
     } finally {
@@ -2435,7 +2453,7 @@ const RecentContactsList = () => {
         </LoadingOverlay>
       )}
       <Header>
-        <h2>All Active Contacts</h2>
+        <h2>All Contacts</h2>
       </Header>
       {!loading && contacts.length === 0 ? (
         <p>No contacts found.</p>
