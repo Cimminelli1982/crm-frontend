@@ -999,11 +999,11 @@ const RecentContactsList = () => {
         supabase
           .from('contacts')
           .select('*, companies(*)', { count: 'exact', head: true })
-          .or(`contact_category.neq.Skip,contact_category.is.null`),
+          .eq('contact_category', 'Skip'),
         supabase
           .from('contacts')
           .select('*, companies(*)')
-          .or(`contact_category.neq.Skip,contact_category.is.null`)
+          .eq('contact_category', 'Skip')
           .order('created_at', { ascending: false })
           .range(currentPage * rowsPerPage, (currentPage + 1) * rowsPerPage - 1)
       ]);
@@ -2431,10 +2431,10 @@ const RecentContactsList = () => {
         </LoadingOverlay>
       )}
       <Header>
-        <h2>All Contacts</h2>
+        <h2>Skip Category Contacts</h2>
       </Header>
       {!loading && contacts.length === 0 ? (
-        <p>No contacts found.</p>
+        <p>No contacts with Skip category found.</p>
       ) : (
         <>
           <ContactTable>
