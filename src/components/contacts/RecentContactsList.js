@@ -999,14 +999,10 @@ const RecentContactsList = () => {
         supabase
           .from('contacts')
           .select('*, companies(*)', { count: 'exact', head: true })
-          .gte('created_at', getThirtyDaysAgoRange.start)
-          .lte('created_at', getThirtyDaysAgoRange.end)
           .or(`contact_category.neq.Skip,contact_category.is.null`),
         supabase
           .from('contacts')
           .select('*, companies(*)')
-          .gte('created_at', getThirtyDaysAgoRange.start)
-          .lte('created_at', getThirtyDaysAgoRange.end)
           .or(`contact_category.neq.Skip,contact_category.is.null`)
           .order('created_at', { ascending: false })
           .range(currentPage * rowsPerPage, (currentPage + 1) * rowsPerPage - 1)
@@ -1027,7 +1023,7 @@ const RecentContactsList = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, rowsPerPage, getThirtyDaysAgoRange]);
+  }, [currentPage, rowsPerPage]);
 
   useEffect(() => {
     fetchData();
@@ -1256,20 +1252,20 @@ const RecentContactsList = () => {
         
         // Confirm with user if they want to update the existing company or create a new one
         if (window.confirm(`A company with a similar website already exists (${existingCompany.name}). Do you want to update it instead of creating a new one?`)) {
-          await supabase
-            .from('companies')
+        await supabase
+          .from('companies')
             .update(updatedCompanyData)
-            .eq('id', existingCompany.id);
-          companyId = existingCompany.id;
+          .eq('id', existingCompany.id);
+        companyId = existingCompany.id;
           console.log(`Updated existing company: ${existingCompany.name}`);
-        } else {
+      } else {
           // User chose to create a new company despite the duplicate
-          const { data: newCompany } = await supabase
-            .from('companies')
+        const { data: newCompany } = await supabase
+          .from('companies')
             .insert(updatedCompanyData)
-            .select()
-            .single();
-          companyId = newCompany.id;
+          .select()
+          .single();
+        companyId = newCompany.id;
           console.log(`Created new company despite duplicate: ${newCompany.name}`);
         }
       } else {
@@ -2435,10 +2431,10 @@ const RecentContactsList = () => {
         </LoadingOverlay>
       )}
       <Header>
-        <h2>Contacts Added in Last 30 Days</h2>
+        <h2>All Contacts</h2>
       </Header>
       {!loading && contacts.length === 0 ? (
-        <p>No contacts found in the last 30 days.</p>
+        <p>No contacts found.</p>
       ) : (
         <>
           <ContactTable>
@@ -2459,21 +2455,21 @@ const RecentContactsList = () => {
                 <tr key={contact.id}>
                   <td>
                     <ContactNameWrapper>
-                      {contact.first_name || contact.last_name ? (
+                    {contact.first_name || contact.last_name ? (
                         <>
                           {contact.linkedin ? (
                             <a href={contact.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#2d3748', textDecoration: 'none', fontWeight: '600' }}>
-                              {`${contact.first_name || ''} ${contact.last_name || ''}`}
-                            </a>
-                          ) : (
-                            <a
-                              href={`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                          {`${contact.first_name || ''} ${contact.last_name || ''}`}
+                        </a>
+                      ) : (
+                        <a
+                          href={`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
                               style={{ color: '#2d3748', textDecoration: 'none', fontWeight: '600' }}
-                            >
-                              {`${contact.first_name || ''} ${contact.last_name || ''}`}
-                            </a>
+                        >
+                          {`${contact.first_name || ''} ${contact.last_name || ''}`}
+                        </a>
                           )}
                         </>
                       ) : (
@@ -2483,8 +2479,8 @@ const RecentContactsList = () => {
                         <Tooltip className="tooltip">
                           {contact.about_the_contact}
                         </Tooltip>
-                      )}
-                      <EditButton onClick={() => handleOpenContactEdit(contact)}>✎</EditButton>
+                    )}
+                    <EditButton onClick={() => handleOpenContactEdit(contact)}>✎</EditButton>
                       <HubspotIcon 
                         onClick={() => handleSearchHubspot(contact)} 
                         title="Search in Hubspot and import data"
@@ -2503,25 +2499,25 @@ const RecentContactsList = () => {
                   </td>
                   <td>
                   {contact.companies ? (
-    <div>
-      <a
-        href={
-          contact.companies.website
-            ? contact.companies.website.startsWith('http')
-              ? contact.companies.website
-              : `https://${contact.companies.website}`
-            : '#'
-        }
-        target="_blank"
-        rel="noopener noreferrer"
+  <div>
+    <a
+      href={
+        contact.companies.website
+          ? contact.companies.website.startsWith('http')
+            ? contact.companies.website
+            : `https://${contact.companies.website}`
+          : '#'
+      }
+      target="_blank"
+      rel="noopener noreferrer"
         style={{ color: '#2d3748', textDecoration: 'none' }}
-      >
-        {contact.companies.name}
-      </a>
-      <EditButton onClick={() => handleEditCompany(contact)}>✎</EditButton>
-      <UnlinkButton onClick={() => handleUnlinkCompany(contact.id)}>✕</UnlinkButton>
-    </div>
-  ) : (
+    >
+      {contact.companies.name}
+    </a>
+    <EditButton onClick={() => handleEditCompany(contact)}>✎</EditButton>
+    <UnlinkButton onClick={() => handleUnlinkCompany(contact.id)}>✕</UnlinkButton>
+  </div>
+) : (
   <div>
     <CompanyInput
       value={companySearchTerm[contact.id] || ''}
