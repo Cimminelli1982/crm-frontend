@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faWhatsapp, faHubspot } from '@fortawesome/free-brands-svg-icons';
+// eslint-disable-next-line no-unused-vars
 import { faEnvelope, faSearch, faPlus, faSpinner, faPhone, faLocationDot, faArrowUpRightFromSquare, faCircleInfo } from '@fortawesome/free-solid-svg-icons';
 import axios from 'axios'; // Import axios for API calls
 
@@ -999,14 +1000,12 @@ const RecentContactsList = () => {
         supabase
           .from('contacts')
           .select('*, companies(*)', { count: 'exact', head: true })
-          .not('contact_category', 'Skip')
-          .gte('last_interaction', getLastThirtyDaysRange.start),
+          .not('contact_category', 'Skip'),
         supabase
           .from('contacts')
           .select('*, companies(*)')
           .not('contact_category', 'Skip')
-          .gte('last_interaction', getLastThirtyDaysRange.start)
-          .order('last_interaction', { ascending: false })
+          .order('created_at', { ascending: false })
           .range(currentPage * rowsPerPage, (currentPage + 1) * rowsPerPage - 1)
       ]);
       if (countResponse.error) {
@@ -1025,7 +1024,7 @@ const RecentContactsList = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, rowsPerPage, getLastThirtyDaysRange]);
+  }, [currentPage, rowsPerPage]);
 
   useEffect(() => {
     fetchData();
@@ -1229,6 +1228,7 @@ const RecentContactsList = () => {
   }, [companySearchTerm]);
 
   // Helper function to save company data - wrapped in useCallback to prevent dependency warnings
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleSaveCompany = useCallback(async () => {
     try {
       // Format the website URL before saving
@@ -1983,6 +1983,7 @@ const RecentContactsList = () => {
   }, []);
   
   // Function to map Hubspot contact properties to our data model - wrapped in useCallback
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const mapHubspotContactToOurModel = useCallback((hubspotContact, hubspotCompany) => {
     const properties = hubspotContact.properties;
     
@@ -2434,10 +2435,10 @@ const RecentContactsList = () => {
         </LoadingOverlay>
       )}
       <Header>
-        <h2>Recent Interactions (Last 30 Days)</h2>
+        <h2>All Active Contacts</h2>
       </Header>
       {!loading && contacts.length === 0 ? (
-        <p>No contacts with recent interactions found.</p>
+        <p>No contacts found.</p>
       ) : (
         <>
           <ContactTable>
