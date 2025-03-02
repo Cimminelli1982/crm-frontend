@@ -3,7 +3,7 @@ import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faWhatsapp, faHubspot } from '@fortawesome/free-brands-svg-icons';
-import { faEnvelope, faSearch, faPlus, faFire, faSpinner } from '@fortawesome/free-solid-svg-icons';
+import { faEnvelope, faSearch, faPlus, faSpinner, faPhone, faLocationDot, faArrowUpRightFromSquare, faCircleInfo } from '@fortawesome/free-solid-svg-icons';
 import axios from 'axios'; // Import axios for API calls
 
 // Add Hubspot API configuration
@@ -983,7 +983,7 @@ const RecentContactsList = () => {
     error: null
   });
 
-  const getThirtyDaysAgoRange = useMemo(() => {
+  const getLastThirtyDaysRange = useMemo(() => {
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30);
     thirtyDaysAgo.setHours(0, 0, 0, 0);
@@ -999,12 +999,14 @@ const RecentContactsList = () => {
         supabase
           .from('contacts')
           .select('*, companies(*)', { count: 'exact', head: true })
-          .eq('contact_category', 'Skip'),
+          .not('contact_category', 'Skip')
+          .gte('last_interaction', getLastThirtyDaysRange.start),
         supabase
           .from('contacts')
           .select('*, companies(*)')
-          .eq('contact_category', 'Skip')
-          .order('created_at', { ascending: false })
+          .not('contact_category', 'Skip')
+          .gte('last_interaction', getLastThirtyDaysRange.start)
+          .order('last_interaction', { ascending: false })
           .range(currentPage * rowsPerPage, (currentPage + 1) * rowsPerPage - 1)
       ]);
       if (countResponse.error) {
@@ -1023,7 +1025,7 @@ const RecentContactsList = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, rowsPerPage]);
+  }, [currentPage, rowsPerPage, getLastThirtyDaysRange]);
 
   useEffect(() => {
     fetchData();
@@ -1226,6 +1228,7 @@ const RecentContactsList = () => {
     setShowCompanyModal(true);
   }, [companySearchTerm]);
 
+  // Helper function to save company data - wrapped in useCallback to prevent dependency warnings
   const handleSaveCompany = useCallback(async () => {
     try {
       // Format the website URL before saving
@@ -2431,10 +2434,10 @@ const RecentContactsList = () => {
         </LoadingOverlay>
       )}
       <Header>
-        <h2>Skip Category Contacts</h2>
+        <h2>Recent Interactions (Last 30 Days)</h2>
       </Header>
       {!loading && contacts.length === 0 ? (
-        <p>No contacts with Skip category found.</p>
+        <p>No contacts with recent interactions found.</p>
       ) : (
         <>
           <ContactTable>
