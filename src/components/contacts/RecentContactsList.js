@@ -1000,11 +1000,11 @@ const RecentContactsList = () => {
         supabase
           .from('contacts')
           .select('*, companies(*)', { count: 'exact', head: true })
-          .not('contact_category', 'Skip'),
+          .neq('contact_category', 'Skip'),
         supabase
           .from('contacts')
           .select('*, companies(*)')
-          .not('contact_category', 'Skip')
+          .neq('contact_category', 'Skip')
           .order('created_at', { ascending: false })
           .range(currentPage * rowsPerPage, (currentPage + 1) * rowsPerPage - 1)
       ]);
