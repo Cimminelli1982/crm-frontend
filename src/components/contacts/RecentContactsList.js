@@ -1003,18 +1003,24 @@ const RecentContactsList = () => {
     return formattedDate;
   }, []);
 
+  const getTodayDate = useMemo(() => {
+    const today = new Date();
+    // Format as YYYY-MM-DD for Supabase comparison
+    return today.toISOString().split('T')[0];
+  }, []);
+
   const rowsPerPage = useMemo(() => 50, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     console.log(showRecentOnly 
-      ? "Fetching contacts with last_interaction within the last 7 days..." 
+      ? "Fetching contacts with last_interaction today..." 
       : "Fetching all contacts...");
     
     try {
-      // Get the formatted date for 7 days ago
-      const sevenDaysAgo = getLastSevenDaysRange;
+      // Get today's date
+      const todayDate = getTodayDate;
       
       // Build query
       let query = supabase
@@ -1024,8 +1030,8 @@ const RecentContactsList = () => {
       
       // Apply date filter only if showing recent contacts
       if (showRecentOnly) {
-        console.log("Filtering contacts with last_interaction >= ", sevenDaysAgo);
-        query = query.gte('last_interaction', sevenDaysAgo);
+        console.log("Filtering contacts with last_interaction = ", todayDate);
+        query = query.eq('last_interaction', todayDate);
       }
       
       // Always order by last_interaction (most recent first), falling back to created_at for null values
@@ -1054,7 +1060,7 @@ const RecentContactsList = () => {
     } finally {
       setLoading(false);
     }
-  }, [getLastSevenDaysRange, showRecentOnly]);
+  }, [getLastSevenDaysRange, showRecentOnly, getTodayDate]);
 
   useEffect(() => {
     fetchData();
@@ -2467,7 +2473,7 @@ const RecentContactsList = () => {
       <Header>
         <h2>
           {showRecentOnly 
-            ? `Last 7 Days Interactions ${!loading && totalCount > 0 ? `(${totalCount})` : ''}` 
+            ? `Today's Interactions ${!loading && totalCount > 0 ? `(${totalCount})` : ''}` 
             : `All Active Contacts ${!loading && totalCount > 0 ? `(${totalCount})` : ''}`}
           {showRecentOnly && (
             <span 
@@ -2479,7 +2485,7 @@ const RecentContactsList = () => {
                 position: 'relative',
                 display: 'inline-block'
               }}
-              title="Shows contacts who have had an interaction recorded in the last 7 days, ordered by most recent interaction first."
+              title="Shows contacts who have had an interaction recorded today, ordered by most recent interaction first."
             >
               <FontAwesomeIcon icon={faCircleInfo} />
             </span>
