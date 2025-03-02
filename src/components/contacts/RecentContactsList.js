@@ -983,6 +983,7 @@ const RecentContactsList = () => {
     isLoading: true,
     error: null
   });
+  const [error, setError] = useState(null);
 
   const getLastThirtyDaysRange = useMemo(() => {
     const now = new Date();
@@ -995,58 +996,68 @@ const RecentContactsList = () => {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      console.log('Fetching contacts...');
+      console.log('Attempting to fetch contacts with simplified queries...');
       
-      // Try a simpler query first to see if we can get any contacts
-      const simpleQuery = await supabase
+      // Simplest possible query
+      const basicQuery = await supabase
         .from('contacts')
-        .select('count');
+        .select('id, first_name, last_name, email, mobile, contact_category, keep_in_touch_frequency, score')
+        .limit(50);
       
-      console.log('Simple query result:', simpleQuery);
+      console.log('Basic query result:', basicQuery);
       
-      const [countResponse, contactsResponse] = await Promise.all([
-        supabase
-          .from('contacts')
-          .select('*, companies(*)', { count: 'exact', head: true }),
-        supabase
-          .from('contacts')
-          .select('*, companies(*)')
-          .order('created_at', { ascending: false })
-          .range(currentPage * rowsPerPage, (currentPage + 1) * rowsPerPage - 1)
-      ]);
-      
-      console.log('Count response:', countResponse);
-      console.log('Contacts response:', contactsResponse);
-      
-      if (countResponse.error) {
-        console.error('Count query error:', countResponse.error);
-        setTotalCount(0);
-      } else {
-        setTotalCount(countResponse.count || 0);
-        console.log('Total contacts count:', countResponse.count);
-      }
-      
-      if (contactsResponse.error) {
-        console.error('Contacts query error:', contactsResponse.error);
+      if (basicQuery.error) {
+        console.error('Basic query error:', basicQuery.error);
         setContacts([]);
+        setTotalCount(0);
+        setError(`Database error: ${basicQuery.error.message}`);
       } else {
-        console.log('Contacts data:', contactsResponse.data);
-        console.log('Number of contacts returned:', contactsResponse.data?.length || 0);
-        setContacts(contactsResponse.data || []);
+        console.log('Success! Got contacts:', basicQuery.data.length);
+        setContacts(basicQuery.data || []);
+        setTotalCount(basicQuery.data.length);
       }
     } catch (error) {
       console.error('Error in fetchData:', error);
       setContacts([]);
       setTotalCount(0);
+      setError(`Failed to fetch contacts: ${error.message}`);
     } finally {
       setLoading(false);
     }
-  }, [currentPage, rowsPerPage]);
+  }, []);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    // Check Supabase connection status
+    const checkSupabaseConnection = async () => {
+      try {
+        // Get Supabase URL and key from environment
+        const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || '';
+        const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY || '';
+        
+        console.log('Supabase configuration:');
+        console.log('- URL configured:', !!supabaseUrl);
+        console.log('- API key configured:', !!supabaseKey);
+        
+        // Try a ping-like query
+        const { error } = await supabase.from('contacts').select('count');
+        if (error) {
+          console.error('Supabase connection test failed:', error);
+        } else {
+          console.log('Supabase connection test successful!');
+        }
+      } catch (err) {
+        console.error('Error checking Supabase connection:', err);
+      }
+    };
+    
+    checkSupabaseConnection();
+  }, []);
 
   useEffect(() => {
     const fetchTags = async () => {
@@ -2455,7 +2466,19 @@ const RecentContactsList = () => {
       <Header>
         <h2>All Contacts</h2>
       </Header>
-      {!loading && contacts.length === 0 ? (
+      {error && (
+        <div style={{ 
+          background: '#FEEBC8', 
+          padding: '12px 16px', 
+          borderRadius: '4px', 
+          color: '#7B341E', 
+          marginBottom: '16px', 
+          border: '1px solid #ED8936'
+        }}>
+          <strong>Error:</strong> {error}
+        </div>
+      )}
+      {!loading && !error && contacts.length === 0 ? (
         <p>No contacts found.</p>
       ) : (
         <>
