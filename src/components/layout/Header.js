@@ -43,8 +43,8 @@ const Header = () => {
         </Link>
       </Logo>
       <NavMenu>
-        <NavLink to="/dashboard">Dashboard</NavLink>
         <NavLink to="/contacts">Contacts</NavLink>
+        <NavLink to="/dashboard">Dashboard</NavLink>
         <NavLink to="/new-contacts">New Contacts</NavLink>
         <button onClick={handleSignOut}>Sign Out</button>
       </NavMenu>
