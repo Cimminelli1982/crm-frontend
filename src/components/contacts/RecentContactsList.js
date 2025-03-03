@@ -1114,18 +1114,22 @@ const RecentContactsList = () => {
           break;
           
         case 'recent':
-          // Recently created: contacts created in the last 30 days (excluding Skip)
+          // Recently created: contacts created in the last week (excluding Skip)
+          const oneWeekAgo = new Date();
+          oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+          
           query = query
+            .gte('created_at', oneWeekAgo.toISOString())
             .neq('contact_category', 'Skip')
-            .gte('created_at', getThirtyDaysAgoDate)
-            .order('created_at', { ascending: false });
+            .order('id', { ascending: false });
           break;
           
         case 'missing':
           // Missing info: contacts missing key fields
           query = query
+            .neq('contact_category', 'Skip')
             .or('first_name.is.null,last_name.is.null,contact_category.is.null,keep_in_touch_frequency.is.null')
-            .order('last_interaction', { ascending: false });
+            .order('id', { ascending: false });
           break;
           
         default:
