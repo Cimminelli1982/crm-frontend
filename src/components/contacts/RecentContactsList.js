@@ -1085,6 +1085,13 @@ const RecentContactsList = () => {
     return today.toISOString().split('T')[0];
   }, []);
 
+  const getThirtyDaysAgoDate = useMemo(() => {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    // Format as YYYY-MM-DD for Supabase comparison
+    return thirtyDaysAgo.toISOString().split('T')[0];
+  }, []);
+
   const rowsPerPage = useMemo(() => 50, []);
 
   const fetchData = useCallback(async () => {
@@ -1099,15 +1106,18 @@ const RecentContactsList = () => {
       // Apply filters based on the current filter
       switch (currentFilter) {
         case 'today':
-          // Last Interaction: today's interactions sorted by last_interaction
+          // Last Interaction: today's interactions sorted by last_interaction (excluding Skip)
           query = query
             .gte('last_interaction', getTodayDate)
+            .neq('contact_category', 'Skip')
             .order('last_interaction', { ascending: false });
           break;
           
         case 'recent':
-          // Recently created: newest contacts, limited to 50
+          // Recently created: contacts created in the last 30 days (excluding Skip)
           query = query
+            .neq('contact_category', 'Skip')
+            .gte('created_at', getThirtyDaysAgoDate)
             .order('created_at', { ascending: false });
           break;
           
@@ -1119,13 +1129,16 @@ const RecentContactsList = () => {
           break;
           
         default:
-          // All contacts (default sorting)
+          // All contacts (default sorting) - excluding category "Skip"
           if (showRecentOnly) {
             query = query
               .gte('last_interaction', getTodayDate)
+              .neq('contact_category', 'Skip')
               .order('last_interaction', { ascending: false });
           } else {
-            query = query.order('id', { ascending: false });
+            query = query
+              .neq('contact_category', 'Skip')
+              .order('id', { ascending: false });
           }
       }
       
@@ -1151,15 +1164,18 @@ const RecentContactsList = () => {
           const { count } = await supabase
             .from('contacts')
             .select('*', { count: 'exact', head: true })
-            .gte('last_interaction', getTodayDate);
+            .gte('last_interaction', getTodayDate)
+            .neq('contact_category', 'Skip');
           return count || 0;
         })(),
         
-        // Recent count - always returns the full count
+        // Recent count - returns count of contacts created in the last 30 days
         (async () => {
           const { count } = await supabase
             .from('contacts')
             .select('*', { count: 'exact', head: true })
+            .neq('contact_category', 'Skip')
+            .gte('created_at', getThirtyDaysAgoDate)
             .order('created_at', { ascending: false });
           return count || 0;
         })(),
@@ -1179,6 +1195,7 @@ const RecentContactsList = () => {
       const allCount = await supabase
         .from('contacts')
         .select('*', { count: 'exact', head: true })
+        .neq('contact_category', 'Skip')
         .then(res => res.count || 0);
       
       setFilterCounts({
@@ -1204,7 +1221,7 @@ const RecentContactsList = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentFilter, currentPage, rowsPerPage, showRecentOnly, getTodayDate]);
+  }, [currentFilter, currentPage, rowsPerPage, showRecentOnly, getTodayDate, getThirtyDaysAgoDate]);
 
   useEffect(() => {
     fetchData();
@@ -2627,8 +2644,7 @@ const RecentContactsList = () => {
               ? "Recently Created" 
               : currentFilter === 'missing' 
                 ? "Missing Information" 
-                : "All Contacts"} 
-          ({totalCount})
+                : "All Contacts (excluding Skip)"} 
         </h2>
         <Button 
           onClick={() => setShowRecentOnly(!showRecentOnly)} 
