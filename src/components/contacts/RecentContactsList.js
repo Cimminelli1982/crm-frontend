@@ -1127,9 +1127,9 @@ const RecentContactsList = () => {
         case 'missing':
           // Missing info: contacts missing key fields
           query = query
-            .neq('contact_category', 'Skip')
-            .or('first_name.is.null,last_name.is.null,contact_category.is.null,keep_in_touch_frequency.is.null')
-            .order('id', { ascending: false });
+          .not('contact_category', 'eq', 'Skip')
+          .or('first_name.is.null,last_name.is.null,keep_in_touch_frequency.is.null')
+          .order('id', { ascending: false });
           break;
           
         default:
