@@ -98,11 +98,42 @@ const Header = styled.div`
   }
 `;
 
+// Add or update these styled components to make the table responsive
+
+// Add this table wrapper component that will handle the horizontal scrolling
+const TableWrapper = styled.div`
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 1rem;
+  
+  &::-webkit-scrollbar {
+    height: 8px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+  }
+`;
+
+// Update the ContactTable to have a minimum width
 const ContactTable = styled.table`
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
   margin-top: 1rem;
+  min-width: 900px; // Ensures minimum width for all columns
+`;
+
+// Add styles for icon columns to ensure they don't wrap
+const IconCell = styled.td`
+  white-space: nowrap;
 `;
 
 const TableHead = styled.thead`
@@ -946,10 +977,46 @@ const formatWebsiteUrl = (url) => {
   return formatted;
 };
 
+// Add a new styled component for the filter buttons
+const FilterButtonsContainer = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+`;
+
+const FilterButton = styled.button`
+  padding: 0.5rem 1rem;
+  background-color: ${props => props.active ? '#4F46E5' : '#F3F4F6'};
+  color: ${props => props.active ? 'white' : '#4B5563'};
+  border: 1px solid #E5E7EB;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  
+  &:hover {
+    background-color: ${props => props.active ? '#4338CA' : '#E5E7EB'};
+  }
+  
+  span.counter {
+    background-color: ${props => props.active ? '#312E81' : '#E5E7EB'};
+    color: ${props => props.active ? 'white' : '#4B5563'};
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    margin-left: 0.5rem;
+  }
+`;
+
+// Add state for tracking the current filter
 const RecentContactsList = () => {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1); // Add this missing state variable
   const [currentPage, setCurrentPage] = useState(0);
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [selectedContact, setSelectedContact] = useState(null);
@@ -988,6 +1055,15 @@ const RecentContactsList = () => {
   // Add state to toggle between all contacts and recent interactions
   const [showRecentOnly, setShowRecentOnly] = useState(true);
 
+  // Add state for tracking the current filter
+  const [currentFilter, setCurrentFilter] = useState('all');
+  const [filterCounts, setFilterCounts] = useState({
+    all: 0,
+    today: 0,
+    recent: 0,
+    missing: 0
+  });
+
   const getLastThirtyDaysRange = useMemo(() => {
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30);
@@ -1014,57 +1090,125 @@ const RecentContactsList = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
-    console.log(showRecentOnly 
-      ? "Fetching contacts with last_interaction today..." 
-      : "Fetching all contacts...");
     
     try {
-      // Get today's date
-      const todayDate = getTodayDate;
-      
-      // Build query
       let query = supabase
         .from('contacts')
-        .select('*, companies(*)', { count: 'exact' })
-        .neq('contact_category', 'Skip');
+        .select('*, companies(*)', { count: 'exact' });
       
-      // Apply date filter only if showing recent contacts
-      if (showRecentOnly) {
-        console.log("Filtering contacts with last_interaction = ", todayDate);
-        query = query.eq('last_interaction', todayDate);
+      // Apply filters based on the current filter
+      switch (currentFilter) {
+        case 'today':
+          // Last Interaction: today's interactions sorted by last_interaction
+          query = query
+            .gte('last_interaction', getTodayDate)
+            .order('last_interaction', { ascending: false });
+          break;
+          
+        case 'recent':
+          // Recently created: newest contacts, limited to 50
+          query = query
+            .order('created_at', { ascending: false });
+          break;
+          
+        case 'missing':
+          // Missing info: contacts missing key fields
+          query = query
+            .or('first_name.is.null,last_name.is.null,contact_category.is.null,keep_in_touch_frequency.is.null')
+            .order('last_interaction', { ascending: false });
+          break;
+          
+        default:
+          // All contacts (default sorting)
+          if (showRecentOnly) {
+            query = query
+              .gte('last_interaction', getTodayDate)
+              .order('last_interaction', { ascending: false });
+          } else {
+            query = query.order('id', { ascending: false });
+          }
       }
       
-      // Always order by last_interaction (most recent first), falling back to created_at for null values
-      query = query.order('last_interaction', { ascending: false, nullsLast: true });
+      // Apply pagination
+      const from = currentPage * rowsPerPage;
+      const to = from + rowsPerPage - 1;
+      query = query.range(from, to);
       
-      // Apply limit and execute query
-      const { data, error, count } = await query.limit(500);
+      // Execute the query
+      const { data, error, count } = await query;
       
-      console.log("Query completed. Error:", error, "Count:", count, "Data length:", data?.length);
+      if (error) throw error;
       
-      if (error) {
-        console.error("Error fetching contacts:", error);
-        setError("Failed to load contacts: " + error.message);
-        setContacts([]);
-        setTotalCount(0);
-      } else {
-        console.log("Successfully fetched contacts:", data.length);
-        setContacts(data || []);
-        setTotalCount(count || 0);
-      }
-    } catch (error) {
-      console.error("Exception in fetchData:", error);
-      setError("An unexpected error occurred: " + error.message);
-      setContacts([]);
-      setTotalCount(0);
+      // Update the contacts state
+      setContacts(data || []);
+      setTotalCount(count || 0);
+      setTotalPages(Math.ceil((count || 0) / rowsPerPage));
+      
+      // Fetch counts for filters (in parallel for performance)
+      const countFetches = [
+        // Today count
+        (async () => {
+          const { count } = await supabase
+            .from('contacts')
+            .select('*', { count: 'exact', head: true })
+            .gte('last_interaction', getTodayDate);
+          return count || 0;
+        })(),
+        
+        // Recent count - always returns the full count
+        (async () => {
+          const { count } = await supabase
+            .from('contacts')
+            .select('*', { count: 'exact', head: true })
+            .order('created_at', { ascending: false });
+          return count || 0;
+        })(),
+        
+        // Missing info count
+        (async () => {
+          const { count } = await supabase
+            .from('contacts')
+            .select('*', { count: 'exact', head: true })
+            .or('first_name.is.null,last_name.is.null,contact_category.is.null,keep_in_touch_frequency.is.null');
+          return count || 0;
+        })()
+      ];
+      
+      // Wait for all counts to be fetched
+      const [todayCount, recentCount, missingCount] = await Promise.all(countFetches);
+      const allCount = await supabase
+        .from('contacts')
+        .select('*', { count: 'exact', head: true })
+        .then(res => res.count || 0);
+      
+      setFilterCounts({
+        all: allCount,
+        today: todayCount,
+        recent: recentCount,
+        missing: missingCount
+      });
+      
+      return {
+        contacts: data || [],
+        totalCount: count || 0,
+        totalPages
+      };
+    } catch (err) {
+      console.error('Error fetching contacts:', err);
+      setError(err.message);
+      return {
+        contacts: [],
+        totalCount: 0,
+        totalPages: 0
+      };
     } finally {
       setLoading(false);
     }
-  }, [getLastSevenDaysRange, showRecentOnly, getTodayDate]);
+  }, [currentFilter, currentPage, rowsPerPage, showRecentOnly, getTodayDate]);
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+  }, [fetchData, currentPage, showRecentOnly, currentFilter]);
 
   useEffect(() => {
     const fetchTags = async () => {
@@ -1119,8 +1263,6 @@ const RecentContactsList = () => {
       fetchTags();
     }
   }, [contacts]);
-
-  const totalPages = useMemo(() => Math.ceil(totalCount / rowsPerPage), [totalCount, rowsPerPage]);
 
   const handleSkipContact = useCallback(async (contactId) => {
     if (!window.confirm('Are you sure you want to mark this contact as Skip?')) return;
@@ -2463,6 +2605,13 @@ const RecentContactsList = () => {
     }
   }, [fetchData, hubspotAuthStatus.isAuthenticated, mapHubspotContactToOurModel, searchHubspotContact]);
 
+  // Add a function to handle filter changes
+  const handleFilterChange = (filter) => {
+    setCurrentFilter(filter);
+    setCurrentPage(0); // Reset to first page when changing filters
+    fetchData();
+  };
+  
   return (
     <Container>
       {loading && (
@@ -2472,24 +2621,14 @@ const RecentContactsList = () => {
       )}
       <Header>
         <h2>
-          {showRecentOnly 
-            ? `Today's Interactions ${!loading && totalCount > 0 ? `(${totalCount})` : ''}` 
-            : `All Active Contacts ${!loading && totalCount > 0 ? `(${totalCount})` : ''}`}
-          {showRecentOnly && (
-            <span 
-              style={{ 
-                marginLeft: '0.5rem', 
-                fontSize: '0.875rem', 
-                color: '#4A5568',
-                cursor: 'help',
-                position: 'relative',
-                display: 'inline-block'
-              }}
-              title="Shows contacts who have had an interaction recorded today, ordered by most recent interaction first."
-            >
-              <FontAwesomeIcon icon={faCircleInfo} />
-            </span>
-          )}
+          {currentFilter === 'today' 
+            ? "Today's Interactions" 
+            : currentFilter === 'recent' 
+              ? "Recently Created" 
+              : currentFilter === 'missing' 
+                ? "Missing Information" 
+                : "All Contacts"} 
+          ({totalCount})
         </h2>
         <Button 
           onClick={() => setShowRecentOnly(!showRecentOnly)} 
@@ -2508,6 +2647,33 @@ const RecentContactsList = () => {
         </Button>
       </Header>
       
+      <FilterButtonsContainer>
+        <FilterButton 
+          active={currentFilter === 'all'} 
+          onClick={() => handleFilterChange('all')}
+        >
+          All Contacts <span className="counter">{filterCounts.all}</span>
+        </FilterButton>
+        <FilterButton 
+          active={currentFilter === 'today'} 
+          onClick={() => handleFilterChange('today')}
+        >
+          Today's Interactions <span className="counter">{filterCounts.today}</span>
+        </FilterButton>
+        <FilterButton 
+          active={currentFilter === 'recent'} 
+          onClick={() => handleFilterChange('recent')}
+        >
+          Recently Created <span className="counter">{filterCounts.recent}</span>
+        </FilterButton>
+        <FilterButton 
+          active={currentFilter === 'missing'} 
+          onClick={() => handleFilterChange('missing')}
+        >
+          Missing Information <span className="counter">{filterCounts.missing}</span>
+        </FilterButton>
+      </FilterButtonsContainer>
+      
       {error && (
         <div style={{ 
           background: '#FEF2F2', 
@@ -2525,68 +2691,69 @@ const RecentContactsList = () => {
         <p>No contacts found.</p>
       ) : (
         <>
-          <ContactTable>
-            <TableHead>
-              <tr>
-                <th>Name</th>
-                <th>Company</th>
-                <th>Email</th>
-                <th>Mobile</th>
-                <th>Tags</th>
-                <th>Category</th>
-                <th>Keep in Touch</th>
-                <th>Score</th>
-              </tr>
-            </TableHead>
-            <TableBody>
-              {contacts.map(contact => (
-                <tr key={contact.id}>
-                  <td>
-                    <ContactNameWrapper>
-                    {contact.first_name || contact.last_name ? (
-                        <>
-                          {contact.linkedin ? (
-                            <a href={contact.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#2d3748', textDecoration: 'none', fontWeight: '600' }}>
-                          {`${contact.first_name || ''} ${contact.last_name || ''}`}
-                        </a>
-                      ) : (
-                        <a
-                          href={`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                              style={{ color: '#2d3748', textDecoration: 'none', fontWeight: '600' }}
-                        >
-                          {`${contact.first_name || ''} ${contact.last_name || ''}`}
-                        </a>
-                          )}
-                        </>
-                      ) : (
-                        <span style={{ color: '#a0aec0', fontStyle: 'italic' }}>No name</span>
-                      )}
-                      {contact.about_the_contact && (
-                        <Tooltip className="tooltip">
-                          {contact.about_the_contact}
-                        </Tooltip>
-                    )}
-                    <EditButton onClick={() => handleOpenContactEdit(contact)}>✎</EditButton>
-                      <HubspotIcon 
-                        onClick={() => handleSearchHubspot(contact)} 
-                        title="Search in Hubspot and import data"
-                      >
-                        {hubspotLoading[contact.id] ? (
-                          <FontAwesomeIcon icon={faSpinner} spin />
+          <TableWrapper>
+            <ContactTable>
+              <TableHead>
+                <tr>
+                  <th style={{ width: '200px' }}>Name</th>
+                  <th style={{ width: '150px' }}>Company</th>
+                  <th style={{ width: '80px' }}>Email</th>
+                  <th style={{ width: '80px' }}>Mobile</th>
+                  <th style={{ width: '200px' }}>Tags</th>
+                  <th style={{ width: '120px' }}>Category</th>
+                  <th style={{ width: '120px' }}>Keep in Touch</th>
+                  <th style={{ width: '100px' }}>Score</th>
+                </tr>
+              </TableHead>
+              <TableBody>
+                {contacts.map(contact => (
+                  <tr key={contact.id}>
+                    <td>
+                      <ContactNameWrapper>
+                      {contact.first_name || contact.last_name ? (
+                          <>
+                            {contact.linkedin ? (
+                              <a href={contact.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#2d3748', textDecoration: 'none', fontWeight: '600' }}>
+                            {`${contact.first_name || ''} ${contact.last_name || ''}`}
+                          </a>
                         ) : (
-                          <FontAwesomeIcon icon={faHubspot} />
+                          <a
+                            href={`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                                style={{ color: '#2d3748', textDecoration: 'none', fontWeight: '600' }}
+                          >
+                            {`${contact.first_name || ''} ${contact.last_name || ''}`}
+                          </a>
+                            )}
+                          </>
+                        ) : (
+                          <span style={{ color: '#a0aec0', fontStyle: 'italic' }}>No name</span>
                         )}
-                      </HubspotIcon>
-                      <MergeIcon onClick={() => handleOpenMerge(contact)}>⚏</MergeIcon>
-                      {!contact.keep_in_touch_frequency && (
-                        <SkipIcon onClick={() => handleSkipContact(contact.id)}>✕</SkipIcon>
+                        {contact.about_the_contact && (
+                          <Tooltip className="tooltip">
+                            {contact.about_the_contact}
+                          </Tooltip>
                       )}
-                    </ContactNameWrapper>
-                  </td>
-                  <td>
-                  {contact.companies ? (
+                      <EditButton onClick={() => handleOpenContactEdit(contact)}>✎</EditButton>
+                        <HubspotIcon 
+                          onClick={() => handleSearchHubspot(contact)} 
+                          title="Search in Hubspot and import data"
+                        >
+                          {hubspotLoading[contact.id] ? (
+                            <FontAwesomeIcon icon={faSpinner} spin />
+                          ) : (
+                            <FontAwesomeIcon icon={faHubspot} />
+                          )}
+                        </HubspotIcon>
+                        <MergeIcon onClick={() => handleOpenMerge(contact)}>⚏</MergeIcon>
+                        {!contact.keep_in_touch_frequency && (
+                          <SkipIcon onClick={() => handleSkipContact(contact.id)}>✕</SkipIcon>
+                        )}
+                      </ContactNameWrapper>
+                    </td>
+                    <td>
+                    {contact.companies ? (
   <div>
     <a
       href={
@@ -2627,220 +2794,234 @@ const RecentContactsList = () => {
     )}
   </div>
 )}
-                  </td>
-                  <td>
-                    {contact.email ? (
-                      <>
-                        <a
-                          href={`mailto:${contact.email}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ color: '#2d3748', textDecoration: 'none' }}
-                          title={contact.email}
-                        >
-                          <FontAwesomeIcon icon={faEnvelope} />
-                        </a>
-                        <EmailButton>
-                          <a 
-                            href={`https://mail.superhuman.com/search/${encodeURIComponent(
-                              (contact.first_name || contact.last_name) 
-                                ? `${contact.first_name || ''} ${contact.last_name || ''}` 
-                                : contact.email
-                            )}`} 
-                            target="_blank" 
+                    </td>
+                    <td>
+                      <IconCell>
+                        {contact.email ? (
+                          <>
+                            <a
+                              href={`mailto:${contact.email}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: '#2d3748', textDecoration: 'none' }}
+                              title={contact.email}
+                            >
+                              <FontAwesomeIcon icon={faEnvelope} />
+                            </a>
+                            <EmailButton>
+                              <a 
+                                href={`https://mail.superhuman.com/search/${encodeURIComponent(
+                                  (contact.first_name || contact.last_name) 
+                                    ? `${contact.first_name || ''} ${contact.last_name || ''}` 
+                                    : contact.email
+                                )}`} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                title="Search in Superhuman"
+                              >
+                                <FontAwesomeIcon icon={faSearch} />
+                              </a>
+                            </EmailButton>
+                          </>
+                        ) : null}
+                      </IconCell>
+                    </td>
+                    <td>
+                      <IconCell>
+                        {contact.mobile ? (
+                          <>
+                            <a
+                              href={`tel:${contact.mobile}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: '#2d3748', textDecoration: 'none', marginRight: '8px' }}
+                              title={contact.mobile}
+                            >
+                              <FontAwesomeIcon icon={faPhone} />
+                            </a>
+                            <a
+                              href={`https://wa.me/${contact.mobile.replace(/\D/g, '')}`} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              style={{ color: '#25D366', textDecoration: 'none' }}
+                              title={`Chat on WhatsApp (${contact.mobile})`}
+                            >
+                              <FontAwesomeIcon icon={faWhatsapp} />
+                            </a>
+                          </>
+                        ) : (
+                          <a
+                            href={`https://app.timelines.ai/search/?s=${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`}
+                            target="_blank"
                             rel="noopener noreferrer"
-                            title="Search in Superhuman"
+                            style={{ color: '#2d3748', textDecoration: 'none' }}
+                            title="Search contact on Timelines.ai"
                           >
-                            <FontAwesomeIcon icon={faSearch} />
+                            Search
                           </a>
-                        </EmailButton>
-                      </>
-                    ) : (
-                      '-'
-                    )}
-                  </td>
-                  <td>
-                    {contact.mobile ? (
-                      <a 
-                        href={`https://wa.me/${contact.mobile.replace(/\D/g, '')}`} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        style={{ color: '#25D366', textDecoration: 'none' }}
-                        title={`Chat on WhatsApp (${contact.mobile})`}
-                      >
-                        <FontAwesomeIcon icon={faWhatsapp} />
-                      </a>
-                    ) : (
-                      <a
-                        href={`https://app.timelines.ai/search/?s=${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ color: '#2d3748', textDecoration: 'none' }}
-                        title="Search contact on Timelines.ai"
-                      >
-                        Search
-                      </a>
-                    )}
-                  </td>
-                  <td>
-                    <TagsContainer>
-                      {contactTags[contact.id]?.map(tag => (
-                        <Tag key={tag.id} color={tag.color}>
-                          {tag.name}
-                          <TagDeleteButton onClick={() => handleRemoveTag(contact.id, tag.id)}>×</TagDeleteButton>
-                        </Tag>
-                      ))}
-                      {isAddingTag[contact.id] ? (
-                        <div style={{ position: 'relative' }}>
-                          <TagInput
-                            value={tagInput[contact.id] || ''}
-                            onChange={(e) => handleTagInputChange(contact.id, e.target.value)}
-                            onKeyDown={(e) => handleTagInputKeyDown(e, contact.id)}
-                            placeholder="Type to search or create..."
-                            autoFocus
-                            onBlur={() => {
-                              // Small delay to allow clicking on suggestions
-                              setTimeout(() => {
-                                setIsAddingTag(prev => ({ ...prev, [contact.id]: false }));
-                                setTagSuggestions(prev => ({ ...prev, [contact.id]: [] }));
-                              }, 200);
-                            }}
-                          />
-                          {tagSuggestions[contact.id]?.length > 0 && (
-                            <TagDropdown>
-                              {tagSuggestions[contact.id].map(tag => (
-                                <TagOption 
-                                  key={tag.id} 
-                                  onClick={() => handleTagSelect(contact.id, tag)}
-                                >
-                                  {tag.name}
-                                </TagOption>
-                              ))}
-                            </TagDropdown>
-                          )}
-                        </div>
-                      ) : (
-                        <AddTagButton onClick={() => handleAddTagClick(contact.id)} title="Add tag">
-                          <FontAwesomeIcon icon={faPlus} />
-                        </AddTagButton>
-                      )}
-                    </TagsContainer>
-                  </td>
-                  <td>
-                      <Select
-                      value={contact.contact_category || ''}
-                        onChange={(e) => {
-                          const newCategory = e.target.value;
-                          const updateCategory = async () => {
-                            try {
-                              const { error } = await supabase
-                                .from('contacts')
-                                .update({ contact_category: newCategory || null })
-                                .eq('id', contact.id);
-                              if (error) throw error;
-                              setContacts(prev => prev.map(c =>
-                                c.id === contact.id ? { ...c, contact_category: newCategory || null } : c
-                              ));
-                            } catch (error) {
-                              alert('Failed to update category');
-                            }
-                          };
-                          updateCategory();
-                        }}
-                      >
-                      <option value="">Missing</option>
-                        {CONTACT_CATEGORIES.map(category => (
-                          <option key={category} value={category}>{category}</option>
+                        )}
+                      </IconCell>
+                    </td>
+                    <td>
+                      <TagsContainer>
+                        {contactTags[contact.id]?.map(tag => (
+                          <Tag key={tag.id} color={tag.color}>
+                            {tag.name}
+                            <TagDeleteButton onClick={() => handleRemoveTag(contact.id, tag.id)}>×</TagDeleteButton>
+                          </Tag>
                         ))}
-                      </Select>
-                  </td>
-                  <td>
-                    {contact.keep_in_touch_frequency ? (
-                      <Select
-                        value={contact.keep_in_touch_frequency}
-                        onChange={(e) => {
-                          const newFrequency = e.target.value;
-                          const updateFrequency = async () => {
-                            try {
-                              const { error } = await supabase
-                                .from('contacts')
-                                .update({ keep_in_touch_frequency: newFrequency || null })
-                                .eq('id', contact.id);
-                              if (error) throw error;
-                              setContacts(prev => prev.map(c =>
-                                c.id === contact.id ? { ...c, keep_in_touch_frequency: newFrequency || null } : c
-                              ));
-                            } catch (error) {
-                              alert('Failed to update keep in touch frequency');
-                            }
-                          };
-                          updateFrequency();
-                        }}
-                      >
-                        <option value="">Select Frequency</option>
-                        {KEEP_IN_TOUCH_FREQUENCIES.map(frequency => (
-                          <option key={frequency} value={frequency}>{frequency}</option>
-                        ))}
-                      </Select>
-                    ) : (
-                      <Select
-                        value=""
-                        onChange={(e) => {
-                          const newFrequency = e.target.value;
-                          const updateFrequency = async () => {
-                            try {
-                              const { error } = await supabase
-                                .from('contacts')
-                                .update({ keep_in_touch_frequency: newFrequency || null })
-                                .eq('id', contact.id);
-                              if (error) throw error;
-                              setContacts(prev => prev.map(c =>
-                                c.id === contact.id ? { ...c, keep_in_touch_frequency: newFrequency || null } : c
-                              ));
-                            } catch (error) {
-                              alert('Failed to update keep in touch frequency');
-                            }
-                          };
-                          updateFrequency();
-                        }}
-                      >
-                        <option value="">Missing</option>
-                        {KEEP_IN_TOUCH_FREQUENCIES.map(frequency => (
-                          <option key={frequency} value={frequency}>{frequency}</option>
-                        ))}
-                      </Select>
-                    )}
-                  </td>
-                  <td>
-                    <StarContainer>
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <Star
-                          key={star}
-                          filled={contact.score >= star}
-                          onClick={async () => {
-                            try {
-                              const { error } = await supabase
-                                .from('contacts')
-                                .update({ score: star })
-                                .eq('id', contact.id);
-                              if (error) throw error;
-                              setContacts(prev => prev.map(c =>
-                                c.id === contact.id ? { ...c, score: star } : c
-                              ));
-                            } catch (error) {
-                              alert('Failed to update score');
-                            }
+                        {isAddingTag[contact.id] ? (
+                          <div style={{ position: 'relative' }}>
+                            <TagInput
+                              value={tagInput[contact.id] || ''}
+                              onChange={(e) => handleTagInputChange(contact.id, e.target.value)}
+                              onKeyDown={(e) => handleTagInputKeyDown(e, contact.id)}
+                              placeholder="Type to search or create..."
+                              autoFocus
+                              onBlur={() => {
+                                // Small delay to allow clicking on suggestions
+                                setTimeout(() => {
+                                  setIsAddingTag(prev => ({ ...prev, [contact.id]: false }));
+                                  setTagSuggestions(prev => ({ ...prev, [contact.id]: [] }));
+                                }, 200);
+                              }}
+                            />
+                            {tagSuggestions[contact.id]?.length > 0 && (
+                              <TagDropdown>
+                                {tagSuggestions[contact.id].map(tag => (
+                                  <TagOption 
+                                    key={tag.id} 
+                                    onClick={() => handleTagSelect(contact.id, tag)}
+                                  >
+                                    {tag.name}
+                                  </TagOption>
+                                ))}
+                              </TagDropdown>
+                            )}
+                          </div>
+                        ) : (
+                          <AddTagButton onClick={() => handleAddTagClick(contact.id)} title="Add tag">
+                            <FontAwesomeIcon icon={faPlus} />
+                          </AddTagButton>
+                        )}
+                      </TagsContainer>
+                    </td>
+                    <td>
+                        <Select
+                        value={contact.contact_category || ''}
+                          onChange={(e) => {
+                            const newCategory = e.target.value;
+                            const updateCategory = async () => {
+                              try {
+                                const { error } = await supabase
+                                  .from('contacts')
+                                  .update({ contact_category: newCategory || null })
+                                  .eq('id', contact.id);
+                                if (error) throw error;
+                                setContacts(prev => prev.map(c =>
+                                  c.id === contact.id ? { ...c, contact_category: newCategory || null } : c
+                                ));
+                              } catch (error) {
+                                alert('Failed to update category');
+                              }
+                            };
+                            updateCategory();
                           }}
                         >
-                          ★
-                        </Star>
-                      ))}
-                    </StarContainer>
-                  </td>
-                </tr>
-              ))}
-            </TableBody>
-          </ContactTable>
+                        <option value="">Missing</option>
+                          {CONTACT_CATEGORIES.map(category => (
+                            <option key={category} value={category}>{category}</option>
+                          ))}
+                        </Select>
+                    </td>
+                    <td>
+                      {contact.keep_in_touch_frequency ? (
+                        <Select
+                          value={contact.keep_in_touch_frequency}
+                          onChange={(e) => {
+                            const newFrequency = e.target.value;
+                            const updateFrequency = async () => {
+                              try {
+                                const { error } = await supabase
+                                  .from('contacts')
+                                  .update({ keep_in_touch_frequency: newFrequency || null })
+                                  .eq('id', contact.id);
+                                if (error) throw error;
+                                setContacts(prev => prev.map(c =>
+                                  c.id === contact.id ? { ...c, keep_in_touch_frequency: newFrequency || null } : c
+                                ));
+                              } catch (error) {
+                                alert('Failed to update keep in touch frequency');
+                              }
+                            };
+                            updateFrequency();
+                          }}
+                        >
+                          <option value="">Select Frequency</option>
+                          {KEEP_IN_TOUCH_FREQUENCIES.map(frequency => (
+                            <option key={frequency} value={frequency}>{frequency}</option>
+                          ))}
+                        </Select>
+                      ) : (
+                        <Select
+                          value=""
+                          onChange={(e) => {
+                            const newFrequency = e.target.value;
+                            const updateFrequency = async () => {
+                              try {
+                                const { error } = await supabase
+                                  .from('contacts')
+                                  .update({ keep_in_touch_frequency: newFrequency || null })
+                                  .eq('id', contact.id);
+                                if (error) throw error;
+                                setContacts(prev => prev.map(c =>
+                                  c.id === contact.id ? { ...c, keep_in_touch_frequency: newFrequency || null } : c
+                                ));
+                              } catch (error) {
+                                alert('Failed to update keep in touch frequency');
+                              }
+                            };
+                            updateFrequency();
+                          }}
+                        >
+                          <option value="">Missing</option>
+                          {KEEP_IN_TOUCH_FREQUENCIES.map(frequency => (
+                            <option key={frequency} value={frequency}>{frequency}</option>
+                          ))}
+                        </Select>
+                      )}
+                    </td>
+                    <td>
+                      <StarContainer>
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Star
+                            key={star}
+                            filled={contact.score >= star}
+                            onClick={async () => {
+                              try {
+                                const { error } = await supabase
+                                  .from('contacts')
+                                  .update({ score: star })
+                                  .eq('id', contact.id);
+                                if (error) throw error;
+                                setContacts(prev => prev.map(c =>
+                                  c.id === contact.id ? { ...c, score: star } : c
+                                ));
+                              } catch (error) {
+                                alert('Failed to update score');
+                              }
+                            }}
+                          >
+                            ★
+                          </Star>
+                        ))}
+                      </StarContainer>
+                    </td>
+                  </tr>
+                ))}
+              </TableBody>
+            </ContactTable>
+          </TableWrapper>
           <PaginationControls>
             <PageButton onClick={goToFirstPage} disabled={currentPage === 0}>First</PageButton>
             <PageButton onClick={goToPreviousPage} disabled={currentPage === 0}>Previous</PageButton>
