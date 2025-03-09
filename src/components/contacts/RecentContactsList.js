@@ -44,6 +44,21 @@ const ContactTable = styled.table`
   border-collapse: separate;
   border-spacing: 0;
   margin-bottom: 1.5rem;
+  table-layout: fixed; /* Use fixed layout for better column control */
+  
+  /* Column width specifications */
+  th:nth-child(1) { width: 20%; } /* Name column */
+  th:nth-child(2) { width: 20%; } /* Company column */
+  th:nth-child(3) { width: 28%; } /* Tags column - wider to show multiple tags */
+  th:nth-child(4) { width: 10%; } /* Last Interaction column */
+  th:nth-child(5) { width: 8%; }  /* Category column */
+  th:nth-child(6) { width: 8%; }  /* Keep in Touch column */
+  th:nth-child(7) { width: 6%; }  /* Score column */
+  th:nth-child(8) { width: 10%; } /* Actions column */
+  
+  @media (max-width: 1200px) {
+    th:nth-child(3) { width: 25%; } /* Slightly reduce Tags column on smaller screens */
+  }
 `;
 
 const TableHead = styled.thead`
@@ -238,6 +253,8 @@ const TagsContainer = styled.div`
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  width: 100%; /* Use full width of the cell */
+  min-width: 0; /* Allow proper truncation */
 `;
 
 // Category badge
@@ -507,13 +524,24 @@ const ClickableCell = styled.td`
   position: relative;
   transition: background-color 0.2s;
   
+  /* For proper content handling */
+  overflow: hidden; /* Prevent content overflow */
+  
+  .cell-content {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-width: 0; /* Allow children to truncate */
+    padding: 0.25rem 0; /* Add some vertical padding */
+  }
+  
   &:hover {
     background-color: #f3f4f6;
   }
   
   &:hover::after {
     content: "Click to edit";
-  position: absolute;
+    position: absolute;
     top: 0;
     right: 0;
     background-color: #3b82f6;
@@ -522,6 +550,7 @@ const ClickableCell = styled.td`
     padding: 2px 5px;
     border-radius: 0 0 0 4px;
     opacity: 0.8;
+    z-index: 10; /* Ensure it's above other elements */
   }
 `;
 
@@ -577,6 +606,14 @@ const ModalHeader = styled.div`
 const ContactName = styled.div`
   font-weight: 500;
   color: #111827;
+  
+  /* Text truncation styling */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  min-width: 0;
+  display: block; /* Better for consistent spacing */
 `;
 
 const ContactEmail = styled.div`
@@ -589,6 +626,34 @@ const ContactActions = styled.div`
   display: flex;
   gap: 8px;
 `;
+
+// Helper function to truncate names
+const truncateName = (firstName, lastName) => {
+  // Create full name, handling undefined/null values
+  const fullName = [(firstName || ''), (lastName || '')].filter(Boolean).join(' ');
+  
+  // Return default for empty names
+  if (!fullName) return { 
+    displayName: 'Unknown', 
+    fullName: 'Unknown', 
+    isTruncated: false 
+  };
+  
+  const MAX_LENGTH = 20;
+  const isTruncated = fullName.length > MAX_LENGTH;
+  const displayName = isTruncated ? fullName.substring(0, MAX_LENGTH) + '...' : fullName;
+  
+  // For debugging - remove in production
+  if (process.env.NODE_ENV === 'development' && isTruncated) {
+    console.log(`Truncated name: "${fullName}" → "${displayName}" (${fullName.length} chars)`);
+  }
+  
+  return {
+    displayName,
+    fullName,
+    isTruncated
+  };
+};
 
 const RecentContactsList = ({ 
   defaultShowAll = false,
@@ -1230,9 +1295,8 @@ const RecentContactsList = ({
                 {/* NAME COLUMN - Simplified to only show name */}
                 <ClickableCell onClick={() => handleCellClick(contact, 'name')}>
                   <div className="cell-content">
-                    <ContactName>
-                      {contact.first_name || ''} {contact.last_name || ''}
-                      {!contact.first_name && !contact.last_name && '(No name)'}
+                    <ContactName title={truncateName(contact.first_name, contact.last_name).fullName}>
+                      {truncateName(contact.first_name, contact.last_name).displayName}
                     </ContactName>
                   </div>
                 </ClickableCell>
