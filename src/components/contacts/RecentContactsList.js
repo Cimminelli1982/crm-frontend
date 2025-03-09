@@ -209,18 +209,18 @@ const Tag = styled.span`
   margin-bottom: 0.25rem;
   
   button {
-    background: none;
-    border: none;
+  background: none;
+  border: none;
     padding: 0;
     display: inline-flex;
-    align-items: center;
-    justify-content: center;
+  align-items: center;
+  justify-content: center;
     margin-left: 0.25rem;
     color: #6b7280;
   cursor: pointer;
-    
-  &:hover {
-      color: #ef4444;
+  
+  &:hover { 
+    color: #ef4444; 
   }
   }
 `;
@@ -399,7 +399,7 @@ const EmptyState = styled.div`
     font-size: 1.125rem;
     font-weight: 500;
     color: #4b5563;
-    margin-bottom: 0.5rem;
+  margin-bottom: 0.5rem;
   }
   
   p {
@@ -440,7 +440,7 @@ const CompanyBadge = styled.span`
     margin-left: 0.25rem;
     color: #6b7280;
   cursor: pointer;
-    
+  
   &:hover {
       color: #ef4444;
     }
@@ -525,7 +525,7 @@ const ClickableCell = styled.td`
   
   &:hover::after {
     content: "Click to edit";
-    position: absolute;
+  position: absolute;
     top: 0;
     right: 0;
     background-color: #3b82f6;
@@ -574,12 +574,12 @@ const ModalHeader = styled.div`
   }
   
   button {
-    background: none;
-    border: none;
-    cursor: pointer;
+  background: none;
+  border: none;
+  cursor: pointer;
     color: #6b7280;
     
-    &:hover {
+  &:hover {
       color: #1f2937;
     }
   }
@@ -658,8 +658,6 @@ const RecentContactsList = ({
       let query = supabase
           .from('contacts')
         .select('*, companies:company_id(*)')
-        .not('first_name', 'eq', 'Simone')
-        .not('last_name', 'eq', 'Cimminelli')
         .not('contact_category', 'eq', 'Skip');
       
       // Apply search if term has at least 3 characters
@@ -709,8 +707,6 @@ const RecentContactsList = ({
       const { count, error: countError } = await supabase
           .from('contacts')
         .select('*', { count: 'exact', head: true })
-        .not('first_name', 'eq', 'Simone')
-        .not('last_name', 'eq', 'Cimminelli')
         .not('contact_category', 'eq', 'Skip');
       
       if (countError) throw countError;
@@ -1039,9 +1035,9 @@ const RecentContactsList = ({
   const handleSkipContact = async (contactId) => {
     try {
       const { error } = await supabase
-        .from('contacts')
+            .from('contacts')
         .update({ contact_category: 'Skip' })
-        .eq('id', contactId);
+            .eq('id', contactId);
       
       if (error) throw error;
       
@@ -1120,15 +1116,23 @@ const RecentContactsList = ({
   const renderModalContent = () => {
     if (!modalContact) return null;
     
+    // Helper function to format name
+    const getFormattedName = (contact) => {
+      const firstName = contact.first_name || '';
+      const lastName = contact.last_name || '';
+      if (!firstName && !lastName) return '(No name)';
+      return `${firstName} ${lastName}`.trim();
+    };
+    
     let title = '';
     let content = null;
     
     switch (modalType) {
       case 'name':
-        title = `Edit Contact: ${modalContact.first_name} ${modalContact.last_name}`;
+        title = `Edit Contact: ${getFormattedName(modalContact)}`;
         content = (
           <div>
-            <p>Name: {modalContact.first_name} {modalContact.last_name}</p>
+            <p>Name: {getFormattedName(modalContact)}</p>
             <p>Email: {modalContact.email || 'Not specified'}</p>
             <p>Mobile: {modalContact.mobile || 'Not specified'}</p>
             <p>Contact editing functionality coming soon!</p>
@@ -1136,7 +1140,7 @@ const RecentContactsList = ({
         );
         break;
       case 'company':
-        title = `Edit Company for ${modalContact.first_name} ${modalContact.last_name}`;
+        title = `Edit Company for ${getFormattedName(modalContact)}`;
         content = (
           <div>
             <p>Current company: {modalContact.companies?.name || 'None'}</p>
@@ -1145,7 +1149,7 @@ const RecentContactsList = ({
         );
         break;
       case 'tags':
-        title = `Edit Tags for ${modalContact.first_name} ${modalContact.last_name}`;
+        title = `Edit Tags for ${getFormattedName(modalContact)}`;
         content = (
           <div>
             <p>Current tags: {contactTags[modalContact.id]?.map(tag => tag.name).join(', ') || 'None'}</p>
@@ -1154,7 +1158,7 @@ const RecentContactsList = ({
         );
         break;
       default:
-        title = `Edit ${modalContact.first_name} ${modalContact.last_name}`;
+        title = `Edit ${getFormattedName(modalContact)}`;
         content = (
           <div>
             <p>Contact editing functionality coming soon!</p>
@@ -1223,9 +1227,9 @@ const RecentContactsList = ({
       {/* Show modal when active */}
       {showEditModal && renderModalContent()}
       
-      <ContactTable>
-        <TableHead>
-          <tr>
+          <ContactTable>
+            <TableHead>
+              <tr>
             <th 
               className="sortable" 
               onClick={() => handleSort('first_name')}
@@ -1237,7 +1241,7 @@ const RecentContactsList = ({
                 </span>
               )}
             </th>
-            <th>Company</th>
+                <th>Company</th>
             <th>Tags</th>
             <th 
               className="sortable" 
@@ -1286,10 +1290,10 @@ const RecentContactsList = ({
                 </span>
               )}
             </th>
-            <th>Actions</th>
-          </tr>
-        </TableHead>
-        <TableBody>
+                <th>Actions</th>
+              </tr>
+            </TableHead>
+            <TableBody>
           {!isLoading && contacts.length === 0 ? (
             <tr>
               <td colSpan="8" style={{ textAlign: 'center', padding: '2rem' }}>
@@ -1301,12 +1305,13 @@ const RecentContactsList = ({
             </tr>
           ) : (
             contacts.map(contact => (
-              <tr key={contact.id}>
+                <tr key={contact.id}>
                 {/* NAME COLUMN - Simplified to only show name */}
                 <ClickableCell onClick={() => handleCellClick(contact, 'name')}>
                   <div className="cell-content">
                     <ContactName>
-                      {contact.first_name} {contact.last_name}
+                      {contact.first_name || ''} {contact.last_name || ''}
+                      {!contact.first_name && !contact.last_name && '(No name)'}
                     </ContactName>
                   </div>
                 </ClickableCell>
@@ -1364,7 +1369,7 @@ const RecentContactsList = ({
                   <LastInteractionDate isRecent={isRecentDate(contact.last_interaction)}>
                     {formatDate(contact.last_interaction)}
                   </LastInteractionDate>
-                </td>
+                  </td>
                 
                 {/* CATEGORY COLUMN */}
                 <td>
@@ -1391,8 +1396,8 @@ const RecentContactsList = ({
                         <ActionButton onClick={handleCancel}>
                           <FiX />
                         </ActionButton>
-                      </div>
-                    ) : (
+  </div>
+) : (
                       <>
                         {contact.contact_category ? (
                           <CategoryBadge category={contact.contact_category}>
@@ -1406,11 +1411,11 @@ const RecentContactsList = ({
                           <ActionButton className="edit" onClick={() => handleEditStart(contact, 'contact_category')}>
                             <FiEdit2 size={16} />
                           </ActionButton>
-                        </div>
+  </div>
                       </>
-                    )}
+)}
                   </div>
-                </td>
+                  </td>
                 
                 {/* KEEP IN TOUCH COLUMN */}
                 <td>
@@ -1456,7 +1461,7 @@ const RecentContactsList = ({
                       </>
                     )}
                   </div>
-                </td>
+                  </td>
                 
                 {/* SCORE COLUMN */}
                 <td>
@@ -1471,7 +1476,7 @@ const RecentContactsList = ({
                       </Star>
                     ))}
                   </StarContainer>
-                </td>
+                  </td>
                 
                 {/* ACTIONS COLUMN */}
                 <td>
@@ -1486,7 +1491,7 @@ const RecentContactsList = ({
                       </ActionButton>
                       <span className="tooltip-text">
                         {contact.mobile ? 'WhatsApp' : 'No mobile number'}
-                      </span>
+            </span>
                     </Tooltip>
                     
                     <Tooltip>

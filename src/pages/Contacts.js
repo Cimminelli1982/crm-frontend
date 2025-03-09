@@ -216,8 +216,6 @@ const Contacts = () => {
       const { count, error } = await supabase
         .from('contacts')
         .select('*', { count: 'exact' })
-        .not('first_name', 'eq', 'Simone')
-        .not('last_name', 'eq', 'Cimminelli')
         .not('contact_category', 'eq', 'Skip');
       
       if (error) throw error;
