@@ -182,36 +182,16 @@ const ActionButton = styled.button`
 const StarContainer = styled.div`
   display: flex;
   align-items: center;
-  gap: 2px;
 `;
 
-const Star = styled.button`
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
+const Star = styled.span`
   color: ${props => props.filled ? '#f59e0b' : '#d1d5db'};
-  font-size: 1.25rem;
-  transition: transform 0.1s, color 0.1s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  
-  svg {
-    fill: ${props => props.filled ? '#f59e0b' : 'none'};
-    stroke: ${props => props.filled ? '#f59e0b' : '#d1d5db'};
-    stroke-width: ${props => props.filled ? '0' : '2'};
-  }
+  cursor: pointer;
+  margin-right: 2px;
+  transition: color 0.2s;
   
   &:hover {
-    transform: scale(1.2);
     color: #f59e0b;
-    
-    svg {
-      fill: #f59e0b;
-      stroke: #f59e0b;
-      stroke-width: 0;
-    }
   }
 `;
 
@@ -438,7 +418,7 @@ const TruncatedText = styled.span`
 `;
 
 // Company tag styling
-const CompanyTag = styled.span`
+const CompanyBadge = styled.span`
   display: inline-flex;
   align-items: center;
   padding: 0.25rem 0.5rem;
@@ -471,6 +451,28 @@ const CompaniesContainer = styled.div`
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+`;
+
+// Add styled component for "More Tags" indicator
+const MoreTagsIndicator = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem 0.45rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background-color: #e5e7eb;
+  color: #4b5563;
+  cursor: pointer;
+  line-height: 1.2;
+  margin-left: 3px;
+  vertical-align: top;
+  transform: translateY(-1px); /* Fine-tune vertical alignment */
+  
+  &:hover {
+    background-color: #d1d5db;
+  }
 `;
 
 // Helper function to get a random color for tags
@@ -511,6 +513,95 @@ function useDebounce(value, delay) {
   return debouncedValue;
 }
 
+// Add styled components for clickable cells
+const ClickableCell = styled.td`
+  cursor: pointer;
+  position: relative;
+  transition: background-color 0.2s;
+  
+  &:hover {
+    background-color: #f3f4f6;
+  }
+  
+  &:hover::after {
+    content: "Click to edit";
+    position: absolute;
+    top: 0;
+    right: 0;
+    background-color: #3b82f6;
+    color: white;
+    font-size: 10px;
+    padding: 2px 5px;
+    border-radius: 0 0 0 4px;
+    opacity: 0.8;
+  }
+`;
+
+// Modal components
+const ModalOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+`;
+
+const ModalContent = styled.div`
+  background-color: white;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 24px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+`;
+
+const ModalHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  
+  h2 {
+    margin: 0;
+    font-size: 1.25rem;
+  }
+  
+  button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #6b7280;
+    
+    &:hover {
+      color: #1f2937;
+    }
+  }
+`;
+
+// Update the ContactName styling for a cleaner look
+const ContactName = styled.div`
+  font-weight: 500;
+  color: #111827;
+`;
+
+const ContactEmail = styled.div`
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-bottom: 8px;
+`;
+
+const ContactActions = styled.div`
+  display: flex;
+  gap: 8px;
+`;
+
 const RecentContactsList = ({ 
   defaultShowAll = false,
   defaultFilter = 'all',
@@ -543,11 +634,10 @@ const RecentContactsList = ({
   const [sortField, setSortField] = useState('last_modified');
   const [sortDirection, setSortDirection] = useState('desc');
   
-  // Implementation detail states 
-  // eslint-disable-next-line no-unused-vars
+  // Modal state
   const [showEditModal, setShowEditModal] = useState(false);
-  // eslint-disable-next-line no-unused-vars
   const [modalContact, setModalContact] = useState(null);
+  const [modalType, setModalType] = useState('contact'); // 'contact', 'company', or 'tags'
   
   // Debounce search term for better performance
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
@@ -746,7 +836,8 @@ const RecentContactsList = ({
       const date = parseISO(dateString);
       if (!isValid(date)) return 'Invalid date';
       
-      return format(date, 'dd-MM-yyyy');
+      // Use a shorter format: D/M/YY instead of DD-MM-YYYY
+      return format(date, 'd/M/yy');
     } catch (err) {
       return 'Invalid date';
     }
@@ -932,10 +1023,16 @@ const RecentContactsList = ({
     }
   };
   
-  // Modal operations
-  const handleOpenModal = (contact) => {
+  // Handle modal open for different types of content
+  const handleOpenModal = (contact, modalType = 'contact') => {
     setModalContact(contact);
+    setModalType(modalType); // We'll need to add this state
     setShowEditModal(true);
+  };
+
+  // Make the entire cell clickable for company and tags
+  const handleCellClick = (contact, type) => {
+    handleOpenModal(contact, type);
   };
   
   // Skip contact
@@ -1013,6 +1110,92 @@ const RecentContactsList = ({
     );
   };
   
+  // Handle modal close
+  const handleCloseModal = () => {
+    setShowEditModal(false);
+    setModalContact(null);
+  };
+
+  // Render the modal content based on type
+  const renderModalContent = () => {
+    if (!modalContact) return null;
+    
+    let title = '';
+    let content = null;
+    
+    switch (modalType) {
+      case 'name':
+        title = `Edit Contact: ${modalContact.first_name} ${modalContact.last_name}`;
+        content = (
+          <div>
+            <p>Name: {modalContact.first_name} {modalContact.last_name}</p>
+            <p>Email: {modalContact.email || 'Not specified'}</p>
+            <p>Mobile: {modalContact.mobile || 'Not specified'}</p>
+            <p>Contact editing functionality coming soon!</p>
+          </div>
+        );
+        break;
+      case 'company':
+        title = `Edit Company for ${modalContact.first_name} ${modalContact.last_name}`;
+        content = (
+          <div>
+            <p>Current company: {modalContact.companies?.name || 'None'}</p>
+            <p>Company editing functionality coming soon!</p>
+          </div>
+        );
+        break;
+      case 'tags':
+        title = `Edit Tags for ${modalContact.first_name} ${modalContact.last_name}`;
+        content = (
+          <div>
+            <p>Current tags: {contactTags[modalContact.id]?.map(tag => tag.name).join(', ') || 'None'}</p>
+            <p>Tag editing functionality coming soon!</p>
+          </div>
+        );
+        break;
+      default:
+        title = `Edit ${modalContact.first_name} ${modalContact.last_name}`;
+        content = (
+          <div>
+            <p>Contact editing functionality coming soon!</p>
+          </div>
+        );
+    }
+    
+    return (
+      <ModalOverlay onClick={handleCloseModal}>
+        <ModalContent onClick={e => e.stopPropagation()}>
+          <ModalHeader>
+            <h2>{title}</h2>
+            <button onClick={handleCloseModal}>
+              <FiX size={20} />
+            </button>
+          </ModalHeader>
+          {content}
+        </ModalContent>
+      </ModalOverlay>
+    );
+  };
+  
+  // Handle star rating click
+  const handleStarClick = async (contactId, score) => {
+    try {
+      // Update in Supabase
+      await supabase
+        .from('contacts')
+        .update({ score })
+        .eq('id', contactId);
+      
+      // Update local state
+      setContacts(contacts.map(c => 
+        c.id === contactId ? { ...c, score } : c
+      ));
+    } catch (error) {
+      console.error('Error updating contact score:', error);
+      setError(error.message);
+    }
+  };
+  
   // --------- RENDER ---------
   return (
     <Container>
@@ -1037,9 +1220,12 @@ const RecentContactsList = ({
         </div>
       )}
       
-          <ContactTable>
-            <TableHead>
-              <tr>
+      {/* Show modal when active */}
+      {showEditModal && renderModalContent()}
+      
+      <ContactTable>
+        <TableHead>
+          <tr>
             <th 
               className="sortable" 
               onClick={() => handleSort('first_name')}
@@ -1051,7 +1237,7 @@ const RecentContactsList = ({
                 </span>
               )}
             </th>
-                <th>Company</th>
+            <th>Company</th>
             <th>Tags</th>
             <th 
               className="sortable" 
@@ -1089,13 +1275,24 @@ const RecentContactsList = ({
                 </span>
               )}
             </th>
-                <th>Actions</th>
-              </tr>
-            </TableHead>
-            <TableBody>
+            <th
+              className="sortable"
+              onClick={() => handleSort('score')}
+            >
+              Score
+              {sortField === 'score' && (
+                <span className="sort-icon">
+                  {sortDirection === 'asc' ? <FiChevronUp /> : <FiChevronDown />}
+                </span>
+              )}
+            </th>
+            <th>Actions</th>
+          </tr>
+        </TableHead>
+        <TableBody>
           {!isLoading && contacts.length === 0 ? (
             <tr>
-              <td colSpan="7" style={{ textAlign: 'center', padding: '2rem' }}>
+              <td colSpan="8" style={{ textAlign: 'center', padding: '2rem' }}>
                 {debouncedSearchTerm && debouncedSearchTerm.length >= 3
                   ? `No contacts found matching "${debouncedSearchTerm}" in ${searchField}`
                   : 'No contacts found'
@@ -1104,204 +1301,70 @@ const RecentContactsList = ({
             </tr>
           ) : (
             contacts.map(contact => (
-                <tr key={contact.id}>
-                {/* NAME COLUMN */}
-                <td>
+              <tr key={contact.id}>
+                {/* NAME COLUMN - Simplified to only show name */}
+                <ClickableCell onClick={() => handleCellClick(contact, 'name')}>
                   <div className="cell-content">
-                    {editingContact?.id === contact.id && editingField === 'name' ? (
-                      <div style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
-                        <input
-                          name="first_name"
-                          value={editData.first_name || ''}
-                          onChange={handleFieldChange}
-                          onKeyDown={handleKeyDown}
-                          placeholder="First name"
-                          autoFocus
-                        />
-                        <input
-                          name="last_name"
-                          value={editData.last_name || ''}
-                          onChange={handleFieldChange}
-                          onKeyDown={handleKeyDown}
-                          placeholder="Last name"
-                        />
-                        <ActionButton onClick={handleSave}>
-                          <FiCheck />
-                        </ActionButton>
-                        <ActionButton onClick={handleCancel}>
-                          <FiX />
-                        </ActionButton>
-                      </div>
-                    ) : (
-                      <>
-                        {contact.first_name || contact.last_name ? (
-                          <TruncatedText 
-                            maxWidth="180px"
-                            style={{ fontWeight: '500', cursor: 'pointer' }}
-                            onClick={() => handleEditStart(contact, 'name')}
-                        >
-                          {`${contact.first_name || ''} ${contact.last_name || ''}`}
-                          </TruncatedText>
-                        ) : (
-                          <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No name</span>
-                        )}
-                        
-                        <div className="actions">
-                          <Tooltip>
-                            <ActionButton 
-                              className="edit" 
-                              onClick={() => handleOpenModal(contact)}
-                            >
-                              <FiEdit2 size={16} />
-                            </ActionButton>
-                            <span className="tooltip-text">Edit Contact</span>
-                          </Tooltip>
-  </div>
-                      </>
-    )}
-  </div>
-                  </td>
+                    <ContactName>
+                      {contact.first_name} {contact.last_name}
+                    </ContactName>
+                  </div>
+                </ClickableCell>
                 
                 {/* COMPANY COLUMN */}
-                <td>
+                <ClickableCell onClick={() => handleCellClick(contact, 'company')}>
                   <div className="cell-content">
                     <CompaniesContainer>
-                      {contact.companiesList.length > 0 ? (
+                      {contact.companiesList?.length > 0 ? (
                         contact.companiesList.map(company => (
-                          <CompanyTag key={company.id}>
-                            <TruncatedText maxWidth="120px">
-                              {company.name}
-                            </TruncatedText>
-                            <button onClick={() => handleRemoveCompany(contact.id, company.company_id)}>
-                              <FiX size={12} />
-                            </button>
-                          </CompanyTag>
+                          <CompanyBadge key={company.id}>
+                            {company.name}
+                          </CompanyBadge>
                         ))
                       ) : (
                         <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No company</span>
                       )}
-                      
-                      <Tooltip>
-                        <AddTagButton onClick={() => handleOpenModal(contact)}>
-                          <FiPlus size={12} />
-                        </AddTagButton>
-                        <span className="tooltip-text">Associate Company</span>
-                      </Tooltip>
                     </CompaniesContainer>
                   </div>
-                  </td>
+                </ClickableCell>
                 
-                {/* TAGS COLUMN */}
-                <td>
+                {/* TAGS COLUMN - limit display to 2 tags */}
+                <ClickableCell onClick={() => handleCellClick(contact, 'tags')}>
                   <div className="cell-content">
                     <TagsContainer>
                       {contactTags[contact.id]?.length > 0 ? (
-                        contactTags[contact.id].map(tag => (
-                          <Tag 
-                            key={tag.id} 
-                            color={getTagColor(tag.name).bg} 
-                            textColor={getTagColor(tag.name).text}
-                          >
-                            {tag.name}
-                            <button onClick={() => handleRemoveTag(contact.id, tag.tag_id)}>
-                              <FiX size={12} />
-                            </button>
-                          </Tag>
-                        ))
+                        <>
+                          {/* Show only first 2 tags */}
+                          {contactTags[contact.id].slice(0, 2).map(tag => (
+                            <Tag 
+                              key={tag.id} 
+                              color={getTagColor(tag.name).bg} 
+                              textColor={getTagColor(tag.name).text}
+                            >
+                              {tag.name}
+                            </Tag>
+                          ))}
+                          
+                          {/* Show "More Tags" indicator if there are more than 2 tags */}
+                          {contactTags[contact.id].length > 2 && (
+                            <MoreTagsIndicator>
+                              +{contactTags[contact.id].length - 2} more
+                            </MoreTagsIndicator>
+                          )}
+                        </>
                       ) : (
                         <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No tags</span>
                       )}
-                      
-                      <Tooltip>
-                        <AddTagButton onClick={() => handleTagDropdownToggle(contact.id)}>
-                          <FiPlus size={12} />
-                        </AddTagButton>
-                        <span className="tooltip-text">Add Tag</span>
-                      </Tooltip>
                     </TagsContainer>
-                    
-                    {/* Tag dropdown (to be implemented) */}
-                    {showTagDropdown[contact.id] && (
-                      <div style={{
-                        position: 'absolute',
-                        top: '100%',
-                        left: 0,
-                        zIndex: 20,
-                        background: 'white',
-                        border: '1px solid #e5e7eb',
-                        borderRadius: '0.375rem',
-                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                        width: '200px',
-                        maxHeight: '200px',
-                        overflowY: 'auto'
-                      }}>
-                        <div style={{ padding: '0.5rem' }}>
-                          <input
-                            type="text"
-                            placeholder="Search or create tag..."
-                            value={tagInput}
-                            onChange={handleTagInputChange}
-                            style={{
-                              width: '100%',
-                              padding: '0.375rem 0.5rem',
-                              border: '1px solid #d1d5db',
-                              borderRadius: '0.25rem',
-                              fontSize: '0.875rem'
-                            }}
-                          />
-                        </div>
-                        
-                        <div>
-                          {tagSuggestions.length > 0 ? (
-                            tagSuggestions.map(tag => (
-                              <div
-                                key={tag.id}
-                                onClick={() => handleTagSelect(contact.id, tag.id)}
-                                style={{
-                                  padding: '0.5rem',
-                                  cursor: 'pointer',
-                                  fontSize: '0.875rem',
-                                  borderTop: '1px solid #f3f4f6'
-                                }}
-                                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
-                                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                              >
-                                {tag.name}
-                              </div>
-                            ))
-                          ) : (
-                            tagInput ? (
-                              <div
-                                onClick={() => handleCreateTag(contact.id, tagInput)}
-                                style={{
-                                  padding: '0.5rem',
-                                  cursor: 'pointer',
-                                  fontSize: '0.875rem',
-                                  borderTop: '1px solid #f3f4f6'
-                                }}
-                                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
-                                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                              >
-                                Create "{tagInput}"
-                              </div>
-                            ) : (
-                              <div style={{ padding: '0.5rem', fontSize: '0.875rem', color: '#6b7280' }}>
-                                No tags found
-                              </div>
-                            )
-                          )}
-                        </div>
-                      </div>
-                    )}
                   </div>
-                  </td>
+                </ClickableCell>
                 
                 {/* LAST INTERACTION COLUMN */}
                 <td>
                   <LastInteractionDate isRecent={isRecentDate(contact.last_interaction)}>
                     {formatDate(contact.last_interaction)}
                   </LastInteractionDate>
-                  </td>
+                </td>
                 
                 {/* CATEGORY COLUMN */}
                 <td>
@@ -1343,10 +1406,10 @@ const RecentContactsList = ({
                           <ActionButton className="edit" onClick={() => handleEditStart(contact, 'contact_category')}>
                             <FiEdit2 size={16} />
                           </ActionButton>
-            </div>
+                        </div>
                       </>
                     )}
-            </div>
+                  </div>
                 </td>
                 
                 {/* KEEP IN TOUCH COLUMN */}
@@ -1374,7 +1437,7 @@ const RecentContactsList = ({
                         <ActionButton onClick={handleCancel}>
                           <FiX />
                         </ActionButton>
-        </div>
+                      </div>
                     ) : (
                       <>
                         {contact.keep_in_touch ? (
@@ -1389,10 +1452,25 @@ const RecentContactsList = ({
                           <ActionButton className="edit" onClick={() => handleEditStart(contact, 'keep_in_touch')}>
                             <FiEdit2 size={16} />
                           </ActionButton>
-        </div>
+                        </div>
                       </>
                     )}
                   </div>
+                </td>
+                
+                {/* SCORE COLUMN */}
+                <td>
+                  <StarContainer>
+                    {[1, 2, 3, 4, 5].map(star => (
+                      <Star
+                        key={star}
+                        filled={star <= (contact.score || 0)}
+                        onClick={() => handleStarClick(contact.id, star)}
+                      >
+                        {star <= (contact.score || 0) ? <FaStar /> : <FiStar />}
+                      </Star>
+                    ))}
+                  </StarContainer>
                 </td>
                 
                 {/* ACTIONS COLUMN */}
