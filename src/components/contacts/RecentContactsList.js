@@ -1,7 +1,14 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
-import { FiEdit2, FiStar, FiTrash2, FiTag, FiPlus, FiCheck, FiX, FiChevronDown, FiChevronUp } from 'react-icons/fi';
+import { 
+  FiEdit2, FiStar, FiPlus, FiCheck, FiX, 
+  FiChevronDown, FiChevronUp, FiMail, FiExternalLink
+} from 'react-icons/fi';
+import { 
+  FaWhatsapp, FaLinkedin, FaHubspot, FaStar
+} from 'react-icons/fa';
+import { format, parseISO, isValid } from 'date-fns';
 
 // Container styling
 const Container = styled.div`
@@ -53,10 +60,6 @@ const TableHead = styled.thead`
     z-index: 10;
     white-space: nowrap;
     transition: background-color 0.2s;
-    
-    &:hover {
-      background-color: #f3f4f6;
-    }
     
     &.sortable {
       cursor: pointer;
@@ -156,6 +159,22 @@ const ActionButton = styled.button`
   &.delete:hover {
     color: #ef4444;
   }
+  
+  &.whatsapp:hover {
+    color: #25D366;
+  }
+  
+  &.email:hover {
+    color: #4285F4;
+  }
+  
+  &.linkedin:hover {
+    color: #0077B5;
+  }
+  
+  &.hubspot:hover {
+    color: #FF7A59;
+  }
 `;
 
 // Star rating component
@@ -177,9 +196,21 @@ const Star = styled.button`
   align-items: center;
   justify-content: center;
   
+  svg {
+    fill: ${props => props.filled ? '#f59e0b' : 'none'};
+    stroke: ${props => props.filled ? '#f59e0b' : '#d1d5db'};
+    stroke-width: ${props => props.filled ? '0' : '2'};
+  }
+  
   &:hover {
     transform: scale(1.2);
     color: #f59e0b;
+    
+    svg {
+      fill: #f59e0b;
+      stroke: #f59e0b;
+      stroke-width: 0;
+    }
   }
 `;
 
@@ -190,8 +221,8 @@ const Tag = styled.span`
   padding: 0.25rem 0.5rem;
   font-size: 0.75rem;
   border-radius: 1rem;
-  background-color: #f3f4f6;
-  color: #4b5563;
+  background-color: ${props => props.color || '#f3f4f6'};
+  color: ${props => props.textColor || '#4b5563'};
   font-weight: 500;
   margin-right: 0.25rem;
   margin-bottom: 0.25rem;
@@ -211,6 +242,130 @@ const Tag = styled.span`
       color: #ef4444;
     }
   }
+`;
+
+const AddTagButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: #e5e7eb;
+  border: none;
+  color: #6b7280;
+  font-size: 0.75rem;
+  cursor: pointer;
+  margin-left: 0.5rem;
+  transition: all 0.2s;
+  
+  &:hover {
+    background-color: #d1d5db;
+    color: #1f2937;
+  }
+`;
+
+const TagsContainer = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+`;
+
+// Category badge
+const CategoryBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  border-radius: 0.25rem;
+  background-color: ${props => {
+    switch (props.category) {
+      case 'Team': return '#e0f2fe';
+      case 'Manager': return '#f0fdf4';
+      case 'Advisor': return '#fef3c7';
+      case 'Professional Investor': return '#ede9fe';
+      default: return '#f3f4f6';
+    }
+  }};
+  color: ${props => {
+    switch (props.category) {
+      case 'Team': return '#0369a1';
+      case 'Manager': return '#166534';
+      case 'Advisor': return '#92400e';
+      case 'Professional Investor': return '#5b21b6';
+      default: return '#4b5563';
+    }
+  }};
+  font-weight: 500;
+`;
+
+// Keep in touch badge
+const KeepInTouchBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  border-radius: 0.25rem;
+  background-color: ${props => {
+    switch (props.frequency) {
+      case 'Weekly': return '#fee2e2';
+      case 'Monthly': return '#fef3c7';
+      case 'Quarterly': return '#e0f2fe';
+      case 'Do not keep': return '#f3f4f6';
+      default: return '#fecaca';
+    }
+  }};
+  color: ${props => {
+    switch (props.frequency) {
+      case 'Weekly': return '#b91c1c';
+      case 'Monthly': return '#92400e';
+      case 'Quarterly': return '#0369a1';
+      case 'Do not keep': return '#4b5563';
+      default: return '#b91c1c';
+    }
+  }};
+  font-weight: 500;
+`;
+
+// Last interaction date formatter
+const LastInteractionDate = styled.span`
+  color: ${props => props.isRecent ? '#059669' : '#6b7280'};
+  font-weight: ${props => props.isRecent ? '500' : 'normal'};
+`;
+
+// Tooltip
+const Tooltip = styled.div`
+  position: relative;
+  
+  .tooltip-text {
+    visibility: hidden;
+    position: absolute;
+    z-index: 100;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #1f2937;
+    color: white;
+    text-align: center;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  
+  &:hover .tooltip-text {
+    visibility: visible;
+    opacity: 1;
+  }
+`;
+
+// Actions container
+const ActionsContainer = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 `;
 
 // Pagination controls
@@ -267,11 +422,77 @@ const EmptyState = styled.div`
   }
 `;
 
+// Truncated text with ellipsis
+const TruncatedText = styled.span`
+  display: block;
+  max-width: ${props => props.maxWidth || '150px'};
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+// Company tag styling
+const CompanyTag = styled.span`
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  border-radius: 0.375rem;
+  background-color: #e0f2fe;
+  color: #0369a1;
+  font-weight: 500;
+  margin-right: 0.25rem;
+  margin-bottom: 0.25rem;
+  
+  button {
+    background: none;
+    border: none;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 0.25rem;
+    color: #6b7280;
+    cursor: pointer;
+    
+    &:hover {
+      color: #ef4444;
+    }
+  }
+`;
+
+const CompaniesContainer = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+`;
+
+// Helper function to get a random color for tags
+const getTagColor = (tagName) => {
+  // Generate a consistent color based on the tag name
+  const colors = [
+    { bg: '#fee2e2', text: '#b91c1c' }, // Red
+    { bg: '#fef3c7', text: '#92400e' }, // Amber
+    { bg: '#ecfccb', text: '#3f6212' }, // Lime
+    { bg: '#d1fae5', text: '#065f46' }, // Emerald
+    { bg: '#e0f2fe', text: '#0369a1' }, // Sky
+    { bg: '#ede9fe', text: '#5b21b6' }, // Violet
+    { bg: '#fae8ff', text: '#86198f' }, // Fuchsia
+    { bg: '#fce7f3', text: '#9d174d' }  // Pink
+  ];
+  
+  // Use the sum of character codes to pick a color
+  const sum = tagName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const index = sum % colors.length;
+  
+  return colors[index];
+};
+
 const RecentContactsList = ({ 
   defaultShowAll = false,
   defaultFilter = 'all'
 }) => {
-  // ... existing state variables
+  // State variables
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -284,64 +505,19 @@ const RecentContactsList = ({
   const [editingField, setEditingField] = useState(null);
   const [editData, setEditData] = useState({});
   
-  // Sorting state
-  const [sortField, setSortField] = useState('last_interaction');
-  const [sortDirection, setSortDirection] = useState('desc');
+  // Modal state (to be implemented later)
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [modalContact, setModalContact] = useState(null);
   
   // Tags state
   const [contactTags, setContactTags] = useState({});
+  const [showTagDropdown, setShowTagDropdown] = useState({});
+  const [tagInput, setTagInput] = useState('');
+  const [tagSuggestions, setTagSuggestions] = useState([]);
   
-  // Fetch contacts
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // Build query
-      let query = supabase
-        .from('contacts')
-        .select('*, companies:company_id(*)')
-        .neq('email', 'simone@cimminelli.com');
-      
-      // Apply sorting
-      query = query.order(sortField, { 
-        ascending: sortDirection === 'asc',
-        nullsFirst: false
-      });
-      
-      // Apply pagination
-      const from = currentPage * 10;
-      const to = from + 9;
-      query = query.range(from, to);
-      
-      // Execute query
-      const { data, error, count } = await query;
-      
-      if (error) throw error;
-      
-      // Fetch total count for pagination
-      const { count: totalCount, error: countError } = await supabase
-        .from('contacts')
-        .select('*', { count: 'exact', head: true })
-        .neq('email', 'simone@cimminelli.com');
-      
-      if (countError) throw countError;
-      
-      setContacts(data || []);
-      setTotalCount(totalCount || 0);
-      setTotalPages(Math.ceil((totalCount || 0) / 10));
-      
-      // Fetch tags for each contact
-      const contactIds = data?.map(contact => contact.id) || [];
-      await fetchTagsForContacts(contactIds);
-      
-    } catch (err) {
-      console.error('Error fetching contacts:', err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [currentPage, sortField, sortDirection]);
+  // Sorting state
+  const [sortField, setSortField] = useState('last_interaction');
+  const [sortDirection, setSortDirection] = useState('desc');
   
   // Fetch tags for contacts
   const fetchTagsForContacts = useCallback(async (contactIds) => {
@@ -376,10 +552,148 @@ const RecentContactsList = ({
     }
   }, []);
   
+  // Fetch companies for contacts - using the direct company_id relationship
+  const fetchCompaniesForContacts = useCallback(async (contactIds, contactsData) => {
+    if (!contactIds || contactIds.length === 0) return;
+    
+    try {
+      // Update contacts with their companies
+      contactsData.forEach(contact => {
+        // Initialize empty list
+        contact.companiesList = [];
+        
+        // If contact has a company, add it to the list
+        if (contact.companies) {
+          contact.companiesList.push({
+            id: contact.company_id, // This is the relationship ID
+            company_id: contact.companies.id,
+            name: contact.companies.name
+          });
+        }
+      });
+    } catch (err) {
+      console.error('Error processing companies:', err);
+    }
+  }, []);
+  
+  // Fetch contacts
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Build query with filters
+      let query = supabase
+        .from('contacts')
+        .select('*, companies:company_id(*)')
+        // Filter out your own contact
+        .not('first_name', 'eq', 'Simone')
+        .not('last_name', 'eq', 'Cimminelli')
+        // Filter out contacts with category 'Skip'
+        .not('contact_category', 'eq', 'Skip');
+      
+      // Apply sorting
+      query = query.order(sortField, { 
+        ascending: sortDirection === 'asc',
+        nullsFirst: false
+      });
+      
+      // Apply pagination
+      const from = currentPage * 10;
+      const to = from + 9;
+      query = query.range(from, to);
+      
+      // Execute query
+      const { data, error } = await query;
+      
+      if (error) throw error;
+      
+      // Fetch total count for pagination with the same filters
+      const { count: totalCount, error: countError } = await supabase
+        .from('contacts')
+        .select('*', { count: 'exact', head: true })
+        .not('first_name', 'eq', 'Simone')
+        .not('last_name', 'eq', 'Cimminelli')
+        .not('contact_category', 'eq', 'Skip');
+      
+      if (countError) throw countError;
+      
+      // Fetch company associations for each contact
+      const contactIds = data?.map(contact => contact.id) || [];
+      await fetchCompaniesForContacts(contactIds, data);
+      
+      setContacts(data || []);
+      setTotalCount(totalCount || 0);
+      setTotalPages(Math.ceil((totalCount || 0) / 10));
+      
+      // Fetch tags for each contact
+      await fetchTagsForContacts(contactIds);
+      
+    } catch (err) {
+      console.error('Error fetching contacts:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [currentPage, sortField, sortDirection, fetchTagsForContacts, fetchCompaniesForContacts]);
+  
+  // Fetch all available tags for suggestions
+  const fetchTagSuggestions = useCallback(async (searchTerm = '') => {
+    try {
+      let query = supabase.from('tags').select('*');
+      
+      if (searchTerm) {
+        query = query.ilike('name', `%${searchTerm}%`);
+      }
+      
+      const { data, error } = await query.limit(10);
+      
+      if (error) throw error;
+      
+      setTagSuggestions(data || []);
+    } catch (err) {
+      console.error('Error fetching tag suggestions:', err);
+    }
+  }, []);
+  
   // Initial fetch
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+    fetchTagSuggestions();
+  }, [fetchData, fetchTagSuggestions]);
+  
+  // Format date for display
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Never';
+    
+    try {
+      const date = parseISO(dateString);
+      if (!isValid(date)) return 'Invalid date';
+      
+      // Always format as DD-MM-YYYY
+      return format(date, 'dd-MM-yyyy');
+    } catch (err) {
+      console.error('Error formatting date:', err);
+      return 'Invalid date';
+    }
+  };
+  
+  // Check if date is recent (within last 7 days)
+  const isRecentDate = (dateString) => {
+    if (!dateString) return false;
+    
+    try {
+      const date = parseISO(dateString);
+      if (!isValid(date)) return false;
+      
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      
+      return date > sevenDaysAgo;
+    } catch (err) {
+      return false;
+    }
+  };
   
   // Handle sort change
   const handleSort = (field) => {
@@ -479,6 +793,152 @@ const RecentContactsList = ({
     }
   };
   
+  // Handle tag dropdown toggle
+  const handleTagDropdownToggle = (contactId) => {
+    setShowTagDropdown(prev => ({
+      ...prev,
+      [contactId]: !prev[contactId]
+    }));
+    
+    // Fetch tag suggestions when opening dropdown
+    if (!showTagDropdown[contactId]) {
+      fetchTagSuggestions();
+    }
+  };
+  
+  // Handle tag input change
+  const handleTagInputChange = (e) => {
+    setTagInput(e.target.value);
+    fetchTagSuggestions(e.target.value);
+  };
+  
+  // Handle tag selection
+  const handleTagSelect = async (contactId, tagId) => {
+    try {
+      // Check if tag is already assigned to contact
+      const existingTags = contactTags[contactId] || [];
+      if (existingTags.some(tag => tag.tag_id === tagId)) {
+        return;
+      }
+      
+      // Add tag to contact
+      const { error } = await supabase
+        .from('contact_tags')
+        .insert({ contact_id: contactId, tag_id: tagId });
+      
+      if (error) throw error;
+      
+      // Refresh tags for this contact
+      await fetchTagsForContacts([contactId]);
+      
+      // Reset input and close dropdown
+      setTagInput('');
+      setShowTagDropdown(prev => ({
+        ...prev,
+        [contactId]: false
+      }));
+    } catch (err) {
+      console.error('Error adding tag:', err);
+      setError(err.message);
+    }
+  };
+  
+  // Handle tag removal
+  const handleRemoveTag = async (contactId, tagId) => {
+    try {
+      const { error } = await supabase
+        .from('contact_tags')
+        .delete()
+        .eq('contact_id', contactId)
+        .eq('tag_id', tagId);
+      
+      if (error) throw error;
+      
+      // Update local state
+      setContactTags(prev => {
+        const updated = { ...prev };
+        if (updated[contactId]) {
+          updated[contactId] = updated[contactId].filter(tag => tag.tag_id !== tagId);
+        }
+        return updated;
+      });
+    } catch (err) {
+      console.error('Error removing tag:', err);
+      setError(err.message);
+    }
+  };
+  
+  // Handle create new tag
+  const handleCreateTag = async (contactId, tagName) => {
+    try {
+      // First create the tag
+      const { data: newTag, error: createError } = await supabase
+        .from('tags')
+        .insert({ name: tagName })
+        .select()
+        .single();
+      
+      if (createError) throw createError;
+      
+      // Then assign it to the contact
+      await handleTagSelect(contactId, newTag.id);
+    } catch (err) {
+      console.error('Error creating tag:', err);
+      setError(err.message);
+    }
+  };
+  
+  // Handle modal open
+  const handleOpenModal = (contact) => {
+    setModalContact(contact);
+    setShowEditModal(true);
+  };
+  
+  // Handle skip contact
+  const handleSkipContact = async (contactId) => {
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .update({ contact_category: 'Skip' })
+        .eq('id', contactId);
+      
+      if (error) throw error;
+      
+      // Update local state
+      setContacts(contacts.filter(c => c.id !== contactId));
+    } catch (err) {
+      console.error('Error skipping contact:', err);
+      setError(err.message);
+    }
+  };
+  
+  // Handle company removal
+  const handleRemoveCompany = async (contactId, companyId) => {
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .update({ company_id: null })
+        .eq('id', contactId);
+      
+      if (error) throw error;
+      
+      // Update local state
+      setContacts(contacts.map(c => {
+        if (c.id === contactId) {
+          return {
+            ...c,
+            companies: null,
+            companiesList: []
+          };
+        }
+        return c;
+      }));
+    } catch (err) {
+      console.error('Error removing company association:', err);
+      setError(err.message);
+    }
+  };
+  
   // Pagination handlers
   const goToFirstPage = () => {
     setCurrentPage(0);
@@ -550,9 +1010,18 @@ const RecentContactsList = ({
                     </span>
                   )}
                 </th>
-                <th>Email</th>
-                <th>Mobile</th>
                 <th>Tags</th>
+                <th 
+                  className="sortable" 
+                  onClick={() => handleSort('last_interaction')}
+                >
+                  Last Interaction
+                  {sortField === 'last_interaction' && (
+                    <span className="sort-icon">
+                      {sortDirection === 'asc' ? <FiChevronUp /> : <FiChevronDown />}
+                    </span>
+                  )}
+                </th>
                 <th 
                   className="sortable" 
                   onClick={() => handleSort('contact_category')}
@@ -586,11 +1055,13 @@ const RecentContactsList = ({
                     </span>
                   )}
                 </th>
+                <th>Actions</th>
               </tr>
             </TableHead>
             <TableBody>
               {contacts.map(contact => (
                 <tr key={contact.id}>
+                  {/* NAME COLUMN */}
                   <td>
                     <div className="cell-content">
                       {editingContact?.id === contact.id && editingField === 'name' ? (
@@ -620,141 +1091,175 @@ const RecentContactsList = ({
                       ) : (
                         <>
                           {contact.first_name || contact.last_name ? (
-                            <span style={{ fontWeight: '500' }}>
+                            <TruncatedText 
+                              maxWidth="180px"
+                              style={{ fontWeight: '500', cursor: 'pointer' }}
+                              onClick={() => handleEditStart(contact, 'name')}
+                            >
                               {`${contact.first_name || ''} ${contact.last_name || ''}`}
-                            </span>
+                            </TruncatedText>
                           ) : (
                             <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No name</span>
                           )}
                           
                           <div className="actions">
-                            <ActionButton className="edit" onClick={() => handleEditStart(contact, 'name')}>
-                              <FiEdit2 size={16} />
-                            </ActionButton>
+                            <Tooltip>
+                              <ActionButton 
+                                className="edit" 
+                                onClick={() => handleOpenModal(contact)}
+                              >
+                                <FiEdit2 size={16} />
+                              </ActionButton>
+                              <span className="tooltip-text">Edit Contact</span>
+                            </Tooltip>
                           </div>
                         </>
                       )}
                     </div>
                   </td>
                   
+                  {/* COMPANY COLUMN */}
                   <td>
                     <div className="cell-content">
-                      {contact.companies ? (
-                        <span>{contact.companies.name}</span>
-                      ) : (
-                        <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No company</span>
-                      )}
-                      
-                      <div className="actions">
-                        <ActionButton className="edit">
-                          <FiEdit2 size={16} />
-                        </ActionButton>
-                      </div>
+                      <CompaniesContainer>
+                        {contact.companiesList.length > 0 ? (
+                          contact.companiesList.map(company => (
+                            <CompanyTag key={company.id}>
+                              <TruncatedText maxWidth="120px">
+                                {company.name}
+                              </TruncatedText>
+                              <button onClick={() => handleRemoveCompany(contact.id, company.company_id)}>
+                                <FiX size={12} />
+                              </button>
+                            </CompanyTag>
+                          ))
+                        ) : (
+                          <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No company</span>
+                        )}
+                        
+                        <Tooltip>
+                          <AddTagButton onClick={() => handleOpenModal(contact)}>
+                            <FiPlus size={12} />
+                          </AddTagButton>
+                          <span className="tooltip-text">Associate Company</span>
+                        </Tooltip>
+                      </CompaniesContainer>
                     </div>
                   </td>
                   
+                  {/* TAGS COLUMN */}
                   <td>
                     <div className="cell-content">
-                      {editingContact?.id === contact.id && editingField === 'email' ? (
-                        <div style={{ display: 'flex', width: '100%' }}>
-                          <input
-                            name="email"
-                            type="email"
-                            value={editData.email || ''}
-                            onChange={handleFieldChange}
-                            onKeyDown={handleKeyDown}
-                            placeholder="Email"
-                            autoFocus
-                            style={{ flex: 1 }}
-                          />
-                          <ActionButton onClick={handleSave}>
-                            <FiCheck />
-                          </ActionButton>
-                          <ActionButton onClick={handleCancel}>
-                            <FiX />
-                          </ActionButton>
-                        </div>
-                      ) : (
-                        <>
-                          {contact.email ? (
-                            <span>{contact.email}</span>
-                          ) : (
-                            <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No email</span>
-                          )}
-                          
-                          <div className="actions">
-                            <ActionButton className="edit" onClick={() => handleEditStart(contact, 'email')}>
-                              <FiEdit2 size={16} />
-                            </ActionButton>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                  
-                  <td>
-                    <div className="cell-content">
-                      {editingContact?.id === contact.id && editingField === 'mobile' ? (
-                        <div style={{ display: 'flex', width: '100%' }}>
-                          <input
-                            name="mobile"
-                            value={editData.mobile || ''}
-                            onChange={handleFieldChange}
-                            onKeyDown={handleKeyDown}
-                            placeholder="Mobile"
-                            autoFocus
-                            style={{ flex: 1 }}
-                          />
-                          <ActionButton onClick={handleSave}>
-                            <FiCheck />
-                          </ActionButton>
-                          <ActionButton onClick={handleCancel}>
-                            <FiX />
-                          </ActionButton>
-                        </div>
-                      ) : (
-                        <>
-                          {contact.mobile ? (
-                            <span>{contact.mobile}</span>
-                          ) : (
-                            <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No mobile</span>
-                          )}
-                          
-                          <div className="actions">
-                            <ActionButton className="edit" onClick={() => handleEditStart(contact, 'mobile')}>
-                              <FiEdit2 size={16} />
-                            </ActionButton>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                  
-                  <td>
-                    <div className="cell-content">
-                      {contactTags[contact.id]?.length > 0 ? (
-                        <div style={{ display: 'flex', flexWrap: 'wrap' }}>
-                          {contactTags[contact.id].map(tag => (
-                            <Tag key={tag.id}>
+                      <TagsContainer>
+                        {contactTags[contact.id]?.length > 0 ? (
+                          contactTags[contact.id].map(tag => (
+                            <Tag 
+                              key={tag.id} 
+                              color={getTagColor(tag.name).bg} 
+                              textColor={getTagColor(tag.name).text}
+                            >
                               {tag.name}
-                              <button>
+                              <button onClick={() => handleRemoveTag(contact.id, tag.tag_id)}>
                                 <FiX size={12} />
                               </button>
                             </Tag>
-                          ))}
-                        </div>
-                      ) : (
-                        <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No tags</span>
-                      )}
+                          ))
+                        ) : (
+                          <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No tags</span>
+                        )}
+                        
+                        <Tooltip>
+                          <AddTagButton onClick={() => handleTagDropdownToggle(contact.id)}>
+                            <FiPlus size={12} />
+                          </AddTagButton>
+                          <span className="tooltip-text">Add Tag</span>
+                        </Tooltip>
+                      </TagsContainer>
                       
-                      <div className="actions">
-                        <ActionButton className="edit">
-                          <FiTag size={16} />
-                        </ActionButton>
-                      </div>
+                      {/* Tag dropdown (to be implemented) */}
+                      {showTagDropdown[contact.id] && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          zIndex: 20,
+                          background: 'white',
+                          border: '1px solid #e5e7eb',
+                          borderRadius: '0.375rem',
+                          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                          width: '200px',
+                          maxHeight: '200px',
+                          overflowY: 'auto'
+                        }}>
+                          <div style={{ padding: '0.5rem' }}>
+                            <input
+                              type="text"
+                              placeholder="Search or create tag..."
+                              value={tagInput}
+                              onChange={handleTagInputChange}
+                              style={{
+                                width: '100%',
+                                padding: '0.375rem 0.5rem',
+                                border: '1px solid #d1d5db',
+                                borderRadius: '0.25rem',
+                                fontSize: '0.875rem'
+                              }}
+                            />
+                          </div>
+                          
+                          <div>
+                            {tagSuggestions.length > 0 ? (
+                              tagSuggestions.map(tag => (
+                                <div
+                                  key={tag.id}
+                                  onClick={() => handleTagSelect(contact.id, tag.id)}
+                                  style={{
+                                    padding: '0.5rem',
+                                    cursor: 'pointer',
+                                    fontSize: '0.875rem',
+                                    borderTop: '1px solid #f3f4f6'
+                                  }}
+                                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
+                                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                >
+                                  {tag.name}
+                                </div>
+                              ))
+                            ) : (
+                              tagInput ? (
+                                <div
+                                  onClick={() => handleCreateTag(contact.id, tagInput)}
+                                  style={{
+                                    padding: '0.5rem',
+                                    cursor: 'pointer',
+                                    fontSize: '0.875rem',
+                                    borderTop: '1px solid #f3f4f6'
+                                  }}
+                                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
+                                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                >
+                                  Create "{tagInput}"
+                                </div>
+                              ) : (
+                                <div style={{ padding: '0.5rem', fontSize: '0.875rem', color: '#6b7280' }}>
+                                  No tags found
+                                </div>
+                              )
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </td>
                   
+                  {/* LAST INTERACTION COLUMN */}
+                  <td>
+                    <LastInteractionDate isRecent={isRecentDate(contact.last_interaction)}>
+                      {formatDate(contact.last_interaction)}
+                    </LastInteractionDate>
+                  </td>
+                  
+                  {/* CATEGORY COLUMN */}
                   <td>
                     <div className="cell-content">
                       {editingContact?.id === contact.id && editingField === 'contact_category' ? (
@@ -770,8 +1275,8 @@ const RecentContactsList = ({
                             <option value="">Select category</option>
                             <option value="Team">Team</option>
                             <option value="Manager">Manager</option>
-                            <option value="Professional Investor">Professional Investor</option>
                             <option value="Advisor">Advisor</option>
+                            <option value="Professional Investor">Professional Investor</option>
                           </select>
                           <ActionButton onClick={handleSave}>
                             <FiCheck />
@@ -783,7 +1288,9 @@ const RecentContactsList = ({
                       ) : (
                         <>
                           {contact.contact_category ? (
-                            <span>{contact.contact_category}</span>
+                            <CategoryBadge category={contact.contact_category}>
+                              {contact.contact_category}
+                            </CategoryBadge>
                           ) : (
                             <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Not set</span>
                           )}
@@ -798,6 +1305,7 @@ const RecentContactsList = ({
                     </div>
                   </td>
                   
+                  {/* KEEP IN TOUCH COLUMN */}
                   <td>
                     <div className="cell-content">
                       {editingContact?.id === contact.id && editingField === 'keep_in_touch_frequency' ? (
@@ -811,7 +1319,6 @@ const RecentContactsList = ({
                             style={{ flex: 1 }}
                           >
                             <option value="">Select frequency</option>
-                            <option value="Daily">Daily</option>
                             <option value="Weekly">Weekly</option>
                             <option value="Monthly">Monthly</option>
                             <option value="Quarterly">Quarterly</option>
@@ -827,9 +1334,11 @@ const RecentContactsList = ({
                       ) : (
                         <>
                           {contact.keep_in_touch_frequency ? (
-                            <span>{contact.keep_in_touch_frequency}</span>
+                            <KeepInTouchBadge frequency={contact.keep_in_touch_frequency}>
+                              {contact.keep_in_touch_frequency}
+                            </KeepInTouchBadge>
                           ) : (
-                            <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Not set</span>
+                            <span style={{ color: '#ef4444', fontStyle: 'italic', fontWeight: '500' }}>Missing</span>
                           )}
                           
                           <div className="actions">
@@ -842,6 +1351,7 @@ const RecentContactsList = ({
                     </div>
                   </td>
                   
+                  {/* SCORE COLUMN */}
                   <td>
                     <StarContainer>
                       {[1, 2, 3, 4, 5].map(star => (
@@ -850,10 +1360,75 @@ const RecentContactsList = ({
                           filled={star <= (contact.score || 0)}
                           onClick={() => handleStarClick(contact.id, star)}
                         >
-                          <FiStar />
+                          {star <= (contact.score || 0) ? <FaStar /> : <FiStar />}
                         </Star>
                       ))}
                     </StarContainer>
+                  </td>
+                  
+                  {/* ACTIONS COLUMN */}
+                  <td>
+                    <ActionsContainer>
+                      <Tooltip>
+                        <ActionButton 
+                          className="whatsapp" 
+                          onClick={() => contact.mobile ? window.open(`https://wa.me/${contact.mobile.replace(/\D/g, '')}`, '_blank') : null}
+                          style={{ opacity: contact.mobile ? 1 : 0.5 }}
+                        >
+                          <FaWhatsapp />
+                        </ActionButton>
+                        <span className="tooltip-text">
+                          {contact.mobile ? 'WhatsApp' : 'No mobile number'}
+                        </span>
+                      </Tooltip>
+                      
+                      <Tooltip>
+                        <ActionButton 
+                          className="email" 
+                          onClick={() => contact.email ? window.open(`mailto:${contact.email}`, '_blank') : null}
+                          style={{ opacity: contact.email ? 1 : 0.5 }}
+                        >
+                          <FiMail />
+                        </ActionButton>
+                        <span className="tooltip-text">
+                          {contact.email ? 'Email' : 'No email address'}
+                        </span>
+                      </Tooltip>
+                      
+                      <Tooltip>
+                        <ActionButton 
+                          className="linkedin" 
+                          onClick={() => contact.linkedin ? window.open(contact.linkedin, '_blank') : null}
+                          style={{ opacity: contact.linkedin ? 1 : 0.5 }}
+                        >
+                          <FaLinkedin />
+                        </ActionButton>
+                        <span className="tooltip-text">
+                          {contact.linkedin ? 'LinkedIn' : 'No LinkedIn profile'}
+                        </span>
+                      </Tooltip>
+                      
+                      <Tooltip>
+                        <ActionButton className="hubspot">
+                          <FaHubspot />
+                        </ActionButton>
+                        <span className="tooltip-text">View in HubSpot</span>
+                      </Tooltip>
+                      
+                      <Tooltip>
+                        <ActionButton className="delete" onClick={() => handleSkipContact(contact.id)}>
+                          <FiX />
+                        </ActionButton>
+                        <span className="tooltip-text">Skip Contact</span>
+                      </Tooltip>
+                      
+                      <Tooltip>
+                        <ActionButton className="edit" onClick={() => handleOpenModal(contact)}>
+                          <FiExternalLink />
+                        </ActionButton>
+                        <span className="tooltip-text">Check Duplicates</span>
+                      </Tooltip>
+                    </ActionsContainer>
                   </td>
                 </tr>
               ))}
@@ -888,4 +1463,3 @@ const RecentContactsList = ({
 };
 
 export default RecentContactsList;
-  
