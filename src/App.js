@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import Login from './pages/Login';
 import Contacts from './pages/Contacts';
 import Dashboard from './pages/Dashboard';
 import NewContacts from './pages/NewContacts';
 import { supabase } from './lib/supabaseClient';
+import Layout from './components/layout/Layout';
 
 // Import new pages for navigation
 import LastInteractions from './pages/contacts/LastInteractions';
@@ -18,6 +19,13 @@ import Startups from './pages/companies/Startups';
 import Investors from './pages/companies/Investors';
 import Introductions from './pages/Introductions';
 import Planner from './pages/Planner';
+
+// Create a component that applies the layout
+const AppLayout = () => (
+  <Layout>
+    <Outlet />
+  </Layout>
+);
 
 const App = () => {
   const [session, setSession] = useState(null);
@@ -50,7 +58,7 @@ const App = () => {
         
         {/* Protected routes */}
         {session ? (
-          <>
+          <Route element={<AppLayout />}>
             {/* Main routes */}
             <Route path="/" element={<Navigate to="/contacts" />} />
             <Route path="/dashboard" element={<Dashboard />} />
@@ -73,7 +81,7 @@ const App = () => {
             {/* Other main sections */}
             <Route path="/introductions" element={<Introductions />} />
             <Route path="/planner" element={<Planner />} />
-          </>
+          </Route>
         ) : (
           <Route path="*" element={<Navigate to="/login" />} />
         )}
