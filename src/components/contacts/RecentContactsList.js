@@ -704,6 +704,16 @@ const truncateName = (firstName, lastName) => {
   };
 };
 
+// Add a styled component for the score cell
+const ScoreCell = styled.td`
+  cursor: pointer;
+  transition: background-color 0.2s;
+  
+  &:hover {
+    background-color: #f3f4f6; /* Same gray color as ClickableCell hover */
+  }
+`;
+
 const RecentContactsList = ({ 
   defaultShowAll = false,
   defaultFilter = 'all',
@@ -2136,7 +2146,7 @@ const RecentContactsList = ({
                 </ClickableCell>
                 
                 {/* SCORE COLUMN */}
-                <td>
+                <ScoreCell>
                   <StarContainer>
                     {[1, 2, 3, 4, 5].map(star => (
                       <Star
@@ -2148,7 +2158,7 @@ const RecentContactsList = ({
                       </Star>
                     ))}
                   </StarContainer>
-                </td>
+                </ScoreCell>
                 
                 {/* ACTIONS COLUMN */}
                 <td className="actions-cell">
