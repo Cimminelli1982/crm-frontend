@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import Layout from '../components/layout/Layout';
-import RecentContactsList from '../components/contacts/RecentContactsList';
+import Layout from '../../components/layout/Layout';
+import RecentContactsList from '../../components/contacts/RecentContactsList';
 import styled from 'styled-components';
-import { supabase } from '../lib/supabaseClient';
+import { supabase } from '../../lib/supabaseClient';
 
 const PageContainer = styled.div`
   padding: 24px;
@@ -33,7 +33,7 @@ const PageHeader = styled.div`
   }
 `;
 
-const Contacts = () => {
+const KeepInTouch = () => {
   const [totalCount, setTotalCount] = useState(0);
   
   useEffect(() => {
@@ -42,8 +42,8 @@ const Contacts = () => {
         const { count, error } = await supabase
           .from('contacts')
           .select('*', { count: 'exact', head: true })
-          .neq('contact_category', 'Skip')
-          .neq('email', 'simone@cimminelli.com');
+          .not('keep_in_touch_frequency', 'is', null)
+          .neq('contact_category', 'Skip');
           
         if (error) throw error;
         setTotalCount(count || 0);
@@ -60,15 +60,16 @@ const Contacts = () => {
       <PageContainer>
         <PageHeader>
           <h1>
-            All Contacts
+            Keep in Touch
             {totalCount > 0 && <span className="counter">({totalCount})</span>}
           </h1>
-          <p>View and manage all your contacts in one place.</p>
+          <p>Manage your follow-up schedule with important contacts.</p>
         </PageHeader>
-        <RecentContactsList defaultFilter="all" defaultShowAll={true} />
+        
+        <RecentContactsList defaultFilter="keepintouch" />
       </PageContainer>
     </Layout>
   );
 };
 
-export default Contacts;
+export default KeepInTouch; 

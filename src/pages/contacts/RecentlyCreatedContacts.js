@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import Layout from '../components/layout/Layout';
-import RecentContactsList from '../components/contacts/RecentContactsList';
+import Layout from '../../components/layout/Layout';
+import RecentContactsList from '../../components/contacts/RecentContactsList';
 import styled from 'styled-components';
-import { supabase } from '../lib/supabaseClient';
+import { supabase } from '../../lib/supabaseClient';
 
 const PageContainer = styled.div`
   padding: 24px;
@@ -33,17 +33,20 @@ const PageHeader = styled.div`
   }
 `;
 
-const Contacts = () => {
+const RecentlyCreatedContacts = () => {
   const [totalCount, setTotalCount] = useState(0);
   
   useEffect(() => {
     const fetchCount = async () => {
       try {
+        const oneWeekAgo = new Date();
+        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+        
         const { count, error } = await supabase
           .from('contacts')
           .select('*', { count: 'exact', head: true })
-          .neq('contact_category', 'Skip')
-          .neq('email', 'simone@cimminelli.com');
+          .gte('created_at', oneWeekAgo.toISOString())
+          .neq('contact_category', 'Skip');
           
         if (error) throw error;
         setTotalCount(count || 0);
@@ -60,15 +63,16 @@ const Contacts = () => {
       <PageContainer>
         <PageHeader>
           <h1>
-            All Contacts
+            Recently Created Contacts
             {totalCount > 0 && <span className="counter">({totalCount})</span>}
           </h1>
-          <p>View and manage all your contacts in one place.</p>
+          <p>View contacts that were recently added to your CRM.</p>
         </PageHeader>
-        <RecentContactsList defaultFilter="all" defaultShowAll={true} />
+        
+        <RecentContactsList defaultFilter="recent" />
       </PageContainer>
     </Layout>
   );
 };
 
-export default Contacts;
+export default RecentlyCreatedContacts; 

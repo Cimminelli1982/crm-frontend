@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import Layout from '../components/layout/Layout';
-import RecentContactsList from '../components/contacts/RecentContactsList';
+import Layout from '../../components/layout/Layout';
+import RecentContactsList from '../../components/contacts/RecentContactsList';
 import styled from 'styled-components';
-import { supabase } from '../lib/supabaseClient';
+import { supabase } from '../../lib/supabaseClient';
 
 const PageContainer = styled.div`
   padding: 24px;
@@ -33,7 +33,7 @@ const PageHeader = styled.div`
   }
 `;
 
-const Contacts = () => {
+const MissingInfos = () => {
   const [totalCount, setTotalCount] = useState(0);
   
   useEffect(() => {
@@ -42,8 +42,8 @@ const Contacts = () => {
         const { count, error } = await supabase
           .from('contacts')
           .select('*', { count: 'exact', head: true })
-          .neq('contact_category', 'Skip')
-          .neq('email', 'simone@cimminelli.com');
+          .not('contact_category', 'eq', 'Skip')
+          .or('first_name.is.null,last_name.is.null,keep_in_touch_frequency.is.null');
           
         if (error) throw error;
         setTotalCount(count || 0);
@@ -60,15 +60,16 @@ const Contacts = () => {
       <PageContainer>
         <PageHeader>
           <h1>
-            All Contacts
+            Missing Information
             {totalCount > 0 && <span className="counter">({totalCount})</span>}
           </h1>
-          <p>View and manage all your contacts in one place.</p>
+          <p>Identify contacts with incomplete profiles.</p>
         </PageHeader>
-        <RecentContactsList defaultFilter="all" defaultShowAll={true} />
+        
+        <RecentContactsList defaultFilter="missing" />
       </PageContainer>
     </Layout>
   );
 };
 
-export default Contacts;
+export default MissingInfos; 

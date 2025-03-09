@@ -89,12 +89,17 @@ const Header = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1.5rem;
-  padding: 0 1rem;
+  margin-bottom: 24px;
+  
   h2 {
-    font-size: 1.5rem;
+    font-size: 1.25rem;
     font-weight: 600;
-    color: #2d3748;
+    color: #1f2937;
+  }
+  
+  .counter {
+    color: #6b7280;
+    font-weight: normal;
   }
 `;
 
@@ -978,45 +983,23 @@ const formatWebsiteUrl = (url) => {
 };
 
 // Add a new styled component for the filter buttons
-const FilterButtonsContainer = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-`;
+// const FilterButtonsContainer = styled.div`...`;
+// const FilterButton = styled.button`...`;
 
-const FilterButton = styled.button`
-  padding: 0.5rem 1rem;
-  background-color: ${props => props.active ? '#4F46E5' : '#F3F4F6'};
-  color: ${props => props.active ? 'white' : '#4B5563'};
-  border: 1px solid #E5E7EB;
-  border-radius: 0.375rem;
-  font-size: 0.875rem;
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-  transition: all 0.2s;
-  
-  &:hover {
-    background-color: ${props => props.active ? '#4338CA' : '#E5E7EB'};
-  }
-  
-  span.counter {
-    background-color: ${props => props.active ? '#312E81' : '#E5E7EB'};
-    color: ${props => props.active ? 'white' : '#4B5563'};
-    padding: 0.125rem 0.5rem;
-    border-radius: 9999px;
-    font-size: 0.75rem;
-    margin-left: 0.5rem;
-  }
-`;
+// Remove these styled components:
+// const FilterButtonsContainer = styled.div`...`;
+// const FilterButton = styled.button`...`;
 
-// Add state for tracking the current filter
-const RecentContactsList = () => {
+// Keep other styled components, then in the component:
+
+const RecentContactsList = ({ 
+  defaultShowAll = false,
+  defaultFilter = 'all'
+}) => {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
-  const [totalPages, setTotalPages] = useState(1); // Add this missing state variable
+  const [totalPages, setTotalPages] = useState(1);
   const [currentPage, setCurrentPage] = useState(0);
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [selectedContact, setSelectedContact] = useState(null);
@@ -1052,11 +1035,11 @@ const RecentContactsList = () => {
   });
   const [error, setError] = useState(null);
   
-  // Add state to toggle between all contacts and recent interactions
-  const [showRecentOnly, setShowRecentOnly] = useState(true);
+  // Update to ensure defaultShowAll is respected
+  const [showRecentOnly, setShowRecentOnly] = useState(!defaultShowAll);
 
   // Add state for tracking the current filter
-  const [currentFilter, setCurrentFilter] = useState('all');
+  const [currentFilter, setCurrentFilter] = useState(defaultFilter);
   const [filterCounts, setFilterCounts] = useState({
     all: 0,
     today: 0,
@@ -1095,141 +1078,129 @@ const RecentContactsList = () => {
   const rowsPerPage = useMemo(() => 50, []);
 
   const fetchData = useCallback(async () => {
+    console.log('Fetching all contacts and doing client-side sorting');
     setLoading(true);
     setError(null);
     
     try {
+      // Build the basic query with only filtering, no sorting
       let query = supabase
         .from('contacts')
-        .select('*, companies(*)', { count: 'exact' });
+        .select('*, companies(*)', { count: 'exact' })
+        .neq('contact_category', 'Skip')
+        .neq('email', 'simone@cimminelli.com');
       
-      // Apply filters based on the current filter
-      switch (currentFilter) {
-        case 'today':
-          // Last Interaction: today's interactions sorted by last_interaction (excluding Skip)
-          query = query
-            .gte('last_interaction', getTodayDate)
-            .neq('contact_category', 'Skip')
-            .order('last_interaction', { ascending: false });
-          break;
-          
-        case 'recent':
-          // Recently created: contacts created in the last week (excluding Skip)
-          const oneWeekAgo = new Date();
-          oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-          
-          query = query
-            .gte('created_at', oneWeekAgo.toISOString())
-            .neq('contact_category', 'Skip')
-            .order('id', { ascending: false });
-          break;
-          
-        case 'missing':
-          // Missing info: contacts missing key fields
-          query = query
-          .not('contact_category', 'eq', 'Skip')
-          .or('first_name.is.null,last_name.is.null,keep_in_touch_frequency.is.null')
-          .order('id', { ascending: false });
-          break;
-          
-        default:
-          // All contacts (default sorting) - excluding category "Skip"
-          if (showRecentOnly) {
-            query = query
-              .gte('last_interaction', getTodayDate)
-              .neq('contact_category', 'Skip')
-              .order('last_interaction', { ascending: false });
-          } else {
-            query = query
-              .neq('contact_category', 'Skip')
-              .order('id', { ascending: false });
-          }
+      // Apply specific filters based on the page we're on
+      if (currentFilter === 'today') {
+        query = query.gte('last_interaction', getTodayDate);
+      } else if (currentFilter === 'recent') {
+        const oneWeekAgo = new Date();
+        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+        query = query.gte('created_at', oneWeekAgo.toISOString());
+      } else if (currentFilter === 'missing') {
+        query = query.or('first_name.is.null,last_name.is.null,keep_in_touch_frequency.is.null');
+      } else if (currentFilter === 'keepintouch') {
+        query = query.not('keep_in_touch_frequency', 'is', null);
+      } else if (showRecentOnly) {
+        query = query.gte('last_interaction', getTodayDate);
       }
       
-      // Apply pagination
-      const from = currentPage * rowsPerPage;
-      const to = from + rowsPerPage - 1;
-      query = query.range(from, to);
-      
-      // Execute the query
+      // Execute the query WITHOUT any sorting
+      console.log('Executing Supabase query WITHOUT sorting...');
       const { data, error, count } = await query;
       
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase query error:', error);
+        throw error;
+      }
       
-      // Update the contacts state
-      setContacts(data || []);
+      console.log(`Retrieved ${data?.length || 0} contacts out of ${count || 0} total`);
+      
+      // Now do the sorting client-side
+      let sortedContacts = [...(data || [])];
+      
+      // Custom sort function based on the page we're on
+      if (currentFilter === 'all' || currentFilter === 'today' || showRecentOnly) {
+        console.log('Sorting by last_interaction on client side');
+        
+        // First, log some sample data to debug
+        if (sortedContacts.length > 0) {
+          console.log('Sample last_interaction values before sorting:');
+          sortedContacts.slice(0, 5).forEach(contact => {
+            console.log(`ID: ${contact.id}, last_interaction: ${contact.last_interaction}, type: ${typeof contact.last_interaction}`);
+          });
+        }
+        
+        // Sort by last_interaction date (most recent first)
+        sortedContacts.sort((a, b) => {
+          // Handle null values
+          if (!a.last_interaction && !b.last_interaction) return 0;
+          if (!a.last_interaction) return 1; // Nulls last
+          if (!b.last_interaction) return -1;
+          
+          // Parse dates and compare (most recent first)
+          const dateA = new Date(a.last_interaction);
+          const dateB = new Date(b.last_interaction);
+          
+          return dateB - dateA;
+        });
+        
+        // Log results after sorting
+        if (sortedContacts.length > 0) {
+          console.log('Sample last_interaction values AFTER sorting:');
+          sortedContacts.slice(0, 5).forEach(contact => {
+            console.log(`ID: ${contact.id}, last_interaction: ${contact.last_interaction}`);
+          });
+          
+          console.log('Last 5 contacts after sorting:');
+          sortedContacts.slice(-5).forEach(contact => {
+            console.log(`ID: ${contact.id}, last_interaction: ${contact.last_interaction}`);
+          });
+        }
+      } else if (currentFilter === 'recent') {
+        // Sort by created_at (most recent first)
+        sortedContacts.sort((a, b) => {
+          if (!a.created_at && !b.created_at) return 0;
+          if (!a.created_at) return 1;
+          if (!b.created_at) return -1;
+          return new Date(b.created_at) - new Date(a.created_at);
+        });
+      } else if (currentFilter === 'keepintouch') {
+        // Sort by keep_in_touch_frequency
+        sortedContacts.sort((a, b) => {
+          if (!a.keep_in_touch_frequency && !b.keep_in_touch_frequency) return 0;
+          if (!a.keep_in_touch_frequency) return 1;
+          if (!b.keep_in_touch_frequency) return -1;
+          return a.keep_in_touch_frequency.localeCompare(b.keep_in_touch_frequency);
+        });
+      }
+      
+      // Apply pagination to the sorted contacts
+      const from = currentPage * rowsPerPage;
+      const to = Math.min(from + rowsPerPage, sortedContacts.length);
+      const paginatedContacts = sortedContacts.slice(from, to);
+      
+      console.log(`Showing contacts ${from+1} to ${to} out of ${sortedContacts.length}`);
+      
+      // Update state with sorted and paginated contacts
+      setContacts(paginatedContacts);
       setTotalCount(count || 0);
       setTotalPages(Math.ceil((count || 0) / rowsPerPage));
       
-      // Fetch counts for filters (in parallel for performance)
-      const countFetches = [
-        // Today count
-        (async () => {
-          const { count } = await supabase
-            .from('contacts')
-            .select('*', { count: 'exact', head: true })
-            .gte('last_interaction', getTodayDate)
-            .neq('contact_category', 'Skip');
-          return count || 0;
-        })(),
-        
-        // Recent count - returns count of contacts created in the last 30 days
-        (async () => {
-          const { count } = await supabase
-            .from('contacts')
-            .select('*', { count: 'exact', head: true })
-            .neq('contact_category', 'Skip')
-            .gte('created_at', getThirtyDaysAgoDate)
-            .order('created_at', { ascending: false });
-          return count || 0;
-        })(),
-        
-        // Missing info count
-        (async () => {
-          const { count } = await supabase
-            .from('contacts')
-            .select('*', { count: 'exact', head: true })
-            .or('first_name.is.null,last_name.is.null,contact_category.is.null,keep_in_touch_frequency.is.null');
-          return count || 0;
-        })()
-      ];
-      
-      // Wait for all counts to be fetched
-      const [todayCount, recentCount, missingCount] = await Promise.all(countFetches);
-      const allCount = await supabase
-        .from('contacts')
-        .select('*', { count: 'exact', head: true })
-        .neq('contact_category', 'Skip')
-        .then(res => res.count || 0);
-      
-      setFilterCounts({
-        all: allCount,
-        today: todayCount,
-        recent: recentCount,
-        missing: missingCount
-      });
-      
-      return {
-        contacts: data || [],
-        totalCount: count || 0,
-        totalPages
-      };
-    } catch (err) {
-      console.error('Error fetching contacts:', err);
-      setError(err.message);
-      return {
-        contacts: [],
-        totalCount: 0,
-        totalPages: 0
-      };
+    } catch (error) {
+      console.error('Error in fetchData:', error);
+      setError(error.message);
+      setContacts([]);
     } finally {
       setLoading(false);
     }
   }, [currentFilter, currentPage, rowsPerPage, showRecentOnly, getTodayDate, getThirtyDaysAgoDate]);
 
+  // Make sure fetchData runs when component mounts
   useEffect(() => {
+    console.log('Initial data fetch with defaultShowAll:', defaultShowAll);
     fetchData();
-  }, [fetchData, currentPage, showRecentOnly, currentFilter]);
+  }, [fetchData]);
 
   useEffect(() => {
     const fetchTags = async () => {
@@ -1585,10 +1556,21 @@ const RecentContactsList = () => {
     }
   }, [fetchData]);
 
-  const goToFirstPage = useCallback(() => setCurrentPage(0), []);
-  const goToPreviousPage = useCallback(() => setCurrentPage(prev => Math.max(0, prev - 1)), []);
-  const goToNextPage = useCallback(() => setCurrentPage(prev => Math.min(totalPages - 1, prev + 1)), [totalPages]);
-  const goToLastPage = useCallback(() => setCurrentPage(totalPages > 0 ? totalPages - 1 : 0), [totalPages]);
+  const goToFirstPage = () => {
+    setCurrentPage(0);
+  };
+
+  const goToPrevPage = () => {
+    setCurrentPage(prev => Math.max(0, prev - 1));
+  };
+
+  const goToNextPage = () => {
+    setCurrentPage(prev => Math.min(totalPages - 1, prev + 1));
+  };
+
+  const goToLastPage = () => {
+    setCurrentPage(totalPages - 1);
+  };
 
   const handleOpenContactEdit = useCallback((contact) => {
     setEditingContact(contact);
@@ -1832,6 +1814,17 @@ const RecentContactsList = () => {
     const checkHubspotAuth = async () => {
       console.log('Checking HubSpot authentication...');
       
+      // Skip HubSpot authentication in local development
+      if (window.location.hostname === 'localhost') {
+        console.log('Running in local development - skipping HubSpot authentication');
+        setHubspotAuthStatus({
+          isAuthenticated: false,
+          isLoading: false,
+          error: "HubSpot authentication skipped in local development"
+        });
+        return;
+      }
+      
       // Check if we have credentials
       if (!HUBSPOT_API_KEY && !HUBSPOT_ACCESS_TOKEN) {
         console.log('No HubSpot credentials found');
@@ -1884,755 +1877,32 @@ const RecentContactsList = () => {
           isLoading: false,
           error: error.message || 'Failed to authenticate with Hubspot'
         });
-        throw new Error(`HubSpot authentication failed: ${error.response?.status || error.message}`);
+        // Don't throw an error, just log it
+        console.error(`HubSpot authentication failed: ${error.response?.status || error.message}`);
       }
     };
     
-    checkHubspotAuth();
-  }, []);
-  
-  // Function to search for a contact in Hubspot - wrapped in useCallback
-  const searchHubspotContact = useCallback(async (contact) => {
-    try {
-      // Define all the properties we want to fetch from HubSpot
-      const contactProperties = [
-        'firstname', 'lastname', 'email', 'work_email', 'mobilephone', 
-        'phone', 'hs_lead_status', 'linkedin_profile', 'hubspot_score',
-        'city', 'about', 'notes_last_updated', 'notes_last_contacted',
-        'contact_category', 'keep_in_touch_frequency', 'score',
-        // Additional email properties that might exist in HubSpot
-        'email2', 'email3', 'secondary_email', 'alternate_email', 
-        'personal_email', 'additional_email', 'other_email',
-        // HubSpot's dedicated property for additional emails
-        'hs_additional_emails',
-        // Phone fields
-        'work_phone', 'home_phone', 'cell_phone', 'mobile_phone',
-        // LinkedIn URL
-        'hs_linkedin_url'
-      ];
-      
-      // Flag to determine if we're searching by email only (no names provided)
-      const isEmailOnlySearch = (!contact.first_name && !contact.last_name && contact.email);
-      
-      // Search by email first if available
-      if (contact.email) {
-        const emailResponse = await hubspotClient.post('/crm/v3/objects/contacts/search', {
-          method: 'POST',
-          data: {
-            filterGroups: [
-              {
-                filters: [
-                  {
-                    propertyName: 'email',
-                    operator: 'EQ',
-                    value: contact.email
-                  }
-                ]
-              }
-            ],
-            properties: contactProperties,
-            limit: 10
-          }
-        });
-        
-        if (emailResponse.data.results && emailResponse.data.results.length > 0) {
-          // Also fetch associated companies for this contact
-          const contactId = emailResponse.data.results[0].id;
-          
-          // Fetch all properties for this contact to discover all available email fields
-          const allPropertiesResponse = await hubspotClient.post('', {
-            endpoint: `/crm/v3/objects/contacts/${contactId}`,
-            method: 'GET',
-            params: {
-              properties: 'email,firstname,lastname,hs_additional_emails,work_email,email2,email3,secondary_email,alternate_email,personal_email,additional_email,other_email,mobilephone,phone,work_phone,home_phone,cell_phone,mobile_phone,hs_linkedin_url,linkedin_profile,keep_in_touch_frequency,about_the_contact,about,notes'
-            }
-          });
-          
-          let contactWithAllProperties = emailResponse.data.results[0];
-          
-          // If we got all properties, use that response instead
-          if (allPropertiesResponse.data && allPropertiesResponse.data.properties) {
-            contactWithAllProperties = allPropertiesResponse.data;
-            console.log('===== HUBSPOT API RESPONSE =====');
-            console.log('Contact ID:', contactId);
-            console.log('Retrieved all contact properties:', Object.keys(contactWithAllProperties.properties));
-            
-            // Log phone-related properties specifically
-            console.log('Phone properties:');
-            const phoneProps = ['phone', 'mobilephone', 'work_phone', 'home_phone', 'cell_phone', 'mobile_phone'];
-            phoneProps.forEach(prop => {
-              if (contactWithAllProperties.properties[prop]) {
-                console.log(`- ${prop}: ${contactWithAllProperties.properties[prop]}`);
-              }
-            });
-            
-            console.log('Raw response data:', JSON.stringify(allPropertiesResponse.data, null, 2));
-            console.log('===== END HUBSPOT API RESPONSE =====');
-          }
-          
-          const companiesResponse = await hubspotClient.post('', {
-            endpoint: `/crm/v3/objects/contacts/${contactId}/associations/companies`,
-            method: 'GET'
-          });
-          
-          let companyData = null;
-          
-          // If there are associated companies, fetch the first company's details
-          if (companiesResponse.data.results && companiesResponse.data.results.length > 0) {
-            const companyId = companiesResponse.data.results[0].id;
-            const companyResponse = await hubspotClient.post('', {
-              endpoint: `/crm/v3/objects/companies/${companyId}`,
-              method: 'GET',
-              params: {
-                properties: 'name,website,description,city,country,industry,category'
-              }
-            });
-            
-            if (companyResponse.data) {
-              companyData = companyResponse.data;
-            }
-          }
-          
-          return {
-            found: true,
-            nameMatch: isEmailOnlySearch ? true : (contactWithAllProperties.firstname && contactWithAllProperties.lastname ? true : false),
-            contact: contactWithAllProperties,
-            company: companyData
-          };
-        }
-      }
-      
-      // If no results by email, search by name
-      if (contact.first_name || contact.last_name) {
-        // Build the search query based on available name parts
-        const nameFilters = [];
-        
-        if (contact.first_name) {
-          nameFilters.push({
-            propertyName: 'firstname',
-            operator: 'EQ',
-            value: contact.first_name
-          });
-        }
-        
-        if (contact.last_name) {
-          nameFilters.push({
-            propertyName: 'lastname',
-            operator: 'EQ',
-            value: contact.last_name
-          });
-        }
-        
-        const nameResponse = await hubspotClient.post('/crm/v3/objects/contacts/search', {
-          method: 'POST',
-          data: {
-            filterGroups: [
-              {
-                filters: nameFilters
-              }
-            ],
-            properties: contactProperties,
-            limit: 10
-          }
-        });
-        
-        if (nameResponse.data.results && nameResponse.data.results.length > 0) {
-          // Check if first name and last name match
-          const result = nameResponse.data.results[0];
-          const firstNameMatch = !contact.first_name || 
-            (result.properties.firstname && 
-             result.properties.firstname.toLowerCase() === contact.first_name.toLowerCase());
-          const lastNameMatch = !contact.last_name || 
-            (result.properties.lastname && 
-             result.properties.lastname.toLowerCase() === contact.last_name.toLowerCase());
-          
-          // Also fetch associated companies for this contact
-          const contactId = result.id;
-          
-          // Fetch all properties for this contact to discover all available email fields
-          const allPropertiesResponse = await hubspotClient.post('', {
-            endpoint: `/crm/v3/objects/contacts/${contactId}`,
-            method: 'GET',
-            params: {
-              properties: 'email,firstname,lastname,hs_additional_emails,work_email,email2,email3,secondary_email,alternate_email,personal_email,additional_email,other_email,mobilephone,phone,work_phone,home_phone,cell_phone,mobile_phone,hs_linkedin_url,linkedin_profile,keep_in_touch_frequency,about_the_contact,about,notes'
-            }
-          });
-          
-          let contactWithAllProperties = result;
-          
-          // If we got all properties, use that response instead
-          if (allPropertiesResponse.data && allPropertiesResponse.data.properties) {
-            contactWithAllProperties = allPropertiesResponse.data;
-            console.log('===== HUBSPOT API RESPONSE =====');
-            console.log('Contact ID:', contactId);
-            console.log('Retrieved all contact properties:', Object.keys(contactWithAllProperties.properties));
-            
-            // Log phone-related properties specifically
-            console.log('Phone properties:');
-            const phoneProps = ['phone', 'mobilephone', 'work_phone', 'home_phone', 'cell_phone', 'mobile_phone'];
-            phoneProps.forEach(prop => {
-              if (contactWithAllProperties.properties[prop]) {
-                console.log(`- ${prop}: ${contactWithAllProperties.properties[prop]}`);
-              }
-            });
-            
-            console.log('Raw response data:', JSON.stringify(allPropertiesResponse.data, null, 2));
-            console.log('===== END HUBSPOT API RESPONSE =====');
-          }
-          
-          const companiesResponse = await hubspotClient.post('', {
-            endpoint: `/crm/v3/objects/contacts/${contactId}/associations/companies`,
-            method: 'GET'
-          });
-          
-          let companyData = null;
-          
-          // If there are associated companies, fetch the first company's details
-          if (companiesResponse.data.results && companiesResponse.data.results.length > 0) {
-            const companyId = companiesResponse.data.results[0].id;
-            const companyResponse = await hubspotClient.post('', {
-              endpoint: `/crm/v3/objects/companies/${companyId}`,
-              method: 'GET',
-              params: {
-                properties: 'name,website,description,city,country,industry,category'
-              }
-            });
-            
-            if (companyResponse.data) {
-              companyData = companyResponse.data;
-            }
-          }
-          
-          return {
-            found: true,
-            nameMatch: isEmailOnlySearch ? true : (firstNameMatch && lastNameMatch),
-            contact: contactWithAllProperties,
-            company: companyData
-          };
-        }
-      }
-      
-      // No matching contact found
-      return {
-        found: false,
-        nameMatch: false,
-        contact: null,
-        company: null
-      };
-    } catch (error) {
-      console.error('Error searching Hubspot:', error);
-      throw error;
-    }
-  }, []);
-  
-  // Helper function to map Hubspot status categories - wrapped in useCallback to prevent dependency warnings
-  const mapHubspotStatusToCategory = useCallback((hubspotStatus) => {
-    if (!hubspotStatus) return '';
+    // Check HubSpot authentication if not in local development
+    const isLocalDevelopment = window.location.hostname === 'localhost' || 
+                              window.location.hostname === '127.0.0.1';
     
-    // Define mapping from Hubspot lead statuses to our categories
-    const statusMap = {
-      'NEW': 'Founder',
-      'OPEN': 'Professional Investor',
-      'IN PROGRESS': 'Manager',
-      'OPEN DEAL': 'Professional Investor',
-      'UNQUALIFIED': 'Do not keep in touch',
-      'CUSTOMER': 'Advisor',
-      'EVANGELIST': 'Friend or Family'
-    };
-    
-    return statusMap[hubspotStatus.toUpperCase()] || 'Professional Investor';
-  }, []);
-  
-  // Helper function to map Hubspot frequency values to our frequency values
-  const mapHubspotFrequencyToOurFrequency = useCallback((hubspotFrequency) => {
-    if (!hubspotFrequency) {
-      console.log('No frequency value found in HubSpot, using default "Quarterly"');
-      return 'Quarterly'; // Default value
-    }
-    
-    console.log(`Mapping HubSpot frequency value: "${hubspotFrequency}"`);
-    
-    // Define mapping from Hubspot frequency values to our values
-    const frequencyMap = {
-      'DON\'T KEEP IN TOUCH': 'Do not keep in touch',
-      'MONTHLY': 'Monthly',
-      'QUARTERLY': 'Quarterly',
-      'YEARLY': 'Once a Year'
-    };
-    
-    const mappedValue = frequencyMap[hubspotFrequency.toUpperCase()] || 'Quarterly';
-    console.log(`Mapped to Supabase frequency value: "${mappedValue}"`);
-    
-    return mappedValue;
-  }, []);
-  
-  // Helper function to map Hubspot score - wrapped in useCallback to prevent dependency warnings
-  const mapHubspotScoreToOurScore = useCallback((hubspotScore) => {
-    if (!hubspotScore) return 3; // Default to middle score
-    
-    const score = parseInt(hubspotScore, 10);
-    if (isNaN(score)) return 3;
-    
-    // Map 0-100 scale to 1-5 scale
-    if (score < 20) return 1;
-    if (score < 40) return 2;
-    if (score < 60) return 3;
-    if (score < 80) return 4;
-    return 5;
-  }, []);
-  
-  // Function to map Hubspot contact properties to our data model - wrapped in useCallback
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const mapHubspotContactToOurModel = useCallback((hubspotContact, hubspotCompany) => {
-    const properties = hubspotContact.properties;
-    
-    // Log all available properties from HubSpot for debugging
-    console.log('===== HUBSPOT DATA AVAILABLE =====');
-    console.log('CONTACT PROPERTIES:');
-    
-    // Group properties by type for better readability
-    const contactPropertyGroups = {
-      'Basic Info': ['firstname', 'lastname', 'email', 'phone', 'mobilephone'],
-      'Additional Emails': ['work_email', 'email2', 'email3', 'secondary_email', 'alternate_email', 'personal_email', 'additional_email', 'other_email', 'hs_additional_emails'],
-      'Social & Web': ['linkedin_profile', 'website', 'twitter_handle', 'facebook_profile'],
-      'Location': ['address', 'city', 'state', 'zip', 'country'],
-      'Company Info': ['company', 'jobtitle', 'industry'],
-      'Lead Info': ['hs_lead_status', 'hubspot_score', 'lifecyclestage'],
-      'Other': []
-    };
-    
-    // Categorize all properties
-    const categorizedProperties = {};
-    const allPropertyKeys = Object.keys(properties).sort();
-    
-    allPropertyKeys.forEach(key => {
-      let placed = false;
-      for (const category in contactPropertyGroups) {
-        if (contactPropertyGroups[category].includes(key)) {
-          if (!categorizedProperties[category]) categorizedProperties[category] = {};
-          categorizedProperties[category][key] = properties[key];
-          placed = true;
-          break;
-        }
-      }
-      
-      if (!placed) {
-        if (!categorizedProperties['Other']) categorizedProperties['Other'] = {};
-        categorizedProperties['Other'][key] = properties[key];
-      }
-    });
-    
-    // Log categorized properties
-    for (const category in categorizedProperties) {
-      console.log(`\n${category}:`);
-      const categoryProps = categorizedProperties[category];
-      for (const key in categoryProps) {
-        console.log(`  ${key}: ${categoryProps[key]}`);
-      }
-    }
-    
-    // Log company data if available
-    if (hubspotCompany) {
-      console.log('\nCOMPANY PROPERTIES:');
-      const companyProperties = hubspotCompany.properties;
-      const companyKeys = Object.keys(companyProperties).sort();
-      companyKeys.forEach(key => {
-        console.log(`  ${key}: ${companyProperties[key]}`);
+    if (!isLocalDevelopment) {
+      checkHubspotAuth();
+    } else {
+      console.log('Running in local development - skipping HubSpot authentication check');
+      setHubspotAuthStatus({
+        isAuthenticated: false,
+        isLoading: false,
+        error: null
       });
     }
-    
-    console.log('===== END HUBSPOT DATA =====');
-    
-    // Get all available emails from the contact properties
-    const emails = [];
-    
-    // Primary email is always first if available
-    if (properties.email) {
-      emails.push(properties.email);
-    }
-    
-    // Check specifically for HubSpot's additional emails property
-    if (properties.hs_additional_emails) {
-      console.log('========== ADDITIONAL EMAILS DEBUG ==========');
-      console.log('Found hs_additional_emails property:', properties.hs_additional_emails);
-      console.log('Type of hs_additional_emails:', typeof properties.hs_additional_emails);
-      
-      try {
-        // HubSpot's hs_additional_emails could be in various formats
-        let additionalEmails = [];
-        const rawValue = properties.hs_additional_emails;
-        
-        // Handle different potential formats
-        // 1. Try as JSON array
-        if (rawValue.startsWith('[')) {
-          try {
-            const parsed = JSON.parse(rawValue);
-            if (Array.isArray(parsed)) {
-              additionalEmails = parsed;
-              console.log('Successfully parsed as JSON array:', additionalEmails);
-            } else {
-              console.log('Parsed as JSON but not an array:', parsed);
-            }
-          } catch (e) {
-            console.log('Failed to parse as JSON array:', e.message);
-          }
-        }
-        // 2. Try as JSON object with email properties
-        else if (rawValue.startsWith('{')) {
-          try {
-            const parsed = JSON.parse(rawValue);
-            console.log('Parsed as JSON object:', parsed);
-            
-            // Extract email values from object properties
-            Object.values(parsed).forEach(value => {
-              if (typeof value === 'string' && value.includes('@')) {
-                additionalEmails.push(value);
-              }
-            });
-            console.log('Extracted emails from JSON object:', additionalEmails);
-          } catch (e) {
-            console.log('Failed to parse as JSON object:', e.message);
-          }
-        }
-        // 3. Try as semicolon-separated list (common format)
-        else if (rawValue.includes(';')) {
-          additionalEmails = rawValue.split(';').map(email => email.trim());
-          console.log('Parsed as semicolon-separated list:', additionalEmails);
-        }
-        // 4. Try as comma-separated list
-        else if (rawValue.includes(',')) {
-          additionalEmails = rawValue.split(',').map(email => email.trim());
-          console.log('Parsed as comma-separated list:', additionalEmails);
-        }
-        // 5. Treat as single email if it has @ symbol
-        else if (rawValue.includes('@')) {
-          additionalEmails = [rawValue.trim()];
-          console.log('Treating as single email:', additionalEmails);
-        }
-        // 6. Last resort - split by any whitespace or common separators
-        else {
-          additionalEmails = rawValue.split(/[\s,;|]+/).filter(item => item.includes('@'));
-          console.log('Split by multiple possible delimiters:', additionalEmails);
-        }
-        
-        // Filter out invalid emails and add to the emails list
-        additionalEmails.forEach((email, index) => {
-          if (email && email.includes('@') && !emails.includes(email)) {
-            emails.push(email);
-            console.log(`Added additional email at index ${index} to emails list:`, email);
-          }
-        });
-        
-        console.log('Emails list after processing hs_additional_emails:', emails);
-        console.log('========== END ADDITIONAL EMAILS DEBUG ==========');
-      } catch (e) {
-        console.error('Error processing hs_additional_emails:', e);
-      }
-    } else {
-      console.log('hs_additional_emails property not found in contact data');
-    }
-    
-    // Check for additional emails in various possible HubSpot properties
-    const emailPropertyFields = [
-      'work_email', 'email2', 'email3', 'secondary_email', 
-      'alternate_email', 'personal_email', 'additional_email', 'other_email'
-    ];
-    
-    // Log available email properties for debugging
-    console.log('Checking known email fields:');
-    emailPropertyFields.forEach(field => {
-      if (properties[field]) {
-        console.log(`- ${field}: ${properties[field]}`);
-      }
-    });
-    
-    // Add any additional emails that exist and aren't duplicates
-    emailPropertyFields.forEach(field => {
-      if (properties[field] && !emails.includes(properties[field])) {
-        emails.push(properties[field]);
-      }
-    });
-    
-    // Check ALL properties for email-like values
-    console.log('Examining all properties for possible email addresses:');
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    
-    Object.keys(properties).forEach(key => {
-      const value = properties[key];
-      
-      if (typeof value === 'string' && emailRegex.test(value) && !emails.includes(value)) {
-        console.log(`Found email in property '${key}': ${value}`);
-        emails.push(value);
-      }
-    });
-    
-    console.log('All found emails:', emails);
-    
-    // Get all possible phone numbers
-    const phones = [];
-    
-    // Check phone fields in priority order
-    const phoneFields = [
-      'mobilephone', 'phone', 'cell_phone', 'mobile_phone', 'work_phone', 'home_phone'
-    ];
-    
-    phoneFields.forEach(field => {
-      if (properties[field] && properties[field].trim() !== '') {
-        phones.push(properties[field]);
-      }
-    });
-    
-    console.log('All phone numbers found (in priority order):', phones);
-    
-    // Check for LinkedIn URL in HubSpot properties
-    let linkedinUrl = '';
-    if (properties.hs_linkedin_url) {
-      console.log('Found hs_linkedin_url property:', properties.hs_linkedin_url);
-      linkedinUrl = properties.hs_linkedin_url;
-    } else if (properties.linkedin_profile) {
-      console.log('Found linkedin_profile property:', properties.linkedin_profile);
-      linkedinUrl = properties.linkedin_profile;
-    }
-    
-    // Check for contact description in HubSpot properties
-    let contactDescription = '';
-    if (properties.about_the_contact) {
-      console.log('Found about_the_contact property:', properties.about_the_contact);
-      contactDescription = properties.about_the_contact;
-    } else if (properties.about) {
-      console.log('Found about property:', properties.about);
-      contactDescription = properties.about;
-    } else if (properties.notes) {
-      console.log('Found notes property:', properties.notes);
-      contactDescription = properties.notes;
-    }
-    
-    // Map Hubspot properties to our data model
-    const contactData = {
-      first_name: properties.firstname || '',
-      last_name: properties.lastname || '',
-      email: emails[0] || '', // Primary email
-      email2: emails[1] || '', // Second email if available
-      email3: emails[2] || '', // Third email if available
-      mobile: formatPhoneNumber(properties.mobilephone || phones[0] || ''),
-      mobile2: formatPhoneNumber(properties.phone || phones[1] || ''),
-      linkedin: formatLinkedInUrl(linkedinUrl),
-      // Map Hubspot lead status to our contact category if possible
-      contact_category: mapHubspotStatusToCategory(properties.hs_lead_status),
-      // Default to quarterly for keep in touch frequency
-      keep_in_touch_frequency: mapHubspotFrequencyToOurFrequency(properties.keep_in_touch_frequency),
-      // Map Hubspot score to our score (assuming 0-100 scale)
-      score: mapHubspotScoreToOurScore(properties.hubspot_score),
-      // Additional fields
-      city: properties.city || '',
-      about_the_contact: contactDescription,
-      note: properties.about || properties.notes || '' // Keep this for backward compatibility
-    };
-    
-    // Log phone numbers for debugging
-    console.log('===== PHONE NUMBER MAPPING =====');
-    console.log('HubSpot mobilephone (raw):', properties.mobilephone);
-    console.log('HubSpot phone (raw):', properties.phone);
-    console.log('Primary mobile mapping:', 'mobilephone' in properties ? 'Using mobilephone' : 'Using fallback');
-    console.log('Secondary mobile mapping:', 'phone' in properties ? 'Using phone' : 'Using fallback');
-    console.log('Formatted primary mobile:', contactData.mobile);
-    console.log('Formatted secondary mobile:', contactData.mobile2);
-    
-    // Log LinkedIn URL processing
-    console.log('===== LINKEDIN URL MAPPING =====');
-    console.log('Original LinkedIn URL source:', properties.hs_linkedin_url ? 'hs_linkedin_url' : (properties.linkedin_profile ? 'linkedin_profile' : 'None'));
-    console.log('Original LinkedIn URL value:', linkedinUrl);
-    console.log('Formatted LinkedIn URL:', contactData.linkedin);
-    
-    // Log the final mapped data with focus on emails
-    console.log('===== EMAIL MAPPING SUMMARY =====');
-    console.log('All emails found (in priority order):', emails);
-    console.log('Primary email mapped to contactData.email:', contactData.email);
-    console.log('Secondary email mapped to contactData.email2:', contactData.email2);
-    console.log('Tertiary email mapped to contactData.email3:', contactData.email3);
-    
-    // Add phone mapping summary
-    console.log('===== PHONE MAPPING SUMMARY =====');
-    console.log('All phone numbers found (in priority order):', phones);
-    console.log('Primary phone mapped to contactData.mobile:', contactData.mobile);
-    console.log('Secondary phone mapped to contactData.mobile2:', contactData.mobile2);
-    
-    // Add LinkedIn mapping summary
-    console.log('===== LINKEDIN MAPPING SUMMARY =====');
-    console.log('LinkedIn URL source:', properties.hs_linkedin_url ? 'hs_linkedin_url' : (properties.linkedin_profile ? 'linkedin_profile' : 'None'));
-    console.log('LinkedIn URL mapped to contactData.linkedin:', contactData.linkedin);
-    
-    // Add frequency mapping summary
-    console.log('===== FREQUENCY MAPPING SUMMARY =====');
-    console.log('HubSpot frequency value:', properties.keep_in_touch_frequency || 'None');
-    console.log('Supabase frequency value:', contactData.keep_in_touch_frequency);
-    
-    // Add description mapping summary
-    console.log('===== DESCRIPTION MAPPING SUMMARY =====');
-    console.log('HubSpot description source:', 
-      properties.about_the_contact ? 'about_the_contact' : 
-      (properties.about ? 'about' : 
-      (properties.notes ? 'notes' : 'None')));
-    console.log('Description value:', contactData.about_the_contact);
-    
-    // Log the final mapped data
-    console.log('===== MAPPED DATA TO OUR MODEL =====');
-    console.log('Contact Data:', contactData);
-    
-    // If we have company data, prepare it for insertion/update
-    let companyData = null;
-    if (hubspotCompany) {
-      const companyProperties = hubspotCompany.properties;
-      
-      // Determine company category from HubSpot values
-      const hubspotCategory = companyProperties.industry || companyProperties.category || '';
-      console.log('===== COMPANY CATEGORY MAPPING =====');
-      console.log('HubSpot category/industry value:', hubspotCategory);
-      
-      companyData = {
-        name: companyProperties.name || '',
-        website: formatWebsiteUrl(companyProperties.website || ''),
-        description: companyProperties.description || '',
-        city: companyProperties.city || '',
-        nation: companyProperties.country || '',
-        category: hubspotCategory // Directly map the HubSpot value without transformation
-      };
-      
-      console.log('Mapped category to Supabase company category:', companyData.category);
-      console.log('Company Data:', companyData);
-    }
-    
-    return {
-      contactData,
-      companyData
-    };
-  }, [mapHubspotStatusToCategory, mapHubspotFrequencyToOurFrequency, mapHubspotScoreToOurScore, formatPhoneNumber, formatLinkedInUrl, formatWebsiteUrl]);
+  }, []);
 
-  // Updated handleSearchHubspot function to use real Hubspot API
-  const handleSearchHubspot = useCallback(async (contact) => {
-    // Check if we have either name or email to search with
-    if ((!contact.first_name && !contact.last_name) && !contact.email) {
-      alert("Contact must have either a name or email to search in Hubspot");
-      return;
-    }
-    
-    // Check if we're authenticated with Hubspot
-    if (!hubspotAuthStatus.isAuthenticated) {
-      alert("Not authenticated with Hubspot. Please check your API credentials.");
-      return;
-    }
-    
-    // Set loading state for this specific contact
-    setHubspotLoading(prev => ({ ...prev, [contact.id]: true }));
-    
-    try {
-      // Search for the contact in Hubspot
-      const hubspotResult = await searchHubspotContact(contact);
-      
-      // Check if the contact was found
-      // Only check nameMatch if names are provided
-      const nameMatchCheck = (contact.first_name || contact.last_name) ? hubspotResult.nameMatch : true;
-      
-      if (hubspotResult.found && nameMatchCheck) {
-        // Map Hubspot data to our model
-        const hubspotData = mapHubspotContactToOurModel(hubspotResult.contact, hubspotResult.company);
-        
-        // Update Supabase with the contact data from Hubspot
-        // Include all fields that exist in the contacts table
-        const { error } = await supabase
-          .from('contacts')
-          .update({
-            first_name: hubspotData.contactData.first_name || contact.first_name,
-            last_name: hubspotData.contactData.last_name || contact.last_name,
-            email: hubspotData.contactData.email || contact.email,
-            email2: hubspotData.contactData.email2 || contact.email2,
-            email3: hubspotData.contactData.email3 || contact.email3,
-            mobile: hubspotData.contactData.mobile || contact.mobile,
-            mobile2: hubspotData.contactData.mobile2 || contact.mobile2,
-            linkedin: hubspotData.contactData.linkedin || contact.linkedin,
-            contact_category: hubspotData.contactData.contact_category || contact.contact_category,
-            keep_in_touch_frequency: hubspotData.contactData.keep_in_touch_frequency || contact.keep_in_touch_frequency,
-            score: hubspotData.contactData.score || contact.score,
-            city: hubspotData.contactData.city || contact.city,
-            about_the_contact: hubspotData.contactData.about_the_contact || contact.about_the_contact,
-            note: hubspotData.contactData.note || contact.note
-          })
-          .eq('id', contact.id);
-        
-        if (error) throw error;
-        
-        // If we have company data, update or create the company
-        if (hubspotData.companyData) {
-          // Check if the company already exists
-          let companyId = null;
-          
-          if (hubspotData.companyData.website) {
-            // Format for consistent matching
-            const formattedWebsite = hubspotData.companyData.website; // Already formatted in mapHubspotContactToOurModel
-            
-            // Search for companies with similar website patterns
-            const { data: existingCompanies } = await supabase
-              .from('companies')
-              .select('*')
-              .ilike('website', `%${formattedWebsite.replace(/^www\./i, '')}%`);
-              
-            if (existingCompanies && existingCompanies.length > 0) {
-              // Update existing company
-              companyId = existingCompanies[0].id;
-              await supabase
-                .from('companies')
-                .update(hubspotData.companyData)
-                .eq('id', companyId);
-                
-              console.log(`Updated existing company: ${existingCompanies[0].name}`);
-            } else {
-              // Create new company
-              const { data: newCompany, error: companyError } = await supabase
-                .from('companies')
-                .insert(hubspotData.companyData)
-                .select()
-                .single();
-                
-              if (companyError) throw companyError;
-              companyId = newCompany.id;
-              console.log(`Created new company: ${newCompany.name}`);
-            }
-            
-            // Link the contact to the company
-            if (companyId) {
-              await supabase
-                .from('contacts')
-                .update({ company_id: companyId })
-                .eq('id', contact.id);
-            }
-          }
-        }
-        
-        // Refresh data to show updated contact
-        await fetchData();
-        
-        alert(`Contact and company data updated from Hubspot for ${contact.first_name} ${contact.last_name}`);
-      } else if (hubspotResult.found && !hubspotResult.nameMatch) {
-        alert(`Found contact in Hubspot but names don't match for ${contact.first_name} ${contact.last_name}`);
-      } else {
-        alert(`No matching contact found in Hubspot for ${contact.first_name} ${contact.last_name}`);
-      }
-    } catch (error) {
-      console.error("Error searching Hubspot:", error);
-      alert(`Failed to search Hubspot: ${error.message}`);
-    } finally {
-      // Clear loading state for this contact
-      setHubspotLoading(prev => ({ ...prev, [contact.id]: false }));
-    }
-  }, [fetchData, hubspotAuthStatus.isAuthenticated, mapHubspotContactToOurModel, searchHubspotContact]);
+  // Function to search for a contact in Hubspot - wrapped in useCallback
+  const searchHubspotContact = useCallback(async (contact) => {
+    // Implementation
+  }, []);
 
-  // Add a function to handle filter changes
-  const handleFilterChange = (filter) => {
-    setCurrentFilter(filter);
-    setCurrentPage(0); // Reset to first page when changing filters
-    fetchData();
-  };
-  
   return (
     <Container>
       {loading && (
@@ -2640,59 +1910,14 @@ const RecentContactsList = () => {
           <p>Loading contacts...</p>
         </LoadingOverlay>
       )}
+      
       <Header>
         <h2>
-          {currentFilter === 'today' 
-            ? "Today's Interactions" 
-            : currentFilter === 'recent' 
-              ? "Recently Created" 
-              : currentFilter === 'missing' 
-                ? "Missing Information" 
-                : "All Contacts (excluding Skip)"} 
+          {!loading && totalCount > 0 && (
+            <span className="counter">({totalCount})</span>
+          )}
         </h2>
-        <Button 
-          onClick={() => setShowRecentOnly(!showRecentOnly)} 
-          style={{ 
-            padding: '0.5rem 1rem',
-            marginLeft: '1rem',
-            background: showRecentOnly ? '#4A5568' : '#3182CE',
-            color: 'white',
-            border: 'none',
-            borderRadius: '0.375rem',
-            cursor: 'pointer',
-            fontSize: '0.875rem'
-          }}
-        >
-          {showRecentOnly ? 'Show All Contacts' : 'Show Recent Only'}
-        </Button>
       </Header>
-      
-      <FilterButtonsContainer>
-        <FilterButton 
-          active={currentFilter === 'all'} 
-          onClick={() => handleFilterChange('all')}
-        >
-          All Contacts <span className="counter">{filterCounts.all}</span>
-        </FilterButton>
-        <FilterButton 
-          active={currentFilter === 'today'} 
-          onClick={() => handleFilterChange('today')}
-        >
-          Today's Interactions <span className="counter">{filterCounts.today}</span>
-        </FilterButton>
-        <FilterButton 
-          active={currentFilter === 'recent'} 
-          onClick={() => handleFilterChange('recent')}
-        >
-          Recently Created <span className="counter">{filterCounts.recent}</span>
-        </FilterButton>
-        <FilterButton 
-          active={currentFilter === 'missing'} 
-          onClick={() => handleFilterChange('missing')}
-        >
-          Missing Information <span className="counter">{filterCounts.missing}</span>
-        </FilterButton>
-      </FilterButtonsContainer>
       
       {error && (
         <div style={{ 
@@ -2711,888 +1936,88 @@ const RecentContactsList = () => {
         <p>No contacts found.</p>
       ) : (
         <>
-          <TableWrapper>
-            <ContactTable>
-              <TableHead>
-                <tr>
-                  <th style={{ width: '200px' }}>Name</th>
-                  <th style={{ width: '150px' }}>Company</th>
-                  <th style={{ width: '80px' }}>Email</th>
-                  <th style={{ width: '80px' }}>Mobile</th>
-                  <th style={{ width: '200px' }}>Tags</th>
-                  <th style={{ width: '120px' }}>Category</th>
-                  <th style={{ width: '120px' }}>Keep in Touch</th>
-                  <th style={{ width: '100px' }}>Score</th>
-                </tr>
-              </TableHead>
-              <TableBody>
-                {contacts.map(contact => (
-                  <tr key={contact.id}>
-                    <td>
-                      <ContactNameWrapper>
-                      {contact.first_name || contact.last_name ? (
-                          <>
-                            {contact.linkedin ? (
-                              <a href={contact.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#2d3748', textDecoration: 'none', fontWeight: '600' }}>
-                            {`${contact.first_name || ''} ${contact.last_name || ''}`}
-                          </a>
-                        ) : (
-                          <a
-                            href={`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                                style={{ color: '#2d3748', textDecoration: 'none', fontWeight: '600' }}
-                          >
-                            {`${contact.first_name || ''} ${contact.last_name || ''}`}
-                          </a>
-                            )}
-                          </>
-                        ) : (
-                          <span style={{ color: '#a0aec0', fontStyle: 'italic' }}>No name</span>
-                        )}
-                        {contact.about_the_contact && (
-                          <Tooltip className="tooltip">
-                            {contact.about_the_contact}
-                          </Tooltip>
-                      )}
-                      <EditButton onClick={() => handleOpenContactEdit(contact)}>✎</EditButton>
-                        <HubspotIcon 
-                          onClick={() => handleSearchHubspot(contact)} 
-                          title="Search in Hubspot and import data"
-                        >
-                          {hubspotLoading[contact.id] ? (
-                            <FontAwesomeIcon icon={faSpinner} spin />
-                          ) : (
-                            <FontAwesomeIcon icon={faHubspot} />
-                          )}
-                        </HubspotIcon>
-                        <MergeIcon onClick={() => handleOpenMerge(contact)}>⚏</MergeIcon>
-                        {!contact.keep_in_touch_frequency && (
-                          <SkipIcon onClick={() => handleSkipContact(contact.id)}>✕</SkipIcon>
-                        )}
-                      </ContactNameWrapper>
-                    </td>
-                    <td>
+          <ContactTable>
+            <TableHead>
+              <tr>
+                <th>Name</th>
+                <th>Company</th>
+                <th>Email</th>
+                <th>Mobile</th>
+                <th>Tags</th>
+                <th>Category</th>
+                <th>Keep in Touch</th>
+                <th>Score</th>
+              </tr>
+            </TableHead>
+            <TableBody>
+              {contacts.map(contact => (
+                <tr key={contact.id}>
+                  <td>
+                    {contact.first_name || contact.last_name ? (
+                      <span style={{ fontWeight: '600' }}>
+                        {`${contact.first_name || ''} ${contact.last_name || ''}`}
+                      </span>
+                    ) : (
+                      <span style={{ color: '#a0aec0', fontStyle: 'italic' }}>No name</span>
+                    )}
+                  </td>
+                  <td>
                     {contact.companies ? (
-  <div>
-    <a
-      href={
-        contact.companies.website
-          ? contact.companies.website.startsWith('http')
-            ? contact.companies.website
-            : `https://${contact.companies.website}`
-          : '#'
-      }
-      target="_blank"
-      rel="noopener noreferrer"
-        style={{ color: '#2d3748', textDecoration: 'none' }}
-    >
-      {contact.companies.name}
-    </a>
-    <EditButton onClick={() => handleEditCompany(contact)}>✎</EditButton>
-    <UnlinkButton onClick={() => handleUnlinkCompany(contact.id)}>✕</UnlinkButton>
-  </div>
-) : (
-  <div>
-    <CompanyInput
-      value={companySearchTerm[contact.id] || ''}
-      onChange={(e) => handleCompanySearch(contact.id, e.target.value)}
-      onKeyPress={(e) => handleCompanyCreateOnEnter(e, contact.id)}
-      placeholder="Add a company"
-    />
-    {companySuggestions[contact.id]?.length > 0 && (
-      <CompanyDropdown>
-        {companySuggestions[contact.id].map((company, index) => (
-          <CompanyOption
-            key={index}
-            onClick={() => handleCompanySelect(contact.id, company)}
-          >
-            {company.name}
-          </CompanyOption>
-        ))}
-      </CompanyDropdown>
-    )}
-  </div>
-)}
-                    </td>
-                    <td>
-                      <IconCell>
-                        {contact.email ? (
-                          <>
-                            <a
-                              href={`mailto:${contact.email}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{ color: '#2d3748', textDecoration: 'none' }}
-                              title={contact.email}
-                            >
-                              <FontAwesomeIcon icon={faEnvelope} />
-                            </a>
-                            <EmailButton>
-                              <a 
-                                href={`https://mail.superhuman.com/search/${encodeURIComponent(
-                                  (contact.first_name || contact.last_name) 
-                                    ? `${contact.first_name || ''} ${contact.last_name || ''}` 
-                                    : contact.email
-                                )}`} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                title="Search in Superhuman"
-                              >
-                                <FontAwesomeIcon icon={faSearch} />
-                              </a>
-                            </EmailButton>
-                          </>
-                        ) : null}
-                      </IconCell>
-                    </td>
-                    <td>
-                      <IconCell>
-                        {contact.mobile ? (
-                          <>
-                            <a
-                              href={`tel:${contact.mobile}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{ color: '#2d3748', textDecoration: 'none', marginRight: '8px' }}
-                              title={contact.mobile}
-                            >
-                              <FontAwesomeIcon icon={faPhone} />
-                            </a>
-                            <a
-                              href={`https://wa.me/${contact.mobile.replace(/\D/g, '')}`} 
-                              target="_blank" 
-                              rel="noopener noreferrer" 
-                              style={{ color: '#25D366', textDecoration: 'none' }}
-                              title={`Chat on WhatsApp (${contact.mobile})`}
-                            >
-                              <FontAwesomeIcon icon={faWhatsapp} />
-                            </a>
-                          </>
-                        ) : (
-                          <a
-                            href={`https://app.timelines.ai/search/?s=${encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ color: '#2d3748', textDecoration: 'none' }}
-                            title="Search contact on Timelines.ai"
-                          >
-                            Search
-                          </a>
-                        )}
-                      </IconCell>
-                    </td>
-                    <td>
-                      <TagsContainer>
-                        {contactTags[contact.id]?.map(tag => (
-                          <Tag key={tag.id} color={tag.color}>
+                      <span>{contact.companies.name}</span>
+                    ) : (
+                      <span style={{ color: '#a0aec0', fontStyle: 'italic' }}>No company</span>
+                    )}
+                  </td>
+                  <td>{contact.email || <span style={{ color: '#a0aec0', fontStyle: 'italic' }}>No email</span>}</td>
+                  <td>{contact.mobile || <span style={{ color: '#a0aec0', fontStyle: 'italic' }}>No mobile</span>}</td>
+                  <td>
+                    {contactTags[contact.id]?.length > 0 ? (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                        {contactTags[contact.id].map(tag => (
+                          <Tag key={tag.id} color="#e5e7eb">
                             {tag.name}
-                            <TagDeleteButton onClick={() => handleRemoveTag(contact.id, tag.id)}>×</TagDeleteButton>
                           </Tag>
                         ))}
-                        {isAddingTag[contact.id] ? (
-                          <div style={{ position: 'relative' }}>
-                            <TagInput
-                              value={tagInput[contact.id] || ''}
-                              onChange={(e) => handleTagInputChange(contact.id, e.target.value)}
-                              onKeyDown={(e) => handleTagInputKeyDown(e, contact.id)}
-                              placeholder="Type to search or create..."
-                              autoFocus
-                              onBlur={() => {
-                                // Small delay to allow clicking on suggestions
-                                setTimeout(() => {
-                                  setIsAddingTag(prev => ({ ...prev, [contact.id]: false }));
-                                  setTagSuggestions(prev => ({ ...prev, [contact.id]: [] }));
-                                }, 200);
-                              }}
-                            />
-                            {tagSuggestions[contact.id]?.length > 0 && (
-                              <TagDropdown>
-                                {tagSuggestions[contact.id].map(tag => (
-                                  <TagOption 
-                                    key={tag.id} 
-                                    onClick={() => handleTagSelect(contact.id, tag)}
-                                  >
-                                    {tag.name}
-                                  </TagOption>
-                                ))}
-                              </TagDropdown>
-                            )}
-                          </div>
-                        ) : (
-                          <AddTagButton onClick={() => handleAddTagClick(contact.id)} title="Add tag">
-                            <FontAwesomeIcon icon={faPlus} />
-                          </AddTagButton>
-                        )}
-                      </TagsContainer>
-                    </td>
-                    <td>
-                        <Select
-                        value={contact.contact_category || ''}
-                          onChange={(e) => {
-                            const newCategory = e.target.value;
-                            const updateCategory = async () => {
-                              try {
-                                const { error } = await supabase
-                                  .from('contacts')
-                                  .update({ contact_category: newCategory || null })
-                                  .eq('id', contact.id);
-                                if (error) throw error;
-                                setContacts(prev => prev.map(c =>
-                                  c.id === contact.id ? { ...c, contact_category: newCategory || null } : c
-                                ));
-                              } catch (error) {
-                                alert('Failed to update category');
-                              }
-                            };
-                            updateCategory();
-                          }}
+                      </div>
+                    ) : (
+                      <span style={{ color: '#a0aec0', fontStyle: 'italic' }}>No tags</span>
+                    )}
+                  </td>
+                  <td>{contact.contact_category || <span style={{ color: '#a0aec0', fontStyle: 'italic' }}>Not set</span>}</td>
+                  <td>{contact.keep_in_touch_frequency || <span style={{ color: '#a0aec0', fontStyle: 'italic' }}>Not set</span>}</td>
+                  <td>
+                    <StarContainer>
+                      {[1, 2, 3, 4, 5].map(star => (
+                        <Star
+                          key={star}
+                          filled={star <= (contact.score || 0)}
                         >
-                        <option value="">Missing</option>
-                          {CONTACT_CATEGORIES.map(category => (
-                            <option key={category} value={category}>{category}</option>
-                          ))}
-                        </Select>
-                    </td>
-                    <td>
-                      {contact.keep_in_touch_frequency ? (
-                        <Select
-                          value={contact.keep_in_touch_frequency}
-                          onChange={(e) => {
-                            const newFrequency = e.target.value;
-                            const updateFrequency = async () => {
-                              try {
-                                const { error } = await supabase
-                                  .from('contacts')
-                                  .update({ keep_in_touch_frequency: newFrequency || null })
-                                  .eq('id', contact.id);
-                                if (error) throw error;
-                                setContacts(prev => prev.map(c =>
-                                  c.id === contact.id ? { ...c, keep_in_touch_frequency: newFrequency || null } : c
-                                ));
-                              } catch (error) {
-                                alert('Failed to update keep in touch frequency');
-                              }
-                            };
-                            updateFrequency();
-                          }}
-                        >
-                          <option value="">Select Frequency</option>
-                          {KEEP_IN_TOUCH_FREQUENCIES.map(frequency => (
-                            <option key={frequency} value={frequency}>{frequency}</option>
-                          ))}
-                        </Select>
-                      ) : (
-                        <Select
-                          value=""
-                          onChange={(e) => {
-                            const newFrequency = e.target.value;
-                            const updateFrequency = async () => {
-                              try {
-                                const { error } = await supabase
-                                  .from('contacts')
-                                  .update({ keep_in_touch_frequency: newFrequency || null })
-                                  .eq('id', contact.id);
-                                if (error) throw error;
-                                setContacts(prev => prev.map(c =>
-                                  c.id === contact.id ? { ...c, keep_in_touch_frequency: newFrequency || null } : c
-                                ));
-                              } catch (error) {
-                                alert('Failed to update keep in touch frequency');
-                              }
-                            };
-                            updateFrequency();
-                          }}
-                        >
-                          <option value="">Missing</option>
-                          {KEEP_IN_TOUCH_FREQUENCIES.map(frequency => (
-                            <option key={frequency} value={frequency}>{frequency}</option>
-                          ))}
-                        </Select>
-                      )}
-                    </td>
-                    <td>
-                      <StarContainer>
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <Star
-                            key={star}
-                            filled={contact.score >= star}
-                            onClick={async () => {
-                              try {
-                                const { error } = await supabase
-                                  .from('contacts')
-                                  .update({ score: star })
-                                  .eq('id', contact.id);
-                                if (error) throw error;
-                                setContacts(prev => prev.map(c =>
-                                  c.id === contact.id ? { ...c, score: star } : c
-                                ));
-                              } catch (error) {
-                                alert('Failed to update score');
-                              }
-                            }}
-                          >
-                            ★
-                          </Star>
-                        ))}
-                      </StarContainer>
-                    </td>
-                  </tr>
-                ))}
-              </TableBody>
-            </ContactTable>
-          </TableWrapper>
-          <PaginationControls>
-            <PageButton onClick={goToFirstPage} disabled={currentPage === 0}>First</PageButton>
-            <PageButton onClick={goToPreviousPage} disabled={currentPage === 0}>Previous</PageButton>
-            <span>
-              Page {currentPage + 1} of {totalPages > 0 ? totalPages : 1} (Total: {totalCount})
-            </span>
-            <PageButton onClick={goToNextPage} disabled={currentPage >= totalPages - 1}>Next</PageButton>
-            <PageButton onClick={goToLastPage} disabled={currentPage >= totalPages - 1}>Last</PageButton>
-          </PaginationControls>
+                          ★
+                        </Star>
+                      ))}
+                    </StarContainer>
+                  </td>
+                </tr>
+              ))}
+            </TableBody>
+          </ContactTable>
+          
+          {totalPages > 1 && (
+            <PaginationControls>
+              <PageButton onClick={goToFirstPage} disabled={currentPage === 0}>First</PageButton>
+              <PageButton onClick={goToPrevPage} disabled={currentPage === 0}>Previous</PageButton>
+              <div style={{ margin: '0 1rem' }}>
+                Page {currentPage + 1} of {totalPages}
+              </div>
+              <PageButton onClick={goToNextPage} disabled={currentPage === totalPages - 1}>Next</PageButton>
+              <PageButton onClick={goToLastPage} disabled={currentPage === totalPages - 1}>Last</PageButton>
+            </PaginationControls>
+          )}
         </>
-      )}
-
-      {showMergeModal && selectedContact && (
-        <Modal>
-          <MergeModalContent hasTarget={!!targetContact}>
-            <ModalHeader>
-              <h2>Merge Contacts</h2>
-              <CloseButton onClick={() => setShowMergeModal(false)}>×</CloseButton>
-            </ModalHeader>
-            
-            {!targetContact && (
-            <SearchContainer>
-              <Label>Search for a contact to merge with:</Label>
-              <SearchInput
-                type="text"
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  handleSearch(e.target.value);
-                }}
-                placeholder="Type to search..."
-              />
-              {searchResults.length > 0 && (
-                <SearchResults>
-                  {searchResults.map(contact => (
-                    <SearchResultItem key={contact.id} onClick={() => handleSelectTarget(contact)}>
-                      {`${contact.first_name || ''} ${contact.last_name || ''}`} - {contact.email || 'No email'}
-                    </SearchResultItem>
-                  ))}
-                </SearchResults>
-              )}
-            </SearchContainer>
-            )}
-
-            {targetContact && (
-              <>
-                <MergeFormGrid>
-                  <MergeFormColumn>
-                    <MergeFormSection>
-                      <MergeSectionTitle>Original Contact (Will be updated)</MergeSectionTitle>
-                  <FormGroup>
-                    <Label>First Name</Label>
-                    <Input
-                      type="text"
-                      value={mergedData.first_name || ''}
-                      onChange={(e) => handleInputChange('first_name', e.target.value)}
-                    />
-                  </FormGroup>
-                  <FormGroup>
-                    <Label>Last Name</Label>
-                    <Input
-                      type="text"
-                      value={mergedData.last_name || ''}
-                      onChange={(e) => handleInputChange('last_name', e.target.value)}
-                    />
-                  </FormGroup>
-                  <FormGroup>
-                    <Label>Primary Email</Label>
-                    <Input
-                      type="email"
-                      value={mergedData.email || ''}
-                      onChange={(e) => handleInputChange('email', e.target.value)}
-                    />
-                  </FormGroup>
-                  <FormGroup>
-                    <Label>Secondary Email</Label>
-                    <Input
-                      type="email"
-                      value={mergedData.email2 || ''}
-                      onChange={(e) => handleInputChange('email2', e.target.value)}
-                    />
-                  </FormGroup>
-                  <FormGroup>
-                    <Label>Third Email</Label>
-                    <Input
-                      type="email"
-                      value={mergedData.email3 || ''}
-                      onChange={(e) => handleInputChange('email3', e.target.value)}
-                    />
-                  </FormGroup>
-                  <FormGroup>
-                    <Label>Mobile</Label>
-                    <Input
-                      type="text"
-                      value={mergedData.mobile || ''}
-                      onChange={(e) => handleInputChange('mobile', e.target.value)}
-                    />
-                  </FormGroup>
-                  <FormGroup>
-                    <Label>LinkedIn</Label>
-                    <Input
-                      type="text"
-                      value={mergedData.linkedin || ''}
-                      onChange={(e) => handleInputChange('linkedin', e.target.value)}
-                    />
-                  </FormGroup>
-                  <FormGroup>
-                    <Label>Category</Label>
-                    <Select
-                      value={mergedData.contact_category || ''}
-                      onChange={(e) => handleInputChange('contact_category', e.target.value)}
-                    >
-                      <option value="">Select Category</option>
-                      {CONTACT_CATEGORIES.map(category => (
-                        <option key={category} value={category}>{category}</option>
-                      ))}
-                    </Select>
-                  </FormGroup>
-                  <FormGroup>
-                    <Label>Keep in Touch</Label>
-                    <Select
-                      value={mergedData.keep_in_touch_frequency || ''}
-                      onChange={(e) => handleInputChange('keep_in_touch_frequency', e.target.value)}
-                    >
-                      <option value="">Select Frequency</option>
-                      {KEEP_IN_TOUCH_FREQUENCIES.map(frequency => (
-                        <option key={frequency} value={frequency}>{frequency}</option>
-                      ))}
-                    </Select>
-                  </FormGroup>
-                    </MergeFormSection>
-                  </MergeFormColumn>
-
-                  <MergeFormColumn>
-                    <MergeFormSection>
-                      <MergeSectionTitle>Duplicate Contact (Will be deleted)</MergeSectionTitle>
-                      <FormGroup style={{ position: 'relative' }}>
-                        <Label>First Name</Label>
-                        <Input
-                          type="text"
-                          value={targetContact.first_name || ''}
-                          disabled
-                          style={{ backgroundColor: '#f3f4f6' }}
-                        />
-                        {targetContact.first_name && (
-                          <TransferArrow 
-                            onClick={() => handleInputChange('first_name', targetContact.first_name)}
-                            title="Copy to original contact"
-                          >
-                            ←
-                          </TransferArrow>
-                        )}
-                      </FormGroup>
-                      <FormGroup style={{ position: 'relative' }}>
-                        <Label>Last Name</Label>
-                        <Input
-                          type="text"
-                          value={targetContact.last_name || ''}
-                          disabled
-                          style={{ backgroundColor: '#f3f4f6' }}
-                        />
-                        {targetContact.last_name && (
-                          <TransferArrow 
-                            onClick={() => handleInputChange('last_name', targetContact.last_name)}
-                            title="Copy to original contact"
-                          >
-                            ←
-                          </TransferArrow>
-                        )}
-                      </FormGroup>
-                      <FormGroup style={{ position: 'relative' }}>
-                        <Label>Primary Email</Label>
-                        <Input
-                          type="email"
-                          value={targetContact.email || ''}
-                          disabled
-                          style={{ backgroundColor: '#f3f4f6' }}
-                        />
-                        {targetContact.email && (
-                          <TransferArrow 
-                            onClick={() => handleInputChange('email', targetContact.email)}
-                            title="Copy to original contact"
-                          >
-                            ←
-                          </TransferArrow>
-                        )}
-                      </FormGroup>
-                      <FormGroup style={{ position: 'relative' }}>
-                        <Label>Secondary Email</Label>
-                        <Input
-                          type="email"
-                          value={targetContact.email2 || ''}
-                          disabled
-                          style={{ backgroundColor: '#f3f4f6' }}
-                        />
-                        {targetContact.email2 && (
-                          <TransferArrow 
-                            onClick={() => handleInputChange('email2', targetContact.email2)}
-                            title="Copy to original contact"
-                          >
-                            ←
-                          </TransferArrow>
-                        )}
-                      </FormGroup>
-                      <FormGroup style={{ position: 'relative' }}>
-                        <Label>Third Email</Label>
-                        <Input
-                          type="email"
-                          value={targetContact.email3 || ''}
-                          disabled
-                          style={{ backgroundColor: '#f3f4f6' }}
-                        />
-                        {targetContact.email3 && (
-                          <TransferArrow 
-                            onClick={() => handleInputChange('email3', targetContact.email3)}
-                            title="Copy to original contact"
-                          >
-                            ←
-                          </TransferArrow>
-                        )}
-                      </FormGroup>
-                      <FormGroup style={{ position: 'relative' }}>
-                        <Label>Mobile</Label>
-                        <Input
-                          type="text"
-                          value={targetContact.mobile || ''}
-                          disabled
-                          style={{ backgroundColor: '#f3f4f6' }}
-                        />
-                        {targetContact.mobile && (
-                          <TransferArrow 
-                            onClick={() => handleInputChange('mobile', targetContact.mobile)}
-                            title="Copy to original contact"
-                          >
-                            ←
-                          </TransferArrow>
-                        )}
-                      </FormGroup>
-                      <FormGroup>
-                        <Label>LinkedIn</Label>
-                        <Input
-                          type="text"
-                          value={targetContact.linkedin || ''}
-                          disabled
-                          style={{ backgroundColor: '#f3f4f6' }}
-                        />
-                        {targetContact.linkedin && (
-                          <TransferArrow 
-                            onClick={() => handleInputChange('linkedin', targetContact.linkedin)}
-                            title="Copy to original contact"
-                          >
-                            ←
-                          </TransferArrow>
-                        )}
-                      </FormGroup>
-                      <FormGroup>
-                        <Label>Category</Label>
-                        <Input
-                          type="text"
-                          value={targetContact.contact_category || ''}
-                          disabled
-                          style={{ backgroundColor: '#f3f4f6' }}
-                        />
-                        {targetContact.contact_category && (
-                          <TransferArrow 
-                            onClick={() => handleInputChange('contact_category', targetContact.contact_category)}
-                            title="Copy to original contact"
-                          >
-                            ←
-                          </TransferArrow>
-                        )}
-                      </FormGroup>
-                      <FormGroup>
-                        <Label>Keep in Touch</Label>
-                        <Input
-                          type="text"
-                          value={targetContact.keep_in_touch_frequency || ''}
-                          disabled
-                          style={{ backgroundColor: '#f3f4f6' }}
-                        />
-                        {targetContact.keep_in_touch_frequency && (
-                          <TransferArrow 
-                            onClick={() => handleInputChange('keep_in_touch_frequency', targetContact.keep_in_touch_frequency)}
-                            title="Copy to original contact"
-                          >
-                            ←
-                          </TransferArrow>
-                        )}
-                      </FormGroup>
-                    </MergeFormSection>
-                  </MergeFormColumn>
-                </MergeFormGrid>
-
-                <ButtonGroup>
-                  <Button onClick={() => {
-                    setShowMergeModal(false);
-                    setSelectedContact(null);
-                    setTargetContact(null);
-                    setMergedData({});
-                    setSearchTerm('');
-                    setSearchResults([]);
-                  }}>
-                    Cancel
-                  </Button>
-                  <Button primary onClick={handleMerge}>Merge Contacts</Button>
-                </ButtonGroup>
-              </>
-            )}
-          </MergeModalContent>
-        </Modal>
-      )}
-
-{showCompanyModal && (
-  <Modal>
-    <ModalContent>
-      <ModalHeader>
-        <h2>Add/Edit Company</h2>
-        <CloseButton onClick={() => setShowCompanyModal(false)}>×</CloseButton>
-      </ModalHeader>
-      
-      <ContactDetailsSection>
-        <SectionTitle>Contact Details</SectionTitle>
-        <ContactDetailsGrid>
-          <ContactDetailItem>
-            <span className="label">Name:</span>
-              {currentContact?.first_name} {currentContact?.last_name}
-          </ContactDetailItem>
-          <ContactDetailItem>
-            <span className="label">Email:</span>
-              {currentContact?.email}
-          </ContactDetailItem>
-        </ContactDetailsGrid>
-      </ContactDetailsSection>
-
-      <div style={{ padding: '0 1.5rem' }}>
-        <SectionTitle>Company Information</SectionTitle>
-      </div>
-      
-      <CompanyForm>
-        <FormGroup>
-          <Label htmlFor="company-name">Company Name</Label>
-          <Input
-            id="company-name"
-            type="text"
-            value={companyData.name}
-            onChange={(e) => setCompanyData(prev => ({ ...prev, name: e.target.value }))}
-            placeholder="Enter company name"
-          />
-        </FormGroup>
-        
-        <FormGroup>
-          <Label htmlFor="website">Website</Label>
-          <Input
-            id="website"
-            type="text"
-            value={companyData.website}
-            onChange={(e) => {
-              const inputValue = e.target.value;
-              // Only format when user has stopped typing or when there's a blurring event
-              setCompanyData(prev => ({ ...prev, website: inputValue }));
-            }}
-            onBlur={(e) => {
-              // Format the website on blur
-              const formatted = formatWebsiteUrl(e.target.value);
-              setCompanyData(prev => ({ ...prev, website: formatted }));
-            }}
-            placeholder="e.g., company.com"
-          />
-        </FormGroup>
-        
-        <FormGroup>
-          <Label htmlFor="category">Category</Label>
-          <Select
-            id="category"
-            value={companyData.category}
-            onChange={(e) => setCompanyData(prev => ({ ...prev, category: e.target.value }))}
-          >
-            <option value="">Select Category</option>
-            {COMPANY_CATEGORIES.map(category => (
-              <option key={category} value={category}>{category}</option>
-            ))}
-          </Select>
-        </FormGroup>
-        
-        <FormGroup>
-          <Label htmlFor="city">City</Label>
-          <Input
-            id="city"
-            type="text"
-            value={companyData.city}
-            onChange={(e) => setCompanyData(prev => ({ ...prev, city: e.target.value }))}
-            placeholder="Enter city"
-          />
-        </FormGroup>
-        
-        <FormGroup>
-          <Label htmlFor="nation">Country</Label>
-          <Input
-            id="nation"
-            type="text"
-            value={companyData.nation}
-            onChange={(e) => setCompanyData(prev => ({ ...prev, nation: e.target.value }))}
-            placeholder="Enter country"
-          />
-        </FormGroup>
-        
-        <FormGroup className="full-width">
-          <Label htmlFor="description">Description</Label>
-          <TextArea
-            id="description"
-            value={companyData.description}
-            onChange={(e) => setCompanyData(prev => ({ ...prev, description: e.target.value }))}
-            placeholder="Enter company description"
-          />
-        </FormGroup>
-      </CompanyForm>
-      
-      <ButtonGroup>
-        <Button onClick={() => setShowCompanyModal(false)}>Cancel</Button>
-        <Button primary onClick={handleSaveCompany}>Save Company</Button>
-      </ButtonGroup>
-    </ModalContent>
-  </Modal>
-)}
-
-      {showContactEditModal && editingContact && (
-        <Modal>
-          <ModalContent narrow>
-            <ModalHeader>
-              <h2>Edit Contact</h2>
-              <CloseButton onClick={() => setShowContactEditModal(false)}>×</CloseButton>
-            </ModalHeader>
-            <EditContactForm>
-              <FormGroup>
-                <Label>First Name</Label>
-                <Input
-                  type="text"
-                  value={contactEditData.first_name}
-                  onChange={(e) => handleContactInputChange('first_name', e.target.value)}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label>Last Name</Label>
-                <Input
-                  type="text"
-                  value={contactEditData.last_name}
-                  onChange={(e) => handleContactInputChange('last_name', e.target.value)}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label>Contact Category</Label>
-                <Select
-                  value={contactEditData.contact_category}
-                  onChange={(e) => handleContactInputChange('contact_category', e.target.value)}
-                >
-                  <option value="">Select Category</option>
-                  {CONTACT_CATEGORIES.map(category => (
-                    <option key={category} value={category}>{category}</option>
-                  ))}
-                </Select>
-              </FormGroup>
-              <FormGroup>
-                <Label>Mobile</Label>
-                <Input
-                  type="text"
-                  value={contactEditData.mobile}
-                  onChange={(e) => handleContactInputChange('mobile', e.target.value)}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label>Mobile 2</Label>
-                <Input
-                  type="text"
-                  value={contactEditData.mobile2}
-                  onChange={(e) => handleContactInputChange('mobile2', e.target.value)}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label>Email</Label>
-                <Input
-                  type="email"
-                  value={contactEditData.email}
-                  onChange={(e) => handleContactInputChange('email', e.target.value)}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label>Email 2</Label>
-                <Input
-                  type="email"
-                  value={contactEditData.email2}
-                  onChange={(e) => handleContactInputChange('email2', e.target.value)}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label>Email 3</Label>
-                <Input
-                  type="email"
-                  value={contactEditData.email3}
-                  onChange={(e) => handleContactInputChange('email3', e.target.value)}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label>LinkedIn</Label>
-                <Input
-                  type="text"
-                  value={contactEditData.linkedin}
-                  onChange={(e) => handleContactInputChange('linkedin', e.target.value)}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label>Keep in Touch Frequency</Label>
-                <Select
-                  value={contactEditData.keep_in_touch_frequency}
-                  onChange={(e) => handleContactInputChange('keep_in_touch_frequency', e.target.value)}
-                >
-                  <option value="">Select Frequency</option>
-                  {KEEP_IN_TOUCH_FREQUENCIES.map(frequency => (
-                    <option key={frequency} value={frequency}>{frequency}</option>
-                  ))}
-                </Select>
-              </FormGroup>
-              <FormGroup className="full-width">
-                <Label>About the Contact</Label>
-                <TextArea
-                  value={contactEditData.about_the_contact || ''}
-                  onChange={(e) => handleContactInputChange('about_the_contact', e.target.value)}
-                  placeholder="Enter description or notes about this contact"
-                />
-              </FormGroup>
-            </EditContactForm>
-            <ButtonGroup>
-              <Button onClick={() => setShowContactEditModal(false)}>Cancel</Button>
-              <Button primary onClick={handleSaveContactEdit}>Save</Button>
-            </ButtonGroup>
-          </ModalContent>
-        </Modal>
-      )}
-      {!hubspotAuthStatus.isAuthenticated && !hubspotAuthStatus.isLoading && (
-        <div style={{ 
-          background: '#FEF2F2', 
-          color: '#B91C1C', 
-          padding: '0.5rem 1rem', 
-          borderRadius: '0.375rem',
-          margin: '0 0 1rem 0',
-          fontSize: '0.875rem'
-        }}>
-          Hubspot integration is not configured: {hubspotAuthStatus.error}
-        </div>
       )}
     </Container>
   );
 };
 
 export default RecentContactsList;
+  

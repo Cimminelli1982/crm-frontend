@@ -1,63 +1,85 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './pages/Login';
+import Contacts from './pages/Contacts';
 import Dashboard from './pages/Dashboard';
 import NewContacts from './pages/NewContacts';
-import Contacts from './pages/Contacts';
-import ContactEdit from './pages/ContactEdit';
-import HubSpotTest from './components/HubSpotTest';
-import './App.css';
+import { supabase } from './lib/supabaseClient';
 
-// Protected route component
-const ProtectedRoute = ({ children }) => {
-  const { user, loading } = useAuth();
-  
-  if (loading) return <div>Loading...</div>;
-  
-  if (!user) {
-    return <Navigate to="/login" />;
+// Import new pages for navigation
+import LastInteractions from './pages/contacts/LastInteractions';
+import RecentlyCreatedContacts from './pages/contacts/RecentlyCreatedContacts';
+import KeepInTouch from './pages/contacts/KeepInTouch';
+import MissingInfos from './pages/contacts/MissingInfos';
+import Companies from './pages/Companies';
+import RecentlyCreatedCompanies from './pages/companies/RecentlyCreatedCompanies';
+import Deals from './pages/companies/Deals';
+import Startups from './pages/companies/Startups';
+import Investors from './pages/companies/Investors';
+import Introductions from './pages/Introductions';
+import Planner from './pages/Planner';
+
+const App = () => {
+  const [session, setSession] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setSession(session);
+        setLoading(false);
+      }
+    );
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (loading) {
+    return <div>Loading...</div>;
   }
-  
-  return children;
-};
 
-function App() {
   return (
-    <AuthProvider>
-      <Router>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/" element={
-            <ProtectedRoute>
-              <Contacts />
-            </ProtectedRoute>
-          } />
-          <Route path="/dashboard" element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          } />
-          <Route path="/new-contacts" element={
-            <ProtectedRoute>
-              <NewContacts />
-            </ProtectedRoute>
-          } />
-          <Route path="/contacts" element={
-            <ProtectedRoute>
-              <Contacts />
-            </ProtectedRoute>
-          } />
-          <Route path="/contacts/edit/:id" element={
-            <ProtectedRoute>
-              <ContactEdit />
-            </ProtectedRoute>
-          } />
-          <Route path="/hubspot-test" element={<HubSpotTest />} />
-        </Routes>
-      </Router>
-    </AuthProvider>
+    <Router>
+      <Routes>
+        <Route path="/login" element={!session ? <Login /> : <Navigate to="/" />} />
+        
+        {/* Protected routes */}
+        {session ? (
+          <>
+            {/* Main routes */}
+            <Route path="/" element={<Navigate to="/contacts" />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/new-contacts" element={<NewContacts />} />
+
+            {/* Contacts section */}
+            <Route path="/contacts" element={<Contacts />} />
+            <Route path="/contacts/last-interactions" element={<LastInteractions />} />
+            <Route path="/contacts/recently-created" element={<RecentlyCreatedContacts />} />
+            <Route path="/contacts/keep-in-touch" element={<KeepInTouch />} />
+            <Route path="/contacts/missing-infos" element={<MissingInfos />} />
+
+            {/* Companies section */}
+            <Route path="/companies" element={<Companies />} />
+            <Route path="/companies/recently-created" element={<RecentlyCreatedCompanies />} />
+            <Route path="/companies/deals" element={<Deals />} />
+            <Route path="/companies/startups" element={<Startups />} />
+            <Route path="/companies/investors" element={<Investors />} />
+
+            {/* Other main sections */}
+            <Route path="/introductions" element={<Introductions />} />
+            <Route path="/planner" element={<Planner />} />
+          </>
+        ) : (
+          <Route path="*" element={<Navigate to="/login" />} />
+        )}
+      </Routes>
+    </Router>
   );
-}
+};
 
 export default App;
