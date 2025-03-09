@@ -229,7 +229,7 @@ const Tag = styled.span`
   align-items: center;
   justify-content: center;
     margin-left: 0.25rem;
-    color: #6b7280;
+  color: #6b7280;
   cursor: pointer;
   
   &:hover { 
@@ -253,7 +253,7 @@ const AddTagButton = styled.button`
   margin-left: 0.5rem;
   transition: all 0.2s;
   
-  &:hover {
+  &:hover { 
     background-color: #d1d5db;
     color: #1f2937;
   }
@@ -590,7 +590,7 @@ const ClickableCell = styled.td`
   
   &:hover::after {
     content: "${props => props.hoverText || 'Click to edit'}";
-    position: absolute;
+  position: absolute;
     top: 0;
     right: 0;
     background-color: #3b82f6;
@@ -1404,20 +1404,20 @@ const RecentContactsList = ({
         </Modal>
       )}
       
-      <ContactTable>
-        <TableHead>
-          <tr>
-            <th>Name</th>
-            <th>Company</th>
+          <ContactTable>
+            <TableHead>
+              <tr>
+                <th>Name</th>
+                <th>Company</th>
             <th>Tags</th>
             <th>Last Interaction</th>
-            <th>Category</th>
-            <th>Keep in Touch</th>
+                <th>Category</th>
+                <th>Keep in Touch</th>
             <th>Score</th>
-            <th>Actions</th>
-          </tr>
-        </TableHead>
-        <TableBody>
+                <th>Actions</th>
+              </tr>
+            </TableHead>
+            <TableBody>
       {!isLoading && contacts.length === 0 ? (
         <tr>
           <td colSpan="8" style={{ textAlign: 'center', padding: '2rem' }}>
@@ -1446,14 +1446,14 @@ const RecentContactsList = ({
                   {contact.companiesList?.length > 0 ? (
                     contact.companiesList.map(company => (
                       <CompanyBadge key={company.id}>
-                        {company.name}
+            {company.name}
                       </CompanyBadge>
                     ))
                   ) : (
                     <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No company</span>
                   )}
                 </CompaniesContainer>
-              </div>
+  </div>
             </ClickableCell>
             
             {/* TAGS COLUMN */}
@@ -1479,8 +1479,8 @@ const RecentContactsList = ({
                           +{contactTags[contact.id].length - 2} more
                         </MoreTagsIndicator>
                       )}
-                  </>
-                ) : (
+                      </>
+                    ) : (
                     <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No tags</span>
                   )}
                 </TagsContainer>
@@ -1499,7 +1499,7 @@ const RecentContactsList = ({
             {/* CATEGORY COLUMN */}
             <ClickableCell onClick={() => handleCellClick(contact, 'category')}>
               <div className="cell-content">
-                {contact.contact_category ? (
+                    {contact.contact_category ? (
                   <CategoryBadge category={contact.contact_category}>
                     {contact.contact_category}
                   </CategoryBadge>
@@ -1535,7 +1535,7 @@ const RecentContactsList = ({
                   </div>
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                    <div>
+            <div>
                       {contact.keep_in_touch ? (
                         <KeepInTouchBadge frequency={contact.keep_in_touch}>
                           {contact.keep_in_touch}
@@ -1543,15 +1543,15 @@ const RecentContactsList = ({
                       ) : (
                         <span style={{ color: '#ef4444', fontStyle: 'italic', fontWeight: '500' }}>Missing</span>
                       )}
-                    </div>
+            </div>
                     <div className="actions">
                       <ActionButton className="edit" onClick={() => handleEditStart(contact, 'keep_in_touch')}>
                         <FiEdit2 size={16} />
                       </ActionButton>
-                    </div>
-                  </div>
+            </div>
+          </div>
                 )}
-              </div>
+        </div>
             </td>
             
             {/* SCORE COLUMN */}
@@ -1657,9 +1657,9 @@ const RecentContactsList = ({
         Last
       </PageButton>
     </PaginationControls>
-  )}
-</Container>
-);
+      )}
+    </Container>
+  );
 };
 
 export default RecentContactsList;
