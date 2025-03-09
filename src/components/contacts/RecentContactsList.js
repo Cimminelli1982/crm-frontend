@@ -1932,6 +1932,33 @@ const RecentContactsList = ({
     );
   };
   
+  // Add the HubSpot handler function
+  const handleHubSpotClick = (contact, event) => {
+    event.stopPropagation(); // Prevent event bubbling
+    
+    // Format name for search query (handling null/undefined)
+    const formatNameForQuery = (contact) => {
+      const firstName = contact.first_name || '';
+      const lastName = contact.last_name || '';
+      return `${firstName}+${lastName}`.trim().replace(/\++$/, ''); // Remove trailing + if last name is empty
+    };
+    
+    let hubspotUrl;
+    
+    // Check if contact has a HubSpot ID
+    if (contact.hubspot_id) {
+      // Direct link to the contact record
+      hubspotUrl = `https://app-eu1.hubspot.com/contacts/144666820/record/0-1/${contact.hubspot_id}`;
+    } else {
+      // Search query with name
+      const searchName = formatNameForQuery(contact);
+      hubspotUrl = `https://app-eu1.hubspot.com/search/144666820/search?query=${searchName}`;
+    }
+    
+    // Open the URL in a new tab
+    window.open(hubspotUrl, '_blank');
+  };
+  
   // --------- RENDER ---------
   return (
     <Container>
@@ -2282,13 +2309,18 @@ const RecentContactsList = ({
                     </Tooltip>
                     
                     <Tooltip>
-                      <ActionButton
+                      <ActionButton 
                         className="hubspot"
-                        onClick={() => window.open(contact.hubspot_url, '_blank')}
+                        onClick={(e) => handleHubSpotClick(contact, e)}
+                        style={{ 
+                          color: contact.hubspot_id ? '#FF7A59' : '#9CA3AF' // Orange if has HubSpot ID, gray if not
+                        }}
                       >
                         <FaHubspot size={16} />
                       </ActionButton>
-                      <span className="tooltip-text">Open in HubSpot</span>
+                      <span className="tooltip-text">
+                        {contact.hubspot_id ? 'View in HubSpot' : 'Search in HubSpot'}
+                      </span>
                     </Tooltip>
                     
                     <Tooltip>
