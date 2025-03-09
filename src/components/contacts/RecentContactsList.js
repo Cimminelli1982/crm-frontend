@@ -739,8 +739,17 @@ const RecentContactsList = ({
   const [modalContent, setModalContent] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   
+  // WhatsApp specific states
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [showWhatsAppDropdown, setShowWhatsAppDropdown] = useState({});
+  const [mobileInput, setMobileInput] = useState('');
+  const [currentContactForMobile, setCurrentContactForMobile] = useState(null);
+  
   // Debounce search term for better performance
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
+  
+  // Add a state for local validation errors
+  const [mobileInputError, setMobileInputError] = useState('');
   
   // --------- DATA FETCHING FUNCTIONS ---------
   
@@ -931,6 +940,31 @@ const RecentContactsList = ({
   useEffect(() => {
     setCurrentPage(0);
   }, [debouncedSearchTerm, searchField]);
+  
+  // Add useEffect to handle clicks outside the dropdown
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      // Close any open WhatsApp dropdowns when clicking outside
+      if (Object.keys(showWhatsAppDropdown).some(id => showWhatsAppDropdown[id])) {
+        // Check if the click was inside a dropdown
+        const isDropdownClick = event.target.closest('[data-whatsapp-dropdown]');
+        const isButtonClick = event.target.closest('[data-whatsapp-button]');
+        
+        if (!isDropdownClick && !isButtonClick) {
+          // Reset all dropdowns
+          setShowWhatsAppDropdown({});
+        }
+      }
+    };
+    
+    // Add event listener
+    document.addEventListener('mousedown', handleClickOutside);
+    
+    // Cleanup
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showWhatsAppDropdown]);
   
   // --------- HANDLERS ---------
   
@@ -1410,6 +1444,202 @@ const RecentContactsList = ({
     }
   };
   
+  // Add this function to handle the WhatsApp icon click
+  const handleWhatsAppClick = (contact, event) => {
+    event.stopPropagation(); // Prevent event bubbling
+    
+    // Check if the contact has no mobile numbers
+    if (!contact.mobile && !contact.mobile2) {
+      // Open modal to add a mobile number
+      setCurrentContactForMobile(contact);
+      setMobileInput('');
+      setShowWhatsAppModal(true);
+    } 
+    // Check if the contact has both mobile numbers
+    else if (contact.mobile && contact.mobile2) {
+      // Show dropdown to select between two numbers
+      setShowWhatsAppDropdown(prev => ({
+        ...prev,
+        [contact.id]: !prev[contact.id]
+      }));
+    } 
+    // Contact has exactly one mobile number (either mobile or mobile2)
+    else {
+      // Open WhatsApp with the available number
+      const mobileNumber = contact.mobile || contact.mobile2;
+      window.open(`https://wa.me/${mobileNumber.replace(/\D/g, '')}`, '_blank');
+    }
+  };
+  
+  // Update the handleSaveMobileNumber function
+  const handleSaveMobileNumber = async () => {
+    if (!currentContactForMobile || !mobileInput.trim()) {
+      setMobileInputError('Please enter a mobile number');
+      return;
+    }
+    
+    try {
+      // Reset error state
+      setMobileInputError('');
+      setIsLoading(true);
+      
+      // Validate phone number format
+      const phoneRegex = /^\+?[0-9]{10,15}$/;
+      if (!phoneRegex.test(mobileInput.trim())) {
+        setMobileInputError('Please enter a valid phone number (10-15 digits)');
+        return;
+      }
+      
+      // Determine which field to update
+      const fieldToUpdate = currentContactForMobile.mobile ? 'mobile2' : 'mobile';
+      
+      // Update in Supabase
+      const { error } = await supabase
+        .from('contacts')
+        .update({ [fieldToUpdate]: mobileInput.trim() })
+        .eq('id', currentContactForMobile.id);
+      
+      if (error) throw error;
+      
+      // Update local state
+      setContacts(contacts.map(c => 
+        c.id === currentContactForMobile.id ? { ...c, [fieldToUpdate]: mobileInput.trim() } : c
+      ));
+      
+      // Close modal and reset state
+      setShowWhatsAppModal(false);
+      setCurrentContactForMobile(null);
+      setMobileInput('');
+      
+    } catch (err) {
+      console.error('Error saving mobile number:', err);
+      setError(err.message);
+      setMobileInputError('Failed to save mobile number. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Add this function to open WhatsApp with a specific number
+  const handleOpenWhatsApp = (mobileNumber, contactId) => {
+    // Close the dropdown
+    setShowWhatsAppDropdown(prev => ({
+      ...prev,
+      [contactId]: false
+    }));
+    
+    // Open WhatsApp
+    if (mobileNumber) {
+      window.open(`https://wa.me/${mobileNumber.replace(/\D/g, '')}`, '_blank');
+    }
+  };
+  
+  // Update the renderWhatsAppModal function to show which field we're updating
+  const renderWhatsAppModal = () => {
+    if (!showWhatsAppModal || !currentContactForMobile) return null;
+    
+    const getFormattedName = (contact) => {
+      const firstName = contact.first_name || '';
+      const lastName = contact.last_name || '';
+      if (!firstName && !lastName) return '(No name)';
+      return `${firstName} ${lastName}`.trim();
+    };
+    
+    const fieldToUpdate = currentContactForMobile.mobile ? 'mobile2' : 'mobile';
+    const fieldLabel = fieldToUpdate === 'mobile' ? 'Primary Mobile Number' : 'Secondary Mobile Number';
+    const actionText = fieldToUpdate === 'mobile' ? 'Add' : 'Add secondary';
+    
+    return (
+      <ModalOverlay onClick={() => setShowWhatsAppModal(false)}>
+        <ModalContent onClick={e => e.stopPropagation()}>
+          <ModalHeader>
+            <h2>{actionText} Mobile Number</h2>
+            <button onClick={() => setShowWhatsAppModal(false)}>
+              <FiX size={20} />
+            </button>
+          </ModalHeader>
+          <div style={{ padding: '1rem' }}>
+            <p style={{ marginBottom: '1rem' }}>
+              {actionText} a mobile number for {getFormattedName(currentContactForMobile)} to enable WhatsApp messaging.
+              {fieldToUpdate === 'mobile2' && (
+                <span style={{ display: 'block', marginTop: '0.5rem', fontSize: '0.875rem', color: '#4b5563' }}>
+                  This will be saved as a secondary number. Primary number: {currentContactForMobile.mobile}
+                </span>
+              )}
+            </p>
+            <div style={{ marginBottom: '1rem' }}>
+              <label htmlFor="mobileInput" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                {fieldLabel}:
+              </label>
+              <input
+                id="mobileInput"
+                type="tel"
+                value={mobileInput}
+                onChange={(e) => {
+                  setMobileInput(e.target.value);
+                  setMobileInputError(''); // Clear error on change
+                }}
+                placeholder="Enter mobile number with country code (e.g. +1234567890)"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleSaveMobileNumber();
+                  } else if (e.key === 'Escape') {
+                    setShowWhatsAppModal(false);
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  border: `1px solid ${mobileInputError ? '#ef4444' : '#d1d5db'}`,
+                  borderRadius: '0.25rem',
+                  fontSize: '0.875rem'
+                }}
+              />
+              {mobileInputError && (
+                <p style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '0.25rem' }}>
+                  {mobileInputError}
+                </p>
+              )}
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                Include the country code with + symbol (e.g. +1 for US)
+              </p>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+              <button
+                onClick={() => setShowWhatsAppModal(false)}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: 'white',
+                  color: '#4b5563',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '0.25rem',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveMobileNumber}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '0.25rem',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem'
+                }}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </ModalContent>
+      </ModalOverlay>
+    );
+  };
+  
   // --------- RENDER ---------
   return (
     <Container>
@@ -1464,227 +1694,285 @@ const RecentContactsList = ({
         </Modal>
       )}
       
-          <ContactTable>
-            <TableHead>
-              <tr>
-                <th>Name</th>
-                <th>Company</th>
+      {showWhatsAppModal && renderWhatsAppModal()}
+      
+      <ContactTable>
+        <TableHead>
+          <tr>
+            <th>Name</th>
+            <th>Company</th>
             <th>Tags</th>
             <th>Last Interaction</th>
-                <th>Category</th>
-                <th>Keep in Touch</th>
+            <th>Category</th>
+            <th>Keep in Touch</th>
             <th>Score</th>
-                <th>Actions</th>
-              </tr>
-            </TableHead>
-            <TableBody>
-      {!isLoading && contacts.length === 0 ? (
-        <tr>
-          <td colSpan="8" style={{ textAlign: 'center', padding: '2rem' }}>
-            {debouncedSearchTerm && debouncedSearchTerm.length >= 3
-              ? `No contacts found matching "${debouncedSearchTerm}" in ${searchField}`
-              : 'No contacts found'
-            }
-          </td>
-        </tr>
-      ) : (
-        contacts.map(contact => (
-            <tr key={contact.id}>
-            {/* NAME COLUMN */}
-            <ClickableCell onClick={() => handleCellClick(contact, 'name')}>
-              <div className="cell-content">
-                <ContactName title={truncateName(contact.first_name, contact.last_name).fullName}>
-                  {truncateName(contact.first_name, contact.last_name).displayName}
-                </ContactName>
-              </div>
-            </ClickableCell>
-            
-            {/* COMPANY COLUMN */}
-            <ClickableCell onClick={() => handleCellClick(contact, 'company')}>
-              <div className="cell-content">
-                <CompaniesContainer>
-                  {contact.companiesList?.length > 0 ? (
-                    contact.companiesList.map(company => (
-                      <CompanyBadge key={company.id}>
-            {company.name}
-                      </CompanyBadge>
-                    ))
-                  ) : (
-                    <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No company</span>
-                  )}
-                </CompaniesContainer>
-  </div>
-            </ClickableCell>
-            
-            {/* TAGS COLUMN */}
-            <ClickableCell onClick={() => handleCellClick(contact, 'tags')}>
-              <div className="cell-content">
-                <TagsContainer>
-                  {contactTags[contact.id]?.length > 0 ? (
-                    <>
-                      {/* Show only first 2 tags */}
-                      {contactTags[contact.id].slice(0, 2).map(tag => (
-                        <Tag 
-                          key={tag.id} 
-                          color={getTagColor(tag.name).bg} 
-                          textColor={getTagColor(tag.name).text}
-                        >
-                          {tag.name}
-                        </Tag>
-                      ))}
-                      
-                      {/* Show "More Tags" indicator if there are more than 2 tags */}
-                      {contactTags[contact.id].length > 2 && (
-                        <MoreTagsIndicator>
-                          +{contactTags[contact.id].length - 2} more
-                        </MoreTagsIndicator>
-                      )}
-                      </>
-                    ) : (
-                    <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No tags</span>
-                  )}
-                </TagsContainer>
-              </div>
-            </ClickableCell>
-            
-            {/* LAST INTERACTION COLUMN */}
-            <ClickableCell onClick={() => handleCellClick(contact, 'history')} hoverText="View history">
-              <div className="cell-content">
-                <LastInteractionDate isRecent={isRecentDate(contact.last_interaction)}>
-                  {formatDate(contact.last_interaction)}
-                </LastInteractionDate>
-            </div>
-            </ClickableCell>
-            
-            {/* CATEGORY COLUMN */}
-            <ClickableCell onClick={() => handleCellClick(contact, 'category')}>
-              <div className="cell-content">
-                    {contact.contact_category ? (
-                  <CategoryBadge category={contact.contact_category}>
-                    {contact.contact_category}
-                  </CategoryBadge>
-                ) : (
-                  <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Not set</span>
-                )}
-        </div>
-            </ClickableCell>
-            
-            {/* KEEP IN TOUCH COLUMN */}
-            <ClickableCell onClick={() => handleCellClick(contact, 'keepInTouch')}>
-              <div className="cell-content">
-                {contact.keep_in_touch_frequency ? (
-                  <KeepInTouchBadge frequency={contact.keep_in_touch_frequency}>
-                    {contact.keep_in_touch_frequency}
-                  </KeepInTouchBadge>
-                ) : (
-                  <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Not set</span>
-                )}
-              </div>
-            </ClickableCell>
-            
-            {/* SCORE COLUMN */}
-            <td>
-              <StarContainer>
-                {[1, 2, 3, 4, 5].map(star => (
-                  <Star
-                    key={star}
-                    filled={star <= (contact.score || 0)}
-                    onClick={() => handleStarClick(contact.id, star)}
-                  >
-                    {star <= (contact.score || 0) ? <FaStar /> : <FiStar />}
-                  </Star>
-                ))}
-              </StarContainer>
-              </td>
-            
-            {/* ACTIONS COLUMN */}
-            <td className="actions-cell">
-              <ActionsContainer>
-                <Tooltip>
-                  <ActionButton 
-                    className="whatsapp" 
-                    onClick={() => contact.mobile ? window.open(`https://wa.me/${contact.mobile.replace(/\D/g, '')}`, '_blank') : null}
-                    style={{ opacity: contact.mobile ? 1 : 0.5 }}
-                  >
-                    <FaWhatsapp />
-                  </ActionButton>
-                  <span className="tooltip-text">
-                    {contact.mobile ? 'WhatsApp' : 'No mobile number'}
-                </span>
-                </Tooltip>
-                
-                <Tooltip>
-                  <ActionButton 
-                    className="email" 
-                    onClick={() => contact.email ? window.open(`mailto:${contact.email}`, '_blank') : null}
-                    style={{ opacity: contact.email ? 1 : 0.5 }}
-                  >
-                    <FiMail />
-                  </ActionButton>
-                  <span className="tooltip-text">
-                    {contact.email ? 'Email' : 'No email address'}
-                  </span>
-                </Tooltip>
-                
-                <Tooltip>
-                  <ActionButton 
-                    className="linkedin" 
-                    onClick={() => contact.linkedin ? window.open(contact.linkedin, '_blank') : null}
-                    style={{ opacity: contact.linkedin ? 1 : 0.5 }}
-                  >
-                    <FaLinkedin />
-                  </ActionButton>
-                  <span className="tooltip-text">
-                    {contact.linkedin ? 'LinkedIn' : 'No LinkedIn profile'}
-                  </span>
-                </Tooltip>
-                
-                <Tooltip>
-                  <ActionButton
-                    className="hubspot"
-                    onClick={() => window.open(contact.hubspot_url, '_blank')}
-                  >
-                    <FaHubspot size={16} />
-                  </ActionButton>
-                  <span className="tooltip-text">Open in HubSpot</span>
-                </Tooltip>
-                
-                <Tooltip>
-                  <ActionButton
-                    className="edit"
-                    onClick={() => handleOpenModal('edit', contact)}
-                  >
-                    <FiEdit2 size={16} />
-                  </ActionButton>
-                  <span className="tooltip-text">Edit Contact</span>
-                </Tooltip>
-              </ActionsContainer>
-            </td>
+            <th>Actions</th>
           </tr>
-        ))
-      )}
-    </TableBody>
-  </ContactTable>
-  
-  {/* Only show pagination when appropriate */}
-  {!isLoading && (contacts.length > 0 || !debouncedSearchTerm) && totalPages > 1 && (
-    <PaginationControls>
-      <PageButton onClick={goToFirstPage} disabled={currentPage === 0 || isLoading}>
-        First
-      </PageButton>
-      <PageButton onClick={goToPrevPage} disabled={currentPage === 0 || isLoading}>
-        Previous
-      </PageButton>
-      <PageInfo>
-        Page {currentPage + 1} of {totalPages}
-      </PageInfo>
-      <PageButton onClick={goToNextPage} disabled={currentPage === totalPages - 1 || isLoading}>
-        Next
-      </PageButton>
-      <PageButton onClick={goToLastPage} disabled={currentPage === totalPages - 1 || isLoading}>
-        Last
-      </PageButton>
-    </PaginationControls>
+        </TableHead>
+        <TableBody>
+          {!isLoading && contacts.length === 0 ? (
+            <tr>
+              <td colSpan="8" style={{ textAlign: 'center', padding: '2rem' }}>
+                {debouncedSearchTerm && debouncedSearchTerm.length >= 3
+                  ? `No contacts found matching "${debouncedSearchTerm}" in ${searchField}`
+                  : 'No contacts found'
+                }
+              </td>
+            </tr>
+          ) : (
+            contacts.map(contact => (
+              <tr key={contact.id}>
+                {/* NAME COLUMN */}
+                <ClickableCell onClick={() => handleCellClick(contact, 'name')}>
+                  <div className="cell-content">
+                    <ContactName title={truncateName(contact.first_name, contact.last_name).fullName}>
+                      {truncateName(contact.first_name, contact.last_name).displayName}
+                    </ContactName>
+                  </div>
+                </ClickableCell>
+                
+                {/* COMPANY COLUMN */}
+                <ClickableCell onClick={() => handleCellClick(contact, 'company')}>
+                  <div className="cell-content">
+                    <CompaniesContainer>
+                      {contact.companiesList?.length > 0 ? (
+                        contact.companiesList.map(company => (
+                          <CompanyBadge key={company.id}>
+                            {company.name}
+                          </CompanyBadge>
+                        ))
+                      ) : (
+                        <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No company</span>
+                      )}
+                    </CompaniesContainer>
+                  </div>
+                </ClickableCell>
+                
+                {/* TAGS COLUMN */}
+                <ClickableCell onClick={() => handleCellClick(contact, 'tags')}>
+                  <div className="cell-content">
+                    <TagsContainer>
+                      {contactTags[contact.id]?.length > 0 ? (
+                        <>
+                          {/* Show only first 2 tags */}
+                          {contactTags[contact.id].slice(0, 2).map(tag => (
+                            <Tag 
+                              key={tag.id} 
+                              color={getTagColor(tag.name).bg} 
+                              textColor={getTagColor(tag.name).text}
+                            >
+                              {tag.name}
+                            </Tag>
+                          ))}
+                          
+                          {/* Show "More Tags" indicator if there are more than 2 tags */}
+                          {contactTags[contact.id].length > 2 && (
+                            <MoreTagsIndicator>
+                              +{contactTags[contact.id].length - 2} more
+                            </MoreTagsIndicator>
+                          )}
+                        </>
+                      ) : (
+                        <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No tags</span>
+                      )}
+                    </TagsContainer>
+                  </div>
+                </ClickableCell>
+                
+                {/* LAST INTERACTION COLUMN */}
+                <ClickableCell onClick={() => handleCellClick(contact, 'history')} hoverText="View history">
+                  <div className="cell-content">
+                    <LastInteractionDate isRecent={isRecentDate(contact.last_interaction)}>
+                      {formatDate(contact.last_interaction)}
+                    </LastInteractionDate>
+                  </div>
+                </ClickableCell>
+                
+                {/* CATEGORY COLUMN */}
+                <ClickableCell onClick={() => handleCellClick(contact, 'category')}>
+                  <div className="cell-content">
+                    {contact.contact_category ? (
+                      <CategoryBadge category={contact.contact_category}>
+                        {contact.contact_category}
+                      </CategoryBadge>
+                    ) : (
+                      <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Not set</span>
+                    )}
+                  </div>
+                </ClickableCell>
+                
+                {/* KEEP IN TOUCH COLUMN */}
+                <ClickableCell onClick={() => handleCellClick(contact, 'keepInTouch')}>
+                  <div className="cell-content">
+                    {contact.keep_in_touch_frequency ? (
+                      <KeepInTouchBadge frequency={contact.keep_in_touch_frequency}>
+                        {contact.keep_in_touch_frequency}
+                      </KeepInTouchBadge>
+                    ) : (
+                      <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Not set</span>
+                    )}
+                  </div>
+                </ClickableCell>
+                
+                {/* SCORE COLUMN */}
+                <td>
+                  <StarContainer>
+                    {[1, 2, 3, 4, 5].map(star => (
+                      <Star
+                        key={star}
+                        filled={star <= (contact.score || 0)}
+                        onClick={() => handleStarClick(contact.id, star)}
+                      >
+                        {star <= (contact.score || 0) ? <FaStar /> : <FiStar />}
+                      </Star>
+                    ))}
+                  </StarContainer>
+                </td>
+                
+                {/* ACTIONS COLUMN */}
+                <td className="actions-cell">
+                  <ActionsContainer>
+                    <Tooltip>
+                      <ActionButton 
+                        className="whatsapp" 
+                        onClick={(e) => handleWhatsAppClick(contact, e)}
+                        style={{ 
+                          color: contact.mobile || contact.mobile2 ? '#25D366' : '#9CA3AF'
+                        }}
+                        data-whatsapp-button={true}
+                      >
+                        <FaWhatsapp />
+                      </ActionButton>
+                      <span className="tooltip-text">
+                        {!contact.mobile && !contact.mobile2 
+                          ? 'Add mobile number' 
+                          : contact.mobile && contact.mobile2 
+                            ? 'Choose mobile number' 
+                            : 'WhatsApp'}
+                      </span>
+                      
+                      {/* WhatsApp number dropdown */}
+                      {showWhatsAppDropdown[contact.id] && (contact.mobile && contact.mobile2) && (
+                        <div 
+                          style={{
+                            position: 'absolute',
+                            top: '100%',
+                            left: '0',
+                            zIndex: 50,
+                            backgroundColor: 'white',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '0.25rem',
+                            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                            width: '180px',
+                            overflow: 'hidden'
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          data-whatsapp-dropdown={true}
+                        >
+                          <div style={{ padding: '0.5rem', backgroundColor: '#f3f4f6', borderBottom: '1px solid #e5e7eb' }}>
+                            <div style={{ fontWeight: '600', fontSize: '0.75rem', color: '#4b5563' }}>Select number to use</div>
+                          </div>
+                          <div 
+                            style={{ 
+                              padding: '0.5rem', 
+                              borderBottom: '1px solid #e5e7eb', 
+                              cursor: 'pointer',
+                              transition: 'background-color 0.2s',
+                              ':hover': { backgroundColor: '#f9fafb' }
+                            }}
+                            onClick={() => handleOpenWhatsApp(contact.mobile, contact.id)}
+                          >
+                            <div style={{ fontWeight: '500', fontSize: '0.75rem', color: '#6b7280' }}>Primary</div>
+                            <div style={{ fontSize: '0.875rem' }}>{contact.mobile}</div>
+                          </div>
+                          <div 
+                            style={{ 
+                              padding: '0.5rem', 
+                              cursor: 'pointer',
+                              transition: 'background-color 0.2s',
+                              ':hover': { backgroundColor: '#f9fafb' }
+                            }}
+                            onClick={() => handleOpenWhatsApp(contact.mobile2, contact.id)}
+                          >
+                            <div style={{ fontWeight: '500', fontSize: '0.75rem', color: '#6b7280' }}>Secondary</div>
+                            <div style={{ fontSize: '0.875rem' }}>{contact.mobile2}</div>
+                          </div>
+                        </div>
+                      )}
+                    </Tooltip>
+                    
+                    <Tooltip>
+                      <ActionButton 
+                        className="email" 
+                        onClick={() => contact.email ? window.open(`mailto:${contact.email}`, '_blank') : null}
+                        style={{ opacity: contact.email ? 1 : 0.5 }}
+                      >
+                        <FiMail />
+                      </ActionButton>
+                      <span className="tooltip-text">
+                        {contact.email ? 'Email' : 'No email address'}
+                      </span>
+                    </Tooltip>
+                    
+                    <Tooltip>
+                      <ActionButton 
+                        className="linkedin" 
+                        onClick={() => contact.linkedin ? window.open(contact.linkedin, '_blank') : null}
+                        style={{ opacity: contact.linkedin ? 1 : 0.5 }}
+                      >
+                        <FaLinkedin />
+                      </ActionButton>
+                      <span className="tooltip-text">
+                        {contact.linkedin ? 'LinkedIn' : 'No LinkedIn profile'}
+                      </span>
+                    </Tooltip>
+                    
+                    <Tooltip>
+                      <ActionButton
+                        className="hubspot"
+                        onClick={() => window.open(contact.hubspot_url, '_blank')}
+                      >
+                        <FaHubspot size={16} />
+                      </ActionButton>
+                      <span className="tooltip-text">Open in HubSpot</span>
+                    </Tooltip>
+                    
+                    <Tooltip>
+                      <ActionButton
+                        className="edit"
+                        onClick={() => handleOpenModal('edit', contact)}
+                      >
+                        <FiEdit2 size={16} />
+                      </ActionButton>
+                      <span className="tooltip-text">Edit Contact</span>
+                    </Tooltip>
+                  </ActionsContainer>
+                </td>
+              </tr>
+            ))
+          )}
+        </TableBody>
+      </ContactTable>
+      
+      {/* Only show pagination when appropriate */}
+      {!isLoading && (contacts.length > 0 || !debouncedSearchTerm) && totalPages > 1 && (
+        <PaginationControls>
+          <PageButton onClick={goToFirstPage} disabled={currentPage === 0 || isLoading}>
+            First
+          </PageButton>
+          <PageButton onClick={goToPrevPage} disabled={currentPage === 0 || isLoading}>
+            Previous
+          </PageButton>
+          <PageInfo>
+            Page {currentPage + 1} of {totalPages}
+          </PageInfo>
+          <PageButton onClick={goToNextPage} disabled={currentPage === totalPages - 1 || isLoading}>
+            Next
+          </PageButton>
+          <PageButton onClick={goToLastPage} disabled={currentPage === totalPages - 1 || isLoading}>
+            Last
+          </PageButton>
+        </PaginationControls>
       )}
     </Container>
   );
