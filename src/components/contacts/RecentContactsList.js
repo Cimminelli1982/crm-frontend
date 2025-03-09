@@ -1640,6 +1640,45 @@ const RecentContactsList = ({
     );
   };
   
+  // Add a new handler function for LinkedIn clicks
+  const handleLinkedInClick = (contact, event) => {
+    event.stopPropagation(); // Prevent event bubbling
+    
+    if (contact.linkedin) {
+      // Case 1: LinkedIn URL exists - navigate directly to the stored URL
+      window.open(contact.linkedin, '_blank');
+    } else {
+      // Case 2: No LinkedIn URL - search for the contact on LinkedIn
+      // Get the name to search for
+      let searchTerms = '';
+      
+      // Try to use first_name and last_name
+      if (contact.first_name || contact.last_name) {
+        searchTerms = `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+      } 
+      // If no name available, try email
+      else if (contact.email) {
+        // Extract name part from email (before @)
+        searchTerms = contact.email.split('@')[0].replace(/[._]/g, ' ');
+      }
+      // If no email, try company name
+      else if (contact.companies?.name) {
+        searchTerms = contact.companies.name;
+      }
+      // Fallback to a default message if all else fails
+      else {
+        searchTerms = 'Contact';
+      }
+      
+      // Encode the search terms and build the URL
+      const encodedSearchTerms = encodeURIComponent(searchTerms);
+      const linkedInSearchUrl = `https://www.linkedin.com/search/results/all/?keywords=${encodedSearchTerms}`;
+      
+      // Open LinkedIn search in a new tab
+      window.open(linkedInSearchUrl, '_blank');
+    }
+  };
+  
   // --------- RENDER ---------
   return (
     <Container>
@@ -1916,14 +1955,16 @@ const RecentContactsList = ({
                     
                     <Tooltip>
                       <ActionButton 
-                        className="linkedin" 
-                        onClick={() => contact.linkedin ? window.open(contact.linkedin, '_blank') : null}
-                        style={{ opacity: contact.linkedin ? 1 : 0.5 }}
+                        className="linkedin"
+                        onClick={(e) => handleLinkedInClick(contact, e)}
+                        style={{ 
+                          color: contact.linkedin ? '#0077B5' : '#4299E1' // LinkedIn blue vs. lighter blue
+                        }}
                       >
                         <FaLinkedin />
                       </ActionButton>
                       <span className="tooltip-text">
-                        {contact.linkedin ? 'LinkedIn' : 'No LinkedIn profile'}
+                        {contact.linkedin ? 'View LinkedIn profile' : 'Search on LinkedIn'}
                       </span>
                     </Tooltip>
                     
