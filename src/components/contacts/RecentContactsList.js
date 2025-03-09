@@ -516,8 +516,10 @@ const RecentContactsList = ({
   const [tagSuggestions, setTagSuggestions] = useState([]);
   
   // Sorting state
-  const [sortField, setSortField] = useState('last_interaction');
+  const [sortField, setSortField] = useState('last_modified');
   const [sortDirection, setSortDirection] = useState('desc');
+  const [secondarySortField] = useState('last_interaction');
+  const [secondarySortDirection] = useState('desc');
   
   // Fetch tags for contacts
   const fetchTagsForContacts = useCallback(async (contactIds) => {
@@ -592,9 +594,15 @@ const RecentContactsList = ({
         // Filter out contacts with category 'Skip'
         .not('contact_category', 'eq', 'Skip');
       
-      // Apply sorting
+      // Apply primary sorting by last_modified
       query = query.order(sortField, { 
         ascending: sortDirection === 'asc',
+        nullsFirst: false
+      });
+      
+      // Apply secondary sorting by last_interaction
+      query = query.order(secondarySortField, {
+        ascending: secondarySortDirection === 'asc',
         nullsFirst: false
       });
       
@@ -635,7 +643,7 @@ const RecentContactsList = ({
     } finally {
       setLoading(false);
     }
-  }, [currentPage, sortField, sortDirection, fetchTagsForContacts, fetchCompaniesForContacts]);
+  }, [currentPage, sortField, sortDirection, secondarySortField, secondarySortDirection, fetchTagsForContacts, fetchCompaniesForContacts]);
   
   // Fetch all available tags for suggestions
   const fetchTagSuggestions = useCallback(async (searchTerm = '') => {
@@ -1019,6 +1027,11 @@ const RecentContactsList = ({
                   {sortField === 'last_interaction' && (
                     <span className="sort-icon">
                       {sortDirection === 'asc' ? <FiChevronUp /> : <FiChevronDown />}
+                    </span>
+                  )}
+                  {sortField !== 'last_interaction' && sortField === 'last_modified' && (
+                    <span className="sort-icon secondary" style={{ opacity: 0.5, marginLeft: '4px', fontSize: '0.7rem' }}>
+                      2°
                     </span>
                   )}
                 </th>
