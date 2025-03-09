@@ -745,6 +745,13 @@ const RecentContactsList = ({
   const [mobileInput, setMobileInput] = useState('');
   const [currentContactForMobile, setCurrentContactForMobile] = useState(null);
   
+  // Email specific states
+  const [showEmailDropdown, setShowEmailDropdown] = useState({});
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailInput, setEmailInput] = useState('');
+  const [emailInputError, setEmailInputError] = useState('');
+  const [currentContactForEmail, setCurrentContactForEmail] = useState(null);
+  
   // Debounce search term for better performance
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
   
@@ -965,6 +972,31 @@ const RecentContactsList = ({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showWhatsAppDropdown]);
+  
+  // Add back the useEffect for email dropdown clicks
+  useEffect(() => {
+    const handleEmailClickOutside = (event) => {
+      // Close any open email dropdowns when clicking outside
+      if (Object.keys(showEmailDropdown).some(id => showEmailDropdown[id])) {
+        // Check if the click was inside a dropdown
+        const isDropdownClick = event.target.closest('[data-email-dropdown]');
+        const isButtonClick = event.target.closest('[data-email-button]');
+        
+        if (!isDropdownClick && !isButtonClick) {
+          // Reset all dropdowns
+          setShowEmailDropdown({});
+        }
+      }
+    };
+    
+    // Add event listener
+    document.addEventListener('mousedown', handleEmailClickOutside);
+    
+    // Cleanup
+    return () => {
+      document.removeEventListener('mousedown', handleEmailClickOutside);
+    };
+  }, [showEmailDropdown]);
   
   // --------- HANDLERS ---------
   
@@ -1679,6 +1711,227 @@ const RecentContactsList = ({
     }
   };
   
+  // Add back the helper functions to check email availability
+  const hasAnyEmail = (contact) => {
+    return Boolean(contact.email || contact.email2 || contact.email3);
+  };
+  
+  // Updated email click handler with two different behaviors
+  const handleEmailClick = (contact, event) => {
+    event.stopPropagation(); // Prevent event bubbling
+    
+    if (hasAnyEmail(contact)) {
+      // Case 1: At least one email exists - directly open the search
+      openSuperhuman(contact);
+    } else {
+      // Case 2: No emails - toggle dropdown
+      setShowEmailDropdown(prev => ({
+        ...prev,
+        [contact.id]: !prev[contact.id]
+      }));
+    }
+  };
+  
+  // Function to open Superhuman search
+  const openSuperhuman = (contact) => {
+    // Build search terms
+    let searchTerms = '';
+    
+    // Try to use first_name and last_name
+    if (contact.first_name || contact.last_name) {
+      searchTerms = `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+    } 
+    // If no name, try company name
+    else if (contact.companies?.name) {
+      searchTerms = contact.companies.name;
+    }
+    // Fallback
+    else {
+      searchTerms = 'Contact';
+    }
+    
+    // Encode and build search URL
+    const encodedSearchTerms = encodeURIComponent(searchTerms);
+    const searchUrl = `https://mail.superhuman.com/search/${encodedSearchTerms}`;
+    
+    // Open search in new tab
+    window.open(searchUrl, '_blank');
+  };
+  
+  // Handler for "Add" option in dropdown - open email modal
+  const handleAddEmail = (contact, event) => {
+    event.stopPropagation(); // Prevent event bubbling
+    
+    // Close dropdown
+    setShowEmailDropdown(prev => ({
+      ...prev,
+      [contact.id]: false
+    }));
+    
+    // Open email modal
+    setCurrentContactForEmail(contact);
+    setEmailInput('');
+    setEmailInputError('');
+    setShowEmailModal(true);
+  };
+  
+  // Handler for "Search" option in dropdown
+  const handleSearchEmail = (contact, event) => {
+    event.stopPropagation(); // Prevent event bubbling
+    
+    // Close dropdown
+    setShowEmailDropdown(prev => ({
+      ...prev,
+      [contact.id]: false
+    }));
+    
+    // Open Superhuman search
+    openSuperhuman(contact);
+  };
+  
+  // Handler for saving email
+  const handleSaveEmail = async () => {
+    if (!currentContactForEmail || !emailInput.trim()) {
+      setEmailInputError('Please enter an email address');
+      return;
+    }
+    
+    try {
+      // Reset error state
+      setEmailInputError('');
+      setIsLoading(true);
+      
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(emailInput.trim())) {
+        setEmailInputError('Please enter a valid email address');
+        return;
+      }
+      
+      // Determine which field to update - always use primary email if all are empty
+      let fieldToUpdate = 'email';
+      
+      // Update in Supabase
+      const { error } = await supabase
+        .from('contacts')
+        .update({ [fieldToUpdate]: emailInput.trim() })
+        .eq('id', currentContactForEmail.id);
+      
+      if (error) throw error;
+      
+      // Update local state
+      setContacts(contacts.map(c => 
+        c.id === currentContactForEmail.id ? { ...c, [fieldToUpdate]: emailInput.trim() } : c
+      ));
+      
+      // Close modal and reset state
+      setShowEmailModal(false);
+      setCurrentContactForEmail(null);
+      setEmailInput('');
+      
+    } catch (err) {
+      console.error('Error saving email:', err);
+      setError(err.message);
+      setEmailInputError('Failed to save email. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Email modal component
+  const renderEmailModal = () => {
+    if (!showEmailModal || !currentContactForEmail) return null;
+    
+    const getFormattedName = (contact) => {
+      const firstName = contact.first_name || '';
+      const lastName = contact.last_name || '';
+      if (!firstName && !lastName) return '(No name)';
+      return `${firstName} ${lastName}`.trim();
+    };
+    
+    return (
+      <ModalOverlay onClick={() => setShowEmailModal(false)}>
+        <ModalContent onClick={e => e.stopPropagation()}>
+          <ModalHeader>
+            <h2>Add Email Address</h2>
+            <button onClick={() => setShowEmailModal(false)}>
+              <FiX size={20} />
+            </button>
+          </ModalHeader>
+          <div style={{ padding: '1rem' }}>
+            <p style={{ marginBottom: '1rem' }}>
+              Add an email address for {getFormattedName(currentContactForEmail)}.
+            </p>
+            <div style={{ marginBottom: '1rem' }}>
+              <label htmlFor="emailInput" style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                Email Address:
+              </label>
+              <input
+                id="emailInput"
+                type="email"
+                value={emailInput}
+                onChange={(e) => {
+                  setEmailInput(e.target.value);
+                  setEmailInputError(''); // Clear error on change
+                }}
+                placeholder="Enter email address"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleSaveEmail();
+                  } else if (e.key === 'Escape') {
+                    setShowEmailModal(false);
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  border: `1px solid ${emailInputError ? '#ef4444' : '#d1d5db'}`,
+                  borderRadius: '0.25rem',
+                  fontSize: '0.875rem'
+                }}
+              />
+              {emailInputError && (
+                <p style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '0.25rem' }}>
+                  {emailInputError}
+                </p>
+              )}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+              <button
+                onClick={() => setShowEmailModal(false)}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: 'white',
+                  color: '#4b5563',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '0.25rem',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEmail}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '0.25rem',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem'
+                }}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </ModalContent>
+      </ModalOverlay>
+    );
+  };
+  
   // --------- RENDER ---------
   return (
     <Container>
@@ -1734,6 +1987,8 @@ const RecentContactsList = ({
       )}
       
       {showWhatsAppModal && renderWhatsAppModal()}
+      
+      {showEmailModal && renderEmailModal()}
       
       <ContactTable>
         <TableHead>
@@ -1942,15 +2197,73 @@ const RecentContactsList = ({
                     
                     <Tooltip>
                       <ActionButton 
-                        className="email" 
-                        onClick={() => contact.email ? window.open(`mailto:${contact.email}`, '_blank') : null}
-                        style={{ opacity: contact.email ? 1 : 0.5 }}
+                        className="email"
+                        onClick={(e) => handleEmailClick(contact, e)}
+                        data-email-button={true}
+                        style={{ 
+                          // Light blue (#93C5FD) if NO email, darker blue (#4285F4) if email exists
+                          color: hasAnyEmail(contact) ? '#4285F4' : '#93C5FD'
+                        }}
                       >
                         <FiMail />
                       </ActionButton>
                       <span className="tooltip-text">
-                        {contact.email ? 'Email' : 'No email address'}
+                        {hasAnyEmail(contact) ? 'Search in Superhuman' : 'Add/Search'}
                       </span>
+                      
+                      {/* Email dropdown - only show for contacts without email */}
+                      {showEmailDropdown[contact.id] && !hasAnyEmail(contact) && (
+                        <div 
+                          style={{
+                            position: 'absolute',
+                            top: '100%',
+                            left: '0',
+                            zIndex: 50,
+                            backgroundColor: 'white',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '0.25rem',
+                            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                            width: '180px',
+                            overflow: 'hidden'
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          data-email-dropdown={true}
+                        >
+                          <div style={{ padding: '0.5rem', backgroundColor: '#f3f4f6', borderBottom: '1px solid #e5e7eb' }}>
+                            <div style={{ fontWeight: '600', fontSize: '0.75rem', color: '#4b5563' }}>Email Options</div>
+                          </div>
+                          
+                          {/* Add option */}
+                          <div 
+                            style={{ 
+                              padding: '0.5rem', 
+                              borderBottom: '1px solid #e5e7eb', 
+                              cursor: 'pointer',
+                              transition: 'background-color 0.2s'
+                            }}
+                            onClick={(e) => handleAddEmail(contact, e)}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <span style={{ fontSize: '0.875rem' }}>Add</span>
+                            </div>
+                          </div>
+                          
+                          {/* Search option */}
+                          <div 
+                            style={{ 
+                              padding: '0.5rem', 
+                              cursor: 'pointer',
+                              transition: 'background-color 0.2s'
+                            }}
+                            onClick={(e) => handleSearchEmail(contact, e)}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <span style={{ fontSize: '0.875rem' }}>Search</span>
+                              <span style={{ fontSize: '0.75rem', color: '#6b7280', marginLeft: 'auto' }}>Superhuman</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </Tooltip>
                     
                     <Tooltip>
