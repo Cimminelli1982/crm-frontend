@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
 import { 
-  FiEdit2, FiStar, FiPlus, FiCheck, FiX, 
-  FiChevronDown, FiChevronUp, FiMail, FiExternalLink
+  FiEdit2, FiStar, FiCheck, FiX, 
+  FiMail, FiExternalLink
 } from 'react-icons/fi';
 import { 
   FaWhatsapp, FaLinkedin, FaHubspot, FaStar
@@ -60,18 +60,6 @@ const TableHead = styled.thead`
     top: 0;
     z-index: 10;
     white-space: nowrap;
-    transition: background-color 0.2s;
-    
-    &.sortable {
-      cursor: pointer;
-      user-select: none;
-    }
-    
-    .sort-icon {
-      margin-left: 0.25rem;
-      display: inline-flex;
-      align-items: center;
-    }
   }
 `;
 
@@ -630,10 +618,6 @@ const RecentContactsList = ({
   const [showTagDropdown, setShowTagDropdown] = useState({});
   const [tagInput, setTagInput] = useState('');
   
-  // Sorting State
-  const [sortField, setSortField] = useState('last_modified');
-  const [sortDirection, setSortDirection] = useState('desc');
-  
   // Modal state
   const [showEditModal, setShowEditModal] = useState(false);
   const [modalContact, setModalContact] = useState(null);
@@ -681,13 +665,13 @@ const RecentContactsList = ({
         }
       }
       
-      // Apply sorting
-      query = query.order(sortField, { 
-        ascending: sortDirection === 'asc',
+      // Apply sorting - always use last_modified as primary sort
+      query = query.order('last_modified', { 
+        ascending: false,
         nullsFirst: false
       });
       
-      // Apply secondary sorting
+      // Apply secondary sorting - always use last_interaction as secondary sort
       query = query.order('last_interaction', {
         ascending: false,
         nullsFirst: false
@@ -788,7 +772,7 @@ const RecentContactsList = ({
       // Always clear loading when done, regardless of success/failure
       setIsLoading(false);
     }
-  }, [debouncedSearchTerm, searchField, sortField, sortDirection, currentPage]);
+  }, [debouncedSearchTerm, searchField, currentPage]);
   
   // Fetch tag suggestions
   const fetchTagSuggestions = useCallback(async (searchVal = '') => {
@@ -853,16 +837,6 @@ const RecentContactsList = ({
       return date > sevenDaysAgo;
     } catch (err) {
       return false;
-    }
-  };
-  
-  // Handle sorting change
-  const handleSort = (field) => {
-    if (field === sortField) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-      } else {
-      setSortField(field);
-      setSortDirection('desc');
     }
   };
   
@@ -1230,66 +1204,13 @@ const RecentContactsList = ({
           <ContactTable>
             <TableHead>
               <tr>
-            <th 
-              className="sortable" 
-              onClick={() => handleSort('first_name')}
-            >
-              Name
-              {sortField === 'first_name' && (
-                <span className="sort-icon">
-                  {sortDirection === 'asc' ? <FiChevronUp /> : <FiChevronDown />}
-                </span>
-              )}
-            </th>
+                <th>Name</th>
                 <th>Company</th>
-            <th>Tags</th>
-            <th 
-              className="sortable" 
-              onClick={() => handleSort('last_interaction')}
-            >
-              Last Interaction
-              {sortField === 'last_interaction' && (
-                <span className="sort-icon">
-                  {sortDirection === 'asc' ? <FiChevronUp /> : <FiChevronDown />}
-                </span>
-              )}
-              {sortField !== 'last_interaction' && (
-                <span style={{ fontSize: '0.75em', marginLeft: '2px' }}>2°</span>
-              )}
-            </th>
-            <th
-              className="sortable"
-              onClick={() => handleSort('contact_category')}
-            >
-              Category
-              {sortField === 'contact_category' && (
-                <span className="sort-icon">
-                  {sortDirection === 'asc' ? <FiChevronUp /> : <FiChevronDown />}
-                </span>
-              )}
-            </th>
-            <th
-              className="sortable"
-              onClick={() => handleSort('keep_in_touch')}
-            >
-              Keep in Touch
-              {sortField === 'keep_in_touch' && (
-                <span className="sort-icon">
-                  {sortDirection === 'asc' ? <FiChevronUp /> : <FiChevronDown />}
-                </span>
-              )}
-            </th>
-            <th
-              className="sortable"
-              onClick={() => handleSort('score')}
-            >
-              Score
-              {sortField === 'score' && (
-                <span className="sort-icon">
-                  {sortDirection === 'asc' ? <FiChevronUp /> : <FiChevronDown />}
-                </span>
-              )}
-            </th>
+                <th>Tags</th>
+                <th>Last Interaction</th>
+                <th>Category</th>
+                <th>Keep in Touch</th>
+                <th>Score</th>
                 <th>Actions</th>
               </tr>
             </TableHead>
