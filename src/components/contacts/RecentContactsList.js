@@ -803,6 +803,16 @@ const RecentContactsList = ({
       
       if (contactsError) throw contactsError;
       
+      // Debug log to check keep_in_touch values
+      if (contactsData && contactsData.length > 0) {
+        console.log("Sample contact data:", contactsData[0]);
+        console.log("Keep in touch values:", contactsData.map(c => ({ 
+          id: c.id, 
+          keep_in_touch_frequency: c.keep_in_touch_frequency, 
+          type: typeof c.keep_in_touch_frequency 
+        })));
+      }
+      
       // Get count for pagination
       const { count, error: countError } = await supabase
           .from('contacts')
@@ -1169,6 +1179,29 @@ const RecentContactsList = ({
           </div>
         );
         break;
+      case 'keepInTouch':
+        setModalContent(
+          <div style={{ padding: '1rem' }}>
+            <h3 style={{ marginBottom: '1rem' }}>Edit Keep in Touch Frequency</h3>
+            <p>Current frequency: {contact.keep_in_touch_frequency || 'Not set'}</p>
+            <p>Keep in Touch editing modal coming soon...</p>
+            <button 
+              onClick={() => setModalOpen(false)}
+              style={{
+                marginTop: '1rem',
+                padding: '0.5rem 1rem',
+                backgroundColor: '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0.25rem',
+                cursor: 'pointer'
+              }}
+            >
+              Close
+            </button>
+          </div>
+        );
+        break;
       default:
         break;
     }
@@ -1320,7 +1353,7 @@ const RecentContactsList = ({
         title = `Edit Keep in Touch for ${getFormattedName(modalContact)}`;
         content = (
           <div>
-            <p>Current frequency: {modalContact.keep_in_touch || 'Not set'}</p>
+            <p>Current frequency: {modalContact.keep_in_touch_frequency || 'Not set'}</p>
             <p>Keep in Touch editing functionality coming soon!</p>
           </div>
         );
@@ -1520,7 +1553,7 @@ const RecentContactsList = ({
                 <LastInteractionDate isRecent={isRecentDate(contact.last_interaction)}>
                   {formatDate(contact.last_interaction)}
                 </LastInteractionDate>
-              </div>
+            </div>
             </ClickableCell>
             
             {/* CATEGORY COLUMN */}
@@ -1533,15 +1566,15 @@ const RecentContactsList = ({
                 ) : (
                   <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Not set</span>
                 )}
-              </div>
+        </div>
             </ClickableCell>
             
             {/* KEEP IN TOUCH COLUMN */}
             <ClickableCell onClick={() => handleCellClick(contact, 'keepInTouch')}>
               <div className="cell-content">
-                {contact.keep_in_touch ? (
-                  <KeepInTouchBadge frequency={contact.keep_in_touch}>
-                    {contact.keep_in_touch}
+                {contact.keep_in_touch_frequency ? (
+                  <KeepInTouchBadge frequency={contact.keep_in_touch_frequency}>
+                    {contact.keep_in_touch_frequency}
                   </KeepInTouchBadge>
                 ) : (
                   <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Not set</span>
