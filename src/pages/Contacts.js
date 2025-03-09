@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { supabase } from '../lib/supabaseClient';
 import RecentContactsList from '../components/contacts/RecentContactsList';
-import { FiFilter, FiSearch, FiPlus } from 'react-icons/fi';
+import { FiFilter, FiSearch, FiPlus, FiChevronDown } from 'react-icons/fi';
 
 const PageContainer = styled.div`
   background-color: white;
@@ -94,34 +94,95 @@ const SecondaryButton = styled(ActionButton)`
 `;
 
 const SearchContainer = styled.div`
-  position: relative;
-  max-width: 400px;
+  display: flex;
+  align-items: center;
   width: 100%;
+  background-color: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+  overflow: hidden;
+  margin-top: 1rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+`;
+
+const SearchDropdown = styled.div`
+  position: relative;
+  min-width: 140px;
+  border-right: 1px solid #e5e7eb;
+`;
+
+const DropdownButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  color: #4b5563;
+  background: none;
+  border: none;
+  cursor: pointer;
+  
+  &:hover {
+    background-color: #f9fafb;
+  }
+`;
+
+const DropdownMenu = styled.div`
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  background-color: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  z-index: 50;
+  max-height: 250px;
+  overflow-y: auto;
+  display: ${props => props.isOpen ? 'block' : 'none'};
+`;
+
+const DropdownItem = styled.button`
+  display: block;
+  width: 100%;
+  padding: 0.5rem 1rem;
+  text-align: left;
+  font-size: 0.875rem;
+  color: #1f2937;
+  background: none;
+  border: none;
+  cursor: pointer;
+  
+  &:hover {
+    background-color: #f9fafb;
+  }
+  
+  &.active {
+    background-color: #f3f4f6;
+    font-weight: 500;
+  }
 `;
 
 const SearchInput = styled.input`
-  width: 100%;
-  padding: 0.625rem 1rem 0.625rem 2.5rem;
-  border: 1px solid #d1d5db;
-  border-radius: 0.375rem;
+  flex: 1;
+  padding: 0.625rem 1rem;
   font-size: 0.875rem;
+  color: #1f2937;
+  border: none;
+  outline: none;
   
-  &:focus {
-    outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  &::placeholder {
+    color: #9ca3af;
   }
 `;
 
 const SearchIcon = styled.div`
-  position: absolute;
-  left: 0.75rem;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #9ca3af;
-  font-size: 1rem;
   display: flex;
   align-items: center;
+  justify-content: center;
+  padding: 0 1rem;
+  color: #6b7280;
 `;
 
 const ContentSection = styled.div`
@@ -131,7 +192,19 @@ const ContentSection = styled.div`
 const Contacts = () => {
   const [totalCount, setTotalCount] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchField, setSearchField] = useState('name');
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Search field options
+  const searchFields = [
+    { id: 'name', label: 'Name Surname' },
+    { id: 'email', label: 'Email' },
+    { id: 'mobile', label: 'Mobile' },
+    { id: 'city', label: 'City' },
+    { id: 'company', label: 'Company' },
+    { id: 'tags', label: 'Tags' }
+  ];
 
   useEffect(() => {
     fetchCount();
@@ -157,7 +230,15 @@ const Contacts = () => {
   };
 
   const handleSearch = (e) => {
-    setSearchTerm(e.target.value);
+    const value = e.target.value;
+    setSearchTerm(value);
+  };
+
+  const handleSearchFieldChange = (field) => {
+    setSearchField(field);
+    setDropdownOpen(false);
+    // Clear the search term when changing fields
+    setSearchTerm('');
   };
 
   const handleAddContact = () => {
@@ -197,20 +278,41 @@ const Contacts = () => {
         </HeaderContent>
         
         <SearchContainer>
-          <SearchIcon>
-            <FiSearch />
-          </SearchIcon>
+          <SearchDropdown>
+            <DropdownButton onClick={() => setDropdownOpen(!dropdownOpen)}>
+              {searchFields.find(f => f.id === searchField)?.label}
+              <FiChevronDown />
+            </DropdownButton>
+            <DropdownMenu isOpen={dropdownOpen}>
+              {searchFields.map(field => (
+                <DropdownItem 
+                  key={field.id}
+                  className={field.id === searchField ? 'active' : ''}
+                  onClick={() => handleSearchFieldChange(field.id)}
+                >
+                  {field.label}
+                </DropdownItem>
+              ))}
+            </DropdownMenu>
+          </SearchDropdown>
           <SearchInput 
             type="text" 
-            placeholder="Search contacts..." 
+            placeholder={`Search by ${searchFields.find(f => f.id === searchField)?.label.toLowerCase()}...`} 
             value={searchTerm}
             onChange={handleSearch}
           />
+          <SearchIcon>
+            <FiSearch />
+          </SearchIcon>
         </SearchContainer>
       </PageHeader>
       
       <ContentSection>
-        <RecentContactsList defaultShowAll={true} />
+        <RecentContactsList 
+          defaultShowAll={true} 
+          searchTerm={searchTerm.length >= 3 ? searchTerm : ''}
+          searchField={searchField}
+        />
       </ContentSection>
     </PageContainer>
   );

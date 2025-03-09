@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
 import { 
@@ -22,11 +22,12 @@ const LoadingOverlay = styled.div`
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(255, 255, 255, 0.8);
+  background-color: rgba(255, 255, 255, 0.9);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
+  transition: opacity 0.2s ease-in-out;
   
   p {
     background-color: white;
@@ -95,15 +96,15 @@ const TableBody = styled.tbody`
     vertical-align: middle;
     
     .cell-content {
-      display: flex;
-      align-items: center;
+  display: flex;
+  align-items: center;
       position: relative;
       min-height: 24px;
     }
     
     .actions {
       display: none;
-      position: absolute;
+  position: absolute;
       right: 0;
       top: 50%;
       transform: translateY(-50%);
@@ -112,7 +113,7 @@ const TableBody = styled.tbody`
     }
     
     &:hover .actions {
-      display: flex;
+  display: flex;
       gap: 0.25rem;
     }
     
@@ -236,11 +237,11 @@ const Tag = styled.span`
     justify-content: center;
     margin-left: 0.25rem;
     color: #6b7280;
-    cursor: pointer;
+  cursor: pointer;
     
-    &:hover {
+  &:hover {
       color: #ef4444;
-    }
+  }
   }
 `;
 
@@ -405,20 +406,25 @@ const PageInfo = styled.div`
 `;
 
 // Empty state component
+// eslint-disable-next-line no-unused-vars
 const EmptyState = styled.div`
-  padding: 3rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
   text-align: center;
   
   h3 {
     font-size: 1.125rem;
     font-weight: 500;
-    color: #1f2937;
+    color: #4b5563;
     margin-bottom: 0.5rem;
   }
   
   p {
     color: #6b7280;
-    margin-bottom: 1.5rem;
+  font-size: 0.875rem;
   }
 `;
 
@@ -445,17 +451,17 @@ const CompanyTag = styled.span`
   margin-bottom: 0.25rem;
   
   button {
-    background: none;
-    border: none;
+  background: none;
+  border: none;
     padding: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     margin-left: 0.25rem;
     color: #6b7280;
-    cursor: pointer;
+  cursor: pointer;
     
-    &:hover {
+  &:hover {
       color: #ef4444;
     }
   }
@@ -488,121 +494,114 @@ const getTagColor = (tagName) => {
   return colors[index];
 };
 
+// Create a custom hook for debounced values
+function useDebounce(value, delay) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+    
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [value, delay]);
+  
+  return debouncedValue;
+}
+
 const RecentContactsList = ({ 
   defaultShowAll = false,
-  defaultFilter = 'all'
+  defaultFilter = 'all',
+  searchTerm = '',
+  searchField = 'name'
 }) => {
-  // State variables
-  const [contacts, setContacts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // --------- STATE MANAGEMENT ---------
+  // UI State - clearly separated from data state
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [totalCount, setTotalCount] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
   const [currentPage, setCurrentPage] = useState(0);
   
-  // Editing state
+  // Data State
+  const [contacts, setContacts] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [contactTags, setContactTags] = useState({});
+  const [tagSuggestions, setTagSuggestions] = useState([]);
+  
+  // Editing State
   const [editingContact, setEditingContact] = useState(null);
   const [editingField, setEditingField] = useState(null);
   const [editData, setEditData] = useState({});
   
-  // Modal state (to be implemented later)
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [modalContact, setModalContact] = useState(null);
-  
-  // Tags state
-  const [contactTags, setContactTags] = useState({});
+  // Dropdown States
   const [showTagDropdown, setShowTagDropdown] = useState({});
   const [tagInput, setTagInput] = useState('');
-  const [tagSuggestions, setTagSuggestions] = useState([]);
   
-  // Sorting state
+  // Sorting State
   const [sortField, setSortField] = useState('last_modified');
   const [sortDirection, setSortDirection] = useState('desc');
-  const [secondarySortField] = useState('last_interaction');
-  const [secondarySortDirection] = useState('desc');
   
-  // Fetch tags for contacts
-  const fetchTagsForContacts = useCallback(async (contactIds) => {
-    if (!contactIds || contactIds.length === 0) return;
+  // Implementation detail states 
+  // eslint-disable-next-line no-unused-vars
+  const [showEditModal, setShowEditModal] = useState(false);
+  // eslint-disable-next-line no-unused-vars
+  const [modalContact, setModalContact] = useState(null);
+  
+  // Debounce search term for better performance
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
+  
+  // --------- DATA FETCHING FUNCTIONS ---------
+  
+  // Fetch contacts - core data fetching function
+  const fetchContacts = useCallback(async () => {
+    if (!debouncedSearchTerm && debouncedSearchTerm !== '') {
+      return; // Don't fetch until debounce completes
+    }
     
     try {
-      const { data, error } = await supabase
-        .from('contact_tags')
-        .select('*, tag_id(*)')
-        .in('contact_id', contactIds);
-      
-      if (error) throw error;
-      
-      // Group tags by contact ID
-      const tagsMap = {};
-      
-      data?.forEach(tagRel => {
-        if (!tagsMap[tagRel.contact_id]) {
-          tagsMap[tagRel.contact_id] = [];
-        }
-        
-        tagsMap[tagRel.contact_id].push({
-          id: tagRel.id,
-          name: tagRel.tag_id.name,
-          tag_id: tagRel.tag_id.id
-        });
-      });
-      
-      setContactTags(tagsMap);
-    } catch (err) {
-      console.error('Error fetching tags:', err);
-    }
-  }, []);
-  
-  // Fetch companies for contacts - using the direct company_id relationship
-  const fetchCompaniesForContacts = useCallback(async (contactIds, contactsData) => {
-    if (!contactIds || contactIds.length === 0) return;
-    
-    try {
-      // Update contacts with their companies
-      contactsData.forEach(contact => {
-        // Initialize empty list
-        contact.companiesList = [];
-        
-        // If contact has a company, add it to the list
-        if (contact.companies) {
-          contact.companiesList.push({
-            id: contact.company_id, // This is the relationship ID
-            company_id: contact.companies.id,
-            name: contact.companies.name
-          });
-        }
-      });
-    } catch (err) {
-      console.error('Error processing companies:', err);
-    }
-  }, []);
-  
-  // Fetch contacts
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
+      setIsLoading(true);
       setError(null);
       
-      // Build query with filters
+      // Build basic query
       let query = supabase
-        .from('contacts')
+          .from('contacts')
         .select('*, companies:company_id(*)')
-        // Filter out your own contact
         .not('first_name', 'eq', 'Simone')
         .not('last_name', 'eq', 'Cimminelli')
-        // Filter out contacts with category 'Skip'
         .not('contact_category', 'eq', 'Skip');
       
-      // Apply primary sorting by last_modified
+      // Apply search if term has at least 3 characters
+      if (debouncedSearchTerm && debouncedSearchTerm.length >= 3) {
+        switch (searchField) {
+          case 'name':
+            query = query.or(`first_name.ilike.%${debouncedSearchTerm}%,last_name.ilike.%${debouncedSearchTerm}%`);
+            break;
+          case 'email':
+            query = query.ilike('email', `%${debouncedSearchTerm}%`);
+            break;
+          case 'mobile':
+            query = query.ilike('mobile', `%${debouncedSearchTerm}%`);
+            break;
+          case 'city':
+            query = query.ilike('city', `%${debouncedSearchTerm}%`);
+            break;
+          // Company & tags filtering handled after fetch
+          default:
+            query = query.or(`first_name.ilike.%${debouncedSearchTerm}%,last_name.ilike.%${debouncedSearchTerm}%`);
+        }
+      }
+      
+      // Apply sorting
       query = query.order(sortField, { 
         ascending: sortDirection === 'asc',
         nullsFirst: false
       });
       
-      // Apply secondary sorting by last_interaction
-      query = query.order(secondarySortField, {
-        ascending: secondarySortDirection === 'asc',
+      // Apply secondary sorting
+      query = query.order('last_interaction', {
+        ascending: false,
         nullsFirst: false
       });
       
@@ -612,13 +611,13 @@ const RecentContactsList = ({
       query = query.range(from, to);
       
       // Execute query
-      const { data, error } = await query;
+      const { data: contactsData, error: contactsError } = await query;
       
-      if (error) throw error;
+      if (contactsError) throw contactsError;
       
-      // Fetch total count for pagination with the same filters
-      const { count: totalCount, error: countError } = await supabase
-        .from('contacts')
+      // Get count for pagination
+      const { count, error: countError } = await supabase
+          .from('contacts')
         .select('*', { count: 'exact', head: true })
         .not('first_name', 'eq', 'Simone')
         .not('last_name', 'eq', 'Cimminelli')
@@ -626,32 +625,92 @@ const RecentContactsList = ({
       
       if (countError) throw countError;
       
-      // Fetch company associations for each contact
-      const contactIds = data?.map(contact => contact.id) || [];
-      await fetchCompaniesForContacts(contactIds, data);
-      
-      setContacts(data || []);
-      setTotalCount(totalCount || 0);
-      setTotalPages(Math.ceil((totalCount || 0) / 10));
-      
-      // Fetch tags for each contact
-      await fetchTagsForContacts(contactIds);
-      
+      // If we have contacts, fetch related data
+      if (contactsData && contactsData.length > 0) {
+        const contactIds = contactsData.map(contact => contact.id);
+        
+        // Fetch tags for all contacts
+        const { data: tagsData, error: tagsError } = await supabase
+          .from('contact_tags')
+          .select('*, tag_id(*)')
+          .in('contact_id', contactIds);
+          
+        if (tagsError) throw tagsError;
+        
+        // Process tags data
+        const tagsMap = {};
+        tagsData?.forEach(tagRel => {
+          if (!tagsMap[tagRel.contact_id]) {
+            tagsMap[tagRel.contact_id] = [];
+          }
+          
+          tagsMap[tagRel.contact_id].push({
+            id: tagRel.id,
+            name: tagRel.tag_id.name,
+            tag_id: tagRel.tag_id.id
+          });
+        });
+        
+        setContactTags(tagsMap);
+        
+        // Process companies data
+        contactsData.forEach(contact => {
+          contact.companiesList = [];
+          if (contact.companies) {
+            contact.companiesList.push({
+              id: contact.company_id,
+              name: contact.companies.name
+            });
+          }
+        });
+        
+        // Apply post-filtering for special cases
+        let filteredContacts = [...contactsData];
+        
+        if (debouncedSearchTerm && debouncedSearchTerm.length >= 3) {
+          if (searchField === 'company') {
+            filteredContacts = filteredContacts.filter(contact => {
+              const company = contact.companies;
+              return company && company.name && 
+                company.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
+            });
+          } else if (searchField === 'tags') {
+            filteredContacts = filteredContacts.filter(contact => {
+              const tags = tagsMap[contact.id] || [];
+              return tags.some(tag => 
+                tag.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
+              );
+            });
+          }
+        }
+        
+        // Update data state all at once to avoid multiple renders
+        setContacts(filteredContacts);
+        setTotalCount(count);
+        setTotalPages(Math.ceil(count / 10));
+      } else {
+        // No contacts found
+        setContacts([]);
+        setTotalCount(count || 0);
+        setTotalPages(Math.ceil((count || 0) / 10));
+      }
     } catch (err) {
       console.error('Error fetching contacts:', err);
       setError(err.message);
+      setContacts([]);
     } finally {
-      setLoading(false);
+      // Always clear loading when done, regardless of success/failure
+      setIsLoading(false);
     }
-  }, [currentPage, sortField, sortDirection, secondarySortField, secondarySortDirection, fetchTagsForContacts, fetchCompaniesForContacts]);
+  }, [debouncedSearchTerm, searchField, sortField, sortDirection, currentPage]);
   
-  // Fetch all available tags for suggestions
-  const fetchTagSuggestions = useCallback(async (searchTerm = '') => {
+  // Fetch tag suggestions
+  const fetchTagSuggestions = useCallback(async (searchVal = '') => {
     try {
-      let query = supabase.from('tags').select('*');
+      let query = supabase.from('tags').select('*').order('name');
       
-      if (searchTerm) {
-        query = query.ilike('name', `%${searchTerm}%`);
+      if (searchVal) {
+        query = query.ilike('name', `%${searchVal}%`);
       }
       
       const { data, error } = await query.limit(10);
@@ -663,14 +722,23 @@ const RecentContactsList = ({
       console.error('Error fetching tag suggestions:', err);
     }
   }, []);
+
+  // --------- EFFECT HOOKS ---------
   
-  // Initial fetch
+  // Initial data load
   useEffect(() => {
-    fetchData();
+    fetchContacts();
     fetchTagSuggestions();
-  }, [fetchData, fetchTagSuggestions]);
+  }, [fetchContacts, fetchTagSuggestions]);
   
-  // Format date for display
+  // Reset to first page when search changes
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [debouncedSearchTerm, searchField]);
+  
+  // --------- HANDLERS ---------
+  
+  // Format date
   const formatDate = (dateString) => {
     if (!dateString) return 'Never';
     
@@ -678,15 +746,13 @@ const RecentContactsList = ({
       const date = parseISO(dateString);
       if (!isValid(date)) return 'Invalid date';
       
-      // Always format as DD-MM-YYYY
       return format(date, 'dd-MM-yyyy');
     } catch (err) {
-      console.error('Error formatting date:', err);
       return 'Invalid date';
     }
   };
   
-  // Check if date is recent (within last 7 days)
+  // Check if date is recent
   const isRecentDate = (dateString) => {
     if (!dateString) return false;
     
@@ -703,19 +769,17 @@ const RecentContactsList = ({
     }
   };
   
-  // Handle sort change
+  // Handle sorting change
   const handleSort = (field) => {
     if (field === sortField) {
-      // Toggle direction if clicking the same field
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      // New field, set default direction
+      } else {
       setSortField(field);
-      setSortDirection('asc');
+      setSortDirection('desc');
     }
   };
   
-  // Handle edit start
+  // Handle edit operations
   const handleEditStart = (contact, field) => {
     setEditingContact(contact);
     setEditingField(field);
@@ -725,7 +789,6 @@ const RecentContactsList = ({
     });
   };
   
-  // Handle field change
   const handleFieldChange = (e) => {
     const { name, value } = e.target;
     setEditData(prev => ({
@@ -734,12 +797,11 @@ const RecentContactsList = ({
     }));
   };
   
-  // Handle save
   const handleSave = async () => {
     if (!editingContact || !editingField) return;
     
     try {
-      setLoading(true);
+      setIsLoading(true);
       
       const { error } = await supabase
         .from('contacts')
@@ -762,18 +824,16 @@ const RecentContactsList = ({
       console.error('Error saving contact:', err);
       setError(err.message);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
   
-  // Handle cancel edit
   const handleCancel = () => {
     setEditingContact(null);
     setEditingField(null);
     setEditData({});
   };
   
-  // Handle key events for editing
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
       handleSave();
@@ -782,52 +842,30 @@ const RecentContactsList = ({
     }
   };
   
-  // Handle star rating click
-  const handleStarClick = async (contactId, score) => {
-    try {
-      // Update in Supabase
-      await supabase
-        .from('contacts')
-        .update({ score })
-        .eq('id', contactId);
-      
-      // Update local state
-      setContacts(contacts.map(c => 
-        c.id === contactId ? { ...c, score } : c
-      ));
-    } catch (error) {
-      console.error('Error updating contact score:', error);
-      setError(error.message);
-    }
-  };
-  
-  // Handle tag dropdown toggle
+  // Tag operations
   const handleTagDropdownToggle = (contactId) => {
     setShowTagDropdown(prev => ({
-      ...prev,
+        ...prev,
       [contactId]: !prev[contactId]
     }));
     
-    // Fetch tag suggestions when opening dropdown
     if (!showTagDropdown[contactId]) {
       fetchTagSuggestions();
     }
   };
   
-  // Handle tag input change
   const handleTagInputChange = (e) => {
     setTagInput(e.target.value);
     fetchTagSuggestions(e.target.value);
   };
   
-  // Handle tag selection
   const handleTagSelect = async (contactId, tagId) => {
     try {
-      // Check if tag is already assigned to contact
+      // Check if already assigned
       const existingTags = contactTags[contactId] || [];
       if (existingTags.some(tag => tag.tag_id === tagId)) {
-        return;
-      }
+      return;
+    }
       
       // Add tag to contact
       const { error } = await supabase
@@ -836,10 +874,10 @@ const RecentContactsList = ({
       
       if (error) throw error;
       
-      // Refresh tags for this contact
-      await fetchTagsForContacts([contactId]);
+      // Refresh data
+      await fetchContacts();
       
-      // Reset input and close dropdown
+      // Reset UI state
       setTagInput('');
       setShowTagDropdown(prev => ({
         ...prev,
@@ -851,7 +889,6 @@ const RecentContactsList = ({
     }
   };
   
-  // Handle tag removal
   const handleRemoveTag = async (contactId, tagId) => {
     try {
       const { error } = await supabase
@@ -876,15 +913,14 @@ const RecentContactsList = ({
     }
   };
   
-  // Handle create new tag
   const handleCreateTag = async (contactId, tagName) => {
     try {
       // First create the tag
       const { data: newTag, error: createError } = await supabase
         .from('tags')
         .insert({ name: tagName })
-        .select()
-        .single();
+            .select()
+            .single();
       
       if (createError) throw createError;
       
@@ -896,13 +932,13 @@ const RecentContactsList = ({
     }
   };
   
-  // Handle modal open
+  // Modal operations
   const handleOpenModal = (contact) => {
     setModalContact(contact);
     setShowEditModal(true);
   };
   
-  // Handle skip contact
+  // Skip contact
   const handleSkipContact = async (contactId) => {
     try {
       const { error } = await supabase
@@ -920,7 +956,7 @@ const RecentContactsList = ({
     }
   };
   
-  // Handle company removal
+  // Remove company
   const handleRemoveCompany = async (contactId, companyId) => {
     try {
       const { error } = await supabase
@@ -948,26 +984,41 @@ const RecentContactsList = ({
   };
   
   // Pagination handlers
-  const goToFirstPage = () => {
-    setCurrentPage(0);
+  const goToFirstPage = () => setCurrentPage(0);
+  const goToPrevPage = () => setCurrentPage(prev => Math.max(0, prev - 1));
+  const goToNextPage = () => setCurrentPage(prev => Math.min(totalPages - 1, prev + 1));
+  const goToLastPage = () => setCurrentPage(totalPages - 1);
+  
+  // Debug info display
+  const renderDebug = () => {
+    if (process.env.NODE_ENV !== 'development') return null;
+    
+    return (
+      <div style={{
+        margin: '10px 0',
+        padding: '10px',
+        backgroundColor: '#f0f9ff',
+        border: '1px solid #bae6fd',
+        borderRadius: '4px',
+        fontFamily: 'monospace',
+        fontSize: '12px'
+      }}>
+        <div><strong>Debug:</strong></div>
+        <div>Search: {searchField}="{searchTerm}" / Debounced: "{debouncedSearchTerm}"</div>
+        <div>Loading: {isLoading ? 'true' : 'false'}</div>
+        <div>Error: {error || 'None'}</div>
+        <div>Page: {currentPage + 1} of {totalPages}</div>
+        <div>Contacts: {contacts.length} shown / {totalCount} total</div>
+      </div>
+    );
   };
   
-  const goToPrevPage = () => {
-    setCurrentPage(prev => Math.max(0, prev - 1));
-  };
-  
-  const goToNextPage = () => {
-    setCurrentPage(prev => Math.min(totalPages - 1, prev + 1));
-  };
-  
-  const goToLastPage = () => {
-    setCurrentPage(totalPages - 1);
-  };
-  
-  // Render the table
+  // --------- RENDER ---------
   return (
     <Container>
-      {loading && (
+      {process.env.NODE_ENV === 'development' && renderDebug()}
+      
+      {isLoading && (
         <LoadingOverlay>
           <p>Loading contacts...</p>
         </LoadingOverlay>
@@ -986,490 +1037,453 @@ const RecentContactsList = ({
         </div>
       )}
       
-      {!loading && contacts.length === 0 ? (
-        <EmptyState>
-          <h3>No contacts found</h3>
-          <p>Try adjusting your filters or adding new contacts.</p>
-        </EmptyState>
-      ) : (
-        <>
           <ContactTable>
             <TableHead>
               <tr>
-                <th 
-                  className="sortable" 
-                  onClick={() => handleSort('last_name')}
-                >
-                  Name
-                  {sortField === 'last_name' && (
-                    <span className="sort-icon">
-                      {sortDirection === 'asc' ? <FiChevronUp /> : <FiChevronDown />}
-                    </span>
-                  )}
-                </th>
-                <th 
-                  className="sortable" 
-                  onClick={() => handleSort('companies')}
-                >
-                  Company
-                  {sortField === 'companies' && (
-                    <span className="sort-icon">
-                      {sortDirection === 'asc' ? <FiChevronUp /> : <FiChevronDown />}
-                    </span>
-                  )}
-                </th>
-                <th>Tags</th>
-                <th 
-                  className="sortable" 
-                  onClick={() => handleSort('last_interaction')}
-                >
-                  Last Interaction
-                  {sortField === 'last_interaction' && (
-                    <span className="sort-icon">
-                      {sortDirection === 'asc' ? <FiChevronUp /> : <FiChevronDown />}
-                    </span>
-                  )}
-                  {sortField !== 'last_interaction' && sortField === 'last_modified' && (
-                    <span className="sort-icon secondary" style={{ opacity: 0.5, marginLeft: '4px', fontSize: '0.7rem' }}>
-                      2°
-                    </span>
-                  )}
-                </th>
-                <th 
-                  className="sortable" 
-                  onClick={() => handleSort('contact_category')}
-                >
-                  Category
-                  {sortField === 'contact_category' && (
-                    <span className="sort-icon">
-                      {sortDirection === 'asc' ? <FiChevronUp /> : <FiChevronDown />}
-                    </span>
-                  )}
-                </th>
-                <th 
-                  className="sortable" 
-                  onClick={() => handleSort('keep_in_touch_frequency')}
-                >
-                  Keep in Touch
-                  {sortField === 'keep_in_touch_frequency' && (
-                    <span className="sort-icon">
-                      {sortDirection === 'asc' ? <FiChevronUp /> : <FiChevronDown />}
-                    </span>
-                  )}
-                </th>
-                <th 
-                  className="sortable" 
-                  onClick={() => handleSort('score')}
-                >
-                  Score
-                  {sortField === 'score' && (
-                    <span className="sort-icon">
-                      {sortDirection === 'asc' ? <FiChevronUp /> : <FiChevronDown />}
-                    </span>
-                  )}
-                </th>
+            <th 
+              className="sortable" 
+              onClick={() => handleSort('first_name')}
+            >
+              Name
+              {sortField === 'first_name' && (
+                <span className="sort-icon">
+                  {sortDirection === 'asc' ? <FiChevronUp /> : <FiChevronDown />}
+                </span>
+              )}
+            </th>
+                <th>Company</th>
+            <th>Tags</th>
+            <th 
+              className="sortable" 
+              onClick={() => handleSort('last_interaction')}
+            >
+              Last Interaction
+              {sortField === 'last_interaction' && (
+                <span className="sort-icon">
+                  {sortDirection === 'asc' ? <FiChevronUp /> : <FiChevronDown />}
+                </span>
+              )}
+              {sortField !== 'last_interaction' && (
+                <span style={{ fontSize: '0.75em', marginLeft: '2px' }}>2°</span>
+              )}
+            </th>
+            <th
+              className="sortable"
+              onClick={() => handleSort('contact_category')}
+            >
+              Category
+              {sortField === 'contact_category' && (
+                <span className="sort-icon">
+                  {sortDirection === 'asc' ? <FiChevronUp /> : <FiChevronDown />}
+                </span>
+              )}
+            </th>
+            <th
+              className="sortable"
+              onClick={() => handleSort('keep_in_touch')}
+            >
+              Keep in Touch
+              {sortField === 'keep_in_touch' && (
+                <span className="sort-icon">
+                  {sortDirection === 'asc' ? <FiChevronUp /> : <FiChevronDown />}
+                </span>
+              )}
+            </th>
                 <th>Actions</th>
               </tr>
             </TableHead>
             <TableBody>
-              {contacts.map(contact => (
+          {!isLoading && contacts.length === 0 ? (
+            <tr>
+              <td colSpan="7" style={{ textAlign: 'center', padding: '2rem' }}>
+                {debouncedSearchTerm && debouncedSearchTerm.length >= 3
+                  ? `No contacts found matching "${debouncedSearchTerm}" in ${searchField}`
+                  : 'No contacts found'
+                }
+              </td>
+            </tr>
+          ) : (
+            contacts.map(contact => (
                 <tr key={contact.id}>
-                  {/* NAME COLUMN */}
-                  <td>
-                    <div className="cell-content">
-                      {editingContact?.id === contact.id && editingField === 'name' ? (
-                        <div style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
-                          <input
-                            name="first_name"
-                            value={editData.first_name || ''}
-                            onChange={handleFieldChange}
-                            onKeyDown={handleKeyDown}
-                            placeholder="First name"
-                            autoFocus
-                          />
-                          <input
-                            name="last_name"
-                            value={editData.last_name || ''}
-                            onChange={handleFieldChange}
-                            onKeyDown={handleKeyDown}
-                            placeholder="Last name"
-                          />
-                          <ActionButton onClick={handleSave}>
-                            <FiCheck />
-                          </ActionButton>
-                          <ActionButton onClick={handleCancel}>
-                            <FiX />
-                          </ActionButton>
-                        </div>
-                      ) : (
-                        <>
-                          {contact.first_name || contact.last_name ? (
-                            <TruncatedText 
-                              maxWidth="180px"
-                              style={{ fontWeight: '500', cursor: 'pointer' }}
-                              onClick={() => handleEditStart(contact, 'name')}
-                            >
-                              {`${contact.first_name || ''} ${contact.last_name || ''}`}
-                            </TruncatedText>
-                          ) : (
-                            <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No name</span>
-                          )}
-                          
-                          <div className="actions">
-                            <Tooltip>
-                              <ActionButton 
-                                className="edit" 
-                                onClick={() => handleOpenModal(contact)}
-                              >
-                                <FiEdit2 size={16} />
-                              </ActionButton>
-                              <span className="tooltip-text">Edit Contact</span>
-                            </Tooltip>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                  
-                  {/* COMPANY COLUMN */}
-                  <td>
-                    <div className="cell-content">
-                      <CompaniesContainer>
-                        {contact.companiesList.length > 0 ? (
-                          contact.companiesList.map(company => (
-                            <CompanyTag key={company.id}>
-                              <TruncatedText maxWidth="120px">
-                                {company.name}
-                              </TruncatedText>
-                              <button onClick={() => handleRemoveCompany(contact.id, company.company_id)}>
-                                <FiX size={12} />
-                              </button>
-                            </CompanyTag>
-                          ))
-                        ) : (
-                          <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No company</span>
-                        )}
-                        
-                        <Tooltip>
-                          <AddTagButton onClick={() => handleOpenModal(contact)}>
-                            <FiPlus size={12} />
-                          </AddTagButton>
-                          <span className="tooltip-text">Associate Company</span>
-                        </Tooltip>
-                      </CompaniesContainer>
-                    </div>
-                  </td>
-                  
-                  {/* TAGS COLUMN */}
-                  <td>
-                    <div className="cell-content">
-                      <TagsContainer>
-                        {contactTags[contact.id]?.length > 0 ? (
-                          contactTags[contact.id].map(tag => (
-                            <Tag 
-                              key={tag.id} 
-                              color={getTagColor(tag.name).bg} 
-                              textColor={getTagColor(tag.name).text}
-                            >
-                              {tag.name}
-                              <button onClick={() => handleRemoveTag(contact.id, tag.tag_id)}>
-                                <FiX size={12} />
-                              </button>
-                            </Tag>
-                          ))
-                        ) : (
-                          <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No tags</span>
-                        )}
-                        
-                        <Tooltip>
-                          <AddTagButton onClick={() => handleTagDropdownToggle(contact.id)}>
-                            <FiPlus size={12} />
-                          </AddTagButton>
-                          <span className="tooltip-text">Add Tag</span>
-                        </Tooltip>
-                      </TagsContainer>
-                      
-                      {/* Tag dropdown (to be implemented) */}
-                      {showTagDropdown[contact.id] && (
-                        <div style={{
-                          position: 'absolute',
-                          top: '100%',
-                          left: 0,
-                          zIndex: 20,
-                          background: 'white',
-                          border: '1px solid #e5e7eb',
-                          borderRadius: '0.375rem',
-                          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                          width: '200px',
-                          maxHeight: '200px',
-                          overflowY: 'auto'
-                        }}>
-                          <div style={{ padding: '0.5rem' }}>
-                            <input
-                              type="text"
-                              placeholder="Search or create tag..."
-                              value={tagInput}
-                              onChange={handleTagInputChange}
-                              style={{
-                                width: '100%',
-                                padding: '0.375rem 0.5rem',
-                                border: '1px solid #d1d5db',
-                                borderRadius: '0.25rem',
-                                fontSize: '0.875rem'
-                              }}
-                            />
-                          </div>
-                          
-                          <div>
-                            {tagSuggestions.length > 0 ? (
-                              tagSuggestions.map(tag => (
-                                <div
-                                  key={tag.id}
-                                  onClick={() => handleTagSelect(contact.id, tag.id)}
-                                  style={{
-                                    padding: '0.5rem',
-                                    cursor: 'pointer',
-                                    fontSize: '0.875rem',
-                                    borderTop: '1px solid #f3f4f6'
-                                  }}
-                                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
-                                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                                >
-                                  {tag.name}
-                                </div>
-                              ))
-                            ) : (
-                              tagInput ? (
-                                <div
-                                  onClick={() => handleCreateTag(contact.id, tagInput)}
-                                  style={{
-                                    padding: '0.5rem',
-                                    cursor: 'pointer',
-                                    fontSize: '0.875rem',
-                                    borderTop: '1px solid #f3f4f6'
-                                  }}
-                                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
-                                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                                >
-                                  Create "{tagInput}"
-                                </div>
-                              ) : (
-                                <div style={{ padding: '0.5rem', fontSize: '0.875rem', color: '#6b7280' }}>
-                                  No tags found
-                                </div>
-                              )
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  
-                  {/* LAST INTERACTION COLUMN */}
-                  <td>
-                    <LastInteractionDate isRecent={isRecentDate(contact.last_interaction)}>
-                      {formatDate(contact.last_interaction)}
-                    </LastInteractionDate>
-                  </td>
-                  
-                  {/* CATEGORY COLUMN */}
-                  <td>
-                    <div className="cell-content">
-                      {editingContact?.id === contact.id && editingField === 'contact_category' ? (
-                        <div style={{ display: 'flex', width: '100%' }}>
-                          <select
-                            name="contact_category"
-                            value={editData.contact_category || ''}
-                            onChange={handleFieldChange}
-                            onKeyDown={handleKeyDown}
-                            autoFocus
-                            style={{ flex: 1 }}
-                          >
-                            <option value="">Select category</option>
-                            <option value="Team">Team</option>
-                            <option value="Manager">Manager</option>
-                            <option value="Advisor">Advisor</option>
-                            <option value="Professional Investor">Professional Investor</option>
-                          </select>
-                          <ActionButton onClick={handleSave}>
-                            <FiCheck />
-                          </ActionButton>
-                          <ActionButton onClick={handleCancel}>
-                            <FiX />
-                          </ActionButton>
-                        </div>
-                      ) : (
-                        <>
-                          {contact.contact_category ? (
-                            <CategoryBadge category={contact.contact_category}>
-                              {contact.contact_category}
-                            </CategoryBadge>
-                          ) : (
-                            <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Not set</span>
-                          )}
-                          
-                          <div className="actions">
-                            <ActionButton className="edit" onClick={() => handleEditStart(contact, 'contact_category')}>
-                              <FiEdit2 size={16} />
-                            </ActionButton>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                  
-                  {/* KEEP IN TOUCH COLUMN */}
-                  <td>
-                    <div className="cell-content">
-                      {editingContact?.id === contact.id && editingField === 'keep_in_touch_frequency' ? (
-                        <div style={{ display: 'flex', width: '100%' }}>
-                          <select
-                            name="keep_in_touch_frequency"
-                            value={editData.keep_in_touch_frequency || ''}
-                            onChange={handleFieldChange}
-                            onKeyDown={handleKeyDown}
-                            autoFocus
-                            style={{ flex: 1 }}
-                          >
-                            <option value="">Select frequency</option>
-                            <option value="Weekly">Weekly</option>
-                            <option value="Monthly">Monthly</option>
-                            <option value="Quarterly">Quarterly</option>
-                            <option value="Do not keep">Do not keep</option>
-                          </select>
-                          <ActionButton onClick={handleSave}>
-                            <FiCheck />
-                          </ActionButton>
-                          <ActionButton onClick={handleCancel}>
-                            <FiX />
-                          </ActionButton>
-                        </div>
-                      ) : (
-                        <>
-                          {contact.keep_in_touch_frequency ? (
-                            <KeepInTouchBadge frequency={contact.keep_in_touch_frequency}>
-                              {contact.keep_in_touch_frequency}
-                            </KeepInTouchBadge>
-                          ) : (
-                            <span style={{ color: '#ef4444', fontStyle: 'italic', fontWeight: '500' }}>Missing</span>
-                          )}
-                          
-                          <div className="actions">
-                            <ActionButton className="edit" onClick={() => handleEditStart(contact, 'keep_in_touch_frequency')}>
-                              <FiEdit2 size={16} />
-                            </ActionButton>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                  
-                  {/* SCORE COLUMN */}
-                  <td>
-                    <StarContainer>
-                      {[1, 2, 3, 4, 5].map(star => (
-                        <Star
-                          key={star}
-                          filled={star <= (contact.score || 0)}
-                          onClick={() => handleStarClick(contact.id, star)}
-                        >
-                          {star <= (contact.score || 0) ? <FaStar /> : <FiStar />}
-                        </Star>
-                      ))}
-                    </StarContainer>
-                  </td>
-                  
-                  {/* ACTIONS COLUMN */}
-                  <td>
-                    <ActionsContainer>
-                      <Tooltip>
-                        <ActionButton 
-                          className="whatsapp" 
-                          onClick={() => contact.mobile ? window.open(`https://wa.me/${contact.mobile.replace(/\D/g, '')}`, '_blank') : null}
-                          style={{ opacity: contact.mobile ? 1 : 0.5 }}
-                        >
-                          <FaWhatsapp />
+                {/* NAME COLUMN */}
+                <td>
+                  <div className="cell-content">
+                    {editingContact?.id === contact.id && editingField === 'name' ? (
+                      <div style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
+                        <input
+                          name="first_name"
+                          value={editData.first_name || ''}
+                          onChange={handleFieldChange}
+                          onKeyDown={handleKeyDown}
+                          placeholder="First name"
+                          autoFocus
+                        />
+                        <input
+                          name="last_name"
+                          value={editData.last_name || ''}
+                          onChange={handleFieldChange}
+                          onKeyDown={handleKeyDown}
+                          placeholder="Last name"
+                        />
+                        <ActionButton onClick={handleSave}>
+                          <FiCheck />
                         </ActionButton>
-                        <span className="tooltip-text">
-                          {contact.mobile ? 'WhatsApp' : 'No mobile number'}
-                        </span>
-                      </Tooltip>
-                      
-                      <Tooltip>
-                        <ActionButton 
-                          className="email" 
-                          onClick={() => contact.email ? window.open(`mailto:${contact.email}`, '_blank') : null}
-                          style={{ opacity: contact.email ? 1 : 0.5 }}
-                        >
-                          <FiMail />
-                        </ActionButton>
-                        <span className="tooltip-text">
-                          {contact.email ? 'Email' : 'No email address'}
-                        </span>
-                      </Tooltip>
-                      
-                      <Tooltip>
-                        <ActionButton 
-                          className="linkedin" 
-                          onClick={() => contact.linkedin ? window.open(contact.linkedin, '_blank') : null}
-                          style={{ opacity: contact.linkedin ? 1 : 0.5 }}
-                        >
-                          <FaLinkedin />
-                        </ActionButton>
-                        <span className="tooltip-text">
-                          {contact.linkedin ? 'LinkedIn' : 'No LinkedIn profile'}
-                        </span>
-                      </Tooltip>
-                      
-                      <Tooltip>
-                        <ActionButton className="hubspot">
-                          <FaHubspot />
-                        </ActionButton>
-                        <span className="tooltip-text">View in HubSpot</span>
-                      </Tooltip>
-                      
-                      <Tooltip>
-                        <ActionButton className="delete" onClick={() => handleSkipContact(contact.id)}>
+                        <ActionButton onClick={handleCancel}>
                           <FiX />
                         </ActionButton>
-                        <span className="tooltip-text">Skip Contact</span>
-                      </Tooltip>
+                      </div>
+                    ) : (
+                      <>
+                        {contact.first_name || contact.last_name ? (
+                          <TruncatedText 
+                            maxWidth="180px"
+                            style={{ fontWeight: '500', cursor: 'pointer' }}
+                            onClick={() => handleEditStart(contact, 'name')}
+                        >
+                          {`${contact.first_name || ''} ${contact.last_name || ''}`}
+                          </TruncatedText>
+                        ) : (
+                          <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No name</span>
+                        )}
+                        
+                        <div className="actions">
+                          <Tooltip>
+                            <ActionButton 
+                              className="edit" 
+                              onClick={() => handleOpenModal(contact)}
+                            >
+                              <FiEdit2 size={16} />
+                            </ActionButton>
+                            <span className="tooltip-text">Edit Contact</span>
+                          </Tooltip>
+  </div>
+                      </>
+    )}
+  </div>
+                  </td>
+                
+                {/* COMPANY COLUMN */}
+                <td>
+                  <div className="cell-content">
+                    <CompaniesContainer>
+                      {contact.companiesList.length > 0 ? (
+                        contact.companiesList.map(company => (
+                          <CompanyTag key={company.id}>
+                            <TruncatedText maxWidth="120px">
+                              {company.name}
+                            </TruncatedText>
+                            <button onClick={() => handleRemoveCompany(contact.id, company.company_id)}>
+                              <FiX size={12} />
+                            </button>
+                          </CompanyTag>
+                        ))
+                      ) : (
+                        <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No company</span>
+                      )}
                       
                       <Tooltip>
-                        <ActionButton className="edit" onClick={() => handleOpenModal(contact)}>
-                          <FiExternalLink />
-                        </ActionButton>
-                        <span className="tooltip-text">Check Duplicates</span>
+                        <AddTagButton onClick={() => handleOpenModal(contact)}>
+                          <FiPlus size={12} />
+                        </AddTagButton>
+                        <span className="tooltip-text">Associate Company</span>
                       </Tooltip>
-                    </ActionsContainer>
+                    </CompaniesContainer>
+                  </div>
                   </td>
-                </tr>
-              ))}
-            </TableBody>
-          </ContactTable>
-          
-          {totalPages > 1 && (
-            <PaginationControls>
-              <PageButton onClick={goToFirstPage} disabled={currentPage === 0}>
-                First
-              </PageButton>
-              <PageButton onClick={goToPrevPage} disabled={currentPage === 0}>
-                Previous
-              </PageButton>
-              
-              <PageInfo>
-                Page {currentPage + 1} of {totalPages}
-              </PageInfo>
-              
-              <PageButton onClick={goToNextPage} disabled={currentPage === totalPages - 1}>
-                Next
-              </PageButton>
-              <PageButton onClick={goToLastPage} disabled={currentPage === totalPages - 1}>
-                Last
-              </PageButton>
-            </PaginationControls>
+                
+                {/* TAGS COLUMN */}
+                <td>
+                  <div className="cell-content">
+                    <TagsContainer>
+                      {contactTags[contact.id]?.length > 0 ? (
+                        contactTags[contact.id].map(tag => (
+                          <Tag 
+                            key={tag.id} 
+                            color={getTagColor(tag.name).bg} 
+                            textColor={getTagColor(tag.name).text}
+                          >
+                            {tag.name}
+                            <button onClick={() => handleRemoveTag(contact.id, tag.tag_id)}>
+                              <FiX size={12} />
+                            </button>
+                          </Tag>
+                        ))
+                      ) : (
+                        <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No tags</span>
+                      )}
+                      
+                      <Tooltip>
+                        <AddTagButton onClick={() => handleTagDropdownToggle(contact.id)}>
+                          <FiPlus size={12} />
+                        </AddTagButton>
+                        <span className="tooltip-text">Add Tag</span>
+                      </Tooltip>
+                    </TagsContainer>
+                    
+                    {/* Tag dropdown (to be implemented) */}
+                    {showTagDropdown[contact.id] && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        zIndex: 20,
+                        background: 'white',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '0.375rem',
+                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                        width: '200px',
+                        maxHeight: '200px',
+                        overflowY: 'auto'
+                      }}>
+                        <div style={{ padding: '0.5rem' }}>
+                          <input
+                            type="text"
+                            placeholder="Search or create tag..."
+                            value={tagInput}
+                            onChange={handleTagInputChange}
+                            style={{
+                              width: '100%',
+                              padding: '0.375rem 0.5rem',
+                              border: '1px solid #d1d5db',
+                              borderRadius: '0.25rem',
+                              fontSize: '0.875rem'
+                            }}
+                          />
+                        </div>
+                        
+                        <div>
+                          {tagSuggestions.length > 0 ? (
+                            tagSuggestions.map(tag => (
+                              <div
+                                key={tag.id}
+                                onClick={() => handleTagSelect(contact.id, tag.id)}
+                                style={{
+                                  padding: '0.5rem',
+                                  cursor: 'pointer',
+                                  fontSize: '0.875rem',
+                                  borderTop: '1px solid #f3f4f6'
+                                }}
+                                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
+                                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              >
+                                {tag.name}
+                              </div>
+                            ))
+                          ) : (
+                            tagInput ? (
+                              <div
+                                onClick={() => handleCreateTag(contact.id, tagInput)}
+                                style={{
+                                  padding: '0.5rem',
+                                  cursor: 'pointer',
+                                  fontSize: '0.875rem',
+                                  borderTop: '1px solid #f3f4f6'
+                                }}
+                                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
+                                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              >
+                                Create "{tagInput}"
+                              </div>
+                            ) : (
+                              <div style={{ padding: '0.5rem', fontSize: '0.875rem', color: '#6b7280' }}>
+                                No tags found
+                              </div>
+                            )
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  </td>
+                
+                {/* LAST INTERACTION COLUMN */}
+                <td>
+                  <LastInteractionDate isRecent={isRecentDate(contact.last_interaction)}>
+                    {formatDate(contact.last_interaction)}
+                  </LastInteractionDate>
+                  </td>
+                
+                {/* CATEGORY COLUMN */}
+                <td>
+                  <div className="cell-content">
+                    {editingContact?.id === contact.id && editingField === 'contact_category' ? (
+                      <div style={{ display: 'flex', width: '100%' }}>
+                        <select
+                          name="contact_category"
+                          value={editData.contact_category || ''}
+                          onChange={handleFieldChange}
+                          onKeyDown={handleKeyDown}
+                          autoFocus
+                          style={{ flex: 1 }}
+                        >
+                          <option value="">Select category</option>
+                          <option value="Team">Team</option>
+                          <option value="Manager">Manager</option>
+                          <option value="Advisor">Advisor</option>
+                          <option value="Professional Investor">Professional Investor</option>
+                        </select>
+                        <ActionButton onClick={handleSave}>
+                          <FiCheck />
+                        </ActionButton>
+                        <ActionButton onClick={handleCancel}>
+                          <FiX />
+                        </ActionButton>
+                      </div>
+                    ) : (
+                      <>
+                        {contact.contact_category ? (
+                          <CategoryBadge category={contact.contact_category}>
+                            {contact.contact_category}
+                          </CategoryBadge>
+                        ) : (
+                          <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Not set</span>
+                        )}
+                        
+                        <div className="actions">
+                          <ActionButton className="edit" onClick={() => handleEditStart(contact, 'contact_category')}>
+                            <FiEdit2 size={16} />
+                          </ActionButton>
+            </div>
+                      </>
+                    )}
+            </div>
+                </td>
+                
+                {/* KEEP IN TOUCH COLUMN */}
+                <td>
+                  <div className="cell-content">
+                    {editingContact?.id === contact.id && editingField === 'keep_in_touch' ? (
+                      <div style={{ display: 'flex', width: '100%' }}>
+                        <select
+                          name="keep_in_touch"
+                          value={editData.keep_in_touch || ''}
+                          onChange={handleFieldChange}
+                          onKeyDown={handleKeyDown}
+                          autoFocus
+                          style={{ flex: 1 }}
+                        >
+                          <option value="">Select frequency</option>
+                          <option value="Weekly">Weekly</option>
+                          <option value="Monthly">Monthly</option>
+                          <option value="Quarterly">Quarterly</option>
+                          <option value="Do not keep">Do not keep</option>
+                        </select>
+                        <ActionButton onClick={handleSave}>
+                          <FiCheck />
+                        </ActionButton>
+                        <ActionButton onClick={handleCancel}>
+                          <FiX />
+                        </ActionButton>
+        </div>
+                    ) : (
+                      <>
+                        {contact.keep_in_touch ? (
+                          <KeepInTouchBadge frequency={contact.keep_in_touch}>
+                            {contact.keep_in_touch}
+                          </KeepInTouchBadge>
+                        ) : (
+                          <span style={{ color: '#ef4444', fontStyle: 'italic', fontWeight: '500' }}>Missing</span>
+                        )}
+                        
+                        <div className="actions">
+                          <ActionButton className="edit" onClick={() => handleEditStart(contact, 'keep_in_touch')}>
+                            <FiEdit2 size={16} />
+                          </ActionButton>
+        </div>
+                      </>
+                    )}
+                  </div>
+                </td>
+                
+                {/* ACTIONS COLUMN */}
+                <td>
+                  <ActionsContainer>
+                    <Tooltip>
+                      <ActionButton 
+                        className="whatsapp" 
+                        onClick={() => contact.mobile ? window.open(`https://wa.me/${contact.mobile.replace(/\D/g, '')}`, '_blank') : null}
+                        style={{ opacity: contact.mobile ? 1 : 0.5 }}
+                      >
+                        <FaWhatsapp />
+                      </ActionButton>
+                      <span className="tooltip-text">
+                        {contact.mobile ? 'WhatsApp' : 'No mobile number'}
+                      </span>
+                    </Tooltip>
+                    
+                    <Tooltip>
+                      <ActionButton 
+                        className="email" 
+                        onClick={() => contact.email ? window.open(`mailto:${contact.email}`, '_blank') : null}
+                        style={{ opacity: contact.email ? 1 : 0.5 }}
+                      >
+                        <FiMail />
+                      </ActionButton>
+                      <span className="tooltip-text">
+                        {contact.email ? 'Email' : 'No email address'}
+                      </span>
+                    </Tooltip>
+                    
+                    <Tooltip>
+                      <ActionButton 
+                        className="linkedin" 
+                        onClick={() => contact.linkedin ? window.open(contact.linkedin, '_blank') : null}
+                        style={{ opacity: contact.linkedin ? 1 : 0.5 }}
+                      >
+                        <FaLinkedin />
+                      </ActionButton>
+                      <span className="tooltip-text">
+                        {contact.linkedin ? 'LinkedIn' : 'No LinkedIn profile'}
+                      </span>
+                    </Tooltip>
+                    
+                    <Tooltip>
+                      <ActionButton className="hubspot">
+                        <FaHubspot />
+                      </ActionButton>
+                      <span className="tooltip-text">View in HubSpot</span>
+                    </Tooltip>
+                    
+                    <Tooltip>
+                      <ActionButton className="delete" onClick={() => handleSkipContact(contact.id)}>
+                        <FiX />
+                      </ActionButton>
+                      <span className="tooltip-text">Skip Contact</span>
+                    </Tooltip>
+                    
+                    <Tooltip>
+                      <ActionButton className="edit" onClick={() => handleOpenModal(contact)}>
+                        <FiExternalLink />
+                      </ActionButton>
+                      <span className="tooltip-text">Check Duplicates</span>
+                    </Tooltip>
+                  </ActionsContainer>
+                </td>
+              </tr>
+            ))
           )}
-        </>
+        </TableBody>
+      </ContactTable>
+      
+      {/* Only show pagination when appropriate */}
+      {!isLoading && (contacts.length > 0 || !debouncedSearchTerm) && totalPages > 1 && (
+        <PaginationControls>
+          <PageButton onClick={goToFirstPage} disabled={currentPage === 0 || isLoading}>
+            First
+          </PageButton>
+          <PageButton onClick={goToPrevPage} disabled={currentPage === 0 || isLoading}>
+            Previous
+          </PageButton>
+          <PageInfo>
+            Page {currentPage + 1} of {totalPages}
+          </PageInfo>
+          <PageButton onClick={goToNextPage} disabled={currentPage === totalPages - 1 || isLoading}>
+            Next
+          </PageButton>
+          <PageButton onClick={goToLastPage} disabled={currentPage === totalPages - 1 || isLoading}>
+            Last
+          </PageButton>
+        </PaginationControls>
       )}
     </Container>
   );
