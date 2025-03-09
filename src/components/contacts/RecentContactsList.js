@@ -1307,6 +1307,33 @@ const RecentContactsList = ({
           </div>
         );
         break;
+      case 'category':
+        title = `Edit Category for ${getFormattedName(modalContact)}`;
+        content = (
+          <div>
+            <p>Current category: {modalContact.contact_category || 'Not set'}</p>
+            <p>Category editing functionality coming soon!</p>
+          </div>
+        );
+        break;
+      case 'keepInTouch':
+        title = `Edit Keep in Touch for ${getFormattedName(modalContact)}`;
+        content = (
+          <div>
+            <p>Current frequency: {modalContact.keep_in_touch || 'Not set'}</p>
+            <p>Keep in Touch editing functionality coming soon!</p>
+          </div>
+        );
+        break;
+      case 'history':
+        title = 'Communication History';
+        content = (
+          <div>
+            <p>Communication history for {getFormattedName(modalContact)}</p>
+            <p>History view coming soon...</p>
+          </div>
+        );
+        break;
       default:
         title = `Edit ${getFormattedName(modalContact)}`;
         content = (
@@ -1510,49 +1537,17 @@ const RecentContactsList = ({
             </ClickableCell>
             
             {/* KEEP IN TOUCH COLUMN */}
-            <td>
-              <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                {editingContact?.id === contact.id && editingField === 'keep_in_touch' ? (
-                  <div style={{ display: 'flex', width: '100%', gap: '4px' }}>
-                    <select
-                      name="keep_in_touch"
-                      value={editData.keep_in_touch || ''}
-                      onChange={handleFieldChange}
-                      onKeyDown={handleKeyDown}
-                      autoFocus
-                      style={{ flex: 1 }}
-                    >
-                      <option value="">Select frequency</option>
-                      <option value="Weekly">Weekly</option>
-                      <option value="Monthly">Monthly</option>
-                      <option value="Quarterly">Quarterly</option>
-                      <option value="Do not keep">Do not keep</option>
-                    </select>
-                    <div style={{ display: 'flex', gap: '2px' }}>
-                      <ActionButton onClick={handleSave}><FiCheck /></ActionButton>
-                      <ActionButton onClick={handleCancel}><FiX /></ActionButton>
-                    </div>
-                  </div>
+            <ClickableCell onClick={() => handleCellClick(contact, 'keepInTouch')}>
+              <div className="cell-content">
+                {contact.keep_in_touch ? (
+                  <KeepInTouchBadge frequency={contact.keep_in_touch}>
+                    {contact.keep_in_touch}
+                  </KeepInTouchBadge>
                 ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-            <div>
-                      {contact.keep_in_touch ? (
-                        <KeepInTouchBadge frequency={contact.keep_in_touch}>
-                          {contact.keep_in_touch}
-                        </KeepInTouchBadge>
-                      ) : (
-                        <span style={{ color: '#ef4444', fontStyle: 'italic', fontWeight: '500' }}>Missing</span>
-                      )}
-            </div>
-                    <div className="actions">
-                      <ActionButton className="edit" onClick={() => handleEditStart(contact, 'keep_in_touch')}>
-                        <FiEdit2 size={16} />
-                      </ActionButton>
-            </div>
-          </div>
+                  <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Not set</span>
                 )}
-        </div>
-            </td>
+              </div>
+            </ClickableCell>
             
             {/* SCORE COLUMN */}
             <td>
