@@ -46,18 +46,19 @@ const ContactTable = styled.table`
   margin-bottom: 1.5rem;
   table-layout: fixed; /* Use fixed layout for better column control */
   
-  /* Column width specifications */
-  th:nth-child(1) { width: 20%; } /* Name column */
-  th:nth-child(2) { width: 20%; } /* Company column */
-  th:nth-child(3) { width: 28%; } /* Tags column - wider to show multiple tags */
-  th:nth-child(4) { width: 10%; } /* Last Interaction column */
-  th:nth-child(5) { width: 8%; }  /* Category column */
-  th:nth-child(6) { width: 8%; }  /* Keep in Touch column */
-  th:nth-child(7) { width: 6%; }  /* Score column */
-  th:nth-child(8) { width: 10%; } /* Actions column */
+  /* Column width specifications - adjusted as requested */
+  th:nth-child(1) { width: 21%; }    /* Name column */
+  th:nth-child(2) { width: 17%; }    /* Company column */
+  th:nth-child(3) { width: 18%; }    /* Tags column - reduced by 1% */
+  th:nth-child(4) { width: 9%; }     /* Last Interaction column - reduced by 1% */
+  th:nth-child(5) { width: 8%; }     /* Category column */
+  th:nth-child(6) { width: 8%; }     /* Keep in Touch column */
+  th:nth-child(7) { width: 6%; }     /* Score column */
+  th:nth-child(8) { width: 13%; }    /* Actions column - increased by 2% */
   
   @media (max-width: 1200px) {
-    th:nth-child(3) { width: 25%; } /* Slightly reduce Tags column on smaller screens */
+    th:nth-child(3) { width: 16%; } /* Slightly reduce Tags column on smaller screens */
+    th:nth-child(8) { width: 14%; } /* Slightly increase Actions column on smaller screens */
   }
 `;
 
@@ -98,26 +99,26 @@ const TableBody = styled.tbody`
     color: #1f2937;
     vertical-align: middle;
     
+    &.actions-cell {
+      padding-right: 0.5rem; /* Reduce right padding */
+      min-width: 120px; /* Increased from 110px to match column width increase */
+      white-space: nowrap; /* Prevent wrapping */
+      overflow: visible; /* Allow overflow */
+    }
+    
     .cell-content {
-  display: flex;
-  align-items: center;
-      position: relative;
-      min-height: 24px;
+      display: flex;
+      align-items: center;
     }
     
     .actions {
-      display: none;
-  position: absolute;
-      right: 0;
-      top: 50%;
-      transform: translateY(-50%);
-      background-color: white;
-      padding-left: 0.5rem;
+      margin-left: auto;
+      display: flex;
+      visibility: hidden;
     }
     
     &:hover .actions {
-  display: flex;
-      gap: 0.25rem;
+      visibility: visible;
     }
     
     input, select {
@@ -141,15 +142,17 @@ const ActionButton = styled.button`
   background-color: transparent;
   border: none;
   color: #6b7280;
-  width: 28px;
-  height: 28px;
+  width: 26px; /* Slightly reduced from 28px */
+  height: 26px; /* Slightly reduced from 28px */
   border-radius: 0.25rem;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 1rem;
+  font-size: 0.9rem; /* Slightly reduced from 1rem */
   transition: all 0.2s;
+  padding: 0; /* Ensure no extra padding */
+  margin: 0 1px; /* Add tiny horizontal margins */
   
   &:hover {
     background-color: #f3f4f6;
@@ -322,6 +325,7 @@ const LastInteractionDate = styled.span`
 // Tooltip
 const Tooltip = styled.div`
   position: relative;
+  display: inline-flex;
   
   .tooltip-text {
     visibility: hidden;
@@ -333,12 +337,13 @@ const Tooltip = styled.div`
     background-color: #1f2937;
     color: white;
     text-align: center;
-    padding: 4px 8px;
+    padding: 3px 6px;
     border-radius: 4px;
-    font-size: 0.75rem;
+    font-size: 0.7rem; /* Smaller font size */
     white-space: nowrap;
     opacity: 0;
     transition: opacity 0.3s;
+    pointer-events: none; /* Prevent tooltip from interfering with clicks */
   }
   
   &:hover .tooltip-text {
@@ -351,7 +356,15 @@ const Tooltip = styled.div`
 const ActionsContainer = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.25rem; /* Reduced from 0.5rem to create more compact spacing */
+  flex-wrap: wrap; /* Allow wrapping if needed */
+  justify-content: flex-start;
+  width: 100%;
+  
+  /* Ensure consistent spacing when wrapping */
+  & > * {
+    margin-bottom: 2px;
+  }
 `;
 
 // Pagination controls
@@ -1464,7 +1477,7 @@ const RecentContactsList = ({
                   </td>
                 
                 {/* ACTIONS COLUMN */}
-                <td>
+                <td className="actions-cell">
                   <ActionsContainer>
                     <Tooltip>
                       <ActionButton 
@@ -1513,17 +1526,10 @@ const RecentContactsList = ({
                     </Tooltip>
                     
                     <Tooltip>
-                      <ActionButton className="delete" onClick={() => handleSkipContact(contact.id)}>
-                        <FiX />
-                      </ActionButton>
-                      <span className="tooltip-text">Skip Contact</span>
-                    </Tooltip>
-                    
-                    <Tooltip>
                       <ActionButton className="edit" onClick={() => handleOpenModal(contact)}>
                         <FiExternalLink />
                       </ActionButton>
-                      <span className="tooltip-text">Check Duplicates</span>
+                      <span className="tooltip-text">Edit Contact</span>
                     </Tooltip>
                   </ActionsContainer>
                 </td>
