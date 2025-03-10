@@ -16,6 +16,7 @@ import TagsModal from '../modals/TagsModal';
 import KeepInTouchModal from '../modals/KeepInTouchModal';
 import CategoryModal from '../modals/CategoryModal';
 import LastInteractionModal from '../modals/LastInteractionModal';
+import CompanyModal from '../modals/CompanyModal';
 
 // Set the app element for react-modal
 Modal.setAppElement('#root');
@@ -1217,7 +1218,7 @@ const RecentContactsList = ({
         setModalContent(<NameEditForm contact={contact} onSave={handleSave} onClose={() => setModalOpen(false)} />);
         break;
       case 'company':
-        setModalContent(<CompanyEditForm contact={contact} onSave={handleSave} onClose={() => setModalOpen(false)} />);
+        setModalContent(<CompanyModal isOpen={true} onRequestClose={() => setModalOpen(false)} contact={contact} />);
         break;
       case 'tags':
         setModalContent(<TagsModal isOpen={true} onRequestClose={() => setModalOpen(false)} contact={contact} />);
@@ -1359,7 +1360,7 @@ const RecentContactsList = ({
       case 'name':
         return <NameEditForm contact={modalContact} onSave={handleSave} onClose={() => setModalOpen(false)} />;
       case 'company':
-        return <CompanyEditForm contact={modalContact} onSave={handleSave} onClose={() => setModalOpen(false)} />;
+        return <CompanyModal isOpen={modalOpen} onRequestClose={() => setModalOpen(false)} contact={modalContact} />;
       case 'tags':
         return <TagsModal isOpen={modalOpen} onRequestClose={() => setModalOpen(false)} contact={modalContact} />;
       case 'history':
