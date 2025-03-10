@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
 
 // ==================== Styled Components ====================
-const ModalHeader = styled.div
+const ModalHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -33,14 +33,14 @@ const ModalHeader = styled.div
       background-color: #f3f4f6;
     }
   }
-;
+`;
 
-const TabContainer = styled.div
+const TabContainer = styled.div`
   display: flex;
   margin-bottom: 15px;
-;
+`;
 
-const TabButton = styled.button
+const TabButton = styled.button`
   background-color: ${props => (props.active ? '#007BFF' : '#E9ECEF')};
   color: ${props => (props.active ? '#fff' : '#000')};
   padding: 8px;
@@ -53,22 +53,22 @@ const TabButton = styled.button
   &:hover {
     background-color: ${props => (props.active ? '#0056b3' : '#dee2e6')};
   }
-;
+`;
 
-const TabContent = styled.div
+const TabContent = styled.div`
   margin-bottom: 15px;
-;
+`;
 
-const InteractionList = styled.div
+const InteractionList = styled.div`
   background-color: #E9ECEF;
   padding: 10px;
   border-radius: 4px;
   margin-bottom: 15px;
   max-height: 300px;
   overflow-y: auto;
-;
+`;
 
-const InteractionItem = styled.div
+const InteractionItem = styled.div`
   background-color: white;
   padding: 12px;
   border-radius: 4px;
@@ -109,25 +109,25 @@ const InteractionItem = styled.div
     display: inline-block;
     margin-bottom: 4px;
   }
-;
+`;
 
-const NoInteractions = styled.div
+const NoInteractions = styled.div`
   text-align: center;
   padding: 20px;
   color: #6b7280;
   font-style: italic;
-;
+`;
 
-const Table = styled.table
+const Table = styled.table`
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
   background-color: white;
   border-radius: 8px;
   overflow: hidden;
-;
+`;
 
-const TableHeader = styled.thead
+const TableHeader = styled.thead`
   background-color: #f3f4f6;
   
   th {
@@ -138,9 +138,9 @@ const TableHeader = styled.thead
     color: #374151;
     border-bottom: 1px solid #e5e7eb;
   }
-;
+`;
 
-const TableBody = styled.tbody
+const TableBody = styled.tbody`
   tr {
     &:hover {
       background-color: #f9fafb;
@@ -169,22 +169,22 @@ const TableBody = styled.tbody
       }
     }
   }
-;
+`;
 
-const PaginationContainer = styled.div
+const PaginationContainer = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-top: 1rem;
   padding: 0.5rem 0;
-;
+`;
 
-const PageInfo = styled.span
+const PageInfo = styled.span`
   font-size: 0.875rem;
   color: #4b5563;
-;
+`;
 
-const PaginationButton = styled.button
+const PaginationButton = styled.button`
   padding: 0.5rem 1rem;
   border: 1px solid #d1d5db;
   border-radius: 0.375rem;
@@ -203,9 +203,9 @@ const PaginationButton = styled.button
   }
   
   margin: 0 0.25rem;
-;
+`;
 
-const Tag = styled.div
+const Tag = styled.div`
   display: inline-flex;
   align-items: center;
   padding: 4px 8px;
@@ -222,14 +222,14 @@ const Tag = styled.div
     text-overflow: ellipsis;
     max-width: 150px;
   }
-;
+`;
 
-const DirectionTag = styled(Tag)
+const DirectionTag = styled(Tag)`
   background-color: ${props => props.direction === 'Received' ? '#d1fae5' : '#e0f2fe'};
   color: ${props => props.direction === 'Received' ? '#065f46' : '#0369a1'};
-;
+`;
 
-const ActionButton = styled.button
+const ActionButton = styled.button`
   font-size: 0.8em;
   padding: 5px 10px;
   background: ${props => props.variant === 'whatsapp' ? '#25D366' : props.variant === 'emergency' ? '#d32f2f' : '#006064'};
@@ -245,15 +245,15 @@ const ActionButton = styled.button
   &:hover {
     opacity: 0.9;
   }
-;
+`;
 
-const MessageCounter = styled.div
+const MessageCounter = styled.div`
   font-size: 0.85rem;
   color: #666;
   margin-bottom: 10px;
   text-align: right;
   padding-right: 5px;
-;
+`;
 
 // ==================== Modal Component ====================
 const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
@@ -265,10 +265,12 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
   const [totalRecords, setTotalRecords] = useState(0);
   const [totalWhatsAppRecords, setTotalWhatsAppRecords] = useState(0);
   const [queryDetails, setQueryDetails] = useState({});
+  const [contactEmails, setContactEmails] = useState([]);
   const ITEMS_PER_PAGE = 15;
   
   // IMPORTANT: Corrected table name
   const WHATSAPP_TABLE = 'whatsapp'; // Changed from 'whatsapp_messages'
+  const EMAILS_TABLE = 'emails';
 
   // Add a new debug mode state
   const [debugMode, setDebugMode] = useState(true);
@@ -305,7 +307,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
   // Separate effect just for page changes - use alternate approach for pagination
   useEffect(() => {
     if (isOpen && contact && currentPage > 0) {
-      console.log(%c[PAGE-CHANGE] Changing to page ${currentPage}, 'background: #e65100; color: white; padding: 2px 5px;');
+      console.log(`[PAGE-CHANGE] Changing to page ${currentPage}`);
       
       // Set loading state and clear current data
       setLoading(true);
@@ -346,7 +348,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
 
   // Add new function to fetch with limit/offset instead of range
   const fetchPageWithLimitOffset = async (page) => {
-    console.log(%c[LIMIT-OFFSET] Fetching page ${page}, 'background: #006064; color: white; padding: 2px 5px;');
+    console.log(`[LIMIT-OFFSET] Fetching page ${page}`);
     
     try {
       // Get mobile numbers
@@ -365,7 +367,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       const limit = ITEMS_PER_PAGE;
       const offset = (page - 1) * ITEMS_PER_PAGE;
       
-      console.log(%c[LIMIT-OFFSET] Using limit=${limit}, offset=${offset} for page ${page}, 'color: #006064; font-weight: bold;');
+      console.log(`[LIMIT-OFFSET] Using limit=${limit}, offset=${offset} for page ${page}`);
       
       // FIRST ATTEMPT: Try exact match with limit/offset
       let query = supabase
@@ -376,15 +378,15 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
         .limit(limit)
         .offset(offset);
       
-      console.log(%c[LIMIT-OFFSET] Executing query..., 'color: #006064;');
+      console.log('[LIMIT-OFFSET] Executing query...');
       let { data, count, error } = await query;
       
       if (error) {
-        console.error(%c[LIMIT-OFFSET] Error:, 'color: red;', error);
+        console.error('[LIMIT-OFFSET] Error:', error);
         throw error;
       }
       
-      console.log(%c[LIMIT-OFFSET] Query results:, 'color: #006064;', {
+      console.log('[LIMIT-OFFSET] Query results:', {
         success: !error,
         recordsFound: data?.length || 0,
         totalCount: count,
@@ -393,7 +395,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       
       // SECOND ATTEMPT: If no data and page > 1, try a more brute force approach
       if ((!data || data.length === 0) && page > 1) {
-        console.log(%c[LIMIT-OFFSET] No data for page ${page}, trying alternative approach, 'color: #006064; font-weight: bold;');
+        console.log(`[LIMIT-OFFSET] No data for page ${page}, trying alternative approach`);
         
         // Try fetching all data and slicing manually
         const allDataQuery = supabase
@@ -408,7 +410,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           console.error('Error fetching all data:', allDataResult.error);
         } else if (allDataResult.data && allDataResult.data.length > 0) {
           const totalRecords = allDataResult.data.length;
-          console.log(%c[LIMIT-OFFSET] Got ${totalRecords} total records, manual pagination, 'color: #006064;');
+          console.log(`[LIMIT-OFFSET] Got ${totalRecords} total records, manual pagination`);
           
           // Calculate slices
           const startIndex = offset;
@@ -418,23 +420,23 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           const pageData = allDataResult.data.slice(startIndex, endIndex);
           
           if (pageData.length > 0) {
-            console.log(%c[LIMIT-OFFSET] Manual pagination success: ${pageData.length} records for page ${page}, 'color: #006064; font-weight: bold;');
+            console.log(`[LIMIT-OFFSET] Manual pagination success: ${pageData.length} records for page ${page}`);
             data = pageData;
             count = allDataResult.data.length;
           } else {
-            console.log(%c[LIMIT-OFFSET] Manual pagination: No data for page ${page}, 'color: #006064;');
+            console.log(`[LIMIT-OFFSET] Manual pagination: No data for page ${page}`);
           }
         }
       }
       
       // THIRD ATTEMPT: If still no data, try flexible search
       if (!data || data.length === 0) {
-        console.log(%c[LIMIT-OFFSET] Trying flexible search, 'color: #006064;');
+        console.log('[LIMIT-OFFSET] Trying flexible search');
         
         // Create conditions for matching last digits
         const orConditions = mobilesArray
           .filter(mobile => mobile && mobile.length > 7)
-          .map(mobile => contact_mobile.ilike.%${mobile.slice(-8)});
+          .map(mobile => `contact_mobile.ilike.%${mobile.slice(-8)}`);
         
         if (orConditions.length > 0) {
           // Try flexible search with limit/offset
@@ -446,16 +448,16 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
             .limit(limit)
             .offset(offset);
           
-          console.log(%c[LIMIT-OFFSET] Executing flexible query..., 'color: #006064;');
+          console.log('[LIMIT-OFFSET] Executing flexible query...');
           const flexResult = await flexQuery;
           
           if (flexResult.error) {
-            console.error(%c[LIMIT-OFFSET] Flex error:, 'color: red;', flexResult.error);
+            console.error('[LIMIT-OFFSET] Flex error:', flexResult.error);
           } else {
             data = flexResult.data;
             count = flexResult.count;
             
-            console.log(%c[LIMIT-OFFSET] Flex results:, 'color: #006064;', {
+            console.log('[LIMIT-OFFSET] Flex results:', {
               recordsFound: data?.length || 0,
               totalCount: count,
               page
@@ -463,7 +465,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
             
             // If flexible search with limit/offset fails and page > 1, try manual pagination
             if ((!data || data.length === 0) && page > 1) {
-              console.log(%c[LIMIT-OFFSET] No flex data for page ${page}, trying manual flex pagination, 'color: #006064;');
+              console.log('[LIMIT-OFFSET] No flex data for page ${page}, trying manual flex pagination');
               
               // Try getting all flex data and slicing
               const allFlexQuery = supabase
@@ -485,7 +487,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
                 const pageFlexData = allFlexResult.data.slice(startIndex, endIndex);
                 
                 if (pageFlexData.length > 0) {
-                  console.log(%c[LIMIT-OFFSET] Manual flex pagination success: ${pageFlexData.length} records, 'color: #006064; font-weight: bold;');
+                  console.log(`[LIMIT-OFFSET] Manual flex pagination success: ${pageFlexData.length} records`);
                   data = pageFlexData;
                   count = allFlexResult.data.length;
                 }
@@ -504,28 +506,28 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
             page,
             index,
             position: offset + index,
-            queryType: 'limit-offset',
+            queryType: 'limit',
             timestamp: new Date().toISOString()
           },
-          debugId: limit-p${page}-idx${index}-pos${offset + index}
+          debugId: `limit-p${page}-idx${index}-pos${offset + index}`
         }));
         
-        console.log(%c[LIMIT-OFFSET] Setting ${dataWithDebug.length} records in state for page ${page}, 'color: #006064; font-weight: bold;');
+        console.log(`[LIMIT-OFFSET] Setting ${dataWithDebug.length} records in state for page ${page}`);
         
         // Update state
         setInteractions(dataWithDebug);
         setTotalRecords(count || 0);
         setTotalPages(Math.max(Math.ceil((count || 0) / ITEMS_PER_PAGE), 1));
       } else {
-        console.log(%c[LIMIT-OFFSET] No data found after all attempts for page ${page}, 'color: orange;');
+        console.log(`[LIMIT-OFFSET] No data found after all attempts for page ${page}`);
         setInteractions([]);
       }
     } catch (err) {
-      console.error(%c[LIMIT-OFFSET] Error:, 'color: red;', err);
+      console.error('[LIMIT-OFFSET] Error:', err);
       setInteractions([]);
     } finally {
       setLoading(false);
-      console.log(%c[LIMIT-OFFSET] Page ${page} fetch completed, 'background: #006064; color: white; padding: 2px 5px;');
+      console.log(`[LIMIT-OFFSET] Page ${page} fetch completed`);
     }
   };
 
@@ -593,7 +595,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           throw error;
         }
         
-        console.log(Query returned ${responseData ? responseData.length : 0} records out of ${totalCount} total);
+        console.log(`Query returned ${responseData ? responseData.length : 0} records out of ${totalCount} total`);
         
         // Update state with the results
         data = responseData || [];
@@ -601,7 +603,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
         
         // Calculate total pages
         const totalPagesCount = Math.max(Math.ceil(count / ITEMS_PER_PAGE), 1);
-        console.log(Total pages: ${totalPagesCount} (${count} records / ${ITEMS_PER_PAGE} per page));
+        console.log(`Total pages: ${totalPagesCount} (${count} records / ${ITEMS_PER_PAGE} per page)`);
         
         // If no results with exact match, try flexible matching
         if (data.length === 0 && mobilesArray.length > 0) {
@@ -612,7 +614,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       // Handle other tabs here
       
       // Update state with final results
-      console.log(Final data: ${data.length} records, total: ${count});
+      console.log(`Final data: ${data.length} records, total: ${count}`);
       setInteractions(data);
       setTotalRecords(count);
       setTotalPages(Math.max(Math.ceil(count / ITEMS_PER_PAGE), 1));
@@ -722,7 +724,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
 
     const handleWhatsAppClick = (mobile) => {
       const formattedNumber = mobile.startsWith('+') ? mobile.substring(1) : mobile;
-      window.open(https://wa.me/${formattedNumber}, '_blank');
+      window.open(`https://wa.me/${formattedNumber}`, '_blank');
     };
 
     return (
@@ -852,11 +854,11 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
 
   // Update the pagination handler with better logging
   const handlePageChange = (newPage) => {
-    console.log(%c[NAV] Requested page change from ${currentPage} to ${newPage} (total: ${totalPages}), 'background: #333; color: white; padding: 2px 5px;');
+    console.log(`[NAV] Requested page change from ${currentPage} to ${newPage} (total: ${totalPages})`);
     
     // Validate the requested page number
     if (newPage >= 1 && newPage <= totalPages && newPage !== currentPage) {
-      console.log(%c[NAV] Changing to page ${newPage}, 'color: green;');
+      console.log(`[NAV] Changing to page ${newPage}`);
       // Set loading first to avoid flickering
       setLoading(true);
       // Clear current interactions to ensure we don't show stale data
@@ -864,22 +866,22 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       // Change the page - this will trigger the useEffect that calls fetchPageData
       setCurrentPage(newPage);
     } else {
-      console.log(%c[NAV] Invalid page ${newPage} or already on this page, 'color: orange;');
+      console.log(`[NAV] Invalid page ${newPage} or already on this page`);
     }
   };
 
   // Helper function for flexible search (enhanced)
   const tryFlexibleSearch = async (mobilesArray, from, to, page) => {
     try {
-      console.log(%c[FLEX ${page}] Starting flexible search for range ${from}-${to}, 'background: #800080; color: white; padding: 2px 5px;');
+      console.log(`[FLEX ${page}] Starting flexible search for range ${from}-${to}`);
       
       // Create conditions for matching last digits
       const orConditions = mobilesArray
         .filter(mobile => mobile && mobile.length > 7)
-        .map(mobile => contact_mobile.ilike.%${mobile.slice(-8)});
+        .map(mobile => `contact_mobile.ilike.%${mobile.slice(-8)}`);
       
       if (orConditions.length === 0) {
-        console.log(%c[FLEX ${page}] No valid conditions for flexible search, 'color: orange;');
+        console.log(`[FLEX ${page}] No valid conditions for flexible search`);
         setInteractions([]);
         return;
       }
@@ -893,28 +895,28 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
         .range(from, to);
       
       // Log query details
-      console.log(%c[FLEX ${page}] Conditions:, 'color: purple;', orConditions);
+      console.log(`[FLEX ${page}] Conditions:`, orConditions);
       
       if (typeof flexQuery.toSQL === 'function') {
         const sql = flexQuery.toSQL();
-        console.log(%c[FLEX ${page}] SQL: ${sql}, 'color: purple;');
+        console.log(`[FLEX ${page}] SQL: ${sql}`);
       }
       
       // Execute flexible query
-      console.log(%c[FLEX ${page}] Executing query..., 'color: purple;');
+      console.log(`[FLEX ${page}] Executing query...`);
       const { data, count, error } = await flexQuery;
       
       if (error) {
-        console.error(%c[FLEX ${page}] Error:, 'color: red;', error);
+        console.error(`[FLEX ${page}] Error:`, error);
         setInteractions([]);
         return;
       }
       
       // Log results
       if (data && data.length > 0) {
-        console.log(%c[FLEX ${page}] Found ${data.length} records:, 'color: green; font-weight: bold;');
+        console.log(`[FLEX ${page}] Found ${data.length} records:`);
         data.forEach((record, idx) => {
-          console.log(Flex Record ${idx}:, {
+          console.log(`Flex Record ${idx}:`, {
             id: record.id,
             date: record.created_at, 
             message: record.message?.substring(0, 30) + '...',
@@ -922,7 +924,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           });
         });
       } else {
-        console.log(%c[FLEX ${page}] No records found with flexible search, 'color: orange;');
+        console.log(`[FLEX ${page}] No records found with flexible search`);
       }
       
       // Update state with flexible search results
@@ -936,31 +938,31 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
             position: from + index,
             queryType: 'flexible',
             timestamp: new Date().toISOString(),
-            range: ${from}-${to}
+            range: `${from}-${to}`
           },
-          debugId: flex${page}-idx${index}-pos${from + index}
+          debugId: `flex${page}-idx${index}-pos${from + index}`
         }));
         
-        console.log(%c[FLEX ${page}] Setting ${dataWithDebug.length} flex records in state, 'color: purple; font-weight: bold;');
+        console.log(`[FLEX ${page}] Setting ${dataWithDebug.length} flex records in state`);
         
         setInteractions(dataWithDebug);
         setTotalRecords(count || 0);
         setTotalPages(Math.max(Math.ceil((count || 0) / ITEMS_PER_PAGE), 1));
       } else {
-        console.log(%c[FLEX ${page}] No data found, setting empty state, 'color: orange;');
+        console.log(`[FLEX ${page}] No data found, setting empty state`);
         setInteractions([]);
       }
     } catch (err) {
-      console.error(%c[FLEX ${page}] Error:, 'color: red;', err);
+      console.error(`[FLEX ${page}] Error:`, err);
       setInteractions([]);
     } finally {
-      console.log(%c[FLEX ${page}] Flexible search completed, 'background: #800080; color: white; padding: 2px 5px;');
+      console.log(`[FLEX ${page}] Flexible search completed`);
     }
   };
 
   // Add a new emergency fetch function that uses a completely different approach
   const emergencyFetchPage = async (page) => {
-    console.log(%c[EMERGENCY] FETCH FOR PAGE ${page} STARTED, 'background: #d32f2f; color: white; font-weight: bold; padding: 3px 6px;');
+    console.log(`[EMERGENCY] FETCH FOR PAGE ${page} STARTED`);
     
     try {
       setLoading(true);
@@ -975,15 +977,15 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       if (contact.mobile2) mobilesArray.push(normalizePhoneNumber(contact.mobile2));
       
       if (mobilesArray.length === 0) {
-        console.log(%c[EMERGENCY] No mobile numbers!, 'color: #d32f2f;');
+        console.log(`[EMERGENCY] No mobile numbers!`);
         setLoading(false);
         return;
       }
       
-      console.log(%c[EMERGENCY] Mobile numbers:, 'color: #d32f2f;', mobilesArray);
+      console.log(`[EMERGENCY] Mobile numbers:`, mobilesArray);
       
       // BRUTE FORCE: Get ALL records first
-      console.log(%c[EMERGENCY] Fetching ALL records..., 'color: #d32f2f;');
+      console.log(`[EMERGENCY] Fetching ALL records...`);
       
       const allRecordsQuery = supabase
         .from(WHATSAPP_TABLE)
@@ -994,62 +996,59 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       const { data: allData, error: allError } = await allRecordsQuery;
       
       if (allError) {
-        console.error(%c[EMERGENCY] Error fetching all records:, 'color: #d32f2f;', allError);
+        console.error(`[EMERGENCY] Error fetching all records:`, allError);
         
         // Try the flexible approach
         await emergencyFlexibleFetch(page, mobilesArray);
         return;
       }
       
-      console.log(%c[EMERGENCY] Total records found: ${allData?.length || 0}, 'color: #d32f2f; font-weight: bold;');
+      console.log(`[EMERGENCY] Total records found: ${allData?.length || 0}`);
       
       if (allData && allData.length > 0) {
         // Manually calculate data for this page
         const pageData = allData.slice(offset, offset + ITEMS_PER_PAGE);
         
         if (pageData.length > 0) {
-          console.log(%c[EMERGENCY] Found ${pageData.length} records for page ${page}, 'color: #d32f2f; font-weight: bold;');
+          console.log(`[EMERGENCY] Found ${pageData.length} records for page ${page}`);
           
           // Add debug info
           const dataWithDebug = pageData.map((record, index) => ({
             ...record,
             _debugInfo: {
-              page,
-              index,
-              position: offset + index,
               queryType: 'emergency',
               timestamp: new Date().toISOString()
             },
-            debugId: emrg-p${page}-idx${index}-pos${offset + index}
+            debugId: `emrg-p${page}-idx${index}-pos${offset + index}`
           }));
           
           setInteractions(dataWithDebug);
           setTotalRecords(allData.length);
           setTotalPages(Math.max(Math.ceil(allData.length / ITEMS_PER_PAGE), 1));
         } else {
-          console.log(%c[EMERGENCY] No records for page ${page} (out of bounds), 'color: #d32f2f;');
+          console.log(`[EMERGENCY] No records for page ${page} (out of bounds)`);
           
           // Try flexible search as last resort
           await emergencyFlexibleFetch(page, mobilesArray);
         }
       } else {
-        console.log(%c[EMERGENCY] No records found!, 'color: #d32f2f;');
+        console.log(`[EMERGENCY] No records found!`);
         
         // Try flexible search as last resort
         await emergencyFlexibleFetch(page, mobilesArray);
       }
     } catch (err) {
-      console.error(%c[EMERGENCY] Critical error:, 'color: #d32f2f; font-weight: bold;', err);
+      console.error(`[EMERGENCY] Critical error:`, err);
       setInteractions([]);
     } finally {
       setLoading(false);
-      console.log(%c[EMERGENCY] FETCH COMPLETED, 'background: #d32f2f; color: white; font-weight: bold; padding: 3px 6px;');
+      console.log(`[EMERGENCY] FETCH COMPLETED`);
     }
   };
   
   // Emergency flexible fetch as last resort
   const emergencyFlexibleFetch = async (page, mobilesArray) => {
-    console.log(%c[EMERGENCY-FLEX] Last resort flexible search, 'color: #d32f2f;');
+    console.log(`[EMERGENCY-FLEX] Last resort flexible search`);
     
     try {
       // Calculate offset
@@ -1058,10 +1057,10 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       // Create or conditions for last digits
       const orConditions = mobilesArray
         .filter(mobile => mobile && mobile.length > 7)
-        .map(mobile => contact_mobile.ilike.%${mobile.slice(-8)});
+        .map(mobile => `contact_mobile.ilike.%${mobile.slice(-8)}`);
       
       if (orConditions.length === 0) {
-        console.log(%c[EMERGENCY-FLEX] No valid conditions!, 'color: #d32f2f;');
+        console.log(`[EMERGENCY-FLEX] No valid conditions!`);
         return;
       }
       
@@ -1075,47 +1074,426 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       const { data: flexData, error: flexError } = await flexQuery;
       
       if (flexError) {
-        console.error(%c[EMERGENCY-FLEX] Error:, 'color: #d32f2f;', flexError);
+        console.error(`[EMERGENCY-FLEX] Error:`, flexError);
         return;
       }
       
-      console.log(%c[EMERGENCY-FLEX] Total flex matches: ${flexData?.length || 0}, 'color: #d32f2f;');
+      console.log(`[EMERGENCY-FLEX] Total flex matches: ${flexData?.length || 0}`);
       
       if (flexData && flexData.length > 0) {
         // Manual pagination for flex data
         const pageFlexData = flexData.slice(offset, offset + ITEMS_PER_PAGE);
         
         if (pageFlexData.length > 0) {
-          console.log(%c[EMERGENCY-FLEX] Found ${pageFlexData.length} flex records for page ${page}, 'color: #d32f2f; font-weight: bold;');
+          console.log(`[EMERGENCY-FLEX] Found ${pageFlexData.length} flex records for page ${page}`);
           
           // Add debug info
           const dataWithDebug = pageFlexData.map((record, index) => ({
             ...record,
             _debugInfo: {
-              page,
-              index,
-              position: offset + index,
               queryType: 'emergency-flex',
               timestamp: new Date().toISOString()
             },
-            debugId: emflex-p${page}-idx${index}-pos${offset + index}
+            debugId: `emflex-p${page}-idx${index}-pos${offset + index}`
           }));
           
           setInteractions(dataWithDebug);
           setTotalRecords(flexData.length);
           setTotalPages(Math.max(Math.ceil(flexData.length / ITEMS_PER_PAGE), 1));
         } else {
-          console.log(%c[EMERGENCY-FLEX] No flex records for page ${page} (out of bounds), 'color: #d32f2f;');
+          console.log(`[EMERGENCY-FLEX] No flex records for page ${page} (out of bounds)`);
           setInteractions([]);
         }
       } else {
-        console.log(%c[EMERGENCY-FLEX] No flex records found at all!, 'color: #d32f2f;');
+        console.log(`[EMERGENCY-FLEX] No flex records found at all!`);
         setInteractions([]);
       }
     } catch (err) {
-      console.error(%c[EMERGENCY-FLEX] Critical error:, 'color: #d32f2f;', err);
+      console.error(`[EMERGENCY-FLEX] Critical error:`, err);
       setInteractions([]);
     }
+  };
+
+  // Fetch emails data from Supabase based on contact's email addresses
+  const fetchEmails = async () => {
+    setLoading(true);
+    console.log('FETCH EMAILS STARTED');
+    
+    // Simple safety check
+    if (!contact || !contact.id) {
+      console.error('No contact data available');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      // Get all email addresses for this contact
+      const emailsArray = [
+        contact.email,
+        contact.email2,
+        contact.email3
+      ].filter(email => email && email.trim() !== '');
+      
+      // Store the contact emails in state for reference in the render function
+      setContactEmails(emailsArray);
+      
+      // Log all the email addresses we found for debugging
+      console.log('Contact ID:', contact.id);
+      console.log('Contact name:', contact.first_name, contact.last_name);
+      console.log('All email addresses found:', emailsArray);
+      
+      if (emailsArray.length === 0) {
+        console.log('No email addresses found for contact');
+        setLoading(false);
+        setInteractions([]);
+        return;
+      }
+      
+      // Instead of using the complex query, use the simpler approach that's working
+      console.log('Using simple query approach for emails...');
+      
+      // Get all emails first for all email addresses, then filter/paginate manually
+      let allEmails = [];
+      
+      // Process each email address
+      for (const email of emailsArray) {
+        console.log(`Fetching emails for: ${email}`);
+        
+        const query = supabase
+          .from(EMAILS_TABLE)
+          .select('*')
+          .or(`from_email.eq."${email}",to_email.eq."${email}"`)
+          .order('created_at', { ascending: false });
+        
+        const { data, error } = await query;
+        
+        if (error) {
+          console.error(`Error fetching emails for ${email}:`, error);
+          continue;
+        }
+        
+        console.log(`Found ${data?.length || 0} emails for ${email}`);
+        
+        // Add emails to the collection
+        if (data && data.length > 0) {
+          allEmails = [...allEmails, ...data];
+        }
+      }
+      
+      // Remove duplicate emails (in case same email appears in multiple fields)
+      const uniqueEmails = allEmails.filter((email, index, self) =>
+        index === self.findIndex(e => e.id === email.id)
+      );
+      
+      // Sort by date descending
+      uniqueEmails.sort((a, b) => 
+        new Date(b.created_at) - new Date(a.created_at)
+      );
+      
+      console.log(`Total unique emails found: ${uniqueEmails.length}`);
+      
+      // Now handle pagination manually
+      const limit = ITEMS_PER_PAGE;
+      const offset = (currentPage - 1) * ITEMS_PER_PAGE;
+      const pageEmails = uniqueEmails.slice(offset, offset + limit);
+      
+      console.log(`Showing ${pageEmails.length} emails for page ${currentPage}`);
+      
+      if (pageEmails.length > 0) {
+        // Add debug info to each record
+        const dataWithDebug = pageEmails.map((record, index) => ({
+          ...record,
+          _debug: {
+            queryType: 'email-simple',
+            timestamp: new Date().toISOString()
+          },
+          debugId: `email-p${currentPage}-idx${index}-pos${offset + index}`
+        }));
+        
+        // Update state
+        setInteractions(dataWithDebug);
+        setTotalRecords(uniqueEmails.length);
+        setTotalPages(Math.max(Math.ceil(uniqueEmails.length / ITEMS_PER_PAGE), 1));
+      } else {
+        // No emails found for this page
+        setInteractions([]);
+        
+        if (currentPage > 1 && uniqueEmails.length > 0) {
+          // We have emails but are on a page with no data, go back to page 1
+          console.log('No emails for this page, returning to page 1');
+          setCurrentPage(1);
+        }
+      }
+    } catch (err) {
+      console.error('Error in fetchEmails:', err);
+      setInteractions([]);
+    } finally {
+      setLoading(false);
+      console.log('FETCH EMAILS COMPLETED');
+    }
+  };
+
+  // Add useEffect to trigger email fetching when on Email tab
+  useEffect(() => {
+    if (isOpen && contact && activeTab === 'Email' && currentPage > 0) {
+      console.log(`Fetching emails for page ${currentPage}`);
+      // No need to check table existence first since we know it works
+      fetchEmails();
+    }
+  }, [isOpen, contact, activeTab, currentPage]);
+
+  // Function to check if the emails table exists and has data
+  const checkEmailsTable = async () => {
+    try {
+      console.log('Checking if emails table exists and has data...');
+      
+      // Try to get just one record to verify the table exists
+      const { data, error } = await supabase
+        .from(EMAILS_TABLE)
+        .select('id')
+        .limit(1);
+      
+      if (error) {
+        console.error('Error checking emails table:', error);
+        console.log('The emails table might not exist or there might be permission issues.');
+        return false;
+      }
+      
+      console.log(`Table check: Found ${data?.length || 0} records in the emails table`);
+      
+      return data && data.length > 0;
+    } catch (err) {
+      console.error('Error in checkEmailsTable:', err);
+      return false;
+    }
+  };
+
+  const renderEmailsTable = () => {
+    if (loading) {
+      return (
+        <>
+          <NoInteractions>Loading emails...</NoInteractions>
+        </>
+      );
+    }
+    
+    if (!interactions.length) {
+      return (
+        <>
+          <NoInteractions>
+            No emails found for this contact
+            
+            <div style={{ fontSize: '0.85em', marginTop: '15px', color: '#333' }}>
+              <p>Please make sure the contact has valid email addresses and the emails table exists in the database.</p>
+              
+              <div style={{ marginTop: '10px' }}>
+                <button 
+                  type="button"
+                  onClick={() => {
+                    console.log("Debug email fetch button clicked");
+                    fetchEmails();
+                  }} 
+                  style={{ 
+                    marginTop: '15px',
+                    padding: '8px 12px', 
+                    background: '#0056b3', 
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                  }}
+                >
+                  REFRESH EMAILS
+                </button>
+              </div>
+            </div>
+          </NoInteractions>
+        </>
+      );
+    }
+
+    // Just get the most recent email (should be the first one in the array since we're sorting by date descending)
+    const latestEmail = interactions[0];
+    
+    // Determine direction
+    const direction = contactEmails.includes(latestEmail.from_email) ? 'Sent' : 'Received';
+    
+    // Create email-like display styles
+    const emailContainer = {
+      backgroundColor: '#fff',
+      borderRadius: '8px',
+      boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+      padding: '20px',
+      marginBottom: '20px',
+      marginTop: '20px',
+      maxWidth: '100%',
+      overflowWrap: 'break-word'
+    };
+    
+    const emailHeader = {
+      borderBottom: '1px solid #eee',
+      paddingBottom: '15px',
+      marginBottom: '15px'
+    };
+    
+    const emailSubject = {
+      fontSize: '1.2rem',
+      fontWeight: 'bold',
+      marginBottom: '10px',
+      color: '#333'
+    };
+    
+    const emailMeta = {
+      display: 'flex',
+      justifyContent: 'space-between',
+      color: '#666',
+      fontSize: '0.9rem',
+      marginBottom: '8px'
+    };
+    
+    const emailMetaLabel = {
+      fontWeight: 'bold',
+      marginRight: '10px',
+      color: '#444'
+    };
+    
+    const emailBody = {
+      padding: '10px 0',
+      fontSize: '0.95rem',
+      lineHeight: '1.6',
+      color: '#333',
+      whiteSpace: 'pre-wrap'  // Preserves line breaks in the email body
+    };
+    
+    const directionButtonStyle = {
+      padding: '4px 8px',
+      borderRadius: '4px',
+      fontSize: '0.8rem',
+      fontWeight: 'bold',
+      marginLeft: '10px',
+      color: direction === 'Received' ? '#065f46' : '#0369a1',
+      backgroundColor: direction === 'Received' ? '#d1fae5' : '#e0f2fe',
+    };
+
+    // Button container style
+    const buttonContainer = {
+      display: 'flex',
+      justifyContent: 'center',
+      gap: '15px',
+      marginTop: '20px'
+    };
+    
+    // Button styles
+    const buttonBaseStyle = {
+      padding: '10px 20px',
+      border: 'none',
+      borderRadius: '4px',
+      fontSize: '0.95rem',
+      fontWeight: 'bold',
+      cursor: 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minWidth: '120px',
+      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+    };
+    
+    const inboxButtonStyle = {
+      ...buttonBaseStyle,
+      backgroundColor: '#1a73e8',
+      color: 'white'
+    };
+    
+    const skipButtonStyle = {
+      ...buttonBaseStyle,
+      backgroundColor: '#dc3545',
+      color: 'white'
+    };
+    
+    // Handler for the Skip button
+    const handleSkip = async () => {
+      try {
+        // Update the contact_category in the database
+        const { error } = await supabase
+          .from('contacts')
+          .update({ contact_category: 'Skip' })
+          .eq('id', contact.id);
+          
+        if (error) {
+          console.error('Error updating contact category:', error);
+          alert('Failed to update contact category');
+          return;
+        }
+        
+        // Close the modal
+        onRequestClose();
+      } catch (err) {
+        console.error('Error in handleSkip:', err);
+        alert('An error occurred');
+      }
+    };
+    
+    // Extract thread_id from the email or use email id as fallback
+    const getThreadUrl = () => {
+      // If thread_id exists in the email data, use it
+      const threadId = latestEmail.thread_id || latestEmail.id;
+      return `https://mail.superhuman.com/thread/${threadId}`;
+    };
+
+    return (
+      <>
+        <MessageCounter>
+          Latest email ({totalRecords} total emails)
+        </MessageCounter>
+        
+        <div style={emailContainer}>
+          <div style={emailHeader}>
+            <div style={emailSubject}>
+              {latestEmail.subject || '(No Subject)'}
+              <span style={directionButtonStyle}>{direction}</span>
+            </div>
+            
+            <div style={emailMeta}>
+              <div>
+                <span style={emailMetaLabel}>From:</span>
+                {latestEmail.from_name || 'Unknown'} &lt;{latestEmail.from_email || 'No Email'}&gt;
+              </div>
+              <div>
+                {formatDate(latestEmail.created_at)}
+              </div>
+            </div>
+            
+            <div style={emailMeta}>
+              <div>
+                <span style={emailMetaLabel}>To:</span>
+                {latestEmail.to_name || 'Unknown'} &lt;{latestEmail.to_email || 'No Email'}&gt;
+              </div>
+            </div>
+          </div>
+          
+          <div style={emailBody}>
+            {latestEmail.body_plain || '(No content)'}
+          </div>
+          
+          <div style={buttonContainer}>
+            <button
+              onClick={() => window.open(getThreadUrl(), '_blank')}
+              style={inboxButtonStyle}
+            >
+              Inbox
+            </button>
+            <button
+              onClick={handleSkip}
+              style={skipButtonStyle}
+            >
+              Skip
+            </button>
+          </div>
+        </div>
+      </>
+    );
   };
 
   return (
@@ -1191,6 +1569,8 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
         {/* Render content based on active tab */}
         {activeTab === 'Whatsapp' ? (
           renderWhatsAppTable()
+        ) : activeTab === 'Email' ? (
+          renderEmailsTable()
         ) : (
           <TabContent>{renderGenericInteractions()}</TabContent>
         )}
