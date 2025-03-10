@@ -12,7 +12,7 @@ import { format, parseISO, isValid } from 'date-fns';
 import Modal from 'react-modal';
 import NameEditForm from './forms/NameEditForm';
 import CompanyEditForm from './forms/CompanyEditForm';
-import TagsEditForm from './forms/TagsEditForm';
+import TagsModal from '../modals/TagsModal';
 import KeepInTouchModal from '../modals/KeepInTouchModal';
 import CategoryModal from '../modals/CategoryModal';
 
@@ -1205,6 +1205,7 @@ const RecentContactsList = ({
   const handleOpenModal = (type, contact) => {
     setModalType(type);
     setModalContact(contact);
+    setModalOpen(true);
     
     // Set appropriate modal content based on type
     switch (type) {
@@ -1215,7 +1216,7 @@ const RecentContactsList = ({
         setModalContent(<CompanyEditForm contact={contact} onSave={handleSave} onClose={() => setModalOpen(false)} />);
         break;
       case 'tags':
-        setModalContent(<TagsEditForm contact={contact} onSave={handleSave} onClose={() => setModalOpen(false)} />);
+        setModalContent(<TagsModal isOpen={true} onRequestClose={() => setModalOpen(false)} contact={contact} />);
         break;
       case 'history':
         setModalContent(
@@ -1239,56 +1240,9 @@ const RecentContactsList = ({
           </div>
         );
         break;
-      case 'category':
-        setModalContent(
-          <div style={{ padding: '1rem' }}>
-            <h3 style={{ marginBottom: '1rem' }}>Edit Category</h3>
-            <p>Category editing modal coming soon...</p>
-            <button 
-              onClick={() => setModalOpen(false)}
-              style={{
-                marginTop: '1rem',
-                padding: '0.5rem 1rem',
-                backgroundColor: '#3b82f6',
-                color: 'white',
-                border: 'none',
-                borderRadius: '0.25rem',
-                cursor: 'pointer'
-              }}
-            >
-              Close
-            </button>
-          </div>
-        );
-        break;
-      case 'keepInTouch':
-        setModalContent(
-          <div style={{ padding: '1rem' }}>
-            <h3 style={{ marginBottom: '1rem' }}>Edit Keep in Touch Frequency</h3>
-            <p>Current frequency: {contact.keep_in_touch_frequency || 'Not set'}</p>
-            <p>Keep in Touch editing modal coming soon...</p>
-            <button 
-              onClick={() => setModalOpen(false)}
-              style={{
-                marginTop: '1rem',
-                padding: '0.5rem 1rem',
-                backgroundColor: '#3b82f6',
-                color: 'white',
-                border: 'none',
-                borderRadius: '0.25rem',
-                cursor: 'pointer'
-              }}
-            >
-              Close
-            </button>
-          </div>
-        );
-        break;
       default:
-        break;
+        setModalContent(null);
     }
-    
-    setModalOpen(true);
   };
 
   // Make the entire cell clickable for company and tags
@@ -1394,88 +1348,37 @@ const RecentContactsList = ({
       return `${firstName} ${lastName}`.trim();
     };
     
-    let title = '';
-    let content = null;
-    
     switch (modalType) {
       case 'name':
-        title = `Edit Contact: ${getFormattedName(modalContact)}`;
-        content = (
-          <div>
-            <p>Name: {getFormattedName(modalContact)}</p>
-            <p>Email: {modalContact.email || 'Not specified'}</p>
-            <p>Mobile: {modalContact.mobile || 'Not specified'}</p>
-            <p>Contact editing functionality coming soon!</p>
-          </div>
-        );
-        break;
+        return <NameEditForm contact={modalContact} onSave={handleSave} onClose={() => setModalOpen(false)} />;
       case 'company':
-        title = `Edit Company for ${getFormattedName(modalContact)}`;
-        content = (
-          <div>
-            <p>Current company: {modalContact.companies?.name || 'None'}</p>
-            <p>Company editing functionality coming soon!</p>
-          </div>
-        );
-        break;
+        return <CompanyEditForm contact={modalContact} onSave={handleSave} onClose={() => setModalOpen(false)} />;
       case 'tags':
-        title = `Edit Tags for ${getFormattedName(modalContact)}`;
-        content = (
-          <div>
-            <p>Current tags: {contactTags[modalContact.id]?.map(tag => tag.name).join(', ') || 'None'}</p>
-            <p>Tag editing functionality coming soon!</p>
-          </div>
-        );
-        break;
-      case 'category':
-        title = `Edit Category for ${getFormattedName(modalContact)}`;
-        content = (
-          <div>
-            <p>Current category: {modalContact.contact_category || 'Not set'}</p>
-            <p>Category editing functionality coming soon!</p>
-          </div>
-        );
-        break;
-      case 'keepInTouch':
-        title = `Edit Keep in Touch for ${getFormattedName(modalContact)}`;
-        content = (
-          <div>
-            <p>Current frequency: {modalContact.keep_in_touch_frequency || 'Not set'}</p>
-            <p>Keep in Touch editing functionality coming soon!</p>
-          </div>
-        );
-        break;
+        return <TagsModal isOpen={modalOpen} onRequestClose={() => setModalOpen(false)} contact={modalContact} />;
       case 'history':
-        title = 'Communication History';
-        content = (
-          <div>
-            <p>Communication history for {getFormattedName(modalContact)}</p>
-            <p>History view coming soon...</p>
-          </div>
-        );
-        break;
-      default:
-        title = `Edit ${getFormattedName(modalContact)}`;
-        content = (
-          <div>
-            <p>Contact editing functionality coming soon!</p>
-          </div>
-        );
-    }
-    
-    return (
-      <ModalOverlay onClick={handleCloseModal}>
-        <ModalContent onClick={e => e.stopPropagation()}>
-          <ModalHeader>
-            <h2>{title}</h2>
-            <button onClick={handleCloseModal}>
-              <FiX size={20} />
+        return (
+          <div style={{ padding: '1rem' }}>
+            <h3 style={{ marginBottom: '1rem' }}>Communication History</h3>
+            <p>Communication history view coming soon...</p>
+            <button 
+              onClick={() => setModalOpen(false)}
+              style={{
+                marginTop: '1rem',
+                padding: '0.5rem 1rem',
+                backgroundColor: '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0.25rem',
+                cursor: 'pointer'
+              }}
+            >
+              Close
             </button>
-          </ModalHeader>
-          {content}
-        </ModalContent>
-      </ModalOverlay>
-    );
+          </div>
+        );
+      default:
+        return null;
+    }
   };
   
   // Handle star rating click
