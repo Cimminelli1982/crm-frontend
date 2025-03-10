@@ -13,6 +13,7 @@ import Modal from 'react-modal';
 import NameEditForm from './forms/NameEditForm';
 import CompanyEditForm from './forms/CompanyEditForm';
 import TagsEditForm from './forms/TagsEditForm';
+import KeepInTouchModal from '../modals/KeepInTouchModal';
 
 // Set the app element for react-modal
 Modal.setAppElement('#root');
@@ -2369,6 +2370,14 @@ const RecentContactsList = ({
             Last
           </PageButton>
         </PaginationControls>
+      )}
+      
+      {modalOpen && modalType === 'keepInTouch' && (
+        <KeepInTouchModal
+          isOpen={modalOpen}
+          onRequestClose={() => setModalOpen(false)}
+          contact={modalContact}
+        />
       )}
     </Container>
   );
