@@ -132,7 +132,7 @@ const TableHeader = styled.thead`
   
   th {
     padding: 12px 16px;
-    text-align: left;
+    text-align: center;
     font-weight: 600;
     font-size: 0.875rem;
     color: #374151;
@@ -155,6 +155,19 @@ const TableBody = styled.tbody`
     padding: 12px 16px;
     font-size: 0.875rem;
     color: #111827;
+    vertical-align: middle;
+    
+    &.centered {
+      text-align: center;
+    }
+
+    &.tag-cell {
+      text-align: center;
+      > div {
+        display: inline-flex;
+        margin: 0 auto;
+      }
+    }
   }
 `;
 
@@ -192,13 +205,46 @@ const PaginationButton = styled.button`
   margin: 0 0.25rem;
 `;
 
-const DirectionBadge = styled.span`
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  background-color: ${props => (props.direction === 'incoming' ? '#dcfce7' : '#dbeafe')};
-  color: ${props => (props.direction === 'incoming' ? '#166534' : '#1e40af')};
+const Tag = styled.div`
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  background-color: ${props => props.color || '#f3f4f6'};
+  color: ${props => props.textColor || '#374151'};
+  border-radius: 16px;
+  font-size: 0.875rem;
+  gap: 6px;
+  max-width: 200px;
+
+  span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 150px;
+  }
+`;
+
+const DirectionTag = styled(Tag)`
+  background-color: ${props => props.direction === 'Received' ? '#d1fae5' : '#e0f2fe'};
+  color: ${props => props.direction === 'Received' ? '#065f46' : '#0369a1'};
+`;
+
+const ActionButton = styled.button`
+  font-size: 0.8em;
+  padding: 5px 10px;
+  background: ${props => props.variant === 'whatsapp' ? '#25D366' : props.variant === 'emergency' ? '#d32f2f' : '#006064'};
+  color: white;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  margin-right: 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  
+  &:hover {
+    opacity: 0.9;
+  }
 `;
 
 const MessageCounter = styled.div`
@@ -643,32 +689,28 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
         <>
           <NoInteractions>
             No WhatsApp messages found for page {currentPage}
-            {debugMode && (
-              <div style={{ fontSize: '0.85em', marginTop: '15px', color: '#333' }}>
-                <div>Try page 1 to refresh data</div>
-                <button 
-                  type="button"
-                  onClick={() => {
-                    console.log("Emergency fetch button clicked");
-                    // Force a direct emergency fetch for this page
-                    emergencyFetchPage(currentPage);
-                  }} 
-                  style={{ 
-                    marginTop: '15px',
-                    padding: '8px 12px', 
-                    background: '#d32f2f', 
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontWeight: 'bold',
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                  }}
-                >
-                  EMERGENCY PAGE {currentPage} FETCH
-                </button>
-              </div>
-            )}
+            <div style={{ fontSize: '0.85em', marginTop: '15px', color: '#333' }}>
+              <button 
+                type="button"
+                onClick={() => {
+                  console.log("Emergency fetch button clicked");
+                  emergencyFetchPage(currentPage);
+                }} 
+                style={{ 
+                  marginTop: '15px',
+                  padding: '8px 12px', 
+                  background: '#d32f2f', 
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                }}
+              >
+                EMERGENCY PAGE {currentPage} FETCH
+              </button>
+            </div>
           </NoInteractions>
         </>
       );
@@ -678,123 +720,65 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     const startRecord = (currentPage - 1) * ITEMS_PER_PAGE + 1;
     const endRecord = Math.min(startRecord + interactions.length - 1, totalRecords);
 
+    const handleWhatsAppClick = (mobile) => {
+      const formattedNumber = mobile.startsWith('+') ? mobile.substring(1) : mobile;
+      window.open(`https://wa.me/${formattedNumber}`, '_blank');
+    };
+
     return (
       <>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-          <MessageCounter>
-            Showing records {startRecord} - {endRecord} of {totalRecords} total
-            {totalWhatsAppRecords > 0 && ` (out of ${totalWhatsAppRecords} in database)`}
-            <span style={{ marginLeft: '10px', fontSize: '0.8em', color: '#888' }}>
-              (Page {currentPage} of {totalPages})
-            </span>
-          </MessageCounter>
-          
-          {debugMode && (
-            <div>
-              <button 
-                type="button"
-                onClick={() => fetchPageWithLimitOffset(currentPage)} 
-                style={{ 
-                  fontSize: '0.8em', 
-                  padding: '5px 10px', 
-                  background: '#006064', 
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '3px',
-                  cursor: 'pointer',
-                  marginRight: '5px'
-                }}
-              >
-                Refresh
-              </button>
-              <button 
-                type="button"
-                onClick={() => emergencyFetchPage(currentPage)} 
-                style={{ 
-                  fontSize: '0.8em', 
-                  padding: '5px 10px', 
-                  background: '#d32f2f', 
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '3px',
-                  cursor: 'pointer'
-                }}
-              >
-                Emergency
-              </button>
-            </div>
-          )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '10px' }}>
+          <ActionButton 
+            type="button"
+            onClick={() => handleWhatsAppClick(contact.mobile)}
+            variant="whatsapp"
+          >
+            WhatsApp
+          </ActionButton>
         </div>
         
         <Table>
           <thead>
             <tr>
-              <th style={{ width: '12%' }}>Date</th>
-              <th style={{ width: '12%' }}>Mobile</th>
-              <th style={{ width: '12%' }}>Direction</th>
-              <th style={{ width: '64%' }}>Message</th>
+              <th style={{ width: '10%' }}>Date</th>
+              <th style={{ width: '10%' }}>Mobile</th>
+              <th style={{ width: '10%' }}>Direction</th>
+              <th style={{ width: '70%' }}>Message</th>
             </tr>
           </thead>
           <tbody>
             {interactions.map((interaction, index) => {
-              // Handle different possible values for the direction field
               const isIncoming = 
                 interaction.direction?.toLowerCase() === 'inbound' || 
                 interaction.direction?.toLowerCase() === 'incoming' ||
                 interaction.direction?.toLowerCase() === 'received' || 
                 interaction.direction?.toLowerCase() === 'in';
               
-              // Get debug info
-              const debugInfo = interaction._debugInfo || {};
-              const isFlexResult = debugInfo.queryType === 'flexible';
+              const direction = isIncoming ? 'Received' : 'Sent';
               
               return (
-                <tr key={interaction.id || interaction.debugId || index}>
-                  <td>{formatDate(interaction.whatsapp_date || interaction.created_at)}</td>
-                  <td>{interaction.contact_mobile}</td>
-                  <td>{isIncoming ? 'Received' : 'Sent'}</td>
-                  <td className="message-cell">
+                <tr key={interaction.id || index}>
+                  <td className="centered">
+                    {formatDate(interaction.whatsapp_date || interaction.created_at)}
+                  </td>
+                  <td className="tag-cell">
+                    <Tag color="#f3f4f6" textColor="#374151">
+                      <span>{interaction.contact_mobile}</span>
+                    </Tag>
+                  </td>
+                  <td className="tag-cell">
+                    <DirectionTag direction={direction}>
+                      <span>{direction}</span>
+                    </DirectionTag>
+                  </td>
+                  <td>
                     {interaction.message}
-                    {debugMode && (
-                      <div style={{ 
-                        fontSize: '0.7em', 
-                        color: isFlexResult ? '#800080' : '#666', 
-                        display: 'block', 
-                        marginTop: '3px',
-                        padding: '2px',
-                        background: isFlexResult ? '#f8f0ff' : '#f8f8f8',
-                        borderRadius: '2px'
-                      }}>
-                        {interaction.debugId}
-                        {debugInfo.position !== undefined && ` (pos: ${debugInfo.position})`}
-                        {isFlexResult && ' [FLEX]'}
-                      </div>
-                    )}
                   </td>
                 </tr>
               );
             })}
           </tbody>
         </Table>
-        
-        {debugMode && (
-          <div style={{ 
-            margin: '10px 0', 
-            padding: '5px', 
-            background: '#f8f8f8', 
-            border: '1px solid #ddd',
-            borderRadius: '4px',
-            fontSize: '0.8em'
-          }}>
-            <div><strong>Debug Info:</strong></div>
-            <div>Current Page: {currentPage}</div>
-            <div>Items Per Page: {ITEMS_PER_PAGE}</div>
-            <div>Expected Range: {(currentPage - 1) * ITEMS_PER_PAGE} - {(currentPage * ITEMS_PER_PAGE) - 1}</div>
-            <div>Record Count: {interactions.length}</div>
-            <div>Total Records: {totalRecords}</div>
-            <div>Query Type: {interactions[0]?._debugInfo?.queryType || 'unknown'}</div>
-          </div>
-        )}
         
         <PaginationContainer>
           <PageInfo>
