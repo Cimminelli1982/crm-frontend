@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
 
 // ==================== Styled Components ====================
-const ModalHeader = styled.div`
+const ModalHeader = styled.div
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -33,14 +33,14 @@ const ModalHeader = styled.div`
       background-color: #f3f4f6;
     }
   }
-`;
+;
 
-const TabContainer = styled.div`
+const TabContainer = styled.div
   display: flex;
   margin-bottom: 15px;
-`;
+;
 
-const TabButton = styled.button`
+const TabButton = styled.button
   background-color: ${props => (props.active ? '#007BFF' : '#E9ECEF')};
   color: ${props => (props.active ? '#fff' : '#000')};
   padding: 8px;
@@ -53,22 +53,22 @@ const TabButton = styled.button`
   &:hover {
     background-color: ${props => (props.active ? '#0056b3' : '#dee2e6')};
   }
-`;
+;
 
-const TabContent = styled.div`
+const TabContent = styled.div
   margin-bottom: 15px;
-`;
+;
 
-const InteractionList = styled.div`
+const InteractionList = styled.div
   background-color: #E9ECEF;
   padding: 10px;
   border-radius: 4px;
   margin-bottom: 15px;
   max-height: 300px;
   overflow-y: auto;
-`;
+;
 
-const InteractionItem = styled.div`
+const InteractionItem = styled.div
   background-color: white;
   padding: 12px;
   border-radius: 4px;
@@ -109,38 +109,38 @@ const InteractionItem = styled.div`
     display: inline-block;
     margin-bottom: 4px;
   }
-`;
+;
 
-const NoInteractions = styled.div`
+const NoInteractions = styled.div
   text-align: center;
   padding: 20px;
   color: #6b7280;
   font-style: italic;
-`;
+;
 
-const Table = styled.table`
+const Table = styled.table
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
   background-color: white;
   border-radius: 8px;
   overflow: hidden;
-`;
+;
 
-const TableHeader = styled.thead`
+const TableHeader = styled.thead
   background-color: #f3f4f6;
   
   th {
     padding: 12px 16px;
-    text-align: left;
+    text-align: center;
     font-weight: 600;
     font-size: 0.875rem;
     color: #374151;
     border-bottom: 1px solid #e5e7eb;
   }
-`;
+;
 
-const TableBody = styled.tbody`
+const TableBody = styled.tbody
   tr {
     &:hover {
       background-color: #f9fafb;
@@ -155,23 +155,36 @@ const TableBody = styled.tbody`
     padding: 12px 16px;
     font-size: 0.875rem;
     color: #111827;
-  }
-`;
+    vertical-align: middle;
+    
+    &.centered {
+      text-align: center;
+    }
 
-const PaginationContainer = styled.div`
+    &.tag-cell {
+      text-align: center;
+      > div {
+        display: inline-flex;
+        margin: 0 auto;
+      }
+    }
+  }
+;
+
+const PaginationContainer = styled.div
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-top: 1rem;
   padding: 0.5rem 0;
-`;
+;
 
-const PageInfo = styled.span`
+const PageInfo = styled.span
   font-size: 0.875rem;
   color: #4b5563;
-`;
+;
 
-const PaginationButton = styled.button`
+const PaginationButton = styled.button
   padding: 0.5rem 1rem;
   border: 1px solid #d1d5db;
   border-radius: 0.375rem;
@@ -190,24 +203,57 @@ const PaginationButton = styled.button`
   }
   
   margin: 0 0.25rem;
-`;
+;
 
-const DirectionBadge = styled.span`
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  background-color: ${props => (props.direction === 'incoming' ? '#dcfce7' : '#dbeafe')};
-  color: ${props => (props.direction === 'incoming' ? '#166534' : '#1e40af')};
-`;
+const Tag = styled.div
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  background-color: ${props => props.color || '#f3f4f6'};
+  color: ${props => props.textColor || '#374151'};
+  border-radius: 16px;
+  font-size: 0.875rem;
+  gap: 6px;
+  max-width: 200px;
 
-const MessageCounter = styled.div`
+  span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 150px;
+  }
+;
+
+const DirectionTag = styled(Tag)
+  background-color: ${props => props.direction === 'Received' ? '#d1fae5' : '#e0f2fe'};
+  color: ${props => props.direction === 'Received' ? '#065f46' : '#0369a1'};
+;
+
+const ActionButton = styled.button
+  font-size: 0.8em;
+  padding: 5px 10px;
+  background: ${props => props.variant === 'whatsapp' ? '#25D366' : props.variant === 'emergency' ? '#d32f2f' : '#006064'};
+  color: white;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  margin-right: 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  
+  &:hover {
+    opacity: 0.9;
+  }
+;
+
+const MessageCounter = styled.div
   font-size: 0.85rem;
   color: #666;
   margin-bottom: 10px;
   text-align: right;
   padding-right: 5px;
-`;
+;
 
 // ==================== Modal Component ====================
 const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
@@ -259,7 +305,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
   // Separate effect just for page changes - use alternate approach for pagination
   useEffect(() => {
     if (isOpen && contact && currentPage > 0) {
-      console.log(`%c[PAGE-CHANGE] Changing to page ${currentPage}`, 'background: #e65100; color: white; padding: 2px 5px;');
+      console.log(%c[PAGE-CHANGE] Changing to page ${currentPage}, 'background: #e65100; color: white; padding: 2px 5px;');
       
       // Set loading state and clear current data
       setLoading(true);
@@ -300,7 +346,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
 
   // Add new function to fetch with limit/offset instead of range
   const fetchPageWithLimitOffset = async (page) => {
-    console.log(`%c[LIMIT-OFFSET] Fetching page ${page}`, 'background: #006064; color: white; padding: 2px 5px;');
+    console.log(%c[LIMIT-OFFSET] Fetching page ${page}, 'background: #006064; color: white; padding: 2px 5px;');
     
     try {
       // Get mobile numbers
@@ -319,7 +365,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       const limit = ITEMS_PER_PAGE;
       const offset = (page - 1) * ITEMS_PER_PAGE;
       
-      console.log(`%c[LIMIT-OFFSET] Using limit=${limit}, offset=${offset} for page ${page}`, 'color: #006064; font-weight: bold;');
+      console.log(%c[LIMIT-OFFSET] Using limit=${limit}, offset=${offset} for page ${page}, 'color: #006064; font-weight: bold;');
       
       // FIRST ATTEMPT: Try exact match with limit/offset
       let query = supabase
@@ -330,15 +376,15 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
         .limit(limit)
         .offset(offset);
       
-      console.log(`%c[LIMIT-OFFSET] Executing query...`, 'color: #006064;');
+      console.log(%c[LIMIT-OFFSET] Executing query..., 'color: #006064;');
       let { data, count, error } = await query;
       
       if (error) {
-        console.error(`%c[LIMIT-OFFSET] Error:`, 'color: red;', error);
+        console.error(%c[LIMIT-OFFSET] Error:, 'color: red;', error);
         throw error;
       }
       
-      console.log(`%c[LIMIT-OFFSET] Query results:`, 'color: #006064;', {
+      console.log(%c[LIMIT-OFFSET] Query results:, 'color: #006064;', {
         success: !error,
         recordsFound: data?.length || 0,
         totalCount: count,
@@ -347,7 +393,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       
       // SECOND ATTEMPT: If no data and page > 1, try a more brute force approach
       if ((!data || data.length === 0) && page > 1) {
-        console.log(`%c[LIMIT-OFFSET] No data for page ${page}, trying alternative approach`, 'color: #006064; font-weight: bold;');
+        console.log(%c[LIMIT-OFFSET] No data for page ${page}, trying alternative approach, 'color: #006064; font-weight: bold;');
         
         // Try fetching all data and slicing manually
         const allDataQuery = supabase
@@ -362,7 +408,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           console.error('Error fetching all data:', allDataResult.error);
         } else if (allDataResult.data && allDataResult.data.length > 0) {
           const totalRecords = allDataResult.data.length;
-          console.log(`%c[LIMIT-OFFSET] Got ${totalRecords} total records, manual pagination`, 'color: #006064;');
+          console.log(%c[LIMIT-OFFSET] Got ${totalRecords} total records, manual pagination, 'color: #006064;');
           
           // Calculate slices
           const startIndex = offset;
@@ -372,23 +418,23 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           const pageData = allDataResult.data.slice(startIndex, endIndex);
           
           if (pageData.length > 0) {
-            console.log(`%c[LIMIT-OFFSET] Manual pagination success: ${pageData.length} records for page ${page}`, 'color: #006064; font-weight: bold;');
+            console.log(%c[LIMIT-OFFSET] Manual pagination success: ${pageData.length} records for page ${page}, 'color: #006064; font-weight: bold;');
             data = pageData;
             count = allDataResult.data.length;
           } else {
-            console.log(`%c[LIMIT-OFFSET] Manual pagination: No data for page ${page}`, 'color: #006064;');
+            console.log(%c[LIMIT-OFFSET] Manual pagination: No data for page ${page}, 'color: #006064;');
           }
         }
       }
       
       // THIRD ATTEMPT: If still no data, try flexible search
       if (!data || data.length === 0) {
-        console.log(`%c[LIMIT-OFFSET] Trying flexible search`, 'color: #006064;');
+        console.log(%c[LIMIT-OFFSET] Trying flexible search, 'color: #006064;');
         
         // Create conditions for matching last digits
         const orConditions = mobilesArray
           .filter(mobile => mobile && mobile.length > 7)
-          .map(mobile => `contact_mobile.ilike.%${mobile.slice(-8)}`);
+          .map(mobile => contact_mobile.ilike.%${mobile.slice(-8)});
         
         if (orConditions.length > 0) {
           // Try flexible search with limit/offset
@@ -400,16 +446,16 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
             .limit(limit)
             .offset(offset);
           
-          console.log(`%c[LIMIT-OFFSET] Executing flexible query...`, 'color: #006064;');
+          console.log(%c[LIMIT-OFFSET] Executing flexible query..., 'color: #006064;');
           const flexResult = await flexQuery;
           
           if (flexResult.error) {
-            console.error(`%c[LIMIT-OFFSET] Flex error:`, 'color: red;', flexResult.error);
+            console.error(%c[LIMIT-OFFSET] Flex error:, 'color: red;', flexResult.error);
           } else {
             data = flexResult.data;
             count = flexResult.count;
             
-            console.log(`%c[LIMIT-OFFSET] Flex results:`, 'color: #006064;', {
+            console.log(%c[LIMIT-OFFSET] Flex results:, 'color: #006064;', {
               recordsFound: data?.length || 0,
               totalCount: count,
               page
@@ -417,7 +463,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
             
             // If flexible search with limit/offset fails and page > 1, try manual pagination
             if ((!data || data.length === 0) && page > 1) {
-              console.log(`%c[LIMIT-OFFSET] No flex data for page ${page}, trying manual flex pagination`, 'color: #006064;');
+              console.log(%c[LIMIT-OFFSET] No flex data for page ${page}, trying manual flex pagination, 'color: #006064;');
               
               // Try getting all flex data and slicing
               const allFlexQuery = supabase
@@ -439,7 +485,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
                 const pageFlexData = allFlexResult.data.slice(startIndex, endIndex);
                 
                 if (pageFlexData.length > 0) {
-                  console.log(`%c[LIMIT-OFFSET] Manual flex pagination success: ${pageFlexData.length} records`, 'color: #006064; font-weight: bold;');
+                  console.log(%c[LIMIT-OFFSET] Manual flex pagination success: ${pageFlexData.length} records, 'color: #006064; font-weight: bold;');
                   data = pageFlexData;
                   count = allFlexResult.data.length;
                 }
@@ -461,25 +507,25 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
             queryType: 'limit-offset',
             timestamp: new Date().toISOString()
           },
-          debugId: `limit-p${page}-idx${index}-pos${offset + index}`
+          debugId: limit-p${page}-idx${index}-pos${offset + index}
         }));
         
-        console.log(`%c[LIMIT-OFFSET] Setting ${dataWithDebug.length} records in state for page ${page}`, 'color: #006064; font-weight: bold;');
+        console.log(%c[LIMIT-OFFSET] Setting ${dataWithDebug.length} records in state for page ${page}, 'color: #006064; font-weight: bold;');
         
         // Update state
         setInteractions(dataWithDebug);
         setTotalRecords(count || 0);
         setTotalPages(Math.max(Math.ceil((count || 0) / ITEMS_PER_PAGE), 1));
       } else {
-        console.log(`%c[LIMIT-OFFSET] No data found after all attempts for page ${page}`, 'color: orange;');
+        console.log(%c[LIMIT-OFFSET] No data found after all attempts for page ${page}, 'color: orange;');
         setInteractions([]);
       }
     } catch (err) {
-      console.error(`%c[LIMIT-OFFSET] Error:`, 'color: red;', err);
+      console.error(%c[LIMIT-OFFSET] Error:, 'color: red;', err);
       setInteractions([]);
     } finally {
       setLoading(false);
-      console.log(`%c[LIMIT-OFFSET] Page ${page} fetch completed`, 'background: #006064; color: white; padding: 2px 5px;');
+      console.log(%c[LIMIT-OFFSET] Page ${page} fetch completed, 'background: #006064; color: white; padding: 2px 5px;');
     }
   };
 
@@ -547,7 +593,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           throw error;
         }
         
-        console.log(`Query returned ${responseData ? responseData.length : 0} records out of ${totalCount} total`);
+        console.log(Query returned ${responseData ? responseData.length : 0} records out of ${totalCount} total);
         
         // Update state with the results
         data = responseData || [];
@@ -555,7 +601,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
         
         // Calculate total pages
         const totalPagesCount = Math.max(Math.ceil(count / ITEMS_PER_PAGE), 1);
-        console.log(`Total pages: ${totalPagesCount} (${count} records / ${ITEMS_PER_PAGE} per page)`);
+        console.log(Total pages: ${totalPagesCount} (${count} records / ${ITEMS_PER_PAGE} per page));
         
         // If no results with exact match, try flexible matching
         if (data.length === 0 && mobilesArray.length > 0) {
@@ -566,7 +612,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       // Handle other tabs here
       
       // Update state with final results
-      console.log(`Final data: ${data.length} records, total: ${count}`);
+      console.log(Final data: ${data.length} records, total: ${count});
       setInteractions(data);
       setTotalRecords(count);
       setTotalPages(Math.max(Math.ceil(count / ITEMS_PER_PAGE), 1));
@@ -643,32 +689,28 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
         <>
           <NoInteractions>
             No WhatsApp messages found for page {currentPage}
-            {debugMode && (
-              <div style={{ fontSize: '0.85em', marginTop: '15px', color: '#333' }}>
-                <div>Try page 1 to refresh data</div>
-                <button 
-                  type="button"
-                  onClick={() => {
-                    console.log("Emergency fetch button clicked");
-                    // Force a direct emergency fetch for this page
-                    emergencyFetchPage(currentPage);
-                  }} 
-                  style={{ 
-                    marginTop: '15px',
-                    padding: '8px 12px', 
-                    background: '#d32f2f', 
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontWeight: 'bold',
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                  }}
-                >
-                  EMERGENCY PAGE {currentPage} FETCH
-                </button>
-              </div>
-            )}
+            <div style={{ fontSize: '0.85em', marginTop: '15px', color: '#333' }}>
+              <button 
+                type="button"
+                onClick={() => {
+                  console.log("Emergency fetch button clicked");
+                  emergencyFetchPage(currentPage);
+                }} 
+                style={{ 
+                  marginTop: '15px',
+                  padding: '8px 12px', 
+                  background: '#d32f2f', 
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                }}
+              >
+                EMERGENCY PAGE {currentPage} FETCH
+              </button>
+            </div>
           </NoInteractions>
         </>
       );
@@ -678,123 +720,65 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     const startRecord = (currentPage - 1) * ITEMS_PER_PAGE + 1;
     const endRecord = Math.min(startRecord + interactions.length - 1, totalRecords);
 
+    const handleWhatsAppClick = (mobile) => {
+      const formattedNumber = mobile.startsWith('+') ? mobile.substring(1) : mobile;
+      window.open(https://wa.me/${formattedNumber}, '_blank');
+    };
+
     return (
       <>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-          <MessageCounter>
-            Showing records {startRecord} - {endRecord} of {totalRecords} total
-            {totalWhatsAppRecords > 0 && ` (out of ${totalWhatsAppRecords} in database)`}
-            <span style={{ marginLeft: '10px', fontSize: '0.8em', color: '#888' }}>
-              (Page {currentPage} of {totalPages})
-            </span>
-          </MessageCounter>
-          
-          {debugMode && (
-            <div>
-              <button 
-                type="button"
-                onClick={() => fetchPageWithLimitOffset(currentPage)} 
-                style={{ 
-                  fontSize: '0.8em', 
-                  padding: '5px 10px', 
-                  background: '#006064', 
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '3px',
-                  cursor: 'pointer',
-                  marginRight: '5px'
-                }}
-              >
-                Refresh
-              </button>
-              <button 
-                type="button"
-                onClick={() => emergencyFetchPage(currentPage)} 
-                style={{ 
-                  fontSize: '0.8em', 
-                  padding: '5px 10px', 
-                  background: '#d32f2f', 
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '3px',
-                  cursor: 'pointer'
-                }}
-              >
-                Emergency
-              </button>
-            </div>
-          )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '10px' }}>
+          <ActionButton 
+            type="button"
+            onClick={() => handleWhatsAppClick(contact.mobile)}
+            variant="whatsapp"
+          >
+            WhatsApp
+          </ActionButton>
         </div>
         
         <Table>
           <thead>
             <tr>
-              <th style={{ width: '12%' }}>Date</th>
-              <th style={{ width: '12%' }}>Mobile</th>
-              <th style={{ width: '12%' }}>Direction</th>
-              <th style={{ width: '64%' }}>Message</th>
+              <th style={{ width: '10%' }}>Date</th>
+              <th style={{ width: '10%' }}>Mobile</th>
+              <th style={{ width: '10%' }}>Direction</th>
+              <th style={{ width: '70%' }}>Message</th>
             </tr>
           </thead>
           <tbody>
             {interactions.map((interaction, index) => {
-              // Handle different possible values for the direction field
               const isIncoming = 
                 interaction.direction?.toLowerCase() === 'inbound' || 
                 interaction.direction?.toLowerCase() === 'incoming' ||
                 interaction.direction?.toLowerCase() === 'received' || 
                 interaction.direction?.toLowerCase() === 'in';
               
-              // Get debug info
-              const debugInfo = interaction._debugInfo || {};
-              const isFlexResult = debugInfo.queryType === 'flexible';
+              const direction = isIncoming ? 'Received' : 'Sent';
               
               return (
-                <tr key={interaction.id || interaction.debugId || index}>
-                  <td>{formatDate(interaction.whatsapp_date || interaction.created_at)}</td>
-                  <td>{interaction.contact_mobile}</td>
-                  <td>{isIncoming ? 'Received' : 'Sent'}</td>
-                  <td className="message-cell">
+                <tr key={interaction.id || index}>
+                  <td className="centered">
+                    {formatDate(interaction.whatsapp_date || interaction.created_at)}
+                  </td>
+                  <td className="tag-cell">
+                    <Tag color="#f3f4f6" textColor="#374151">
+                      <span>{interaction.contact_mobile}</span>
+                    </Tag>
+                  </td>
+                  <td className="tag-cell">
+                    <DirectionTag direction={direction}>
+                      <span>{direction}</span>
+                    </DirectionTag>
+                  </td>
+                  <td>
                     {interaction.message}
-                    {debugMode && (
-                      <div style={{ 
-                        fontSize: '0.7em', 
-                        color: isFlexResult ? '#800080' : '#666', 
-                        display: 'block', 
-                        marginTop: '3px',
-                        padding: '2px',
-                        background: isFlexResult ? '#f8f0ff' : '#f8f8f8',
-                        borderRadius: '2px'
-                      }}>
-                        {interaction.debugId}
-                        {debugInfo.position !== undefined && ` (pos: ${debugInfo.position})`}
-                        {isFlexResult && ' [FLEX]'}
-                      </div>
-                    )}
                   </td>
                 </tr>
               );
             })}
           </tbody>
         </Table>
-        
-        {debugMode && (
-          <div style={{ 
-            margin: '10px 0', 
-            padding: '5px', 
-            background: '#f8f8f8', 
-            border: '1px solid #ddd',
-            borderRadius: '4px',
-            fontSize: '0.8em'
-          }}>
-            <div><strong>Debug Info:</strong></div>
-            <div>Current Page: {currentPage}</div>
-            <div>Items Per Page: {ITEMS_PER_PAGE}</div>
-            <div>Expected Range: {(currentPage - 1) * ITEMS_PER_PAGE} - {(currentPage * ITEMS_PER_PAGE) - 1}</div>
-            <div>Record Count: {interactions.length}</div>
-            <div>Total Records: {totalRecords}</div>
-            <div>Query Type: {interactions[0]?._debugInfo?.queryType || 'unknown'}</div>
-          </div>
-        )}
         
         <PaginationContainer>
           <PageInfo>
@@ -868,11 +852,11 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
 
   // Update the pagination handler with better logging
   const handlePageChange = (newPage) => {
-    console.log(`%c[NAV] Requested page change from ${currentPage} to ${newPage} (total: ${totalPages})`, 'background: #333; color: white; padding: 2px 5px;');
+    console.log(%c[NAV] Requested page change from ${currentPage} to ${newPage} (total: ${totalPages}), 'background: #333; color: white; padding: 2px 5px;');
     
     // Validate the requested page number
     if (newPage >= 1 && newPage <= totalPages && newPage !== currentPage) {
-      console.log(`%c[NAV] Changing to page ${newPage}`, 'color: green;');
+      console.log(%c[NAV] Changing to page ${newPage}, 'color: green;');
       // Set loading first to avoid flickering
       setLoading(true);
       // Clear current interactions to ensure we don't show stale data
@@ -880,22 +864,22 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       // Change the page - this will trigger the useEffect that calls fetchPageData
       setCurrentPage(newPage);
     } else {
-      console.log(`%c[NAV] Invalid page ${newPage} or already on this page`, 'color: orange;');
+      console.log(%c[NAV] Invalid page ${newPage} or already on this page, 'color: orange;');
     }
   };
 
   // Helper function for flexible search (enhanced)
   const tryFlexibleSearch = async (mobilesArray, from, to, page) => {
     try {
-      console.log(`%c[FLEX ${page}] Starting flexible search for range ${from}-${to}`, 'background: #800080; color: white; padding: 2px 5px;');
+      console.log(%c[FLEX ${page}] Starting flexible search for range ${from}-${to}, 'background: #800080; color: white; padding: 2px 5px;');
       
       // Create conditions for matching last digits
       const orConditions = mobilesArray
         .filter(mobile => mobile && mobile.length > 7)
-        .map(mobile => `contact_mobile.ilike.%${mobile.slice(-8)}`);
+        .map(mobile => contact_mobile.ilike.%${mobile.slice(-8)});
       
       if (orConditions.length === 0) {
-        console.log(`%c[FLEX ${page}] No valid conditions for flexible search`, 'color: orange;');
+        console.log(%c[FLEX ${page}] No valid conditions for flexible search, 'color: orange;');
         setInteractions([]);
         return;
       }
@@ -909,28 +893,28 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
         .range(from, to);
       
       // Log query details
-      console.log(`%c[FLEX ${page}] Conditions:`, 'color: purple;', orConditions);
+      console.log(%c[FLEX ${page}] Conditions:, 'color: purple;', orConditions);
       
       if (typeof flexQuery.toSQL === 'function') {
         const sql = flexQuery.toSQL();
-        console.log(`%c[FLEX ${page}] SQL: ${sql}`, 'color: purple;');
+        console.log(%c[FLEX ${page}] SQL: ${sql}, 'color: purple;');
       }
       
       // Execute flexible query
-      console.log(`%c[FLEX ${page}] Executing query...`, 'color: purple;');
+      console.log(%c[FLEX ${page}] Executing query..., 'color: purple;');
       const { data, count, error } = await flexQuery;
       
       if (error) {
-        console.error(`%c[FLEX ${page}] Error:`, 'color: red;', error);
+        console.error(%c[FLEX ${page}] Error:, 'color: red;', error);
         setInteractions([]);
         return;
       }
       
       // Log results
       if (data && data.length > 0) {
-        console.log(`%c[FLEX ${page}] Found ${data.length} records:`, 'color: green; font-weight: bold;');
+        console.log(%c[FLEX ${page}] Found ${data.length} records:, 'color: green; font-weight: bold;');
         data.forEach((record, idx) => {
-          console.log(`Flex Record ${idx}:`, {
+          console.log(Flex Record ${idx}:, {
             id: record.id,
             date: record.created_at, 
             message: record.message?.substring(0, 30) + '...',
@@ -938,7 +922,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           });
         });
       } else {
-        console.log(`%c[FLEX ${page}] No records found with flexible search`, 'color: orange;');
+        console.log(%c[FLEX ${page}] No records found with flexible search, 'color: orange;');
       }
       
       // Update state with flexible search results
@@ -952,31 +936,31 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
             position: from + index,
             queryType: 'flexible',
             timestamp: new Date().toISOString(),
-            range: `${from}-${to}`
+            range: ${from}-${to}
           },
-          debugId: `flex${page}-idx${index}-pos${from + index}`
+          debugId: flex${page}-idx${index}-pos${from + index}
         }));
         
-        console.log(`%c[FLEX ${page}] Setting ${dataWithDebug.length} flex records in state`, 'color: purple; font-weight: bold;');
+        console.log(%c[FLEX ${page}] Setting ${dataWithDebug.length} flex records in state, 'color: purple; font-weight: bold;');
         
         setInteractions(dataWithDebug);
         setTotalRecords(count || 0);
         setTotalPages(Math.max(Math.ceil((count || 0) / ITEMS_PER_PAGE), 1));
       } else {
-        console.log(`%c[FLEX ${page}] No data found, setting empty state`, 'color: orange;');
+        console.log(%c[FLEX ${page}] No data found, setting empty state, 'color: orange;');
         setInteractions([]);
       }
     } catch (err) {
-      console.error(`%c[FLEX ${page}] Error:`, 'color: red;', err);
+      console.error(%c[FLEX ${page}] Error:, 'color: red;', err);
       setInteractions([]);
     } finally {
-      console.log(`%c[FLEX ${page}] Flexible search completed`, 'background: #800080; color: white; padding: 2px 5px;');
+      console.log(%c[FLEX ${page}] Flexible search completed, 'background: #800080; color: white; padding: 2px 5px;');
     }
   };
 
   // Add a new emergency fetch function that uses a completely different approach
   const emergencyFetchPage = async (page) => {
-    console.log(`%c[EMERGENCY] FETCH FOR PAGE ${page} STARTED`, 'background: #d32f2f; color: white; font-weight: bold; padding: 3px 6px;');
+    console.log(%c[EMERGENCY] FETCH FOR PAGE ${page} STARTED, 'background: #d32f2f; color: white; font-weight: bold; padding: 3px 6px;');
     
     try {
       setLoading(true);
@@ -991,15 +975,15 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       if (contact.mobile2) mobilesArray.push(normalizePhoneNumber(contact.mobile2));
       
       if (mobilesArray.length === 0) {
-        console.log(`%c[EMERGENCY] No mobile numbers!`, 'color: #d32f2f;');
+        console.log(%c[EMERGENCY] No mobile numbers!, 'color: #d32f2f;');
         setLoading(false);
         return;
       }
       
-      console.log(`%c[EMERGENCY] Mobile numbers:`, 'color: #d32f2f;', mobilesArray);
+      console.log(%c[EMERGENCY] Mobile numbers:, 'color: #d32f2f;', mobilesArray);
       
       // BRUTE FORCE: Get ALL records first
-      console.log(`%c[EMERGENCY] Fetching ALL records...`, 'color: #d32f2f;');
+      console.log(%c[EMERGENCY] Fetching ALL records..., 'color: #d32f2f;');
       
       const allRecordsQuery = supabase
         .from(WHATSAPP_TABLE)
@@ -1010,21 +994,21 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       const { data: allData, error: allError } = await allRecordsQuery;
       
       if (allError) {
-        console.error(`%c[EMERGENCY] Error fetching all records:`, 'color: #d32f2f;', allError);
+        console.error(%c[EMERGENCY] Error fetching all records:, 'color: #d32f2f;', allError);
         
         // Try the flexible approach
         await emergencyFlexibleFetch(page, mobilesArray);
         return;
       }
       
-      console.log(`%c[EMERGENCY] Total records found: ${allData?.length || 0}`, 'color: #d32f2f; font-weight: bold;');
+      console.log(%c[EMERGENCY] Total records found: ${allData?.length || 0}, 'color: #d32f2f; font-weight: bold;');
       
       if (allData && allData.length > 0) {
         // Manually calculate data for this page
         const pageData = allData.slice(offset, offset + ITEMS_PER_PAGE);
         
         if (pageData.length > 0) {
-          console.log(`%c[EMERGENCY] Found ${pageData.length} records for page ${page}`, 'color: #d32f2f; font-weight: bold;');
+          console.log(%c[EMERGENCY] Found ${pageData.length} records for page ${page}, 'color: #d32f2f; font-weight: bold;');
           
           // Add debug info
           const dataWithDebug = pageData.map((record, index) => ({
@@ -1036,36 +1020,36 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
               queryType: 'emergency',
               timestamp: new Date().toISOString()
             },
-            debugId: `emrg-p${page}-idx${index}-pos${offset + index}`
+            debugId: emrg-p${page}-idx${index}-pos${offset + index}
           }));
           
           setInteractions(dataWithDebug);
           setTotalRecords(allData.length);
           setTotalPages(Math.max(Math.ceil(allData.length / ITEMS_PER_PAGE), 1));
         } else {
-          console.log(`%c[EMERGENCY] No records for page ${page} (out of bounds)`, 'color: #d32f2f;');
+          console.log(%c[EMERGENCY] No records for page ${page} (out of bounds), 'color: #d32f2f;');
           
           // Try flexible search as last resort
           await emergencyFlexibleFetch(page, mobilesArray);
         }
       } else {
-        console.log(`%c[EMERGENCY] No records found!`, 'color: #d32f2f;');
+        console.log(%c[EMERGENCY] No records found!, 'color: #d32f2f;');
         
         // Try flexible search as last resort
         await emergencyFlexibleFetch(page, mobilesArray);
       }
     } catch (err) {
-      console.error(`%c[EMERGENCY] Critical error:`, 'color: #d32f2f; font-weight: bold;', err);
+      console.error(%c[EMERGENCY] Critical error:, 'color: #d32f2f; font-weight: bold;', err);
       setInteractions([]);
     } finally {
       setLoading(false);
-      console.log(`%c[EMERGENCY] FETCH COMPLETED`, 'background: #d32f2f; color: white; font-weight: bold; padding: 3px 6px;');
+      console.log(%c[EMERGENCY] FETCH COMPLETED, 'background: #d32f2f; color: white; font-weight: bold; padding: 3px 6px;');
     }
   };
   
   // Emergency flexible fetch as last resort
   const emergencyFlexibleFetch = async (page, mobilesArray) => {
-    console.log(`%c[EMERGENCY-FLEX] Last resort flexible search`, 'color: #d32f2f;');
+    console.log(%c[EMERGENCY-FLEX] Last resort flexible search, 'color: #d32f2f;');
     
     try {
       // Calculate offset
@@ -1074,10 +1058,10 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       // Create or conditions for last digits
       const orConditions = mobilesArray
         .filter(mobile => mobile && mobile.length > 7)
-        .map(mobile => `contact_mobile.ilike.%${mobile.slice(-8)}`);
+        .map(mobile => contact_mobile.ilike.%${mobile.slice(-8)});
       
       if (orConditions.length === 0) {
-        console.log(`%c[EMERGENCY-FLEX] No valid conditions!`, 'color: #d32f2f;');
+        console.log(%c[EMERGENCY-FLEX] No valid conditions!, 'color: #d32f2f;');
         return;
       }
       
@@ -1091,18 +1075,18 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       const { data: flexData, error: flexError } = await flexQuery;
       
       if (flexError) {
-        console.error(`%c[EMERGENCY-FLEX] Error:`, 'color: #d32f2f;', flexError);
+        console.error(%c[EMERGENCY-FLEX] Error:, 'color: #d32f2f;', flexError);
         return;
       }
       
-      console.log(`%c[EMERGENCY-FLEX] Total flex matches: ${flexData?.length || 0}`, 'color: #d32f2f;');
+      console.log(%c[EMERGENCY-FLEX] Total flex matches: ${flexData?.length || 0}, 'color: #d32f2f;');
       
       if (flexData && flexData.length > 0) {
         // Manual pagination for flex data
         const pageFlexData = flexData.slice(offset, offset + ITEMS_PER_PAGE);
         
         if (pageFlexData.length > 0) {
-          console.log(`%c[EMERGENCY-FLEX] Found ${pageFlexData.length} flex records for page ${page}`, 'color: #d32f2f; font-weight: bold;');
+          console.log(%c[EMERGENCY-FLEX] Found ${pageFlexData.length} flex records for page ${page}, 'color: #d32f2f; font-weight: bold;');
           
           // Add debug info
           const dataWithDebug = pageFlexData.map((record, index) => ({
@@ -1114,22 +1098,22 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
               queryType: 'emergency-flex',
               timestamp: new Date().toISOString()
             },
-            debugId: `emflex-p${page}-idx${index}-pos${offset + index}`
+            debugId: emflex-p${page}-idx${index}-pos${offset + index}
           }));
           
           setInteractions(dataWithDebug);
           setTotalRecords(flexData.length);
           setTotalPages(Math.max(Math.ceil(flexData.length / ITEMS_PER_PAGE), 1));
         } else {
-          console.log(`%c[EMERGENCY-FLEX] No flex records for page ${page} (out of bounds)`, 'color: #d32f2f;');
+          console.log(%c[EMERGENCY-FLEX] No flex records for page ${page} (out of bounds), 'color: #d32f2f;');
           setInteractions([]);
         }
       } else {
-        console.log(`%c[EMERGENCY-FLEX] No flex records found at all!`, 'color: #d32f2f;');
+        console.log(%c[EMERGENCY-FLEX] No flex records found at all!, 'color: #d32f2f;');
         setInteractions([]);
       }
     } catch (err) {
-      console.error(`%c[EMERGENCY-FLEX] Critical error:`, 'color: #d32f2f;', err);
+      console.error(%c[EMERGENCY-FLEX] Critical error:, 'color: #d32f2f;', err);
       setInteractions([]);
     }
   };
