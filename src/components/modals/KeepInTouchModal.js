@@ -50,8 +50,12 @@ const KeepInTouchModal = ({ isOpen, onRequestClose, contact }) => {
   };
 
   const handleSave = async () => {
-    if (!frequency && (birthdayWishes !== 'No wishes' && !birthdayDate) && christmasWishes === 'No wishes' && easterWishes === 'No wishes') {
+    if (!frequency && christmasWishes === 'No wishes' && easterWishes === 'No wishes' && (birthdayWishes === 'No wishes' || !birthdayWishes)) {
       setErrorMessage('Please enter at least one wish or frequency');
+      return;
+    }
+    if (birthdayWishes !== 'No wishes' && !birthdayDate) {
+      setErrorMessage('Please enter a birthday date if you select birthday wishes');
       return;
     }
     setLoading(true);
@@ -181,7 +185,48 @@ const KeepInTouchModal = ({ isOpen, onRequestClose, contact }) => {
         )}
         {activeTab === 'Wishes' && (
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '15px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', marginBottom: '15px' }}>
+              <span style={{ marginBottom: '5px', fontSize: '14px', color: '#555' }}>
+                Birthday date: {contact.birthday || '-'}
+                {contact.birthday && (
+                  <button
+                    onClick={async () => {
+                      setLoading(true);
+                      const { error } = await supabase
+                        .from('contacts')
+                        .update({ birthday: null })
+                        .eq('id', contact.id);
+                      if (error) {
+                        setErrorMessage('Error resetting birthday date');
+                      } else {
+                        const { data, error: fetchError } = await supabase
+                          .from('contacts')
+                          .select('birthday')
+                          .eq('id', contact.id)
+                          .single();
+                        if (fetchError) {
+                          setErrorMessage('Error fetching updated birthday');
+                        } else {
+                          setBirthdayDate(data.birthday);
+                          setSuccessMessage('Birthday date reset successfully');
+                        }
+                      }
+                      setLoading(false);
+                    }}
+                    style={{
+                      marginLeft: '10px',
+                      backgroundColor: '#dc3545',
+                      color: '#fff',
+                      padding: '5px 10px',
+                      borderRadius: '4px',
+                      border: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Reset Birthday
+                  </button>
+                )}
+              </span>
               <input
                 type="text"
                 aria-label="Birthday date input"
@@ -189,19 +234,20 @@ const KeepInTouchModal = ({ isOpen, onRequestClose, contact }) => {
                 onChange={(e) => setBirthdayDate(e.target.value)}
                 placeholder="YYYY-MM-DD"
                 style={{
-                  width: 'calc(100% - 30px)',
+                  width: '100%',
                   padding: '10px',
                   borderRadius: '8px',
                   fontSize: '14px',
-                  backgroundColor: '#E9ECEF',
-                  border: '1px solid #ced4da'
+                  backgroundColor: '#fff',
+                  border: '1px solid #ced4da',
+                  boxSizing: 'border-box'
                 }}
               />
               {birthdayDate && (
                 <button
                   onClick={() => setBirthdayDate('')}
                   style={{
-                    marginLeft: '5px',
+                    marginTop: '5px',
                     backgroundColor: 'transparent',
                     border: 'none',
                     cursor: 'pointer',
