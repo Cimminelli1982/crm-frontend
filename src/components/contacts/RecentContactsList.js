@@ -14,6 +14,7 @@ import NameEditForm from './forms/NameEditForm';
 import CompanyEditForm from './forms/CompanyEditForm';
 import TagsEditForm from './forms/TagsEditForm';
 import KeepInTouchModal from '../modals/KeepInTouchModal';
+import CategoryModal from '../modals/CategoryModal';
 
 // Set the app element for react-modal
 Modal.setAppElement('#root');
@@ -769,6 +770,10 @@ const RecentContactsList = ({
   // Add a state for local validation errors
   const [mobileInputError, setMobileInputError] = useState('');
   
+  // Add new state for category modal
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [selectedContactForCategory, setSelectedContactForCategory] = useState(null);
+  
   // --------- DATA FETCHING FUNCTIONS ---------
   
   // Fetch contacts - core data fetching function
@@ -1288,7 +1293,12 @@ const RecentContactsList = ({
 
   // Make the entire cell clickable for company and tags
   const handleCellClick = (contact, type) => {
-    handleOpenModal(type, contact);
+    if (type === 'category') {
+      setSelectedContactForCategory(contact);
+      setShowCategoryModal(true);
+    } else {
+      handleOpenModal(type, contact);
+    }
   };
   
   // Skip contact
@@ -1970,6 +1980,14 @@ const RecentContactsList = ({
     window.open(hubspotUrl, '_blank');
   };
   
+  // Add handleCloseCategoryModal function
+  const handleCloseCategoryModal = () => {
+    setShowCategoryModal(false);
+    setSelectedContactForCategory(null);
+    // Refresh the contacts list to show updated category
+    fetchContacts();
+  };
+  
   // --------- RENDER ---------
   return (
     <Container>
@@ -2377,6 +2395,15 @@ const RecentContactsList = ({
           isOpen={modalOpen}
           onRequestClose={() => setModalOpen(false)}
           contact={modalContact}
+        />
+      )}
+
+      {/* Add CategoryModal */}
+      {showCategoryModal && selectedContactForCategory && (
+        <CategoryModal
+          isOpen={showCategoryModal}
+          onRequestClose={handleCloseCategoryModal}
+          contact={selectedContactForCategory}
         />
       )}
     </Container>
