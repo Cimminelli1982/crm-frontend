@@ -4,7 +4,7 @@ import { FiX } from 'react-icons/fi';
 import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
 
-// Styled components
+// ==================== Styled Components ====================
 const ModalHeader = styled.div`
   display: flex;
   justify-content: space-between;
@@ -40,42 +40,9 @@ const TabContainer = styled.div`
   margin-bottom: 15px;
 `;
 
-const FilterContainer = styled.div`
-  margin-bottom: 15px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-`;
-
-const FilterLabel = styled.span`
-  font-size: 0.875rem;
-  color: #4b5563;
-  font-weight: 500;
-`;
-
-const FilterSelect = styled.select`
-  padding: 6px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 4px;
-  font-size: 0.875rem;
-  color: #111827;
-  background-color: white;
-  cursor: pointer;
-  
-  &:hover {
-    border-color: #9ca3af;
-  }
-  
-  &:focus {
-    outline: none;
-    border-color: #3b82f6;
-    ring: 2px solid rgba(59, 130, 246, 0.5);
-  }
-`;
-
 const TabButton = styled.button`
-  background-color: ${props => props.active ? '#007BFF' : '#E9ECEF'};
-  color: ${props => props.active ? '#fff' : '#000'};
+  background-color: ${props => (props.active ? '#007BFF' : '#E9ECEF')};
+  color: ${props => (props.active ? '#fff' : '#000')};
   padding: 8px;
   border: none;
   border-radius: 4px 4px 0 0;
@@ -84,7 +51,7 @@ const TabButton = styled.button`
   transition: all 0.2s;
 
   &:hover {
-    background-color: ${props => props.active ? '#0056b3' : '#dee2e6'};
+    background-color: ${props => (props.active ? '#0056b3' : '#dee2e6')};
   }
 `;
 
@@ -127,10 +94,14 @@ const InteractionItem = styled.div`
     color: #fff;
     background-color: ${props => {
       switch (props.type) {
-        case 'whatsapp': return '#25D366';
-        case 'email': return '#4285F4';
-        case 'meeting': return '#9C27B0';
-        default: return '#6b7280';
+        case 'whatsapp':
+          return '#25D366';
+        case 'email':
+          return '#4285F4';
+        case 'meeting':
+          return '#9C27B0';
+        default:
+          return '#6b7280';
       }
     }};
     padding: 2px 6px;
@@ -226,155 +197,122 @@ const DirectionBadge = styled.span`
   border-radius: 12px;
   font-size: 0.75rem;
   font-weight: 500;
-  background-color: ${props => props.direction === 'incoming' ? '#dcfce7' : '#dbeafe'};
-  color: ${props => props.direction === 'incoming' ? '#166534' : '#1e40af'};
+  background-color: ${props => (props.direction === 'incoming' ? '#dcfce7' : '#dbeafe')};
+  color: ${props => (props.direction === 'incoming' ? '#166534' : '#1e40af')};
 `;
 
+const MessageCounter = styled.div`
+  font-size: 0.85rem;
+  color: #666;
+  margin-bottom: 10px;
+  text-align: right;
+  padding-right: 5px;
+`;
+
+// ==================== Modal Component ====================
 const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
-  // Add WhatsApp filter state
-  const [whatsappFilter, setWhatsappFilter] = useState('both');
-  
-  // Determine initial active tab based on available data
-  const getInitialActiveTab = () => {
-    if (contact.mobile || contact.mobile2) return 'Whatsapp';
-    if (contact.email || contact.email2 || contact.email3) return 'Email';
-    return 'Meeting';
-  };
-
-  // Set initial WhatsApp filter based on available numbers
-  useEffect(() => {
-    if (contact.mobile && contact.mobile2) {
-      if (contact.mobile === contact.mobile2) {
-        setWhatsappFilter('primary');
-      } else {
-        setWhatsappFilter('both');
-      }
-    } else if (contact.mobile) {
-      setWhatsappFilter('primary');
-    } else if (contact.mobile2) {
-      setWhatsappFilter('secondary');
-    }
-  }, [contact]);
-
-  const [activeTab, setActiveTab] = useState(getInitialActiveTab());
+  const [activeTab, setActiveTab] = useState('Whatsapp');
   const [interactions, setInteractions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [totalWhatsAppRecords, setTotalWhatsAppRecords] = useState(0);
   const ITEMS_PER_PAGE = 15;
+  const WHATSAPP_TABLE = 'whatsapp';
+
+  const normalizePhoneNumber = (phone) => {
+    if (!phone) return null;
+    return phone.replace(/\D/g, '');
+  };
+
+  useEffect(() => {
+    if (contact) {
+      if (contact.mobile || contact.mobile2) setActiveTab('Whatsapp');
+      else if (contact.email || contact.email2 || contact.email3) setActiveTab('Email');
+      else setActiveTab('Meeting');
+    }
+  }, [contact]);
 
   useEffect(() => {
     if (isOpen && contact) {
-      fetchInteractions();
+      fetchPageData(currentPage);
     }
-  }, [isOpen, contact, activeTab, whatsappFilter, currentPage]);
+  }, [isOpen, contact, currentPage, activeTab]);
 
-  const fetchInteractions = async () => {
-    setLoading(true);
+  const fetchPageData = async (page) => {
     try {
-      let query = supabase
-        .from('whatsapp_messages')
-        .select('*', { count: 'exact' });
-
-      // Format mobile numbers to ensure they have + prefix
-      const formatMobileNumber = (number) => {
-        if (!number) return null;
-        return number.startsWith('+') ? number : `+${number}`;
-      };
-
-      const formattedMobile = formatMobileNumber(contact.mobile);
-      const formattedMobile2 = formatMobileNumber(contact.mobile2);
-
-// Apply WhatsApp filter
-if (activeTab === 'Whatsapp') {
-    switch (whatsappFilter) {
-      case 'primary':
-        query = query.eq('contact_mobile', formattedMobile);
-        break;
-      case 'secondary':
-        query = query.eq('contact_mobile', formattedMobile2);
-        break;
-      case 'both':
-        query = query.or(
-          `contact_mobile.eq.'${formattedMobile}'${
-            formattedMobile2 ? `,contact_mobile.eq.'${formattedMobile2}'` : ''
-          }`
-        );
-        break;
-    }
-  }
-
-      // Add pagination
-      const from = (currentPage - 1) * ITEMS_PER_PAGE;
-      const to = from + ITEMS_PER_PAGE - 1;
+      setLoading(true);
       
-      query = query
-        .order('whatsapp_date', { ascending: false })
-        .range(from, to);
+      if (activeTab === 'Whatsapp') {
+        const normalizedMobile = normalizePhoneNumber(contact.mobile);
+        const normalizedMobile2 = normalizePhoneNumber(contact.mobile2);
+        
+        let { data: allMessages, error } = await supabase
+          .from(WHATSAPP_TABLE)
+          .select('*')
+          .or(`phone.eq.${normalizedMobile}${normalizedMobile2 ? `,phone.eq.${normalizedMobile2}` : ''}`)
+          .order('created_at', { ascending: false });
 
-      console.log('Query parameters:', { 
-        mobile: formattedMobile, 
-        mobile2: formattedMobile2, 
-        filter: whatsappFilter 
-      });
+        if (error) throw error;
 
-      const { data, error, count } = await query;
+        // Calculate total records and pages
+        const total = allMessages ? allMessages.length : 0;
+        setTotalWhatsAppRecords(total);
+        setTotalRecords(total);
+        setTotalPages(Math.ceil(total / ITEMS_PER_PAGE));
 
-      if (error) throw error;
+        // Slice the data for the current page
+        const startIndex = (page - 1) * ITEMS_PER_PAGE;
+        const endIndex = startIndex + ITEMS_PER_PAGE;
+        const pageData = allMessages.slice(startIndex, endIndex);
 
-      console.log('Fetched data:', data);
-
-      setInteractions(data || []);
-      setTotalPages(Math.ceil((count || 0) / ITEMS_PER_PAGE));
+        setInteractions(pageData || []);
+      }
     } catch (error) {
-      console.error('Error fetching interactions:', error);
+      console.error('Error fetching data:', error);
+      setInteractions([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+  const handlePageChange = (newPage) => {
+    setCurrentPage(newPage);
   };
 
   const renderWhatsAppTable = () => {
     if (loading) {
-      return <NoInteractions>Loading...</NoInteractions>;
+      return <div>Loading...</div>;
     }
 
-    if (!interactions.length) {
-      return <NoInteractions>No WhatsApp messages found</NoInteractions>;
+    if (!interactions || interactions.length === 0) {
+      return <NoInteractions>No WhatsApp messages found.</NoInteractions>;
     }
 
     return (
       <>
+        <MessageCounter>
+          Total messages: {totalWhatsAppRecords}
+        </MessageCounter>
         <Table>
           <TableHeader>
             <tr>
+              <th>Date</th>
               <th>Direction</th>
               <th>Message</th>
-              <th>Date</th>
-              <th>Phone Number</th>
             </tr>
           </TableHeader>
           <TableBody>
-            {interactions.map(message => (
-              <tr key={message.id}>
+            {interactions.map((interaction) => (
+              <tr key={interaction.id}>
+                <td>{new Date(interaction.created_at).toLocaleString()}</td>
                 <td>
-                  <DirectionBadge direction={message.direction}>
-                    {message.direction === 'incoming' ? 'Received' : 'Sent'}
+                  <DirectionBadge direction={interaction.direction}>
+                    {interaction.direction}
                   </DirectionBadge>
                 </td>
-                <td>{message.message}</td>
-                <td>{formatDate(message.whatsapp_date)}</td>
-                <td>{message.contact_mobile}</td>
+                <td>{interaction.message}</td>
               </tr>
             ))}
           </TableBody>
@@ -385,28 +323,18 @@ if (activeTab === 'Whatsapp') {
           </PageInfo>
           <div>
             <PaginationButton
-              onClick={() => setCurrentPage(1)}
-              disabled={currentPage === 1}
-            >
-              First
-            </PaginationButton>
-            <PaginationButton
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              type="button"
+              onClick={() => handlePageChange(currentPage - 1)}
               disabled={currentPage === 1}
             >
               Previous
             </PaginationButton>
             <PaginationButton
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              disabled={currentPage === totalPages}
+              type="button"
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage >= totalPages}
             >
               Next
-            </PaginationButton>
-            <PaginationButton
-              onClick={() => setCurrentPage(totalPages)}
-              disabled={currentPage === totalPages}
-            >
-              Last
             </PaginationButton>
           </div>
         </PaginationContainer>
@@ -414,22 +342,17 @@ if (activeTab === 'Whatsapp') {
     );
   };
 
-  const renderInteractions = () => {
-    if (loading) {
-      return <NoInteractions>Loading...</NoInteractions>;
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'Whatsapp':
+        return renderWhatsAppTable();
+      case 'Email':
+        return <div>Email interactions coming soon...</div>;
+      case 'Meeting':
+        return <div>Meeting interactions coming soon...</div>;
+      default:
+        return null;
     }
-
-    if (!interactions.length) {
-      return <NoInteractions>No {activeTab} interactions found</NoInteractions>;
-    }
-
-    return interactions.map(interaction => (
-      <InteractionItem key={interaction.id} type={interaction.type}>
-        <div className="type">{interaction.type}</div>
-        <div className="date">{formatDate(interaction.interaction_date)}</div>
-        <div className="content">{interaction.content}</div>
-      </InteractionItem>
-    ));
   };
 
   return (
@@ -444,89 +367,51 @@ if (activeTab === 'Whatsapp') {
           bottom: 'auto',
           marginRight: '-50%',
           transform: 'translate(-50%, -50%)',
+          width: '80%',
+          maxWidth: '1000px',
+          maxHeight: '80vh',
+          overflow: 'auto',
           padding: '20px',
-          border: 'none',
-          borderRadius: '0.5rem',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-          maxWidth: '1250px',
-          width: '90%',
-          minHeight: '900px'
+          borderRadius: '8px',
         },
-        overlay: {
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          zIndex: 1000
-        }
       }}
     >
-      <div style={{ padding: '1rem' }}>
-        <ModalHeader>
-          <h2>Last Interactions</h2>
-          <button onClick={onRequestClose} aria-label="Close modal">
-            <FiX size={20} />
-          </button>
-        </ModalHeader>
+      <ModalHeader>
+        <h2>Last Interactions</h2>
+        <button type="button" onClick={onRequestClose}>
+          <FiX size={24} />
+        </button>
+      </ModalHeader>
 
-        <TabContainer>
-          {(contact.mobile || contact.mobile2) && (
-            <TabButton 
-              active={activeTab === 'Whatsapp'} 
-              onClick={() => setActiveTab('Whatsapp')}
-            >
-              Whatsapp
-            </TabButton>
-          )}
-          {(contact.email || contact.email2 || contact.email3) && (
-            <TabButton 
-              active={activeTab === 'Email'} 
-              onClick={() => setActiveTab('Email')}
-            >
-              Emails
-            </TabButton>
-          )}
-          <TabButton 
-            active={activeTab === 'Meeting'} 
-            onClick={() => setActiveTab('Meeting')}
-          >
-            Meetings (Coming soon)
-          </TabButton>
-        </TabContainer>
+      <TabContainer>
+        <TabButton
+          type="button"
+          active={activeTab === 'Whatsapp'}
+          onClick={() => setActiveTab('Whatsapp')}
+        >
+          WhatsApp
+        </TabButton>
+        <TabButton
+          type="button"
+          active={activeTab === 'Email'}
+          onClick={() => setActiveTab('Email')}
+        >
+          Email
+        </TabButton>
+        <TabButton
+          type="button"
+          active={activeTab === 'Meeting'}
+          onClick={() => setActiveTab('Meeting')}
+        >
+          Meeting
+        </TabButton>
+      </TabContainer>
 
-        {activeTab === 'Whatsapp' && (
-          <>
-            <FilterContainer>
-              <FilterLabel>Show messages from:</FilterLabel>
-              <FilterSelect 
-                value={whatsappFilter}
-                onChange={(e) => {
-                  setWhatsappFilter(e.target.value);
-                  setCurrentPage(1); // Reset to first page when filter changes
-                }}
-              >
-                {(!contact.mobile2 || contact.mobile === contact.mobile2) ? (
-                  <option value="primary">Mobile: {contact.mobile}</option>
-                ) : (
-                  <>
-                    <option value="primary">Mobile: {contact.mobile}</option>
-                    <option value="secondary">Second number: {contact.mobile2}</option>
-                    <option value="both">Both numbers messages</option>
-                  </>
-                )}
-              </FilterSelect>
-            </FilterContainer>
-            {renderWhatsAppTable()}
-          </>
-        )}
-
-        {activeTab !== 'Whatsapp' && (
-          <TabContent>
-            <InteractionList>
-              {renderInteractions()}
-            </InteractionList>
-          </TabContent>
-        )}
-      </div>
+      <TabContent>
+        {renderContent()}
+      </TabContent>
     </Modal>
   );
 };
 
-export default LastInteractionModal; 
+export default LastInteractionModal;

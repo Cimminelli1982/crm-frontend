@@ -15,6 +15,7 @@ import CompanyEditForm from './forms/CompanyEditForm';
 import TagsModal from '../modals/TagsModal';
 import KeepInTouchModal from '../modals/KeepInTouchModal';
 import CategoryModal from '../modals/CategoryModal';
+import LastInteractionModal from '../modals/LastInteractionModal';
 
 // Set the app element for react-modal
 Modal.setAppElement('#root');
@@ -774,6 +775,9 @@ const RecentContactsList = ({
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [selectedContactForCategory, setSelectedContactForCategory] = useState(null);
   
+  // Add new state for LastInteractionModal
+  const [showLastInteractionModal, setShowLastInteractionModal] = useState(false);
+  
   // --------- DATA FETCHING FUNCTIONS ---------
   
   // Fetch contacts - core data fetching function
@@ -1250,6 +1254,9 @@ const RecentContactsList = ({
     if (type === 'category') {
       setSelectedContactForCategory(contact);
       setShowCategoryModal(true);
+    } else if (type === 'history') {
+      setModalContact(contact);
+      setShowLastInteractionModal(true);
     } else {
       handleOpenModal(type, contact);
     }
@@ -2307,6 +2314,14 @@ const RecentContactsList = ({
           isOpen={showCategoryModal}
           onRequestClose={handleCloseCategoryModal}
           contact={selectedContactForCategory}
+        />
+      )}
+
+      {showLastInteractionModal && modalContact && (
+        <LastInteractionModal
+          isOpen={showLastInteractionModal}
+          onRequestClose={() => setShowLastInteractionModal(false)}
+          contact={modalContact}
         />
       )}
     </Container>
