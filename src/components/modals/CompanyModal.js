@@ -411,22 +411,117 @@ const CompanyModal = ({ isOpen, onRequestClose, contact }) => {
   // Fetch related companies for the contact
   const fetchRelatedCompanies = async () => {
     try {
+      console.log('Fetching related companies for contact ID:', contact.id);
+      
+      // First check if the contact_companies table exists
+      const { count, error: checkError } = await supabase
+        .from('contact_companies')
+        .select('*', { count: 'exact', head: true });
+      
+      if (checkError) {
+        console.error('Error checking contact_companies table:', checkError);
+        setMessage({ type: 'error', text: 'Error accessing the database' });
+        return;
+      }
+      
+      console.log('contact_companies table exists, fetching relationships');
+      
+      // Use a more explicit join syntax
       const { data, error } = await supabase
         .from('contact_companies')
-        .select('*, company_id(*)')
+        .select(`
+          id, 
+          contact_id,
+          company_id,
+          companies:company_id (
+            id, 
+            name, 
+            website
+          )
+        `)
         .eq('contact_id', contact.id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching related companies:', error);
+        console.error('Error details:', error.message, error.details, error.hint);
+        throw error;
+      }
 
-      setRelatedCompanies(data.map(item => ({
-        id: item.id,
-        company_id: item.company_id.id,
-        name: item.company_id.name,
-        website: item.company_id.website
-      })));
+      console.log('Related companies data:', data);
+      
+      if (!data || data.length === 0) {
+        console.log('No related companies found for this contact');
+        setRelatedCompanies([]);
+        return;
+      }
+      
+      // Transform the data
+      const transformedData = data.map(item => {
+        // Check if companies is an object or just an ID
+        if (item.companies && typeof item.companies === 'object') {
+          return {
+            id: item.id,
+            company_id: item.company_id,
+            name: item.companies.name,
+            website: item.companies.website
+          };
+        } else {
+          // If company_id is just an ID, we need to fetch the company details
+          console.log('Got company ID without details, need to fetch company:', item.company_id);
+          return {
+            id: item.id,
+            company_id: item.company_id,
+            name: 'Loading...',
+            website: ''
+          };
+        }
+      });
+      
+      setRelatedCompanies(transformedData);
+      
+      // If any companies are missing details, fetch them
+      const missingDetailCompanies = transformedData.filter(company => company.name === 'Loading...');
+      if (missingDetailCompanies.length > 0) {
+        fetchMissingCompanyDetails(missingDetailCompanies);
+      }
     } catch (error) {
       console.error('Error fetching related companies:', error);
       setMessage({ type: 'error', text: 'Failed to load companies' });
+    }
+  };
+  
+  // Helper function to fetch missing company details
+  const fetchMissingCompanyDetails = async (companiesWithMissingDetails) => {
+    try {
+      const companyIds = companiesWithMissingDetails.map(company => company.company_id);
+      console.log('Fetching details for companies:', companyIds);
+      
+      const { data, error } = await supabase
+        .from('companies')
+        .select('*')
+        .in('id', companyIds);
+        
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        // Update the related companies with the fetched details
+        setRelatedCompanies(prevCompanies => {
+          const updatedCompanies = [...prevCompanies];
+          data.forEach(companyData => {
+            const index = updatedCompanies.findIndex(company => company.company_id === companyData.id);
+            if (index !== -1) {
+              updatedCompanies[index] = {
+                ...updatedCompanies[index],
+                name: companyData.name,
+                website: companyData.website
+              };
+            }
+          });
+          return updatedCompanies;
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching missing company details:', error);
     }
   };
 
@@ -479,18 +574,32 @@ const CompanyModal = ({ isOpen, onRequestClose, contact }) => {
   const handleUnlinkCompany = async (companyToRemove) => {
     try {
       setLoading(true);
-      const { error } = await supabase
+      console.log('Unlinking company from contact:', {
+        contact_id: contact.id,
+        company_id: companyToRemove.company_id,
+        relation_id: companyToRemove.id,
+        company_name: companyToRemove.name
+      });
+      
+      const { data, error } = await supabase
         .from('contact_companies')
         .delete()
-        .eq('id', companyToRemove.id);
+        .eq('id', companyToRemove.id)
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error unlinking company:', error);
+        console.error('Error details:', error.message, error.details, error.hint);
+        throw error;
+      }
 
+      console.log('Company unlinked successfully, response:', data);
+      
       setRelatedCompanies(relatedCompanies.filter(company => company.id !== companyToRemove.id));
       setMessage({ type: 'success', text: 'Company unlinked successfully' });
     } catch (error) {
       console.error('Error unlinking company:', error);
-      setMessage({ type: 'error', text: 'Failed to unlink company' });
+      setMessage({ type: 'error', text: `Failed to unlink company: ${error.message || 'Unknown error'}` });
     } finally {
       setLoading(false);
     }
@@ -499,16 +608,47 @@ const CompanyModal = ({ isOpen, onRequestClose, contact }) => {
   const handleAddCompany = async (companyToAdd) => {
     try {
       setLoading(true);
+      console.log('Adding company to contact:', {
+        contact_id: contact.id,
+        company_id: companyToAdd.id,
+        company_name: companyToAdd.name
+      });
+      
+      // First check if this association already exists
+      const { data: existingCheck, error: checkError } = await supabase
+        .from('contact_companies')
+        .select('id')
+        .eq('contact_id', contact.id)
+        .eq('company_id', companyToAdd.id);
+        
+      if (checkError) {
+        console.error('Error checking existing company relation:', checkError);
+        throw checkError;
+      }
+      
+      if (existingCheck && existingCheck.length > 0) {
+        console.log('Association already exists', existingCheck);
+        setMessage({ type: 'info', text: 'This company is already linked to the contact' });
+        setLoading(false);
+        return;
+      }
       
       // Add connection in contact_companies table
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('contact_companies')
         .insert({
           contact_id: contact.id,
           company_id: companyToAdd.id
-        });
+        })
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error linking company:', error);
+        console.error('Error details:', error.message, error.details, error.hint);
+        throw error;
+      }
+      
+      console.log('Company linked successfully, response:', data);
 
       // Refresh related companies
       await fetchRelatedCompanies();
@@ -518,7 +658,7 @@ const CompanyModal = ({ isOpen, onRequestClose, contact }) => {
       setMessage({ type: 'success', text: 'Company linked successfully' });
     } catch (error) {
       console.error('Error linking company:', error);
-      setMessage({ type: 'error', text: 'Failed to link company' });
+      setMessage({ type: 'error', text: `Failed to link company: ${error.message || 'Unknown error'}` });
     } finally {
       setLoading(false);
     }
@@ -540,6 +680,66 @@ const CompanyModal = ({ isOpen, onRequestClose, contact }) => {
       clearMessage();
     }
   }, [message]);
+
+  // Helper function to check the database table structure
+  const checkDatabaseStructure = async () => {
+    try {
+      setLoading(true);
+      setMessage({ type: 'info', text: 'Checking database structure...' });
+      
+      // Check contact_companies table
+      console.log('Checking contact_companies table structure...');
+      const { data: contactCompaniesData, error: contactCompaniesError } = await supabase
+        .from('contact_companies')
+        .select('*')
+        .limit(1);
+        
+      if (contactCompaniesError) {
+        console.error('Error accessing contact_companies table:', contactCompaniesError);
+        setMessage({ type: 'error', text: 'Error accessing contact_companies table' });
+        return;
+      }
+      
+      console.log('contact_companies sample:', contactCompaniesData);
+      
+      // Check companies table
+      console.log('Checking companies table structure...');
+      const { data: companiesData, error: companiesError } = await supabase
+        .from('companies')
+        .select('*')
+        .limit(1);
+        
+      if (companiesError) {
+        console.error('Error accessing companies table:', companiesError);
+        setMessage({ type: 'error', text: 'Error accessing companies table' });
+        return;
+      }
+      
+      console.log('companies sample:', companiesData);
+      
+      // Try to join tables
+      console.log('Testing join between tables...');
+      const { data: joinData, error: joinError } = await supabase
+        .from('contact_companies')
+        .select('*, company:company_id(*)')
+        .limit(1);
+        
+      if (joinError) {
+        console.error('Error joining tables:', joinError);
+        setMessage({ type: 'error', text: 'Error joining tables' });
+        return;
+      }
+      
+      console.log('Join result:', joinData);
+      
+      setMessage({ type: 'success', text: 'Database structure check completed. See console for details.' });
+    } catch (error) {
+      console.error('Error checking database structure:', error);
+      setMessage({ type: 'error', text: 'Error checking database structure' });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <>
@@ -664,6 +864,15 @@ const CompanyModal = ({ isOpen, onRequestClose, contact }) => {
             <Button className="primary" onClick={onRequestClose}>
               Done
             </Button>
+            {process.env.NODE_ENV === 'development' && (
+              <Button 
+                className="secondary" 
+                onClick={checkDatabaseStructure}
+                disabled={loading}
+              >
+                Debug DB
+              </Button>
+            )}
           </ButtonGroup>
 
           {loading && (

@@ -794,7 +794,7 @@ const RecentContactsList = ({
       // Build basic query
       let query = supabase
           .from('contacts')
-        .select('*, companies:company_id(*)')
+        .select(`*, contact_companies:contact_companies(contact_id, company_id, companies:company_id(id, name, website))`)
         .not('contact_category', 'eq', 'Skip');
       
       // Apply search if term has at least 3 characters
@@ -889,10 +889,15 @@ const RecentContactsList = ({
         // Process companies data
         contactsData.forEach(contact => {
           contact.companiesList = [];
-          if (contact.companies) {
-            contact.companiesList.push({
-              id: contact.company_id,
-              name: contact.companies.name
+          if (contact.contact_companies) {
+            contact.contact_companies.forEach(companyRel => {
+              if (companyRel.companies) {
+                contact.companiesList.push({
+                  id: companyRel.company_id,
+                  name: companyRel.companies.name,
+                  website: companyRel.companies.website
+                });
+              }
             });
           }
         });
@@ -903,9 +908,9 @@ const RecentContactsList = ({
         if (debouncedSearchTerm && debouncedSearchTerm.length >= 3) {
           if (searchField === 'company') {
             filteredContacts = filteredContacts.filter(contact => {
-              const company = contact.companies;
-              return company && company.name && 
-                company.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
+              return contact.companiesList.some(company => 
+                company.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
+              );
             });
           } else if (searchField === 'tags') {
             filteredContacts = filteredContacts.filter(contact => {
