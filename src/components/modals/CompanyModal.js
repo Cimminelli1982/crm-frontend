@@ -232,38 +232,311 @@ const Button = styled.button`
   }
 `;
 
+// Add new styled components for the form fields
+const FormGroup = styled.div`
+  margin-bottom: 15px;
+`;
+
+const Label = styled.label`
+  display: block;
+  margin-bottom: 5px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+`;
+
+const Input = styled.input`
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  
+  &:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+`;
+
+const Select = styled.select`
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  background-color: white;
+  
+  &:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+`;
+
+const TextArea = styled.textarea`
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  min-height: 100px;
+  resize: vertical;
+  
+  &:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+`;
+
+const TagsSection = styled(Section)`
+  margin-top: 20px;
+`;
+
+const TagsList = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 5px 0;
+  min-height: 32px;
+`;
+
+const Tag = styled.div`
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  background-color: ${props => props.color || '#f3f4f6'};
+  color: ${props => props.textColor || '#374151'};
+  border-radius: 16px;
+  font-size: 0.875rem;
+  gap: 6px;
+  max-width: 200px;
+
+  span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 150px;
+  }
+
+  button {
+    background: none;
+    border: none;
+    padding: 2px;
+    cursor: pointer;
+    color: inherit;
+    opacity: 0.7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+
+    &:hover {
+      opacity: 1;
+    }
+  }
+`;
+
+const NewTagButton = styled.button`
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border: none;
+  background-color: #f3f4f6;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: #1f2937;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: #e5e7eb;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+// Helper function to get tag colors
+const getTagColor = (tagName) => {
+  const colors = [
+    { bg: '#fee2e2', text: '#b91c1c' }, // Red
+    { bg: '#fef3c7', text: '#92400e' }, // Amber
+    { bg: '#ecfccb', text: '#3f6212' }, // Lime
+    { bg: '#d1fae5', text: '#065f46' }, // Emerald
+    { bg: '#e0f2fe', text: '#0369a1' }, // Sky
+    { bg: '#ede9fe', text: '#5b21b6' }, // Violet
+    { bg: '#fae8ff', text: '#86198f' }, // Fuchsia
+    { bg: '#fce7f3', text: '#9d174d' }  // Pink
+  ];
+  
+  // Generate a consistent index based on the tag name
+  const sum = tagName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const index = sum % colors.length;
+  
+  return colors[index];
+};
+
+// Categories array
+const COMPANY_CATEGORIES = [
+  'Advisory',
+  'Corporation',
+  'Institution',
+  'Professional Investor',
+  'SME',
+  'Startup',
+  'Supplier',
+  'Media',
+  'Team'
+];
+
 // New Company Modal for creating new companies
 const NewCompanyModal = ({ isOpen, onClose, onSave }) => {
   const [companyName, setCompanyName] = useState('');
   const [companyWebsite, setCompanyWebsite] = useState('');
+  const [companyCategory, setCompanyCategory] = useState('');
+  const [companyDescription, setCompanyDescription] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [selectedTags, setSelectedTags] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [tagSuggestions, setTagSuggestions] = useState([]);
+  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+
+  // Reset form when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setCompanyName('');
+      setCompanyWebsite('');
+      setCompanyCategory('');
+      setCompanyDescription('');
+      setSelectedTags([]);
+      setSearchTerm('');
+      setError('');
+    }
+  }, [isOpen]);
+
+  // Fetch tag suggestions
+  const fetchTagSuggestions = async (search) => {
+    try {
+      if (!search || search.length < 3) {
+        setTagSuggestions([]);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('tags')
+        .select('*')
+        .ilike('name', `%${search}%`)
+        .limit(10);
+
+      if (error) throw error;
+
+      // Filter out already selected tags
+      const filteredSuggestions = data.filter(tag => 
+        !selectedTags.some(selectedTag => selectedTag.id === tag.id)
+      );
+
+      setTagSuggestions(filteredSuggestions);
+    } catch (err) {
+      console.error('Error fetching tag suggestions:', err);
+    }
+  };
+
+  // Handle tag search
+  useEffect(() => {
+    fetchTagSuggestions(searchTerm);
+  }, [searchTerm]);
+
+  const handleAddTag = async (tag) => {
+    setSelectedTags([...selectedTags, tag]);
+    setSearchTerm('');
+    setShowTagSuggestions(false);
+  };
+
+  const handleRemoveTag = (tagId) => {
+    setSelectedTags(selectedTags.filter(tag => tag.id !== tagId));
+  };
+
+  const handleCreateTag = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('tags')
+        .insert({ name: searchTerm.trim() })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      handleAddTag(data);
+    } catch (err) {
+      console.error('Error creating new tag:', err);
+      setError('Failed to create new tag');
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
+
+    // Validate required fields
     if (!companyName.trim()) {
       setError('Company name is required');
+      return;
+    }
+    if (!companyCategory) {
+      setError('Company category is required');
+      return;
+    }
+    if (!companyDescription.trim()) {
+      setError('Company description is required');
       return;
     }
 
     try {
       setLoading(true);
-      setError('');
 
-      const { data, error: createError } = await supabase
+      // Format website URL if provided
+      let formattedWebsite = companyWebsite.trim();
+      if (formattedWebsite && !formattedWebsite.match(/^https?:\/\//)) {
+        formattedWebsite = 'https://' + formattedWebsite;
+      }
+
+      // Create company
+      const { data: company, error: companyError } = await supabase
         .from('companies')
         .insert({
           name: companyName.trim(),
-          website: companyWebsite.trim()
+          website: formattedWebsite,
+          category: companyCategory,
+          description: companyDescription.trim()
         })
         .select()
         .single();
 
-      if (createError) throw createError;
+      if (companyError) throw companyError;
 
-      setCompanyName('');
-      setCompanyWebsite('');
-      onSave(data);
+      // Add tags if any
+      if (selectedTags.length > 0) {
+        const tagConnections = selectedTags.map(tag => ({
+          company_id: company.id,
+          tag_id: tag.id
+        }));
+
+        const { error: tagsError } = await supabase
+          .from('companies_tags')
+          .insert(tagConnections);
+
+        if (tagsError) throw tagsError;
+      }
+
+      onSave(company);
       onClose();
     } catch (err) {
       console.error('Error creating company:', err);
@@ -289,8 +562,10 @@ const NewCompanyModal = ({ isOpen, onClose, onSave }) => {
           border: 'none',
           borderRadius: '0.5rem',
           boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-          maxWidth: '400px',
-          width: '90%'
+          maxWidth: '600px',
+          width: '90%',
+          maxHeight: '90vh',
+          overflow: 'auto'
         },
         overlay: {
           backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -307,63 +582,109 @@ const NewCompanyModal = ({ isOpen, onClose, onSave }) => {
         </ModalHeader>
 
         <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: '15px' }}>
-            <label 
-              htmlFor="companyName" 
-              style={{ 
-                display: 'block', 
-                marginBottom: '5px',
-                fontSize: '0.875rem',
-                fontWeight: '500',
-                color: '#374151'
-              }}
-            >
-              Company Name *
-            </label>
-            <input
+          <FormGroup>
+            <Label htmlFor="companyName">Company Name *</Label>
+            <Input
               id="companyName"
               type="text"
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                border: '1px solid #d1d5db',
-                borderRadius: '4px',
-                fontSize: '0.875rem'
-              }}
               required
             />
-          </div>
+          </FormGroup>
 
-          <div style={{ marginBottom: '15px' }}>
-            <label 
-              htmlFor="companyWebsite" 
-              style={{ 
-                display: 'block', 
-                marginBottom: '5px',
-                fontSize: '0.875rem',
-                fontWeight: '500',
-                color: '#374151'
-              }}
-            >
-              Website (optional)
-            </label>
-            <input
+          <FormGroup>
+            <Label htmlFor="companyWebsite">Website</Label>
+            <Input
               id="companyWebsite"
-              type="url"
+              type="text"
               value={companyWebsite}
               onChange={(e) => setCompanyWebsite(e.target.value)}
-              placeholder="https://example.com"
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                border: '1px solid #d1d5db',
-                borderRadius: '4px',
-                fontSize: '0.875rem'
-              }}
+              placeholder="www.example.com"
             />
-          </div>
+          </FormGroup>
+
+          <FormGroup>
+            <Label htmlFor="companyCategory">Category *</Label>
+            <Select
+              id="companyCategory"
+              value={companyCategory}
+              onChange={(e) => setCompanyCategory(e.target.value)}
+              required
+            >
+              <option value="">Select a category...</option>
+              {COMPANY_CATEGORIES.map(category => (
+                <option key={category} value={category}>{category}</option>
+              ))}
+            </Select>
+          </FormGroup>
+
+          <FormGroup>
+            <Label htmlFor="companyDescription">Description *</Label>
+            <TextArea
+              id="companyDescription"
+              value={companyDescription}
+              onChange={(e) => setCompanyDescription(e.target.value)}
+              placeholder="Enter company description..."
+              required
+            />
+          </FormGroup>
+
+          <TagsSection>
+            <SectionTitle>Tags</SectionTitle>
+            <TagsList>
+              {selectedTags.map(tag => {
+                const color = getTagColor(tag.name);
+                return (
+                  <Tag 
+                    key={tag.id} 
+                    color={color.bg}
+                    textColor={color.text}
+                  >
+                    <span>{tag.name}</span>
+                    <button onClick={() => handleRemoveTag(tag.id)}>
+                      <FiX size={14} />
+                    </button>
+                  </Tag>
+                );
+              })}
+            </TagsList>
+
+            <SearchContainer>
+              <SearchIcon>
+                <FiSearch size={16} />
+              </SearchIcon>
+              <SearchInput
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search or create new tag..."
+                onFocus={() => setShowTagSuggestions(true)}
+              />
+            </SearchContainer>
+
+            {showTagSuggestions && searchTerm.length >= 3 && (
+              <SuggestionsContainer>
+                {tagSuggestions.map(suggestion => (
+                  <SuggestionItem
+                    key={suggestion.id}
+                    onClick={() => handleAddTag(suggestion)}
+                  >
+                    {suggestion.name}
+                  </SuggestionItem>
+                ))}
+                {searchTerm.trim() && !tagSuggestions.find(s => s.name.toLowerCase() === searchTerm.toLowerCase()) && (
+                  <NewTagButton
+                    onClick={handleCreateTag}
+                    disabled={loading}
+                  >
+                    <FiPlus size={14} />
+                    Create "{searchTerm}"
+                  </NewTagButton>
+                )}
+              </SuggestionsContainer>
+            )}
+          </TagsSection>
 
           {error && (
             <Message className="error">
