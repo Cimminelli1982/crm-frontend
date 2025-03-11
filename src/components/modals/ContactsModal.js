@@ -740,6 +740,37 @@ const CityTag = styled.span`
   font-weight: 500;
 `;
 
+// Add styled components for save status indicators
+const SaveStatusContainer = styled.div`
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+`;
+
+const SavingIndicator = styled.div`
+  padding: 4px 10px;
+  background-color: #f0f9ff;
+  color: #0284c7;
+  border-radius: 4px;
+  font-size: 0.875rem;
+`;
+
+const SuccessMessage = styled.div`
+  padding: 4px 10px;
+  background-color: #dcfce7;
+  color: #16a34a;
+  border-radius: 4px;
+  font-size: 0.875rem;
+`;
+
+const ErrorMessage = styled.div`
+  padding: 4px 10px;
+  background-color: #fee2e2;
+  color: #dc2626;
+  border-radius: 4px;
+  font-size: 0.875rem;
+`;
+
 const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
   const [activeTab, setActiveTab] = useState('about');
   const [formData, setFormData] = useState({
@@ -755,6 +786,11 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
     about_the_contact: '',
     linkedin: ''
   });
+  
+  // Add save status states
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState('');
+  const [saveError, setSaveError] = useState('');
   
   // State for tags and companies
   const [contactTags, setContactTags] = useState([]);
@@ -815,12 +851,173 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
     });
   };
   
+  // Update handleInputChange to auto-save after state update
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setFormData(prev => {
+      const updatedData = { ...prev, [name]: value };
+      // Auto-save after updating state
+      autoSaveContact(updatedData);
+      return updatedData;
+    });
+  };
+  
+  // Add debounce helper to prevent too many save operations
+  const debounce = (func, delay) => {
+    let timeoutId;
+    return (...args) => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => func(...args), delay);
+    };
+  };
+  
+  // Create auto-save function with debounce
+  const autoSaveContact = debounce(async (data) => {
+    setIsSaving(true);
+    setSaveSuccess('');
+    setSaveError('');
+    
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .update(data)
+        .eq('id', contact.id);
+        
+      if (error) throw error;
+      
+      setSaveSuccess('Changes saved');
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setSaveSuccess('');
+      }, 3000);
+    } catch (error) {
+      console.error('Error saving contact:', error);
+      setSaveError('Failed to save changes');
+      
+      // Clear error message after 3 seconds
+      setTimeout(() => {
+        setSaveError('');
+      }, 3000);
+    } finally {
+      setIsSaving(false);
+    }
+  }, 500); // 500ms debounce delay
+  
+  // Replace handleSaveMainContact with auto-save
+  // This function was redundant since we're auto-saving
+  const handleSaveMainContact = async () => {
+    autoSaveContact(formData);
+  };
+  
+  // Replace handleSave with auto-save (redundant now)
+  const handleSave = async () => {
+    autoSaveContact(formData);
+  };
+  
+  // Tags functionality
+  const fetchContactTags = async () => {
+    if (!contact || !contact.id) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('contact_tags')
+        .select(`
+          tag_id,
+          tags:tag_id(id, name)
+        `)
+        .eq('contact_id', contact.id);
+        
+      if (error) throw error;
+      
+      const formattedTags = data.map(item => ({
+        id: item.tag_id,
+        name: item.tags.name
+      }));
+      
+      setContactTags(formattedTags);
+    } catch (error) {
+      console.error('Error fetching contact tags:', error);
+    }
+  };
+  
+  const handleRemoveTag = async (tagToRemove) => {
+    try {
+      const { error } = await supabase
+        .from('contact_tags')
+        .delete()
+        .eq('contact_id', contact.id)
+        .eq('tag_id', tagToRemove.id);
+        
+      if (error) throw error;
+      
+      setContactTags(prev => prev.filter(tag => tag.id !== tagToRemove.id));
+    } catch (error) {
+      console.error('Error removing tag:', error);
+    }
+  };
+  
+  // Companies functionality
+  const fetchRelatedCompanies = async () => {
+    if (!contact || !contact.id) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('contact_companies')
+        .select(`
+          company_id,
+          companies:company_id(id, name, website, category)
+        `)
+        .eq('contact_id', contact.id);
+        
+      if (error) throw error;
+      
+      const formattedCompanies = data.map(item => ({
+        id: item.company_id,
+        name: item.companies.name,
+        website: item.companies.website,
+        category: item.companies.category
+      }));
+      
+      setRelatedCompanies(formattedCompanies);
+    } catch (error) {
+      console.error('Error fetching related companies:', error);
+    }
+  };
+  
+  const handleRemoveCompany = async (companyToRemove) => {
+    try {
+      const { error } = await supabase
+        .from('contact_companies')
+        .delete()
+        .eq('contact_id', contact.id)
+        .eq('company_id', companyToRemove.id);
+        
+      if (error) throw error;
+      
+      setRelatedCompanies(prev => prev.filter(company => company.id !== companyToRemove.id));
+    } catch (error) {
+      console.error('Error removing company:', error);
+    }
+  };
+  
+  // Modal handlers
+  const handleOpenTagsModal = () => {
+    setShowTagsModal(true);
+  };
+  
+  const handleCloseTagsModal = () => {
+    setShowTagsModal(false);
+    fetchContactTags(); // Refresh tags after modal closes
+  };
+  
+  const handleOpenCompanyModal = () => {
+    setShowCompanyModal(true);
+  };
+  
+  const handleCloseCompanyModal = () => {
+    setShowCompanyModal(false);
+    fetchRelatedCompanies(); // Refresh companies after modal closes
   };
   
   // Update fetchDuplicateContacts to also fetch cities for duplicate contacts
@@ -1052,157 +1249,6 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
       ...prev,
       [field]: value
     }));
-  };
-  
-  // Add function to save main contact changes
-  const handleSaveMainContact = async () => {
-    try {
-      const { error } = await supabase
-        .from('contacts')
-        .update(formData)
-        .eq('id', contact.id);
-      
-      if (error) throw error;
-      
-      alert('Main contact updated successfully.');
-    } catch (error) {
-      console.error('Error updating main contact:', error);
-      alert('Failed to update main contact. Please try again.');
-    }
-  };
-  
-  // Tags functionality
-  const fetchContactTags = async () => {
-    if (!contact || !contact.id) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from('contact_tags')
-        .select(`
-          tag_id,
-          tags:tag_id(id, name)
-        `)
-        .eq('contact_id', contact.id);
-        
-      if (error) throw error;
-      
-      const formattedTags = data.map(item => ({
-        id: item.tag_id,
-        name: item.tags.name
-      }));
-      
-      setContactTags(formattedTags);
-    } catch (error) {
-      console.error('Error fetching contact tags:', error);
-    }
-  };
-  
-  const handleRemoveTag = async (tagToRemove) => {
-    try {
-      const { error } = await supabase
-        .from('contact_tags')
-        .delete()
-        .eq('contact_id', contact.id)
-        .eq('tag_id', tagToRemove.id);
-        
-      if (error) throw error;
-      
-      setContactTags(prev => prev.filter(tag => tag.id !== tagToRemove.id));
-    } catch (error) {
-      console.error('Error removing tag:', error);
-    }
-  };
-  
-  // Companies functionality
-  const fetchRelatedCompanies = async () => {
-    if (!contact || !contact.id) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from('contact_companies')
-        .select(`
-          company_id,
-          companies:company_id(id, name, website, category)
-        `)
-        .eq('contact_id', contact.id);
-        
-      if (error) throw error;
-      
-      const formattedCompanies = data.map(item => ({
-        id: item.company_id,
-        name: item.companies.name,
-        website: item.companies.website,
-        category: item.companies.category
-      }));
-      
-      setRelatedCompanies(formattedCompanies);
-    } catch (error) {
-      console.error('Error fetching related companies:', error);
-    }
-  };
-  
-  const handleRemoveCompany = async (companyToRemove) => {
-    try {
-      const { error } = await supabase
-        .from('contact_companies')
-        .delete()
-        .eq('contact_id', contact.id)
-        .eq('company_id', companyToRemove.id);
-        
-      if (error) throw error;
-      
-      setRelatedCompanies(prev => prev.filter(company => company.id !== companyToRemove.id));
-    } catch (error) {
-      console.error('Error removing company:', error);
-    }
-  };
-  
-  // Modal handlers
-  const handleOpenTagsModal = () => {
-    setShowTagsModal(true);
-  };
-  
-  const handleCloseTagsModal = () => {
-    setShowTagsModal(false);
-    fetchContactTags(); // Refresh tags after modal closes
-  };
-  
-  const handleOpenCompanyModal = () => {
-    setShowCompanyModal(true);
-  };
-  
-  const handleCloseCompanyModal = () => {
-    setShowCompanyModal(false);
-    fetchRelatedCompanies(); // Refresh companies after modal closes
-  };
-  
-  const handleSave = async () => {
-    try {
-      const { error } = await supabase
-        .from('contacts')
-        .update({
-          first_name: formData.first_name,
-          last_name: formData.last_name,
-          email: formData.email,
-          email2: formData.email2,
-          email3: formData.email3,
-          mobile: formData.mobile,
-          mobile2: formData.mobile2,
-          job_title: formData.job_title,
-          contact_category: formData.contact_category,
-          about_the_contact: formData.about_the_contact,
-          linkedin: formData.linkedin,
-          last_modified: new Date()
-        })
-        .eq('id', contact.id);
-        
-      if (error) throw error;
-      
-      onRequestClose();
-    } catch (error) {
-      console.error('Error updating contact:', error);
-      alert('Failed to update contact. Please try again.');
-    }
   };
   
   // Add function to fetch contact cities
@@ -1727,13 +1773,6 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
                 )}
               </div>
             </TagsRow>
-            
-            <ButtonContainer>
-              <SaveButton onClick={handleSaveMainContact}>
-                <FiSave size={16} />
-                Save Main Contact
-              </SaveButton>
-            </ButtonContainer>
           </ContactColumn>
           
           {/* Duplicate contact columns */}
@@ -1938,6 +1977,15 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
             </CloseButton>
           </ModalHeader>
           
+          {/* Add save status indicator */}
+          {(isSaving || saveSuccess || saveError) && (
+            <SaveStatusContainer>
+              {isSaving && <SavingIndicator>Saving...</SavingIndicator>}
+              {saveSuccess && <SuccessMessage>{saveSuccess}</SuccessMessage>}
+              {saveError && <ErrorMessage>{saveError}</ErrorMessage>}
+            </SaveStatusContainer>
+          )}
+          
           <TabsContainer>
             <TabButton 
               active={activeTab === 'about'} 
@@ -1982,17 +2030,12 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
             {activeTab === 'notes' && <div>Notes tab content coming soon</div>}
           </ContentSection>
           
-          {activeTab !== 'merge' && (
-            <ButtonContainer>
-              <CancelButton onClick={onRequestClose}>
-                Cancel
-              </CancelButton>
-              <SaveButton onClick={handleSave}>
-                <FiSave size={16} />
-                Save Changes
-              </SaveButton>
-            </ButtonContainer>
-          )}
+          {/* Remove the Save Changes button since we're auto-saving */}
+          <ButtonContainer>
+            <CancelButton onClick={onRequestClose}>
+              Close
+            </CancelButton>
+          </ButtonContainer>
         </ModalContainer>
       </Modal>
       
