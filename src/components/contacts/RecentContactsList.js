@@ -17,6 +17,7 @@ import KeepInTouchModal from '../modals/KeepInTouchModal';
 import CategoryModal from '../modals/CategoryModal';
 import LastInteractionModal from '../modals/LastInteractionModal';
 import CompanyModal from '../modals/CompanyModal';
+import ContactsModal from '../modals/ContactsModal';
 
 // Set the app element for react-modal
 Modal.setAppElement('#root');
@@ -779,6 +780,10 @@ const RecentContactsList = ({
   // Add new state for LastInteractionModal
   const [showLastInteractionModal, setShowLastInteractionModal] = useState(false);
   
+  // Add state for ContactsModal
+  const [showContactsModal, setShowContactsModal] = useState(false);
+  const [selectedContactForEdit, setSelectedContactForEdit] = useState(null);
+  
   // --------- DATA FETCHING FUNCTIONS ---------
   
   // Fetch contacts - core data fetching function
@@ -1257,7 +1262,10 @@ const RecentContactsList = ({
 
   // Make the entire cell clickable for company and tags
   const handleCellClick = (contact, type) => {
-    if (type === 'category') {
+    if (type === 'name') {
+      setSelectedContactForEdit(contact);
+      setShowContactsModal(true);
+    } else if (type === 'category') {
       setSelectedContactForCategory(contact);
       setShowCategoryModal(true);
     } else if (type === 'history') {
@@ -2328,6 +2336,20 @@ const RecentContactsList = ({
           isOpen={showLastInteractionModal}
           onRequestClose={() => setShowLastInteractionModal(false)}
           contact={modalContact}
+        />
+      )}
+
+      {/* Add ContactsModal */}
+      {showContactsModal && selectedContactForEdit && (
+        <ContactsModal
+          isOpen={showContactsModal}
+          onRequestClose={() => {
+            setShowContactsModal(false);
+            setSelectedContactForEdit(null);
+            // Refresh the contacts list to show updated data
+            fetchContacts();
+          }}
+          contact={selectedContactForEdit}
         />
       )}
     </Container>
