@@ -1,5 +1,4 @@
 import React from 'react';
-import Layout from '../../components/layout/Layout';
 import styled from 'styled-components';
 
 const PageContainer = styled.div`
@@ -24,7 +23,7 @@ const PageHeader = styled.div`
 
 const RecentlyCreatedCompanies = () => {
   return (
-    <Layout>
+    <>
       <PageContainer>
         <PageHeader>
           <h1>Recently Created Companies</h1>
@@ -34,7 +33,7 @@ const RecentlyCreatedCompanies = () => {
         {/* Page content would go here */}
         <p>This page will display recently created companies.</p>
       </PageContainer>
-    </Layout>
+    </>
   );
 };
 

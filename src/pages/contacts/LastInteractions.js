@@ -59,7 +59,7 @@ const LastInteractions = () => {
   }, []);
 
   return (
-    <Layout>
+    <>
       <PageContainer>
         <PageHeader>
           <h1>
@@ -71,7 +71,7 @@ const LastInteractions = () => {
         
         <RecentContactsList defaultFilter="today" />
       </PageContainer>
-    </Layout>
+    </>
   );
 };
 

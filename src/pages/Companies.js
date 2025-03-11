@@ -1,5 +1,4 @@
 import React from 'react';
-import Layout from '../components/layout/Layout';
 import styled from 'styled-components';
 
 const PageContainer = styled.div`
@@ -75,7 +74,7 @@ const Companies = () => {
   ];
 
   return (
-    <Layout>
+    <>
       <PageContainer>
         <PageHeader>
           <h1>Companies</h1>
@@ -92,7 +91,7 @@ const Companies = () => {
           ))}
         </CompaniesGrid>
       </PageContainer>
-    </Layout>
+    </>
   );
 };
 

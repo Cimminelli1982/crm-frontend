@@ -1,6 +1,6 @@
-import React from 'react';
-import Layout from '../components/layout/Layout';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
+import { supabase } from '../lib/supabaseClient';
 
 const PageContainer = styled.div`
   padding: 24px;
@@ -22,93 +22,112 @@ const PageHeader = styled.div`
   }
 `;
 
-const CalendarGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 8px;
+const Table = styled.table`
+  width: 100%;
+  border-collapse: collapse;
   margin-top: 24px;
 `;
 
-const DayCell = styled.div`
-  background-color: white;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
-  padding: 16px;
-  min-height: 120px;
-  
-  .date {
-    font-weight: 500;
-    font-size: 0.9rem;
-    color: #374151;
-    margin-bottom: 8px;
-  }
-  
-  &.today {
-    background-color: #eff6ff;
-    border-color: #3b82f6;
-    
-    .date {
-      color: #1e40af;
-      font-weight: 600;
-    }
-  }
-  
-  &.different-month {
-    background-color: #f9fafb;
-    color: #9ca3af;
-    
-    .date {
-      color: #9ca3af;
-    }
+const TableHeader = styled.th`
+  background-color: #f9fafb;
+  color: #374151;
+  font-weight: 600;
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+`;
+
+const TableRow = styled.tr`
+  &:nth-child(even) {
+    background-color: #f3f4f6;
   }
 `;
 
-const EventItem = styled.div`
-  padding: 4px 8px;
-  background-color: ${props => props.type === 'meeting' ? '#dcfce7' : '#dbeafe'};
-  color: ${props => props.type === 'meeting' ? '#166534' : '#1e40af'};
-  border-radius: 4px;
-  font-size: 0.75rem;
-  margin-bottom: 4px;
-  cursor: pointer;
+const TableCell = styled.td`
+  padding: 12px;
+  border-bottom: 1px solid #e5e7eb;
+  color: #4b5563;
 `;
 
 const Planner = () => {
-  // Sample events data
-  const events = [
-    { id: 1, title: 'Meeting with Acme Corp', type: 'meeting', date: '2023-05-15' },
-    { id: 2, title: 'Follow-up call', type: 'call', date: '2023-05-15' },
-    { id: 3, title: 'Project review', type: 'meeting', date: '2023-05-17' },
-  ];
-  
+  const [meetings, setMeetings] = useState([]);
+  const [debugInfo, setDebugInfo] = useState('');
+
+  useEffect(() => {
+    const fetchMeetings = async () => {
+      try {
+        const { data: meetingsData, error: meetingsError } = await supabase
+          .from('meetings')
+          .select('id, meeting_date, meeting_name, meeting_record, meeting_score, meeting_note');
+        if (meetingsError) throw meetingsError;
+
+        const { data: contactsData, error: contactsError } = await supabase
+          .from('meetings_contacts')
+          .select('meeting_id, contact_id');
+        if (contactsError) throw contactsError;
+
+        const { data: contactNamesData, error: contactNamesError } = await supabase
+          .from('contacts')
+          .select('id, first_name, last_name');
+        if (contactNamesError) throw contactNamesError;
+
+        const meetingsWithContacts = meetingsData.map(meeting => {
+          const relatedContacts = contactsData
+            .filter(contact => contact.meeting_id === meeting.id)
+            .map(contact => {
+              const contactName = contactNamesData.find(cn => cn.id === contact.contact_id);
+              return contactName ? `${contactName.first_name} ${contactName.last_name}` : 'Unknown';
+            });
+          return { ...meeting, meeting_contacts: relatedContacts };
+        });
+
+        const sortedMeetings = meetingsWithContacts.sort((a, b) => new Date(a.meeting_date) - new Date(b.meeting_date));
+        setMeetings(sortedMeetings);
+        setDebugInfo(JSON.stringify(sortedMeetings, null, 2));
+      } catch (error) {
+        console.error('Error fetching meetings:', error.message);
+        setDebugInfo(`Error: ${error.message}`);
+      }
+    };
+
+    fetchMeetings();
+  }, []);
+
   return (
-    <Layout>
+    <>
       <PageContainer>
         <PageHeader>
           <h1>Planner</h1>
           <p>Schedule and manage your meetings and follow-ups.</p>
         </PageHeader>
-        
-        <CalendarGrid>
-          {Array.from({ length: 7 }).map((_, dayIndex) => (
-            <DayCell 
-              key={dayIndex} 
-              className={dayIndex === 2 ? 'today' : ''}
-            >
-              <div className="date">May {dayIndex + 15}</div>
-              {events
-                .filter(event => new Date(event.date).getDate() === dayIndex + 15)
-                .map(event => (
-                  <EventItem key={event.id} type={event.type}>
-                    {event.title}
-                  </EventItem>
-                ))
-              }
-            </DayCell>
-          ))}
-        </CalendarGrid>
+        <Table>
+          <thead>
+            <tr>
+              <TableHeader>Date</TableHeader>
+              <TableHeader>Meeting</TableHeader>
+              <TableHeader>Attendees</TableHeader>
+              <TableHeader>Tags</TableHeader>
+              <TableHeader>Record</TableHeader>
+              <TableHeader>Score</TableHeader>
+              <TableHeader>Note</TableHeader>
+            </tr>
+          </thead>
+          <tbody>
+            {meetings.map((meeting, index) => (
+              <TableRow key={index}>
+                <TableCell>{meeting.meeting_date}</TableCell>
+                <TableCell>{meeting.meeting_name}</TableCell>
+                <TableCell>{meeting.meeting_contacts.join(', ')}</TableCell>
+                <TableCell>{meeting.meeting_tags ? meeting.meeting_tags.join(', ') : 'N/A'}</TableCell>
+                <TableCell>{meeting.meeting_record}</TableCell>
+                <TableCell>{'⭐'.repeat(meeting.meeting_score)}</TableCell>
+                <TableCell>{meeting.meeting_note}</TableCell>
+              </TableRow>
+            ))}
+          </tbody>
+        </Table>
       </PageContainer>
-    </Layout>
+    </>
   );
 };
 

@@ -87,7 +87,7 @@ async function fetchStats() {
   }
 }
   return (
-    <Layout>
+    <>
       <h1>Dashboard</h1>
       <StatsContainer>
         <StatCard>
@@ -107,7 +107,7 @@ async function fetchStats() {
       <NotificationsList />
       
       <RecentContactsList />
-    </Layout>
+    </>
   );
 };
 

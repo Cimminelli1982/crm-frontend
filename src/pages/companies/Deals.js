@@ -1,5 +1,4 @@
 import React from 'react';
-import Layout from '../../components/layout/Layout';
 import styled from 'styled-components';
 
 const PageContainer = styled.div`
@@ -24,7 +23,7 @@ const PageHeader = styled.div`
 
 const Deals = () => {
   return (
-    <Layout>
+    <>
       <PageContainer>
         <PageHeader>
           <h1>Deals</h1>
@@ -34,7 +33,7 @@ const Deals = () => {
         {/* Page content would go here */}
         <p>This page will display ongoing business deals with companies.</p>
       </PageContainer>
-    </Layout>
+    </>
   );
 };
 
