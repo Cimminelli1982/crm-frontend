@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import Modal from 'react-modal';
 import styled from 'styled-components';
-import { FiX, FiSave, FiPlus, FiSearch, FiX as FiXCircle, FiTag, FiLink } from 'react-icons/fi';
+import { FiX, FiSave, FiPlus, FiSearch, FiX as FiXCircle, FiTag, FiLink, FiTrash2, FiArrowLeft } from 'react-icons/fi';
 import { supabase } from '../../lib/supabaseClient';
 import TagsModal from './TagsModal';
 import CompanyModal from './CompanyModal';
+import { toast } from 'react-hot-toast';
 
 // Define Contact Categories with the specified options
 const ContactCategories = [
@@ -26,6 +27,28 @@ const ModalContainer = styled.div`
   display: flex;
   flex-direction: column;
   height: 100%;
+  max-height: 75vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(200, 200, 200, 0.5) transparent;
+  
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(200, 200, 200, 0.5);
+    border-radius: 10px;
+    border: none;
+  }
+  
+  &::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(180, 180, 180, 0.8);
+  }
 `;
 
 const ModalHeader = styled.div`
@@ -37,21 +60,36 @@ const ModalHeader = styled.div`
   border-bottom: 1px solid #e5e7eb;
   
   .header-content {
-    h2 {
-      margin: 0;
-      font-size: 1.5rem;
-      color: #111827;
-      font-weight: 600;
-      line-height: 1.3;
+    flex: 1;
+    
+    .name-and-cities {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+      
+      h2 {
+        margin: 0;
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #111827;
+      }
+      
+      .city-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+      }
     }
     
     .dates {
-      margin-top: 6px;
-      font-size: 0.813rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      font-size: 0.875rem;
       color: #6b7280;
       
       span {
-        margin-right: 20px;
         display: inline-block;
       }
     }
@@ -402,53 +440,36 @@ const NewItemButton = styled.button`
 
 const CompanyList = styled.div`
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 16px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  gap: 4px;
 `;
 
 const CompanyItem = styled.div`
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 6px 10px;
-  background-color: #f9fafb;
+  padding: 4px 10px;
+  background-color: #1d4ed8;
+  color: white;
   border-radius: 4px;
-  border-left: 4px solid ${props => props.color || '#3b82f6'};
+  margin: 0 4px 4px 0;
+  font-size: 0.875rem;
+  font-weight: 500;
 
-  .company-info {
-    flex: 1;
-    overflow: hidden;
-    
-    h4 {
-      margin: 0 0 2px;
-      font-size: 0.875rem;
-      font-weight: 500;
-      color: #111827;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    
-    p {
-      margin: 0;
-      font-size: 0.75rem;
-      color: #6b7280;
-    }
+  span {
+    margin-right: 6px;
   }
 
   button {
     background: none;
     border: none;
-    color: #6b7280;
     cursor: pointer;
-    padding: 2px;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    padding: 0;
+    color: white;
     
     &:hover {
-      color: #ef4444;
+      color: #f8fafc;
     }
   }
 `;
@@ -507,6 +528,218 @@ const ActionButton = styled.button`
   }
 `;
 
+// Add a styled component for the merge tab
+const MergeContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  width: 90%;
+  margin: 0 auto;
+`;
+
+const MergeGrid = styled.div`
+  display: grid;
+  grid-template-columns: ${props => 
+    props.duplicatesCount === 0 ? '1fr' : 
+    props.duplicatesCount === 1 ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)'
+  };
+  gap: 24px;
+`;
+
+const ContactColumn = styled.div`
+  background-color: #f9fafb;
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid ${props => props.isMain ? '#3b82f6' : '#e5e7eb'};
+  
+  h3 {
+    margin: 0 0 16px;
+    font-size: 1rem;
+    color: ${props => props.isMain ? '#3b82f6' : '#111827'};
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+`;
+
+const FieldRow = styled.div`
+  margin-bottom: 12px;
+  
+  .label {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-bottom: 4px;
+  }
+  
+  .value {
+    font-size: 0.875rem;
+    color: #111827;
+    word-break: break-word;
+  }
+  
+  &.empty .value {
+    color: #9ca3af;
+    font-style: italic;
+  }
+`;
+
+const TagsRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 12px;
+  
+  .label {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-bottom: 4px;
+    width: 100%;
+  }
+  
+  &.empty .value {
+    color: #9ca3af;
+    font-style: italic;
+    font-size: 0.875rem;
+  }
+`;
+
+const CompaniesRow = styled.div`
+  margin-bottom: 12px;
+  
+  .label {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-bottom: 4px;
+  }
+  
+  .company-item {
+    font-size: 0.875rem;
+    background-color: #f3f4f6;
+    padding: 4px 8px;
+    border-radius: 4px;
+    margin-bottom: 4px;
+    display: inline-block;
+    margin-right: 4px;
+  }
+  
+  &.empty .value {
+    color: #9ca3af;
+    font-style: italic;
+    font-size: 0.875rem;
+  }
+`;
+
+const DeleteButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background-color: #fee2e2;
+  color: #b91c1c;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  margin-top: 16px;
+  transition: all 0.2s;
+  
+  &:hover {
+    background-color: #fecaca;
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+// Add a styled component for the arrow button
+const ArrowButton = styled.button`
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+  
+  &:hover {
+    color: #007BFF;
+  }
+`;
+
+// Add styled components for the tags and companies in the Merge tab
+const TransferButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: #4b5563;
+  cursor: pointer;
+  margin-left: 4px;
+  padding: 0;
+  
+  &:hover {
+    color: #1d4ed8;
+  }
+`;
+
+const RemoveButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: #4b5563;
+  cursor: pointer;
+  margin-left: 4px;
+  padding: 0;
+  
+  &:hover {
+    color: #1d4ed8;
+  }
+`;
+
+const AddButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  color: #1d4ed8;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  gap: 4px;
+  
+  &:hover {
+    background-color: #eff6ff;
+  }
+`;
+
+// Add a styled component for the city tags
+const CityTag = styled.span`
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  background-color: #e0f2fe;
+  color: #0369a1;
+  border-radius: 4px;
+  margin-left: 8px;
+  font-size: 0.75rem;
+  font-weight: 500;
+`;
+
 const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
   const [activeTab, setActiveTab] = useState('about');
   const [formData, setFormData] = useState({
@@ -527,9 +760,18 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
   const [contactTags, setContactTags] = useState([]);
   const [relatedCompanies, setRelatedCompanies] = useState([]);
   
+  // Add state for contact cities
+  const [contactCities, setContactCities] = useState([]);
+  
   // State for external modals
   const [showTagsModal, setShowTagsModal] = useState(false);
   const [showCompanyModal, setShowCompanyModal] = useState(false);
+  
+  // State for duplicate contacts
+  const [duplicateContacts, setDuplicateContacts] = useState([]);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteSuccess, setDeleteSuccess] = useState('');
+  const [deleteError, setDeleteError] = useState('');
   
   useEffect(() => {
     if (contact) {
@@ -550,8 +792,18 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
       // Fetch tags and companies when contact changes
       fetchContactTags();
       fetchRelatedCompanies();
+      
+      // Fetch contact cities
+      fetchContactCities();
     }
   }, [contact]);
+  
+  // Add effect to find duplicates when the active tab is 'merge'
+  useEffect(() => {
+    if (activeTab === 'merge' && contact) {
+      fetchDuplicateContacts();
+    }
+  }, [activeTab, contact]);
   
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -569,6 +821,254 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
       ...prev,
       [name]: value
     }));
+  };
+  
+  // Update fetchDuplicateContacts to also fetch cities for duplicate contacts
+  const fetchDuplicateContacts = async () => {
+    if (!contact || !contact.first_name || !contact.last_name) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('first_name', contact.first_name)
+        .eq('last_name', contact.last_name)
+        .neq('id', contact.id)
+        .order('created_at', { ascending: false });
+        
+      if (error) throw error;
+      
+      // Get tags, companies, and cities for each duplicate contact
+      const duplicatesWithDetails = await Promise.all(
+        data.map(async (dupContact) => {
+          const tagData = await fetchContactTagsForContact(dupContact.id);
+          const companyData = await fetchRelatedCompaniesForContact(dupContact.id);
+          const cityData = await fetchContactCitiesForContact(dupContact.id);
+          
+          return {
+            ...dupContact,
+            tags: tagData,
+            companies: companyData,
+            cities: cityData
+          };
+        })
+      );
+      
+      setDuplicateContacts(duplicatesWithDetails);
+    } catch (error) {
+      console.error('Error fetching duplicate contacts:', error);
+    }
+  };
+  
+  // Add function to fetch cities for a specific contact
+  const fetchContactCitiesForContact = async (contactId) => {
+    try {
+      const { data, error } = await supabase
+        .from('contact_cities')
+        .select(`
+          city_id,
+          cities:city_id(id, name)
+        `)
+        .eq('contact_id', contactId);
+        
+      if (error) throw error;
+      
+      return data.map(item => ({
+        id: item.city_id,
+        name: item.cities.name
+      }));
+    } catch (error) {
+      console.error('Error fetching contact cities:', error);
+      return [];
+    }
+  };
+  
+  // Add function to handle removing a city from a duplicate contact
+  const handleRemoveDuplicateCity = async (duplicateId, cityId) => {
+    try {
+      const { error } = await supabase
+        .from('contact_cities')
+        .delete()
+        .match({ contact_id: duplicateId, city_id: cityId });
+      
+      if (error) throw error;
+      
+      // Update the local state to reflect the change
+      setDuplicateContacts(prev => 
+        prev.map(dup => {
+          if (dup.id === duplicateId) {
+            return {
+              ...dup,
+              cities: dup.cities.filter(city => city.id !== cityId)
+            };
+          }
+          return dup;
+        })
+      );
+      
+      toast.success('City removed successfully');
+    } catch (error) {
+      console.error('Error removing city:', error);
+      toast.error('Failed to remove city');
+    }
+  };
+  
+  // Add function to handle removing a city from the main contact
+  const handleRemoveCity = async (cityToRemove) => {
+    try {
+      const { error } = await supabase
+        .from('contact_cities')
+        .delete()
+        .match({ contact_id: contact.id, city_id: cityToRemove.id });
+        
+      if (error) throw error;
+      
+      // Update local state
+      setContactCities(prev => prev.filter(city => city.id !== cityToRemove.id));
+      toast.success('City removed successfully');
+    } catch (error) {
+      console.error('Error removing city:', error);
+      toast.error('Failed to remove city');
+    }
+  };
+  
+  // Add function to transfer a city from a duplicate to the main contact
+  const handleTransferCity = async (city) => {
+    try {
+      // Check if the city already exists for the main contact
+      const cityExists = contactCities.some(c => c.id === city.id);
+      
+      if (!cityExists) {
+        // Add the city to the main contact
+        const { error } = await supabase
+          .from('contact_cities')
+          .insert({ contact_id: contact.id, city_id: city.id });
+        
+        if (error) throw error;
+        
+        // Update the local state
+        setContactCities(prev => [...prev, city]);
+        toast.success('City added to main contact');
+      } else {
+        toast.info('City already exists on main contact');
+      }
+    } catch (error) {
+      console.error('Error transferring city:', error);
+      toast.error('Failed to transfer city');
+    }
+  };
+  
+  // Add function to fetch duplicate contacts
+  const fetchContactTagsForContact = async (contactId) => {
+    try {
+      const { data, error } = await supabase
+        .from('contact_tags')
+        .select(`
+          tag_id,
+          tags:tag_id(id, name)
+        `)
+        .eq('contact_id', contactId);
+        
+      if (error) throw error;
+      
+      return data.map(item => ({
+        id: item.tag_id,
+        name: item.tags.name
+      }));
+    } catch (error) {
+      console.error('Error fetching contact tags:', error);
+      return [];
+    }
+  };
+  
+  const fetchRelatedCompaniesForContact = async (contactId) => {
+    try {
+      const { data, error } = await supabase
+        .from('contact_companies')
+        .select(`
+          company_id,
+          companies:company_id(id, name, website, category)
+        `)
+        .eq('contact_id', contactId);
+        
+      if (error) throw error;
+      
+      return data.map(item => ({
+        id: item.company_id,
+        name: item.companies.name,
+        website: item.companies.website,
+        category: item.companies.category
+      }));
+    } catch (error) {
+      console.error('Error fetching related companies:', error);
+      return [];
+    }
+  };
+  
+  // Add function to delete duplicate contact
+  const handleDeleteDuplicate = async (duplicateId) => {
+    console.log('Attempting to delete duplicate with ID:', duplicateId); // Debug log
+    setIsDeleting(true);
+    setDeleteSuccess('');
+    setDeleteError('');
+    
+    try {
+      // Delete the contact from Supabase
+      const { error } = await supabase
+        .from('contacts')
+        .delete()
+        .eq('id', duplicateId);
+        
+      if (error) throw error;
+      
+      // Update local state to remove the deleted contact
+      setDuplicateContacts(prev => {
+        const updatedContacts = prev.filter(c => c.id !== duplicateId);
+        console.log('Updated duplicate contacts:', updatedContacts); // Debug log
+        return updatedContacts;
+      });
+      setDeleteSuccess(`Contact deleted successfully.`);
+      
+      // Clear the success message after 3 seconds
+      setTimeout(() => {
+        setDeleteSuccess('');
+      }, 3000);
+    } catch (error) {
+      console.error('Error deleting contact:', error);
+      setDeleteError('Failed to delete contact. Please try again.');
+      
+      // Clear the error message after 3 seconds
+      setTimeout(() => {
+        setDeleteError('');
+      }, 3000);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+  
+  // Add function to transfer field value from duplicate to main contact
+  const handleTransferField = (field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+  
+  // Add function to save main contact changes
+  const handleSaveMainContact = async () => {
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .update(formData)
+        .eq('id', contact.id);
+      
+      if (error) throw error;
+      
+      alert('Main contact updated successfully.');
+    } catch (error) {
+      console.error('Error updating main contact:', error);
+      alert('Failed to update main contact. Please try again.');
+    }
   };
   
   // Tags functionality
@@ -705,6 +1205,34 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
     }
   };
   
+  // Add function to fetch contact cities
+  const fetchContactCities = async () => {
+    if (!contact) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('contact_cities')
+        .select(`
+          city_id,
+          cities:city_id(id, name)
+        `)
+        .eq('contact_id', contact.id);
+        
+      if (error) throw error;
+      
+      const cities = data.map(item => ({
+        id: item.city_id,
+        name: item.cities.name
+      }));
+      
+      setContactCities(cities);
+    } catch (error) {
+      console.error('Error fetching contact cities:', error);
+      setContactCities([]);
+    }
+  };
+  
+  // Add back the renderAboutTab function
   const renderAboutTab = () => {
     return (
       <FormContent>
@@ -785,19 +1313,16 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
           
           <FormGroup>
             <Label>Related Companies</Label>
-            <CompanyList>
+            <TagsList>
               {relatedCompanies.map((company) => (
-                <CompanyItem key={company.id} color={getCompanyColor()}>
-                  <div className="company-info">
-                    <h4>{company.name}</h4>
-                    <p>{company.category}</p>
-                  </div>
+                <CompanyItem key={company.id}>
+                  <span>{company.name}</span>
                   <button onClick={() => handleRemoveCompany(company)}>
-                    <FiX size={16} />
+                    <FiX size={14} />
                   </button>
                 </CompanyItem>
               ))}
-            </CompanyList>
+            </TagsList>
             <ActionButton onClick={handleOpenCompanyModal}>
               <FiLink size={14} /> Manage Companies
             </ActionButton>
@@ -897,6 +1422,469 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
       </FormContent>
     );
   };
+
+  // Update the renderMergeTab function to include cities
+  const renderMergeTab = () => {
+    // Check if we have any duplicate contacts
+    if (duplicateContacts.length === 0) {
+      return (
+        <MergeContainer>
+          <p style={{ textAlign: 'center', padding: '40px 0', color: '#6b7280' }}>
+            No duplicate contacts found for {contact.first_name} {contact.last_name}.
+          </p>
+        </MergeContainer>
+      );
+    }
+    
+    // Fetch main contact's tags, companies, and cities for comparison
+    const mainContactWithDetails = {
+      ...contact,
+      tags: contactTags,
+      companies: relatedCompanies,
+      cities: contactCities
+    };
+    
+    // Function to handle removing a tag from a duplicate contact
+    const handleRemoveDuplicateTag = async (duplicateId, tagId) => {
+      try {
+        const { error } = await supabase
+          .from('contact_tags')
+          .delete()
+          .match({ contact_id: duplicateId, tag_id: tagId });
+        
+        if (error) throw error;
+        
+        // Update the local state to reflect the change
+        setDuplicateContacts(prev => 
+          prev.map(dup => {
+            if (dup.id === duplicateId) {
+              return {
+                ...dup,
+                tags: dup.tags.filter(tag => tag.id !== tagId)
+              };
+            }
+            return dup;
+          })
+        );
+        
+        toast.success('Tag removed successfully');
+      } catch (error) {
+        console.error('Error removing tag:', error);
+        toast.error('Failed to remove tag');
+      }
+    };
+    
+    // Function to handle removing a company from a duplicate contact
+    const handleRemoveDuplicateCompany = async (duplicateId, companyId) => {
+      try {
+        const { error } = await supabase
+          .from('contact_companies')
+          .delete()
+          .match({ contact_id: duplicateId, company_id: companyId });
+        
+        if (error) throw error;
+        
+        // Update the local state to reflect the change
+        setDuplicateContacts(prev => 
+          prev.map(dup => {
+            if (dup.id === duplicateId) {
+              return {
+                ...dup,
+                companies: dup.companies.filter(company => company.id !== companyId)
+              };
+            }
+            return dup;
+          })
+        );
+        
+        toast.success('Company removed successfully');
+      } catch (error) {
+        console.error('Error removing company:', error);
+        toast.error('Failed to remove company');
+      }
+    };
+    
+    // Function to transfer a tag from a duplicate to the main contact
+    const handleTransferTag = async (tag) => {
+      try {
+        // Check if the tag already exists for the main contact
+        const tagExists = contactTags.some(t => t.id === tag.id);
+        
+        if (!tagExists) {
+          // Add the tag to the main contact
+          const { error } = await supabase
+            .from('contact_tags')
+            .insert({ contact_id: contact.id, tag_id: tag.id });
+          
+          if (error) throw error;
+          
+          // Update the local state
+          setContactTags(prev => [...prev, tag]);
+          toast.success('Tag added to main contact');
+        } else {
+          toast.info('Tag already exists on main contact');
+        }
+      } catch (error) {
+        console.error('Error transferring tag:', error);
+        toast.error('Failed to transfer tag');
+      }
+    };
+    
+    // Function to transfer a company from a duplicate to the main contact
+    const handleTransferCompany = async (company) => {
+      try {
+        // Check if the company already exists for the main contact
+        const companyExists = relatedCompanies.some(c => c.id === company.id);
+        
+        if (!companyExists) {
+          // Add the company to the main contact
+          const { error } = await supabase
+            .from('contact_companies')
+            .insert({ contact_id: contact.id, company_id: company.id });
+          
+          if (error) throw error;
+          
+          // Update the local state
+          setRelatedCompanies(prev => [...prev, company]);
+          toast.success('Company added to main contact');
+        } else {
+          toast.info('Company already exists on main contact');
+        }
+      } catch (error) {
+        console.error('Error transferring company:', error);
+        toast.error('Failed to transfer company');
+      }
+    };
+    
+    return (
+      <MergeContainer>
+        {deleteSuccess && (
+          <div style={{ backgroundColor: '#dcfce7', color: '#166534', padding: '8px 12px', borderRadius: '4px', marginBottom: '16px' }}>
+            {deleteSuccess}
+          </div>
+        )}
+        
+        {deleteError && (
+          <div style={{ backgroundColor: '#fee2e2', color: '#b91c1c', padding: '8px 12px', borderRadius: '4px', marginBottom: '16px' }}>
+            {deleteError}
+          </div>
+        )}
+        
+        <h3 style={{ marginBottom: '16px' }}>Duplicate Contacts</h3>
+        <p style={{ marginBottom: '16px', color: '#6b7280', fontSize: '0.875rem' }}>
+          The following contacts have the same name. Review and delete duplicates as needed.
+        </p>
+        
+        <MergeGrid duplicatesCount={duplicateContacts.length}>
+          {/* Main contact column */}
+          <ContactColumn isMain={true}>
+            <h3>Main Contact</h3>
+            
+            <FieldRow>
+              <div className="label">Created</div>
+              <div className="value">{formatDate(mainContactWithDetails.created_at)}</div>
+            </FieldRow>
+            
+            <FieldRow>
+              <div className="label">Last Modified</div>
+              <div className="value">{formatDate(mainContactWithDetails.last_modified)}</div>
+            </FieldRow>
+            
+            <FieldRow>
+              <div className="label">Email</div>
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleInputChange}
+                className="value"
+              />
+            </FieldRow>
+            
+            <FieldRow>
+              <div className="label">Email 2</div>
+              <input
+                type="email"
+                name="email2"
+                value={formData.email2}
+                onChange={handleInputChange}
+                className="value"
+              />
+            </FieldRow>
+            
+            <FieldRow>
+              <div className="label">Email 3</div>
+              <input
+                type="email"
+                name="email3"
+                value={formData.email3}
+                onChange={handleInputChange}
+                className="value"
+              />
+            </FieldRow>
+            
+            <FieldRow>
+              <div className="label">Mobile</div>
+              <input
+                type="tel"
+                name="mobile"
+                value={formData.mobile}
+                onChange={handleInputChange}
+                className="value"
+              />
+            </FieldRow>
+            
+            <FieldRow>
+              <div className="label">Mobile 2</div>
+              <input
+                type="tel"
+                name="mobile2"
+                value={formData.mobile2}
+                onChange={handleInputChange}
+                className="value"
+              />
+            </FieldRow>
+            
+            <FieldRow>
+              <div className="label">LinkedIn</div>
+              <input
+                type="text"
+                name="linkedin"
+                value={formData.linkedin}
+                onChange={handleInputChange}
+                className="value"
+              />
+            </FieldRow>
+            
+            <TagsRow>
+              <div className="label">Tags</div>
+              <div className="value-container">
+                {mainContactWithDetails.tags.length > 0 ? (
+                  <div className="tags-list">
+                    {mainContactWithDetails.tags.map(tag => {
+                      const { bg, text } = getTagColor(tag.name);
+                      return (
+                        <Tag key={tag.id} color={bg} textColor={text} style={{ margin: '0 4px 4px 0' }}>
+                          <span>{tag.name}</span>
+                          <RemoveButton onClick={() => handleRemoveTag(tag)}>
+                            <FiXCircle size={14} />
+                          </RemoveButton>
+                        </Tag>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="empty-message">No tags</div>
+                )}
+                <AddButton onClick={handleOpenTagsModal}>
+                  <FiPlus size={16} />
+                  Add Tags
+                </AddButton>
+              </div>
+            </TagsRow>
+            
+            <TagsRow>
+              <div className="label">Companies</div>
+              <div className="value-container">
+                {mainContactWithDetails.companies.length > 0 ? (
+                  <div className="tags-list">
+                    {mainContactWithDetails.companies.map(company => (
+                      <CompanyItem key={company.id}>
+                        <span>{company.name}</span>
+                        <RemoveButton onClick={() => handleRemoveCompany(company)}>
+                          <FiXCircle size={14} />
+                        </RemoveButton>
+                      </CompanyItem>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-message">No companies</div>
+                )}
+                <AddButton onClick={handleOpenCompanyModal}>
+                  <FiPlus size={16} />
+                  Add Company
+                </AddButton>
+              </div>
+            </TagsRow>
+            
+            {/* Add Cities section for main contact */}
+            <TagsRow>
+              <div className="label">Cities</div>
+              <div className="value-container">
+                {mainContactWithDetails.cities.length > 0 ? (
+                  <div className="tags-list">
+                    {mainContactWithDetails.cities.map(city => (
+                      <CityTag key={city.id} style={{ margin: '0 4px 4px 0' }}>
+                        <span>{city.name}</span>
+                        <RemoveButton onClick={() => handleRemoveCity(city)}>
+                          <FiXCircle size={14} />
+                        </RemoveButton>
+                      </CityTag>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-message">No cities</div>
+                )}
+              </div>
+            </TagsRow>
+            
+            <ButtonContainer>
+              <SaveButton onClick={handleSaveMainContact}>
+                <FiSave size={16} />
+                Save Main Contact
+              </SaveButton>
+            </ButtonContainer>
+          </ContactColumn>
+          
+          {/* Duplicate contact columns */}
+          {duplicateContacts.map(duplicate => (
+            <ContactColumn key={duplicate.id}>
+              <h3>Duplicate</h3>
+              
+              <FieldRow>
+                <div className="label">Created</div>
+                <div className="value">{formatDate(duplicate.created_at)}</div>
+              </FieldRow>
+              
+              <FieldRow>
+                <div className="label">Last Modified</div>
+                <div className="value">{formatDate(duplicate.last_modified)}</div>
+              </FieldRow>
+              
+              <FieldRow className={!duplicate.email ? 'empty' : ''}>
+                <div className="label">Email</div>
+                <div className="value">{duplicate.email || 'Not set'}</div>
+                <ArrowButton onClick={() => handleTransferField('email', duplicate.email)}>
+                  <FiArrowLeft size={16} />
+                </ArrowButton>
+              </FieldRow>
+              
+              <FieldRow className={!duplicate.email2 ? 'empty' : ''}>
+                <div className="label">Email 2</div>
+                <div className="value">{duplicate.email2 || 'Not set'}</div>
+                <ArrowButton onClick={() => handleTransferField('email2', duplicate.email2)}>
+                  <FiArrowLeft size={16} />
+                </ArrowButton>
+              </FieldRow>
+              
+              <FieldRow className={!duplicate.email3 ? 'empty' : ''}>
+                <div className="label">Email 3</div>
+                <div className="value">{duplicate.email3 || 'Not set'}</div>
+                <ArrowButton onClick={() => handleTransferField('email3', duplicate.email3)}>
+                  <FiArrowLeft size={16} />
+                </ArrowButton>
+              </FieldRow>
+              
+              <FieldRow className={!duplicate.mobile ? 'empty' : ''}>
+                <div className="label">Mobile</div>
+                <div className="value">{duplicate.mobile || 'Not set'}</div>
+                <ArrowButton onClick={() => handleTransferField('mobile', duplicate.mobile)}>
+                  <FiArrowLeft size={16} />
+                </ArrowButton>
+              </FieldRow>
+              
+              <FieldRow className={!duplicate.mobile2 ? 'empty' : ''}>
+                <div className="label">Mobile 2</div>
+                <div className="value">{duplicate.mobile2 || 'Not set'}</div>
+                <ArrowButton onClick={() => handleTransferField('mobile2', duplicate.mobile2)}>
+                  <FiArrowLeft size={16} />
+                </ArrowButton>
+              </FieldRow>
+              
+              <FieldRow className={!duplicate.linkedin ? 'empty' : ''}>
+                <div className="label">LinkedIn</div>
+                <div className="value">{duplicate.linkedin || 'Not set'}</div>
+                <ArrowButton onClick={() => handleTransferField('linkedin', duplicate.linkedin)}>
+                  <FiArrowLeft size={16} />
+                </ArrowButton>
+              </FieldRow>
+              
+              <TagsRow className={duplicate.tags.length === 0 ? 'empty' : ''}>
+                <div className="label">Tags</div>
+                <div className="value-container">
+                  {duplicate.tags.length > 0 ? (
+                    <div className="tags-list">
+                      {duplicate.tags.map(tag => {
+                        const { bg, text } = getTagColor(tag.name);
+                        return (
+                          <Tag key={tag.id} color={bg} textColor={text} style={{ margin: '0 4px 4px 0' }}>
+                            <span>{tag.name}</span>
+                            <RemoveButton onClick={() => handleRemoveDuplicateTag(duplicate.id, tag.id)}>
+                              <FiXCircle size={14} />
+                            </RemoveButton>
+                            <TransferButton onClick={() => handleTransferTag(tag)}>
+                              <FiArrowLeft size={14} />
+                            </TransferButton>
+                          </Tag>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="empty-message">No tags</div>
+                  )}
+                </div>
+              </TagsRow>
+              
+              <TagsRow className={duplicate.companies.length === 0 ? 'empty' : ''}>
+                <div className="label">Companies</div>
+                <div className="value-container">
+                  {duplicate.companies.length > 0 ? (
+                    <div className="tags-list">
+                      {duplicate.companies.map(company => (
+                        <CompanyItem key={company.id}>
+                          <span>{company.name}</span>
+                          <RemoveButton onClick={() => handleRemoveDuplicateCompany(duplicate.id, company.id)}>
+                            <FiXCircle size={14} />
+                          </RemoveButton>
+                          <TransferButton onClick={() => handleTransferCompany(company)}>
+                            <FiArrowLeft size={14} />
+                          </TransferButton>
+                        </CompanyItem>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="empty-message">No companies</div>
+                  )}
+                </div>
+              </TagsRow>
+              
+              {/* Add Cities section for duplicate contacts */}
+              <TagsRow className={duplicate.cities && duplicate.cities.length === 0 ? 'empty' : ''}>
+                <div className="label">Cities</div>
+                <div className="value-container">
+                  {duplicate.cities && duplicate.cities.length > 0 ? (
+                    <div className="tags-list">
+                      {duplicate.cities.map(city => (
+                        <CityTag key={city.id} style={{ margin: '0 4px 4px 0' }}>
+                          <span>{city.name}</span>
+                          <RemoveButton onClick={() => handleRemoveDuplicateCity(duplicate.id, city.id)}>
+                            <FiXCircle size={14} />
+                          </RemoveButton>
+                          <TransferButton onClick={() => handleTransferCity(city)}>
+                            <FiArrowLeft size={14} />
+                          </TransferButton>
+                        </CityTag>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="empty-message">No cities</div>
+                  )}
+                </div>
+              </TagsRow>
+              
+              <DeleteButton 
+                onClick={() => handleDeleteDuplicate(duplicate.id)}
+                disabled={isDeleting}
+              >
+                <FiTrash2 size={16} />
+                Delete Duplicate
+              </DeleteButton>
+            </ContactColumn>
+          ))}
+        </MergeGrid>
+      </MergeContainer>
+    );
+  };
   
   return (
     <>
@@ -928,7 +1916,18 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
         <ModalContainer>
           <ModalHeader>
             <div className="header-content">
-              <h2>{`${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Unnamed Contact'}</h2>
+              <div className="name-and-cities">
+                <h2>{`${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Unnamed Contact'}</h2>
+                {contactCities.length > 0 && (
+                  <div className="city-tags">
+                    {contactCities.map(city => (
+                      <CityTag key={city.id}>
+                        {city.name}
+                      </CityTag>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div className="dates">
                 <span>Created: {formatDate(contact.created_at)}</span>
                 <span>Last Modified: {formatDate(contact.last_modified)}</span>
@@ -945,6 +1944,12 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
               onClick={() => setActiveTab('about')}
             >
               About
+            </TabButton>
+            <TabButton 
+              active={activeTab === 'merge'} 
+              onClick={() => setActiveTab('merge')}
+            >
+              Merge
             </TabButton>
             <TabButton 
               active={activeTab === 'intros'} 
@@ -971,20 +1976,23 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
           
           <ContentSection>
             {activeTab === 'about' && renderAboutTab()}
+            {activeTab === 'merge' && renderMergeTab()}
             {activeTab === 'intros' && <div>Intros tab content coming soon</div>}
             {activeTab === 'deals' && <div>Deals tab content coming soon</div>}
             {activeTab === 'notes' && <div>Notes tab content coming soon</div>}
           </ContentSection>
           
-          <ButtonContainer>
-            <CancelButton onClick={onRequestClose}>
-              Cancel
-            </CancelButton>
-            <SaveButton onClick={handleSave}>
-              <FiSave size={16} />
-              Save Changes
-            </SaveButton>
-          </ButtonContainer>
+          {activeTab !== 'merge' && (
+            <ButtonContainer>
+              <CancelButton onClick={onRequestClose}>
+                Cancel
+              </CancelButton>
+              <SaveButton onClick={handleSave}>
+                <FiSave size={16} />
+                Save Changes
+              </SaveButton>
+            </ButtonContainer>
+          )}
         </ModalContainer>
       </Modal>
       
