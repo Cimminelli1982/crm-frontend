@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
 import { 
-  FiEdit2, FiStar, FiCheck, FiX, 
+  FiTrash2, FiStar, FiCheck, FiX, 
   FiMail, FiExternalLink
 } from 'react-icons/fi';
 import { 
@@ -1912,6 +1912,31 @@ const RecentContactsList = ({
     fetchContacts();
   };
   
+  // Add delete contact handler
+  const handleDeleteContact = async (contactId) => {
+    if (!window.confirm('Are you sure you want to delete this contact? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const { error } = await supabase
+        .from('contacts')
+        .delete()
+        .eq('id', contactId);
+
+      if (error) throw error;
+
+      // Update local state by removing the deleted contact
+      setContacts(contacts.filter(c => c.id !== contactId));
+    } catch (err) {
+      console.error('Error deleting contact:', err);
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
   // --------- RENDER ---------
   return (
     <Container>
@@ -2124,55 +2149,6 @@ const RecentContactsList = ({
                             ? 'Choose mobile number' 
                             : 'WhatsApp'}
                       </span>
-                      
-                      {/* WhatsApp number dropdown */}
-                      {showWhatsAppDropdown[contact.id] && (contact.mobile && contact.mobile2) && (
-                        <div 
-                          style={{
-                            position: 'absolute',
-                            top: '100%',
-                            left: '0',
-                            zIndex: 50,
-                            backgroundColor: 'white',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '0.25rem',
-                            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                            width: '180px',
-                            overflow: 'hidden'
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          data-whatsapp-dropdown={true}
-                        >
-                          <div style={{ padding: '0.5rem', backgroundColor: '#f3f4f6', borderBottom: '1px solid #e5e7eb' }}>
-                            <div style={{ fontWeight: '600', fontSize: '0.75rem', color: '#4b5563' }}>Select number to use</div>
-                          </div>
-                          <div 
-                            style={{ 
-                              padding: '0.5rem', 
-                              borderBottom: '1px solid #e5e7eb', 
-                              cursor: 'pointer',
-                              transition: 'background-color 0.2s',
-                              ':hover': { backgroundColor: '#f9fafb' }
-                            }}
-                            onClick={() => handleOpenWhatsApp(contact.mobile, contact.id)}
-                          >
-                            <div style={{ fontWeight: '500', fontSize: '0.75rem', color: '#6b7280' }}>Primary</div>
-                            <div style={{ fontSize: '0.875rem' }}>{contact.mobile}</div>
-                          </div>
-                          <div 
-                            style={{ 
-                              padding: '0.5rem', 
-                              cursor: 'pointer',
-                              transition: 'background-color 0.2s',
-                              ':hover': { backgroundColor: '#f9fafb' }
-                            }}
-                            onClick={() => handleOpenWhatsApp(contact.mobile2, contact.id)}
-                          >
-                            <div style={{ fontWeight: '500', fontSize: '0.75rem', color: '#6b7280' }}>Secondary</div>
-                            <div style={{ fontSize: '0.875rem' }}>{contact.mobile2}</div>
-                          </div>
-                        </div>
-                      )}
                     </Tooltip>
                     
                     <Tooltip>
@@ -2181,7 +2157,6 @@ const RecentContactsList = ({
                         onClick={(e) => handleEmailClick(contact, e)}
                         data-email-button={true}
                         style={{ 
-                          // Light blue (#93C5FD) if NO email, darker blue (#4285F4) if email exists
                           color: hasAnyEmail(contact) ? '#4285F4' : '#93C5FD'
                         }}
                       >
@@ -2190,75 +2165,6 @@ const RecentContactsList = ({
                       <span className="tooltip-text">
                         {hasAnyEmail(contact) ? 'Search in Superhuman' : 'Add/Search'}
                       </span>
-                      
-                      {/* Email dropdown - only show for contacts without email */}
-                      {showEmailDropdown[contact.id] && !hasAnyEmail(contact) && (
-                        <div 
-                          style={{
-                            position: 'absolute',
-                            top: '100%',
-                            left: '0',
-                            zIndex: 50,
-                            backgroundColor: 'white',
-                            border: '1px solid #d1d5db',
-                            borderRadius: '0.25rem',
-                            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                            width: '180px',
-                            overflow: 'hidden'
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          data-email-dropdown={true}
-                        >
-                          <div style={{ padding: '0.5rem', backgroundColor: '#f3f4f6', borderBottom: '1px solid #e5e7eb' }}>
-                            <div style={{ fontWeight: '600', fontSize: '0.75rem', color: '#4b5563' }}>Email Options</div>
-                          </div>
-                          
-                          {/* Add option */}
-                          <div 
-                            style={{ 
-                              padding: '0.5rem', 
-                              borderBottom: '1px solid #e5e7eb', 
-                              cursor: 'pointer',
-                              transition: 'background-color 0.2s'
-                            }}
-                            onClick={(e) => handleAddEmail(contact, e)}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                              <span style={{ fontSize: '0.875rem' }}>Add</span>
-                            </div>
-                          </div>
-                          
-                          {/* Search option */}
-                          <div 
-                            style={{ 
-                              padding: '0.5rem', 
-                              cursor: 'pointer',
-                              transition: 'background-color 0.2s'
-                            }}
-                            onClick={(e) => handleSearchEmail(contact, e)}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                              <span style={{ fontSize: '0.875rem' }}>Search</span>
-                              <span style={{ fontSize: '0.75rem', color: '#6b7280', marginLeft: 'auto' }}>Superhuman</span>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </Tooltip>
-                    
-                    <Tooltip>
-                      <ActionButton 
-                        className="linkedin"
-                        onClick={(e) => handleLinkedInClick(contact, e)}
-                        style={{ 
-                          color: contact.linkedin ? '#0077B5' : '#4299E1' // LinkedIn blue vs. lighter blue
-                        }}
-                      >
-                        <FaLinkedin />
-                      </ActionButton>
-                      <span className="tooltip-text">
-                        {contact.linkedin ? 'View LinkedIn profile' : 'Search on LinkedIn'}
-                      </span>
                     </Tooltip>
                     
                     <Tooltip>
@@ -2266,7 +2172,7 @@ const RecentContactsList = ({
                         className="hubspot"
                         onClick={(e) => handleHubSpotClick(contact, e)}
                         style={{ 
-                          color: contact.hubspot_id ? '#FF7A59' : '#9CA3AF' // Orange if has HubSpot ID, gray if not
+                          color: contact.hubspot_id ? '#FF7A59' : '#9CA3AF'
                         }}
                       >
                         <FaHubspot size={16} />
@@ -2278,12 +2184,13 @@ const RecentContactsList = ({
                     
                     <Tooltip>
                       <ActionButton
-                        className="edit"
-                        onClick={() => handleOpenModal('edit', contact)}
+                        className="delete"
+                        onClick={() => handleDeleteContact(contact.id)}
+                        style={{ color: '#ef4444' }}
                       >
-                        <FiEdit2 size={16} />
+                        <FiTrash2 size={16} />
                       </ActionButton>
-                      <span className="tooltip-text">Edit Contact</span>
+                      <span className="tooltip-text">Delete Contact</span>
                     </Tooltip>
                   </ActionsContainer>
                 </td>
