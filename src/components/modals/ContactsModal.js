@@ -5,6 +5,7 @@ import { FiX, FiSave, FiPlus, FiSearch, FiX as FiXCircle, FiTag, FiLink, FiTrash
 import { supabase } from '../../lib/supabaseClient';
 import TagsModal from './TagsModal';
 import CompanyModal from './CompanyModal';
+import CityModal from './CityModal';
 import { toast } from 'react-hot-toast';
 
 // Define Contact Categories with the specified options
@@ -727,7 +728,7 @@ const AddButton = styled.button`
   }
 `;
 
-// Add a styled component for the city tags
+// Update CityTag component to include remove button
 const CityTag = styled.span`
   display: inline-flex;
   align-items: center;
@@ -738,6 +739,51 @@ const CityTag = styled.span`
   margin-left: 8px;
   font-size: 0.75rem;
   font-weight: 500;
+  gap: 4px;
+
+  button {
+    background: none;
+    border: none;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: inherit;
+    cursor: pointer;
+    opacity: 0.7;
+    
+    &:hover {
+      opacity: 1;
+    }
+  }
+`;
+
+const AddCityButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  background-color: transparent;
+  border: none;
+  color: #0369a1;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  margin-left: 8px;
+  gap: 4px;
+  
+  &:hover {
+    background-color: #e0f2fe;
+    border-radius: 4px;
+  }
+`;
+
+const NotificationDot = styled.span`
+  width: 8px;
+  height: 8px;
+  background-color: #3b82f6;
+  border-radius: 50%;
+  display: inline-block;
+  margin-left: 6px;
 `;
 
 const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
@@ -773,6 +819,9 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
   const [deleteSuccess, setDeleteSuccess] = useState('');
   const [deleteError, setDeleteError] = useState('');
   
+  const [showCityModal, setShowCityModal] = useState(false);
+  const [hasDuplicates, setHasDuplicates] = useState(false);
+  
   useEffect(() => {
     if (contact) {
       setFormData({
@@ -804,6 +853,29 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
       fetchDuplicateContacts();
     }
   }, [activeTab, contact]);
+  
+  // Add effect to check for duplicates
+  useEffect(() => {
+    const checkDuplicates = async () => {
+      if (!contact || !contact.first_name || !contact.last_name) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('contacts')
+          .select('id')
+          .eq('first_name', contact.first_name)
+          .eq('last_name', contact.last_name)
+          .neq('id', contact.id);
+          
+        if (error) throw error;
+        setHasDuplicates(data && data.length > 0);
+      } catch (error) {
+        console.error('Error checking duplicates:', error);
+      }
+    };
+
+    checkDuplicates();
+  }, [contact]);
   
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -913,8 +985,8 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
     }
   };
   
-  // Add function to handle removing a city from the main contact
-  const handleRemoveCity = async (cityToRemove) => {
+  // Add function to handle city removal
+  const handleRemoveCityFromHeader = async (cityToRemove) => {
     try {
       const { error } = await supabase
         .from('contact_cities')
@@ -923,7 +995,6 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
         
       if (error) throw error;
       
-      // Update local state
       setContactCities(prev => prev.filter(city => city.id !== cityToRemove.id));
       toast.success('City removed successfully');
     } catch (error) {
@@ -1230,6 +1301,17 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
       console.error('Error fetching contact cities:', error);
       setContactCities([]);
     }
+  };
+  
+  // Add function to handle opening city modal
+  const handleOpenCityModal = () => {
+    setShowCityModal(true);
+  };
+
+  // Add function to handle closing city modal
+  const handleCloseCityModal = () => {
+    setShowCityModal(false);
+    fetchContactCities(); // Refresh cities after modal closes
   };
   
   // Add back the renderAboutTab function
@@ -1714,9 +1796,9 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
                 {mainContactWithDetails.cities.length > 0 ? (
                   <div className="tags-list">
                     {mainContactWithDetails.cities.map(city => (
-                      <CityTag key={city.id} style={{ margin: '0 4px 4px 0' }}>
+                      <CityTag key={city.id}>
                         <span>{city.name}</span>
-                        <RemoveButton onClick={() => handleRemoveCity(city)}>
+                        <RemoveButton onClick={() => handleRemoveCityFromHeader(city)}>
                           <FiXCircle size={14} />
                         </RemoveButton>
                       </CityTag>
@@ -1855,9 +1937,9 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
                   {duplicate.cities && duplicate.cities.length > 0 ? (
                     <div className="tags-list">
                       {duplicate.cities.map(city => (
-                        <CityTag key={city.id} style={{ margin: '0 4px 4px 0' }}>
+                        <CityTag key={city.id}>
                           <span>{city.name}</span>
-                          <RemoveButton onClick={() => handleRemoveDuplicateCity(duplicate.id, city.id)}>
+                          <RemoveButton onClick={() => handleRemoveCityFromHeader(city)}>
                             <FiXCircle size={14} />
                           </RemoveButton>
                           <TransferButton onClick={() => handleTransferCity(city)}>
@@ -1918,15 +2000,20 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
             <div className="header-content">
               <div className="name-and-cities">
                 <h2>{`${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Unnamed Contact'}</h2>
-                {contactCities.length > 0 && (
-                  <div className="city-tags">
-                    {contactCities.map(city => (
-                      <CityTag key={city.id}>
-                        {city.name}
-                      </CityTag>
-                    ))}
-                  </div>
-                )}
+                <div className="city-tags">
+                  {contactCities.map(city => (
+                    <CityTag key={city.id}>
+                      {city.name}
+                      <button onClick={() => handleRemoveCityFromHeader(city)} title="Remove city">
+                        <FiX size={12} />
+                      </button>
+                    </CityTag>
+                  ))}
+                  <AddCityButton onClick={handleOpenCityModal}>
+                    <FiPlus size={12} />
+                    Add City
+                  </AddCityButton>
+                </div>
               </div>
               <div className="dates">
                 <span>Created: {formatDate(contact.created_at)}</span>
@@ -1950,6 +2037,7 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
               onClick={() => setActiveTab('merge')}
             >
               Merge
+              {hasDuplicates && <NotificationDot />}
             </TabButton>
             <TabButton 
               active={activeTab === 'intros'} 
@@ -2009,6 +2097,14 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
         <CompanyModal
           isOpen={showCompanyModal}
           onRequestClose={handleCloseCompanyModal}
+          contact={contact}
+        />
+      )}
+      
+      {showCityModal && (
+        <CityModal
+          isOpen={showCityModal}
+          onRequestClose={handleCloseCityModal}
           contact={contact}
         />
       )}
