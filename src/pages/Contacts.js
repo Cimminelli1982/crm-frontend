@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { supabase } from '../lib/supabaseClient';
 import RecentContactsList from '../components/contacts/RecentContactsList';
-import { FiFilter, FiSearch, FiPlus, FiChevronDown, FiClock, FiMessageSquare, FiAlertCircle, FiCalendar } from 'react-icons/fi';
+import { FiFilter, FiSearch, FiPlus, FiChevronDown, FiClock, FiMessageSquare, FiAlertCircle, FiRefreshCw } from 'react-icons/fi';
 
 const PageContainer = styled.div`
   background-color: white;
@@ -193,13 +193,15 @@ const ContentSection = styled.div`
 const FilterButtonsContainer = styled.div`
   display: flex;
   gap: 0.75rem;
-  padding: 1rem 1.5rem;
+  padding: 1rem 0;
+  margin: 0 1.5rem;
   border-bottom: 1px solid #e5e7eb;
   overflow-x: auto;
   
   @media (max-width: 768px) {
     flex-wrap: nowrap;
-    padding: 0.75rem 1rem;
+    padding: 0.75rem 0;
+    margin: 0 1rem;
   }
 `;
 
@@ -216,6 +218,7 @@ const FilterButton = styled.button`
   background-color: ${props => props.active ? '#3b82f6' : 'white'};
   color: ${props => props.active ? 'white' : '#4b5563'};
   border: 1px solid ${props => props.active ? '#3b82f6' : '#d1d5db'};
+  position: relative;
   
   &:hover {
     background-color: ${props => props.active ? '#2563eb' : '#f9fafb'};
@@ -226,14 +229,30 @@ const FilterButton = styled.button`
   }
 `;
 
+const NotificationDot = styled.div`
+  position: absolute;
+  top: 0.25rem;
+  right: 0.25rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  background-color: #3b82f6;
+  border-radius: 50%;
+  border: 2px solid white;
+`;
+
 const Contacts = () => {
   const [totalCount, setTotalCount] = useState(0);
   const [filteredCount, setFilteredCount] = useState(0);
+  const [inboxCount, setInboxCount] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [searchField, setSearchField] = useState('name');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  
+  // Reference to the contact list component
+  const contactListRef = useRef(null);
   
   // Search field options
   const searchFields = [
@@ -247,6 +266,7 @@ const Contacts = () => {
 
   useEffect(() => {
     fetchCount();
+    fetchInboxCount();
   }, []);
 
   const fetchCount = async () => {
@@ -264,6 +284,20 @@ const Contacts = () => {
       console.error('Error fetching contact count:', error.message);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchInboxCount = async () => {
+    try {
+      const { count, error } = await supabase
+        .from('contacts')
+        .select('*', { count: 'exact' })
+        .eq('contact_category', 'Inbox');
+      
+      if (error) throw error;
+      setInboxCount(count || 0);
+    } catch (error) {
+      console.error('Error fetching inbox count:', error.message);
     }
   };
 
@@ -296,14 +330,18 @@ const Contacts = () => {
   const handleFilteredCountUpdate = (count) => {
     setFilteredCount(count);
   };
+  
+  const handleRefresh = () => {
+    // Increment refresh trigger to force the list to reload
+    setRefreshTrigger(prev => prev + 1);
+  };
 
   const getFilterTitle = () => {
     if (!activeFilter) return "All Contacts";
     
     switch (activeFilter) {
-      case 'recentlyCreated': return "Recently Created";
+      case 'recentlyCreated': return "Inbox";
       case 'lastInteraction': return "Recent Interactions";
-      case 'keepInTouch': return "Keep in Touch";
       case 'missingInfos': return "Missing Information";
       default: return "All Contacts";
     }
@@ -326,6 +364,10 @@ const Contacts = () => {
           </HeaderTitle>
           
           <HeaderActions>
+            <SecondaryButton onClick={handleRefresh} title="Refresh contacts">
+              <FiRefreshCw />
+              Refresh
+            </SecondaryButton>
             <SecondaryButton onClick={handleFilter}>
               <FiFilter />
               Filter
@@ -372,7 +414,13 @@ const Contacts = () => {
             onClick={() => handleFilterButtonClick('recentlyCreated')}
           >
             <FiClock />
-            Recently Created
+            Inbox
+            {inboxCount > 0 && (
+              <>
+                <span style={{ marginLeft: '0.25rem', marginRight: '0.25rem' }}>({inboxCount})</span>
+                <NotificationDot />
+              </>
+            )}
           </FilterButton>
           <FilterButton 
             active={activeFilter === 'lastInteraction'} 
@@ -380,13 +428,6 @@ const Contacts = () => {
           >
             <FiMessageSquare />
             Last Interaction
-          </FilterButton>
-          <FilterButton 
-            active={activeFilter === 'keepInTouch'} 
-            onClick={() => handleFilterButtonClick('keepInTouch')}
-          >
-            <FiCalendar />
-            Keep in Touch
           </FilterButton>
           <FilterButton 
             active={activeFilter === 'missingInfos'} 
@@ -400,11 +441,13 @@ const Contacts = () => {
       
       <ContentSection>
         <RecentContactsList 
+          ref={contactListRef}
           defaultShowAll={true} 
           searchTerm={searchTerm.length >= 3 ? searchTerm : ''}
           searchField={searchField}
           activeFilter={activeFilter}
           onCountUpdate={handleFilteredCountUpdate}
+          refreshTrigger={refreshTrigger}
         />
       </ContentSection>
     </PageContainer>
