@@ -723,7 +723,9 @@ const RecentContactsList = ({
   defaultShowAll = false,
   defaultFilter = 'all',
   searchTerm = '',
-  searchField = 'name'
+  searchField = 'name',
+  activeFilter = null, // The active filter prop
+  onCountUpdate = () => {} // New callback prop for count updates
 }) => {
   // --------- STATE MANAGEMENT ---------
   // UI State - clearly separated from data state
@@ -734,9 +736,14 @@ const RecentContactsList = ({
   // Data State
   const [contacts, setContacts] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
+  const [filteredCount, setFilteredCount] = useState(0); // New state to track filtered count
   const [totalPages, setTotalPages] = useState(1);
   const [contactTags, setContactTags] = useState({});
   const [tagSuggestions, setTagSuggestions] = useState([]);
+  
+  // Sort and filter tracking for debug
+  const [currentSorting, setCurrentSorting] = useState('last_modified desc');
+  const [currentFiltering, setCurrentFiltering] = useState('none');
   
   // Editing State
   const [editingContact, setEditingContact] = useState(null);
@@ -786,11 +793,25 @@ const RecentContactsList = ({
   
   // --------- DATA FETCHING FUNCTIONS ---------
   
+  // Reset page when filter changes
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [activeFilter]);
+  
+  // Report filtered count back to parent component
+  useEffect(() => {
+    onCountUpdate(filteredCount);
+  }, [filteredCount, onCountUpdate]);
+  
   // Fetch contacts - core data fetching function
   const fetchContacts = useCallback(async () => {
-    if (!debouncedSearchTerm && debouncedSearchTerm !== '') {
-      return; // Don't fetch until debounce completes
+    if (!debouncedSearchTerm && debouncedSearchTerm !== '' && !activeFilter) {
+      return; // Don't fetch until debounce completes or filter is active
     }
+    
+    // Track the current sorting and filtering for debug info
+    let sortDescription = 'last_modified desc, last_interaction desc';
+    let filterDescription = 'contact_category != Skip';
     
     try {
       setIsLoading(true);
@@ -801,39 +822,90 @@ const RecentContactsList = ({
           .from('contacts')
         .select(`*, contact_companies:contact_companies(contact_id, company_id, companies:company_id(id, name, website))`)
         .not('contact_category', 'eq', 'Skip');
-      
-      // Apply search if term has at least 3 characters
-      if (debouncedSearchTerm && debouncedSearchTerm.length >= 3) {
+
+      // Apply different filters based on activeFilter
+      if (activeFilter) {
+        switch (activeFilter) {
+          case 'recentlyCreated':
+            // Recently created: contact_Category = Inbox sort by created_at
+            query = query.eq('contact_category', 'Inbox')
+                       .order('created_at', { ascending: false });
+            sortDescription = 'created_at desc';
+            filterDescription = 'contact_category = Inbox';
+            break;
+            
+          case 'lastInteraction':
+            // Last Interaction: last_interaction within last week where contact_category is not Skip
+            const oneWeekAgo = new Date();
+            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+            const formattedDate = oneWeekAgo.toISOString();
+            
+            query = query
+              .gte('last_interaction', formattedDate)
+              .order('last_interaction', { ascending: false });
+            sortDescription = 'last_interaction desc';
+            filterDescription = `last_interaction >= ${formattedDate}`;
+            break;
+            
+          case 'keepInTouch':
+            // Keep in touch: keep_in_touch_frequency is not null or Do not keep in touch
+            query = query
+              .not('keep_in_touch_frequency', 'is', null)
+              .not('keep_in_touch_frequency', 'eq', 'Do not keep');
+            sortDescription = 'calculated due date (asc)';
+            filterDescription = 'keep_in_touch_frequency is not null AND keep_in_touch_frequency != "Do not keep"';
+            break;
+            
+          case 'missingInfos':
+            // Missing infos: contact_category is not Skip and one of fields is missing
+            // This complex filter will be handled in post-processing
+            query = query.order('last_interaction', { ascending: false });
+            sortDescription = 'last_interaction desc';
+            filterDescription = 'missing required fields (applied after fetch)';
+            break;
+            
+          default:
+            // Default sorting for all other cases
+            query = query.order('last_modified', { ascending: false });
+            break;
+        }
+      } else if (debouncedSearchTerm && debouncedSearchTerm.length >= 3) {
+        // Apply search if term has at least 3 characters
         switch (searchField) {
           case 'name':
             query = query.or(`first_name.ilike.%${debouncedSearchTerm}%,last_name.ilike.%${debouncedSearchTerm}%`);
+            filterDescription = `first_name ILIKE "%${debouncedSearchTerm}%" OR last_name ILIKE "%${debouncedSearchTerm}%"`;
             break;
           case 'email':
             query = query.ilike('email', `%${debouncedSearchTerm}%`);
+            filterDescription = `email ILIKE "%${debouncedSearchTerm}%"`;
             break;
           case 'mobile':
             query = query.ilike('mobile', `%${debouncedSearchTerm}%`);
+            filterDescription = `mobile ILIKE "%${debouncedSearchTerm}%"`;
             break;
           case 'city':
             query = query.ilike('city', `%${debouncedSearchTerm}%`);
+            filterDescription = `city ILIKE "%${debouncedSearchTerm}%"`;
             break;
           // Company & tags filtering handled after fetch
           default:
             query = query.or(`first_name.ilike.%${debouncedSearchTerm}%,last_name.ilike.%${debouncedSearchTerm}%`);
+            filterDescription = `Search in ${searchField}: "${debouncedSearchTerm}" (applied after fetch)`;
         }
+        
+        // Apply default sorting for search
+        query = query.order('last_modified', { ascending: false })
+                     .order('last_interaction', { ascending: false });
+      } else {
+        // Default sorting when no filter or search is active
+        query = query.order('last_modified', { ascending: false })
+                     .order('last_interaction', { ascending: false });
       }
-      
-      // Apply sorting - always use last_modified as primary sort
-      query = query.order('last_modified', { 
-        ascending: false,
-        nullsFirst: false
-      });
-      
-      // Apply secondary sorting - always use last_interaction as secondary sort
-      query = query.order('last_interaction', {
-        ascending: false,
-        nullsFirst: false
-      });
+
+      // Update current sorting and filtering for debug info
+      setCurrentSorting(sortDescription);
+      setCurrentFiltering(filterDescription);
       
       // Apply pagination
       const from = currentPage * 10;
@@ -855,13 +927,60 @@ const RecentContactsList = ({
         })));
       }
       
-      // Get count for pagination
-      const { count, error: countError } = await supabase
-          .from('contacts')
+      // Get count for pagination - modify to include active filter
+      let countQuery = supabase
+        .from('contacts')
         .select('*', { count: 'exact', head: true })
         .not('contact_category', 'eq', 'Skip');
       
+      // Apply the same filters to the count query for accurate pagination
+      if (activeFilter) {
+        switch (activeFilter) {
+          case 'recentlyCreated':
+            countQuery = countQuery.eq('contact_category', 'Inbox');
+            break;
+            
+          case 'lastInteraction':
+            const oneWeekAgo = new Date();
+            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+            const formattedDate = oneWeekAgo.toISOString();
+            countQuery = countQuery.gte('last_interaction', formattedDate);
+            break;
+            
+          case 'keepInTouch':
+            countQuery = countQuery
+              .not('keep_in_touch_frequency', 'is', null)
+              .not('keep_in_touch_frequency', 'eq', 'Do not keep');
+            break;
+            
+          // For missingInfos, we'll handle the count after fetching all data
+        }
+      } else if (debouncedSearchTerm && debouncedSearchTerm.length >= 3) {
+        // Apply the same search filter to the count query
+        switch (searchField) {
+          case 'name':
+            countQuery = countQuery.or(`first_name.ilike.%${debouncedSearchTerm}%,last_name.ilike.%${debouncedSearchTerm}%`);
+            break;
+          case 'email':
+            countQuery = countQuery.ilike('email', `%${debouncedSearchTerm}%`);
+            break;
+          case 'mobile':
+            countQuery = countQuery.ilike('mobile', `%${debouncedSearchTerm}%`);
+            break;
+          case 'city':
+            countQuery = countQuery.ilike('city', `%${debouncedSearchTerm}%`);
+            break;
+          // Company & tags filtering handled after fetch
+        }
+      }
+      
+      // Execute count query
+      const { count, error: countError } = await countQuery;
+      
       if (countError) throw countError;
+      
+      // Store the database count (before post-filtering)
+      setTotalCount(count || 0);
       
       // If we have contacts, fetch related data
       if (contactsData && contactsData.length > 0) {
@@ -927,13 +1046,157 @@ const RecentContactsList = ({
           }
         }
         
+        // If we did post-filtering for search, adjust the count
+        if ((searchField === 'company' || searchField === 'tags') && debouncedSearchTerm && debouncedSearchTerm.length >= 3) {
+          // We need to fetch all contacts to get accurate count for these search fields
+          const { data: allContactsData, error: allContactsError } = await supabase
+            .from('contacts')
+            .select(`id, contact_companies:contact_companies(company_id, companies:company_id(name))`)
+            .not('contact_category', 'eq', 'Skip');
+            
+          if (!allContactsError && allContactsData) {
+            const allContactIds = allContactsData.map(contact => contact.id);
+            
+            // For tags search, fetch all tags
+            if (searchField === 'tags') {
+              const { data: allTagsData } = await supabase
+                .from('contact_tags')
+                .select('contact_id, tag_id(name)')
+                .in('contact_id', allContactIds);
+                
+              if (allTagsData) {
+                // Group tags by contact
+                const allTagsMap = {};
+                allTagsData.forEach(tagRel => {
+                  if (!allTagsMap[tagRel.contact_id]) {
+                    allTagsMap[tagRel.contact_id] = [];
+                  }
+                  if (tagRel.tag_id) {
+                    allTagsMap[tagRel.contact_id].push(tagRel.tag_id.name);
+                  }
+                });
+                
+                // Filter and count
+                const filteredCount = allContactsData.filter(contact => {
+                  const tags = allTagsMap[contact.id] || [];
+                  return tags.some(tag => 
+                    tag.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
+                  );
+                }).length;
+                
+                setFilteredCount(filteredCount);
+                setTotalPages(Math.ceil(filteredCount / 10));
+              }
+            } 
+            // For company search
+            else if (searchField === 'company') {
+              const filteredCount = allContactsData.filter(contact => {
+                if (!contact.contact_companies) return false;
+                return contact.contact_companies.some(companyRel => 
+                  companyRel.companies && 
+                  companyRel.companies.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
+                );
+              }).length;
+              
+              setFilteredCount(filteredCount);
+              setTotalPages(Math.ceil(filteredCount / 10));
+            }
+          }
+        }
+        
+        // Apply special post-filtering for the activeFilter cases that can't be handled in the query
+        if (activeFilter) {
+          switch (activeFilter) {
+            case 'missingInfos':
+              // Filter contacts with missing information
+              filteredContacts = filteredContacts.filter(contact => {
+                return !contact.first_name || 
+                       !contact.last_name || 
+                       !contact.city || 
+                       !contact.keywords || 
+                       !contact.contact_category || 
+                       !contact.keep_in_touch_frequency;
+              });
+              
+              // For missingInfos we need to calculate the total count
+              const { data: allContacts, error: allContactsError } = await supabase
+                .from('contacts')
+                .select('id, first_name, last_name, city, keywords, contact_category, keep_in_touch_frequency')
+                .not('contact_category', 'eq', 'Skip');
+                
+              if (!allContactsError && allContacts) {
+                const missingInfoCount = allContacts.filter(contact => {
+                  return !contact.first_name || 
+                         !contact.last_name || 
+                         !contact.city || 
+                         !contact.keywords || 
+                         !contact.contact_category || 
+                         !contact.keep_in_touch_frequency;
+                }).length;
+                
+                setFilteredCount(missingInfoCount);
+                setTotalPages(Math.ceil(missingInfoCount / 10));
+              }
+              break;
+              
+            case 'keepInTouch':
+              // Calculate due date for each contact
+              filteredContacts.forEach(contact => {
+                if (contact.last_interaction && contact.keep_in_touch_frequency) {
+                  const lastInteraction = new Date(contact.last_interaction);
+                  let daysToAdd = 0;
+                  
+                  // Calculate days to add based on frequency
+                  switch (contact.keep_in_touch_frequency) {
+                    case 'Weekly':
+                      daysToAdd = 7;
+                      break;
+                    case 'Monthly':
+                      daysToAdd = 30;
+                      break;
+                    case 'Quarterly':
+                      daysToAdd = 90;
+                      break;
+                    default:
+                      daysToAdd = 999; // Far future for 'Do not keep'
+                  }
+                  
+                  // Calculate due date
+                  const dueDate = new Date(lastInteraction);
+                  dueDate.setDate(dueDate.getDate() + daysToAdd);
+                  contact.dueDate = dueDate;
+                } else {
+                  // If no last interaction or frequency, set a far future date
+                  contact.dueDate = new Date('2099-12-31');
+                }
+              });
+              
+              // Sort by due date (ascending - earliest due first)
+              filteredContacts.sort((a, b) => {
+                return a.dueDate - b.dueDate;
+              });
+              
+              // For keepInTouch, we already have accurate count from query
+              setFilteredCount(count || 0);
+              break;
+              
+            default:
+              // No additional post-processing needed, use query count
+              setFilteredCount(count || 0);
+              break;
+          }
+        } else {
+          // For normal queries, use count from query
+          setFilteredCount(count || 0);
+        }
+        
         // Update data state all at once to avoid multiple renders
         setContacts(filteredContacts);
-        setTotalCount(count);
-        setTotalPages(Math.ceil(count / 10));
+        setTotalPages(Math.ceil((filteredCount || count || 0) / 10));
       } else {
         // No contacts found
         setContacts([]);
+        setFilteredCount(0);
         setTotalCount(count || 0);
         setTotalPages(Math.ceil((count || 0) / 10));
       }
@@ -941,11 +1204,12 @@ const RecentContactsList = ({
       console.error('Error fetching contacts:', err);
       setError(err.message);
       setContacts([]);
+      setFilteredCount(0);
     } finally {
       // Always clear loading when done, regardless of success/failure
       setIsLoading(false);
     }
-  }, [debouncedSearchTerm, searchField, currentPage]);
+  }, [debouncedSearchTerm, searchField, currentPage, activeFilter]);
   
   // Fetch tag suggestions
   const fetchTagSuggestions = useCallback(async (searchVal = '') => {
@@ -973,11 +1237,6 @@ const RecentContactsList = ({
     fetchContacts();
     fetchTagSuggestions();
   }, [fetchContacts, fetchTagSuggestions]);
-  
-  // Reset to first page when search changes
-  useEffect(() => {
-    setCurrentPage(0);
-  }, [debouncedSearchTerm, searchField]);
   
   // Add useEffect to handle clicks outside the dropdown
   useEffect(() => {
@@ -1343,10 +1602,13 @@ const RecentContactsList = ({
       }}>
         <div><strong>Debug:</strong></div>
         <div>Search: {searchField}="{searchTerm}" / Debounced: "{debouncedSearchTerm}"</div>
+        <div>Active Filter: {activeFilter || 'None'}</div>
+        <div>Sorting: {currentSorting}</div>
+        <div>Filtering: {currentFiltering}</div>
         <div>Loading: {isLoading ? 'true' : 'false'}</div>
         <div>Error: {error || 'None'}</div>
         <div>Page: {currentPage + 1} of {totalPages}</div>
-        <div>Contacts: {contacts.length} shown / {totalCount} total</div>
+        <div>Contacts: {contacts.length} shown / {filteredCount} filtered / {totalCount} total</div>
       </div>
     );
   };
@@ -1961,6 +2223,23 @@ const RecentContactsList = ({
         </div>
       )}
       
+      {/* Filter description */}
+      {activeFilter && !isLoading && (
+        <div style={{ 
+          padding: '0.75rem 1rem', 
+          backgroundColor: '#f3f4f6', 
+          borderRadius: '0.25rem',
+          margin: '0.5rem 1rem',
+          fontSize: '0.875rem',
+          color: '#4b5563'
+        }}>
+          {activeFilter === 'recentlyCreated' && 'Showing recently created contacts in Inbox category'}
+          {activeFilter === 'lastInteraction' && 'Showing contacts with interactions in the last 7 days'}
+          {activeFilter === 'keepInTouch' && 'Showing contacts sorted by keep-in-touch due date'}
+          {activeFilter === 'missingInfos' && 'Showing contacts with missing information'}
+        </div>
+      )}
+      
       {/* Update modal rendering */}
       {modalOpen && (
         <Modal
@@ -2210,7 +2489,7 @@ const RecentContactsList = ({
             Previous
           </PageButton>
           <PageInfo>
-            Page {currentPage + 1} of {totalPages}
+            Page {currentPage + 1} of {totalPages} ({filteredCount} contacts)
           </PageInfo>
           <PageButton onClick={goToNextPage} disabled={currentPage === totalPages - 1 || isLoading}>
             Next

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { supabase } from '../lib/supabaseClient';
 import RecentContactsList from '../components/contacts/RecentContactsList';
-import { FiFilter, FiSearch, FiPlus, FiChevronDown } from 'react-icons/fi';
+import { FiFilter, FiSearch, FiPlus, FiChevronDown, FiClock, FiMessageSquare, FiAlertCircle, FiCalendar } from 'react-icons/fi';
 
 const PageContainer = styled.div`
   background-color: white;
@@ -189,12 +189,51 @@ const ContentSection = styled.div`
   padding: 0;
 `;
 
+// New styled components for filter buttons
+const FilterButtonsContainer = styled.div`
+  display: flex;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+  overflow-x: auto;
+  
+  @media (max-width: 768px) {
+    flex-wrap: nowrap;
+    padding: 0.75rem 1rem;
+  }
+`;
+
+const FilterButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  background-color: ${props => props.active ? '#3b82f6' : 'white'};
+  color: ${props => props.active ? 'white' : '#4b5563'};
+  border: 1px solid ${props => props.active ? '#3b82f6' : '#d1d5db'};
+  
+  &:hover {
+    background-color: ${props => props.active ? '#2563eb' : '#f9fafb'};
+  }
+  
+  svg {
+    font-size: 1rem;
+  }
+`;
+
 const Contacts = () => {
   const [totalCount, setTotalCount] = useState(0);
+  const [filteredCount, setFilteredCount] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [searchField, setSearchField] = useState('name');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeFilter, setActiveFilter] = useState(null);
   
   // Search field options
   const searchFields = [
@@ -220,6 +259,7 @@ const Contacts = () => {
       
       if (error) throw error;
       setTotalCount(count || 0);
+      setFilteredCount(count || 0);
     } catch (error) {
       console.error('Error fetching contact count:', error.message);
     } finally {
@@ -230,23 +270,43 @@ const Contacts = () => {
   const handleSearch = (e) => {
     const value = e.target.value;
     setSearchTerm(value);
+    setActiveFilter(null);
   };
 
   const handleSearchFieldChange = (field) => {
     setSearchField(field);
     setDropdownOpen(false);
-    // Clear the search term when changing fields
     setSearchTerm('');
+    setActiveFilter(null);
   };
 
   const handleAddContact = () => {
-    // Implement add contact functionality
     console.log('Add contact clicked');
   };
 
   const handleFilter = () => {
-    // Implement filter functionality
     console.log('Filter clicked');
+  };
+  
+  const handleFilterButtonClick = (filterType) => {
+    setActiveFilter(activeFilter === filterType ? null : filterType);
+    setSearchTerm('');
+  };
+  
+  const handleFilteredCountUpdate = (count) => {
+    setFilteredCount(count);
+  };
+
+  const getFilterTitle = () => {
+    if (!activeFilter) return "All Contacts";
+    
+    switch (activeFilter) {
+      case 'recentlyCreated': return "Recently Created";
+      case 'lastInteraction': return "Recent Interactions";
+      case 'keepInTouch': return "Keep in Touch";
+      case 'missingInfos': return "Missing Information";
+      default: return "All Contacts";
+    }
   };
 
   return (
@@ -255,11 +315,13 @@ const Contacts = () => {
         <HeaderContent>
           <HeaderTitle>
             <Title>
-              All Contacts
-              {!isLoading && <ContactCount>({totalCount})</ContactCount>}
+              {getFilterTitle()}
+              {!isLoading && <ContactCount>({filteredCount})</ContactCount>}
             </Title>
             <Description>
-              View and manage all your contacts in one place. Use the sidebar for more specific contact views.
+              {activeFilter 
+                ? `Filtered view: ${getFilterTitle()}. ${filteredCount} contacts match your criteria.`
+                : 'View and manage all your contacts in one place. Use the sidebar for more specific contact views.'}
             </Description>
           </HeaderTitle>
           
@@ -303,6 +365,37 @@ const Contacts = () => {
             <FiSearch />
           </SearchIcon>
         </SearchContainer>
+        
+        <FilterButtonsContainer>
+          <FilterButton 
+            active={activeFilter === 'recentlyCreated'} 
+            onClick={() => handleFilterButtonClick('recentlyCreated')}
+          >
+            <FiClock />
+            Recently Created
+          </FilterButton>
+          <FilterButton 
+            active={activeFilter === 'lastInteraction'} 
+            onClick={() => handleFilterButtonClick('lastInteraction')}
+          >
+            <FiMessageSquare />
+            Last Interaction
+          </FilterButton>
+          <FilterButton 
+            active={activeFilter === 'keepInTouch'} 
+            onClick={() => handleFilterButtonClick('keepInTouch')}
+          >
+            <FiCalendar />
+            Keep in Touch
+          </FilterButton>
+          <FilterButton 
+            active={activeFilter === 'missingInfos'} 
+            onClick={() => handleFilterButtonClick('missingInfos')}
+          >
+            <FiAlertCircle />
+            Missing Infos
+          </FilterButton>
+        </FilterButtonsContainer>
       </PageHeader>
       
       <ContentSection>
@@ -310,6 +403,8 @@ const Contacts = () => {
           defaultShowAll={true} 
           searchTerm={searchTerm.length >= 3 ? searchTerm : ''}
           searchField={searchField}
+          activeFilter={activeFilter}
+          onCountUpdate={handleFilteredCountUpdate}
         />
       </ContentSection>
     </PageContainer>
