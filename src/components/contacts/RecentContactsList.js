@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
 import { 
@@ -719,14 +719,16 @@ const ScoreCell = styled.td`
   }
 `;
 
-const RecentContactsList = ({ 
+// Make sure we're properly defining the component with forwardRef
+const RecentContactsList = forwardRef(({ 
   defaultShowAll = false,
   defaultFilter = 'all',
   searchTerm = '',
   searchField = 'name',
-  activeFilter = null, // The active filter prop
-  onCountUpdate = () => {} // New callback prop for count updates
-}) => {
+  activeFilter = null,
+  onCountUpdate = () => {},
+  refreshTrigger = 0
+}, ref) => {
   // --------- STATE MANAGEMENT ---------
   // UI State - clearly separated from data state
   const [isLoading, setIsLoading] = useState(true);
@@ -736,7 +738,7 @@ const RecentContactsList = ({
   // Data State
   const [contacts, setContacts] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
-  const [filteredCount, setFilteredCount] = useState(0); // New state to track filtered count
+  const [filteredCount, setFilteredCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [contactTags, setContactTags] = useState({});
   const [tagSuggestions, setTagSuggestions] = useState([]);
@@ -791,17 +793,43 @@ const RecentContactsList = ({
   const [showContactsModal, setShowContactsModal] = useState(false);
   const [selectedContactForEdit, setSelectedContactForEdit] = useState(null);
   
-  // --------- DATA FETCHING FUNCTIONS ---------
-  
-  // Reset page when filter changes
-  useEffect(() => {
-    setCurrentPage(0);
-  }, [activeFilter]);
-  
-  // Report filtered count back to parent component
-  useEffect(() => {
-    onCountUpdate(filteredCount);
-  }, [filteredCount, onCountUpdate]);
+  // Add new state for duplicate contacts
+  const [duplicateContacts, setDuplicateContacts] = useState(new Set());
+
+  // Add function to check for duplicates
+  const checkForDuplicates = useCallback(async (contacts) => {
+    if (!contacts || contacts.length === 0) return;
+
+    const duplicates = new Set();
+    
+    // Check for duplicates based on email
+    const emailMap = new Map();
+    contacts.forEach(contact => {
+      if (contact.email) {
+        if (!emailMap.has(contact.email)) {
+          emailMap.set(contact.email, contact.id);
+        } else {
+          duplicates.add(contact.id);
+          duplicates.add(emailMap.get(contact.email));
+        }
+      }
+    });
+
+    // Check for duplicates based on mobile
+    const mobileMap = new Map();
+    contacts.forEach(contact => {
+      if (contact.mobile) {
+        if (!mobileMap.has(contact.mobile)) {
+          mobileMap.set(contact.mobile, contact.id);
+        } else {
+          duplicates.add(contact.id);
+          duplicates.add(mobileMap.get(contact.mobile));
+        }
+      }
+    });
+
+    setDuplicateContacts(duplicates);
+  }, []);
   
   // Fetch contacts - core data fetching function
   const fetchContacts = useCallback(async () => {
@@ -1209,8 +1237,8 @@ const RecentContactsList = ({
       // Always clear loading when done, regardless of success/failure
       setIsLoading(false);
     }
-  }, [debouncedSearchTerm, searchField, currentPage, activeFilter]);
-  
+  }, [debouncedSearchTerm, searchField, currentPage, activeFilter, checkForDuplicates]);
+
   // Fetch tag suggestions
   const fetchTagSuggestions = useCallback(async (searchVal = '') => {
     try {
@@ -1230,8 +1258,32 @@ const RecentContactsList = ({
     }
   }, []);
 
+  // Now we can safely use fetchContacts in useImperativeHandle
+  useImperativeHandle(ref, () => ({
+    refresh: () => {
+      fetchContacts();
+    }
+  }), [fetchContacts]);
+  
   // --------- EFFECT HOOKS ---------
   
+  // Reset page when filter changes
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [activeFilter]);
+  
+  // Report filtered count back to parent component
+  useEffect(() => {
+    onCountUpdate(filteredCount);
+  }, [filteredCount, onCountUpdate]);
+  
+  // Add an effect to refresh when refreshTrigger changes
+  useEffect(() => {
+    if (refreshTrigger > 0) {
+      fetchContacts();
+    }
+  }, [refreshTrigger, fetchContacts]);
+
   // Initial data load
   useEffect(() => {
     fetchContacts();
@@ -1586,7 +1638,7 @@ const RecentContactsList = ({
   const goToNextPage = () => setCurrentPage(prev => Math.min(totalPages - 1, prev + 1));
   const goToLastPage = () => setCurrentPage(totalPages - 1);
   
-  // Debug info display
+  // Debug info display with refresh information
   const renderDebug = () => {
     if (process.env.NODE_ENV !== 'development') return null;
     
@@ -1605,6 +1657,7 @@ const RecentContactsList = ({
         <div>Active Filter: {activeFilter || 'None'}</div>
         <div>Sorting: {currentSorting}</div>
         <div>Filtering: {currentFiltering}</div>
+        <div>Refresh Trigger: {refreshTrigger}</div>
         <div>Loading: {isLoading ? 'true' : 'false'}</div>
         <div>Error: {error || 'None'}</div>
         <div>Page: {currentPage + 1} of {totalPages}</div>
@@ -2233,7 +2286,7 @@ const RecentContactsList = ({
           fontSize: '0.875rem',
           color: '#4b5563'
         }}>
-          {activeFilter === 'recentlyCreated' && 'Showing recently created contacts in Inbox category'}
+          {activeFilter === 'recentlyCreated' && 'Showing contacts in Inbox category'}
           {activeFilter === 'lastInteraction' && 'Showing contacts with interactions in the last 7 days'}
           {activeFilter === 'keepInTouch' && 'Showing contacts sorted by keep-in-touch due date'}
           {activeFilter === 'missingInfos' && 'Showing contacts with missing information'}
@@ -2305,6 +2358,19 @@ const RecentContactsList = ({
                   <div className="cell-content">
                     <ContactName title={truncateName(contact.first_name, contact.last_name).fullName}>
                       {truncateName(contact.first_name, contact.last_name).displayName}
+                      {duplicateContacts.has(contact.id) && (
+                        <span 
+                          style={{ 
+                            marginLeft: '0.25rem',
+                            color: '#ef4444',
+                            fontSize: '0.875rem',
+                            cursor: 'help'
+                          }}
+                          title="This contact has potential duplicates"
+                        >
+                          ⚠️
+                        </span>
+                      )}
                     </ContactName>
                   </div>
                 </ClickableCell>
@@ -2540,6 +2606,9 @@ const RecentContactsList = ({
       )}
     </Container>
   );
-};
+});
+
+// Make sure it has a display name for better debugging
+RecentContactsList.displayName = 'RecentContactsList';
 
 export default RecentContactsList;
