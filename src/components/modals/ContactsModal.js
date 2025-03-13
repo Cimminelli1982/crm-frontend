@@ -27,29 +27,9 @@ const ContactCategories = [
 const ModalContainer = styled.div`
   display: flex;
   flex-direction: column;
-  height: 100%;
-  max-height: 75vh;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(200, 200, 200, 0.5) transparent;
-  
-  &::-webkit-scrollbar {
-    width: 4px;
-  }
-  
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  
-  &::-webkit-scrollbar-thumb {
-    background-color: rgba(200, 200, 200, 0.5);
-    border-radius: 10px;
-    border: none;
-  }
-  
-  &::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(180, 180, 180, 0.8);
-  }
+  height: 75vh;
+  min-height: 600px;
+  overflow: hidden;
 `;
 
 const ModalHeader = styled.div`
@@ -149,6 +129,26 @@ const ContentSection = styled.div`
   flex: 1;
   overflow-y: auto;
   padding: 0 24px 24px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(200, 200, 200, 0.5) transparent;
+  
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(200, 200, 200, 0.5);
+    border-radius: 10px;
+    border: none;
+  }
+  
+  &::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(180, 180, 180, 0.8);
+  }
 `;
 
 const FormContent = styled.div`
@@ -531,8 +531,6 @@ const ActionButton = styled.button`
 
 // Add a styled component for the merge tab
 const MergeContainer = styled.div`
-  display: flex;
-  flex-direction: column;
   width: 90%;
   margin: 0 auto;
 `;
