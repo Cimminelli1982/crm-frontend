@@ -875,6 +875,23 @@ const RecentContactsList = forwardRef(({
             filterDescription = `last_interaction >= ${formattedDate}`;
             break;
             
+          case 'missingKeepInTouch':
+            // Missing Keep in Touch: keep_in_touch_frequency is null
+            query = query
+              .is('keep_in_touch_frequency', null)
+              .order('last_modified', { ascending: false });
+            sortDescription = 'last_modified desc';
+            filterDescription = 'keep_in_touch_frequency is null';
+            break;
+            
+          case 'missingScore':
+            query = query
+              .is('score', null)
+              .order('last_modified', { ascending: false });
+            sortDescription = 'last_modified desc';
+            filterDescription = 'score is null';
+            break;
+            
           case 'keepInTouch':
             // Keep in touch: keep_in_touch_frequency is not null or Do not keep in touch
             query = query
@@ -2286,9 +2303,11 @@ const RecentContactsList = forwardRef(({
           fontSize: '0.875rem',
           color: '#4b5563'
         }}>
-          {activeFilter === 'recentlyCreated' && 'Showing contacts in Inbox category'}
+          {activeFilter === 'recentlyCreated' && 'Showing contacts with missing category'}
           {activeFilter === 'lastInteraction' && 'Showing contacts with interactions in the last 7 days'}
           {activeFilter === 'keepInTouch' && 'Showing contacts sorted by keep-in-touch due date'}
+          {activeFilter === 'missingKeepInTouch' && 'Showing contacts with no keep-in-touch frequency set'}
+          {activeFilter === 'missingScore' && 'Showing contacts with no score set'}
           {activeFilter === 'missingInfos' && 'Showing contacts with missing information'}
         </div>
       )}
@@ -2549,19 +2568,16 @@ const RecentContactsList = forwardRef(({
       {!isLoading && (contacts.length > 0 || !debouncedSearchTerm) && totalPages > 1 && (
         <PaginationControls>
           <PageButton onClick={goToFirstPage} disabled={currentPage === 0 || isLoading}>
-            First
+            ⟪
           </PageButton>
           <PageButton onClick={goToPrevPage} disabled={currentPage === 0 || isLoading}>
-            Previous
+            ⟨
           </PageButton>
-          <PageInfo>
-            Page {currentPage + 1} of {totalPages} ({filteredCount} contacts)
-          </PageInfo>
           <PageButton onClick={goToNextPage} disabled={currentPage === totalPages - 1 || isLoading}>
-            Next
+            ⟩
           </PageButton>
           <PageButton onClick={goToLastPage} disabled={currentPage === totalPages - 1 || isLoading}>
-            Last
+            ⟫
           </PageButton>
         </PaginationControls>
       )}

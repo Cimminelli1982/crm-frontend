@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { supabase } from '../lib/supabaseClient';
 import RecentContactsList from '../components/contacts/RecentContactsList';
-import { FiFilter, FiSearch, FiPlus, FiChevronDown, FiClock, FiMessageSquare, FiAlertCircle, FiRefreshCw } from 'react-icons/fi';
+import { FiFilter, FiSearch, FiPlus, FiChevronDown, FiClock, FiMessageSquare, FiAlertCircle, FiRefreshCw, FiStar } from 'react-icons/fi';
 
 const PageContainer = styled.div`
   background-color: white;
@@ -31,7 +31,7 @@ const Title = styled.h1`
   font-size: 1.5rem;
   font-weight: 600;
   color: #111827;
-  margin: 0 0 0.5rem 0;
+  margin: 0;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -340,9 +340,10 @@ const Contacts = () => {
     if (!activeFilter) return "All Contacts";
     
     switch (activeFilter) {
-      case 'recentlyCreated': return "Inbox";
+      case 'recentlyCreated': return "Missing Category";
       case 'lastInteraction': return "Recent Interactions";
-      case 'missingInfos': return "Missing Information";
+      case 'missingKeepInTouch': return "Missing Keep in Touch";
+      case 'missingScore': return "Missing Score";
       default: return "All Contacts";
     }
   };
@@ -354,13 +355,7 @@ const Contacts = () => {
           <HeaderTitle>
             <Title>
               {getFilterTitle()}
-              {!isLoading && <ContactCount>({filteredCount})</ContactCount>}
             </Title>
-            <Description>
-              {activeFilter 
-                ? `Filtered view: ${getFilterTitle()}. ${filteredCount} contacts match your criteria.`
-                : 'View and manage all your contacts in one place. Use the sidebar for more specific contact views.'}
-            </Description>
           </HeaderTitle>
           
           <HeaderActions>
@@ -410,19 +405,6 @@ const Contacts = () => {
         
         <FilterButtonsContainer>
           <FilterButton 
-            active={activeFilter === 'recentlyCreated'} 
-            onClick={() => handleFilterButtonClick('recentlyCreated')}
-          >
-            <FiClock />
-            Inbox
-            {inboxCount > 0 && (
-              <>
-                <span style={{ marginLeft: '0.25rem', marginRight: '0.25rem' }}>({inboxCount})</span>
-                <NotificationDot />
-              </>
-            )}
-          </FilterButton>
-          <FilterButton 
             active={activeFilter === 'lastInteraction'} 
             onClick={() => handleFilterButtonClick('lastInteraction')}
           >
@@ -430,11 +412,25 @@ const Contacts = () => {
             Last Interaction
           </FilterButton>
           <FilterButton 
-            active={activeFilter === 'missingInfos'} 
-            onClick={() => handleFilterButtonClick('missingInfos')}
+            active={activeFilter === 'recentlyCreated'} 
+            onClick={() => handleFilterButtonClick('recentlyCreated')}
+          >
+            <FiClock />
+            Missing Category
+          </FilterButton>
+          <FilterButton 
+            active={activeFilter === 'missingKeepInTouch'} 
+            onClick={() => handleFilterButtonClick('missingKeepInTouch')}
           >
             <FiAlertCircle />
-            Missing Infos
+            Missing Keep in Touch
+          </FilterButton>
+          <FilterButton 
+            active={activeFilter === 'missingScore'} 
+            onClick={() => handleFilterButtonClick('missingScore')}
+          >
+            <FiStar />
+            Missing Score
           </FilterButton>
         </FilterButtonsContainer>
       </PageHeader>
@@ -448,6 +444,7 @@ const Contacts = () => {
           activeFilter={activeFilter}
           onCountUpdate={handleFilteredCountUpdate}
           refreshTrigger={refreshTrigger}
+          showIconsOnly={true}
         />
       </ContentSection>
     </PageContainer>

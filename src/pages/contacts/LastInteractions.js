@@ -62,10 +62,7 @@ const LastInteractions = () => {
     <>
       <PageContainer>
         <PageHeader>
-          <h1>
-            Last Interactions
-            {totalCount > 0 && <span className="counter">({totalCount})</span>}
-          </h1>
+          <h1>Last Interactions</h1>
           <p>View and manage your recent contact interactions.</p>
         </PageHeader>
         
