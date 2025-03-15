@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import Layout from '../../components/layout/Layout';
-import RecentContactsList from '../../components/contacts/RecentContactsList';
+import KeepInTouchTable from '../../components/contacts/KeepInTouchTable';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 
 const PageContainer = styled.div`
-  padding: 24px;
+  background-color: white;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
 `;
 
 const PageHeader = styled.div`
-  margin-bottom: 24px;
+  padding: 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
   
   h1 {
     font-size: 1.5rem;
@@ -31,6 +34,10 @@ const PageHeader = styled.div`
     color: #6b7280;
     font-size: 0.875rem;
   }
+`;
+
+const ContentSection = styled.div`
+  padding: 0;
 `;
 
 const KeepInTouch = () => {
@@ -56,19 +63,19 @@ const KeepInTouch = () => {
   }, []);
 
   return (
-    <Layout>
-      <PageContainer>
-        <PageHeader>
-          <h1>
-            Keep in Touch
-            {totalCount > 0 && <span className="counter">({totalCount})</span>}
-          </h1>
-          <p>Manage your follow-up schedule with important contacts.</p>
-        </PageHeader>
-        
-        <RecentContactsList defaultFilter="keepintouch" />
-      </PageContainer>
-    </Layout>
+    <PageContainer>
+      <PageHeader>
+        <h1>
+          Keep in Touch
+          {totalCount > 0 && <span className="counter">({totalCount})</span>}
+        </h1>
+        <p>View and manage your follow-up schedule with important contacts.</p>
+      </PageHeader>
+      
+      <ContentSection>
+        <KeepInTouchTable />
+      </ContentSection>
+    </PageContainer>
   );
 };
 
