@@ -735,7 +735,8 @@ const RecentContactsList = forwardRef(({
     recentlyCreated: 0,
     missingKeepInTouch: 0,
     missingScore: 0,
-    missingCities: 0
+    missingCities: 0,
+    missingCompanies: 0
   });
   // --------- STATE MANAGEMENT ---------
   // UI State - clearly separated from data state
@@ -980,6 +981,31 @@ const RecentContactsList = forwardRef(({
             // Return early since we've handled everything in this case
             return;
             
+          case 'missingCompanies':
+            // Call the stored procedure for contacts without companies
+            const { data: missingCompaniesData, error: missingCompaniesError } = await supabase
+              .rpc('get_contacts_without_companies', {
+                page_size: 10,
+                page_number: currentPage,
+                search_term: debouncedSearchTerm || ''
+              });
+            
+            if (missingCompaniesError) throw missingCompaniesError;
+            
+            // Get the total count of contacts without companies
+            const { data: companiesCountData, error: companiesCountError } = await supabase
+              .rpc('get_contacts_without_companies_count');
+              
+            if (companiesCountError) throw companiesCountError;
+            
+            // Set the data and count directly
+            setContacts(missingCompaniesData || []);
+            setTotalCount(companiesCountData[0]?.count || 0);
+            setFilteredCount(companiesCountData[0]?.count || 0);
+            
+            // Return early since we've handled everything in this case
+            return;
+            
           default:
             // Default sorting for all other cases
             query = query.order('last_modified', { ascending: false });
@@ -1090,12 +1116,37 @@ const RecentContactsList = forwardRef(({
             .not('contact_category', 'eq', 'Skip')
             .gte('last_interaction', missingScoreDate);
             
-          // Calculate count for "Missing Cities" filter
-          const { count: missingCitiesCount } = await supabase
-            .from('contacts')
-            .select('*', { count: 'exact', head: true })
-            .is('city', null)
-            .not('contact_category', 'eq', 'Skip');
+          // Calculate count for "Missing Cities" filter using the stored procedure
+          const { data: missingCitiesData, error: missingCitiesError } = await supabase
+            .rpc('get_contacts_without_cities_count');
+            
+          // Handle the response and extract the count
+          let missingCitiesCount = 0;
+          if (missingCitiesError) {
+            console.error('Error fetching missing cities count:', missingCitiesError);
+          } else if (Array.isArray(missingCitiesData) && missingCitiesData.length > 0) {
+            missingCitiesCount = missingCitiesData[0].count;
+          } else if (typeof missingCitiesData === 'object' && missingCitiesData !== null) {
+            missingCitiesCount = missingCitiesData.count;
+          } else {
+            missingCitiesCount = missingCitiesData || 0;
+          }
+          
+          // Calculate count for "Missing Companies" filter using the stored procedure
+          const { data: missingCompaniesData, error: missingCompaniesError } = await supabase
+            .rpc('get_contacts_without_companies_count');
+            
+          // Handle the response and extract the count
+          let missingCompaniesCount = 0;
+          if (missingCompaniesError) {
+            console.error('Error fetching missing companies count:', missingCompaniesError);
+          } else if (Array.isArray(missingCompaniesData) && missingCompaniesData.length > 0) {
+            missingCompaniesCount = missingCompaniesData[0].count;
+          } else if (typeof missingCompaniesData === 'object' && missingCompaniesData !== null) {
+            missingCompaniesCount = missingCompaniesData.count;
+          } else {
+            missingCompaniesCount = missingCompaniesData || 0;
+          }
             
           // Update filter counts state
           setFilterCountsData({
@@ -1103,7 +1154,8 @@ const RecentContactsList = forwardRef(({
             recentlyCreated: recentlyCreatedCount || 0,
             missingKeepInTouch: missingKeepInTouchCount || 0,
             missingScore: missingScoreCount || 0,
-            missingCities: missingCitiesCount || 0
+            missingCities: missingCitiesCount || 0,
+            missingCompanies: missingCompaniesCount || 0
           });
         } catch (error) {
           console.error('Error calculating filter counts:', error);
@@ -1159,6 +1211,10 @@ const RecentContactsList = forwardRef(({
             break;
             
           case 'missingCities':
+            // Count is handled in the main query case
+            return;
+            
+          case 'missingCompanies':
             // Count is handled in the main query case
             return;
             
@@ -2481,6 +2537,7 @@ const RecentContactsList = forwardRef(({
           {activeFilter === 'missingKeepInTouch' && 'Showing contacts with no keep-in-touch frequency set (excluding Skip category)'}
           {activeFilter === 'missingScore' && 'Showing contacts with no score set and recent interactions (last 7 days)'}
           {activeFilter === 'missingCities' && 'Showing contacts with no city associations'}
+          {activeFilter === 'missingCompanies' && 'Showing contacts with no company associations'}
         </div>
       )}
       
