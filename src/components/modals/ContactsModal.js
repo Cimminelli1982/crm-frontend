@@ -7,6 +7,7 @@ import TagsModal from './TagsModal';
 import CompanyModal from './CompanyModal';
 import CityModal from './CityModal';
 import { toast } from 'react-hot-toast';
+import { format } from 'date-fns';
 
 // Define Contact Categories with the specified options
 const ContactCategories = [
@@ -819,6 +820,105 @@ const NotificationDot = styled.span`
   margin-left: 6px;
 `;
 
+const IntroductionsTable = styled.table`
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin-top: 16px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+`;
+
+const TableHead = styled.thead`
+  background: #f9fafb;
+  th {
+    padding: 12px 16px;
+    text-align: left;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #4b5563;
+    border-bottom: 1px solid #e5e7eb;
+  }
+`;
+
+const TableBody = styled.tbody`
+  tr {
+    &:hover {
+      background-color: #f9fafb;
+    }
+    &:not(:last-child) {
+      border-bottom: 1px solid #e5e7eb;
+    }
+  }
+  td {
+    padding: 12px 16px;
+    font-size: 0.875rem;
+    color: #1f2937;
+    vertical-align: middle;
+  }
+`;
+
+const RationaleBadge = styled.span`
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background-color: ${props => {
+    switch (props.type) {
+      case 'Karma Points': return '#DCFCE7';
+      case 'Dealflow Related': return '#FEF3C7';
+      case 'Portfolio Company Related': return '#DBEAFE';
+      default: return '#F3F4F6';
+    }
+  }};
+  color: ${props => {
+    switch (props.type) {
+      case 'Karma Points': return '#166534';
+      case 'Dealflow Related': return '#92400E';
+      case 'Portfolio Company Related': return '#1E40AF';
+      default: return '#374151';
+    }
+  }};
+`;
+
+const ContactChip = styled.span`
+  display: inline-flex;
+  align-items: center;
+  background: #e5e7eb;
+  padding: 2px 8px;
+  border-radius: 16px;
+  margin: 2px;
+  font-size: 0.75rem;
+`;
+
+const TruncatedText = styled.div`
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 300px;
+  position: relative;
+
+  &:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 0;
+    top: 100%;
+    background: #1f2937;
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    white-space: normal;
+    max-width: 300px;
+    word-wrap: break-word;
+    z-index: 1000;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  }
+`;
+
 const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
   const [activeTab, setActiveTab] = useState('about');
   const [formData, setFormData] = useState({
@@ -864,6 +964,11 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
   
   const [showCityModal, setShowCityModal] = useState(false);
   const [hasDuplicates, setHasDuplicates] = useState(false);
+  
+  // Add new state for introductions
+  const [introductions, setIntroductions] = useState([]);
+  const [contacts, setContacts] = useState([]);
+  const [loadingIntros, setLoadingIntros] = useState(false);
   
   useEffect(() => {
     if (contact) {
@@ -2656,6 +2761,118 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
     );
   };
   
+  // Add function to fetch introductions
+  const fetchIntroductions = async () => {
+    if (!contact) return;
+    
+    setLoadingIntros(true);
+    try {
+      // Fetch all introductions where this contact is involved
+      const { data: introsData, error: introsError } = await supabase
+        .from('contact_introductions')
+        .select('*')
+        .contains('contacts_introduced', [contact.id])
+        .order('intro_date', { ascending: false });
+
+      if (introsError) throw introsError;
+
+      // Fetch all contacts for name resolution
+      const { data: contactsData, error: contactsError } = await supabase
+        .from('contacts')
+        .select('id, first_name, last_name');
+
+      if (contactsError) throw contactsError;
+
+      setIntroductions(introsData);
+      setContacts(contactsData);
+    } catch (error) {
+      console.error('Error fetching introductions:', error);
+    } finally {
+      setLoadingIntros(false);
+    }
+  };
+
+  // Add useEffect to fetch introductions when tab changes
+  useEffect(() => {
+    if (activeTab === 'intros') {
+      fetchIntroductions();
+    }
+  }, [activeTab]);
+
+  const getContactNames = (contactIds) => {
+    return contactIds
+      .filter(id => id !== contact.id) // Filter out the current contact
+      .map(id => {
+        const contactData = contacts.find(c => c.id === id);
+        return contactData ? `${contactData.first_name} ${contactData.last_name}` : 'Unknown';
+      })
+      .join(', ');
+  };
+
+  const renderNote = (note) => {
+    if (!note) return '-';
+    return (
+      <TruncatedText data-tooltip={note}>
+        {note}
+      </TruncatedText>
+    );
+  };
+
+  // Add the renderIntrosTab function
+  const renderIntrosTab = () => {
+    if (loadingIntros) {
+      return (
+        <div style={{ textAlign: 'center', padding: '40px 0' }}>
+          <p>Loading introductions...</p>
+        </div>
+      );
+    }
+
+    if (introductions.length === 0) {
+      return (
+        <div style={{ textAlign: 'center', padding: '40px 0', color: '#6b7280' }}>
+          <p>No introductions found for this contact.</p>
+        </div>
+      );
+    }
+
+    return (
+      <div style={{ padding: '24px' }}>
+        <h3 style={{ marginBottom: '16px', fontSize: '1.125rem', fontWeight: '600' }}>
+          Introductions History
+        </h3>
+        <IntroductionsTable>
+          <TableHead>
+            <tr>
+              <th style={{ width: '15%' }}>Date</th>
+              <th style={{ width: '30%' }}>Introduced To</th>
+              <th style={{ width: '20%' }}>Rationale</th>
+              <th style={{ width: '35%' }}>Note</th>
+            </tr>
+          </TableHead>
+          <TableBody>
+            {introductions.map(intro => (
+              <tr key={intro.intro_id}>
+                <td>{format(new Date(intro.intro_date), 'dd/MM/yyyy')}</td>
+                <td>
+                  <ContactChip>
+                    {getContactNames(intro.contacts_introduced)}
+                  </ContactChip>
+                </td>
+                <td>
+                  <RationaleBadge type={intro.introduction_rationale}>
+                    {intro.introduction_rationale}
+                  </RationaleBadge>
+                </td>
+                <td>{renderNote(intro.introduction_note)}</td>
+              </tr>
+            ))}
+          </TableBody>
+        </IntroductionsTable>
+      </div>
+    );
+  };
+  
   return (
     <>
       <Modal
@@ -2736,9 +2953,8 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
             <TabButton 
               active={activeTab === 'intros'} 
               onClick={() => setActiveTab('intros')}
-              disabled
             >
-              Intros (Coming Soon)
+              Intros
             </TabButton>
             <TabButton 
               active={activeTab === 'deals'} 
@@ -2760,7 +2976,7 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
             {activeTab === 'about' && renderAboutTab()}
             {activeTab === 'merge' && renderMergeTab()}
             {activeTab === 'related' && renderRelatedTab()}
-            {activeTab === 'intros' && <div>Intros tab content coming soon</div>}
+            {activeTab === 'intros' && renderIntrosTab()}
             {activeTab === 'deals' && <div>Deals tab content coming soon</div>}
             {activeTab === 'notes' && <div>Notes tab content coming soon</div>}
           </ContentSection>
