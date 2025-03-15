@@ -729,6 +729,14 @@ const RecentContactsList = forwardRef(({
   onCountUpdate = () => {},
   refreshTrigger = 0
 }, ref) => {
+  // State for filter counts
+  const [filterCountsData, setFilterCountsData] = useState({
+    lastInteraction: 0,
+    recentlyCreated: 0,
+    missingKeepInTouch: 0,
+    missingScore: 0,
+    missingCities: 0
+  });
   // --------- STATE MANAGEMENT ---------
   // UI State - clearly separated from data state
   const [isLoading, setIsLoading] = useState(true);
@@ -910,7 +918,11 @@ const RecentContactsList = forwardRef(({
             break;
             
           case 'missingScore':
-            // Missing Score: score is null and not category Skip
+            // Missing Score: score is null, not category Skip, and last interaction within last 7 days
+            const missingScoreOneWeekAgo = new Date();
+            missingScoreOneWeekAgo.setDate(missingScoreOneWeekAgo.getDate() - 7);
+            const missingScoreFormattedDate = missingScoreOneWeekAgo.toISOString();
+            
             // Apply pagination to this query
             const missingScoreFrom = currentPage * 10;
             const missingScoreTo = missingScoreFrom + 9;
@@ -918,11 +930,12 @@ const RecentContactsList = forwardRef(({
             query = query
               .is('score', null)
               .not('contact_category', 'eq', 'Skip')
-              .order('last_modified', { ascending: false })
+              .gte('last_interaction', missingScoreFormattedDate)
+              .order('last_interaction', { ascending: false })
               .range(missingScoreFrom, missingScoreTo);
               
-            sortDescription = 'last_modified desc';
-            filterDescription = 'score is null, excluding Skip category';
+            sortDescription = 'last_interaction desc';
+            filterDescription = 'score is null, excluding Skip category, with recent interactions';
             break;
             
           case 'keepInTouch':
@@ -1036,6 +1049,70 @@ const RecentContactsList = forwardRef(({
         .select('*', { count: 'exact', head: true })
         .not('contact_category', 'eq', 'Skip');
       
+      // Calculate counts for each filter type for badges
+      const calculateFilterCounts = async () => {
+        try {
+          // Calculate count for "Last Interaction" filter
+          const lastInteractionOneWeekAgo = new Date();
+          lastInteractionOneWeekAgo.setDate(lastInteractionOneWeekAgo.getDate() - 7);
+          const lastInteractionDate = lastInteractionOneWeekAgo.toISOString();
+          const { count: lastInteractionCount } = await supabase
+            .from('contacts')
+            .select('*', { count: 'exact', head: true })
+            .gte('last_interaction', lastInteractionDate)
+            .not('contact_category', 'eq', 'Skip');
+            
+          // Calculate count for "Missing Category" filter
+          const recentlyCreatedOneWeekAgo = new Date();
+          recentlyCreatedOneWeekAgo.setDate(recentlyCreatedOneWeekAgo.getDate() - 7);
+          const recentlyCreatedDate = recentlyCreatedOneWeekAgo.toISOString();
+          const { count: recentlyCreatedCount } = await supabase
+            .from('contacts')
+            .select('*', { count: 'exact', head: true })
+            .is('contact_category', null)
+            .gte('last_interaction', recentlyCreatedDate);
+            
+          // Calculate count for "Missing Keep In Touch" filter
+          const { count: missingKeepInTouchCount } = await supabase
+            .from('contacts')
+            .select('*', { count: 'exact', head: true })
+            .is('keep_in_touch_frequency', null)
+            .not('contact_category', 'eq', 'Skip');
+            
+          // Calculate count for "Missing Score" filter - only showing contacts with recent interactions
+          const missingScoreOneWeekAgo = new Date();
+          missingScoreOneWeekAgo.setDate(missingScoreOneWeekAgo.getDate() - 7);
+          const missingScoreDate = missingScoreOneWeekAgo.toISOString();
+          const { count: missingScoreCount } = await supabase
+            .from('contacts')
+            .select('*', { count: 'exact', head: true })
+            .is('score', null)
+            .not('contact_category', 'eq', 'Skip')
+            .gte('last_interaction', missingScoreDate);
+            
+          // Calculate count for "Missing Cities" filter
+          const { count: missingCitiesCount } = await supabase
+            .from('contacts')
+            .select('*', { count: 'exact', head: true })
+            .is('city', null)
+            .not('contact_category', 'eq', 'Skip');
+            
+          // Update filter counts state
+          setFilterCountsData({
+            lastInteraction: lastInteractionCount || 0,
+            recentlyCreated: recentlyCreatedCount || 0,
+            missingKeepInTouch: missingKeepInTouchCount || 0,
+            missingScore: missingScoreCount || 0,
+            missingCities: missingCitiesCount || 0
+          });
+        } catch (error) {
+          console.error('Error calculating filter counts:', error);
+        }
+      };
+      
+      // Run the filter counts calculation
+      calculateFilterCounts();
+      
       // Apply the same filters to the count query for accurate pagination
       if (activeFilter) {
         switch (activeFilter) {
@@ -1071,9 +1148,14 @@ const RecentContactsList = forwardRef(({
             break;
             
           case 'missingScore':
+            const missingScoreOneWeekAgo = new Date();
+            missingScoreOneWeekAgo.setDate(missingScoreOneWeekAgo.getDate() - 7);
+            const missingScoreFormattedDate = missingScoreOneWeekAgo.toISOString();
+            
             countQuery = countQuery
               .is('score', null)
-              .not('contact_category', 'eq', 'Skip');
+              .not('contact_category', 'eq', 'Skip')
+              .gte('last_interaction', missingScoreFormattedDate);
             break;
             
           case 'missingCities':
@@ -1111,6 +1193,11 @@ const RecentContactsList = forwardRef(({
       
       // Calculate and set total pages - this ensures pagination works for all filters
       setTotalPages(Math.ceil((count || 0) / 10));
+      
+      // Update filtered count for parent component
+      if (onCountUpdate) {
+        onCountUpdate(count || 0, filterCountsData);
+      }
       
       // If we have contacts, fetch related data
       if (contactsData && contactsData.length > 0) {
@@ -2392,7 +2479,7 @@ const RecentContactsList = forwardRef(({
           {activeFilter === 'lastInteraction' && 'Showing contacts with interactions in the last 7 days (excluding Skip category)'}
           {activeFilter === 'keepInTouch' && 'Showing contacts sorted by keep-in-touch due date'}
           {activeFilter === 'missingKeepInTouch' && 'Showing contacts with no keep-in-touch frequency set (excluding Skip category)'}
-          {activeFilter === 'missingScore' && 'Showing contacts with no score set (excluding Skip category)'}
+          {activeFilter === 'missingScore' && 'Showing contacts with no score set and recent interactions (last 7 days)'}
           {activeFilter === 'missingCities' && 'Showing contacts with no city associations'}
         </div>
       )}
