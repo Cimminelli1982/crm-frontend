@@ -848,48 +848,81 @@ const RecentContactsList = forwardRef(({
       // Build basic query
       let query = supabase
           .from('contacts')
-        .select(`*, contact_companies:contact_companies(contact_id, company_id, companies:company_id(id, name, website))`)
-        .not('contact_category', 'eq', 'Skip');
+        .select(`*, contact_companies:contact_companies(contact_id, company_id, companies:company_id(id, name, website))`);
 
       // Apply different filters based on activeFilter
       if (activeFilter) {
         switch (activeFilter) {
           case 'recentlyCreated':
-            // Recently created: contact_Category = Inbox sort by created_at
-            query = query.eq('contact_category', 'Inbox')
-                       .order('created_at', { ascending: false });
-            sortDescription = 'created_at desc';
-            filterDescription = 'contact_category = Inbox';
-            break;
-            
-          case 'lastInteraction':
-            // Last Interaction: last_interaction within last week where contact_category is not Skip
+            // Filter for contacts where contact_category is NULL and last interaction within last week
             const oneWeekAgo = new Date();
             oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
             const formattedDate = oneWeekAgo.toISOString();
             
+            // Apply pagination to this query
+            const from = currentPage * 10;
+            const to = from + 9;
+            
             query = query
+              .is('contact_category', null)
               .gte('last_interaction', formattedDate)
-              .order('last_interaction', { ascending: false });
+              .order('last_interaction', { ascending: false })
+              .range(from, to);  // Add pagination
+              
             sortDescription = 'last_interaction desc';
-            filterDescription = `last_interaction >= ${formattedDate}`;
+            filterDescription = 'contact_category is NULL with recent interactions';
+            break;
+            
+          case 'lastInteraction':
+            // Last Interaction: last_interaction within last week where contact_category is not Skip
+            const lastInteractionOneWeekAgo = new Date();
+            lastInteractionOneWeekAgo.setDate(lastInteractionOneWeekAgo.getDate() - 7);
+            const lastInteractionFormattedDate = lastInteractionOneWeekAgo.toISOString();
+            
+            // Apply pagination to this query
+            const lastInteractionFrom = currentPage * 10;
+            const lastInteractionTo = lastInteractionFrom + 9;
+            
+            query = query
+              .gte('last_interaction', lastInteractionFormattedDate)
+              .not('contact_category', 'eq', 'Skip')
+              .order('last_interaction', { ascending: false })
+              .range(lastInteractionFrom, lastInteractionTo);
+              
+            sortDescription = 'last_interaction desc';
+            filterDescription = `last_interaction >= ${lastInteractionFormattedDate}, excluding "Skip" category`;
             break;
             
           case 'missingKeepInTouch':
-            // Missing Keep in Touch: keep_in_touch_frequency is null
+            // Missing Keep in Touch: keep_in_touch_frequency is null and not category Skip
+            // Apply pagination to this query
+            const missingKeepInTouchFrom = currentPage * 10;
+            const missingKeepInTouchTo = missingKeepInTouchFrom + 9;
+            
             query = query
               .is('keep_in_touch_frequency', null)
-              .order('last_modified', { ascending: false });
+              .not('contact_category', 'eq', 'Skip')
+              .order('last_modified', { ascending: false })
+              .range(missingKeepInTouchFrom, missingKeepInTouchTo);
+              
             sortDescription = 'last_modified desc';
-            filterDescription = 'keep_in_touch_frequency is null';
+            filterDescription = 'keep_in_touch_frequency is null, excluding Skip category';
             break;
             
           case 'missingScore':
+            // Missing Score: score is null and not category Skip
+            // Apply pagination to this query
+            const missingScoreFrom = currentPage * 10;
+            const missingScoreTo = missingScoreFrom + 9;
+            
             query = query
               .is('score', null)
-              .order('last_modified', { ascending: false });
+              .not('contact_category', 'eq', 'Skip')
+              .order('last_modified', { ascending: false })
+              .range(missingScoreFrom, missingScoreTo);
+              
             sortDescription = 'last_modified desc';
-            filterDescription = 'score is null';
+            filterDescription = 'score is null, excluding Skip category';
             break;
             
           case 'keepInTouch':
@@ -1007,20 +1040,40 @@ const RecentContactsList = forwardRef(({
       if (activeFilter) {
         switch (activeFilter) {
           case 'recentlyCreated':
-            countQuery = countQuery.eq('contact_category', 'Inbox');
+            const recentlyCreatedOneWeekAgo = new Date();
+            recentlyCreatedOneWeekAgo.setDate(recentlyCreatedOneWeekAgo.getDate() - 7);
+            const recentlyCreatedFormattedDate = recentlyCreatedOneWeekAgo.toISOString();
+            
+            countQuery = countQuery
+              .is('contact_category', null)
+              .gte('last_interaction', recentlyCreatedFormattedDate);
             break;
             
           case 'lastInteraction':
             const oneWeekAgo = new Date();
             oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
             const formattedDate = oneWeekAgo.toISOString();
-            countQuery = countQuery.gte('last_interaction', formattedDate);
+            countQuery = countQuery
+              .gte('last_interaction', formattedDate)
+              .not('contact_category', 'eq', 'Skip');
             break;
             
           case 'keepInTouch':
             countQuery = countQuery
               .not('keep_in_touch_frequency', 'is', null)
               .not('keep_in_touch_frequency', 'eq', 'Do not keep');
+            break;
+            
+          case 'missingKeepInTouch':
+            countQuery = countQuery
+              .is('keep_in_touch_frequency', null)
+              .not('contact_category', 'eq', 'Skip');
+            break;
+            
+          case 'missingScore':
+            countQuery = countQuery
+              .is('score', null)
+              .not('contact_category', 'eq', 'Skip');
             break;
             
           case 'missingCities':
@@ -1055,6 +1108,9 @@ const RecentContactsList = forwardRef(({
       
       // Store the database count (before post-filtering)
       setTotalCount(count || 0);
+      
+      // Calculate and set total pages - this ensures pagination works for all filters
+      setTotalPages(Math.ceil((count || 0) / 10));
       
       // If we have contacts, fetch related data
       if (contactsData && contactsData.length > 0) {
@@ -2332,11 +2388,11 @@ const RecentContactsList = forwardRef(({
           fontSize: '0.875rem',
           color: '#4b5563'
         }}>
-          {activeFilter === 'recentlyCreated' && 'Showing contacts with missing category'}
-          {activeFilter === 'lastInteraction' && 'Showing contacts with interactions in the last 7 days'}
+          {activeFilter === 'recentlyCreated' && 'Showing uncategorized contacts with interactions in the last 7 days'}
+          {activeFilter === 'lastInteraction' && 'Showing contacts with interactions in the last 7 days (excluding Skip category)'}
           {activeFilter === 'keepInTouch' && 'Showing contacts sorted by keep-in-touch due date'}
-          {activeFilter === 'missingKeepInTouch' && 'Showing contacts with no keep-in-touch frequency set'}
-          {activeFilter === 'missingScore' && 'Showing contacts with no score set'}
+          {activeFilter === 'missingKeepInTouch' && 'Showing contacts with no keep-in-touch frequency set (excluding Skip category)'}
+          {activeFilter === 'missingScore' && 'Showing contacts with no score set (excluding Skip category)'}
           {activeFilter === 'missingCities' && 'Showing contacts with no city associations'}
         </div>
       )}
