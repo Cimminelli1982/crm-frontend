@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Modal from 'react-modal';
 import styled from 'styled-components';
-import { FiX, FiSave, FiPlus, FiSearch, FiX as FiXCircle, FiTag, FiLink, FiTrash2, FiArrowLeft } from 'react-icons/fi';
+import { FiX, FiSave, FiPlus, FiSearch, FiX as FiXCircle, FiTag, FiLink, FiTrash2, FiArrowLeft, FiCheckCircle } from 'react-icons/fi';
 import { supabase } from '../../lib/supabaseClient';
 import TagsModal from './TagsModal';
 import CompanyModal from './CompanyModal';
@@ -549,6 +549,7 @@ const ContactColumn = styled.div`
   border-radius: 8px;
   padding: 16px;
   border: 1px solid ${props => props.isMain ? '#3b82f6' : '#e5e7eb'};
+  position: relative;
   
   h3 {
     margin: 0 0 16px;
@@ -556,7 +557,41 @@ const ContactColumn = styled.div`
     color: ${props => props.isMain ? '#3b82f6' : '#111827'};
     padding-bottom: 8px;
     border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
   }
+`;
+
+const SetMainButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background-color: #eff6ff;
+  color: #3b82f6;
+  border: 1px solid #bfdbfe;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  
+  &:hover {
+    background-color: #dbeafe;
+  }
+`;
+
+const MainLabel = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background-color: #dbeafe;
+  color: #1d4ed8;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
 `;
 
 const FieldRow = styled.div`
@@ -817,6 +852,10 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
   const [deleteSuccess, setDeleteSuccess] = useState('');
   const [deleteError, setDeleteError] = useState('');
   
+  // State to track the main contact
+  const [mainContact, setMainContact] = useState(null);
+  const [isSwapping, setIsSwapping] = useState(false);
+  
   const [showCityModal, setShowCityModal] = useState(false);
   const [hasDuplicates, setHasDuplicates] = useState(false);
   
@@ -836,6 +875,9 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
         linkedin: contact.linkedin || ''
       });
       
+      // Set the main contact
+      setMainContact(contact);
+      
       // Fetch tags and companies when contact changes
       fetchContactTags();
       fetchRelatedCompanies();
@@ -844,6 +886,77 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
       fetchContactCities();
     }
   }, [contact]);
+  
+  // Function to handle making a duplicate the main contact
+  const handleMakeMainContact = async (duplicateId) => {
+    try {
+      setIsSwapping(true);
+      
+      // Find the duplicate contact to make main
+      const duplicateToMake = duplicateContacts.find(dup => dup.id === duplicateId);
+      
+      if (!duplicateToMake) {
+        throw new Error('Duplicate contact not found');
+      }
+      
+      // Show status notification
+      toast.loading('Swapping contacts...');
+      
+      // Update the UI with the duplicate's information
+      setFormData({
+        first_name: duplicateToMake.first_name || '',
+        last_name: duplicateToMake.last_name || '',
+        email: duplicateToMake.email || '',
+        email2: duplicateToMake.email2 || '',
+        email3: duplicateToMake.email3 || '',
+        mobile: duplicateToMake.mobile || '',
+        mobile2: duplicateToMake.mobile2 || '',
+        job_title: duplicateToMake.job_title || '',
+        contact_category: duplicateToMake.contact_category || '',
+        about_the_contact: duplicateToMake.about_the_contact || '',
+        linkedin: duplicateToMake.linkedin || ''
+      });
+      
+      // Swap the tags, companies, and cities
+      // Set the main contact's tags, companies, and cities
+      setContactTags(duplicateToMake.tags || []);
+      setRelatedCompanies(duplicateToMake.companies || []);
+      setContactCities(duplicateToMake.cities || []);
+      
+      // Update the main contact reference
+      setMainContact(duplicateToMake);
+      
+      // Update the duplicates list by removing the new main contact and adding the old main contact
+      const oldMain = contact;
+      
+      // Get the old main contact's tags, companies, and cities
+      const oldMainTags = contactTags;
+      const oldMainCompanies = relatedCompanies;
+      const oldMainCities = contactCities;
+      
+      // Create an updated version of the old main contact with its details
+      const oldMainWithDetails = {
+        ...oldMain,
+        tags: oldMainTags,
+        companies: oldMainCompanies,
+        cities: oldMainCities
+      };
+      
+      // Update the duplicates list
+      setDuplicateContacts(prev => 
+        prev.filter(dup => dup.id !== duplicateId).concat([oldMainWithDetails])
+      );
+      
+      toast.dismiss();
+      toast.success('Main contact changed successfully');
+      
+    } catch (error) {
+      console.error('Error making duplicate the main contact:', error);
+      toast.error('Failed to change main contact');
+    } finally {
+      setIsSwapping(false);
+    }
+  };
   
   // Add effect to find duplicates when the active tab is 'merge'
   useEffect(() => {
@@ -956,10 +1069,12 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
   // Add function to handle removing a city from a duplicate contact
   const handleRemoveDuplicateCity = async (duplicateId, cityId) => {
     try {
+      // Make sure we're deleting from the correct duplicate contact
       const { error } = await supabase
         .from('contact_cities')
         .delete()
-        .match({ contact_id: duplicateId, city_id: cityId });
+        .eq('contact_id', duplicateId)
+        .eq('city_id', cityId);
       
       if (error) throw error;
       
@@ -1074,7 +1189,7 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
     }
   };
   
-  // Add function to delete duplicate contact
+  // Add function to delete duplicate contact with cascading deletion for associations
   const handleDeleteDuplicate = async (duplicateId) => {
     console.log('Attempting to delete duplicate with ID:', duplicateId); // Debug log
     setIsDeleting(true);
@@ -1082,7 +1197,44 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
     setDeleteError('');
     
     try {
-      // Delete the contact from Supabase
+      // Create a loading toast notification
+      toast.loading('Deleting contact and related data...');
+      
+      // First delete all associated records for this contact to ensure clean deletion
+      // 1. Delete contact_tags associations
+      const { error: tagsError } = await supabase
+        .from('contact_tags')
+        .delete()
+        .eq('contact_id', duplicateId);
+        
+      if (tagsError) {
+        console.error('Error deleting contact tags:', tagsError);
+        // Continue with other deletions even if this fails
+      }
+      
+      // 2. Delete contact_companies associations
+      const { error: companiesError } = await supabase
+        .from('contact_companies')
+        .delete()
+        .eq('contact_id', duplicateId);
+        
+      if (companiesError) {
+        console.error('Error deleting contact companies:', companiesError);
+        // Continue with other deletions even if this fails
+      }
+      
+      // 3. Delete contact_cities associations
+      const { error: citiesError } = await supabase
+        .from('contact_cities')
+        .delete()
+        .eq('contact_id', duplicateId);
+        
+      if (citiesError) {
+        console.error('Error deleting contact cities:', citiesError);
+        // Continue with other deletions even if this fails
+      }
+      
+      // Now delete the contact itself
       const { error } = await supabase
         .from('contacts')
         .delete()
@@ -1096,6 +1248,10 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
         console.log('Updated duplicate contacts:', updatedContacts); // Debug log
         return updatedContacts;
       });
+      
+      // Dismiss loading toast and show success
+      toast.dismiss();
+      toast.success('Contact and all related data deleted successfully');
       setDeleteSuccess(`Contact deleted successfully.`);
       
       // Clear the success message after 3 seconds
@@ -1104,6 +1260,8 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
       }, 3000);
     } catch (error) {
       console.error('Error deleting contact:', error);
+      toast.dismiss();
+      toast.error('Failed to delete contact');
       setDeleteError('Failed to delete contact. Please try again.');
       
       // Clear the error message after 3 seconds
@@ -1658,7 +1816,17 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
         <MergeGrid duplicatesCount={duplicateContacts.length}>
           {/* Main contact column */}
           <ContactColumn isMain={true}>
-            <h3>Main Contact</h3>
+            <h3>
+              <MainLabel>
+                <FiCheckCircle size={12} />
+                Main Contact
+              </MainLabel>
+            </h3>
+            
+            <FieldRow>
+              <div className="label">ID</div>
+              <div className="value">{mainContactWithDetails.id}</div>
+            </FieldRow>
             
             <FieldRow>
               <div className="label">Created</div>
@@ -1819,7 +1987,20 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
           {/* Duplicate contact columns */}
           {duplicateContacts.map(duplicate => (
             <ContactColumn key={duplicate.id}>
-              <h3>Duplicate</h3>
+              <h3>
+                <span>Duplicate</span>
+                <SetMainButton 
+                  onClick={() => handleMakeMainContact(duplicate.id)}
+                  disabled={isSwapping}
+                >
+                  Make Main
+                </SetMainButton>
+              </h3>
+              
+              <FieldRow>
+                <div className="label">ID</div>
+                <div className="value">{duplicate.id}</div>
+              </FieldRow>
               
               <FieldRow>
                 <div className="label">Created</div>
@@ -1937,7 +2118,7 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
                       {duplicate.cities.map(city => (
                         <CityTag key={city.id}>
                           <span>{city.name}</span>
-                          <RemoveButton onClick={() => handleRemoveCityFromHeader(city)}>
+                          <RemoveButton onClick={() => handleRemoveDuplicateCity(duplicate.id, city.id)}>
                             <FiXCircle size={14} />
                           </RemoveButton>
                           <TransferButton onClick={() => handleTransferCity(city)}>
