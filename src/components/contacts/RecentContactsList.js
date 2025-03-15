@@ -864,23 +864,19 @@ const RecentContactsList = forwardRef(({
       if (activeFilter) {
         switch (activeFilter) {
           case 'recentlyCreated':
-            // Filter for contacts where contact_category is NULL and last interaction within last week
-            const oneWeekAgo = new Date();
-            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-            const formattedDate = oneWeekAgo.toISOString();
+            // Filter for contacts where contact_category is Inbox
             
             // Apply pagination to this query
             const from = currentPage * 10;
             const to = from + 9;
             
             query = query
-              .is('contact_category', null)
-              .gte('last_interaction', formattedDate)
-              .order('last_interaction', { ascending: false })
+              .eq('contact_category', 'Inbox')
+              .order('created_at', { ascending: false })
               .range(from, to);  // Add pagination
               
-            sortDescription = 'last_interaction desc';
-            filterDescription = 'contact_category is NULL with recent interactions';
+            sortDescription = 'created_at desc';
+            filterDescription = 'contact_category is Inbox';
             break;
             
           case 'lastInteraction':
@@ -1118,15 +1114,11 @@ const RecentContactsList = forwardRef(({
             .gte('last_interaction', lastInteractionDate)
             .not('contact_category', 'eq', 'Skip');
             
-          // Calculate count for "Missing Category" filter
-          const recentlyCreatedOneWeekAgo = new Date();
-          recentlyCreatedOneWeekAgo.setDate(recentlyCreatedOneWeekAgo.getDate() - 7);
-          const recentlyCreatedDate = recentlyCreatedOneWeekAgo.toISOString();
+          // Calculate count for "Missing Category" filter (now showing Inbox contacts)
           const { count: recentlyCreatedCount } = await supabase
             .from('contacts')
             .select('*', { count: 'exact', head: true })
-            .is('contact_category', null)
-            .gte('last_interaction', recentlyCreatedDate);
+            .eq('contact_category', 'Inbox');
             
           // Calculate count for "Missing Keep In Touch" filter
           const { count: missingKeepInTouchCount } = await supabase
@@ -1216,13 +1208,8 @@ const RecentContactsList = forwardRef(({
       if (activeFilter) {
         switch (activeFilter) {
           case 'recentlyCreated':
-            const recentlyCreatedOneWeekAgo = new Date();
-            recentlyCreatedOneWeekAgo.setDate(recentlyCreatedOneWeekAgo.getDate() - 7);
-            const recentlyCreatedFormattedDate = recentlyCreatedOneWeekAgo.toISOString();
-            
             countQuery = countQuery
-              .is('contact_category', null)
-              .gte('last_interaction', recentlyCreatedFormattedDate);
+              .eq('contact_category', 'Inbox');
             break;
             
           case 'lastInteraction':
@@ -2582,7 +2569,7 @@ const RecentContactsList = forwardRef(({
           fontSize: '0.875rem',
           color: '#4b5563'
         }}>
-          {activeFilter === 'recentlyCreated' && 'Showing uncategorized contacts with interactions in the last 7 days'}
+          {activeFilter === 'recentlyCreated' && 'Showing contacts with Inbox category'}
           {activeFilter === 'lastInteraction' && 'Showing contacts with interactions in the last 7 days (excluding Skip category)'}
           {activeFilter === 'keepInTouch' && 'Showing contacts sorted by keep-in-touch due date'}
           {activeFilter === 'missingKeepInTouch' && 'Showing contacts with no keep-in-touch frequency set (excluding Skip category)'}

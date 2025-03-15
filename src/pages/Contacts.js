@@ -228,6 +228,14 @@ const FilterButton = styled.button`
   svg {
     font-size: 1rem;
   }
+  
+  .count {
+    margin-left: 0.25rem;
+    background-color: ${props => props.active ? 'rgba(255, 255, 255, 0.2)' : 'rgba(75, 85, 99, 0.1)'};
+    padding: 0.125rem 0.375rem;
+    border-radius: 1rem;
+    font-size: 0.75rem;
+  }
 `;
 
 const NotificationDot = styled.div`
@@ -251,6 +259,17 @@ const Contacts = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  
+  // Filter counts for badges
+  const [filterCounts, setFilterCounts] = useState({
+    lastInteraction: 0,
+    recentlyCreated: 0,
+    missingKeepInTouch: 0,
+    missingScore: 0,
+    missingCities: 0,
+    missingCompanies: 0,
+    missingTags: 0
+  });
   
   // Reference to the contact list component
   const contactListRef = useRef(null);
@@ -328,8 +347,13 @@ const Contacts = () => {
     setSearchTerm('');
   };
   
-  const handleFilteredCountUpdate = (count) => {
+  const handleFilteredCountUpdate = (count, counts) => {
     setFilteredCount(count);
+    
+    // Update filter counts if provided
+    if (counts) {
+      setFilterCounts(counts);
+    }
   };
   
   const handleRefresh = () => {
@@ -414,13 +438,15 @@ const Contacts = () => {
           >
             <FiMessageSquare />
             Last Interaction
+            <span className="count">{filterCounts.lastInteraction}</span>
           </FilterButton>
           <FilterButton 
             active={activeFilter === 'recentlyCreated'} 
             onClick={() => handleFilterButtonClick('recentlyCreated')}
           >
             <FiClock />
-            Missing Category
+            Inbox
+            <span className="count">{filterCounts.recentlyCreated}</span>
           </FilterButton>
           <FilterButton 
             active={activeFilter === 'missingKeepInTouch'} 
@@ -428,6 +454,7 @@ const Contacts = () => {
           >
             <FiAlertCircle />
             Missing Keep in Touch
+            <span className="count">{filterCounts.missingKeepInTouch}</span>
           </FilterButton>
           <FilterButton 
             active={activeFilter === 'missingScore'} 
@@ -435,6 +462,7 @@ const Contacts = () => {
           >
             <FiStar />
             Missing Score
+            <span className="count">{filterCounts.missingScore}</span>
           </FilterButton>
           <FilterButton 
             active={activeFilter === 'missingCities'} 
@@ -442,6 +470,7 @@ const Contacts = () => {
           >
             <FiMapPin />
             Missing Cities
+            <span className="count">{filterCounts.missingCities}</span>
           </FilterButton>
           <FilterButton 
             active={activeFilter === 'missingCompanies'} 
@@ -449,6 +478,7 @@ const Contacts = () => {
           >
             <FiBook />
             Missing Companies
+            <span className="count">{filterCounts.missingCompanies}</span>
           </FilterButton>
           <FilterButton 
             active={activeFilter === 'missingTags'} 
@@ -456,6 +486,7 @@ const Contacts = () => {
           >
             <FaTag />
             Missing Tags
+            <span className="count">{filterCounts.missingTags}</span>
           </FilterButton>
         </FilterButtonsContainer>
       </PageHeader>
