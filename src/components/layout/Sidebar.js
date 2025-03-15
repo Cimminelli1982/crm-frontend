@@ -193,9 +193,8 @@ const Sidebar = ({ user, onSignOut }) => {
       path: '/contacts',
       subItems: [
         { name: 'Last Interactions', path: '/contacts/last-interactions' },
-        { name: 'Recently Created', path: '/contacts/recently-created' },
         { name: 'Keep in Touch', path: '/contacts/keep-in-touch' },
-        { name: 'Missing Infos', path: '/contacts/missing-infos' }
+        { name: 'Introductions', path: '/contacts/introductions' }
       ]
     },
     {
@@ -204,18 +203,10 @@ const Sidebar = ({ user, onSignOut }) => {
       icon: faBuilding,
       path: '/companies',
       subItems: [
-        { name: 'Recently Created', path: '/companies/recently-created' },
         { name: 'Deals', path: '/companies/deals' },
         { name: 'Startups', path: '/companies/startups' },
         { name: 'Investors', path: '/companies/investors' }
       ]
-    },
-    {
-      id: 'introductions',
-      name: 'Introductions',
-      icon: faHandshake,
-      path: '/introductions',
-      subItems: []
     },
     {
       id: 'planner',
@@ -304,4 +295,4 @@ const Sidebar = ({ user, onSignOut }) => {
   );
 };
 
-export default Sidebar; 
+export default Sidebar;

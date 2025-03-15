@@ -1,6 +1,7 @@
-import React from 'react';
-import Layout from '../components/layout/Layout';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
+import { supabase } from '../../lib/supabaseClient';
+import { format } from 'date-fns';
 
 const PageContainer = styled.div`
   padding: 24px;
@@ -112,49 +113,47 @@ const Introductions = () => {
   ];
 
   return (
-    <Layout>
-      <PageContainer>
-        <PageHeader>
-          <h1>Introductions</h1>
-          <p>Manage your professional introductions and networking connections.</p>
-        </PageHeader>
-        
-        <Button>New Introduction</Button>
-        
-        <IntroductionsTable>
-          <TableHead>
-            <tr>
-              <th>From</th>
-              <th>To</th>
-              <th>Company</th>
-              <th>Purpose</th>
-              <th>Status</th>
-              <th>Date</th>
-              <th>Actions</th>
+    <PageContainer>
+      <PageHeader>
+        <h1>Introductions</h1>
+        <p>Manage your professional introductions and networking connections.</p>
+      </PageHeader>
+      
+      <Button>New Introduction</Button>
+      
+      <IntroductionsTable>
+        <TableHead>
+          <tr>
+            <th>From</th>
+            <th>To</th>
+            <th>Company</th>
+            <th>Purpose</th>
+            <th>Status</th>
+            <th>Date</th>
+            <th>Actions</th>
+          </tr>
+        </TableHead>
+        <TableBody>
+          {sampleIntroductions.map(intro => (
+            <tr key={intro.id}>
+              <td>{intro.from}</td>
+              <td>{intro.to}</td>
+              <td>{intro.company}</td>
+              <td>{intro.purpose}</td>
+              <td>
+                <StatusBadge status={intro.status}>
+                  {intro.status.charAt(0).toUpperCase() + intro.status.slice(1)}
+                </StatusBadge>
+              </td>
+              <td>{intro.date}</td>
+              <td>
+                <Button>View</Button>
+              </td>
             </tr>
-          </TableHead>
-          <TableBody>
-            {sampleIntroductions.map(intro => (
-              <tr key={intro.id}>
-                <td>{intro.from}</td>
-                <td>{intro.to}</td>
-                <td>{intro.company}</td>
-                <td>{intro.purpose}</td>
-                <td>
-                  <StatusBadge status={intro.status}>
-                    {intro.status.charAt(0).toUpperCase() + intro.status.slice(1)}
-                  </StatusBadge>
-                </td>
-                <td>{intro.date}</td>
-                <td>
-                  <Button>View</Button>
-                </td>
-              </tr>
-            ))}
-          </TableBody>
-        </IntroductionsTable>
-      </PageContainer>
-    </Layout>
+          ))}
+        </TableBody>
+      </IntroductionsTable>
+    </PageContainer>
   );
 };
 

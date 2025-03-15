@@ -249,7 +249,7 @@ const NotificationDot = styled.div`
   border: 2px solid white;
 `;
 
-const Contacts = () => {
+const Contacts = ({ defaultFilter = null }) => {
   const [totalCount, setTotalCount] = useState(0);
   const [filteredCount, setFilteredCount] = useState(0);
   const [inboxCount, setInboxCount] = useState(0);
@@ -257,7 +257,7 @@ const Contacts = () => {
   const [searchField, setSearchField] = useState('name');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeFilter, setActiveFilter] = useState(null);
+  const [activeFilter, setActiveFilter] = useState(defaultFilter);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   
   // Filter counts for badges

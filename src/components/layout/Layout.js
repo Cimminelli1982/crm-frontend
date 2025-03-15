@@ -286,21 +286,18 @@ const Layout = ({ children }) => {
     
     if (path.includes('/contacts')) {
       if (path.includes('/last-interactions')) return 'Last Interactions';
-      if (path.includes('/recently-created')) return 'Recently Created Contacts';
       if (path.includes('/keep-in-touch')) return 'Keep in Touch';
-      if (path.includes('/missing-infos')) return 'Missing Information';
+      if (path.includes('/introductions')) return 'Introductions';
       return 'Contacts';
     }
     
     if (path.includes('/companies')) {
-      if (path.includes('/recently-created')) return 'Recently Created Companies';
       if (path.includes('/deals')) return 'Deals';
       if (path.includes('/startups')) return 'Startups';
       if (path.includes('/investors')) return 'Investors';
       return 'Companies';
     }
     
-    if (path.includes('/introductions')) return 'Introductions';
     if (path.includes('/planner')) return 'Planner';
     
     return 'CRM Dashboard';
@@ -343,14 +340,6 @@ const Layout = ({ children }) => {
               </SubMenuItem>
               
               <SubMenuItem 
-                to="/contacts/recently-created" 
-                active={isPathActive('/contacts/recently-created')}
-              >
-                <FiPlusCircle style={{ marginRight: '0.5rem', fontSize: '0.875rem' }} />
-                Recently Created
-              </SubMenuItem>
-              
-              <SubMenuItem 
                 to="/contacts/keep-in-touch" 
                 active={isPathActive('/contacts/keep-in-touch')}
               >
@@ -359,11 +348,11 @@ const Layout = ({ children }) => {
               </SubMenuItem>
               
               <SubMenuItem 
-                to="/contacts/missing-infos" 
-                active={isPathActive('/contacts/missing-infos')}
+                to="/contacts/introductions" 
+                active={isPathActive('/contacts/introductions')}
               >
-                <FiAlertCircle style={{ marginRight: '0.5rem', fontSize: '0.875rem' }} />
-                Missing Infos
+                <FiLink style={{ marginRight: '0.5rem', fontSize: '0.875rem' }} />
+                Introductions
               </SubMenuItem>
             </SubMenu>
           </MenuItem>
@@ -382,14 +371,6 @@ const Layout = ({ children }) => {
             </MenuItemHeader>
             
             <SubMenu isOpen={expandedMenus.companies}>
-              <SubMenuItem 
-                to="/companies/recently-created" 
-                active={isPathActive('/companies/recently-created')}
-              >
-                <FiPlusCircle style={{ marginRight: '0.5rem', fontSize: '0.875rem' }} />
-                Recently Created
-              </SubMenuItem>
-              
               <SubMenuItem 
                 to="/companies/deals" 
                 active={isPathActive('/companies/deals')}
@@ -417,15 +398,6 @@ const Layout = ({ children }) => {
           </MenuItem>
           
           {/* Single-level menu items */}
-          <MenuItem>
-            <MenuItemHeader active={isPathActive('/introductions')}>
-              <MenuItemLink to="/introductions">
-                <FiLink />
-                <span>Introductions</span>
-              </MenuItemLink>
-            </MenuItemHeader>
-          </MenuItem>
-          
           <MenuItem>
             <MenuItemHeader active={isPathActive('/planner')}>
               <MenuItemLink to="/planner">

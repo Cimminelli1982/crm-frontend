@@ -9,15 +9,12 @@ import Layout from './components/layout/Layout';
 
 // Import new pages for navigation
 import LastInteractions from './pages/contacts/LastInteractions';
-import RecentlyCreatedContacts from './pages/contacts/RecentlyCreatedContacts';
 import KeepInTouch from './pages/contacts/KeepInTouch';
-import MissingInfos from './pages/contacts/MissingInfos';
+import Introductions from './pages/contacts/Introductions';
 import Companies from './pages/Companies';
-import RecentlyCreatedCompanies from './pages/companies/RecentlyCreatedCompanies';
 import Deals from './pages/companies/Deals';
 import Startups from './pages/companies/Startups';
 import Investors from './pages/companies/Investors';
-import Introductions from './pages/Introductions';
 import Planner from './pages/Planner';
 
 // Create a component that applies the layout
@@ -67,19 +64,16 @@ const App = () => {
             {/* Contacts section */}
             <Route path="/contacts" element={<Contacts />} />
             <Route path="/contacts/last-interactions" element={<LastInteractions />} />
-            <Route path="/contacts/recently-created" element={<RecentlyCreatedContacts />} />
             <Route path="/contacts/keep-in-touch" element={<KeepInTouch />} />
-            <Route path="/contacts/missing-infos" element={<MissingInfos />} />
+            <Route path="/contacts/introductions" element={<Introductions />} />
 
             {/* Companies section */}
             <Route path="/companies" element={<Companies />} />
-            <Route path="/companies/recently-created" element={<RecentlyCreatedCompanies />} />
             <Route path="/companies/deals" element={<Deals />} />
             <Route path="/companies/startups" element={<Startups />} />
             <Route path="/companies/investors" element={<Investors />} />
 
             {/* Other main sections */}
-            <Route path="/introductions" element={<Introductions />} />
             <Route path="/planner" element={<Planner />} />
           </Route>
         ) : (
