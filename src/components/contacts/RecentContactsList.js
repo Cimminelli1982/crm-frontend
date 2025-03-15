@@ -736,7 +736,8 @@ const RecentContactsList = forwardRef(({
     missingKeepInTouch: 0,
     missingScore: 0,
     missingCities: 0,
-    missingCompanies: 0
+    missingCompanies: 0,
+    missingTags: 0
   });
   // --------- STATE MANAGEMENT ---------
   // UI State - clearly separated from data state
@@ -1006,6 +1007,35 @@ const RecentContactsList = forwardRef(({
             // Return early since we've handled everything in this case
             return;
             
+          case 'missingTags':
+            // Call the stored procedure for contacts without tags
+            const { data: missingTagsData, error: missingTagsError } = await supabase
+              .rpc('get_contacts_without_tags', {
+                page_size: 10,
+                page_number: currentPage,
+                search_term: debouncedSearchTerm || ''
+              });
+            
+            if (missingTagsError) throw missingTagsError;
+            
+            // Get the total count of contacts without tags
+            const { data: tagsCountData, error: tagsCountError } = await supabase
+              .rpc('get_contacts_without_tags_count');
+              
+            if (tagsCountError) throw tagsCountError;
+            
+            // Set the data and count directly
+            setContacts(missingTagsData || []);
+            setTotalCount(tagsCountData[0]?.count || 0);
+            setFilteredCount(tagsCountData[0]?.count || 0);
+            
+            // Set sorting description for debugging/reference
+            sortDescription = 'last_interaction desc';
+            filterDescription = 'contacts without tags and recent interactions';
+            
+            // Return early since we've handled everything in this case
+            return;
+            
           default:
             // Default sorting for all other cases
             query = query.order('last_modified', { ascending: false });
@@ -1147,6 +1177,22 @@ const RecentContactsList = forwardRef(({
           } else {
             missingCompaniesCount = missingCompaniesData || 0;
           }
+          
+          // Calculate count for "Missing Tags" filter using the stored procedure
+          const { data: missingTagsData, error: missingTagsError } = await supabase
+            .rpc('get_contacts_without_tags_count');
+            
+          // Handle the response and extract the count
+          let missingTagsCount = 0;
+          if (missingTagsError) {
+            console.error('Error fetching missing tags count:', missingTagsError);
+          } else if (Array.isArray(missingTagsData) && missingTagsData.length > 0) {
+            missingTagsCount = missingTagsData[0].count;
+          } else if (typeof missingTagsData === 'object' && missingTagsData !== null) {
+            missingTagsCount = missingTagsData.count;
+          } else {
+            missingTagsCount = missingTagsData || 0;
+          }
             
           // Update filter counts state
           setFilterCountsData({
@@ -1155,7 +1201,8 @@ const RecentContactsList = forwardRef(({
             missingKeepInTouch: missingKeepInTouchCount || 0,
             missingScore: missingScoreCount || 0,
             missingCities: missingCitiesCount || 0,
-            missingCompanies: missingCompaniesCount || 0
+            missingCompanies: missingCompaniesCount || 0,
+            missingTags: missingTagsCount || 0
           });
         } catch (error) {
           console.error('Error calculating filter counts:', error);
@@ -1215,6 +1262,10 @@ const RecentContactsList = forwardRef(({
             return;
             
           case 'missingCompanies':
+            // Count is handled in the main query case
+            return;
+            
+          case 'missingTags':
             // Count is handled in the main query case
             return;
             
@@ -2538,6 +2589,7 @@ const RecentContactsList = forwardRef(({
           {activeFilter === 'missingScore' && 'Showing contacts with no score set and recent interactions (last 7 days)'}
           {activeFilter === 'missingCities' && 'Showing contacts with no city associations'}
           {activeFilter === 'missingCompanies' && 'Showing contacts with no company associations'}
+          {activeFilter === 'missingTags' && 'Showing contacts with no tag associations and recent interactions (last 7 days)'}
         </div>
       )}
       
