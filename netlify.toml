@@ -10,5 +10,11 @@
   # HubSpot environment variables should be set in the Netlify UI
   # DO NOT add sensitive values here
 
+# This handles the single-page application routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
 # Note: Sensitive environment variables like API keys should be set in the Netlify UI
 # This file only contains non-sensitive configuration 
