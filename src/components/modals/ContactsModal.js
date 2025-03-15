@@ -1196,51 +1196,101 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
     setDeleteSuccess('');
     setDeleteError('');
     
+    // Create a loading toast notification with ID for dismissing later
+    const toastId = toast.loading('Deleting contact and related data...', {
+      duration: 10000 // Set longer duration to avoid auto-dismiss during operation
+    });
+    
     try {
-      // Create a loading toast notification
-      toast.loading('Deleting contact and related data...');
+      // First check if there are any relationships to clean up
+      // Get all related data for this contact
+      const duplicate = duplicateContacts.find(d => d.id === duplicateId);
       
-      // First delete all associated records for this contact to ensure clean deletion
-      // 1. Delete contact_tags associations
-      const { error: tagsError } = await supabase
-        .from('contact_tags')
-        .delete()
-        .eq('contact_id', duplicateId);
+      if (duplicate) {
+        console.log('Found duplicate to delete:', duplicate);
         
-      if (tagsError) {
-        console.error('Error deleting contact tags:', tagsError);
-        // Continue with other deletions even if this fails
+        // Get cities first as they seem to be causing issues
+        if (duplicate.cities && duplicate.cities.length > 0) {
+          console.log('Deleting cities associations...');
+          // Delete each city association one by one for better error handling
+          for (const city of duplicate.cities) {
+            const { error } = await supabase
+              .from('contact_cities')
+              .delete()
+              .eq('contact_id', duplicateId)
+              .eq('city_id', city.id);
+              
+            if (error) {
+              console.error(`Error deleting city ${city.id} association:`, error);
+            }
+          }
+        }
+        
+        // Delete tags associations
+        if (duplicate.tags && duplicate.tags.length > 0) {
+          console.log('Deleting tags associations...');
+          for (const tag of duplicate.tags) {
+            const { error } = await supabase
+              .from('contact_tags')
+              .delete()
+              .eq('contact_id', duplicateId)
+              .eq('tag_id', tag.id);
+              
+            if (error) {
+              console.error(`Error deleting tag ${tag.id} association:`, error);
+            }
+          }
+        }
+        
+        // Delete company associations
+        if (duplicate.companies && duplicate.companies.length > 0) {
+          console.log('Deleting company associations...');
+          for (const company of duplicate.companies) {
+            const { error } = await supabase
+              .from('contact_companies')
+              .delete()
+              .eq('contact_id', duplicateId)
+              .eq('company_id', company.id);
+              
+            if (error) {
+              console.error(`Error deleting company ${company.id} association:`, error);
+            }
+          }
+        }
       }
       
-      // 2. Delete contact_companies associations
-      const { error: companiesError } = await supabase
-        .from('contact_companies')
-        .delete()
-        .eq('contact_id', duplicateId);
-        
-      if (companiesError) {
-        console.error('Error deleting contact companies:', companiesError);
-        // Continue with other deletions even if this fails
-      }
-      
-      // 3. Delete contact_cities associations
-      const { error: citiesError } = await supabase
+      // Double-check to make sure all cities are removed (the most problematic association)
+      console.log('Double-checking for any remaining city associations...');
+      const { data: remainingCities, error: checkError } = await supabase
         .from('contact_cities')
-        .delete()
+        .select('*')
         .eq('contact_id', duplicateId);
         
-      if (citiesError) {
-        console.error('Error deleting contact cities:', citiesError);
-        // Continue with other deletions even if this fails
+      if (checkError) {
+        console.error('Error checking remaining cities:', checkError);
+      } else if (remainingCities && remainingCities.length > 0) {
+        console.log('Found remaining city associations, deleting them all at once...');
+        const { error: bulkDeleteError } = await supabase
+          .from('contact_cities')
+          .delete()
+          .eq('contact_id', duplicateId);
+          
+        if (bulkDeleteError) {
+          console.error('Error bulk deleting remaining cities:', bulkDeleteError);
+        }
       }
       
-      // Now delete the contact itself
+      // Finally delete the contact itself after all associations are removed
+      console.log('Deleting the contact itself...');
       const { error } = await supabase
         .from('contacts')
         .delete()
         .eq('id', duplicateId);
         
-      if (error) throw error;
+      if (error) {
+        console.error('Error deleting contact:', error);
+        throw error;
+      }
       
       // Update local state to remove the deleted contact
       setDuplicateContacts(prev => {
@@ -1250,8 +1300,8 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
       });
       
       // Dismiss loading toast and show success
-      toast.dismiss();
-      toast.success('Contact and all related data deleted successfully');
+      toast.dismiss(toastId);
+      toast.success('Contact deleted successfully', { duration: 3000 });
       setDeleteSuccess(`Contact deleted successfully.`);
       
       // Clear the success message after 3 seconds
@@ -1260,14 +1310,22 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
       }, 3000);
     } catch (error) {
       console.error('Error deleting contact:', error);
-      toast.dismiss();
-      toast.error('Failed to delete contact');
-      setDeleteError('Failed to delete contact. Please try again.');
+      toast.dismiss(toastId);
       
-      // Clear the error message after 3 seconds
+      // Provide a more descriptive error message based on the error type
+      let errorMessage = 'Failed to delete contact.';
+      
+      if (error.message && error.message.includes('foreign key constraint')) {
+        errorMessage = 'This contact has relationships that prevented deletion. Please try again.';
+      }
+      
+      toast.error(errorMessage, { duration: 5000 });
+      setDeleteError(errorMessage + ' Please try again.');
+      
+      // Clear the error message after 5 seconds
       setTimeout(() => {
         setDeleteError('');
-      }, 3000);
+      }, 5000);
     } finally {
       setIsDeleting(false);
     }
