@@ -909,6 +909,31 @@ const RecentContactsList = forwardRef(({
             filterDescription = 'missing required fields (applied after fetch)';
             break;
             
+          case 'missingCities':
+            // Call the stored procedure for contacts without cities
+            const { data: missingCitiesData, error: missingCitiesError } = await supabase
+              .rpc('get_contacts_without_cities', {
+                page_size: 10,
+                page_number: currentPage,
+                search_term: debouncedSearchTerm || ''
+              });
+            
+            if (missingCitiesError) throw missingCitiesError;
+            
+            // Get the total count of contacts without cities
+            const { data: countData, error: countError } = await supabase
+              .rpc('get_contacts_without_cities_count');
+              
+            if (countError) throw countError;
+            
+            // Set the data and count directly
+            setContacts(missingCitiesData || []);
+            setTotalCount(countData[0]?.count || 0);
+            setFilteredCount(countData[0]?.count || 0);
+            
+            // Return early since we've handled everything in this case
+            return;
+            
           default:
             // Default sorting for all other cases
             query = query.order('last_modified', { ascending: false });
@@ -997,6 +1022,10 @@ const RecentContactsList = forwardRef(({
               .not('keep_in_touch_frequency', 'is', null)
               .not('keep_in_touch_frequency', 'eq', 'Do not keep');
             break;
+            
+          case 'missingCities':
+            // Count is handled in the main query case
+            return;
             
           // For missingInfos, we'll handle the count after fetching all data
         }
@@ -2308,7 +2337,7 @@ const RecentContactsList = forwardRef(({
           {activeFilter === 'keepInTouch' && 'Showing contacts sorted by keep-in-touch due date'}
           {activeFilter === 'missingKeepInTouch' && 'Showing contacts with no keep-in-touch frequency set'}
           {activeFilter === 'missingScore' && 'Showing contacts with no score set'}
-          {activeFilter === 'missingInfos' && 'Showing contacts with missing information'}
+          {activeFilter === 'missingCities' && 'Showing contacts with no city associations'}
         </div>
       )}
       

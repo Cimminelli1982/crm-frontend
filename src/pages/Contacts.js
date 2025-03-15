@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { supabase } from '../lib/supabaseClient';
 import RecentContactsList from '../components/contacts/RecentContactsList';
-import { FiFilter, FiSearch, FiPlus, FiChevronDown, FiClock, FiMessageSquare, FiAlertCircle, FiRefreshCw, FiStar } from 'react-icons/fi';
+import { FiFilter, FiSearch, FiPlus, FiChevronDown, FiClock, FiMessageSquare, FiAlertCircle, FiRefreshCw, FiStar, FiMapPin } from 'react-icons/fi';
 
 const PageContainer = styled.div`
   background-color: white;
@@ -344,6 +344,7 @@ const Contacts = () => {
       case 'lastInteraction': return "Recent Interactions";
       case 'missingKeepInTouch': return "Missing Keep in Touch";
       case 'missingScore': return "Missing Score";
+      case 'missingCities': return "Missing Cities";
       default: return "All Contacts";
     }
   };
@@ -431,6 +432,13 @@ const Contacts = () => {
           >
             <FiStar />
             Missing Score
+          </FilterButton>
+          <FilterButton 
+            active={activeFilter === 'missingCities'} 
+            onClick={() => handleFilterButtonClick('missingCities')}
+          >
+            <FiMapPin />
+            Missing Cities
           </FilterButton>
         </FilterButtonsContainer>
       </PageHeader>
