@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import Modal from 'react-modal';
 import styled from 'styled-components';
-import { FiX, FiSave, FiPlus, FiSearch, FiX as FiXCircle, FiTag, FiLink, FiTrash2, FiArrowLeft, FiCheckCircle } from 'react-icons/fi';
+import { FiX, FiSave, FiPlus, FiSearch, FiX as FiXCircle, FiTag, FiLink, FiTrash2, FiArrowLeft, FiCheckCircle, FiEdit, FiUser } from 'react-icons/fi';
 import { supabase } from '../../lib/supabaseClient';
 import TagsModal from './TagsModal';
 import CompanyModal from './CompanyModal';
 import CityModal from './CityModal';
 import { toast } from 'react-hot-toast';
 import { format } from 'date-fns';
+import NewIntroductionModal from './NewIntroductionModal';
 
 // Define Contact Categories with the specified options
 const ContactCategories = [
@@ -507,27 +508,23 @@ const getCompanyColor = () => {
 
 // Update the styling for buttons
 const ActionButton = styled.button`
+  background: none;
+  border: none;
+  padding: 4px;
+  margin: 0 4px;
+  cursor: pointer;
+  color: #6B7280;
+  transition: all 0.2s;
+
+  &:hover {
+    color: ${props => props.delete ? '#EF4444' : '#3B82F6'};
+  }
+`;
+
+const ActionButtonsContainer = styled.div`
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  background-color: transparent;
-  border: none;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #374151;
-  cursor: pointer;
-  transition: all 0.2s;
-  
-  &:hover {
-    background-color: #f9fafb;
-  }
-  
-  svg {
-    color: #6b7280;
-    font-size: 14px;
-  }
+  justify-content: flex-start;
 `;
 
 // Add a styled component for the merge tab
@@ -919,6 +916,38 @@ const TruncatedText = styled.div`
   }
 `;
 
+const IntroAddButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  background-color: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: #1d4ed8;
+  }
+
+  svg {
+    margin-right: 8px;
+    width: 16px;
+    height: 16px;
+  }
+`;
+
+const HeaderContainer = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+`;
+
 const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
   const [activeTab, setActiveTab] = useState('about');
   const [formData, setFormData] = useState({
@@ -969,6 +998,21 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
   const [introductions, setIntroductions] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [loadingIntros, setLoadingIntros] = useState(false);
+  const [showNewIntroModal, setShowNewIntroModal] = useState(false);
+  const [editingIntro, setEditingIntro] = useState(null);
+  
+  // State for related tab nested contact modal
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+  const [selectedContact, setSelectedContact] = useState(null);
+  
+  // State for related tab sections
+  const [relatedSectionsOpen, setRelatedSectionsOpen] = useState({
+    companies: true,
+    tags: true,
+    category: true
+  });
+  const [relatedContactsMap, setRelatedContactsMap] = useState({});
+  const [tagMap, setTagMap] = useState({});
   
   useEffect(() => {
     if (contact) {
@@ -1946,8 +1990,257 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
     fetchContactCities(); // Refresh cities after modal closes
   };
   
+  // Add styled components for the Related tab
+  const CollapsibleSection = styled.div`
+    margin-bottom: 24px;
+    width: 90%;
+    margin: 0 auto;
+  `;
+
+  const SectionHeader = styled.div`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background-color: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    cursor: pointer;
+    margin-bottom: ${props => props.isOpen ? '0' : '16px'};
+    border-bottom-left-radius: ${props => props.isOpen ? '0' : '8px'};
+    border-bottom-right-radius: ${props => props.isOpen ? '0' : '8px'};
+    transition: background-color 0.2s;
+
+    &:hover {
+      background-color: #f3f4f6;
+    }
+
+    h3 {
+      font-size: 1.125rem;
+      font-weight: 600;
+      color: #111827;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+  `;
+
+  const SectionContent = styled.div`
+    display: ${props => props.isOpen ? 'block' : 'none'};
+    background-color: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-top: none;
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+  `;
+
+  const ContactItem = styled.div`
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    border-bottom: 1px solid #f3f4f6;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    border-radius: 4px;
+
+    &:hover {
+      background-color: #f3f4f6;
+    }
+
+    &:last-child {
+      border-bottom: none;
+    }
+  `;
+
+  const ContactName = styled.div`
+    font-weight: 500;
+    color: #111827;
+  `;
+
+  const ContactDetails = styled.div`
+    font-size: 0.875rem;
+    color: #6b7280;
+  `;
+
+  const CategoryBadge = styled.span`
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    background-color: #e0f2fe;
+    color: #0369a1;
+    margin-left: 8px;
+  `;
+
+  const TagGroup = styled.div`
+    margin-bottom: 16px;
+    padding: 12px;
+    background-color: #fff;
+    border-radius: 6px;
+    border: 1px solid #e5e7eb;
+  `;
+
+  const TagHeader = styled.div`
+    font-weight: 500;
+    color: #111827;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #f3f4f6;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    .tag-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 16px;
+      font-size: 0.75rem;
+      background-color: ${props => props.bgColor || '#f3f4f6'};
+      color: ${props => props.textColor || '#374151'};
+    }
+  `;
+
+  const NoContactsMessage = styled.div`
+    color: #6b7280;
+    font-style: italic;
+    padding: 16px;
+    text-align: center;
+  `;
+
+  // Fetch tag details and group contacts by tag
+  const fetchContactTagsWithDetails = async () => {
+    if (!contact || !contact.id || !relatedTagContacts.length) return;
+    
+    try {
+      // First get this contact's tags
+      const { data: contactTagData, error: tagsError } = await supabase
+        .from('contact_tags')
+        .select(`
+          tag_id,
+          tags:tag_id(id, name)
+        `)
+        .eq('contact_id', contact.id);
+        
+      if (tagsError) throw tagsError;
+      
+      if (!contactTagData || contactTagData.length === 0) {
+        return;
+      }
+
+      // Create a mapping of tag id to tag details
+      const tagDetails = {};
+      contactTagData.forEach(item => {
+        tagDetails[item.tag_id] = {
+          id: item.tag_id,
+          name: item.tags.name
+        };
+      });
+
+      // For each related contact, fetch their tags to see which ones match
+      const contactWithTagsMap = {};
+      const tagContactsMap = {};
+
+      // Initialize tag contacts map
+      Object.keys(tagDetails).forEach(tagId => {
+        tagContactsMap[tagId] = [];
+      });
+
+      // For each related contact, find which tags they have in common with the main contact
+      const tagPromises = relatedTagContacts.map(async (relContact) => {
+        const { data: contactTags, error } = await supabase
+          .from('contact_tags')
+          .select(`
+            tag_id,
+            tags:tag_id(id, name)
+          `)
+          .eq('contact_id', relContact.id)
+          .in('tag_id', Object.keys(tagDetails));
+
+        if (error) throw error;
+
+        // Group contacts by tag
+        contactTags.forEach(tagItem => {
+          if (tagContactsMap[tagItem.tag_id]) {
+            tagContactsMap[tagItem.tag_id].push(relContact);
+          }
+        });
+
+        // Track which tags each contact has
+        contactWithTagsMap[relContact.id] = contactTags.map(tag => tag.tag_id);
+      });
+
+      await Promise.all(tagPromises);
+
+      setTagMap(tagDetails);
+      setRelatedContactsMap(tagContactsMap);
+    } catch (error) {
+      console.error('Error fetching tag details:', error);
+    }
+  };
+
+  // Handle opening a contact in the modal
+  const handleRelatedContactClick = async (contactId) => {
+    try {
+      const { data: contactData, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('id', contactId)
+        .single();
+
+      if (error) throw error;
+      
+      // Open the contact modal for this contact
+      setSelectedContact(contactData);
+      setIsContactModalOpen(true);
+    } catch (error) {
+      console.error('Error fetching contact details:', error);
+      toast.error('Error fetching contact details');
+    }
+  };
+  
+  // Toggle a collapsible section in the related tab
+  const toggleRelatedSection = (section) => {
+    setRelatedSectionsOpen(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+  
+  // Effect to fetch and process tag contacts when related contacts change
+  useEffect(() => {
+    if (contact && contact.id && relatedTagContacts.length > 0) {
+      fetchContactTagsWithDetails();
+    }
+  }, [relatedTagContacts]);
+
   // Add the renderRelatedTab function for the Related tab
   const renderRelatedTab = () => {
+
+    const renderContactItem = (contact) => (
+      <ContactItem 
+        key={contact.id} 
+        onClick={() => handleRelatedContactClick(contact.id)}
+      >
+        <div>
+          <ContactName>
+            {contact.first_name} {contact.last_name}
+            {contact.contact_category && (
+              <CategoryBadge>{contact.contact_category}</CategoryBadge>
+            )}
+          </ContactName>
+          <ContactDetails>
+            {contact.job_title && <span>{contact.job_title} • </span>}
+            {contact.email || 'No email'}
+          </ContactDetails>
+        </div>
+      </ContactItem>
+    );
+    
     if (isLoadingRelated) {
       return (
         <div style={{ textAlign: 'center', padding: '40px 0' }}>
@@ -1955,131 +2248,96 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
         </div>
       );
     }
-    
-    // Styling for the related tab sections
-    const sectionStyle = {
-      marginBottom: '32px',
-      width: '90%',
-      margin: '0 auto'
-    };
-    
-    const sectionTitleStyle = {
-      fontSize: '1.125rem',
-      fontWeight: '600',
-      color: '#111827',
-      marginBottom: '16px',
-      paddingBottom: '8px',
-      borderBottom: '1px solid #f3f4f6'
-    };
-    
-    const contactListStyle = {
-      backgroundColor: '#f9fafb',
-      borderRadius: '8px',
-      padding: '16px',
-      border: '1px solid #e5e7eb'
-    };
-    
-    const noContactsStyle = {
-      color: '#6b7280',
-      fontStyle: 'italic',
-      padding: '16px',
-      textAlign: 'center'
-    };
-    
-    const contactItemStyle = {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      padding: '12px',
-      borderBottom: '1px solid #f3f4f6',
-      cursor: 'pointer',
-      transition: 'background-color 0.2s',
-      borderRadius: '4px'
-    };
-    
-    const contactNameStyle = {
-      fontWeight: '500',
-      color: '#111827'
-    };
-    
-    const contactDetailsStyle = {
-      fontSize: '0.875rem',
-      color: '#6b7280'
-    };
-    
-    const categoryBadgeStyle = {
-      display: 'inline-block',
-      padding: '2px 6px',
-      borderRadius: '4px',
-      fontSize: '0.75rem',
-      fontWeight: '500',
-      backgroundColor: '#e0f2fe',
-      color: '#0369a1',
-      marginLeft: '8px'
-    };
-    
-    const renderContactItem = (contact) => (
-      <div 
-        key={contact.id} 
-        style={contactItemStyle}
-        onClick={() => window.open(`/contacts/${contact.id}`, '_blank')}
-        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-      >
-        <div>
-          <div style={contactNameStyle}>
-            {contact.first_name} {contact.last_name}
-            {contact.contact_category && (
-              <span style={categoryBadgeStyle}>{contact.contact_category}</span>
-            )}
-          </div>
-          <div style={contactDetailsStyle}>
-            {contact.job_title && <span>{contact.job_title} • </span>}
-            {contact.email || 'No email'}
-          </div>
-        </div>
-      </div>
-    );
-    
+
     return (
       <div>
         {/* Related Contacts by Company */}
-        <div style={sectionStyle}>
-          <h3 style={sectionTitleStyle}>Related by Company ({relatedCompanyContacts.length})</h3>
-          <div style={contactListStyle}>
+        <CollapsibleSection>
+          <SectionHeader 
+            isOpen={relatedSectionsOpen.companies} 
+            onClick={() => toggleRelatedSection('companies')}
+          >
+            <h3>
+              <FiLink size={16} />
+              Related by Company ({relatedCompanyContacts.length})
+            </h3>
+            {relatedSectionsOpen.companies ? <FiX size={16} /> : <FiPlus size={16} />}
+          </SectionHeader>
+          <SectionContent isOpen={relatedSectionsOpen.companies}>
             {relatedCompanyContacts.length > 0 ? (
               relatedCompanyContacts.map(contact => renderContactItem(contact))
             ) : (
-              <div style={noContactsStyle}>No contacts with matching companies found</div>
+              <NoContactsMessage>No contacts with matching companies found</NoContactsMessage>
             )}
-          </div>
-        </div>
+          </SectionContent>
+        </CollapsibleSection>
         
         {/* Related Contacts by Tag */}
-        <div style={sectionStyle}>
-          <h3 style={sectionTitleStyle}>Related by Tags ({relatedTagContacts.length})</h3>
-          <div style={contactListStyle}>
+        <CollapsibleSection>
+          <SectionHeader 
+            isOpen={relatedSectionsOpen.tags} 
+            onClick={() => toggleRelatedSection('tags')}
+          >
+            <h3>
+              <FiTag size={16} />
+              Related by Tags ({relatedTagContacts.length})
+            </h3>
+            {relatedSectionsOpen.tags ? <FiX size={16} /> : <FiPlus size={16} />}
+          </SectionHeader>
+          <SectionContent isOpen={relatedSectionsOpen.tags}>
             {relatedTagContacts.length > 0 ? (
-              relatedTagContacts.map(contact => renderContactItem(contact))
+              Object.entries(relatedContactsMap).length > 0 ? (
+                // Group contacts by tag
+                Object.entries(relatedContactsMap).map(([tagId, contacts]) => {
+                  if (!contacts || contacts.length === 0) return null;
+                  
+                  const tag = tagMap[tagId];
+                  if (!tag) return null;
+                  
+                  const { bg, text } = getTagColor(tag.name);
+                  
+                  return (
+                    <TagGroup key={tagId}>
+                      <TagHeader bgColor={bg} textColor={text}>
+                        <span className="tag-badge">{tag.name}</span>
+                        <span>({contacts.length} contacts)</span>
+                      </TagHeader>
+                      {contacts.map(contact => renderContactItem(contact))}
+                    </TagGroup>
+                  );
+                })
+              ) : (
+                // Fallback to flat list if grouping fails
+                relatedTagContacts.map(contact => renderContactItem(contact))
+              )
             ) : (
-              <div style={noContactsStyle}>No contacts with matching tags found</div>
+              <NoContactsMessage>No contacts with matching tags found</NoContactsMessage>
             )}
-          </div>
-        </div>
+          </SectionContent>
+        </CollapsibleSection>
         
         {/* Related Contacts by Category and City */}
-        <div style={sectionStyle}>
-          <h3 style={sectionTitleStyle}>
-            Related by Category ({contact?.contact_category || 'None'}) and City ({relatedCategoryContacts.length})
-          </h3>
-          <div style={contactListStyle}>
+        <CollapsibleSection>
+          <SectionHeader 
+            isOpen={relatedSectionsOpen.category} 
+            onClick={() => toggleRelatedSection('category')}
+          >
+            <h3>
+              <FiUser size={16} />
+              Related by Category and City ({relatedCategoryContacts.length})
+            </h3>
+            {relatedSectionsOpen.category ? <FiX size={16} /> : <FiPlus size={16} />}
+          </SectionHeader>
+          <SectionContent isOpen={relatedSectionsOpen.category}>
             {relatedCategoryContacts.length > 0 ? (
               relatedCategoryContacts.map(contact => renderContactItem(contact))
             ) : (
-              <div style={noContactsStyle}>No contacts with matching category and city found</div>
+              <NoContactsMessage>
+                No contacts with matching category ({contact?.contact_category || 'None'}) and city found
+              </NoContactsMessage>
             )}
-          </div>
-        </div>
+          </SectionContent>
+        </CollapsibleSection>
       </div>
     );
   };
@@ -2820,6 +3078,32 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
 
   // Add the renderIntrosTab function
   const renderIntrosTab = () => {
+    const handleEdit = (intro) => {
+      setEditingIntro(intro);
+      setShowNewIntroModal(true);
+    };
+
+    const handleDelete = async (introId) => {
+      if (!window.confirm('Are you sure you want to delete this introduction?')) {
+        return;
+      }
+
+      try {
+        const { error } = await supabase
+          .from('contact_introductions')
+          .delete()
+          .eq('intro_id', introId);
+
+        if (error) throw error;
+
+        toast.success('Introduction deleted successfully');
+        fetchIntroductions();
+      } catch (error) {
+        console.error('Error deleting introduction:', error);
+        toast.error('Failed to delete introduction');
+      }
+    };
+
     if (loadingIntros) {
       return (
         <div style={{ textAlign: 'center', padding: '40px 0' }}>
@@ -2828,47 +3112,68 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
       );
     }
 
-    if (introductions.length === 0) {
-      return (
-        <div style={{ textAlign: 'center', padding: '40px 0', color: '#6b7280' }}>
-          <p>No introductions found for this contact.</p>
-        </div>
-      );
-    }
-
     return (
       <div style={{ padding: '24px' }}>
-        <h3 style={{ marginBottom: '16px', fontSize: '1.125rem', fontWeight: '600' }}>
-          Introductions History
-        </h3>
-        <IntroductionsTable>
-          <TableHead>
-            <tr>
-              <th style={{ width: '15%' }}>Date</th>
-              <th style={{ width: '30%' }}>Introduced To</th>
-              <th style={{ width: '20%' }}>Rationale</th>
-              <th style={{ width: '35%' }}>Note</th>
-            </tr>
-          </TableHead>
-          <TableBody>
-            {introductions.map(intro => (
-              <tr key={intro.intro_id}>
-                <td>{format(new Date(intro.intro_date), 'dd/MM/yyyy')}</td>
-                <td>
-                  <ContactChip>
-                    {getContactNames(intro.contacts_introduced)}
-                  </ContactChip>
-                </td>
-                <td>
-                  <RationaleBadge type={intro.introduction_rationale}>
-                    {intro.introduction_rationale}
-                  </RationaleBadge>
-                </td>
-                <td>{renderNote(intro.introduction_note)}</td>
+        <HeaderContainer>
+          <h3 style={{ fontSize: '1.125rem', fontWeight: '600' }}>
+            Introductions History
+          </h3>
+          <IntroAddButton onClick={() => setShowNewIntroModal(true)}>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Introduction
+          </IntroAddButton>
+        </HeaderContainer>
+        {introductions.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px 0', color: '#6b7280' }}>
+            <p>No introductions found for this contact.</p>
+          </div>
+        ) : (
+          <IntroductionsTable>
+            <TableHead>
+              <tr>
+                <th style={{ width: '15%' }}>Date</th>
+                <th style={{ width: '25%' }}>Introduced To</th>
+                <th style={{ width: '20%' }}>Rationale</th>
+                <th style={{ width: '30%' }}>Note</th>
+                <th style={{ width: '10%' }}>Actions</th>
               </tr>
-            ))}
-          </TableBody>
-        </IntroductionsTable>
+            </TableHead>
+            <TableBody>
+              {introductions.map(intro => (
+                <tr key={intro.intro_id}>
+                  <td>{format(new Date(intro.intro_date), 'dd/MM/yyyy')}</td>
+                  <td>
+                    <ContactChip>
+                      {getContactNames(intro.contacts_introduced)}
+                    </ContactChip>
+                  </td>
+                  <td>
+                    <RationaleBadge type={intro.introduction_rationale}>
+                      {intro.introduction_rationale}
+                    </RationaleBadge>
+                  </td>
+                  <td>{renderNote(intro.introduction_note)}</td>
+                  <td>
+                    <ActionButtonsContainer>
+                      <ActionButton onClick={() => handleEdit(intro)} title="Edit">
+                        <FiEdit size={16} />
+                      </ActionButton>
+                      <ActionButton 
+                        onClick={() => handleDelete(intro.intro_id)} 
+                        delete 
+                        title="Delete"
+                      >
+                        <FiTrash2 size={16} />
+                      </ActionButton>
+                    </ActionButtonsContainer>
+                  </td>
+                </tr>
+              ))}
+            </TableBody>
+          </IntroductionsTable>
+        )}
       </div>
     );
   };
@@ -2995,6 +3300,18 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
         </ModalContainer>
       </Modal>
       
+      {/* Add NewIntroductionModal */}
+      <NewIntroductionModal
+        isOpen={showNewIntroModal}
+        onRequestClose={() => {
+          setShowNewIntroModal(false);
+          setEditingIntro(null);
+          fetchIntroductions(); // Refresh the introductions after adding/editing
+        }}
+        preSelectedContact={contact}
+        editingIntro={editingIntro}
+      />
+      
       {/* External modals */}
       {showTagsModal && (
         <TagsModal 
@@ -3017,6 +3334,18 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
           isOpen={showCityModal}
           onRequestClose={handleCloseCityModal}
           contact={contact}
+        />
+      )}
+      
+      {/* Nested Contact Modal for Related Tab */}
+      {isContactModalOpen && selectedContact && (
+        <ContactsModal
+          isOpen={isContactModalOpen}
+          onRequestClose={() => {
+            setIsContactModalOpen(false);
+            setSelectedContact(null);
+          }}
+          contact={selectedContact}
         />
       )}
     </>
