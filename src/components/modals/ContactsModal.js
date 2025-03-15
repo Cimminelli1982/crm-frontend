@@ -1209,6 +1209,32 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
       if (duplicate) {
         console.log('Found duplicate to delete:', duplicate);
         
+        // First delete meetings_contacts associations - this is causing the constraint error
+        console.log('Checking and deleting meeting associations...');
+        const { error: meetingsCheckError, data: meetingsData } = await supabase
+          .from('meetings_contacts')
+          .select('*')
+          .eq('contact_id', duplicateId);
+          
+        if (meetingsCheckError) {
+          console.error('Error checking meeting associations:', meetingsCheckError);
+        } else if (meetingsData && meetingsData.length > 0) {
+          console.log(`Found ${meetingsData.length} meeting associations to delete`);
+          const { error: meetingsDeleteError } = await supabase
+            .from('meetings_contacts')
+            .delete()
+            .eq('contact_id', duplicateId);
+            
+          if (meetingsDeleteError) {
+            console.error('Error deleting meeting associations:', meetingsDeleteError);
+            throw new Error('Could not delete meeting associations: ' + meetingsDeleteError.message);
+          } else {
+            console.log('Successfully deleted meeting associations');
+          }
+        } else {
+          console.log('No meeting associations found');
+        }
+        
         // Get cities first as they seem to be causing issues
         if (duplicate.cities && duplicate.cities.length > 0) {
           console.log('Deleting cities associations...');
@@ -1256,6 +1282,58 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
               console.error(`Error deleting company ${company.id} association:`, error);
             }
           }
+        }
+        
+        // Check for any other potential relationships that might cause constraints
+        // This is a more comprehensive approach to handle any other tables with relationships
+        console.log('Checking for any other potential relationships...');
+        
+        // Check for contact_interactions
+        const { data: interactionsData, error: interactionsError } = await supabase
+          .from('contact_interactions')
+          .select('*')
+          .eq('contact_id', duplicateId);
+          
+        if (interactionsError) {
+          console.error('Error checking interactions:', interactionsError);
+        } else if (interactionsData && interactionsData.length > 0) {
+          console.log(`Found ${interactionsData.length} interaction records to delete`);
+          const { error: deleteInteractionsError } = await supabase
+            .from('contact_interactions')
+            .delete()
+            .eq('contact_id', duplicateId);
+            
+          if (deleteInteractionsError) {
+            console.error('Error deleting interactions:', deleteInteractionsError);
+          } else {
+            console.log('Successfully deleted interaction records');
+          }
+        } else {
+          console.log('No interaction records found');
+        }
+        
+        // Check for keep_in_touch records
+        const { data: kitData, error: kitError } = await supabase
+          .from('keep_in_touch')
+          .select('*')
+          .eq('contact_id', duplicateId);
+          
+        if (kitError) {
+          console.error('Error checking keep_in_touch records:', kitError);
+        } else if (kitData && kitData.length > 0) {
+          console.log(`Found ${kitData.length} keep_in_touch records to delete`);
+          const { error: deleteKitError } = await supabase
+            .from('keep_in_touch')
+            .delete()
+            .eq('contact_id', duplicateId);
+            
+          if (deleteKitError) {
+            console.error('Error deleting keep_in_touch records:', deleteKitError);
+          } else {
+            console.log('Successfully deleted keep_in_touch records');
+          }
+        } else {
+          console.log('No keep_in_touch records found');
         }
       }
       
@@ -1316,7 +1394,14 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
       let errorMessage = 'Failed to delete contact.';
       
       if (error.message && error.message.includes('foreign key constraint')) {
-        errorMessage = 'This contact has relationships that prevented deletion. Please try again.';
+        // Check if it's the meetings constraint
+        if (error.message.includes('meetings_contacts_contact_id_fkey')) {
+          errorMessage = 'This contact is linked to meetings that prevented deletion. Please try again.';
+        } else if (error.message.includes('contact_cities_contact_id_fkey')) {
+          errorMessage = 'This contact has city associations that prevented deletion. Please try again.';
+        } else {
+          errorMessage = 'This contact has relationships that prevented deletion. Please try again.';
+        }
       }
       
       toast.error(errorMessage, { duration: 5000 });
