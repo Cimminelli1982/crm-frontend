@@ -856,6 +856,12 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
   const [mainContact, setMainContact] = useState(null);
   const [isSwapping, setIsSwapping] = useState(false);
   
+  // State for related contacts in the Related tab
+  const [relatedCompanyContacts, setRelatedCompanyContacts] = useState([]);
+  const [relatedTagContacts, setRelatedTagContacts] = useState([]);
+  const [relatedCategoryContacts, setRelatedCategoryContacts] = useState([]);
+  const [isLoadingRelated, setIsLoadingRelated] = useState(false);
+  
   const [showCityModal, setShowCityModal] = useState(false);
   const [hasDuplicates, setHasDuplicates] = useState(false);
   
@@ -963,7 +969,229 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
     if (activeTab === 'merge' && contact) {
       fetchDuplicateContacts();
     }
+    
+    // Fetch related contacts when the related tab is active
+    if (activeTab === 'related' && contact) {
+      fetchRelatedContacts();
+    }
   }, [activeTab, contact]);
+  
+  // Function to fetch all related contacts
+  const fetchRelatedContacts = async () => {
+    if (!contact) return;
+    
+    setIsLoadingRelated(true);
+    
+    try {
+      // Get contact's companies, tags, and cities for comparison
+      await Promise.all([
+        fetchRelatedCompanyContacts(),
+        fetchRelatedTagContacts(),
+        fetchRelatedCategoryContacts()
+      ]);
+    } catch (error) {
+      console.error('Error fetching related contacts:', error);
+      toast.error('Failed to load related contacts');
+    } finally {
+      setIsLoadingRelated(false);
+    }
+  };
+  
+  // Function to fetch contacts with matching companies
+  const fetchRelatedCompanyContacts = async () => {
+    if (!contact || !contact.id) return;
+    
+    try {
+      // First get this contact's companies
+      const { data: contactCompanies, error: companiesError } = await supabase
+        .from('contact_companies')
+        .select('company_id')
+        .eq('contact_id', contact.id);
+        
+      if (companiesError) throw companiesError;
+      
+      if (!contactCompanies || contactCompanies.length === 0) {
+        console.log('No companies found for this contact');
+        setRelatedCompanyContacts([]);
+        return;
+      }
+      
+      // Get company IDs
+      const companyIds = contactCompanies.map(cc => cc.company_id);
+      
+      // Find other contacts with at least one of these companies
+      const { data: contactsWithCompanies, error: contactsError } = await supabase
+        .from('contact_companies')
+        .select(`
+          contact_id,
+          contacts:contact_id(
+            id, first_name, last_name, email, mobile, contact_category, job_title
+          )
+        `)
+        .in('company_id', companyIds)
+        .neq('contact_id', contact.id);
+        
+      if (contactsError) throw contactsError;
+      
+      if (!contactsWithCompanies || contactsWithCompanies.length === 0) {
+        console.log('No contacts with matching companies found');
+        setRelatedCompanyContacts([]);
+        return;
+      }
+      
+      // Extract contacts from the results and remove duplicates
+      const contactMap = new Map();
+      contactsWithCompanies.forEach(item => {
+        if (item.contacts) {
+          contactMap.set(item.contacts.id, item.contacts);
+        }
+      });
+      
+      // Convert map to array
+      const relatedContacts = Array.from(contactMap.values());
+      setRelatedCompanyContacts(relatedContacts);
+      console.log(`Found ${relatedContacts.length} contacts with matching companies`);
+      
+    } catch (error) {
+      console.error('Error fetching related company contacts:', error);
+      setRelatedCompanyContacts([]);
+    }
+  };
+  
+  // Function to fetch contacts with matching tags
+  const fetchRelatedTagContacts = async () => {
+    if (!contact || !contact.id) return;
+    
+    try {
+      // First get this contact's tags
+      const { data: contactTags, error: tagsError } = await supabase
+        .from('contact_tags')
+        .select('tag_id')
+        .eq('contact_id', contact.id);
+        
+      if (tagsError) throw tagsError;
+      
+      if (!contactTags || contactTags.length === 0) {
+        console.log('No tags found for this contact');
+        setRelatedTagContacts([]);
+        return;
+      }
+      
+      // Get tag IDs
+      const tagIds = contactTags.map(ct => ct.tag_id);
+      
+      // Find other contacts with at least one of these tags
+      const { data: contactsWithTags, error: contactsError } = await supabase
+        .from('contact_tags')
+        .select(`
+          contact_id,
+          contacts:contact_id(
+            id, first_name, last_name, email, mobile, contact_category, job_title
+          )
+        `)
+        .in('tag_id', tagIds)
+        .neq('contact_id', contact.id);
+        
+      if (contactsError) throw contactsError;
+      
+      if (!contactsWithTags || contactsWithTags.length === 0) {
+        console.log('No contacts with matching tags found');
+        setRelatedTagContacts([]);
+        return;
+      }
+      
+      // Extract contacts from the results and remove duplicates
+      const contactMap = new Map();
+      contactsWithTags.forEach(item => {
+        if (item.contacts) {
+          contactMap.set(item.contacts.id, item.contacts);
+        }
+      });
+      
+      // Convert map to array
+      const relatedContacts = Array.from(contactMap.values());
+      setRelatedTagContacts(relatedContacts);
+      console.log(`Found ${relatedContacts.length} contacts with matching tags`);
+      
+    } catch (error) {
+      console.error('Error fetching related tag contacts:', error);
+      setRelatedTagContacts([]);
+    }
+  };
+  
+  // Function to fetch contacts with matching category and city
+  const fetchRelatedCategoryContacts = async () => {
+    if (!contact || !contact.id || !contact.contact_category) return;
+    
+    try {
+      // First get this contact's cities
+      const { data: contactCitiesData, error: citiesError } = await supabase
+        .from('contact_cities')
+        .select('city_id')
+        .eq('contact_id', contact.id);
+        
+      if (citiesError) throw citiesError;
+      
+      if (!contactCitiesData || contactCitiesData.length === 0) {
+        console.log('No cities found for this contact');
+        setRelatedCategoryContacts([]);
+        return;
+      }
+      
+      // Get city IDs
+      const cityIds = contactCitiesData.map(cc => cc.city_id);
+      
+      // Find contacts with the same category and at least one matching city
+      const { data: categoryCityContacts, error: contactsError } = await supabase
+        .from('contacts')
+        .select(`
+          id, first_name, last_name, email, mobile, contact_category, job_title
+        `)
+        .eq('contact_category', contact.contact_category)
+        .neq('id', contact.id);
+        
+      if (contactsError) throw contactsError;
+      
+      if (!categoryCityContacts || categoryCityContacts.length === 0) {
+        console.log('No contacts with matching category found');
+        setRelatedCategoryContacts([]);
+        return;
+      }
+      
+      // Now filter these contacts to only include those with matching cities
+      const contactIds = categoryCityContacts.map(c => c.id);
+      
+      // Get city associations for these contacts
+      const { data: citiesAssociations, error: assocError } = await supabase
+        .from('contact_cities')
+        .select('contact_id, city_id')
+        .in('contact_id', contactIds)
+        .in('city_id', cityIds);
+        
+      if (assocError) throw assocError;
+      
+      if (!citiesAssociations || citiesAssociations.length === 0) {
+        console.log('No contacts with matching category and city found');
+        setRelatedCategoryContacts([]);
+        return;
+      }
+      
+      // Get the contact IDs that have matching cities
+      const matchingContactIds = citiesAssociations.map(assoc => assoc.contact_id);
+      
+      // Filter the contacts to only include those with matching cities
+      const matchingContacts = categoryCityContacts.filter(c => 
+        matchingContactIds.includes(c.id)
+      );
+      
+      setRelatedCategoryContacts(matchingContacts);
+      console.log(`Found ${matchingContacts.length} contacts with matching category and city`);
+      
+    } catch (error) {
+      console.error('Error fetching related category contacts:', error);
+      setRelatedCategoryContacts([]);
+    }
+  };
   
   // Add effect to check for duplicates
   useEffect(() => {
@@ -1611,6 +1839,144 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
   const handleCloseCityModal = () => {
     setShowCityModal(false);
     fetchContactCities(); // Refresh cities after modal closes
+  };
+  
+  // Add the renderRelatedTab function for the Related tab
+  const renderRelatedTab = () => {
+    if (isLoadingRelated) {
+      return (
+        <div style={{ textAlign: 'center', padding: '40px 0' }}>
+          <p>Loading related contacts...</p>
+        </div>
+      );
+    }
+    
+    // Styling for the related tab sections
+    const sectionStyle = {
+      marginBottom: '32px',
+      width: '90%',
+      margin: '0 auto'
+    };
+    
+    const sectionTitleStyle = {
+      fontSize: '1.125rem',
+      fontWeight: '600',
+      color: '#111827',
+      marginBottom: '16px',
+      paddingBottom: '8px',
+      borderBottom: '1px solid #f3f4f6'
+    };
+    
+    const contactListStyle = {
+      backgroundColor: '#f9fafb',
+      borderRadius: '8px',
+      padding: '16px',
+      border: '1px solid #e5e7eb'
+    };
+    
+    const noContactsStyle = {
+      color: '#6b7280',
+      fontStyle: 'italic',
+      padding: '16px',
+      textAlign: 'center'
+    };
+    
+    const contactItemStyle = {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: '12px',
+      borderBottom: '1px solid #f3f4f6',
+      cursor: 'pointer',
+      transition: 'background-color 0.2s',
+      borderRadius: '4px'
+    };
+    
+    const contactNameStyle = {
+      fontWeight: '500',
+      color: '#111827'
+    };
+    
+    const contactDetailsStyle = {
+      fontSize: '0.875rem',
+      color: '#6b7280'
+    };
+    
+    const categoryBadgeStyle = {
+      display: 'inline-block',
+      padding: '2px 6px',
+      borderRadius: '4px',
+      fontSize: '0.75rem',
+      fontWeight: '500',
+      backgroundColor: '#e0f2fe',
+      color: '#0369a1',
+      marginLeft: '8px'
+    };
+    
+    const renderContactItem = (contact) => (
+      <div 
+        key={contact.id} 
+        style={contactItemStyle}
+        onClick={() => window.open(`/contacts/${contact.id}`, '_blank')}
+        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
+        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+      >
+        <div>
+          <div style={contactNameStyle}>
+            {contact.first_name} {contact.last_name}
+            {contact.contact_category && (
+              <span style={categoryBadgeStyle}>{contact.contact_category}</span>
+            )}
+          </div>
+          <div style={contactDetailsStyle}>
+            {contact.job_title && <span>{contact.job_title} • </span>}
+            {contact.email || 'No email'}
+          </div>
+        </div>
+      </div>
+    );
+    
+    return (
+      <div>
+        {/* Related Contacts by Company */}
+        <div style={sectionStyle}>
+          <h3 style={sectionTitleStyle}>Related by Company ({relatedCompanyContacts.length})</h3>
+          <div style={contactListStyle}>
+            {relatedCompanyContacts.length > 0 ? (
+              relatedCompanyContacts.map(contact => renderContactItem(contact))
+            ) : (
+              <div style={noContactsStyle}>No contacts with matching companies found</div>
+            )}
+          </div>
+        </div>
+        
+        {/* Related Contacts by Tag */}
+        <div style={sectionStyle}>
+          <h3 style={sectionTitleStyle}>Related by Tags ({relatedTagContacts.length})</h3>
+          <div style={contactListStyle}>
+            {relatedTagContacts.length > 0 ? (
+              relatedTagContacts.map(contact => renderContactItem(contact))
+            ) : (
+              <div style={noContactsStyle}>No contacts with matching tags found</div>
+            )}
+          </div>
+        </div>
+        
+        {/* Related Contacts by Category and City */}
+        <div style={sectionStyle}>
+          <h3 style={sectionTitleStyle}>
+            Related by Category ({contact?.contact_category || 'None'}) and City ({relatedCategoryContacts.length})
+          </h3>
+          <div style={contactListStyle}>
+            {relatedCategoryContacts.length > 0 ? (
+              relatedCategoryContacts.map(contact => renderContactItem(contact))
+            ) : (
+              <div style={noContactsStyle}>No contacts with matching category and city found</div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   };
   
   // Add back the renderAboutTab function
@@ -2362,6 +2728,12 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
               {hasDuplicates && <NotificationDot />}
             </TabButton>
             <TabButton 
+              active={activeTab === 'related'} 
+              onClick={() => setActiveTab('related')}
+            >
+              Related
+            </TabButton>
+            <TabButton 
               active={activeTab === 'intros'} 
               onClick={() => setActiveTab('intros')}
               disabled
@@ -2387,6 +2759,7 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
           <ContentSection>
             {activeTab === 'about' && renderAboutTab()}
             {activeTab === 'merge' && renderMergeTab()}
+            {activeTab === 'related' && renderRelatedTab()}
             {activeTab === 'intros' && <div>Intros tab content coming soon</div>}
             {activeTab === 'deals' && <div>Deals tab content coming soon</div>}
             {activeTab === 'notes' && <div>Notes tab content coming soon</div>}
