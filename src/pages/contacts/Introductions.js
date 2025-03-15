@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { format } from 'date-fns';
 import Modal from 'react-modal';
 import Select from 'react-select';
+import ContactsModal from '../../components/modals/ContactsModal';
 
 const PageContainer = styled.div`
   padding: 24px;
@@ -176,6 +177,13 @@ const ContactChip = styled.span`
   margin: 2px;
   font-size: 0.75rem;
 
+  .contact-name {
+    cursor: pointer;
+    &:hover {
+      color: #3b82f6;
+    }
+  }
+
   button {
     background: none;
     border: none;
@@ -242,6 +250,8 @@ const Introductions = () => {
   const [loading, setLoading] = useState(true);
   const [editingIntro, setEditingIntro] = useState(null);
   const [showContactSelect, setShowContactSelect] = useState(null);
+  const [selectedContact, setSelectedContact] = useState(null);
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [formData, setFormData] = useState({
     intro_date: format(new Date(), 'yyyy-MM-dd'),
     contacts_introduced: [],
@@ -413,11 +423,34 @@ const Introductions = () => {
       .join(', ');
   };
 
+  const handleContactClick = async (contactId) => {
+    try {
+      const { data: contactData, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('id', contactId)
+        .single();
+
+      if (error) throw error;
+      
+      setSelectedContact(contactData);
+      setIsContactModalOpen(true);
+    } catch (error) {
+      console.error('Error fetching contact details:', error);
+      alert('Error fetching contact details');
+    }
+  };
+
   const renderContactsCell = (intro) => (
     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center' }}>
       {intro.contacts_introduced.map(contactId => (
         <ContactChip key={contactId}>
-          {getContactNames([contactId])}
+          <span 
+            className="contact-name"
+            onClick={() => handleContactClick(contactId)}
+          >
+            {getContactNames([contactId])}
+          </span>
           <button onClick={() => handleRemoveContact(intro.intro_id, contactId)}>×</button>
         </ContactChip>
       ))}
@@ -654,6 +687,19 @@ const Introductions = () => {
           </form>
         </ModalContent>
       </Modal>
+
+      {/* Add ContactsModal */}
+      {isContactModalOpen && selectedContact && (
+        <ContactsModal
+          isOpen={isContactModalOpen}
+          onRequestClose={() => {
+            setIsContactModalOpen(false);
+            setSelectedContact(null);
+            fetchData(); // Refresh data after modal closes
+          }}
+          contact={selectedContact}
+        />
+      )}
     </PageContainer>
   );
 };
