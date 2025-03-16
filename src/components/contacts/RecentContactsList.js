@@ -970,12 +970,40 @@ const RecentContactsList = forwardRef(({
               
             if (countError) throw countError;
             
-            // Set the data and count directly
-            setContacts(missingCitiesData || []);
+            // Get the contact IDs from the filtered data
+            const missingCitiesContactIds = missingCitiesData ? missingCitiesData.map(c => c.id) : [];
+            
+            // Set count information
             setTotalCount(countData[0]?.count || 0);
             setFilteredCount(countData[0]?.count || 0);
             
-            // Return early since we've handled everything in this case
+            // Fetch company data for these contacts
+            if (missingCitiesContactIds.length > 0) {
+              const { data: companiesData } = await supabase
+                .from('contact_companies')
+                .select('contact_id, company_id, companies:company_id(id, name, website)')
+                .in('contact_id', missingCitiesContactIds);
+                
+              // Add company data to contacts
+              const contactsWithCompanies = missingCitiesData.map(contact => {
+                const companies = companiesData ? companiesData.filter(cc => cc.contact_id === contact.id) : [];
+                return {
+                  ...contact,
+                  contact_companies: companies,
+                  companiesList: companies.map(cc => ({
+                    id: cc.company_id,
+                    name: cc.companies?.name || 'Unknown',
+                    website: cc.companies?.website
+                  }))
+                };
+              });
+              
+              setContacts(contactsWithCompanies);
+            } else {
+              setContacts([]);
+            }
+            
+            setIsLoading(false);
             return;
             
           case 'missingCompanies':
@@ -995,12 +1023,13 @@ const RecentContactsList = forwardRef(({
               
             if (companiesCountError) throw companiesCountError;
             
-            // Set the data and count directly
+            // For missingCompanies, we don't need to fetch company data
+            // since these contacts don't have associated companies by definition
             setContacts(missingCompaniesData || []);
             setTotalCount(companiesCountData[0]?.count || 0);
             setFilteredCount(companiesCountData[0]?.count || 0);
             
-            // Return early since we've handled everything in this case
+            setIsLoading(false);
             return;
             
           case 'missingTags':
@@ -1020,8 +1049,10 @@ const RecentContactsList = forwardRef(({
               
             if (tagsCountError) throw tagsCountError;
             
-            // Set the data and count directly
-            setContacts(missingTagsData || []);
+            // Get the contact IDs from the filtered data
+            const missingTagsContactIds = missingTagsData ? missingTagsData.map(c => c.id) : [];
+            
+            // Set count information
             setTotalCount(tagsCountData[0]?.count || 0);
             setFilteredCount(tagsCountData[0]?.count || 0);
             
@@ -1029,7 +1060,33 @@ const RecentContactsList = forwardRef(({
             sortDescription = 'last_interaction desc';
             filterDescription = 'contacts without tags and recent interactions';
             
-            // Return early since we've handled everything in this case
+            // Fetch company data for these contacts
+            if (missingTagsContactIds.length > 0) {
+              const { data: companiesData } = await supabase
+                .from('contact_companies')
+                .select('contact_id, company_id, companies:company_id(id, name, website)')
+                .in('contact_id', missingTagsContactIds);
+                
+              // Add company data to contacts
+              const contactsWithCompanies = missingTagsData.map(contact => {
+                const companies = companiesData ? companiesData.filter(cc => cc.contact_id === contact.id) : [];
+                return {
+                  ...contact,
+                  contact_companies: companies,
+                  companiesList: companies.map(cc => ({
+                    id: cc.company_id,
+                    name: cc.companies?.name || 'Unknown',
+                    website: cc.companies?.website
+                  }))
+                };
+              });
+              
+              setContacts(contactsWithCompanies);
+            } else {
+              setContacts([]);
+            }
+            
+            setIsLoading(false);
             return;
             
           default:
@@ -1081,7 +1138,10 @@ const RecentContactsList = forwardRef(({
       query = query.range(from, to);
       
       // Execute query
-      const { data: contactsData, error: contactsError } = await query;
+      const { data, error: contactsError } = await query;
+      
+      // Assign the query results to contactsData
+      const contactsData = data || [];
       
       if (contactsError) throw contactsError;
       
@@ -2780,6 +2840,21 @@ const RecentContactsList = forwardRef(({
                           : contact.mobile && contact.mobile2 
                             ? 'Choose mobile number' 
                             : 'WhatsApp'}
+                      </span>
+                    </Tooltip>
+
+                    <Tooltip>
+                      <ActionButton 
+                        className="linkedin" 
+                        onClick={(e) => handleLinkedInClick(contact, e)}
+                        style={{ 
+                          color: contact.linkedin ? '#0077B5' : '#9CA3AF'
+                        }}
+                      >
+                        <FaLinkedin />
+                      </ActionButton>
+                      <span className="tooltip-text">
+                        {contact.linkedin ? 'View LinkedIn profile' : 'Search on LinkedIn'}
                       </span>
                     </Tooltip>
                     

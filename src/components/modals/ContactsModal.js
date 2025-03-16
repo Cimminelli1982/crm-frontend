@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import Modal from 'react-modal';
 import styled from 'styled-components';
 import { FiX, FiSave, FiPlus, FiSearch, FiX as FiXCircle, FiTag, FiLink, FiTrash2, FiArrowLeft, FiCheckCircle, FiEdit, FiUser, FiRefreshCw } from 'react-icons/fi';
-import { SiAirtable, SiHubspot, SiApollo } from 'react-icons/si';
+import { SiAirtable, SiHubspot } from 'react-icons/si';
+import { FaDatabase } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import TagsModal from './TagsModal';
 import CompanyModal from './CompanyModal';
@@ -2563,7 +2564,7 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
               disabled={isEnriching}
               title="Enrich from Apollo"
             >
-              {isEnriching === 'apollo' ? <FiRefreshCw className="spinning" /> : <SiApollo />}
+              {isEnriching === 'apollo' ? <FiRefreshCw className="spinning" /> : <FaDatabase />}
             </IconButton>
             
             {/* Airtable button - only if airtable_id exists */}
