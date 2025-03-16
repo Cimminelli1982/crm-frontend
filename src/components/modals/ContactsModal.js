@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import Modal from 'react-modal';
 import styled from 'styled-components';
-import { FiX, FiSave, FiPlus, FiSearch, FiX as FiXCircle, FiTag, FiLink, FiTrash2, FiArrowLeft, FiCheckCircle, FiEdit, FiUser } from 'react-icons/fi';
+import { FiX, FiSave, FiPlus, FiSearch, FiX as FiXCircle, FiTag, FiLink, FiTrash2, FiArrowLeft, FiCheckCircle, FiEdit, FiUser, FiRefreshCw } from 'react-icons/fi';
+import { SiAirtable, SiHubspot, SiApollo } from 'react-icons/si';
 import { supabase } from '../../lib/supabaseClient';
 import TagsModal from './TagsModal';
 import CompanyModal from './CompanyModal';
@@ -291,6 +292,50 @@ const Button = styled.button`
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
+`;
+
+const IconButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.2s;
+  outline: none;
+  background-color: #f8f9fa;
+  color: #495057;
+  border: 1px solid #dee2e6;
+  
+  &:hover {
+    background-color: #e9ecef;
+    color: #212529;
+  }
+  
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  
+  svg {
+    width: 18px;
+    height: 18px;
+    
+    &.spinning {
+      animation: spin 1s linear infinite;
+    }
+  }
+  
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
 `;
 
 const CancelButton = styled(Button)`
@@ -2512,27 +2557,36 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <SectionTitle>Contact Information</SectionTitle>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <Button
-              style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+            {/* Apollo button - always visible */}
+            <IconButton
               onClick={handleApolloEnrichment}
               disabled={isEnriching}
+              title="Enrich from Apollo"
             >
-              {isEnriching === 'apollo' ? 'Enriching...' : 'Pull Apollo'}
-            </Button>
-            <Button
-              style={{ padding: '6px 12px', fontSize: '0.85rem' }}
-              onClick={handleAirtableEnrichment}
-              disabled={isEnriching}
-            >
-              {isEnriching === 'airtable' ? 'Enriching...' : 'Pull Airtable'}
-            </Button>
-            <Button
-              style={{ padding: '6px 12px', fontSize: '0.85rem' }}
-              onClick={handleHubspotEnrichment}
-              disabled={isEnriching}
-            >
-              {isEnriching === 'hubspot' ? 'Enriching...' : 'Pull HubSpot'}
-            </Button>
+              {isEnriching === 'apollo' ? <FiRefreshCw className="spinning" /> : <SiApollo />}
+            </IconButton>
+            
+            {/* Airtable button - only if airtable_id exists */}
+            {contact && contact.airtable_id && (
+              <IconButton 
+                onClick={handleAirtableEnrichment}
+                disabled={isEnriching}
+                title="Pull from Airtable"
+              >
+                {isEnriching === 'airtable' ? <FiRefreshCw className="spinning" /> : <SiAirtable />}
+              </IconButton>
+            )}
+            
+            {/* HubSpot button - only if hubspot_id exists */}
+            {contact && contact.hubspot_id && (
+              <IconButton
+                onClick={handleHubspotEnrichment}
+                disabled={isEnriching}
+                title="Sync with HubSpot"
+              >
+                {isEnriching === 'hubspot' ? <FiRefreshCw className="spinning" /> : <SiHubspot />}
+              </IconButton>
+            )}
           </div>
         </div>
         <FormGrid>
