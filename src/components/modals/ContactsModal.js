@@ -1014,8 +1014,8 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
   const [relatedContactsMap, setRelatedContactsMap] = useState({});
   const [tagMap, setTagMap] = useState({});
   
-  // State for Apollo enrichment
-  const [isEnriching, setIsEnriching] = useState(false);
+  // State for contact enrichment from various sources
+  const [isEnriching, setIsEnriching] = useState(null); // null, 'apollo', 'airtable', or 'hubspot'
   
   // Function to refresh all contact data after enrichment
   const refreshContactData = async () => {
@@ -1979,8 +1979,8 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
   const handleApolloEnrichment = async () => {
     if (!contact || !contact.id) return;
     
-    setIsEnriching(true);
-    const toastId = toast.loading('Enriching contact...');
+    setIsEnriching('apollo');
+    const toastId = toast.loading('Enriching contact from Apollo...');
     
     try {
       console.log('Calling Apollo enrichment for contact:', contact.id);
@@ -2000,7 +2000,7 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
       
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to enrich contact');
+        throw new Error(errorData.error || 'Failed to enrich contact from Apollo');
       }
       
       const responseData = await response.json();
@@ -2010,13 +2010,79 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
       await refreshContactData();
       
       toast.dismiss(toastId);
-      toast.success('Contact enriched successfully!');
+      toast.success('Contact enriched successfully from Apollo!');
     } catch (error) {
-      console.error('Error enriching contact:', error);
+      console.error('Error enriching contact from Apollo:', error);
       toast.dismiss(toastId);
-      toast.error(error.message || 'Failed to enrich contact');
+      toast.error(error.message || 'Failed to enrich contact from Apollo');
     } finally {
-      setIsEnriching(false);
+      setIsEnriching(null);
+    }
+  };
+
+  // Handle Airtable enrichment to fetch and update contact data
+  const handleAirtableEnrichment = async () => {
+    if (!contact || !contact.id) return;
+    
+    setIsEnriching('airtable');
+    const toastId = toast.loading('Enriching contact from Airtable...');
+    
+    try {
+      console.log('Calling Airtable enrichment for contact:', contact.id);
+      
+      // Call the Supabase Edge Function for Airtable enrichment
+      const response = await fetch('https://efazuvegwxouysfcgwja.supabase.co/functions/v1/airtable-enrich', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession())?.data?.session?.access_token || ''}`,
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVmYXp1dmVnd3hvdXlzZmNnd2phIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU5Mjk1MjcsImV4cCI6MjA1MTUwNTUyN30.1G5n0CyQEHGeE1XaJld_PbpstUFd0Imaao6N8MUmfvE'
+        },
+        body: JSON.stringify({ contactId: contact.id }),
+      });
+      
+      console.log('Airtable enrichment response status:', response.status);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to enrich contact from Airtable');
+      }
+      
+      const responseData = await response.json();
+      console.log('Airtable enrichment successful:', responseData);
+      
+      // Refresh all contact data to show the enriched information
+      await refreshContactData();
+      
+      toast.dismiss(toastId);
+      toast.success('Contact enriched successfully from Airtable!');
+    } catch (error) {
+      console.error('Error enriching contact from Airtable:', error);
+      toast.dismiss(toastId);
+      toast.error(error.message || 'Failed to enrich contact from Airtable');
+    } finally {
+      setIsEnriching(null);
+    }
+  };
+  
+  // Handle HubSpot enrichment placeholder
+  const handleHubspotEnrichment = async () => {
+    if (!contact || !contact.id) return;
+    
+    setIsEnriching('hubspot');
+    const toastId = toast.loading('Enriching contact from HubSpot...');
+    
+    try {
+      console.log('HubSpot enrichment not yet implemented');
+      
+      toast.dismiss(toastId);
+      toast.info('HubSpot enrichment will be implemented soon');
+    } catch (error) {
+      console.error('Error enriching contact from HubSpot:', error);
+      toast.dismiss(toastId);
+      toast.error(error.message || 'Failed to enrich contact from HubSpot');
+    } finally {
+      setIsEnriching(null);
     }
   };
 
@@ -2445,13 +2511,29 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
       <FormContent>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <SectionTitle>Contact Information</SectionTitle>
-          <Button
-            style={{ padding: '6px 12px', fontSize: '0.85rem' }}
-            onClick={handleApolloEnrichment}
-            disabled={isEnriching}
-          >
-            {isEnriching ? 'Enriching...' : 'Wizardy on'}
-          </Button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Button
+              style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+              onClick={handleApolloEnrichment}
+              disabled={isEnriching}
+            >
+              {isEnriching === 'apollo' ? 'Enriching...' : 'Pull Apollo'}
+            </Button>
+            <Button
+              style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+              onClick={handleAirtableEnrichment}
+              disabled={isEnriching}
+            >
+              {isEnriching === 'airtable' ? 'Enriching...' : 'Pull Airtable'}
+            </Button>
+            <Button
+              style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+              onClick={handleHubspotEnrichment}
+              disabled={isEnriching}
+            >
+              {isEnriching === 'hubspot' ? 'Enriching...' : 'Pull HubSpot'}
+            </Button>
+          </div>
         </div>
         <FormGrid>
           <FormGroup>
