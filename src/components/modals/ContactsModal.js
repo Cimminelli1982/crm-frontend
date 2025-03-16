@@ -1014,6 +1014,58 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
   const [relatedContactsMap, setRelatedContactsMap] = useState({});
   const [tagMap, setTagMap] = useState({});
   
+  // State for Apollo enrichment
+  const [isEnriching, setIsEnriching] = useState(false);
+  
+  // Function to refresh all contact data after enrichment
+  const refreshContactData = async () => {
+    if (!contact) return;
+    
+    try {
+      // Fetch all contact-related data
+      await Promise.all([
+        fetchContactTags(),
+        fetchRelatedCompanies(),
+        fetchContactCities(),
+        activeTab === 'duplicates' && fetchDuplicateContacts(),
+        activeTab === 'related' && Promise.all([
+          fetchRelatedCompanyContacts(),
+          fetchRelatedTagContacts(),
+          fetchRelatedCategoryContacts()
+        ]),
+        activeTab === 'introductions' && fetchIntroductions()
+      ].filter(Boolean));
+      
+      // Also refresh the main contact data
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('id', contact.id)
+        .single();
+      
+      if (!error && data) {
+        // Update the form data with the latest values
+        setFormData(prev => ({
+          ...prev,
+          first_name: data.first_name || '',
+          last_name: data.last_name || '',
+          email: data.email || '',
+          email2: data.email2 || '',
+          email3: data.email3 || '',
+          mobile: data.mobile || '',
+          mobile2: data.mobile2 || '',
+          job_title: data.job_title || '',
+          contact_category: data.contact_category || '',
+          about_the_contact: data.about_the_contact || '',
+          linkedin: data.linkedin || ''
+        }));
+      }
+    } catch (error) {
+      console.error('Error refreshing contact data:', error);
+      toast.error('Failed to refresh contact data');
+    }
+  };
+  
   useEffect(() => {
     if (contact) {
       setFormData({
@@ -1923,6 +1975,51 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
     fetchRelatedCompanies(); // Refresh companies after modal closes
   };
   
+  // Handle Apollo enrichment to get additional contact data
+  const handleApolloEnrichment = async () => {
+    if (!contact || !contact.id) return;
+    
+    setIsEnriching(true);
+    const toastId = toast.loading('Enriching contact...');
+    
+    try {
+      console.log('Calling Apollo enrichment for contact:', contact.id);
+      
+      // Call the Supabase Edge Function
+      const response = await fetch('https://efazuvegwxouysfcgwja.supabase.co/functions/v1/apollo-enrich', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession())?.data?.session?.access_token || ''}`,
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVmYXp1dmVnd3hvdXlzZmNnd2phIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU5Mjk1MjcsImV4cCI6MjA1MTUwNTUyN30.1G5n0CyQEHGeE1XaJld_PbpstUFd0Imaao6N8MUmfvE'
+        },
+        body: JSON.stringify({ contactId: contact.id }),
+      });
+      
+      console.log('Apollo enrichment response status:', response.status);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to enrich contact');
+      }
+      
+      const responseData = await response.json();
+      console.log('Apollo enrichment successful:', responseData);
+      
+      // Refresh all contact data to show the enriched information
+      await refreshContactData();
+      
+      toast.dismiss(toastId);
+      toast.success('Contact enriched successfully!');
+    } catch (error) {
+      console.error('Error enriching contact:', error);
+      toast.dismiss(toastId);
+      toast.error(error.message || 'Failed to enrich contact');
+    } finally {
+      setIsEnriching(false);
+    }
+  };
+
   const handleSave = async () => {
     try {
       const { error } = await supabase
@@ -2346,7 +2443,16 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
   const renderAboutTab = () => {
     return (
       <FormContent>
-        <SectionTitle>Contact Information</SectionTitle>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <SectionTitle>Contact Information</SectionTitle>
+          <Button
+            style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+            onClick={handleApolloEnrichment}
+            disabled={isEnriching}
+          >
+            {isEnriching ? 'Enriching...' : 'Wizardy on'}
+          </Button>
+        </div>
         <FormGrid>
           <FormGroup>
             <Label htmlFor="first_name">First Name</Label>
