@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { supabase } from '../lib/supabaseClient';
-import { FiCalendar, FiClock, FiUsers, FiTag, FiFileText, FiStar, FiMessageSquare, FiExternalLink, FiPlus, FiX, FiCheck, FiSearch } from 'react-icons/fi';
+import { FiCalendar, FiClock, FiUsers, FiFileText, FiStar, FiMessageSquare, FiExternalLink, FiPlus, FiX } from 'react-icons/fi';
+import PlannerModal from '../components/modals/PlannerModal';
 
 // Container styling
 const PageContainer = styled.div`
@@ -454,143 +455,134 @@ const Planner = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
   const [error, setError] = useState(null);
-  const [tagEditing, setTagEditing] = useState(null); // Format: {meetingId, type: 'tags'|'attendees'}
   const [availableTags, setAvailableTags] = useState([]);
   const [availableContacts, setAvailableContacts] = useState([]);
-  
-  // Modal states
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalType, setModalType] = useState(null); // 'tags' or 'attendees'
-  const [activeMeeting, setActiveMeeting] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedItems, setSelectedItems] = useState([]);
+  const [selectedMeeting, setSelectedMeeting] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  useEffect(() => {
-    const fetchMeetings = async () => {
+  const fetchMeetings = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      // Fetch meetings data
+      const { data: meetingsData, error: meetingsError } = await supabase
+        .from('meetings')
+        .select('*');
+      
+      if (meetingsError) throw meetingsError;
+      
+      console.log('Meetings data fetched:', meetingsData?.length || 0, 'records');
+      
+      if (!meetingsData || meetingsData.length === 0) {
+        setMeetings([]);
+        setTotalCount(0);
+        setIsLoading(false);
+        return;
+      }
+
+      // Fetch relationships between meetings and contacts
+      const { data: contactsData, error: contactsError } = await supabase
+        .from('meetings_contacts')
+        .select('*');
+      
+      if (contactsError) {
+        console.error('Error fetching meetings_contacts:', contactsError);
+      }
+
+      // Fetch contact names
+      const { data: contactNamesData, error: contactNamesError } = await supabase
+        .from('contacts')
+        .select('id, first_name, last_name');
+      
+      if (contactNamesError) {
+        console.error('Error fetching contacts:', contactNamesError);
+      }
+
+      // Process meetings with contacts information when available
+      const meetingsWithContacts = meetingsData.map(meeting => {
+        let relatedContacts = [];
+        
+        // Only process contact relationships if we have both contacts data
+        if (contactsData && contactNamesData) {
+          relatedContacts = contactsData
+            .filter(contact => contact.meeting_id === meeting.id)
+            .map(contact => {
+              const contactName = contactNamesData.find(cn => cn.id === contact.contact_id);
+              return contactName ? `${contactName.first_name} ${contactName.last_name}` : 'Unknown';
+            });
+        }
+        
+        return { 
+          ...meeting, 
+          meeting_contacts: relatedContacts,
+          // Ensure these fields exist with default values if they're missing
+          meeting_name: meeting.meeting_name || 'Untitled Meeting',
+          meeting_date: meeting.meeting_date || new Date().toISOString(),
+          meeting_score: meeting.meeting_score || 0,
+          meeting_tags: meeting.meeting_tags || [],
+          meeting_note: meeting.meeting_note || '',
+          meeting_record: meeting.meeting_record || ''
+        };
+      });
+
+      // Sort meetings by date, newest first
+      const sortedMeetings = meetingsWithContacts.sort((a, b) => {
+        const dateA = new Date(a.meeting_date);
+        const dateB = new Date(b.meeting_date);
+        
+        if (!isNaN(dateA) && !isNaN(dateB)) {
+          return dateB - dateA;
+        } else if (!isNaN(dateA)) {
+          return -1;
+        } else if (!isNaN(dateB)) {
+          return 1;
+        } else {
+          return 0;
+        }
+      });
+      
+      console.log('Processed meetings:', sortedMeetings.length);
+      setMeetings(sortedMeetings);
+      setTotalCount(sortedMeetings.length);
+
+      // Fetch available tags for dropdown
       try {
-        setIsLoading(true);
-        setError(null);
-        
-        // Fetch meetings data
-        const { data: meetingsData, error: meetingsError } = await supabase
-          .from('meetings')
-          .select('*'); // Select all fields to ensure we get everything
-        
-        if (meetingsError) throw meetingsError;
-        
-        console.log('Meetings data fetched:', meetingsData?.length || 0, 'records');
-        
-        if (!meetingsData || meetingsData.length === 0) {
-          setMeetings([]);
-          setTotalCount(0);
-          setIsLoading(false);
-          return;
+        const { data: tagsData, error: tagsError } = await supabase
+          .from('tags')
+          .select('name');
+          
+        if (!tagsError && tagsData) {
+          setAvailableTags(tagsData.map(tag => tag.name));
         }
-
-        // Fetch relationships between meetings and contacts
+      } catch (e) {
+        console.error('Error fetching tags:', e);
+      }
+      
+      // Fetch available contacts for dropdown
+      try {
         const { data: contactsData, error: contactsError } = await supabase
-          .from('meetings_contacts')
-          .select('*');
-        
-        if (contactsError) {
-          console.error('Error fetching meetings_contacts:', contactsError);
-          // Continue with processing even if we can't get contacts
-        }
-
-        // Fetch contact names
-        const { data: contactNamesData, error: contactNamesError } = await supabase
           .from('contacts')
           .select('id, first_name, last_name');
-        
-        if (contactNamesError) {
-          console.error('Error fetching contacts:', contactNamesError);
-          // Continue with processing even if we can't get contact names
-        }
-
-        // Process meetings with contacts information when available
-        const meetingsWithContacts = meetingsData.map(meeting => {
-          let relatedContacts = [];
           
-          // Only process contact relationships if we have both contacts data
-          if (contactsData && contactNamesData) {
-            relatedContacts = contactsData
-              .filter(contact => contact.meeting_id === meeting.id)
-              .map(contact => {
-                const contactName = contactNamesData.find(cn => cn.id === contact.contact_id);
-                return contactName ? `${contactName.first_name} ${contactName.last_name}` : 'Unknown';
-              });
-          }
-          
-          return { 
-            ...meeting, 
-            meeting_contacts: relatedContacts,
-            // Ensure these fields exist with default values if they're missing
-            meeting_name: meeting.meeting_name || 'Untitled Meeting',
-            meeting_date: meeting.meeting_date || new Date().toISOString(),
-            meeting_score: meeting.meeting_score || 0,
-            meeting_tags: meeting.meeting_tags || [],
-            meeting_note: meeting.meeting_note || '',
-            meeting_record: meeting.meeting_record || ''
-          };
-        });
-
-        // Sort meetings by date, newest first
-        const sortedMeetings = meetingsWithContacts.sort((a, b) => {
-          // Handle invalid dates by putting them at the end
-          const dateA = new Date(a.meeting_date);
-          const dateB = new Date(b.meeting_date);
-          
-          if (!isNaN(dateA) && !isNaN(dateB)) {
-            return dateB - dateA;
-          } else if (!isNaN(dateA)) {
-            return -1;
-          } else if (!isNaN(dateB)) {
-            return 1;
-          } else {
-            return 0;
-          }
-        });
-        
-        console.log('Processed meetings:', sortedMeetings.length);
-        setMeetings(sortedMeetings);
-        setTotalCount(sortedMeetings.length);
-
-        // Fetch available tags for dropdown
-        try {
-          const { data: tagsData, error: tagsError } = await supabase
-            .from('tags')
-            .select('name');
-            
-          if (!tagsError && tagsData) {
-            setAvailableTags(tagsData.map(tag => tag.name));
-          }
-        } catch (e) {
-          console.error('Error fetching tags:', e);
+        if (!contactsError && contactsData) {
+          setAvailableContacts(contactsData.map(contact => ({
+            id: contact.id,
+            name: `${contact.first_name} ${contact.last_name}`
+          })));
         }
-        
-        // Fetch available contacts for dropdown
-        try {
-          const { data: contactsData, error: contactsError } = await supabase
-            .from('contacts')
-            .select('id, first_name, last_name');
-            
-          if (!contactsError && contactsData) {
-            setAvailableContacts(contactsData.map(contact => ({
-              id: contact.id,
-              name: `${contact.first_name} ${contact.last_name}`
-            })));
-          }
-        } catch (e) {
-          console.error('Error fetching contacts:', e);
-        }
-      } catch (error) {
-        console.error('Error in meeting data processing:', error);
-        setError(`Failed to load meetings: ${error.message}`);
-      } finally {
-        setIsLoading(false);
+      } catch (e) {
+        console.error('Error fetching contacts:', e);
       }
-    };
+    } catch (error) {
+      console.error('Error in meeting data processing:', error);
+      setError(`Failed to load meetings: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchMeetings();
   }, []);
 
@@ -709,145 +701,14 @@ const Planner = () => {
   // Open modal for adding tags
   const openTagsModal = (meeting) => {
     const existingTags = meeting.meeting_tags || [];
-    setActiveMeeting(meeting);
-    setSelectedItems(existingTags);
-    setModalType('tags');
-    setModalOpen(true);
-  };
-  
-  // Open modal for adding attendees
-  const openAttendeesModal = (meeting) => {
-    const existingAttendees = meeting.meeting_contacts || [];
-    setActiveMeeting(meeting);
-    setSelectedItems(existingAttendees);
-    setModalType('attendees');
-    setModalOpen(true);
+    setSelectedMeeting(meeting);
+    setIsModalOpen(true);
   };
   
   // Close modal
   const closeModal = () => {
-    setModalOpen(false);
-    setActiveMeeting(null);
-    setSelectedItems([]);
-    setSearchTerm('');
-    setModalType(null);
-  };
-  
-  // Toggle selection of an item (tag or attendee)
-  const toggleItemSelection = (item) => {
-    if (selectedItems.includes(item)) {
-      setSelectedItems(selectedItems.filter(i => i !== item));
-    } else {
-      setSelectedItems([...selectedItems, item]);
-    }
-  };
-  
-  // Save selected items
-  const saveSelectedItems = async () => {
-    if (!activeMeeting) return;
-    
-    try {
-      if (modalType === 'tags') {
-        // Update tags in database
-        const { error } = await supabase
-          .from('meetings')
-          .update({ meeting_tags: selectedItems })
-          .eq('id', activeMeeting.id);
-        
-        if (error) throw error;
-        
-        // Update local state
-        setMeetings(meetings.map(meeting => 
-          meeting.id === activeMeeting.id 
-            ? { ...meeting, meeting_tags: selectedItems } 
-            : meeting
-        ));
-      } else if (modalType === 'attendees') {
-        // In a real implementation, this would update the junction table
-        // For this demo, we'll just update the local state
-        setMeetings(meetings.map(meeting => 
-          meeting.id === activeMeeting.id 
-            ? { ...meeting, meeting_contacts: selectedItems } 
-            : meeting
-        ));
-      }
-      
-      closeModal();
-    } catch (error) {
-      console.error(`Error saving ${modalType}:`, error);
-    }
-  };
-  
-  // Filter items based on search term
-  const getFilteredItems = () => {
-    const items = modalType === 'tags' 
-      ? availableTags
-      : availableContacts.map(c => c.name);
-    
-    if (!searchTerm) return items;
-    
-    return items.filter(item => 
-      item.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  };
-  
-  // Render the modal content
-  const renderModalContent = () => {
-    const filteredItems = getFilteredItems();
-    const title = modalType === 'tags' ? 'Select Tags' : 'Select Attendees';
-    
-    return (
-      <ModalOverlay onClick={closeModal}>
-        <ModalContainer onClick={e => e.stopPropagation()}>
-          <ModalHeader>
-            <h3>{title}</h3>
-            <SecondaryButton onClick={closeModal}>
-              <FiX />
-            </SecondaryButton>
-          </ModalHeader>
-          <ModalBody>
-            <SearchInput>
-              <FiSearch />
-              <input 
-                type="text"
-                placeholder={`Search ${modalType}...`}
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-              />
-            </SearchInput>
-            
-            <ItemsList>
-              {filteredItems.length > 0 ? (
-                filteredItems.map((item, index) => (
-                  <ItemOption 
-                    key={index}
-                    className={selectedItems.includes(item) ? 'selected' : ''}
-                    onClick={() => toggleItemSelection(item)}
-                  >
-                    <div className={`checkbox ${selectedItems.includes(item) ? 'checked' : ''}`}>
-                      {selectedItems.includes(item) && <FiCheck size={14} />}
-                    </div>
-                    <div className="item-label">{item}</div>
-                  </ItemOption>
-                ))
-              ) : (
-                <NoItemsMessage>
-                  No {modalType} found matching your search
-                </NoItemsMessage>
-              )}
-            </ItemsList>
-          </ModalBody>
-          <ModalFooter>
-            <SecondaryButton onClick={closeModal}>
-              Cancel
-            </SecondaryButton>
-            <PrimaryButton onClick={saveSelectedItems}>
-              Save
-            </PrimaryButton>
-          </ModalFooter>
-        </ModalContainer>
-      </ModalOverlay>
-    );
+    setIsModalOpen(false);
+    setSelectedMeeting(null);
   };
   
   // Render tags
@@ -898,7 +759,7 @@ const Planner = () => {
     
     if (!meeting.meeting_contacts || meeting.meeting_contacts.length === 0) {
       return (
-        <AddTagButton onClick={() => openAttendeesModal(meeting)}>
+        <AddTagButton onClick={() => openTagsModal(meeting)}>
           <FiPlus size={12} style={{ marginRight: '4px' }} /> Add
         </AddTagButton>
       );
@@ -924,11 +785,23 @@ const Planner = () => {
           </Tag>
         )}
         
-        <AddTagButton onClick={() => openAttendeesModal(meeting)}>
+        <AddTagButton onClick={() => openTagsModal(meeting)}>
           <FiPlus size={12} style={{ marginRight: '4px' }} /> Add
         </AddTagButton>
       </>
     );
+  };
+
+  const handleRowClick = (meeting) => {
+    setSelectedMeeting(meeting);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = async () => {
+    setSelectedMeeting(null);
+    setIsModalOpen(false);
+    // Refresh meetings data after modal closes
+    await fetchMeetings();
   };
 
   return (
@@ -976,7 +849,7 @@ const Planner = () => {
               </NoDataRow>
             ) : (
               meetings.map((meeting, index) => (
-                <tr key={meeting.id || index}>
+                <tr key={meeting.id || index} onClick={() => handleRowClick(meeting)} style={{ cursor: 'pointer' }}>
                   <ClickableCell>
                     <div className="cell-content">
                       <IconWrapper><FiClock /></IconWrapper>
@@ -1030,8 +903,12 @@ const Planner = () => {
           </TableBody>
         </PlannerTable>
         
-        {/* Add the modal */}
-        {modalOpen && renderModalContent()}
+        {/* Add the PlannerModal */}
+        <PlannerModal
+          isOpen={isModalOpen}
+          onRequestClose={handleCloseModal}
+          meeting={selectedMeeting}
+        />
       </ContentSection>
     </PageContainer>
   );
