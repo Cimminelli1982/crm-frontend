@@ -11,6 +11,7 @@ import Layout from './components/layout/Layout';
 import LastInteractions from './pages/contacts/LastInteractions';
 import KeepInTouch from './pages/contacts/KeepInTouch';
 import Introductions from './pages/contacts/Introductions';
+import Lists from './pages/contacts/Lists';
 import Companies from './pages/Companies';
 import Deals from './pages/companies/Deals';
 import Startups from './pages/companies/Startups';
@@ -66,6 +67,7 @@ const App = () => {
             <Route path="/contacts/last-interactions" element={<LastInteractions />} />
             <Route path="/contacts/keep-in-touch" element={<KeepInTouch />} />
             <Route path="/contacts/introductions" element={<Introductions />} />
+            <Route path="/contacts/lists" element={<Lists />} />
 
             {/* Companies section */}
             <Route path="/companies" element={<Companies />} />

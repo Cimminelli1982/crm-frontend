@@ -6,7 +6,7 @@ import {
   FiUsers, FiBriefcase, FiLink, FiCalendar, 
   FiLogOut, FiMenu, FiX, FiClock, FiPlusCircle, 
   FiHeart, FiAlertCircle, FiDollarSign, FiTrendingUp, 
-  FiUserPlus, FiChevronDown, FiChevronRight 
+  FiUserPlus, FiChevronDown, FiChevronRight, FiList 
 } from 'react-icons/fi';
 
 // Main layout container
@@ -353,6 +353,14 @@ const Layout = ({ children }) => {
               >
                 <FiLink style={{ marginRight: '0.5rem', fontSize: '0.875rem' }} />
                 Introductions
+              </SubMenuItem>
+              
+              <SubMenuItem 
+                to="/contacts/lists" 
+                active={isPathActive('/contacts/lists')}
+              >
+                <FiList style={{ marginRight: '0.5rem', fontSize: '0.875rem' }} />
+                Lists
               </SubMenuItem>
             </SubMenu>
           </MenuItem>
