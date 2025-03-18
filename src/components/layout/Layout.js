@@ -110,23 +110,56 @@ const SubMenu = styled.div`
   overflow: hidden;
   transition: max-height 0.3s ease;
   background-color: #111111;
+  border-left: 1px solid #444444;
+  margin-left: 24px;
+  position: relative;
+  
+  &:before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 100%;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.03) 2px,
+      rgba(0, 0, 0, 0.03) 4px
+    );
+    pointer-events: none;
+    opacity: 0.2;
+  }
 `;
 
 // Submenu item
 const SubMenuItem = styled(Link)`
   display: flex;
   align-items: center;
-  padding: 0.625rem 1.5rem 0.625rem 3.25rem;
-  color: ${props => (props.active ? '#ffffff' : '#cccccc')};
-  background-color: ${props => (props.active ? '#333333' : 'transparent')};
-  border-left: 3px solid ${props => (props.active ? '#999999' : 'transparent')};
+  padding: 0.625rem 1.5rem 0.625rem 2.5rem;
+  color: ${props => (props.active ? '#00ff00' : '#86c786')};
+  background-color: ${props => (props.active ? '#222222' : 'transparent')};
+  border-left: 3px solid ${props => (props.active ? '#444444' : 'transparent')};
   font-size: 0.875rem;
+  font-family: 'Courier New', Courier, monospace;
+  letter-spacing: 0.5px;
   text-decoration: none;
   transition: all 0.2s;
+  position: relative;
+  
+  &:before {
+    content: ${props => props.active ? '">" ' : '"$ "'};
+    position: absolute;
+    left: 1rem;
+    color: ${props => props.active ? '#00ff00' : '#86c786'};
+    font-size: 0.8rem;
+  }
   
   &:hover {
     background-color: #222222;
-    color: white;
+    color: #00ff00;
+    text-shadow: 0 0 2px rgba(0, 255, 0, 0.4);
   }
 `;
 
