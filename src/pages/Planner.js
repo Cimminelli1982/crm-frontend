@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { supabase } from '../lib/supabaseClient';
-import { FiCalendar, FiClock, FiUsers, FiFileText, FiStar, FiMessageSquare, FiExternalLink, FiPlus, FiX } from 'react-icons/fi';
+import { FiCalendar, FiClock, FiUsers, FiFileText, FiStar, FiMessageSquare, FiExternalLink, FiPlus, FiX, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import PlannerModal from '../components/modals/PlannerModal';
+import { startOfWeek, endOfWeek, format, addWeeks, subWeeks, isSameWeek, startOfMonth, endOfMonth, addMonths, subMonths, getWeek, isSameMonth } from 'date-fns';
 
 // Container styling
 const PageContainer = styled.div`
@@ -52,6 +53,96 @@ const Description = styled.p`
 
 const ContentSection = styled.div`
   padding: 0;
+`;
+
+// Styling for date navigation
+const NavigationContainer = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  background-color: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+`;
+
+const MonthNavigation = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const MonthDisplay = styled.div`
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #111827;
+  min-width: 150px;
+  text-align: center;
+`;
+
+const NavButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  border: 1px solid #e5e7eb;
+  background-color: white;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.2s;
+  
+  &:hover {
+    background-color: #f3f4f6;
+    color: #111827;
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const WeekSummary = styled.div`
+  font-weight: 500;
+  color: #6b7280;
+  font-size: 0.875rem;
+`;
+
+// Styling for week sections
+const WeekSection = styled.div`
+  margin-bottom: 1.5rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  overflow: hidden;
+`;
+
+const WeekHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background-color: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+`;
+
+const WeekTitle = styled.h2`
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+  margin: 0;
+`;
+
+const WeekDateRange = styled.span`
+  font-size: 0.75rem;
+  color: #6b7280;
+`;
+
+const NoMeetingsMessage = styled.div`
+  text-align: center;
+  padding: 2rem;
+  color: #6b7280;
+  font-style: italic;
 `;
 
 // Table styling
@@ -459,6 +550,11 @@ const Planner = () => {
   const [availableContacts, setAvailableContacts] = useState([]);
   const [selectedMeeting, setSelectedMeeting] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // Date navigation state
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [weeksInView, setWeeksInView] = useState([]);
 
   const fetchMeetings = async () => {
     try {
@@ -622,6 +718,168 @@ const Planner = () => {
     }
   };
 
+  // Calculate and update the weeks to show based on current month
+  const calculateWeeksInView = (date) => {
+    const monthStart = startOfMonth(date);
+    const monthEnd = endOfMonth(date);
+    const firstWeekStart = startOfWeek(monthStart, { weekStartsOn: 1 }); // Monday as first day of week
+    const lastWeekEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+    
+    // Generate array of weeks within the month range
+    let weeks = [];
+    let current = firstWeekStart;
+    
+    while (current <= lastWeekEnd) {
+      const weekStart = current;
+      const weekEnd = endOfWeek(current, { weekStartsOn: 1 });
+      const weekNumber = getWeek(current, { weekStartsOn: 1 });
+      
+      weeks.push({
+        weekNumber,
+        start: weekStart,
+        end: weekEnd,
+        meetings: [],
+        isInCurrentMonth: isSameMonth(weekStart, date) || isSameMonth(weekEnd, date)
+      });
+      
+      current = addWeeks(current, 1);
+    }
+    
+    return weeks;
+  };
+  
+  // Group meetings by week
+  const groupMeetingsByWeek = (meetingsData, weeks) => {
+    if (!meetingsData || !weeks) return [];
+    
+    // Create deep copy of weeks to avoid mutating the original
+    const updatedWeeks = JSON.parse(JSON.stringify(weeks));
+    
+    // Ensure all weeks start with empty meetings arrays
+    updatedWeeks.forEach(week => {
+      week.meetings = [];
+    });
+    
+    // Track which meetings have been assigned to prevent duplicates
+    const assignedMeetingIds = new Set();
+    
+    // Assign meetings to appropriate weeks
+    meetingsData.forEach(meeting => {
+      // Skip if already assigned or no valid id
+      if (!meeting.id || assignedMeetingIds.has(meeting.id)) {
+        return;
+      }
+      
+      const meetingDate = new Date(meeting.meeting_date);
+      
+      for (let i = 0; i < updatedWeeks.length; i++) {
+        const week = updatedWeeks[i];
+        const weekStart = new Date(week.start);
+        const weekEnd = new Date(week.end);
+        
+        if (meetingDate >= weekStart && meetingDate <= weekEnd) {
+          week.meetings.push(meeting);
+          assignedMeetingIds.add(meeting.id);
+          break; // Stop checking additional weeks once assigned
+        }
+      }
+    });
+    
+    // Sort meetings within each week by date
+    updatedWeeks.forEach(week => {
+      week.meetings.sort((a, b) => {
+        return new Date(a.meeting_date) - new Date(b.meeting_date);
+      });
+    });
+    
+    return updatedWeeks;
+  };
+  
+  // Navigation functions
+  const goToPreviousMonth = () => {
+    console.log('Navigating to previous month');
+    const prevMonth = subMonths(currentMonth, 1);
+    setCurrentMonth(prevMonth);
+  };
+  
+  const goToNextMonth = () => {
+    console.log('Navigating to next month');
+    const nextMonth = addMonths(currentMonth, 1);
+    setCurrentMonth(nextMonth);
+  };
+  
+  const goToCurrentMonth = () => {
+    console.log('Navigating to current month');
+    setCurrentMonth(new Date());
+  };
+  
+  // When month changes, we need to recalculate visible weeks
+  useEffect(() => {
+    const weeks = calculateWeeksInView(currentMonth);
+    console.log('Month changed to:', format(currentMonth, 'MMMM yyyy'));
+    setWeeksInView(weeks);
+    
+    // Store month bounds for filtering meetings later
+    const monthStart = startOfMonth(currentMonth);
+    const monthEnd = endOfMonth(currentMonth);
+    
+    // When month changes, we need to filter meetings to only include those in this month's view
+    if (meetings.length > 0) {
+      console.log('Filtering meetings for new month:', format(currentMonth, 'MMMM yyyy'));
+      
+      const visibleMeetings = meetings.filter(meeting => {
+        const meetingDate = new Date(meeting.meeting_date);
+        const weekStart = new Date(weeks[0].start);
+        const weekEnd = new Date(weeks[weeks.length - 1].end);
+        // Include meetings that fall between first day of first week and last day of last week
+        return meetingDate >= weekStart && meetingDate <= weekEnd;
+      });
+      
+      console.log(`Found ${visibleMeetings.length} meetings in current month's view range`);
+      
+      // Group filtered meetings into their respective weeks
+      const updatedWeeks = groupMeetingsByWeek(visibleMeetings, weeks);
+      setWeeksInView(updatedWeeks);
+    }
+  }, [currentMonth]);
+  
+  // When meetings data changes, we need to update the week structure
+  useEffect(() => {
+    if (meetings.length > 0 && weeksInView.length > 0) {
+      console.log('New meetings data received:', meetings.length, 'meetings');
+      
+      // Filter meetings for current month view
+      const monthViewStart = weeksInView[0].start;
+      const monthViewEnd = weeksInView[weeksInView.length - 1].end;
+      
+      const visibleMeetings = meetings.filter(meeting => {
+        if (!meeting.meeting_date) return false;
+        
+        const meetingDate = new Date(meeting.meeting_date);
+        const viewStart = new Date(monthViewStart);
+        const viewEnd = new Date(monthViewEnd);
+        
+        // Check if meeting date is within the week range
+        return !isNaN(meetingDate.getTime()) && 
+               meetingDate >= viewStart && 
+               meetingDate <= viewEnd;
+      });
+      
+      console.log(`Filtering meetings for current view: ${visibleMeetings.length} meetings in range`);
+      
+      // Empty the weeks first
+      const emptyWeeks = weeksInView.map(week => ({
+        ...week,
+        meetings: [] // Reset meetings array to empty
+      }));
+      
+      // Group meetings into weeks
+      const updatedWeeks = groupMeetingsByWeek(visibleMeetings, emptyWeeks);
+      setWeeksInView(updatedWeeks);
+    }
+  }, [meetings]);
+  
+  // Initial load of meetings
   useEffect(() => {
     fetchMeetings();
   }, []);
@@ -885,6 +1143,101 @@ const Planner = () => {
     await fetchMeetings();
   };
 
+  // Format date range for display
+  const formatDateRange = (start, end) => {
+    return `${format(new Date(start), 'd/M')} - ${format(new Date(end), 'd/M/yyyy')}`;
+  };
+  
+  const renderWeekTable = (meetings) => {
+    if (!meetings || meetings.length === 0) {
+      return (
+        <NoMeetingsMessage>No meetings scheduled for this week</NoMeetingsMessage>
+      );
+    }
+    
+    return (
+      <PlannerTable>
+        <TableHead>
+          <tr>
+            <th>Date</th>
+            <th>Meeting</th>
+            <th>Attendees</th>
+            <th>Tags</th>
+            <th>Record</th>
+            <th>Score</th>
+            <th>Note</th>
+          </tr>
+        </TableHead>
+        <TableBody>
+          {meetings.map((meeting, index) => (
+            <tr key={meeting.id || index} onClick={() => handleRowClick(meeting)} style={{ cursor: 'pointer' }}>
+              <ClickableCell>
+                <div className="cell-content">
+                  <IconWrapper><FiClock /></IconWrapper>
+                  {formatDate(meeting.meeting_date)}
+                </div>
+              </ClickableCell>
+              
+              <ClickableCell>
+                <div className="cell-content">
+                  {meeting.meeting_name || 'Untitled Meeting'}
+                </div>
+              </ClickableCell>
+              
+              <ClickableCell>
+                <div className="cell-content">
+                  <IconWrapper><FiUsers /></IconWrapper>
+                  <TagContainer>
+                    {renderAttendees(meeting)}
+                  </TagContainer>
+                </div>
+              </ClickableCell>
+              
+              <ClickableCell>
+                <div className="cell-content">
+                  <TagContainer>
+                    {renderTags(meeting)}
+                  </TagContainer>
+                </div>
+              </ClickableCell>
+              
+              <ClickableCell>
+                <div className="cell-content">
+                  <IconWrapper><FiFileText /></IconWrapper>
+                  {renderRecord(meeting.meeting_record)}
+                </div>
+              </ClickableCell>
+              
+              <ScoreCell>
+                {renderStars(meeting.meeting_score || 0)}
+              </ScoreCell>
+              
+              <ClickableCell onClick={(e) => handleNoteClick(e, meeting)}>
+                <div className="cell-content">
+                  <IconWrapper><FiMessageSquare /></IconWrapper>
+                  <div 
+                    style={{ 
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      maxWidth: '100%',
+                      color: meeting.meeting_note ? '#000' : '#9ca3af',
+                      fontStyle: meeting.meeting_note ? 'normal' : 'italic',
+                      cursor: 'pointer'
+                    }}
+                    title={meeting.meeting_note || 'No notes'}
+                  >
+                    {truncateNote(meeting.meeting_note)}
+                  </div>
+                </div>
+              </ClickableCell>
+            </tr>
+          ))}
+        </TableBody>
+      </PlannerTable>
+    );
+  };
+
   return (
     <PageContainer>
       <PageHeader>
@@ -902,100 +1255,61 @@ const Planner = () => {
         </HeaderContent>
       </PageHeader>
       
+      {/* Month navigation */}
+      <NavigationContainer>
+        <MonthNavigation>
+          <NavButton onClick={goToPreviousMonth}>
+            <FiChevronLeft />
+          </NavButton>
+          <MonthDisplay>
+            {format(currentMonth, 'MMMM yyyy')}
+          </MonthDisplay>
+          <NavButton onClick={goToNextMonth}>
+            <FiChevronRight />
+          </NavButton>
+          <NavButton 
+            onClick={goToCurrentMonth}
+            style={{ 
+              marginLeft: '8px',
+              fontSize: '0.75rem',
+              width: 'auto',
+              height: 'auto',
+              padding: '0.25rem 0.5rem',
+              borderRadius: '0.25rem',
+              backgroundColor: isSameMonth(currentMonth, new Date()) ? '#f3f4f6' : '#e0f2fe',
+              color: isSameMonth(currentMonth, new Date()) ? '#6b7280' : '#0284c7'
+            }}
+          >
+            Today
+          </NavButton>
+        </MonthNavigation>
+        <WeekSummary>
+          {weeksInView.filter(week => week.isInCurrentMonth && week.meetings.length > 0).length} weeks with meetings
+        </WeekSummary>
+      </NavigationContainer>
+      
       <ContentSection>
-        <PlannerTable>
-          <TableHead>
-            <tr>
-              <th>Date</th>
-              <th>Meeting</th>
-              <th>Attendees</th>
-              <th>Tags</th>
-              <th>Record</th>
-              <th>Score</th>
-              <th>Note</th>
-            </tr>
-          </TableHead>
-          <TableBody>
-            {isLoading ? (
-              <NoDataRow>
-                <td colSpan="7">Loading meetings...</td>
-              </NoDataRow>
-            ) : error ? (
-              <NoDataRow>
-                <td colSpan="7" style={{ color: '#ef4444' }}>{error}</td>
-              </NoDataRow>
-            ) : meetings.length === 0 ? (
-              <NoDataRow>
-                <td colSpan="7">No meetings found in database</td>
-              </NoDataRow>
-            ) : (
-              meetings.map((meeting, index) => (
-                <tr key={meeting.id || index} onClick={() => handleRowClick(meeting)} style={{ cursor: 'pointer' }}>
-                  <ClickableCell>
-                    <div className="cell-content">
-                      <IconWrapper><FiClock /></IconWrapper>
-                      {formatDate(meeting.meeting_date)}
-                    </div>
-                  </ClickableCell>
-                  
-                  <ClickableCell>
-                    <div className="cell-content">
-                      {meeting.meeting_name || 'Untitled Meeting'}
-                    </div>
-                  </ClickableCell>
-                  
-                  <ClickableCell>
-                    <div className="cell-content">
-                      <IconWrapper><FiUsers /></IconWrapper>
-                      <TagContainer>
-                        {renderAttendees(meeting)}
-                      </TagContainer>
-                    </div>
-                  </ClickableCell>
-                  
-                  <ClickableCell>
-                    <div className="cell-content">
-                      <TagContainer>
-                        {renderTags(meeting)}
-                      </TagContainer>
-                    </div>
-                  </ClickableCell>
-                  
-                  <ClickableCell>
-                    <div className="cell-content">
-                      <IconWrapper><FiFileText /></IconWrapper>
-                      {renderRecord(meeting.meeting_record)}
-                    </div>
-                  </ClickableCell>
-                  
-                  <ScoreCell>
-                    {renderStars(meeting.meeting_score || 0)}
-                  </ScoreCell>
-                  
-                  <ClickableCell onClick={(e) => handleNoteClick(e, meeting)}>
-                    <div className="cell-content">
-                      <IconWrapper><FiMessageSquare /></IconWrapper>
-                      <div 
-                        style={{ 
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          maxWidth: '100%',
-                          color: meeting.meeting_note ? '#000' : '#9ca3af',
-                          fontStyle: meeting.meeting_note ? 'normal' : 'italic',
-                          cursor: 'pointer'
-                        }}
-                        title={meeting.meeting_note || 'No notes'}
-                      >
-                        {truncateNote(meeting.meeting_note)}
-                      </div>
-                    </div>
-                  </ClickableCell>
-                </tr>
-              ))
-            )}
-          </TableBody>
-        </PlannerTable>
+        {isLoading ? (
+          <NoMeetingsMessage>Loading meetings...</NoMeetingsMessage>
+        ) : error ? (
+          <NoMeetingsMessage style={{ color: '#ef4444' }}>{error}</NoMeetingsMessage>
+        ) : weeksInView.length === 0 || weeksInView.every(week => week.meetings.length === 0) ? (
+          <NoMeetingsMessage>No meetings found for this month</NoMeetingsMessage>
+        ) : (
+          // Render weeks that are in the current month and have meetings, newest first
+          weeksInView
+            .filter(week => week.isInCurrentMonth && week.meetings.length > 0) // Only show weeks with meetings
+            .sort((a, b) => b.weekNumber - a.weekNumber) // Sort weeks newest first
+            .map((week, index) => (
+              <WeekSection key={`week-${week.weekNumber}`}>
+                <WeekHeader>
+                  <WeekTitle>Week #{week.weekNumber}</WeekTitle>
+                  <WeekDateRange>{formatDateRange(week.start, week.end)}</WeekDateRange>
+                </WeekHeader>
+                {renderWeekTable(week.meetings)}
+              </WeekSection>
+            ))
+        )}
         
         {/* Add the PlannerModal */}
         <PlannerModal
