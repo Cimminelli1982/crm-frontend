@@ -319,15 +319,18 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
   
   const [meetingTags, setMeetingTags] = useState([]);
   const [meetingAttendees, setMeetingAttendees] = useState([]);
+  const [relatedMeetingsByAttendees, setRelatedMeetingsByAttendees] = useState([]);
+  const [relatedMeetingsByTags, setRelatedMeetingsByTags] = useState([]);
   const [showTagsModal, setShowTagsModal] = useState(false);
   const [showAttendeesModal, setShowAttendeesModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
   useEffect(() => {
     if (meeting) {
       console.log('Initializing form with meeting:', meeting);
       try {
         const meetingDate = meeting.meeting_date ? new Date(meeting.meeting_date) : new Date();
-        const formattedDate = meetingDate.toISOString().slice(0, 16);
+        const formattedDate = meetingDate.toISOString().slice(0, 10); // Get only the date part YYYY-MM-DD
         console.log('Formatted meeting date:', formattedDate);
         
         setFormData({
@@ -348,28 +351,189 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
     }
   }, [meeting]);
   
+  // Fetch related meetings when the attendees or tags change
+  useEffect(() => {
+    if (activeTab === 'related' && meeting && meeting.id) {
+      fetchRelatedMeetingsByAttendees();
+      fetchRelatedMeetingsByTags();
+    }
+  }, [activeTab, meetingAttendees, meetingTags, meeting]);
+  
+  // Function to fetch meetings related by attendees
+  const fetchRelatedMeetingsByAttendees = async () => {
+    if (!meeting || !meeting.id || meetingAttendees.length === 0) {
+      setRelatedMeetingsByAttendees([]);
+      return;
+    }
+    
+    try {
+      // Get attendee IDs, excluding Simone Cimminelli
+      const attendeeIds = meetingAttendees
+        .filter(attendee => !attendee.name.toLowerCase().includes('simone cimminelli'))
+        .map(attendee => attendee.id);
+      
+      if (attendeeIds.length === 0) {
+        setRelatedMeetingsByAttendees([]);
+        return;
+      }
+      
+      // Find meetings that share attendees with the current meeting
+      const { data, error } = await supabase
+        .from('meetings_contacts')
+        .select(`
+          meeting_id,
+          contact_id,
+          contacts:contact_id(first_name, last_name),
+          meetings:meeting_id(
+            id, 
+            meeting_name, 
+            meeting_date
+          )
+        `)
+        .in('contact_id', attendeeIds)
+        .neq('meeting_id', meeting.id); // Exclude current meeting
+        
+      if (error) throw error;
+      
+      // Filter out Simone Cimminelli's contact records
+      const filteredData = data.filter(item => {
+        const fullName = `${item.contacts.first_name} ${item.contacts.last_name}`.toLowerCase();
+        return !fullName.includes('simone cimminelli');
+      });
+      
+      // Group by meeting and count occurrences (how many common attendees)
+      const meetingMap = {};
+      filteredData.forEach(item => {
+        const meetingId = item.meeting_id;
+        const meetingInfo = item.meetings;
+        
+        if (!meetingMap[meetingId]) {
+          meetingMap[meetingId] = {
+            id: meetingId,
+            name: meetingInfo.meeting_name,
+            date: meetingInfo.meeting_date,
+            commonAttendees: 1
+          };
+        } else {
+          meetingMap[meetingId].commonAttendees++;
+        }
+      });
+      
+      // Convert to array and sort by commonAttendees (descending)
+      const relatedMeetings = Object.values(meetingMap)
+        .sort((a, b) => b.commonAttendees - a.commonAttendees);
+      
+      setRelatedMeetingsByAttendees(relatedMeetings);
+    } catch (error) {
+      console.error('Error fetching related meetings by attendees:', error);
+    }
+  };
+  
+  // Function to fetch meetings related by tags
+  const fetchRelatedMeetingsByTags = async () => {
+    if (!meeting || !meeting.id || meetingTags.length === 0) {
+      setRelatedMeetingsByTags([]);
+      return;
+    }
+    
+    try {
+      console.log('Fetching related meetings by tags for meeting ID:', meeting.id);
+      console.log('Current meeting tags:', meetingTags);
+      
+      // Get tag IDs from the current meeting's tags
+      const tagIds = meetingTags.map(tag => tag.tag_id);
+      console.log('Tag IDs for related meetings search:', tagIds);
+      
+      if (tagIds.length === 0) {
+        console.log('No tag IDs found, skipping related meetings query');
+        setRelatedMeetingsByTags([]);
+        return;
+      }
+      
+      // Find meetings that share tags with the current meeting
+      const { data, error } = await supabase
+        .from('meetings_tags')
+        .select(`
+          meeting_id,
+          meetings:meeting_id(
+            id, 
+            meeting_name, 
+            meeting_date
+          )
+        `)
+        .in('tag_id', tagIds)
+        .neq('meeting_id', meeting.id); // Exclude current meeting
+        
+      if (error) throw error;
+      
+      console.log('Found related meetings:', data);
+      
+      // Group by meeting and count occurrences (how many common tags)
+      const meetingMap = {};
+      data.forEach(item => {
+        const meetingId = item.meeting_id;
+        const meetingInfo = item.meetings;
+        
+        if (!meetingMap[meetingId]) {
+          meetingMap[meetingId] = {
+            id: meetingId,
+            name: meetingInfo.meeting_name,
+            date: meetingInfo.meeting_date,
+            commonTags: 1
+          };
+        } else {
+          meetingMap[meetingId].commonTags++;
+        }
+      });
+      
+      // Convert to array and sort by commonTags (descending)
+      const relatedMeetings = Object.values(meetingMap)
+        .sort((a, b) => b.commonTags - a.commonTags);
+      
+      setRelatedMeetingsByTags(relatedMeetings);
+    } catch (error) {
+      console.error('Error fetching related meetings by tags:', error);
+    }
+  };
+  
   const fetchMeetingTags = async () => {
     if (!meeting) return;
     
     try {
+      console.log('Fetching tags for meeting ID:', meeting.id);
+      
+      // Join meetings_tags with tags to get tag names in one query
       const { data, error } = await supabase
-        .from('meeting_tags')
+        .from('meetings_tags')
         .select(`
+          meeting_id,
           tag_id,
-          tags:tag_id(id, name)
+          tags:tag_id (id, name)
         `)
         .eq('meeting_id', meeting.id);
         
       if (error) throw error;
       
-      const formattedTags = data.map(item => ({
-        id: item.tag_id,
-        name: item.tags.name
-      }));
+      console.log('Meeting tags raw data:', data);
       
-      setMeetingTags(formattedTags);
+      if (data && data.length > 0) {
+        // Format the data for display
+        const formattedTags = data.map(item => {
+          return {
+            id: `${item.meeting_id}-${item.tag_id}`, // Create a unique ID for UI purposes
+            tag_id: item.tag_id,                     // Store this for reference
+            name: item.tags?.name || 'Unknown tag'
+          };
+        });
+        
+        console.log('Formatted tags:', formattedTags);
+        setMeetingTags(formattedTags);
+      } else {
+        setMeetingTags([]);
+      }
     } catch (error) {
       console.error('Error fetching meeting tags:', error);
+      toast.error('Failed to load meeting tags');
     }
   };
   
@@ -427,19 +591,53 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
   
   const handleRemoveTag = async (tagToRemove) => {
     try {
+      console.log('Removing tag with name:', tagToRemove.name);
+      
+      // First we need to get the tag_id for this tag
+      const { data: tagData, error: tagError } = await supabase
+        .from('tags')
+        .select('id')
+        .eq('name', tagToRemove.name)
+        .single();
+        
+      if (tagError) {
+        console.error('Error finding tag ID:', tagError);
+        throw tagError;
+      }
+      
+      if (!tagData) {
+        console.error('Tag not found with name:', tagToRemove.name);
+        throw new Error('Tag not found');
+      }
+      
+      const tagId = tagData.id;
+      console.log(`Found tag ID ${tagId} for tag name ${tagToRemove.name}`);
+      
+      // Now delete the connection using meeting_id and tag_id
+      console.log(`Deleting tag connection from meetings_tags where meeting_id=${meeting.id} and tag_id=${tagId}`);
+      
       const { error } = await supabase
-        .from('meeting_tags')
+        .from('meetings_tags')
         .delete()
         .eq('meeting_id', meeting.id)
-        .eq('tag_id', tagToRemove.id);
+        .eq('tag_id', tagId);
         
-      if (error) throw error;
+      if (error) {
+        console.error('Delete error:', error);
+        throw error;
+      }
       
-      setMeetingTags(prev => prev.filter(tag => tag.id !== tagToRemove.id));
+      console.log('Successfully deleted from meetings_tags');
+      
+      // Update UI - need to filter by name since our local state uses different IDs
+      setMeetingTags(prev => prev.filter(tag => tag.name !== tagToRemove.name));
       toast.success('Tag removed successfully');
+      
+      // Refresh related meetings
+      await fetchRelatedMeetingsByTags();
     } catch (error) {
       console.error('Error removing tag:', error);
-      toast.error('Failed to remove tag');
+      toast.error(`Failed to remove tag: ${error.message || 'Unknown error'}`);
     }
   };
   
@@ -497,6 +695,62 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
     }
   };
   
+  const handleDeleteMeeting = async () => {
+    if (!meeting || !meeting.id) {
+      toast.error('Invalid meeting data');
+      return;
+    }
+
+    if (!showDeleteConfirm) {
+      setShowDeleteConfirm(true);
+      toast.error('Click delete again to confirm deletion', {
+        duration: 5000,
+      });
+      return;
+    }
+
+    try {
+      // First, delete related records in junction tables to maintain referential integrity
+      // Delete meetings_tags
+      const { error: tagsError } = await supabase
+        .from('meetings_tags')
+        .delete()
+        .eq('meeting_id', meeting.id);
+      
+      if (tagsError) throw tagsError;
+
+      // Delete meetings_contacts
+      const { error: contactsError } = await supabase
+        .from('meetings_contacts')
+        .delete()
+        .eq('meeting_id', meeting.id);
+      
+      if (contactsError) throw contactsError;
+
+      // Finally, delete the meeting record
+      const { error: meetingError } = await supabase
+        .from('meetings')
+        .delete()
+        .eq('id', meeting.id);
+      
+      if (meetingError) throw meetingError;
+
+      toast.success('Meeting deleted successfully');
+      
+      // Close the modal
+      onRequestClose();
+      
+      // Force a refresh after a short delay
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+    } catch (error) {
+      console.error('Error deleting meeting:', error);
+      toast.error(`Failed to delete meeting: ${error.message}`);
+      setShowDeleteConfirm(false);
+    }
+  };
+
   const handleSave = async () => {
     try {
       console.log('Starting save process...', { formData, meeting });
@@ -519,8 +773,11 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
         return;
       }
 
-      // Format the date properly for the database
-      const formattedDate = new Date(formData.meeting_date).toISOString();
+      // Format the date properly for the database - add time to make it a full ISO date
+      const dateObj = new Date(formData.meeting_date);
+      // Set the time to noon to avoid timezone issues
+      dateObj.setHours(12, 0, 0, 0);
+      const formattedDate = dateObj.toISOString();
       console.log('Formatted date:', formattedDate);
 
       const updateData = {
@@ -529,7 +786,7 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
         meeting_note: formData.meeting_note || '',
         meeting_record: formData.meeting_record || '',
         meeting_score: formData.meeting_score || 0,
-        last_modified: new Date().toISOString()
+        updated_at: new Date().toISOString()
       };
       
       console.log('Updating meeting with data:', updateData);
@@ -566,9 +823,9 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
   const renderDetailsTab = () => {
     return (
       <FormContent>
-        <SectionTitle>Meeting Details</SectionTitle>
+        <SectionTitle>Details</SectionTitle>
         <FormGrid>
-          <FormGroup className="full-width">
+          <FormGroup>
             <Label htmlFor="meeting_name">Meeting Name</Label>
             <Input
               id="meeting_name"
@@ -579,20 +836,20 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
             />
           </FormGroup>
           
-          <FormGroup className="full-width">
+          <FormGroup>
             <Label htmlFor="meeting_date">Meeting Date</Label>
             <Input
               id="meeting_date"
               name="meeting_date"
-              type="datetime-local"
-              value={formData.meeting_date ? new Date(formData.meeting_date).toISOString().slice(0, 16) : ''}
+              type="date"
+              value={formData.meeting_date ? new Date(formData.meeting_date).toISOString().slice(0, 10) : ''}
               onChange={handleInputChange}
             />
           </FormGroup>
         </FormGrid>
         
         <SectionTitle>Attendees</SectionTitle>
-        <TagsList>
+        <TagsList style={{ maxHeight: '150px', overflowY: 'auto' }}>
           {meetingAttendees.map((attendee) => (
             <Tag key={attendee.id} color="#e0f2fe" textColor="#0369a1">
               <span>{attendee.name}</span>
@@ -607,7 +864,7 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
         </TagsList>
         
         <SectionTitle>Tags</SectionTitle>
-        <TagsList>
+        <TagsList style={{ maxHeight: '150px', overflowY: 'auto' }}>
           {meetingTags.map((tag) => (
             <Tag key={tag.id} color="#f3f4f6" textColor="#374151">
               <span>{tag.name}</span>
@@ -620,9 +877,25 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
             <FiPlus size={14} style={{ marginRight: '4px' }} /> Add Tags
           </AddButton>
         </TagsList>
+      </FormContent>
+    );
+  };
+  
+  const renderNotesTab = () => {
+    return (
+      <FormContent>
+        <FormGroup className="full-width">
+          <Label htmlFor="meeting_note">Notes</Label>
+          <TextArea
+            name="meeting_note"
+            value={formData.meeting_note}
+            onChange={handleInputChange}
+            placeholder="Enter meeting notes..."
+            style={{ minHeight: '250px' }}
+          />
+        </FormGroup>
         
-        <SectionTitle>Post Meeting</SectionTitle>
-        <FormGrid>
+        <FormGrid style={{ marginTop: '30px' }}>
           <FormGroup>
             <Label>Meeting Score</Label>
             <StarRating active={formData.meeting_score > 0}>
@@ -653,17 +926,148 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
               placeholder="Enter meeting record URL"
             />
           </FormGroup>
-          
-          <FormGroup className="full-width">
-            <Label htmlFor="meeting_note">Notes</Label>
-            <TextArea
-              name="meeting_note"
-              value={formData.meeting_note}
-              onChange={handleInputChange}
-              placeholder="Enter meeting notes..."
-            />
-          </FormGroup>
         </FormGrid>
+      </FormContent>
+    );
+  };
+  
+  const MeetingRow = styled.div`
+    display: flex;
+    padding: 12px;
+    border-bottom: 1px solid #e5e7eb;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    
+    &:hover {
+      background-color: #f9fafb;
+    }
+    
+    &:last-child {
+      border-bottom: none;
+    }
+    
+    .meeting-info {
+      flex: 1;
+      
+      .meeting-name {
+        font-weight: 500;
+        color: #111827;
+        margin-bottom: 4px;
+      }
+      
+      .meeting-date {
+        font-size: 0.75rem;
+        color: #6b7280;
+      }
+    }
+    
+    .meeting-meta {
+      display: flex;
+      align-items: center;
+      color: #6b7280;
+      font-size: 0.75rem;
+      
+      span {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+    }
+  `;
+  
+  const NoRelatedItems = styled.div`
+    padding: 24px;
+    text-align: center;
+    color: #6b7280;
+    font-style: italic;
+  `;
+  
+  const RelatedList = styled.div`
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 32px;
+    max-height: 300px;
+    overflow-y: auto;
+    
+    /* Custom scrollbar */
+    &::-webkit-scrollbar {
+      width: 8px;
+    }
+    
+    &::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 4px;
+    }
+    
+    &::-webkit-scrollbar-thumb {
+      background-color: rgba(156, 163, 175, 0.7);
+      border-radius: 4px;
+      border: 2px solid #f1f1f1;
+    }
+    
+    &::-webkit-scrollbar-thumb:hover {
+      background-color: rgba(156, 163, 175, 0.9);
+    }
+  `;
+  
+  const renderRelatedTab = () => {
+    const handleMeetingClick = (meetingId) => {
+      // Navigate to the meeting
+      window.location.href = `/meetings/${meetingId}`;
+    };
+    
+    return (
+      <FormContent>
+        <SectionTitle>Related Meetings by Attendees</SectionTitle>
+        <RelatedList>
+          {relatedMeetingsByAttendees.length === 0 ? (
+            <NoRelatedItems>No related meetings found by attendees</NoRelatedItems>
+          ) : (
+            relatedMeetingsByAttendees.map(meeting => (
+              <MeetingRow 
+                key={meeting.id} 
+                onClick={() => handleMeetingClick(meeting.id)}
+              >
+                <div className="meeting-info">
+                  <div className="meeting-name">{meeting.name}</div>
+                  <div className="meeting-date">{format(new Date(meeting.date), 'dd/MM/yyyy')}</div>
+                </div>
+                <div className="meeting-meta">
+                  <span>
+                    <FiUsers size={14} />
+                    {meeting.commonAttendees} common {meeting.commonAttendees === 1 ? 'attendee' : 'attendees'}
+                  </span>
+                </div>
+              </MeetingRow>
+            ))
+          )}
+        </RelatedList>
+        
+        <SectionTitle>Related Meetings by Tags</SectionTitle>
+        <RelatedList>
+          {relatedMeetingsByTags.length === 0 ? (
+            <NoRelatedItems>No related meetings found by tags</NoRelatedItems>
+          ) : (
+            relatedMeetingsByTags.map(meeting => (
+              <MeetingRow 
+                key={meeting.id} 
+                onClick={() => handleMeetingClick(meeting.id)}
+              >
+                <div className="meeting-info">
+                  <div className="meeting-name">{meeting.name}</div>
+                  <div className="meeting-date">{format(new Date(meeting.date), 'dd/MM/yyyy')}</div>
+                </div>
+                <div className="meeting-meta">
+                  <span>
+                    <FiTag size={14} />
+                    {meeting.commonTags} common {meeting.commonTags === 1 ? 'tag' : 'tags'}
+                  </span>
+                </div>
+              </MeetingRow>
+            ))
+          )}
+        </RelatedList>
       </FormContent>
     );
   };
@@ -703,7 +1107,7 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
               </div>
               <div className="dates">
                 <span>Created: {format(new Date(meeting?.created_at || new Date()), 'dd/MM/yyyy HH:mm')}</span>
-                <span>Last Modified: {format(new Date(meeting?.last_modified || new Date()), 'dd/MM/yyyy HH:mm')}</span>
+                <span>Last Modified: {format(new Date(meeting?.updated_at || new Date()), 'dd/MM/yyyy HH:mm')}</span>
               </div>
             </div>
             <CloseButton onClick={onRequestClose}>
@@ -712,30 +1116,52 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
           </ModalHeader>
           
           <TabsContainer>
-            <TabButton
-              active={activeTab === 'details'}
-              onClick={() => setActiveTab('details')}
-            >
-              Details
-            </TabButton>
-            <TabButton
-              active={activeTab === 'followup'}
-              onClick={() => setActiveTab('followup')}
-            >
-              Follow-up
-            </TabButton>
-            <TabButton
-              active={activeTab === 'history'}
-              onClick={() => setActiveTab('history')}
-            >
-              History
-            </TabButton>
+            <div style={{ display: 'flex', width: '100%', justifyContent: 'space-between' }}>
+              <div>
+                <TabButton
+                  active={activeTab === 'details'}
+                  onClick={() => setActiveTab('details')}
+                >
+                  Details
+                </TabButton>
+                <TabButton
+                  active={activeTab === 'notes'}
+                  onClick={() => setActiveTab('notes')}
+                >
+                  Notes
+                </TabButton>
+                <TabButton
+                  active={activeTab === 'related'}
+                  onClick={() => setActiveTab('related')}
+                >
+                  Related
+                </TabButton>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', marginRight: '16px' }}>
+                <Button 
+                  onClick={handleDeleteMeeting}
+                  style={{ 
+                    backgroundColor: '#ef4444', 
+                    color: 'white', 
+                    border: 'none',
+                    padding: '6px 12px',
+                    fontSize: '0.75rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <FiTrash2 size={14} />
+                  Delete
+                </Button>
+              </div>
+            </div>
           </TabsContainer>
           
           <ContentSection>
             {activeTab === 'details' && renderDetailsTab()}
-            {activeTab === 'followup' && <div>Follow-up tab content coming soon</div>}
-            {activeTab === 'history' && <div>History tab content coming soon</div>}
+            {activeTab === 'notes' && renderNotesTab()}
+            {activeTab === 'related' && renderRelatedTab()}
           </ContentSection>
           
           <ButtonContainer>

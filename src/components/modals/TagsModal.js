@@ -261,29 +261,85 @@ const getTagColor = (tagName) => {
   return colors[index];
 };
 
-const TagsModal = ({ isOpen, onRequestClose, contact }) => {
+const TagsModal = ({ isOpen, onRequestClose, contact, meeting }) => {
   const [currentTags, setCurrentTags] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [showSuggestions, setShowSuggestions] = useState(false);
-
-  // Fetch current tags for the contact
+  
+  // Determine if we're in meeting or contact context
+  const isMeetingContext = !!meeting;
+  const entityId = isMeetingContext ? meeting.id : contact?.id;
+  
+  // Debug context information
+  console.log('TagsModal context:', { 
+    isMeetingContext, 
+    entityId, 
+    meetingInfo: meeting,
+    contactInfo: contact 
+  });
+  
+  // Fetch current tags for the entity (contact or meeting)
   const fetchCurrentTags = async () => {
     try {
-      const { data, error } = await supabase
-        .from('contact_tags')
-        .select('*, tag_id(*)')
-        .eq('contact_id', contact.id);
-
-      if (error) throw error;
-
-      setCurrentTags(data.map(item => ({
-        id: item.id,
-        tag_id: item.tag_id.id,
-        name: item.tag_id.name
-      })));
+      console.log(`Fetching tags for ${isMeetingContext ? 'meeting' : 'contact'} with ID: ${entityId}`);
+      
+      // Different table and field based on context
+      const tableName = isMeetingContext ? 'meetings_tags' : 'contact_tags';
+      const idField = isMeetingContext ? 'meeting_id' : 'contact_id';
+      
+      console.log(`Querying table: ${tableName}, idField: ${idField}, id: ${entityId}`);
+      
+      // Direct query - first try to see what's in the table
+      let { data, error } = await supabase
+        .from(tableName)
+        .select('*')
+        .eq(idField, entityId);
+      
+      console.log('Raw tag connections data:', data);
+      
+      if (error) {
+        console.error('Error fetching raw tags:', error);
+        throw error;
+      }
+      
+      // Now get the actual tags
+      if (data && data.length > 0) {
+        // Get all tag ids
+        const tagIds = data.map(item => item.tag_id);
+        console.log('Found tag IDs:', tagIds);
+        
+        // Fetch tag details
+        const { data: tagsData, error: tagsError } = await supabase
+          .from('tags')
+          .select('id, name, tag_name')
+          .in('id', tagIds);
+        
+        if (tagsError) {
+          console.error('Error fetching tag details:', tagsError);
+          throw tagsError;
+        }
+        
+        console.log('Tags details:', tagsData);
+        
+        // Combine the data
+        const combinedData = data.map(item => {
+          const tagInfo = tagsData.find(tag => tag.id === item.tag_id);
+          return {
+            id: item.id,           // connection ID
+            tag_id: item.tag_id,   // tag ID 
+            name: tagInfo?.tag_name || tagInfo?.name || 'Unknown tag'
+          };
+        });
+        
+        console.log('Setting currentTags to:', combinedData);
+        setCurrentTags(combinedData);
+      } else {
+        console.log('No tags found, clearing currentTags');
+        setCurrentTags([]);
+      }
     } catch (error) {
       console.error('Error fetching tags:', error);
       setMessage({ type: 'error', text: 'Failed to load tags' });
@@ -315,10 +371,10 @@ const TagsModal = ({ isOpen, onRequestClose, contact }) => {
   };
 
   useEffect(() => {
-    if (isOpen && contact) {
+    if (isOpen && entityId) {
       fetchCurrentTags();
     }
-  }, [isOpen, contact]);
+  }, [isOpen, entityId]);
 
   useEffect(() => {
     if (searchTerm.length >= 3) {
@@ -333,14 +389,28 @@ const TagsModal = ({ isOpen, onRequestClose, contact }) => {
   const handleRemoveTag = async (tagToRemove) => {
     try {
       setLoading(true);
+      console.log(`Removing tag ID ${tagToRemove.tag_id} from ${isMeetingContext ? 'meeting' : 'contact'} ${entityId}`);
+      
+      // Different table based on context
+      const tableName = isMeetingContext ? 'meetings_tags' : 'contact_tags';
+      const idField = isMeetingContext ? 'meeting_id' : 'contact_id';
+      
+      // Use the combination of entity_id and tag_id to identify the record to delete
       const { error } = await supabase
-        .from('contact_tags')
+        .from(tableName)
         .delete()
-        .eq('id', tagToRemove.id);
+        .eq(idField, entityId)
+        .eq('tag_id', tagToRemove.tag_id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Delete error:', error);
+        throw error;
+      }
 
-      setCurrentTags(currentTags.filter(tag => tag.id !== tagToRemove.id));
+      // Either fetch tags again to ensure UI is in sync with database
+      await fetchCurrentTags();
+      // Or update state correctly (both approaches work)
+      // setCurrentTags(currentTags.filter(tag => tag.tag_id !== tagToRemove.tag_id));
       setMessage({ type: 'success', text: 'Tag removed successfully' });
     } catch (error) {
       console.error('Error removing tag:', error);
@@ -353,16 +423,87 @@ const TagsModal = ({ isOpen, onRequestClose, contact }) => {
   const handleAddTag = async (tagToAdd) => {
     try {
       setLoading(true);
+      console.log(`Adding tag ${tagToAdd.id} to ${isMeetingContext ? 'meeting' : 'contact'} ${entityId}`);
       
-      // Add connection in contact_tags table
-      const { error } = await supabase
-        .from('contact_tags')
-        .insert({
-          contact_id: contact.id,
-          tag_id: tagToAdd.id
-        });
+      if (!entityId) {
+        console.error('Missing entity ID. Cannot add tag.');
+        throw new Error('Missing entity ID');
+      }
+      
+      // Different table and fields based on context
+      const tableName = isMeetingContext ? 'meetings_tags' : 'contact_tags';
+      const idFieldName = isMeetingContext ? 'meeting_id' : 'contact_id';
+      
+      // Create insertion object
+      const insertData = {
+        tag_id: tagToAdd.id
+      };
+      insertData[idFieldName] = entityId;
+      
+      console.log('Inserting data:', insertData, 'into table:', tableName);
+      
+      // Test table permissions - try simple select first
+      console.log(`Testing table permissions for ${tableName}`);
+      const { data: testData, error: testError } = await supabase
+        .from(tableName)
+        .select('*')
+        .limit(1);
+        
+      if (testError) {
+        console.error(`Permission test for ${tableName} failed:`, testError);
+      } else {
+        console.log(`Permission test for ${tableName} passed. Sample data:`, testData);
+      }
+      
+      // Verify the tag isn't already associated
+      console.log(`Checking if tag ${tagToAdd.id} is already associated with ${idFieldName}=${entityId}`);
+      const { data: existingTag, error: checkError } = await supabase
+        .from(tableName)
+        .select('*')
+        .eq(idFieldName, entityId)
+        .eq('tag_id', tagToAdd.id);
+      
+      if (checkError) {
+        console.error('Error checking existing tag:', checkError);
+        throw checkError;
+      }
+      
+      console.log('Existing tag check result:', existingTag);
+      
+      // If tag already exists, don't try to insert again
+      if (existingTag && existingTag.length > 0) {
+        console.log('Tag already exists for this entity, skipping insertion');
+        setMessage({ type: 'success', text: 'Tag already exists' });
+        
+        // Refresh current tags just to be sure UI is in sync
+        await fetchCurrentTags();
+        
+        setSearchTerm('');
+        setShowSuggestions(false);
+        return;
+      }
+      
+      // Log all data before insertion
+      console.log('About to insert tag connection with data:', {
+        tableName,
+        idFieldName,
+        entityId,
+        tagId: tagToAdd.id,
+        fullInsertData: insertData
+      });
+      
+      // Add connection in the appropriate table
+      const { data: insertedData, error } = await supabase
+        .from(tableName)
+        .insert(insertData)
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Insert error:', error);
+        throw error;
+      }
+      
+      console.log('Insert successful, result:', insertedData);
 
       // Refresh current tags
       await fetchCurrentTags();
@@ -372,7 +513,8 @@ const TagsModal = ({ isOpen, onRequestClose, contact }) => {
       setMessage({ type: 'success', text: 'Tag added successfully' });
     } catch (error) {
       console.error('Error adding tag:', error);
-      setMessage({ type: 'error', text: 'Failed to add tag' });
+      console.error('Error details:', error.message, error.code, error.details);
+      setMessage({ type: 'error', text: `Failed to add tag: ${error.message || 'Unknown error'}` });
     } finally {
       setLoading(false);
     }
@@ -383,32 +525,100 @@ const TagsModal = ({ isOpen, onRequestClose, contact }) => {
 
     try {
       setLoading(true);
+      console.log(`Creating new tag "${searchTerm}" for ${isMeetingContext ? 'meeting' : 'contact'}`);
       
-      // First create the new tag
-      const { data: newTag, error: createError } = await supabase
+      if (!entityId) {
+        console.error('Missing entity ID. Cannot add tag.');
+        throw new Error('Missing entity ID');
+      }
+      
+      // Check if tag with this name already exists
+      const { data: existingTagsByName, error: searchError } = await supabase
         .from('tags')
-        .insert({ name: searchTerm.trim() })
-        .select()
-        .single();
+        .select('*')
+        .ilike('name', searchTerm.trim());
+        
+      if (searchError) {
+        console.error('Error searching for existing tags:', searchError);
+        throw searchError;
+      }
+      
+      let tagToUse;
+      
+      // If tag already exists, use it instead of creating a new one
+      if (existingTagsByName && existingTagsByName.length > 0) {
+        console.log('Tag with this name already exists, using existing tag');
+        tagToUse = existingTagsByName[0];
+      } else {
+        // Create new tag if it doesn't exist
+        const { data: newTag, error: createError } = await supabase
+          .from('tags')
+          .insert({ 
+            name: searchTerm.trim(),
+            tag_name: searchTerm.trim() // Use both fields for compatibility
+          })
+          .select()
+          .single();
+  
+        if (createError) {
+          console.error('Error creating tag:', createError);
+          throw createError;
+        }
+        
+        console.log('New tag created:', newTag);
+        tagToUse = newTag;
+      }
 
-      if (createError) throw createError;
-
+      // Different table and field based on context
+      const tableName = isMeetingContext ? 'meetings_tags' : 'contact_tags';
+      const idFieldName = isMeetingContext ? 'meeting_id' : 'contact_id';
+      
+      // Check if this tag is already associated with the entity
+      const { data: existingConnection, error: checkError } = await supabase
+        .from(tableName)
+        .select('*')
+        .eq(idFieldName, entityId)
+        .eq('tag_id', tagToUse.id);
+        
+      if (checkError) {
+        console.error('Error checking existing connection:', checkError);
+        throw checkError;
+      }
+      
+      // If connection already exists, don't create a duplicate
+      if (existingConnection && existingConnection.length > 0) {
+        console.log('Tag already associated with this entity');
+        setMessage({ type: 'success', text: 'Tag already exists' });
+        await fetchCurrentTags();
+        setSearchTerm('');
+        setShowSuggestions(false);
+        return;
+      }
+      
+      // Create insertion object
+      const insertData = {
+        tag_id: tagToUse.id
+      };
+      insertData[idFieldName] = entityId;
+      
+      console.log('Connecting tag:', insertData);
+      
       // Then add the connection
       const { error: connectError } = await supabase
-        .from('contact_tags')
-        .insert({
-          contact_id: contact.id,
-          tag_id: newTag.id
-        });
+        .from(tableName)
+        .insert(insertData);
 
-      if (connectError) throw connectError;
+      if (connectError) {
+        console.error('Error connecting tag:', connectError);
+        throw connectError;
+      }
 
       // Refresh current tags
       await fetchCurrentTags();
       
       setSearchTerm('');
       setShowSuggestions(false);
-      setMessage({ type: 'success', text: 'New tag created and added successfully' });
+      setMessage({ type: 'success', text: tagToUse === existingTagsByName ? 'Existing tag added successfully' : 'New tag created and added successfully' });
     } catch (error) {
       console.error('Error creating tag:', error);
       setMessage({ type: 'error', text: 'Failed to create tag' });

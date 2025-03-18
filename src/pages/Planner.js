@@ -499,11 +499,21 @@ const Planner = () => {
         console.error('Error fetching contacts:', contactNamesError);
       }
 
-      // Process meetings with contacts information when available
-      const meetingsWithContacts = meetingsData.map(meeting => {
-        let relatedContacts = [];
+      // Fetch tags from the meetings_tags junction table
+      const { data: tagsConnectionData, error: tagsConnectionError } = await supabase
+        .from('meetings_tags')
+        .select('meeting_id, tags:tag_id(id, name)');
         
-        // Only process contact relationships if we have both contacts data
+      if (tagsConnectionError) {
+        console.error('Error fetching meetings_tags:', tagsConnectionError);
+      }
+      
+      // Process meetings with contacts and tags information
+      const meetingsWithContactsAndTags = meetingsData.map(meeting => {
+        let relatedContacts = [];
+        let relatedTags = [];
+        
+        // Process contact relationships if we have the data
         if (contactsData && contactNamesData) {
           relatedContacts = contactsData
             .filter(contact => contact.meeting_id === meeting.id)
@@ -513,6 +523,15 @@ const Planner = () => {
             });
         }
         
+        // Process tag relationships if we have the data
+        if (tagsConnectionData) {
+          relatedTags = tagsConnectionData
+            .filter(tc => tc.meeting_id === meeting.id)
+            .map(tc => tc.tags?.name || 'Unknown tag');
+        }
+        
+        console.log(`Meeting ${meeting.id} tags:`, relatedTags);
+        
         return { 
           ...meeting, 
           meeting_contacts: relatedContacts,
@@ -520,14 +539,14 @@ const Planner = () => {
           meeting_name: meeting.meeting_name || 'Untitled Meeting',
           meeting_date: meeting.meeting_date || new Date().toISOString(),
           meeting_score: meeting.meeting_score || 0,
-          meeting_tags: meeting.meeting_tags || [],
+          meeting_tags: relatedTags,  // Use the tags from the junction table
           meeting_note: meeting.meeting_note || '',
           meeting_record: meeting.meeting_record || ''
         };
       });
 
       // Sort meetings by date, newest first
-      const sortedMeetings = meetingsWithContacts.sort((a, b) => {
+      const sortedMeetings = meetingsWithContactsAndTags.sort((a, b) => {
         const dateA = new Date(a.meeting_date);
         const dateB = new Date(b.meeting_date);
         
@@ -648,27 +667,56 @@ const Planner = () => {
   // Handle tag removal
   const handleRemoveTag = async (meetingId, tagToRemove) => {
     try {
-      // Find the meeting to update
-      const meetingToUpdate = meetings.find(m => m.id === meetingId);
-      if (!meetingToUpdate) return;
+      console.log(`Removing tag "${tagToRemove}" from meeting ${meetingId}`);
       
-      // Remove the tag
-      const updatedTags = meetingToUpdate.meeting_tags.filter(tag => tag !== tagToRemove);
+      // First we need to find the tag ID associated with this tag name
+      const { data: tagData, error: tagError } = await supabase
+        .from('tags')
+        .select('id')
+        .eq('name', tagToRemove)
+        .single();
       
-      // Update in Supabase
-      const { error } = await supabase
-        .from('meetings')
-        .update({ meeting_tags: updatedTags })
-        .eq('id', meetingId);
+      if (tagError) {
+        console.error('Error finding tag:', tagError);
+        return;
+      }
       
-      if (error) throw error;
+      if (!tagData) {
+        console.error('Tag not found:', tagToRemove);
+        return;
+      }
+      
+      const tagId = tagData.id;
+      console.log(`Found tag ID ${tagId} for tag "${tagToRemove}"`);
+      
+      // Delete the connection from the junction table
+      const { error: deleteError } = await supabase
+        .from('meetings_tags')
+        .delete()
+        .eq('meeting_id', meetingId)
+        .eq('tag_id', tagId);
+      
+      if (deleteError) {
+        console.error('Error deleting tag connection:', deleteError);
+        throw deleteError;
+      }
+      
+      console.log(`Successfully removed tag "${tagToRemove}" from meeting ${meetingId}`);
       
       // Update local state
-      setMeetings(meetings.map(meeting => 
-        meeting.id === meetingId 
-          ? { ...meeting, meeting_tags: updatedTags } 
-          : meeting
-      ));
+      const meetingToUpdate = meetings.find(m => m.id === meetingId);
+      if (meetingToUpdate) {
+        const updatedTags = meetingToUpdate.meeting_tags.filter(tag => tag !== tagToRemove);
+        
+        setMeetings(meetings.map(meeting => 
+          meeting.id === meetingId 
+            ? { ...meeting, meeting_tags: updatedTags } 
+            : meeting
+        ));
+      }
+      
+      // Refresh meetings data to ensure UI is in sync with database
+      await fetchMeetings();
     } catch (error) {
       console.error('Error removing tag:', error);
     }
