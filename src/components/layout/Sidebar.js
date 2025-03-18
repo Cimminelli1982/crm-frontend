@@ -15,26 +15,27 @@ import {
 const SidebarContainer = styled.div`
   width: 250px;
   height: 100vh;
-  background-color: #fff;
-  border-right: 1px solid #e5e7eb;
+  background-color: #000000;
   position: fixed;
   top: 0;
   left: 0;
   display: flex;
   flex-direction: column;
   padding-top: 64px; /* Adjust based on your header height */
-  box-shadow: 1px 0 4px rgba(0, 0, 0, 0.05);
+  box-shadow: 1px 0 4px rgba(0, 0, 0, 0.15);
 `;
 
 const Logo = styled.div`
-  padding: 24px 20px;
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: #3b82f6;
+  padding: 16px 20px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  border-bottom: 1px solid #f3f4f6;
+  justify-content: center;
+  border-bottom: 1px solid #333333;
+  
+  img {
+    max-width: 180px;
+    height: auto;
+  }
 `;
 
 const NavSection = styled.div`
@@ -43,6 +44,20 @@ const NavSection = styled.div`
   padding: 12px 0;
   flex: 1;
   overflow-y: auto;
+  
+  /* Custom scrollbar for dark background */
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: #333333;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: #555555;
+    border-radius: 3px;
+  }
 `;
 
 const MenuItem = styled.div`
@@ -55,20 +70,20 @@ const MainMenuLink = styled.div`
   display: flex;
   align-items: center;
   padding: 12px 20px;
-  color: #374151;
+  color: #ffffff;
   font-weight: 500;
   transition: all 0.2s ease;
   cursor: pointer;
   border-left: 3px solid transparent;
   
   ${props => props.isActive && `
-    color: #3b82f6;
-    background-color: #eff6ff;
-    border-left-color: #3b82f6;
+    color: #ffffff;
+    background-color: #555555;
+    border-left-color: #999999;
   `}
   
   &:hover {
-    background-color: ${props => props.isActive ? '#eff6ff' : '#f9fafb'};
+    background-color: ${props => props.isActive ? '#555555' : '#333333'};
   }
   
   .icon {
@@ -88,26 +103,27 @@ const SubMenuContainer = styled.div`
   overflow: hidden;
   max-height: ${props => props.isOpen ? '500px' : '0'};
   transition: max-height 0.3s ease;
+  background-color: #111111;
 `;
 
 const SubMenuItem = styled(NavLink)`
   display: flex;
   align-items: center;
   padding: 10px 20px 10px 56px;
-  color: #6b7280;
+  color: #cccccc;
   font-size: 0.9rem;
   text-decoration: none;
   transition: all 0.2s ease;
   border-left: 3px solid transparent;
   
   &.active {
-    color: #3b82f6;
-    background-color: #f3f4f6;
-    border-left-color: #3b82f6;
+    color: #ffffff;
+    background-color: #333333;
+    border-left-color: #999999;
   }
   
   &:hover {
-    background-color: #f9fafb;
+    background-color: #222222;
   }
 `;
 
@@ -115,21 +131,22 @@ const UserSection = styled.div`
   padding: 16px 20px;
   display: flex;
   align-items: center;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid #333333;
   margin-top: auto;
+  background-color: #111111;
 `;
 
 const Avatar = styled.div`
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background-color: #e5e7eb;
+  background-color: #555555;
   display: flex;
   align-items: center;
   justify-content: center;
   margin-right: 12px;
   font-weight: 600;
-  color: #4b5563;
+  color: #ffffff;
 `;
 
 const UserInfo = styled.div`
@@ -138,7 +155,7 @@ const UserInfo = styled.div`
   
   .name {
     font-weight: 500;
-    color: #374151;
+    color: #ffffff;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -146,7 +163,7 @@ const UserInfo = styled.div`
   
   .role {
     font-size: 0.8rem;
-    color: #6b7280;
+    color: #cccccc;
   }
 `;
 
@@ -154,13 +171,13 @@ const SignOutButton = styled.button`
   background: none;
   border: none;
   cursor: pointer;
-  color: #6b7280;
+  color: #cccccc;
   font-size: 0.875rem;
   padding: 4px 8px;
   border-radius: 4px;
   
   &:hover {
-    background-color: #f3f4f6;
+    background-color: #333333;
     color: #ef4444;
   }
 `;
@@ -230,7 +247,10 @@ const Sidebar = ({ user, onSignOut }) => {
   return (
     <SidebarContainer>
       <Logo>
-        CRM Dashboard
+        <img 
+          src="https://assets.softr-files.com/applications/4612f2ab-9299-411a-b90c-78cfdc9b1a1b/assets/9f11c75a-a815-4686-9092-c9f8af95a4e1.jpeg" 
+          alt="CRM Dashboard Logo" 
+        />
       </Logo>
       
       <NavSection>
