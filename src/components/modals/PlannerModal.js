@@ -116,19 +116,25 @@ const ContentSection = styled.div`
 const FormContent = styled.div`
   width: 90%;
   margin: 0 auto;
+  padding: 16px;
 `;
 
 const FormGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 32px;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
   margin-bottom: 40px;
+  
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
 `;
 
 const SectionTitle = styled.h3`
   font-size: 1.125rem;
   color: #111827;
-  margin: 32px 0 20px;
+  margin: 32px 0 24px;
   padding-bottom: 8px;
   border-bottom: 1px solid #f3f4f6;
 `;
@@ -144,15 +150,15 @@ const FormGroup = styled.div`
 
 const Label = styled.label`
   display: block;
-  margin-bottom: 10px;
-  font-size: 0.875rem;
+  margin: 16px 0 8px 0;
+  font-size: 16px;
   color: #4b5563;
   font-weight: 500;
 `;
 
 const Input = styled.input`
   width: 100%;
-  height: 40px;
+  height: 38px;
   padding: 8px 12px;
   border: 1px solid #d1d5db;
   border-radius: 4px;
@@ -162,9 +168,14 @@ const Input = styled.input`
   transition: border-color 0.2s, box-shadow 0.2s;
 
   &:focus {
-    outline: none;
-    border-color: #007BFF;
-    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.15);
+    outline: 0;
+    border-color: #2196F3;
+    border-width: 2px;
+  }
+
+  &.error {
+    border-color: #E53935;
+    border-width: 2px;
   }
 `;
 
@@ -189,7 +200,7 @@ const TextArea = styled.textarea`
 
 const Select = styled.select`
   width: 100%;
-  height: 40px;
+  height: 38px;
   padding: 8px 12px;
   border: 1px solid #d1d5db;
   border-radius: 4px;
@@ -205,9 +216,14 @@ const Select = styled.select`
   padding-right: 24px;
   
   &:focus {
-    outline: none;
-    border-color: #007BFF;
-    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.15);
+    outline: 0;
+    border-color: #2196F3;
+    border-width: 2px;
+  }
+  
+  &.error {
+    border-color: #E53935;
+    border-width: 2px;
   }
 `;
 
@@ -299,14 +315,21 @@ const Tag = styled.div`
 const StarRating = styled.div`
   display: flex;
   gap: 4px;
+  margin-top: 8px;
   
   button {
     background: none;
     border: none;
-    padding: 4px;
+    padding: 0;
+    margin-right: 4px;
     cursor: pointer;
     color: ${props => props.active ? '#f59e0b' : '#d1d5db'};
     transition: color 0.2s;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     
     &:hover {
       color: #f59e0b;
@@ -1018,16 +1041,14 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
           />
         </FormGroup>
         
-        {/* Three-column layout for Meeting Score, Record, and Category */}
+        {/* Meeting Details with pixel-perfect layout */}
         <SectionTitle>Meeting Details</SectionTitle>
-        <FormGrid style={{ 
-          gridTemplateColumns: '1fr 1fr 1fr', 
-          gap: '0 16px',
-          alignItems: 'flex-end'
-        }}>
-          <FormGroup>
-            <Label>Meeting Score</Label>
-            <div style={{ height: '40px', display: 'flex', alignItems: 'center' }}>
+        <FormGrid>
+          {/* First column */}
+          <div>
+            {/* Score section */}
+            <FormGroup>
+              <Label>Meeting Score</Label>
               <StarRating active={formData.meeting_score > 0}>
                 {[1, 2, 3, 4, 5].map(score => (
                   <button
@@ -1036,7 +1057,7 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
                     type="button"
                   >
                     <FiStar
-                      size={20}
+                      size={22}
                       style={{
                         fill: score <= formData.meeting_score ? '#f59e0b' : 'none'
                       }}
@@ -1044,24 +1065,22 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
                   </button>
                 ))}
               </StarRating>
-            </div>
-          </FormGroup>
+            </FormGroup>
+            
+            {/* Record section with exactly 24px margin */}
+            <FormGroup style={{ marginTop: '24px' }}>
+              <Label htmlFor="meeting_record">Meeting Record</Label>
+              <Input
+                id="meeting_record"
+                name="meeting_record"
+                value={formData.meeting_record}
+                onChange={handleInputChange}
+                placeholder="Enter meeting record URL"
+              />
+            </FormGroup>
+          </div>
           
-          <FormGroup>
-            <Label htmlFor="meeting_record">Meeting Record</Label>
-            <Input
-              id="meeting_record"
-              name="meeting_record"
-              value={formData.meeting_record}
-              onChange={handleInputChange}
-              placeholder="Enter meeting record URL"
-              style={{ 
-                height: '32px',
-                fontSize: '0.875rem'
-              }}
-            />
-          </FormGroup>
-          
+          {/* Second column */}
           <FormGroup>
             <Label htmlFor="meeting_category">Meeting Category</Label>
             <Select
@@ -1069,11 +1088,6 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
               name="meeting_category"
               value={formData.meeting_category}
               onChange={handleInputChange}
-              style={{ 
-                height: '32px',
-                fontSize: '0.875rem',
-                width: '100%'
-              }}
             >
               {categoryOptions.map(option => (
                 <option key={option.value} value={option.value}>
