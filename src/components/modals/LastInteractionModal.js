@@ -1,36 +1,55 @@
 import React, { useState, useEffect } from 'react';
 import Modal from 'react-modal';
-import { FiX } from 'react-icons/fi';
+import { FiX, FiMail } from 'react-icons/fi';
+import { RiWhatsappFill, RiLinkedinBoxFill } from 'react-icons/ri';
 import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
 
 // ==================== Styled Components ====================
+// Define the 4-color palette
+const COLORS = {
+  WHITE: '#FFFFFF',
+  BLACK: '#000000',
+  LIGHT_GRAY: '#E5E5E5',
+  DARK_GRAY: '#4A4A4A'
+};
 const ModalHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 15px;
   padding-bottom: 15px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid ${COLORS.LIGHT_GRAY};
 
-  h2 {
-    margin: 0;
-    font-size: 1.25rem;
-    color: #111827;
-    font-weight: 600;
+  .header-left {
+    h2 {
+      margin: 0;
+      font-size: 1.25rem;
+      color: ${COLORS.BLACK};
+      font-weight: 600;
+    }
   }
 
-  button {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: #6b7280;
-    padding: 4px;
-    border-radius: 4px;
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     
-    &:hover {
-      color: #1f2937;
-      background-color: #f3f4f6;
+    button {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: ${COLORS.DARK_GRAY};
+      padding: 4px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      
+      &:hover {
+        color: ${COLORS.BLACK};
+        background-color: ${COLORS.LIGHT_GRAY};
+      }
     }
   }
 `;
@@ -41,8 +60,8 @@ const TabContainer = styled.div`
 `;
 
 const TabButton = styled.button`
-  background-color: ${props => (props.active ? '#007BFF' : '#E9ECEF')};
-  color: ${props => (props.active ? '#fff' : '#000')};
+  background-color: ${props => (props.active ? COLORS.BLACK : COLORS.LIGHT_GRAY)};
+  color: ${props => (props.active ? COLORS.WHITE : COLORS.BLACK)};
   padding: 8px;
   border: none;
   border-radius: 4px 4px 0 0;
@@ -51,7 +70,8 @@ const TabButton = styled.button`
   transition: all 0.2s;
 
   &:hover {
-    background-color: ${props => (props.active ? '#0056b3' : '#dee2e6')};
+    background-color: ${props => (props.active ? COLORS.BLACK : COLORS.DARK_GRAY)};
+    color: ${COLORS.WHITE};
   }
 `;
 
@@ -60,20 +80,20 @@ const TabContent = styled.div`
 `;
 
 const InteractionList = styled.div`
-  background-color: #E9ECEF;
+  background-color: ${COLORS.LIGHT_GRAY};
   padding: 10px;
   border-radius: 4px;
   margin-bottom: 15px;
-  max-height: 300px;
+  height: 400px;
   overflow-y: auto;
 `;
 
 const InteractionItem = styled.div`
-  background-color: white;
+  background-color: ${COLORS.WHITE};
   padding: 12px;
   border-radius: 4px;
   margin-bottom: 8px;
-  border: 1px solid #dee2e6;
+  border: 1px solid ${COLORS.LIGHT_GRAY};
 
   &:last-child {
     margin-bottom: 0;
@@ -81,29 +101,18 @@ const InteractionItem = styled.div`
 
   .date {
     font-size: 0.875rem;
-    color: #6b7280;
+    color: ${COLORS.DARK_GRAY};
     margin-bottom: 4px;
   }
 
   .content {
-    color: #374151;
+    color: ${COLORS.BLACK};
   }
 
   .type {
     font-size: 0.75rem;
-    color: #fff;
-    background-color: ${props => {
-      switch (props.type) {
-        case 'whatsapp':
-          return '#25D366';
-        case 'email':
-          return '#4285F4';
-        case 'meeting':
-          return '#9C27B0';
-        default:
-          return '#6b7280';
-      }
-    }};
+    color: ${COLORS.WHITE};
+    background-color: ${COLORS.BLACK};
     padding: 2px 6px;
     border-radius: 12px;
     display: inline-block;
@@ -114,47 +123,52 @@ const InteractionItem = styled.div`
 const NoInteractions = styled.div`
   text-align: center;
   padding: 20px;
-  color: #6b7280;
+  color: ${COLORS.DARK_GRAY};
   font-style: italic;
+  height: 400px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
 `;
 
 const Table = styled.table`
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  background-color: white;
+  background-color: ${COLORS.WHITE};
   border-radius: 8px;
   overflow: hidden;
 `;
 
 const TableHeader = styled.thead`
-  background-color: #f3f4f6;
+  background-color: ${COLORS.LIGHT_GRAY};
   
   th {
     padding: 12px 16px;
     text-align: center;
     font-weight: 600;
     font-size: 0.875rem;
-    color: #374151;
-    border-bottom: 1px solid #e5e7eb;
+    color: ${COLORS.BLACK};
+    border-bottom: 1px solid ${COLORS.LIGHT_GRAY};
   }
 `;
 
 const TableBody = styled.tbody`
   tr {
     &:hover {
-      background-color: #f9fafb;
+      background-color: ${COLORS.LIGHT_GRAY};
     }
     
     &:not(:last-child) {
-      border-bottom: 1px solid #e5e7eb;
+      border-bottom: 1px solid ${COLORS.LIGHT_GRAY};
     }
   }
   
   td {
     padding: 12px 16px;
     font-size: 0.875rem;
-    color: #111827;
+    color: ${COLORS.BLACK};
     vertical-align: middle;
     
     &.centered {
@@ -181,25 +195,26 @@ const PaginationContainer = styled.div`
 
 const PageInfo = styled.span`
   font-size: 0.875rem;
-  color: #4b5563;
+  color: ${COLORS.DARK_GRAY};
 `;
 
 const PaginationButton = styled.button`
   padding: 0.5rem 1rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid ${COLORS.LIGHT_GRAY};
   border-radius: 0.375rem;
-  background-color: white;
+  background-color: ${COLORS.WHITE};
   font-size: 0.875rem;
-  color: #374151;
+  color: ${COLORS.BLACK};
   cursor: pointer;
   
   &:hover:not(:disabled) {
-    background-color: #f3f4f6;
+    background-color: ${COLORS.LIGHT_GRAY};
   }
   
   &:disabled {
     cursor: not-allowed;
     opacity: 0.5;
+    color: ${COLORS.DARK_GRAY};
   }
   
   margin: 0 0.25rem;
@@ -209,8 +224,8 @@ const Tag = styled.div`
   display: inline-flex;
   align-items: center;
   padding: 4px 8px;
-  background-color: ${props => props.color || '#f3f4f6'};
-  color: ${props => props.textColor || '#374151'};
+  background-color: ${props => props.color || COLORS.LIGHT_GRAY};
+  color: ${props => props.textColor || COLORS.BLACK};
   border-radius: 16px;
   font-size: 0.875rem;
   gap: 6px;
@@ -225,31 +240,39 @@ const Tag = styled.div`
 `;
 
 const DirectionTag = styled(Tag)`
-  background-color: ${props => props.direction === 'Received' ? '#d1fae5' : '#e0f2fe'};
-  color: ${props => props.direction === 'Received' ? '#065f46' : '#0369a1'};
+  background-color: ${props => props.direction === 'Received' ? COLORS.LIGHT_GRAY : COLORS.DARK_GRAY};
+  color: ${props => props.direction === 'Received' ? COLORS.BLACK : COLORS.WHITE};
 `;
 
 const ActionButton = styled.button`
   font-size: 0.8em;
   padding: 5px 10px;
-  background: ${props => props.variant === 'whatsapp' ? '#25D366' : props.variant === 'emergency' ? '#d32f2f' : '#006064'};
-  color: white;
+  background: ${COLORS.BLACK};
+  color: ${COLORS.WHITE};
   border: none;
   border-radius: 3px;
   cursor: pointer;
-  margin-right: 5px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
   
   &:hover {
-    opacity: 0.9;
+    background: ${COLORS.DARK_GRAY};
+  }
+  
+  /* Header button styles */
+  .header-right & {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 4px;
   }
 `;
 
 const MessageCounter = styled.div`
   font-size: 0.85rem;
-  color: #666;
+  color: ${COLORS.DARK_GRAY};
   margin-bottom: 10px;
   text-align: right;
   padding-right: 5px;
@@ -266,11 +289,13 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
   const [totalWhatsAppRecords, setTotalWhatsAppRecords] = useState(0);
   const [queryDetails, setQueryDetails] = useState({});
   const [contactEmails, setContactEmails] = useState([]);
+  const [meetings, setMeetings] = useState([]);
   const ITEMS_PER_PAGE = 15;
   
   // IMPORTANT: Corrected table name
   const WHATSAPP_TABLE = 'whatsapp'; // Changed from 'whatsapp_messages'
   const EMAILS_TABLE = 'emails';
+  const MEETINGS_TABLE = 'meetings';
 
   // Add a new debug mode state
   const [debugMode, setDebugMode] = useState(true);
@@ -291,6 +316,14 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       else setActiveTab('Meeting');
     }
   }, [contact]);
+  
+  // Effect to check if contact has any meetings when in Meeting tab
+  useEffect(() => {
+    if (isOpen && contact && contact.id && activeTab === 'Meeting') {
+      // Directly call fetchMeetings to load meeting data
+      fetchMeetings();
+    }
+  }, [isOpen, contact?.id, activeTab]);
 
   // Update useEffect to ensure proper initialization
   useEffect(() => {
@@ -311,10 +344,15 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       
       // Set loading state and clear current data
       setLoading(true);
-      setInteractions([]);
       
-      // For all pages, use a completely new approach with limit/offset
-      fetchPageWithLimitOffset(currentPage);
+      if (activeTab === 'Meeting') {
+        // For meetings tab, re-fetch meetings with pagination
+        fetchMeetings();
+      } else {
+        // For WhatsApp and other tabs, use the existing approach
+        setInteractions([]);
+        fetchPageWithLimitOffset(currentPage);
+      }
     }
   }, [currentPage]);
 
@@ -323,7 +361,12 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     if (isOpen && contact) {
       console.log('Tab changed to', activeTab, '- fetching new data');
       setCurrentPage(1); // Reset to page 1 when changing tabs
-      fetchInteractions();
+      
+      if (activeTab === 'Meeting') {
+        fetchMeetings();
+      } else {
+        fetchInteractions();
+      }
     }
   }, [activeTab]);
 
@@ -676,6 +719,13 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     }).replace(/\//g, '-');
   };
 
+  // Define the WhatsApp click handler at component level
+  const handleWhatsAppClick = (mobile) => {
+    if (!mobile) return;
+    const formattedNumber = mobile.startsWith('+') ? mobile.substring(1) : mobile;
+    window.open(`https://wa.me/${formattedNumber}`, '_blank');
+  };
+
   // Update the renderWhatsAppTable function to make the button properly clickable
   const renderWhatsAppTable = () => {
     if (loading) {
@@ -722,23 +772,9 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     const startRecord = (currentPage - 1) * ITEMS_PER_PAGE + 1;
     const endRecord = Math.min(startRecord + interactions.length - 1, totalRecords);
 
-    const handleWhatsAppClick = (mobile) => {
-      const formattedNumber = mobile.startsWith('+') ? mobile.substring(1) : mobile;
-      window.open(`https://wa.me/${formattedNumber}`, '_blank');
-    };
-
     return (
-      <>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '10px' }}>
-          <ActionButton 
-            type="button"
-            onClick={() => handleWhatsAppClick(contact.mobile)}
-            variant="whatsapp"
-          >
-            WhatsApp
-          </ActionButton>
-        </div>
-        
+      <>        
+        <div style={{ height: '400px', overflowY: 'auto', marginBottom: '15px' }}>
         <Table>
           <thead>
             <tr>
@@ -781,6 +817,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
             })}
           </tbody>
         </Table>
+        </div>
         
         <PaginationContainer>
           <PageInfo>
@@ -821,7 +858,155 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     );
   };
 
-  // Render for Email or Meeting (simple example)
+  // Render for meetings tab
+  const renderMeetingsTable = () => {
+    if (loading) {
+      return <NoInteractions>Loading meetings...</NoInteractions>;
+    }
+    
+    if (!meetings.length) {
+      return (
+        <NoInteractions>
+          No meetings found for this contact
+          <div style={{ marginTop: '20px' }}>
+            <ActionButton 
+              onClick={() => window.open('/planner', '_blank')}
+              variant="meeting"
+            >
+              Schedule a Meeting
+            </ActionButton>
+          </div>
+        </NoInteractions>
+      );
+    }
+
+    // Calculate record ranges for display
+    const startRecord = (currentPage - 1) * ITEMS_PER_PAGE + 1;
+    const endRecord = Math.min(startRecord + meetings.length - 1, totalRecords);
+
+    return (
+      <>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+          <div style={{ fontWeight: 'bold', color: '#374151' }}>
+            {startRecord}-{endRecord} of {totalRecords} meetings
+          </div>
+          <ActionButton 
+            onClick={() => window.open('/planner', '_blank')}
+            variant="meeting"
+          >
+            View All Meetings
+          </ActionButton>
+        </div>
+        <div style={{ height: '400px', overflowY: 'auto', marginBottom: '15px' }}>
+        <Table>
+          <TableHeader>
+            <tr>
+              <th style={{ width: '15%' }}>Date</th>
+              <th style={{ width: '30%' }}>Meeting Name</th>
+              <th style={{ width: '15%' }}>Category</th>
+              <th style={{ width: '40%' }}>Notes</th>
+            </tr>
+          </TableHeader>
+          <TableBody>
+            {meetings.map((meeting, index) => {
+              // Determine category style
+              const getCategoryColor = (category) => {
+                switch (category?.toLowerCase()) {
+                  case 'inbox': return COLORS.LIGHT_GRAY;
+                  case 'karma_points': return COLORS.LIGHT_GRAY;
+                  case 'dealflow': return COLORS.DARK_GRAY;
+                  case 'portfolio': return COLORS.DARK_GRAY;
+                  default: return COLORS.LIGHT_GRAY;
+                }
+              };
+              
+              const getCategoryTextColor = (category) => {
+                switch (category?.toLowerCase()) {
+                  case 'inbox': return COLORS.BLACK;
+                  case 'karma_points': return COLORS.BLACK;
+                  case 'dealflow': return COLORS.WHITE;
+                  case 'portfolio': return COLORS.WHITE;
+                  default: return COLORS.BLACK;
+                }
+              };
+
+              return (
+                <tr key={meeting.id || index}>
+                  <td className="centered">
+                    {formatDate(meeting.meeting_date)}
+                  </td>
+                  <td>
+                    {meeting.meeting_name}
+                  </td>
+                  <td className="tag-cell">
+                    <Tag 
+                      color={getCategoryColor(meeting.meeting_category)}
+                      textColor={getCategoryTextColor(meeting.meeting_category)}
+                    >
+                      <span>{meeting.meeting_category || 'None'}</span>
+                    </Tag>
+                  </td>
+                  <td>
+                    {meeting.meeting_note ? (
+                      <div style={{ 
+                        maxHeight: '80px', 
+                        overflow: 'auto',
+                        fontSize: '0.85rem',
+                        lineHeight: '1.5'
+                      }}>
+                        {meeting.meeting_note}
+                      </div>
+                    ) : (
+                      <span style={{ fontStyle: 'italic', color: '#6b7280' }}>No notes</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </TableBody>
+        </Table>
+        </div>
+        
+        <PaginationContainer>
+          <PageInfo>
+            Page {currentPage} of {totalPages}
+          </PageInfo>
+          <div>
+            <PaginationButton
+              type="button"
+              onClick={() => handlePageChange(1)}
+              disabled={currentPage === 1}
+            >
+              First
+            </PaginationButton>
+            <PaginationButton
+              type="button"
+              onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+            >
+              Previous
+            </PaginationButton>
+            <PaginationButton
+              type="button"
+              onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages}
+            >
+              Next
+            </PaginationButton>
+            <PaginationButton
+              type="button"
+              onClick={() => handlePageChange(totalPages)}
+              disabled={currentPage === totalPages}
+            >
+              Last
+            </PaginationButton>
+          </div>
+        </PaginationContainer>
+      </>
+    );
+  };
+
+  // Render for Email or other generic tabs
   const renderGenericInteractions = () => {
     if (loading) {
       return <NoInteractions>Loading...</NoInteractions>;
@@ -1114,6 +1299,86 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     }
   };
 
+  // Fetch meetings data from Supabase for the contact
+  const fetchMeetings = async () => {
+    setLoading(true);
+    console.log('FETCH MEETINGS STARTED');
+    
+    try {
+      if (!contact || !contact.id) {
+        console.error('No contact data available for fetching meetings');
+        setLoading(false);
+        setMeetings([]);
+        return;
+      }
+      
+      console.log(`Fetching meetings for contact ID: ${contact.id}`);
+      
+      // Query the meetings_contacts junction table to find meetings where this contact is an attendee
+      const { data: meetingContactsData, error: meetingContactsError } = await supabase
+        .from('meetings_contacts')
+        .select('meeting_id')
+        .eq('contact_id', contact.id);
+      
+      if (meetingContactsError) {
+        console.error('Error fetching meetings_contacts:', meetingContactsError);
+        setLoading(false);
+        setMeetings([]);
+        return;
+      }
+      
+      if (!meetingContactsData || meetingContactsData.length === 0) {
+        console.log('No meetings found for this contact');
+        setLoading(false);
+        setMeetings([]);
+        return;
+      }
+      
+      // Extract meeting IDs
+      const meetingIds = meetingContactsData.map(item => item.meeting_id);
+      console.log(`Found ${meetingIds.length} meeting IDs for this contact`);
+      
+      // Fetch the actual meetings data
+      const { data: meetingsData, error: meetingsError } = await supabase
+        .from(MEETINGS_TABLE)
+        .select('*')
+        .in('id', meetingIds)
+        .order('meeting_date', { ascending: false })
+        .range((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE - 1);
+      
+      if (meetingsError) {
+        console.error('Error fetching meetings data:', meetingsError);
+        setLoading(false);
+        setMeetings([]);
+        return;
+      }
+      
+      // Get total count for pagination
+      const { count, error: countError } = await supabase
+        .from(MEETINGS_TABLE)
+        .select('*', { count: 'exact', head: true })
+        .in('id', meetingIds);
+      
+      if (countError) {
+        console.error('Error counting meetings:', countError);
+      }
+      
+      console.log(`Fetched ${meetingsData?.length || 0} meetings out of ${count || 0} total`);
+      
+      // Update state with the fetched meetings
+      setMeetings(meetingsData || []);
+      setTotalRecords(count || 0);
+      setTotalPages(Math.max(Math.ceil((count || 0) / ITEMS_PER_PAGE), 1));
+      
+    } catch (err) {
+      console.error('Error in fetchMeetings:', err);
+      setMeetings([]);
+    } finally {
+      setLoading(false);
+      console.log('FETCH MEETINGS COMPLETED');
+    }
+  };
+
   // Fetch emails data from Supabase based on contact's email addresses
   const fetchEmails = async () => {
     setLoading(true);
@@ -1320,11 +1585,11 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     // Determine direction
     const direction = contactEmails.includes(latestEmail.from_email) ? 'Sent' : 'Received';
     
-    // Create email-like display styles
+    // Create email-like display styles using our color palette
     const emailContainer = {
-      backgroundColor: '#fff',
+      backgroundColor: COLORS.WHITE,
       borderRadius: '8px',
-      boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+      boxShadow: `0 2px 10px ${COLORS.LIGHT_GRAY}`,
       padding: '20px',
       marginBottom: '20px',
       marginTop: '20px',
@@ -1333,7 +1598,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     };
     
     const emailHeader = {
-      borderBottom: '1px solid #eee',
+      borderBottom: `1px solid ${COLORS.LIGHT_GRAY}`,
       paddingBottom: '15px',
       marginBottom: '15px'
     };
@@ -1342,13 +1607,13 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       fontSize: '1.2rem',
       fontWeight: 'bold',
       marginBottom: '10px',
-      color: '#333'
+      color: COLORS.BLACK
     };
     
     const emailMeta = {
       display: 'flex',
       justifyContent: 'space-between',
-      color: '#666',
+      color: COLORS.DARK_GRAY,
       fontSize: '0.9rem',
       marginBottom: '8px'
     };
@@ -1356,14 +1621,14 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     const emailMetaLabel = {
       fontWeight: 'bold',
       marginRight: '10px',
-      color: '#444'
+      color: COLORS.BLACK
     };
     
     const emailBody = {
       padding: '10px 0',
       fontSize: '0.95rem',
       lineHeight: '1.6',
-      color: '#333',
+      color: COLORS.BLACK,
       whiteSpace: 'pre-wrap'  // Preserves line breaks in the email body
     };
     
@@ -1373,8 +1638,8 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       fontSize: '0.8rem',
       fontWeight: 'bold',
       marginLeft: '10px',
-      color: direction === 'Received' ? '#065f46' : '#0369a1',
-      backgroundColor: direction === 'Received' ? '#d1fae5' : '#e0f2fe',
+      color: direction === 'Received' ? COLORS.BLACK : COLORS.WHITE,
+      backgroundColor: direction === 'Received' ? COLORS.LIGHT_GRAY : COLORS.DARK_GRAY,
     };
 
     // Button container style
@@ -1397,19 +1662,19 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       alignItems: 'center',
       justifyContent: 'center',
       minWidth: '120px',
-      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+      boxShadow: `0 2px 4px ${COLORS.LIGHT_GRAY}`
     };
     
     const inboxButtonStyle = {
       ...buttonBaseStyle,
-      backgroundColor: '#1a73e8',
-      color: 'white'
+      backgroundColor: COLORS.BLACK,
+      color: COLORS.WHITE
     };
     
     const skipButtonStyle = {
       ...buttonBaseStyle,
-      backgroundColor: '#dc3545',
-      color: 'white'
+      backgroundColor: COLORS.DARK_GRAY,
+      color: COLORS.WHITE
     };
     
     // Handler for the Skip button
@@ -1448,6 +1713,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           Latest email ({totalRecords} total emails)
         </MessageCounter>
         
+        <div style={{ height: '400px', overflowY: 'auto', marginBottom: '15px' }}>
         <div style={emailContainer}>
           <div style={emailHeader}>
             <div style={emailSubject}>
@@ -1492,6 +1758,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
             </button>
           </div>
         </div>
+        </div>
       </>
     );
   };
@@ -1511,24 +1778,64 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           padding: '20px',
           border: 'none',
           borderRadius: '0.5rem',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+          boxShadow: `0 4px 6px ${COLORS.BLACK}`,
           maxWidth: '1250px',
           width: '90%',
-          maxHeight: '80vh',     // Changed from minHeight to maxHeight
-          overflow: 'auto'       // Ensure content is scrollable
+          height: '650px',       // Fixed height for consistency
+          overflow: 'auto',      // Ensure content is scrollable
+          backgroundColor: COLORS.WHITE
         },
         overlay: {
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
           zIndex: 1000
         }
       }}
     >
       <div style={{ padding: '1rem' }}>
         <ModalHeader>
-          <h2>Last Interactions</h2>
-          <button onClick={onRequestClose} aria-label="Close modal">
-            <FiX size={20} />
-          </button>
+          <div className="header-left">
+            <h2>Last Interactions</h2>
+          </div>
+          <div className="header-right">
+            {contact?.mobile && (
+              <ActionButton 
+                onClick={() => handleWhatsAppClick(contact.mobile)}
+                aria-label="WhatsApp"
+                title="Open WhatsApp"
+              >
+                <RiWhatsappFill size={20} />
+              </ActionButton>
+            )}
+            {contact?.email && (
+              <ActionButton 
+                onClick={() => window.open(`mailto:${contact.email}`, '_blank')}
+                aria-label="Email"
+                title="Open Gmail"
+              >
+                <FiMail size={20} />
+              </ActionButton>
+            )}
+            {contact?.linkedin_url ? (
+              <ActionButton 
+                onClick={() => window.open(contact.linkedin_url, '_blank')}
+                aria-label="LinkedIn"
+                title="Open LinkedIn"
+              >
+                <RiLinkedinBoxFill size={20} />
+              </ActionButton>
+            ) : contact?.full_name && (
+              <ActionButton 
+                onClick={() => window.open(`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(contact.full_name || '')}`, '_blank')}
+                aria-label="LinkedIn Search"
+                title="Search on LinkedIn"
+              >
+                <RiLinkedinBoxFill size={20} />
+              </ActionButton>
+            )}
+            <button onClick={onRequestClose} aria-label="Close modal">
+              <FiX size={20} />
+            </button>
+          </div>
         </ModalHeader>
 
         {/* Tabs */}
@@ -1562,7 +1869,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
               setCurrentPage(1);
             }}
           >
-            Meetings (Coming soon)
+            Meetings
           </TabButton>
         </TabContainer>
 
@@ -1571,6 +1878,8 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           renderWhatsAppTable()
         ) : activeTab === 'Email' ? (
           renderEmailsTable()
+        ) : activeTab === 'Meeting' ? (
+          renderMeetingsTable()
         ) : (
           <TabContent>{renderGenericInteractions()}</TabContent>
         )}
