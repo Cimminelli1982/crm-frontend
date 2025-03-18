@@ -72,6 +72,25 @@ const MonthNavigation = styled.div`
   gap: 0.5rem;
 `;
 
+const ActionButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background-color: #2563eb;
+  color: white;
+  border: none;
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  
+  &:hover {
+    background-color: #1d4ed8;
+  }
+`;
+
 const MonthDisplay = styled.div`
   font-size: 1.125rem;
   font-weight: 600;
@@ -133,6 +152,29 @@ const WeekTitle = styled.h2`
   font-weight: 600;
   color: #374151;
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const AddEventButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background-color: #e0f2fe;
+  color: #0284c7;
+  border: none;
+  border-radius: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  
+  &:hover {
+    background-color: #bae6fd;
+  }
 `;
 
 const WeekDateRange = styled.span`
@@ -787,10 +829,11 @@ const Planner = () => {
       }
     });
     
-    // Sort meetings within each week by date
+    // Sort meetings within each week by date (most recent on top)
     updatedWeeks.forEach(week => {
       week.meetings.sort((a, b) => {
-        return new Date(a.meeting_date) - new Date(b.meeting_date);
+        // Sort by date (newest first)
+        return new Date(b.meeting_date) - new Date(a.meeting_date);
       });
     });
     
@@ -1144,6 +1187,44 @@ const Planner = () => {
     // Refresh meetings data after modal closes
     await fetchMeetings();
   };
+  
+  // Function to create a new meeting based on a given date
+  const handleAddMeeting = (date = new Date()) => {
+    // Format the date for the form
+    const formattedDate = format(date, "yyyy-MM-dd");
+    
+    // Create a new meeting object
+    const newMeeting = {
+      id: null, // Will be assigned by the database
+      meeting_name: "New Meeting",
+      meeting_date: formattedDate,
+      meeting_note: "",
+      meeting_record: "",
+      meeting_score: 0,
+      meeting_contacts: [],
+      meeting_tags: [],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      initialTab: 'details' // Open in details tab
+    };
+    
+    // Set as selected meeting and open modal
+    setSelectedMeeting(newMeeting);
+    setIsModalOpen(true);
+  };
+  
+  // Function to create a new meeting for a specific week
+  const handleAddMeetingForWeek = (week) => {
+    // Create a template meeting object with the week's Monday as the default date
+    const weekStart = new Date(week.start);
+    
+    // If Monday is in the past, use today's date instead
+    const today = new Date();
+    const meetingDate = weekStart < today ? today : weekStart;
+    
+    // Use the common function to create the meeting
+    handleAddMeeting(meetingDate);
+  };
 
   // Format date range for display
   const formatDateRange = (start, end) => {
@@ -1254,6 +1335,10 @@ const Planner = () => {
               Schedule and manage your meetings and follow-ups.
             </Description>
           </HeaderTitle>
+          <ActionButton onClick={() => handleAddMeeting()}>
+            <FiPlus size={16} />
+            New Event
+          </ActionButton>
         </HeaderContent>
       </PageHeader>
       
@@ -1295,17 +1380,23 @@ const Planner = () => {
           <NoMeetingsMessage>Loading meetings...</NoMeetingsMessage>
         ) : error ? (
           <NoMeetingsMessage style={{ color: '#ef4444' }}>{error}</NoMeetingsMessage>
-        ) : weeksInView.length === 0 || weeksInView.every(week => week.meetings.length === 0) ? (
-          <NoMeetingsMessage>No meetings found for this month</NoMeetingsMessage>
+        ) : weeksInView.length === 0 ? (
+          <NoMeetingsMessage>No weeks found for this month</NoMeetingsMessage>
         ) : (
-          // Render weeks that are in the current month and have meetings, newest first
+          // Render all weeks that are in the current month, newest first
           weeksInView
-            .filter(week => week.isInCurrentMonth && week.meetings.length > 0) // Only show weeks with meetings
+            .filter(week => week.isInCurrentMonth) // Show all weeks in current month
             .sort((a, b) => b.weekNumber - a.weekNumber) // Sort weeks newest first
             .map((week, index) => (
               <WeekSection key={`week-${week.weekNumber}`}>
                 <WeekHeader>
-                  <WeekTitle>Week #{week.weekNumber}</WeekTitle>
+                  <WeekTitle>
+                    Week #{week.weekNumber}
+                    <AddEventButton onClick={() => handleAddMeetingForWeek(week)}>
+                      <FiPlus size={12} />
+                      Add Event
+                    </AddEventButton>
+                  </WeekTitle>
                   <WeekDateRange>{formatDateRange(week.start, week.end)}</WeekDateRange>
                 </WeekHeader>
                 {renderWeekTable(week.meetings)}
