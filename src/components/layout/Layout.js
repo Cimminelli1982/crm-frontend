@@ -78,30 +78,39 @@ const MenuItemHeader = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1.5rem;
-  color: #ffffff;
-  background-color: ${props => (props.active ? '#555555' : 'transparent')};
-  border-left: 3px solid ${props => (props.active ? '#999999' : 'transparent')};
+  padding: 0.75rem 1.5rem 0.75rem 2.25rem;
+  color: ${props => (props.active ? '#00ff00' : '#ffffff')};
+  background-color: ${props => (props.active ? '#333333' : 'transparent')};
+  border-left: 3px solid ${props => (props.active ? '#444444' : 'transparent')};
   text-decoration: none;
   transition: all 0.2s;
   cursor: pointer;
+  font-family: 'Courier New', Courier, monospace;
+  letter-spacing: 0.5px;
+  position: relative;
+  
+  &:before {
+    content: ${props => props.active ? '"> "' : '"$ "'};
+    font-family: monospace;
+    color: ${props => (props.active ? '#00ff00' : '#86c786')};
+    position: absolute;
+    left: 12px;
+  }
   
   &:hover {
-    background-color: ${props => (props.active ? '#555555' : '#333333')};
+    background-color: ${props => (props.active ? '#333333' : '#222222')};
+    color: #00ff00;
   }
 `;
 
 const MenuItemLink = styled(Link)`
   display: flex;
   align-items: center;
-  gap: 0.75rem;
   color: inherit;
   text-decoration: none;
   flex: 1;
-
-  svg {
-    font-size: 1.25rem;
-  }
+  font-family: 'Courier New', Courier, monospace;
+  letter-spacing: 0.5px;
 `;
 
 // Submenu container
@@ -271,22 +280,27 @@ const MobileMenuButton = styled(ActionButton)`
 const SignOutButton = styled.button`
   display: flex;
   align-items: center;
-  gap: 0.5rem;
   background-color: transparent;
   border: none;
-  color: #cccccc;
+  color: #86c786;
   padding: 0.75rem 0;
   cursor: pointer;
   width: 100%;
   text-align: left;
   transition: all 0.2s;
+  font-family: 'Courier New', Courier, monospace;
+  position: relative;
+  padding-left: 1.25rem;
   
-  &:hover {
-    color: white;
+  &:before {
+    content: "$ ";
+    position: absolute;
+    left: 0;
   }
   
-  svg {
-    font-size: 1.25rem;
+  &:hover {
+    color: #00ff00;
+    text-shadow: 0 0 2px rgba(0, 255, 0, 0.4);
   }
 `;
 
@@ -382,10 +396,9 @@ const Layout = ({ children }) => {
               onClick={() => toggleMenu('contacts')}
             >
               <MenuItemLink to="/contacts">
-                <FiUsers />
-                <span>Contacts</span>
+                Contacts
               </MenuItemLink>
-              {expandedMenus.contacts ? <FiChevronDown /> : <FiChevronRight />}
+              {expandedMenus.contacts ? "[open]" : "[+]"}
             </MenuItemHeader>
             
             <SubMenu isOpen={expandedMenus.contacts}>
@@ -393,7 +406,6 @@ const Layout = ({ children }) => {
                 to="/contacts/last-interactions" 
                 active={isPathActive('/contacts/last-interactions')}
               >
-                <FiClock style={{ marginRight: '0.5rem', fontSize: '0.875rem' }} />
                 Last Interactions
               </SubMenuItem>
               
@@ -401,7 +413,6 @@ const Layout = ({ children }) => {
                 to="/contacts/keep-in-touch" 
                 active={isPathActive('/contacts/keep-in-touch')}
               >
-                <FiHeart style={{ marginRight: '0.5rem', fontSize: '0.875rem' }} />
                 Keep in Touch
               </SubMenuItem>
               
@@ -409,7 +420,6 @@ const Layout = ({ children }) => {
                 to="/contacts/introductions" 
                 active={isPathActive('/contacts/introductions')}
               >
-                <FiLink style={{ marginRight: '0.5rem', fontSize: '0.875rem' }} />
                 Introductions
               </SubMenuItem>
               
@@ -417,7 +427,6 @@ const Layout = ({ children }) => {
                 to="/contacts/lists" 
                 active={isPathActive('/contacts/lists')}
               >
-                <FiList style={{ marginRight: '0.5rem', fontSize: '0.875rem' }} />
                 Lists
               </SubMenuItem>
             </SubMenu>
@@ -430,10 +439,9 @@ const Layout = ({ children }) => {
               onClick={() => toggleMenu('companies')}
             >
               <MenuItemLink to="/companies">
-                <FiBriefcase />
-                <span>Companies</span>
+                Companies
               </MenuItemLink>
-              {expandedMenus.companies ? <FiChevronDown /> : <FiChevronRight />}
+              {expandedMenus.companies ? "[open]" : "[+]"}
             </MenuItemHeader>
             
             <SubMenu isOpen={expandedMenus.companies}>
@@ -441,7 +449,6 @@ const Layout = ({ children }) => {
                 to="/companies/deals" 
                 active={isPathActive('/companies/deals')}
               >
-                <FiDollarSign style={{ marginRight: '0.5rem', fontSize: '0.875rem' }} />
                 Deals
               </SubMenuItem>
               
@@ -449,7 +456,6 @@ const Layout = ({ children }) => {
                 to="/companies/startups" 
                 active={isPathActive('/companies/startups')}
               >
-                <FiTrendingUp style={{ marginRight: '0.5rem', fontSize: '0.875rem' }} />
                 Startups
               </SubMenuItem>
               
@@ -457,7 +463,6 @@ const Layout = ({ children }) => {
                 to="/companies/investors" 
                 active={isPathActive('/companies/investors')}
               >
-                <FiUserPlus style={{ marginRight: '0.5rem', fontSize: '0.875rem' }} />
                 Investors
               </SubMenuItem>
             </SubMenu>
@@ -467,8 +472,7 @@ const Layout = ({ children }) => {
           <MenuItem>
             <MenuItemHeader active={isPathActive('/planner')}>
               <MenuItemLink to="/planner">
-                <FiCalendar />
-                <span>Planner</span>
+                Planner
               </MenuItemLink>
             </MenuItemHeader>
           </MenuItem>
@@ -483,8 +487,7 @@ const Layout = ({ children }) => {
             </UserDetails>
           </UserInfo>
           <SignOutButton onClick={handleSignOut}>
-            <FiLogOut />
-            Sign Out
+            exit
           </SignOutButton>
         </SidebarFooter>
       </Sidebar>
