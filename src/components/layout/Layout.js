@@ -19,8 +19,8 @@ const LayoutContainer = styled.div`
 // Sidebar styling
 const Sidebar = styled.aside`
   width: 260px;
-  background-color: #1e293b;
-  color: #f8fafc;
+  background-color: #000000;
+  color: #ffffff;
   display: flex;
   flex-direction: column;
   transition: all 0.3s ease;
@@ -35,26 +35,42 @@ const Sidebar = styled.aside`
 `;
 
 const SidebarHeader = styled.div`
-  padding: 1.5rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 1.25rem;
+  border-bottom: 1px solid #333333;
+  display: flex;
+  justify-content: center;
 `;
 
-const Logo = styled.h1`
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: white;
-  margin: 0;
+const Logo = styled.div`
+  img {
+    max-width: 180px;
+    height: auto;
+  }
 `;
 
 const SidebarContent = styled.div`
   padding: 1rem 0;
   flex: 1;
   overflow-y: auto;
+  
+  /* Custom scrollbar for dark background */
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: #333333;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: #555555;
+    border-radius: 3px;
+  }
 `;
 
 // Main menu item
 const MenuItem = styled.div`
-  margin-bottom: 0.5rem;
+  margin-bottom: 4px;
 `;
 
 // Main menu link
@@ -63,15 +79,15 @@ const MenuItemHeader = styled.div`
   align-items: center;
   justify-content: space-between;
   padding: 0.75rem 1.5rem;
-  color: ${props => (props.active ? '#ffffff' : '#cbd5e1')};
-  background-color: ${props => (props.active ? 'rgba(255, 255, 255, 0.1)' : 'transparent')};
+  color: #ffffff;
+  background-color: ${props => (props.active ? '#555555' : 'transparent')};
+  border-left: 3px solid ${props => (props.active ? '#999999' : 'transparent')};
   text-decoration: none;
   transition: all 0.2s;
   cursor: pointer;
   
   &:hover {
-    background-color: rgba(255, 255, 255, 0.05);
-    color: white;
+    background-color: ${props => (props.active ? '#555555' : '#333333')};
   }
 `;
 
@@ -93,6 +109,7 @@ const SubMenu = styled.div`
   max-height: ${props => (props.isOpen ? '500px' : '0')};
   overflow: hidden;
   transition: max-height 0.3s ease;
+  background-color: #111111;
 `;
 
 // Submenu item
@@ -100,21 +117,23 @@ const SubMenuItem = styled(Link)`
   display: flex;
   align-items: center;
   padding: 0.625rem 1.5rem 0.625rem 3.25rem;
-  color: ${props => (props.active ? '#ffffff' : '#94a3b8')};
-  background-color: ${props => (props.active ? 'rgba(255, 255, 255, 0.05)' : 'transparent')};
+  color: ${props => (props.active ? '#ffffff' : '#cccccc')};
+  background-color: ${props => (props.active ? '#333333' : 'transparent')};
+  border-left: 3px solid ${props => (props.active ? '#999999' : 'transparent')};
   font-size: 0.875rem;
   text-decoration: none;
   transition: all 0.2s;
   
   &:hover {
-    background-color: rgba(255, 255, 255, 0.025);
+    background-color: #222222;
     color: white;
   }
 `;
 
 const SidebarFooter = styled.div`
   padding: 1rem 1.5rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid #333333;
+  background-color: #111111;
 `;
 
 const UserInfo = styled.div`
@@ -126,13 +145,13 @@ const UserAvatar = styled.div`
   width: 2.5rem;
   height: 2.5rem;
   border-radius: 50%;
-  background-color: #3b82f6;
+  background-color: #555555;
   display: flex;
   align-items: center;
   justify-content: center;
   margin-right: 0.75rem;
   font-weight: bold;
-  color: white;
+  color: #ffffff;
 `;
 
 const UserDetails = styled.div`
@@ -141,11 +160,12 @@ const UserDetails = styled.div`
 
 const UserName = styled.div`
   font-weight: 600;
+  color: #ffffff;
 `;
 
 const UserRole = styled.div`
   font-size: 0.75rem;
-  color: #94a3b8;
+  color: #cccccc;
 `;
 
 // Main content area
@@ -221,7 +241,7 @@ const SignOutButton = styled.button`
   gap: 0.5rem;
   background-color: transparent;
   border: none;
-  color: #cbd5e1;
+  color: #cccccc;
   padding: 0.75rem 0;
   cursor: pointer;
   width: 100%;
@@ -313,7 +333,12 @@ const Layout = ({ children }) => {
       {/* Sidebar Navigation */}
       <Sidebar isOpen={sidebarOpen}>
         <SidebarHeader>
-          <Logo>CRM Dashboard</Logo>
+          <Logo>
+            <img 
+              src="https://assets.softr-files.com/applications/4612f2ab-9299-411a-b90c-78cfdc9b1a1b/assets/9f11c75a-a815-4686-9092-c9f8af95a4e1.jpeg" 
+              alt="CRM Dashboard Logo" 
+            />
+          </Logo>
         </SidebarHeader>
         
         <SidebarContent>
