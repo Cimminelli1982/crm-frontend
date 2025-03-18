@@ -52,7 +52,7 @@ const Description = styled.p`
 `;
 
 const ContentSection = styled.div`
-  padding: 0;
+  padding: 1.5rem 0 0;
 `;
 
 // Styling for date navigation
@@ -63,6 +63,7 @@ const NavigationContainer = styled.div`
   padding: 1rem 1.5rem;
   background-color: #f9fafb;
   border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 0.5rem;
 `;
 
 const MonthNavigation = styled.div`
@@ -111,10 +112,11 @@ const WeekSummary = styled.div`
 
 // Styling for week sections
 const WeekSection = styled.div`
-  margin-bottom: 1.5rem;
+  margin-bottom: 2rem;
   border: 1px solid #e5e7eb;
   border-radius: 0.5rem;
   overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 `;
 
 const WeekHeader = styled.div`
