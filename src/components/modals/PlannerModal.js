@@ -333,6 +333,11 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
         const formattedDate = meetingDate.toISOString().slice(0, 10); // Get only the date part YYYY-MM-DD
         console.log('Formatted meeting date:', formattedDate);
         
+        // Check if we should set a specific tab active
+        if (meeting.initialTab) {
+          setActiveTab(meeting.initialTab);
+        }
+        
         setFormData({
           meeting_name: meeting.meeting_name || '',
           meeting_date: formattedDate,

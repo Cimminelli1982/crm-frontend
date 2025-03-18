@@ -481,23 +481,20 @@ const Planner = () => {
         return;
       }
 
-      // Fetch relationships between meetings and contacts
+      // Fetch relationships between meetings and contacts with contact details
       const { data: contactsData, error: contactsError } = await supabase
         .from('meetings_contacts')
-        .select('*');
+        .select(`
+          meeting_id,
+          contact_id,
+          contacts:contact_id (id, first_name, last_name)
+        `);
       
       if (contactsError) {
         console.error('Error fetching meetings_contacts:', contactsError);
       }
-
-      // Fetch contact names
-      const { data: contactNamesData, error: contactNamesError } = await supabase
-        .from('contacts')
-        .select('id, first_name, last_name');
       
-      if (contactNamesError) {
-        console.error('Error fetching contacts:', contactNamesError);
-      }
+      console.log('Fetched contacts data:', contactsData?.length || 0, 'records');
 
       // Fetch tags from the meetings_tags junction table
       const { data: tagsConnectionData, error: tagsConnectionError } = await supabase
@@ -514,12 +511,36 @@ const Planner = () => {
         let relatedTags = [];
         
         // Process contact relationships if we have the data
-        if (contactsData && contactNamesData) {
+        if (contactsData) {
           relatedContacts = contactsData
             .filter(contact => contact.meeting_id === meeting.id)
+            // Filter out "Simone Cimminelli" contacts
+            .filter(contact => {
+              if (!contact.contacts) return true;
+              
+              const firstName = (contact.contacts.first_name || '').toLowerCase();
+              const lastName = (contact.contacts.last_name || '').toLowerCase();
+              const fullName = `${firstName} ${lastName}`.trim();
+              
+              // Skip if the name contains "simone cimminelli" (case insensitive)
+              return !fullName.includes('simone cimminelli');
+            })
             .map(contact => {
-              const contactName = contactNamesData.find(cn => cn.id === contact.contact_id);
-              return contactName ? `${contactName.first_name} ${contactName.last_name}` : 'Unknown';
+              if (!contact.contacts) return 'Unknown Contact';
+              
+              // Handle different combinations of null or empty first/last names
+              const firstName = contact.contacts.first_name || '';
+              const lastName = contact.contacts.last_name || '';
+              
+              if (firstName && lastName) {
+                return `${firstName} ${lastName}`;
+              } else if (firstName) {
+                return firstName;
+              } else if (lastName) {
+                return lastName;
+              } else {
+                return `Contact #${contact.contacts.id}`;
+              }
             });
         }
         
@@ -765,9 +786,9 @@ const Planner = () => {
     
     if (!meeting.meeting_tags || meeting.meeting_tags.length === 0) {
       return (
-        <AddTagButton onClick={() => openTagsModal(meeting)}>
-          <FiPlus size={12} style={{ marginRight: '4px' }} /> Add
-        </AddTagButton>
+        <span style={{ color: '#9ca3af', fontStyle: 'italic', fontSize: '0.75rem' }}>
+          No tags
+        </span>
       );
     }
     
@@ -793,10 +814,6 @@ const Planner = () => {
             +{hiddenCount} more
           </Tag>
         )}
-        
-        <AddTagButton onClick={() => openTagsModal(meeting)}>
-          <FiPlus size={12} style={{ marginRight: '4px' }} /> Add
-        </AddTagButton>
       </>
     );
   };
@@ -807,9 +824,9 @@ const Planner = () => {
     
     if (!meeting.meeting_contacts || meeting.meeting_contacts.length === 0) {
       return (
-        <AddTagButton onClick={() => openTagsModal(meeting)}>
-          <FiPlus size={12} style={{ marginRight: '4px' }} /> Add
-        </AddTagButton>
+        <span style={{ color: '#9ca3af', fontStyle: 'italic', fontSize: '0.75rem' }}>
+          No attendees
+        </span>
       );
     }
     
@@ -832,16 +849,32 @@ const Planner = () => {
             +{hiddenCount} more
           </Tag>
         )}
-        
-        <AddTagButton onClick={() => openTagsModal(meeting)}>
-          <FiPlus size={12} style={{ marginRight: '4px' }} /> Add
-        </AddTagButton>
       </>
     );
   };
 
+  // Function to truncate note text
+  const truncateNote = (note, maxLength = 60) => {
+    if (!note) return 'No notes';
+    if (note.length <= maxLength) return note;
+    
+    // Find the last space within the maxLength to avoid cutting words
+    let lastSpace = note.substring(0, maxLength).lastIndexOf(' ');
+    if (lastSpace === -1) lastSpace = maxLength;
+    
+    return `${note.substring(0, lastSpace)}...`;
+  };
+  
+  // Handle opening the modal with default Details tab
   const handleRowClick = (meeting) => {
     setSelectedMeeting(meeting);
+    setIsModalOpen(true);
+  };
+  
+  // Handle opening the modal with Notes tab selected
+  const handleNoteClick = (e, meeting) => {
+    e.stopPropagation(); // Prevent the row click handler from being called
+    setSelectedMeeting({...meeting, initialTab: 'notes'});
     setIsModalOpen(true);
   };
 
@@ -939,10 +972,23 @@ const Planner = () => {
                     {renderStars(meeting.meeting_score || 0)}
                   </ScoreCell>
                   
-                  <ClickableCell>
+                  <ClickableCell onClick={(e) => handleNoteClick(e, meeting)}>
                     <div className="cell-content">
                       <IconWrapper><FiMessageSquare /></IconWrapper>
-                      {meeting.meeting_note || 'No notes'}
+                      <div 
+                        style={{ 
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          maxWidth: '100%',
+                          color: meeting.meeting_note ? '#000' : '#9ca3af',
+                          fontStyle: meeting.meeting_note ? 'normal' : 'italic',
+                          cursor: 'pointer'
+                        }}
+                        title={meeting.meeting_note || 'No notes'}
+                      >
+                        {truncateNote(meeting.meeting_note)}
+                      </div>
                     </div>
                   </ClickableCell>
                 </tr>
