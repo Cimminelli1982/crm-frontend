@@ -199,12 +199,13 @@ const PlannerTable = styled.table`
   
   /* Column width specifications - adjusted as requested */
   th:nth-child(1) { width: 6%; }   /* Date column */
-  th:nth-child(2) { width: 12%; }  /* Meeting column */
-  th:nth-child(3) { width: 12%; }  /* Attendees column */
-  th:nth-child(4) { width: 12%; }  /* Tags column - reduced to 12% */
-  th:nth-child(5) { width: 6%; }   /* Record column */
-  th:nth-child(6) { width: 6%; }   /* Score column */
-  th:nth-child(7) { width: 46%; }  /* Note column - increased to use remaining space */
+  th:nth-child(2) { width: 12%; }  /* Category column */
+  th:nth-child(3) { width: 12%; }  /* Meeting column */
+  th:nth-child(4) { width: 15%; }  /* Attendees column */
+  th:nth-child(5) { width: 15%; }  /* Tags column */
+  th:nth-child(6) { width: 6%; }   /* Record column */
+  th:nth-child(7) { width: 6%; }   /* Score column */
+  th:nth-child(8) { width: 28%; }  /* Note column */
 `;
 
 const TableHead = styled.thead`
@@ -702,7 +703,8 @@ const Planner = () => {
           meeting_score: meeting.meeting_score || 0,
           meeting_tags: relatedTags,  // Use the tags from the junction table
           meeting_note: meeting.meeting_note || '',
-          meeting_record: meeting.meeting_record || ''
+          meeting_record: meeting.meeting_record || '',
+          meeting_category: meeting.meeting_category || meeting.meeting_rationelle || ''
         };
       });
 
@@ -944,6 +946,46 @@ const Planner = () => {
     } catch (e) {
       return dateString || 'N/A';
     }
+  };
+  
+  // Format category for display with proper capitalization and color
+  const formatCategory = (category) => {
+    if (!category) return (
+      <span style={{ color: '#9ca3af', fontStyle: 'italic', fontSize: '0.75rem' }}>
+        N/A
+      </span>
+    );
+    
+    // Map category values to display names and colors
+    const categoryMap = {
+      'inbox': { label: 'Inbox', color: '#3b82f6', bgColor: '#dbeafe' },
+      'karma_points': { label: 'Karma Points', color: '#8b5cf6', bgColor: '#ede9fe' },
+      'dealflow': { label: 'Dealflow', color: '#f59e0b', bgColor: '#fef3c7' },
+      'portfolio': { label: 'Portfolio', color: '#10b981', bgColor: '#d1fae5' },
+      // Keep backward compatibility with old categories
+      'sales': { label: 'Sales', color: '#ef4444', bgColor: '#fee2e2' },
+      'discovery': { label: 'Discovery', color: '#3b82f6', bgColor: '#dbeafe' },
+      'follow_up': { label: 'Follow Up', color: '#10b981', bgColor: '#d1fae5' },
+      'intro': { label: 'Introduction', color: '#8b5cf6', bgColor: '#ede9fe' },
+      'pitch': { label: 'Pitch', color: '#f59e0b', bgColor: '#fef3c7' },
+      'demo': { label: 'Demo', color: '#06b6d4', bgColor: '#cffafe' },
+      'closing': { label: 'Closing', color: '#14b8a6', bgColor: '#ccfbf1' },
+      'check_in': { label: 'Check In', color: '#0ea5e9', bgColor: '#e0f2fe' },
+      'networking': { label: 'Networking', color: '#7c3aed', bgColor: '#ede9fe' },
+      'other': { label: 'Other', color: '#6b7280', bgColor: '#f3f4f6' }
+    };
+    
+    const categoryInfo = categoryMap[category] || { 
+      label: category.charAt(0).toUpperCase() + category.slice(1).replace('_', ' '),
+      color: '#6b7280',
+      bgColor: '#f3f4f6'
+    };
+    
+    return (
+      <Tag color={categoryInfo.bgColor} textColor={categoryInfo.color}>
+        <TagContent>{categoryInfo.label}</TagContent>
+      </Tag>
+    );
   };
 
   // Check if string is a valid URL
@@ -1201,6 +1243,7 @@ const Planner = () => {
       meeting_note: "",
       meeting_record: "",
       meeting_score: 0,
+      meeting_category: "",
       meeting_contacts: [],
       meeting_tags: [],
       created_at: new Date().toISOString(),
@@ -1243,6 +1286,7 @@ const Planner = () => {
         <TableHead>
           <tr>
             <th>Date</th>
+            <th>Category</th>
             <th>Meeting</th>
             <th>Attendees</th>
             <th>Tags</th>
@@ -1258,6 +1302,12 @@ const Planner = () => {
                 <div className="cell-content">
                   <IconWrapper><FiClock /></IconWrapper>
                   {formatDate(meeting.meeting_date)}
+                </div>
+              </ClickableCell>
+              
+              <ClickableCell>
+                <div className="cell-content">
+                  {formatCategory(meeting.meeting_category)}
                 </div>
               </ClickableCell>
               

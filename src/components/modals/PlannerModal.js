@@ -187,6 +187,30 @@ const TextArea = styled.textarea`
   }
 `;
 
+const Select = styled.select`
+  width: 100%;
+  height: 40px;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  color: #111827;
+  background-color: #fff;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23131313%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px top 50%;
+  background-size: 8px auto;
+  padding-right: 24px;
+  
+  &:focus {
+    outline: none;
+    border-color: #007BFF;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.15);
+  }
+`;
+
 const ButtonContainer = styled.div`
   display: flex;
   justify-content: flex-end;
@@ -314,7 +338,8 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
     meeting_date: '',
     meeting_note: '',
     meeting_record: '',
-    meeting_score: 0
+    meeting_score: 0,
+    meeting_category: ''
   });
   
   const [meetingTags, setMeetingTags] = useState([]);
@@ -350,7 +375,8 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
           meeting_date: formattedDate,
           meeting_note: meeting.meeting_note || '',
           meeting_record: meeting.meeting_record || '',
-          meeting_score: meeting.meeting_score || 0
+          meeting_score: meeting.meeting_score || 0,
+          meeting_category: meeting.meeting_category || meeting.meeting_rationelle || ''
         });
         
         // Fetch tags and attendees
@@ -577,7 +603,7 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
   
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    console.log('Input change:', { name, value });
+    console.log('Input change event:', { name, value, type: e.target.type });
     
     // Special handling for date input
     if (name === 'meeting_date') {
@@ -594,10 +620,19 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
         console.error('Error handling date input:', error);
       }
     } else {
-      setFormData(prev => ({
-        ...prev,
-        [name]: value
-      }));
+      // For select inputs, log more detailed info
+      if (name === 'meeting_category') {
+        console.log('Updating meeting_category to:', value);
+      }
+      
+      setFormData(prev => {
+        const newState = {
+          ...prev,
+          [name]: value
+        };
+        console.log('Updated form data:', newState);
+        return newState;
+      });
     }
   };
   
@@ -829,6 +864,7 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
     try {
       console.log('Starting save process...', { formData, meeting });
       console.log('Meeting ID:', meeting?.id);
+      console.log('Meeting Category value:', formData.meeting_category);
       
       // Validate required fields
       if (!formData.meeting_name.trim()) {
@@ -860,8 +896,12 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
         meeting_note: formData.meeting_note || '',
         meeting_record: formData.meeting_record || '',
         meeting_score: formData.meeting_score || 0,
+        meeting_category: formData.meeting_category || '',
         updated_at: new Date().toISOString()
       };
+      
+      // Log complete update data to verify what's being sent
+      console.log('Update data with meeting_category:', updateData);
       
       console.log('Updating meeting with data:', updateData);
       console.log('For meeting ID:', meeting.id);
@@ -956,6 +996,15 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
   };
   
   const renderNotesTab = () => {
+    // Meeting category options
+    const categoryOptions = [
+      { value: '', label: 'Select a category' },
+      { value: 'inbox', label: 'Inbox' },
+      { value: 'karma_points', label: 'Karma Points' },
+      { value: 'dealflow', label: 'Dealflow Related' },
+      { value: 'portfolio', label: 'Portfolio Company Related' }
+    ];
+    
     return (
       <FormContent>
         <FormGroup className="full-width">
@@ -969,25 +1018,33 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
           />
         </FormGroup>
         
-        <FormGrid style={{ marginTop: '30px' }}>
+        {/* Three-column layout for Meeting Score, Record, and Category */}
+        <SectionTitle>Meeting Details</SectionTitle>
+        <FormGrid style={{ 
+          gridTemplateColumns: '1fr 1fr 1fr', 
+          gap: '0 16px',
+          alignItems: 'flex-end'
+        }}>
           <FormGroup>
             <Label>Meeting Score</Label>
-            <StarRating active={formData.meeting_score > 0}>
-              {[1, 2, 3, 4, 5].map(score => (
-                <button
-                  key={score}
-                  onClick={() => handleSetScore(score)}
-                  type="button"
-                >
-                  <FiStar
-                    size={24}
-                    style={{
-                      fill: score <= formData.meeting_score ? '#f59e0b' : 'none'
-                    }}
-                  />
-                </button>
-              ))}
-            </StarRating>
+            <div style={{ height: '40px', display: 'flex', alignItems: 'center' }}>
+              <StarRating active={formData.meeting_score > 0}>
+                {[1, 2, 3, 4, 5].map(score => (
+                  <button
+                    key={score}
+                    onClick={() => handleSetScore(score)}
+                    type="button"
+                  >
+                    <FiStar
+                      size={20}
+                      style={{
+                        fill: score <= formData.meeting_score ? '#f59e0b' : 'none'
+                      }}
+                    />
+                  </button>
+                ))}
+              </StarRating>
+            </div>
           </FormGroup>
           
           <FormGroup>
@@ -998,7 +1055,32 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
               value={formData.meeting_record}
               onChange={handleInputChange}
               placeholder="Enter meeting record URL"
+              style={{ 
+                height: '32px',
+                fontSize: '0.875rem'
+              }}
             />
+          </FormGroup>
+          
+          <FormGroup>
+            <Label htmlFor="meeting_category">Meeting Category</Label>
+            <Select
+              id="meeting_category"
+              name="meeting_category"
+              value={formData.meeting_category}
+              onChange={handleInputChange}
+              style={{ 
+                height: '32px',
+                fontSize: '0.875rem',
+                width: '100%'
+              }}
+            >
+              {categoryOptions.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
           </FormGroup>
         </FormGrid>
       </FormContent>
