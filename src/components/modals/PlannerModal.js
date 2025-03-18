@@ -325,6 +325,13 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
   const [showAttendeesModal, setShowAttendeesModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
+  // Cancel delete confirmation when user clicks outside modal or presses ESC
+  useEffect(() => {
+    if (!isOpen) {
+      setShowDeleteConfirm(false);
+    }
+  }, [isOpen]);
+  
   useEffect(() => {
     if (meeting) {
       console.log('Initializing form with meeting:', meeting);
@@ -708,37 +715,96 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
 
     if (!showDeleteConfirm) {
       setShowDeleteConfirm(true);
-      toast.error('Click delete again to confirm deletion', {
-        duration: 5000,
-      });
+      toast.custom(
+        (t) => (
+          <div
+            style={{
+              padding: '8px 12px',
+              borderRadius: '4px',
+              background: '#f97316', // Orange warning color
+              color: 'white',
+              fontSize: '14px',
+              display: 'flex',
+              alignItems: 'center',
+              boxShadow: '0 3px 10px rgba(0, 0, 0, 0.2)',
+            }}
+          >
+            <span style={{ marginRight: '8px' }}>⚠️</span>
+            <span>Click delete again to confirm deletion</span>
+          </div>
+        ),
+        { duration: 5000 }
+      );
       return;
     }
 
     try {
+      console.log('Starting meeting deletion process for meeting ID:', meeting.id);
+      
       // First, delete related records in junction tables to maintain referential integrity
       // Delete meetings_tags
-      const { error: tagsError } = await supabase
+      console.log('Deleting associated tags from meetings_tags...');
+      const { data: tagsData, error: tagsError } = await supabase
         .from('meetings_tags')
         .delete()
-        .eq('meeting_id', meeting.id);
+        .eq('meeting_id', meeting.id)
+        .select();
       
-      if (tagsError) throw tagsError;
+      if (tagsError) {
+        console.error('Error deleting tags:', tagsError);
+        throw tagsError;
+      }
+      
+      console.log('Successfully deleted tags associations:', tagsData?.length || 0);
 
       // Delete meetings_contacts
-      const { error: contactsError } = await supabase
+      console.log('Deleting associated contacts from meetings_contacts...');
+      const { data: contactsData, error: contactsError } = await supabase
         .from('meetings_contacts')
         .delete()
-        .eq('meeting_id', meeting.id);
+        .eq('meeting_id', meeting.id)
+        .select();
       
-      if (contactsError) throw contactsError;
+      if (contactsError) {
+        console.error('Error deleting contacts:', contactsError);
+        throw contactsError;
+      }
+      
+      console.log('Successfully deleted contacts associations:', contactsData?.length || 0);
 
       // Finally, delete the meeting record
-      const { error: meetingError } = await supabase
+      console.log('Deleting the meeting record...');
+      
+      // First check if the meeting still exists
+      const { data: checkData, error: checkError } = await supabase
+        .from('meetings')
+        .select('id')
+        .eq('id', meeting.id)
+        .single();
+        
+      if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is "no rows returned"
+        console.error('Error checking meeting existence:', checkError);
+        throw checkError;
+      }
+      
+      if (!checkData) {
+        console.warn('Meeting already deleted or does not exist');
+        throw new Error('Meeting not found. It may have been already deleted.');
+      }
+      
+      // Proceed with deletion
+      const { data: meetingData, error: meetingError } = await supabase
         .from('meetings')
         .delete()
-        .eq('id', meeting.id);
+        .eq('id', meeting.id)
+        .select();
       
-      if (meetingError) throw meetingError;
+      if (meetingError) {
+        console.error('Error deleting meeting:', meetingError);
+        throw meetingError;
+      }
+      
+      console.log('Successfully deleted meeting:', meetingData);
 
       toast.success('Meeting deleted successfully');
       
@@ -752,6 +818,9 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
     } catch (error) {
       console.error('Error deleting meeting:', error);
       toast.error(`Failed to delete meeting: ${error.message}`);
+      setShowDeleteConfirm(false);
+    } finally {
+      // Reset delete confirmation state
       setShowDeleteConfirm(false);
     }
   };
@@ -1146,18 +1215,20 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
                 <Button 
                   onClick={handleDeleteMeeting}
                   style={{ 
-                    backgroundColor: '#ef4444', 
+                    backgroundColor: showDeleteConfirm ? '#b91c1c' : '#ef4444', 
                     color: 'white', 
                     border: 'none',
                     padding: '6px 12px',
                     fontSize: '0.75rem',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '4px'
+                    gap: '4px',
+                    transition: 'all 0.2s ease',
+                    boxShadow: showDeleteConfirm ? '0 0 0 2px rgba(239, 68, 68, 0.5)' : 'none'
                   }}
                 >
                   <FiTrash2 size={14} />
-                  Delete
+                  {showDeleteConfirm ? 'Confirm Delete' : 'Delete'}
                 </Button>
               </div>
             </div>
