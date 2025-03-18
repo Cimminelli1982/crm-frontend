@@ -380,6 +380,52 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
     }
   }, [isOpen]);
   
+  // Create a new meeting in the database if it doesn't exist yet
+  const createNewMeeting = async (meetingData) => {
+    try {
+      // Format the date properly for the database
+      const dateObj = new Date(meetingData.meeting_date);
+      dateObj.setHours(12, 0, 0, 0);
+      const formattedDate = dateObj.toISOString();
+      
+      console.log('Creating new meeting with date:', formattedDate);
+      
+      const insertData = {
+        meeting_name: meetingData.meeting_name,
+        meeting_date: formattedDate,
+        meeting_note: meetingData.meeting_note || '',
+        meeting_record: meetingData.meeting_record || '',
+        meeting_score: meetingData.meeting_score || 0,
+        meeting_category: meetingData.meeting_category || '',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      
+      console.log('Creating new meeting with data:', insertData);
+      
+      const { data, error } = await supabase
+        .from('meetings')
+        .insert(insertData)
+        .select()
+        .single();
+        
+      if (error) {
+        console.error('Error creating new meeting:', error);
+        throw error;
+      }
+      
+      console.log('New meeting created successfully:', data);
+      toast.success('New meeting created');
+      
+      // Return the newly created meeting with ID
+      return data;
+    } catch (error) {
+      console.error('Failed to create new meeting:', error);
+      toast.error('Failed to create new meeting');
+      return null;
+    }
+  };
+
   useEffect(() => {
     if (meeting) {
       console.log('Initializing form with meeting:', meeting);
@@ -402,9 +448,32 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
           meeting_category: meeting.meeting_category || meeting.meeting_rationelle || ''
         });
         
-        // Fetch tags and attendees
-        fetchMeetingTags();
-        fetchMeetingAttendees();
+        // If this is a new meeting (no ID), create it in the database first
+        const initializeNewMeeting = async () => {
+          if (!meeting.id) {
+            console.log('New meeting detected, creating in database...');
+            const newMeeting = await createNewMeeting({
+              meeting_name: meeting.meeting_name || 'New Meeting',
+              meeting_date: formattedDate,
+              meeting_note: meeting.meeting_note || '',
+              meeting_record: meeting.meeting_record || '',
+              meeting_score: meeting.meeting_score || 0,
+              meeting_category: meeting.meeting_category || ''
+            });
+            
+            if (newMeeting) {
+              // Update the meeting object with the new ID
+              meeting.id = newMeeting.id;
+              console.log('Meeting ID updated to:', meeting.id);
+            }
+          }
+          
+          // Fetch tags and attendees after ensuring we have a valid meeting ID
+          fetchMeetingTags();
+          fetchMeetingAttendees();
+        };
+        
+        initializeNewMeeting();
       } catch (error) {
         console.error('Error initializing form:', error);
         toast.error('Error initializing form data');
@@ -900,12 +969,6 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
         return;
       }
 
-      if (!meeting || !meeting.id) {
-        toast.error('Invalid meeting data');
-        console.error('Meeting ID is missing or invalid', meeting);
-        return;
-      }
-
       // Format the date properly for the database - add time to make it a full ISO date
       const dateObj = new Date(formData.meeting_date);
       // Set the time to noon to avoid timezone issues
@@ -913,7 +976,7 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
       const formattedDate = dateObj.toISOString();
       console.log('Formatted date:', formattedDate);
 
-      const updateData = {
+      const meetingData = {
         meeting_name: formData.meeting_name.trim(),
         meeting_date: formattedDate,
         meeting_note: formData.meeting_note || '',
@@ -923,26 +986,51 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
         updated_at: new Date().toISOString()
       };
       
-      // Log complete update data to verify what's being sent
-      console.log('Update data with meeting_category:', updateData);
+      // Log data to verify what's being sent
+      console.log('Meeting data:', meetingData);
       
-      console.log('Updating meeting with data:', updateData);
-      console.log('For meeting ID:', meeting.id);
-
-      // Perform the update
-      const { data, error } = await supabase
-        .from('meetings')
-        .update(updateData)
-        .eq('id', meeting.id)
-        .select();
+      let result;
+      
+      // Check if we're updating an existing meeting or creating a new one
+      if (meeting && meeting.id) {
+        console.log('Updating existing meeting with ID:', meeting.id);
         
-      if (error) {
-        console.error('Supabase error:', error);
-        throw error;
+        // Perform the update
+        const { data, error } = await supabase
+          .from('meetings')
+          .update(meetingData)
+          .eq('id', meeting.id)
+          .select();
+          
+        if (error) {
+          console.error('Supabase update error:', error);
+          throw error;
+        }
+        
+        result = data;
+        console.log('Update successful:', data);
+        toast.success('Meeting updated successfully');
+      } else {
+        console.log('Creating new meeting');
+        
+        // Add created_at for new meetings
+        meetingData.created_at = new Date().toISOString();
+        
+        // Perform the insert
+        const { data, error } = await supabase
+          .from('meetings')
+          .insert(meetingData)
+          .select();
+          
+        if (error) {
+          console.error('Supabase insert error:', error);
+          throw error;
+        }
+        
+        result = data;
+        console.log('Meeting created successfully:', data);
+        toast.success('Meeting created successfully');
       }
-
-      console.log('Update successful:', data);
-      toast.success('Meeting updated successfully');
       
       // Close the modal and notify the parent
       onRequestClose();
@@ -952,8 +1040,8 @@ const PlannerModal = ({ isOpen, onRequestClose, meeting }) => {
         window.location.reload();
       }, 500);
     } catch (error) {
-      console.error('Error updating meeting:', error);
-      toast.error(`Failed to update meeting: ${error.message}`);
+      console.error('Error saving meeting:', error);
+      toast.error(`Failed to save meeting: ${error.message}`);
     }
   };
   
