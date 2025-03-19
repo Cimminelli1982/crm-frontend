@@ -58,11 +58,16 @@ const CompaniesList = styled.div`
 const CompanyTag = styled.div`
   display: inline-flex;
   align-items: center;
-  padding: 4px 8px;
-  background-color: ${props => props.color || '#e0f2fe'};
-  color: ${props => props.textColor || '#0369a1'};
-  border-radius: 16px;
-  font-size: 0.875rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  border-radius: 0.375rem;
+  background-color: white;
+  color: black;
+  font-weight: 500;
+  margin-right: 0.25rem;
+  margin-bottom: 0.25rem;
+  border: 1px solid black;
+  text-transform: uppercase;
   gap: 6px;
   max-width: 200px;
 
@@ -76,17 +81,16 @@ const CompanyTag = styled.div`
   button {
     background: none;
     border: none;
-    padding: 2px;
-    cursor: pointer;
-    color: inherit;
-    opacity: 0.7;
-    display: flex;
+    padding: 0;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
-
+    margin-left: 0.25rem;
+    color: #6b7280;
+    cursor: pointer;
+    
     &:hover {
-      opacity: 1;
+      color: #ef4444;
     }
   }
 `;
@@ -207,12 +211,12 @@ const Button = styled.button`
   transition: all 0.2s;
 
   &.primary {
-    background-color: #3b82f6;
+    background-color: #000000;
     color: white;
     border: none;
 
     &:hover {
-      background-color: #2563eb;
+      background-color: #333333;
     }
   }
 
@@ -1185,15 +1189,6 @@ const CompanyModal = ({ isOpen, onRequestClose, contact }) => {
             <Button className="primary" onClick={onRequestClose}>
               Done
             </Button>
-            {process.env.NODE_ENV === 'development' && (
-              <Button 
-                className="secondary" 
-                onClick={checkDatabaseStructure}
-                disabled={loading}
-              >
-                Debug DB
-              </Button>
-            )}
           </ButtonGroup>
 
           {loading && (
@@ -1202,7 +1197,7 @@ const CompanyModal = ({ isOpen, onRequestClose, contact }) => {
                 width: '20px', 
                 height: '20px', 
                 border: '3px solid #f3f3f3', 
-                borderTop: '3px solid #007BFF', 
+                borderTop: '3px solid #000000', 
                 borderRadius: '50%', 
                 animation: 'spin 1s linear infinite' 
               }}></div>

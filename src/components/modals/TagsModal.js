@@ -58,11 +58,15 @@ const TagsList = styled.div`
 const Tag = styled.div`
   display: inline-flex;
   align-items: center;
-  padding: 4px 8px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  border-radius: 1rem;
   background-color: ${props => props.color || '#f3f4f6'};
-  color: ${props => props.textColor || '#374151'};
-  border-radius: 16px;
-  font-size: 0.875rem;
+  color: ${props => props.textColor || '#4b5563'};
+  font-weight: 500;
+  margin-right: 0.25rem;
+  margin-bottom: 0.25rem;
+  border: 1px solid black;
   gap: 6px;
   max-width: 200px;
 
@@ -76,17 +80,16 @@ const Tag = styled.div`
   button {
     background: none;
     border: none;
-    padding: 2px;
-    cursor: pointer;
-    color: inherit;
-    opacity: 0.7;
-    display: flex;
+    padding: 0;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
-
-    &:hover {
-      opacity: 1;
+    margin-left: 0.25rem;
+    color: #6b7280;
+    cursor: pointer;
+    
+    &:hover { 
+      color: #ef4444; 
     }
   }
 `;
@@ -110,12 +113,12 @@ const SearchInput = styled.input`
 
   &:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: #000000;
+    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
   }
 
   &:hover {
-    background-color: #E6F0FA;
+    background-color: #f3f4f6;
   }
 `;
 
@@ -155,7 +158,7 @@ const SuggestionItem = styled.button`
   }
 
   &:hover {
-    background-color: #E6F0FA;
+    background-color: #f3f4f6;
   }
 `;
 
@@ -164,7 +167,7 @@ const NewTagButton = styled.button`
   align-items: center;
   gap: 6px;
   padding: 8px 16px;
-  background-color: #007BFF;
+  background-color: #000000;
   color: white;
   border: none;
   border-radius: 4px;
@@ -173,7 +176,7 @@ const NewTagButton = styled.button`
   transition: all 0.2s;
 
   &:hover {
-    background-color: #0056b3;
+    background-color: #333333;
   }
 
   &:disabled {
@@ -190,8 +193,8 @@ const Message = styled.div`
   margin-top: 12px;
   
   &.success {
-    background-color: #ecfdf5;
-    color: #059669;
+    background-color: #f3f4f6;
+    color: #4b5563;
   }
   
   &.error {
@@ -216,12 +219,12 @@ const Button = styled.button`
   transition: all 0.2s;
   
   &.primary {
-    background-color: #007BFF;
+    background-color: #000000;
     color: white;
     border: none;
     
     &:hover {
-      background-color: #0056b3;
+      background-color: #333333;
     }
 
     &:disabled {
@@ -746,7 +749,7 @@ const TagsModal = ({ isOpen, onRequestClose, contact, meeting }) => {
               width: '20px', 
               height: '20px', 
               border: '3px solid #f3f3f3', 
-              borderTop: '3px solid #007BFF', 
+              borderTop: '3px solid #000000', 
               borderRadius: '50%', 
               animation: 'spin 1s linear infinite' 
             }}></div>

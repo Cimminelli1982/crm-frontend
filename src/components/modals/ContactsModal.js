@@ -111,15 +111,15 @@ const TabButton = styled.button`
   padding: 12px 20px;
   background: none;
   border: none;
-  border-bottom: 2px solid ${props => props.active ? '#007BFF' : 'transparent'};
-  color: ${props => props.active ? '#007BFF' : '#6b7280'};
+  border-bottom: 2px solid ${props => props.active ? '#000000' : 'transparent'};
+  color: ${props => props.active ? '#000000' : '#6b7280'};
   font-weight: ${props => props.active ? '600' : '500'};
   font-size: 0.938rem;
   cursor: pointer;
   transition: all 0.2s;
   
   &:hover {
-    color: ${props => props.active ? '#007BFF' : '#1f2937'};
+    color: ${props => props.active ? '#000000' : '#1f2937'};
   }
   
   &:disabled {
@@ -207,8 +207,8 @@ const Input = styled.input`
 
   &:focus {
     outline: none;
-    border-color: #007BFF;
-    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.15);
+    border-color: #000000;
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.15);
   }
 
   &:disabled {
@@ -245,8 +245,8 @@ const Select = styled.select`
 
   &:focus {
     outline: none;
-    border-color: #007BFF;
-    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.15);
+    border-color: #000000;
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.15);
   }
   
   &::-ms-expand {
@@ -268,8 +268,8 @@ const TextArea = styled.textarea`
 
   &:focus {
     outline: none;
-    border-color: #007BFF;
-    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.15);
+    border-color: #000000;
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.15);
   }
 `;
 
@@ -351,12 +351,12 @@ const CancelButton = styled(Button)`
 `;
 
 const SaveButton = styled(Button)`
-  background-color: #007BFF;
+  background-color: #000000;
   color: white;
   border: none;
   
   &:hover {
-    background-color: #0069d9;
+    background-color: #333333;
   }
 `;
 
@@ -377,11 +377,15 @@ const TagsList = styled.div`
 const Tag = styled.div`
   display: inline-flex;
   align-items: center;
-  padding: 4px 8px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  border-radius: 1rem;
   background-color: ${props => props.color || '#f3f4f6'};
-  color: ${props => props.textColor || '#374151'};
-  border-radius: 16px;
-  font-size: 0.875rem;
+  color: ${props => props.textColor || '#4b5563'};
+  font-weight: 500;
+  margin-right: 0.25rem;
+  margin-bottom: 0.25rem;
+  border: 1px solid black;
   gap: 6px;
   max-width: 200px;
 
@@ -395,17 +399,16 @@ const Tag = styled.div`
   button {
     background: none;
     border: none;
-    padding: 2px;
-    cursor: pointer;
-    color: inherit;
-    opacity: 0.7;
-    display: flex;
+    padding: 0;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
-
-    &:hover {
-      opacity: 1;
+    margin-left: 0.25rem;
+    color: #6b7280;
+    cursor: pointer;
+    
+    &:hover { 
+      color: #ef4444; 
     }
   }
 `;
@@ -427,8 +430,8 @@ const SearchInput = styled.input`
 
   &:focus {
     outline: none;
-    border-color: #007BFF;
-    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.15);
+    border-color: #000000;
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.15);
   }
 `;
 
@@ -497,13 +500,16 @@ const CompanyList = styled.div`
 const CompanyItem = styled.div`
   display: inline-flex;
   align-items: center;
-  padding: 4px 10px;
-  background-color: #1d4ed8;
-  color: white;
-  border-radius: 4px;
-  margin: 0 4px 4px 0;
-  font-size: 0.875rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  border-radius: 0.375rem;
+  background-color: white;
+  color: black;
   font-weight: 500;
+  margin-right: 0.25rem;
+  margin-bottom: 0.25rem;
+  border: 1px solid black;
+  text-transform: uppercase;
 
   span {
     margin-right: 6px;
@@ -512,13 +518,16 @@ const CompanyItem = styled.div`
   button {
     background: none;
     border: none;
-    cursor: pointer;
-    display: flex;
     padding: 0;
-    color: white;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 0.25rem;
+    color: #6b7280;
+    cursor: pointer;
     
     &:hover {
-      color: #f8fafc;
+      color: #ef4444;
     }
   }
 `;
@@ -743,7 +752,7 @@ const ArrowButton = styled.button`
   transition: color 0.2s;
   
   &:hover {
-    color: #007BFF;
+    color: #000000;
   }
 `;
 
@@ -810,8 +819,8 @@ const CityTag = styled.span`
   display: inline-flex;
   align-items: center;
   padding: 4px 8px;
-  background-color: #e0f2fe;
-  color: #0369a1;
+  background-color: #000000;
+  color: white;
   border-radius: 4px;
   margin-left: 8px;
   font-size: 0.75rem;
@@ -841,7 +850,7 @@ const AddCityButton = styled.button`
   padding: 4px 8px;
   background-color: transparent;
   border: none;
-  color: #0369a1;
+  color: #4b5563;
   font-size: 0.75rem;
   font-weight: 500;
   cursor: pointer;
@@ -849,7 +858,7 @@ const AddCityButton = styled.button`
   gap: 4px;
   
   &:hover {
-    background-color: #e0f2fe;
+    background-color: #f3f4f6;
     border-radius: 4px;
   }
 `;
@@ -2314,11 +2323,12 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
 
     .tag-badge {
       display: inline-block;
-      padding: 2px 8px;
-      border-radius: 16px;
+      padding: 0.25rem 0.5rem;
       font-size: 0.75rem;
+      border-radius: 1rem;
       background-color: ${props => props.bgColor || '#f3f4f6'};
       color: ${props => props.textColor || '#374151'};
+      border: 1px solid black;
     }
   `;
 
