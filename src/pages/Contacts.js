@@ -14,7 +14,6 @@ const PageContainer = styled.div`
 
 const PageHeader = styled.div`
   padding: 1.5rem;
-  border-bottom: 1px solid black;
 `;
 
 const HeaderContent = styled.div`
@@ -187,7 +186,7 @@ const SearchIcon = styled.div`
 `;
 
 const ContentSection = styled.div`
-  padding: 0;
+  padding: 0 1.5rem;
 `;
 
 // New styled components for filter buttons
@@ -196,7 +195,6 @@ const FilterButtonsContainer = styled.div`
   gap: 0.75rem;
   padding: 1rem 0;
   margin: 0 1.5rem;
-  border-bottom: 1px solid black;
   overflow-x: auto;
   
   @media (max-width: 768px) {

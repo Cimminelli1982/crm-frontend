@@ -2277,12 +2277,20 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
 
   const CategoryBadge = styled.span`
     display: inline-block;
-    padding: 2px 6px;
+    padding: 1.8px 5.4px;
     border-radius: 4px;
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     font-weight: 500;
-    background-color: #e0f2fe;
-    color: #0369a1;
+    background-color: ${props => {
+      if (props.category === 'Inbox') return '#ffefef';
+      if (props.category === 'Skip') return '#f3f4f6';
+      return '#e0f2fe';
+    }};
+    color: ${props => {
+      if (props.category === 'Inbox') return '#ef4444';
+      if (props.category === 'Skip') return '#4b5563';
+      return '#0369a1';
+    }};
     margin-left: 8px;
   `;
 
@@ -2439,7 +2447,11 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
           <ContactName>
             {contact.first_name} {contact.last_name}
             {contact.contact_category && (
-              <CategoryBadge>{contact.contact_category}</CategoryBadge>
+              <CategoryBadge category={contact.contact_category}>
+                {contact.contact_category === 'Skip' ? '❌ Skip' :
+                 contact.contact_category === 'Inbox' ? '📬 Inbox' :
+                 contact.contact_category}
+              </CategoryBadge>
             )}
           </ContactName>
           <ContactDetails>

@@ -8,7 +8,7 @@ import {
 import { 
   FaWhatsapp, FaLinkedin, FaHubspot, FaStar
 } from 'react-icons/fa';
-import { format, parseISO, isValid } from 'date-fns';
+import { format, parseISO, isValid, differenceInDays, differenceInMonths, differenceInYears, isSameDay, subDays } from 'date-fns';
 import Modal from 'react-modal';
 import NameEditForm from './forms/NameEditForm';
 import CompanyEditForm from './forms/CompanyEditForm';
@@ -57,33 +57,34 @@ const ContactTable = styled.table`
   border-spacing: 0;
   margin-bottom: 1.5rem;
   table-layout: fixed; /* Use fixed layout for better column control */
+  padding: 0 1rem;
   
   /* Column width specifications - adjusted as requested */
-  th:nth-child(1) { width: 21%; }    /* Name column */
-  th:nth-child(2) { width: 17%; }    /* Company column */
-  th:nth-child(3) { width: 18%; }    /* Tags column - reduced by 1% */
-  th:nth-child(4) { width: 9%; }     /* Last Interaction column - reduced by 1% */
-  th:nth-child(5) { width: 8%; }     /* Category column */
+  th:nth-child(1) { width: 15%; }    /* Name column - reduced by 3% */
+  th:nth-child(2) { width: 18%; }    /* Company column - increased by 3% */
+  th:nth-child(3) { width: 18%; }    /* Tags column */
+  th:nth-child(4) { width: 9%; }     /* Last Interaction column */
+  th:nth-child(5) { width: 10%; }    /* Category column - increased by 2% */
   th:nth-child(6) { width: 8%; }     /* Keep in Touch column */
   th:nth-child(7) { width: 6%; }     /* Score column */
-  th:nth-child(8) { width: 13%; }    /* Actions column - increased by 2% */
+  th:nth-child(8) { width: 16%; }    /* Actions column - increased by 3% */
   
   @media (max-width: 1200px) {
     th:nth-child(3) { width: 16%; } /* Slightly reduce Tags column on smaller screens */
-    th:nth-child(8) { width: 14%; } /* Slightly increase Actions column on smaller screens */
+    th:nth-child(8) { width: 18%; } /* Increase Actions column on smaller screens */
   }
 `;
 
 const TableHead = styled.thead`
-  background-color: #f9fafb;
+  background-color: white;
   
   th {
     padding: 0.875rem 1rem;
     text-align: left;
-    font-weight: 600;
+    font-weight: 700;
     font-size: 0.75rem;
-    color: #4b5563;
-    border-bottom: 1px solid #e5e7eb;
+    color: black;
+    border-bottom: 1px solid black;
     position: sticky;
     top: 0;
     z-index: 10;
@@ -153,7 +154,7 @@ const TableBody = styled.tbody`
 const ActionButton = styled.button`
   background-color: transparent;
   border: none;
-  color: #6b7280;
+  color: black;
   width: 26px; /* Slightly reduced from 28px */
   height: 26px; /* Slightly reduced from 28px */
   border-radius: 0.25rem;
@@ -207,6 +208,13 @@ const Star = styled.span`
   cursor: pointer;
   margin-right: 2px;
   transition: color 0.2s;
+  display: flex;
+  align-items: center;
+  
+  svg {
+    stroke: black;
+    stroke-width: ${props => props.filled ? '2px' : '2px'};
+  }
   
   &:hover {
     color: #f59e0b;
@@ -225,6 +233,7 @@ const Tag = styled.span`
   font-weight: 500;
   margin-right: 0.25rem;
   margin-bottom: 0.25rem;
+  border: 1px solid black;
   
   button {
   background: none;
@@ -276,28 +285,24 @@ const TagsContainer = styled.div`
 const CategoryBadge = styled.span`
   display: inline-flex;
   align-items: center;
-  padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
-  border-radius: 0.25rem;
+  justify-content: center;
+  padding: 0.15rem 0.25rem;
+  min-width: 80px;
+  font-size: 0.7rem;
+  border-radius: 0.375rem;
   background-color: ${props => {
-    switch (props.category) {
-      case 'Team': return '#e0f2fe';
-      case 'Manager': return '#f0fdf4';
-      case 'Advisor': return '#fef3c7';
-      case 'Professional Investor': return '#ede9fe';
-      default: return '#f3f4f6';
-    }
+    if (props.category === 'Inbox') return '#ffefef';
+    if (props.category === 'Skip') return '#f3f4f6';
+    return '#f3f4f6';
   }};
   color: ${props => {
-    switch (props.category) {
-      case 'Team': return '#0369a1';
-      case 'Manager': return '#166534';
-      case 'Advisor': return '#92400e';
-      case 'Professional Investor': return '#5b21b6';
-      default: return '#4b5563';
-    }
+    if (props.category === 'Inbox') return '#ef4444';
+    if (props.category === 'Skip') return '#4b5563';
+    return '#4b5563';
   }};
   font-weight: 500;
+  margin-right: 0.25rem;
+  margin-bottom: 0.25rem;
 `;
 
 // Keep in touch badge
@@ -309,29 +314,30 @@ const KeepInTouchBadge = styled.span`
   border-radius: 0.25rem;
   background-color: ${props => {
     switch (props.frequency) {
-      case 'Weekly': return '#fee2e2';
-      case 'Monthly': return '#fef3c7';
-      case 'Quarterly': return '#e0f2fe';
-      case 'Do not keep': return '#f3f4f6';
-      default: return '#fecaca';
+      case 'Monthly': return '#000000';       /* Black background for monthly */
+      case 'Quarterly': return '#444444';     /* Dark gray for quarterly */
+      case 'Twice a year': return '#888888';  /* Medium gray for twice a year */
+      case 'Once a year': return '#ffffff';   /* White for once a year */
+      default: return '#ffffff';              /* Default white */
     }
   }};
   color: ${props => {
     switch (props.frequency) {
-      case 'Weekly': return '#b91c1c';
-      case 'Monthly': return '#92400e';
-      case 'Quarterly': return '#0369a1';
-      case 'Do not keep': return '#4b5563';
-      default: return '#b91c1c';
+      case 'Monthly': return '#ffffff';       /* White text for monthly */
+      case 'Quarterly': return '#ffffff';     /* White text for quarterly */
+      case 'Twice a year': return '#333333';  /* Dark gray text for twice a year */
+      case 'Once a year': return '#000000';   /* Black text for once a year */
+      default: return '#000000';              /* Default black text */
     }
   }};
   font-weight: 500;
+  border: 1px solid #d1d5db;
 `;
 
 // Last interaction date formatter
 const LastInteractionDate = styled.span`
-  color: ${props => props.isRecent ? '#059669' : '#6b7280'};
-  font-weight: ${props => props.isRecent ? '500' : 'normal'};
+  color: #000000;
+  font-weight: normal;
   position: relative; /* Added for overlay positioning */
 `;
 
@@ -483,11 +489,13 @@ const CompanyBadge = styled.span`
   padding: 0.25rem 0.5rem;
   font-size: 0.75rem;
   border-radius: 0.375rem;
-  background-color: #e0f2fe;
-  color: #0369a1;
+  background-color: white;
+  color: black;
   font-weight: 500;
   margin-right: 0.25rem;
   margin-bottom: 0.25rem;
+  border: 1px solid black;
+  text-transform: uppercase;
   
   button {
   background: none;
@@ -1685,7 +1693,7 @@ const RecentContactsList = forwardRef(({
   
   // --------- HANDLERS ---------
   
-  // Format date
+  // Format date to relative time
   const formatDate = (dateString) => {
     if (!dateString) return 'Never';
     
@@ -1693,8 +1701,39 @@ const RecentContactsList = forwardRef(({
       const date = parseISO(dateString);
       if (!isValid(date)) return 'Invalid date';
       
-      // Use a shorter format: D/M/YY instead of DD-MM-YYYY
-      return format(date, 'd/M/yy');
+      const now = new Date();
+      const diffInDays = differenceInDays(now, date);
+      const diffInMonths = differenceInMonths(now, date);
+      const diffInYears = differenceInYears(now, date);
+      
+      // Check if the date is today
+      if (isSameDay(date, now)) {
+        return 'Today';
+      }
+      
+      // Check if the date was yesterday
+      const yesterday = subDays(now, 1);
+      if (isSameDay(date, yesterday)) {
+        return 'Yesterday';
+      }
+      
+      // Check if the date is within the current week
+      if (diffInDays < 7) {
+        return 'This Week';
+      }
+      
+      // Check if the date is within the current month
+      if (diffInMonths < 1) {
+        return 'This Month';
+      }
+      
+      // Check if the date is more than a year ago
+      if (diffInYears >= 1) {
+        return 'More than a Year ago';
+      }
+      
+      // Otherwise, the date is more than a month ago
+      return 'More than a Month ago';
     } catch (err) {
       return 'Invalid date';
     }
@@ -1982,32 +2021,7 @@ const RecentContactsList = forwardRef(({
   const goToLastPage = () => setCurrentPage(totalPages - 1);
   
   // Debug info display with refresh information
-  const renderDebug = () => {
-    if (process.env.NODE_ENV !== 'development') return null;
-    
-    return (
-      <div style={{
-        margin: '10px 0',
-        padding: '10px',
-        backgroundColor: '#f0f9ff',
-        border: '1px solid #bae6fd',
-        borderRadius: '4px',
-        fontFamily: 'monospace',
-        fontSize: '12px'
-      }}>
-        <div><strong>Debug:</strong></div>
-        <div>Search: {searchField}="{searchTerm}" / Debounced: "{debouncedSearchTerm}"</div>
-        <div>Active Filter: {activeFilter || 'None'}</div>
-        <div>Sorting: {currentSorting}</div>
-        <div>Filtering: {currentFiltering}</div>
-        <div>Refresh Trigger: {refreshTrigger}</div>
-        <div>Loading: {isLoading ? 'true' : 'false'}</div>
-        <div>Error: {error || 'None'}</div>
-        <div>Page: {currentPage + 1} of {totalPages}</div>
-        <div>Contacts: {contacts.length} shown / {filteredCount} filtered / {totalCount} total</div>
-      </div>
-    );
-  };
+  // Debug section removed
   
   // Handle modal close
   const handleCloseModal = () => {
@@ -2598,8 +2612,6 @@ const RecentContactsList = forwardRef(({
   // --------- RENDER ---------
   return (
     <Container>
-      {process.env.NODE_ENV === 'development' && renderDebug()}
-      
       {isLoading && (
         <LoadingOverlay>
           <p>Loading contacts...</p>
@@ -2619,26 +2631,6 @@ const RecentContactsList = forwardRef(({
         </div>
       )}
       
-      {/* Filter description */}
-      {activeFilter && !isLoading && (
-        <div style={{ 
-          padding: '0.75rem 1rem', 
-          backgroundColor: '#f3f4f6', 
-          borderRadius: '0.25rem',
-          margin: '0.5rem 1rem',
-          fontSize: '0.875rem',
-          color: '#4b5563'
-        }}>
-          {activeFilter === 'recentlyCreated' && 'Showing contacts with Inbox category'}
-          {activeFilter === 'lastInteraction' && 'Showing contacts with interactions in the last 7 days (excluding Skip category)'}
-          {activeFilter === 'keepInTouch' && 'Showing contacts sorted by keep-in-touch due date'}
-          {activeFilter === 'missingKeepInTouch' && 'Showing contacts with no keep-in-touch frequency set (excluding Skip category)'}
-          {activeFilter === 'missingScore' && 'Showing contacts with no score set and recent interactions (last 7 days)'}
-          {activeFilter === 'missingCities' && 'Showing contacts with no city associations'}
-          {activeFilter === 'missingCompanies' && 'Showing contacts with no company associations'}
-          {activeFilter === 'missingTags' && 'Showing contacts with no tag associations and recent interactions (last 7 days)'}
-        </div>
-      )}
       
       {/* Update modal rendering */}
       {modalOpen && (
@@ -2680,9 +2672,9 @@ const RecentContactsList = forwardRef(({
             <th>Name</th>
             <th>Company</th>
             <th>Tags</th>
-            <th>Last Interaction</th>
-            <th>Category</th>
-            <th>Keep in Touch</th>
+            <th style={{ textAlign: 'center' }}>Last Interaction</th>
+            <th className="category-header" style={{ textAlign: 'center' }}>Category</th>
+            <th style={{ textAlign: 'center' }}>Keep in Touch</th>
             <th>Score</th>
             <th>Actions</th>
           </tr>
@@ -2733,7 +2725,7 @@ const RecentContactsList = forwardRef(({
                           </CompanyBadge>
                         ))
                       ) : (
-                        <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No company</span>
+                        <span style={{ color: '#444444', fontStyle: 'italic' }}>No company</span>
                       )}
                     </CompaniesContainer>
                   </div>
@@ -2764,7 +2756,7 @@ const RecentContactsList = forwardRef(({
                           )}
                         </>
                       ) : (
-                        <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No tags</span>
+                        <span style={{ color: '#444444', fontStyle: 'italic' }}>No tags</span>
                       )}
                     </TagsContainer>
                   </div>
@@ -2772,33 +2764,51 @@ const RecentContactsList = forwardRef(({
                 
                 {/* LAST INTERACTION COLUMN */}
                 <ClickableCell onClick={() => handleCellClick(contact, 'history')} hoverText="View history">
-                  <div className="cell-content">
-                    <LastInteractionDate isRecent={isRecentDate(contact.last_interaction)}>
+                  <div className="cell-content" style={{ justifyContent: 'center' }}>
+                    <LastInteractionDate>
                       {formatDate(contact.last_interaction)}
                     </LastInteractionDate>
                   </div>
                 </ClickableCell>
                 
                 {/* CATEGORY COLUMN */}
-                <ClickableCell onClick={() => handleCellClick(contact, 'category')}>
-                  <div className="cell-content">
+                <ClickableCell onClick={() => handleCellClick(contact, 'category')} className="category-cell">
+                  <div className="cell-content" style={{ justifyContent: 'center' }}>
                     {contact.contact_category ? (
                       <CategoryBadge category={contact.contact_category}>
-                        {contact.contact_category}
+                        {contact.contact_category === 'Professional Investor' ? '💰 Investor' :
+                         contact.contact_category === 'Friend and Family' ? '❤️ Loved one' :
+                         contact.contact_category === 'Client' ? '🤝 Client' :
+                         contact.contact_category === 'Colleague' ? '👥 Colleague' :
+                         contact.contact_category === 'Prospect' ? '🎯 Prospect' :
+                         contact.contact_category === 'Advisor' ? '🧠 Advisor' :
+                         contact.contact_category === 'Team' ? '⚽ Team' :
+                         contact.contact_category === 'Manager' ? '💼 Manager' :
+                         contact.contact_category === 'Founder' ? '💻 Founder' :
+                         contact.contact_category === 'Supplier' ? '📦 Supplier' :
+                         contact.contact_category === 'Skip' ? '❌ Skip' :
+                         contact.contact_category === 'Inbox' ? '📬 Inbox' :
+                         contact.contact_category === 'Other' ? '📌 Other' :
+                         `⚪ ${contact.contact_category}`}
                       </CategoryBadge>
                     ) : (
-                      <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Not set</span>
+                      <span style={{ color: '#444444', fontStyle: 'italic', textAlign: 'center', width: '100%' }}>Not set</span>
                     )}
                   </div>
                 </ClickableCell>
                 
                 {/* KEEP IN TOUCH COLUMN */}
                 <ClickableCell onClick={() => handleCellClick(contact, 'keepInTouch')}>
-                  <div className="cell-content">
+                  <div className="cell-content" style={{ justifyContent: 'center' }}>
                     {contact.keep_in_touch_frequency ? (
-                      <KeepInTouchBadge frequency={contact.keep_in_touch_frequency}>
-                        {contact.keep_in_touch_frequency}
-                      </KeepInTouchBadge>
+                      contact.keep_in_touch_frequency === 'Do not keep in touch' ? (
+                        <span style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '1.2em' }}>❌</span>
+                      ) : (
+                        <KeepInTouchBadge frequency={contact.keep_in_touch_frequency}>
+                          {contact.keep_in_touch_frequency === 'Monthly' ? '❤️ ' : ''}
+                          {contact.keep_in_touch_frequency}
+                        </KeepInTouchBadge>
+                      )
                     ) : (
                       <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Not set</span>
                     )}
@@ -2814,7 +2824,12 @@ const RecentContactsList = forwardRef(({
                         filled={star <= (contact.score || 0)}
                         onClick={() => handleStarClick(contact.id, star)}
                       >
-                        {star <= (contact.score || 0) ? <FaStar /> : <FiStar />}
+                        {/* Just use FiStar for all states but color it differently when filled */}
+                        <FiStar style={{ 
+                          fill: star <= (contact.score || 0) ? '#f59e0b' : 'transparent',
+                          color: 'black', 
+                          strokeWidth: '2px' 
+                        }} />
                       </Star>
                     ))}
                   </StarContainer>
@@ -2828,7 +2843,7 @@ const RecentContactsList = forwardRef(({
                         className="whatsapp" 
                         onClick={(e) => handleWhatsAppClick(contact, e)}
                         style={{ 
-                          color: contact.mobile || contact.mobile2 ? '#25D366' : '#9CA3AF'
+                          color: contact.mobile || contact.mobile2 ? 'black' : '#444444'
                         }}
                         data-whatsapp-button={true}
                       >
@@ -2848,7 +2863,7 @@ const RecentContactsList = forwardRef(({
                         className="linkedin" 
                         onClick={(e) => handleLinkedInClick(contact, e)}
                         style={{ 
-                          color: contact.linkedin ? '#0077B5' : '#9CA3AF'
+                          color: contact.linkedin ? 'black' : '#444444'
                         }}
                       >
                         <FaLinkedin />
@@ -2864,7 +2879,7 @@ const RecentContactsList = forwardRef(({
                         onClick={(e) => handleEmailClick(contact, e)}
                         data-email-button={true}
                         style={{ 
-                          color: hasAnyEmail(contact) ? '#4285F4' : '#93C5FD'
+                          color: hasAnyEmail(contact) ? 'black' : '#444444'
                         }}
                       >
                         <FiMail />
@@ -2874,26 +2889,13 @@ const RecentContactsList = forwardRef(({
                       </span>
                     </Tooltip>
                     
-                    <Tooltip>
-                      <ActionButton 
-                        className="hubspot"
-                        onClick={(e) => handleHubSpotClick(contact, e)}
-                        style={{ 
-                          color: contact.hubspot_id ? '#FF7A59' : '#9CA3AF'
-                        }}
-                      >
-                        <FaHubspot size={16} />
-                      </ActionButton>
-                      <span className="tooltip-text">
-                        {contact.hubspot_id ? 'View in HubSpot' : 'Search in HubSpot'}
-                      </span>
-                    </Tooltip>
+                    {/* HubSpot icon removed */}
                     
                     <Tooltip>
                       <ActionButton
                         className="delete"
                         onClick={() => handleDeleteContact(contact.id)}
-                        style={{ color: '#ef4444' }}
+                        style={{ color: 'black' }}
                       >
                         <FiTrash2 size={16} />
                       </ActionButton>
