@@ -7,14 +7,14 @@ import { FaTag } from 'react-icons/fa';
 
 const PageContainer = styled.div`
   background-color: white;
-  border-radius: 0.5rem;
+  border-radius: 16px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   overflow: hidden;
 `;
 
 const PageHeader = styled.div`
   padding: 1.5rem;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid black;
 `;
 
 const HeaderContent = styled.div`
@@ -85,12 +85,12 @@ const PrimaryButton = styled(ActionButton)`
 `;
 
 const SecondaryButton = styled(ActionButton)`
-  background-color: white;
-  color: #4b5563;
-  border: 1px solid #d1d5db;
+  background-color: transparent;
+  color: black;
+  border: 1px solid black;
   
   &:hover {
-    background-color: #f9fafb;
+    background-color: rgba(0, 0, 0, 0.05);
   }
 `;
 
@@ -99,17 +99,17 @@ const SearchContainer = styled.div`
   align-items: center;
   width: 100%;
   background-color: white;
-  border: 1px solid #e5e7eb;
+  border: 1px solid black;
   border-radius: 0.375rem;
   overflow: hidden;
   margin-top: 1rem;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: none;
 `;
 
 const SearchDropdown = styled.div`
   position: relative;
   min-width: 140px;
-  border-right: 1px solid #e5e7eb;
+  border-right: 1px solid black;
 `;
 
 const DropdownButton = styled.button`
@@ -119,13 +119,13 @@ const DropdownButton = styled.button`
   width: 100%;
   padding: 0.625rem 1rem;
   font-size: 0.875rem;
-  color: #4b5563;
+  color: black;
   background: none;
   border: none;
   cursor: pointer;
   
   &:hover {
-    background-color: #f9fafb;
+    background-color: rgba(0, 0, 0, 0.05);
   }
 `;
 
@@ -135,9 +135,9 @@ const DropdownMenu = styled.div`
   left: 0;
   width: 100%;
   background-color: white;
-  border: 1px solid #e5e7eb;
+  border: 1px solid black;
   border-radius: 0.375rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  box-shadow: none;
   z-index: 50;
   max-height: 250px;
   overflow-y: auto;
@@ -150,17 +150,17 @@ const DropdownItem = styled.button`
   padding: 0.5rem 1rem;
   text-align: left;
   font-size: 0.875rem;
-  color: #1f2937;
+  color: black;
   background: none;
   border: none;
   cursor: pointer;
   
   &:hover {
-    background-color: #f9fafb;
+    background-color: rgba(0, 0, 0, 0.05);
   }
   
   &.active {
-    background-color: #f3f4f6;
+    background-color: rgba(0, 0, 0, 0.1);
     font-weight: 500;
   }
 `;
@@ -169,12 +169,12 @@ const SearchInput = styled.input`
   flex: 1;
   padding: 0.625rem 1rem;
   font-size: 0.875rem;
-  color: #1f2937;
+  color: black;
   border: none;
   outline: none;
   
   &::placeholder {
-    color: #9ca3af;
+    color: #555555;
   }
 `;
 
@@ -183,7 +183,7 @@ const SearchIcon = styled.div`
   align-items: center;
   justify-content: center;
   padding: 0 1rem;
-  color: #6b7280;
+  color: black;
 `;
 
 const ContentSection = styled.div`
@@ -196,7 +196,7 @@ const FilterButtonsContainer = styled.div`
   gap: 0.75rem;
   padding: 1rem 0;
   margin: 0 1.5rem;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid black;
   overflow-x: auto;
   
   @media (max-width: 768px) {
@@ -216,13 +216,13 @@ const FilterButton = styled.button`
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
-  background-color: ${props => props.active ? '#3b82f6' : 'white'};
-  color: ${props => props.active ? 'white' : '#4b5563'};
-  border: 1px solid ${props => props.active ? '#3b82f6' : '#d1d5db'};
+  background-color: ${props => props.active ? 'black' : 'white'};
+  color: ${props => props.active ? 'white' : 'black'};
+  border: 1px solid black;
   position: relative;
   
   &:hover {
-    background-color: ${props => props.active ? '#2563eb' : '#f9fafb'};
+    background-color: ${props => props.active ? '#333333' : 'rgba(0, 0, 0, 0.05)'};
   }
   
   svg {
@@ -231,7 +231,7 @@ const FilterButton = styled.button`
   
   .count {
     margin-left: 0.25rem;
-    background-color: ${props => props.active ? 'rgba(255, 255, 255, 0.2)' : 'rgba(75, 85, 99, 0.1)'};
+    background-color: ${props => props.active ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)'};
     padding: 0.125rem 0.375rem;
     border-radius: 1rem;
     font-size: 0.75rem;
@@ -244,7 +244,7 @@ const NotificationDot = styled.div`
   right: 0.25rem;
   width: 0.5rem;
   height: 0.5rem;
-  background-color: #3b82f6;
+  background-color: black;
   border-radius: 50%;
   border: 2px solid white;
 `;
@@ -391,14 +391,6 @@ const Contacts = ({ defaultFilter = null }) => {
               <FiRefreshCw />
               Refresh
             </SecondaryButton>
-            <SecondaryButton onClick={handleFilter}>
-              <FiFilter />
-              Filter
-            </SecondaryButton>
-            <PrimaryButton onClick={handleAddContact}>
-              <FiPlus />
-              Add Contact
-            </PrimaryButton>
           </HeaderActions>
         </HeaderContent>
         

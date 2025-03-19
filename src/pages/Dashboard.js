@@ -14,7 +14,7 @@ const StatsContainer = styled.div`
 
 const StatCard = styled.div`
   background: white;
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 1.5rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 `;
@@ -22,7 +22,7 @@ const StatCard = styled.div`
 const StatValue = styled.div`
   font-size: 2rem;
   font-weight: bold;
-  color: #0070f3;
+  color: black;
   margin-bottom: 0.5rem;
 `;
 

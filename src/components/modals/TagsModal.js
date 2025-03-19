@@ -641,7 +641,7 @@ const TagsModal = ({ isOpen, onRequestClose, contact, meeting }) => {
           transform: 'translate(-50%, -50%)',
           padding: '20px',
           border: 'none',
-          borderRadius: '0.5rem',
+          borderRadius: '16px',
           boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
           maxWidth: '500px',
           width: '90%',

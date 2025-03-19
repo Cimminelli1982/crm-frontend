@@ -13,7 +13,7 @@ import {
 const LayoutContainer = styled.div`
   display: flex;
   min-height: 100vh;
-  background-color: #f9fafb;
+  background-color: #000000;
 `;
 
 // Sidebar styling
@@ -225,8 +225,8 @@ const Main = styled.main`
 
 // Top header
 const TopHeader = styled.header`
-  background-color: white;
-  border-bottom: 1px solid #e5e7eb;
+  background-color: black;
+  border-bottom: none;
   padding: 0.75rem 1.5rem;
   display: flex;
   align-items: center;
@@ -234,13 +234,12 @@ const TopHeader = styled.header`
   position: sticky;
   top: 0;
   z-index: 40;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 `;
 
 const PageTitle = styled.h1`
   font-size: 1.25rem;
   font-weight: 600;
-  color: #111827;
+  color: white;
   margin: 0;
 `;
 
@@ -309,6 +308,8 @@ const ContentContainer = styled.div`
   padding: 1.5rem;
   max-width: 1600px;
   margin: 0 auto;
+  background-color: #000000;
+  color: white;
 `;
 
 const Layout = ({ children }) => {
@@ -499,7 +500,6 @@ const Layout = ({ children }) => {
             <MobileMenuButton onClick={toggleSidebar}>
               {sidebarOpen ? <FiX /> : <FiMenu />}
             </MobileMenuButton>
-            <PageTitle>{getPageTitle()}</PageTitle>
           </div>
           
           <HeaderActions>

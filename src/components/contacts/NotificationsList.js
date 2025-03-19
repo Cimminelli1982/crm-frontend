@@ -6,7 +6,7 @@ import { supabase } from '../../lib/supabaseClient';
 
 const Container = styled.div`
   background: white;
-  border-radius: 8px;
+  border-radius: 16px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   padding: 1.5rem;
 `;
@@ -20,7 +20,7 @@ const Header = styled.div`
 
 const NotificationCard = styled.div`
   border: 1px solid #eee;
-  border-radius: 4px;
+  border-radius: 8px;
   padding: 1rem;
   margin-bottom: 1rem;
   display: flex;
@@ -46,11 +46,11 @@ const Button = styled.button`
 `;
 
 const ReviewButton = styled(Button)`
-  background-color: #0070f3;
+  background-color: black;
   color: white;
   
   &:hover {
-    background-color: #0060df;
+    background-color: #333333;
   }
 `;
 
