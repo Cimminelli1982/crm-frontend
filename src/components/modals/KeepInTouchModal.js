@@ -2,6 +2,151 @@ import React, { useState, useEffect } from 'react';
 import Modal from 'react-modal';
 import { FiX } from 'react-icons/fi';
 import { supabase } from '../../lib/supabaseClient';
+import styled from 'styled-components';
+
+// Styled Components
+const ModalHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #e5e7eb;
+
+  h2 {
+    margin: 0;
+    font-size: 1.25rem;
+    color: #111827;
+    font-weight: 600;
+  }
+`;
+
+const TabsContainer = styled.div`
+  display: flex;
+  gap: 2px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid #e5e7eb;
+`;
+
+const TabButton = styled.button`
+  padding: 12px 20px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid ${props => props.active ? '#000000' : 'transparent'};
+  color: ${props => props.active ? '#000000' : '#6b7280'};
+  font-weight: ${props => props.active ? '600' : '500'};
+  font-size: 0.938rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  
+  &:hover {
+    color: ${props => props.active ? '#000000' : '#1f2937'};
+  }
+`;
+
+const FormGroup = styled.div`
+  margin-bottom: 15px;
+`;
+
+const Label = styled.label`
+  display: block;
+  margin-bottom: 5px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #4b5563;
+`;
+
+const CurrentValue = styled.div`
+  background-color: #f3f4f6;
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  margin-bottom: 8px;
+`;
+
+const Select = styled.select`
+  width: 100%;
+  height: 40px;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  color: #111827;
+  background-color: #fff;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  cursor: pointer;
+  line-height: 24px;
+  
+  &:focus {
+    outline: none;
+    border-color: #000000;
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.15);
+  }
+`;
+
+const Input = styled.input`
+  width: 100%;
+  height: 40px;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  color: #111827;
+  background-color: #fff;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  
+  &:focus {
+    outline: none;
+    border-color: #000000;
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.15);
+  }
+`;
+
+const ButtonContainer = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+`;
+
+const SaveButton = styled.button`
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  background-color: #000000;
+  color: white;
+  border: none;
+  
+  &:hover {
+    background-color: #333333;
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const ErrorMessage = styled.p`
+  color: #ef4444;
+  font-size: 0.875rem;
+  margin-top: 8px;
+`;
+
+const SuccessMessage = styled.p`
+  color: #10b981;
+  font-size: 0.875rem;
+  margin-top: 8px;
+`;
+
+const FollowUpText = styled.p`
+  font-size: 0.75rem;
+  color: #6b7280;
+`;
 
 const KeepInTouchModal = ({ isOpen, onRequestClose, contact }) => {
   const [activeTab, setActiveTab] = useState('Frequency');
@@ -111,64 +256,46 @@ const KeepInTouchModal = ({ isOpen, onRequestClose, contact }) => {
       }}
     >
       <div style={{ padding: '1rem' }}>
-        <div style={{ display: 'flex', marginBottom: '15px' }}>
-          <button
+        <ModalHeader>
+          <h2>Keep In Touch Settings</h2>
+          <button onClick={onRequestClose} aria-label="Close modal">
+            <FiX size={20} />
+          </button>
+        </ModalHeader>
+        
+        <TabsContainer>
+          <TabButton 
+            active={activeTab === 'Frequency'} 
             onClick={() => setActiveTab('Frequency')}
-            style={{
-              backgroundColor: activeTab === 'Frequency' ? '#007BFF' : '#E9ECEF',
-              color: activeTab === 'Frequency' ? '#fff' : '#000',
-              padding: '8px',
-              border: 'none',
-              borderRadius: '4px 4px 0 0',
-              cursor: 'pointer',
-              marginRight: '5px',
-              ':hover': { backgroundColor: '#0056b3' }
-            }}
           >
             Frequency
-          </button>
-          <button
+          </TabButton>
+          <TabButton 
+            active={activeTab === 'Wishes'} 
             onClick={() => setActiveTab('Wishes')}
-            style={{
-              backgroundColor: activeTab === 'Wishes' ? '#007BFF' : '#E9ECEF',
-              color: activeTab === 'Wishes' ? '#fff' : '#000',
-              padding: '8px',
-              border: 'none',
-              borderRadius: '4px 4px 0 0',
-              cursor: 'pointer',
-              ':hover': { backgroundColor: '#0056b3' }
-            }}
           >
             Wishes
-          </button>
-        </div>
+          </TabButton>
+        </TabsContainer>
+        
         {activeTab === 'Frequency' && (
           <div>
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{ fontSize: '16px', fontWeight: 'bold' }}>Actual Keep in Touch Frequency:</label>
-              <div style={{ backgroundColor: '#E9ECEF', padding: '5px', borderRadius: '2px', marginTop: '5px' }}>
+            <FormGroup>
+              <Label>Current Keep in Touch Frequency</Label>
+              <CurrentValue>
                 {contact.keep_in_touch_frequency || 'Not set'}
-              </div>
-            </div>
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{ fontSize: '16px', fontWeight: 'bold' }}>Select New Keep in Touch Frequency:</label>
-              <select
+              </CurrentValue>
+            </FormGroup>
+            
+            <FormGroup>
+              <Label>Select New Keep in Touch Frequency</Label>
+              <Select
                 aria-label="Keep in Touch frequency dropdown"
                 value={frequency}
                 onChange={(e) => {
                   setFrequency(e.target.value);
                   setErrorMessage('');
                   calculateNextFollowUp(e.target.value);
-                }}
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  backgroundColor: '#fff',
-                  border: '1px solid #ced4da',
-                  transition: 'background-color 0.2s',
-                  ':hover': { backgroundColor: '#E6F0FA' }
                 }}
               >
                 <option value="">Choose a frequency</option>
@@ -178,15 +305,17 @@ const KeepInTouchModal = ({ isOpen, onRequestClose, contact }) => {
                 <option value="Quarterly">Quarterly</option>
                 <option value="Twice per Year">Twice per Year</option>
                 <option value="Once per Year">Once per Year</option>
-              </select>
-            </div>
-            <p style={{ fontSize: '12px' }}>Next follow-up: {nextFollowUp}</p>
+              </Select>
+            </FormGroup>
+            
+            <FollowUpText>Next follow-up: {nextFollowUp}</FollowUpText>
           </div>
         )}
+        
         {activeTab === 'Wishes' && (
           <div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', marginBottom: '15px' }}>
-              <span style={{ marginBottom: '5px', fontSize: '14px', color: '#555' }}>
+            <FormGroup>
+              <Label>
                 Birthday date: {contact.birthday || '-'}
                 {contact.birthday && (
                   <button
@@ -226,55 +355,22 @@ const KeepInTouchModal = ({ isOpen, onRequestClose, contact }) => {
                     Reset Birthday
                   </button>
                 )}
-              </span>
-              <input
+              </Label>
+              <Input
                 type="text"
                 aria-label="Birthday date input"
                 value={birthdayDate || ''}
                 onChange={(e) => setBirthdayDate(e.target.value)}
                 placeholder="YYYY-MM-DD"
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  backgroundColor: '#fff',
-                  border: '1px solid #ced4da',
-                  boxSizing: 'border-box'
-                }}
               />
-              {birthdayDate && (
-                <button
-                  onClick={() => setBirthdayDate('')}
-                  style={{
-                    marginTop: '5px',
-                    backgroundColor: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: '#007BFF',
-                    fontSize: '16px'
-                  }}
-                >
-                  x
-                </button>
-              )}
-            </div>
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{ fontSize: '16px', fontWeight: 'bold' }}>Birthday Wishes:</label>
-              <select
-                aria-label="Wishes dropdown"
+            </FormGroup>
+            
+            <FormGroup>
+              <Label>Birthday Wishes</Label>
+              <Select
+                aria-label="Birthday wishes dropdown"
                 value={birthdayWishes}
                 onChange={(e) => setBirthdayWishes(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  backgroundColor: '#fff',
-                  border: '1px solid #ced4da',
-                  transition: 'background-color 0.2s',
-                  ':hover': { backgroundColor: '#E6F0FA' }
-                }}
               >
                 <option value="No wishes">No wishes</option>
                 <option value="LinkedIn message">LinkedIn message</option>
@@ -282,24 +378,15 @@ const KeepInTouchModal = ({ isOpen, onRequestClose, contact }) => {
                 <option value="WhatsApp message">WhatsApp message</option>
                 <option value="Call">Call</option>
                 <option value="Send a present/card">Send a present/card</option>
-              </select>
-            </div>
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{ fontSize: '16px', fontWeight: 'bold' }}>Christmas Wishes:</label>
-              <select
-                aria-label="Wishes dropdown"
+              </Select>
+            </FormGroup>
+            
+            <FormGroup>
+              <Label>Christmas Wishes</Label>
+              <Select
+                aria-label="Christmas wishes dropdown"
                 value={christmasWishes}
                 onChange={(e) => setChristmasWishes(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  backgroundColor: '#fff',
-                  border: '1px solid #ced4da',
-                  transition: 'background-color 0.2s',
-                  ':hover': { backgroundColor: '#E6F0FA' }
-                }}
               >
                 <option value="No wishes">No wishes</option>
                 <option value="LinkedIn message">LinkedIn message</option>
@@ -307,24 +394,15 @@ const KeepInTouchModal = ({ isOpen, onRequestClose, contact }) => {
                 <option value="WhatsApp message">WhatsApp message</option>
                 <option value="Call">Call</option>
                 <option value="Send a present/card">Send a present/card</option>
-              </select>
-            </div>
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{ fontSize: '16px', fontWeight: 'bold' }}>Easter Wishes:</label>
-              <select
-                aria-label="Wishes dropdown"
+              </Select>
+            </FormGroup>
+            
+            <FormGroup>
+              <Label>Easter Wishes</Label>
+              <Select
+                aria-label="Easter wishes dropdown"
                 value={easterWishes}
                 onChange={(e) => setEasterWishes(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  backgroundColor: '#fff',
-                  border: '1px solid #ced4da',
-                  transition: 'background-color 0.2s',
-                  ':hover': { backgroundColor: '#E6F0FA' }
-                }}
               >
                 <option value="No wishes">No wishes</option>
                 <option value="LinkedIn message">LinkedIn message</option>
@@ -332,43 +410,33 @@ const KeepInTouchModal = ({ isOpen, onRequestClose, contact }) => {
                 <option value="WhatsApp message">WhatsApp message</option>
                 <option value="Call">Call</option>
                 <option value="Send a present/card">Send a present/card</option>
-              </select>
-            </div>
+              </Select>
+            </FormGroup>
           </div>
         )}
-        {errorMessage && <p style={{ color: 'red', fontSize: '12px' }}>{errorMessage}</p>}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '15px' }}>
-          <button
-            onClick={handleSave}
-            style={{
-              backgroundColor: '#007BFF',
-              color: '#fff',
-              padding: '8px 16px',
-              borderRadius: '4px',
-              border: 'none',
-              cursor: 'pointer',
-              ':hover': { backgroundColor: '#0056b3' }
-            }}
-          >
+        
+        {errorMessage && <ErrorMessage>{errorMessage}</ErrorMessage>}
+        
+        <ButtonContainer>
+          <SaveButton onClick={handleSave} disabled={loading}>
             Save
-          </button>
-          <button
-            onClick={onRequestClose}
-            style={{
-              backgroundColor: '#6C757D',
-              color: '#000',
-              padding: '8px 16px',
-              borderRadius: '4px',
-              border: 'none',
-              cursor: 'pointer',
-              ':hover': { backgroundColor: '#5A6268' }
-            }}
-          >
-            Discard
-          </button>
-        </div>
-        {successMessage && <p style={{ color: 'green', fontSize: '12px' }}>{successMessage}</p>}
-        {loading && <div style={{ textAlign: 'center', marginTop: '10px' }}><div className="spinner" style={{ width: '20px', height: '20px', border: '3px solid #f3f3f3', borderTop: '3px solid #007BFF', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div></div>}
+          </SaveButton>
+        </ButtonContainer>
+        
+        {successMessage && <SuccessMessage>{successMessage}</SuccessMessage>}
+        
+        {loading && (
+          <div style={{ textAlign: 'center', marginTop: '10px' }}>
+            <div className="spinner" style={{ 
+              width: '20px', 
+              height: '20px', 
+              border: '3px solid #f3f3f3', 
+              borderTop: '3px solid #000000', 
+              borderRadius: '50%', 
+              animation: 'spin 1s linear infinite' 
+            }}></div>
+          </div>
+        )}
       </div>
     </Modal>
   );
