@@ -3,14 +3,15 @@ import Modal from 'react-modal';
 import { FiX } from 'react-icons/fi';
 import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
+import toast from 'react-hot-toast';
 
 // Styled components for the modal
 const ModalHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
-  padding-bottom: 16px;
+  margin-bottom: 15px;
+  padding-bottom: 15px;
   border-bottom: 1px solid #e5e7eb;
 
   h2 {
@@ -35,116 +36,143 @@ const ModalHeader = styled.div`
   }
 `;
 
-const FormGroup = styled.div`
+const TabsContainer = styled.div`
+  display: flex;
+  gap: 2px;
   margin-bottom: 24px;
+  border-bottom: 1px solid #e5e7eb;
+`;
 
-  label {
-    display: block;
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: #374151;
-    margin-bottom: 8px;
-  }
+const FormGroup = styled.div`
+  margin-bottom: 15px;
+`;
+
+const Label = styled.label`
+  display: block;
+  margin-bottom: 5px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #4b5563;
 `;
 
 const CurrentCategory = styled.div`
-  padding: 12px;
-  background-color: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
+  background-color: #f3f4f6;
+  padding: 8px;
+  border-radius: 4px;
   font-size: 0.875rem;
-  color: #111827;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
 `;
 
 const Select = styled.select`
   width: 100%;
-  padding: 10px 12px;
+  height: 40px;
+  box-sizing: border-box;
+  padding: 8px 12px;
   border: 1px solid #d1d5db;
-  border-radius: 6px;
+  border-radius: 4px;
   font-size: 0.875rem;
   color: #111827;
-  background-color: white;
-  transition: all 0.2s;
-
+  background-color: #fff;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  cursor: pointer;
+  line-height: 24px;
+  
   &:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-  }
-
-  &:hover {
-    border-color: #9ca3af;
+    border-color: #000000;
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.15);
   }
 `;
 
-const ButtonGroup = styled.div`
+const CategoryOption = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const ButtonContainer = styled.div`
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
-  margin-top: 24px;
+  gap: 10px;
+  margin-top: 20px;
 `;
 
-const Button = styled.button`
+const SaveButton = styled.button`
   padding: 8px 16px;
-  border-radius: 6px;
+  border-radius: 4px;
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
-
+  background-color: #000000;
+  color: white;
+  border: none;
+  
+  &:hover {
+    background-color: #333333;
+  }
+  
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
 `;
 
-const SaveButton = styled(Button)`
-  background-color: #3b82f6;
-  color: white;
-  border: none;
-
-  &:hover:not(:disabled) {
-    background-color: #2563eb;
-  }
-`;
-
-const SkipButton = styled(Button)`
+const SkipButton = styled.button`
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
   background-color: #ef4444;
   color: white;
   border: none;
-
-  &:hover:not(:disabled) {
+  
+  &:hover {
     background-color: #dc2626;
   }
-`;
-
-const CancelButton = styled(Button)`
-  background-color: white;
-  color: #374151;
-  border: 1px solid #d1d5db;
-
-  &:hover:not(:disabled) {
-    background-color: #f3f4f6;
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 `;
 
-const Message = styled.div`
-  padding: 8px 12px;
-  border-radius: 6px;
+const ErrorMessage = styled.p`
+  color: #ef4444;
   font-size: 0.875rem;
-  margin-top: 12px;
-  
-  &.success {
-    background-color: #ecfdf5;
-    color: #059669;
-  }
-  
-  &.error {
-    background-color: #fef2f2;
-    color: #dc2626;
-  }
+  margin-top: 8px;
 `;
+
+const SuccessMessage = styled.p`
+  color: #10b981;
+  font-size: 0.875rem;
+  margin-top: 8px;
+`;
+
+// Function to get emoji for category
+const getCategoryEmoji = (category) => {
+  switch (category) {
+    case 'Professional Investor': return '💰 Investor';
+    case 'Friend and Family': return '❤️ Loved one';
+    case 'Client': return '🤝 Client';
+    case 'Colleague': return '👥 Colleague';
+    case 'Prospect': return '🎯 Prospect';
+    case 'Advisor': return '🧠 Advisor';
+    case 'Team': return '⚽ Team';
+    case 'Manager': return '💼 Manager';
+    case 'Founder': return '💻 Founder';
+    case 'Supplier': return '📦 Supplier';
+    case 'Skip': return '❌ Skip';
+    case 'Inbox': return '📬 Inbox';
+    case 'Other': return '📌 Other';
+    case 'Institution': return '🏛️ Institution';
+    case 'Media': return '📰 Media';
+    case 'Student': return '🎓 Student';
+    default: return `⚪ ${category}`;
+  }
+};
 
 const CategoryModal = ({ isOpen, onRequestClose, contact }) => {
   const [category, setCategory] = useState(contact?.contact_category || '');
@@ -170,12 +198,13 @@ const CategoryModal = ({ isOpen, onRequestClose, contact }) => {
 
       if (error) throw error;
 
-      setMessage({ type: 'success', text: 'Category updated successfully!' });
+      toast.success('Category updated successfully!');
       setTimeout(() => {
         onRequestClose();
-      }, 1500);
+      }, 1000);
     } catch (error) {
       console.error('Error updating category:', error);
+      toast.error('Failed to update category');
       setMessage({ type: 'error', text: 'Failed to update category' });
     } finally {
       setLoading(false);
@@ -192,12 +221,13 @@ const CategoryModal = ({ isOpen, onRequestClose, contact }) => {
 
       if (error) throw error;
 
-      setMessage({ type: 'success', text: 'Contact marked as Skip!' });
+      toast.success('Contact marked as Skip!');
       setTimeout(() => {
         onRequestClose();
-      }, 1500);
+      }, 1000);
     } catch (error) {
       console.error('Error marking contact as Skip:', error);
+      toast.error('Failed to mark contact as Skip');
       setMessage({ type: 'error', text: 'Failed to mark contact as Skip' });
     } finally {
       setLoading(false);
@@ -216,12 +246,13 @@ const CategoryModal = ({ isOpen, onRequestClose, contact }) => {
           bottom: 'auto',
           marginRight: '-50%',
           transform: 'translate(-50%, -50%)',
-          padding: '24px',
+          padding: '20px',
           border: 'none',
-          borderRadius: '8px',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06)',
+          borderRadius: '0.5rem',
+          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
           maxWidth: '500px',
-          width: '90%'
+          width: '90%',
+          minHeight: '450px'
         },
         overlay: {
           backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -229,64 +260,84 @@ const CategoryModal = ({ isOpen, onRequestClose, contact }) => {
         }
       }}
     >
-      <ModalHeader>
-        <h2>Edit Category</h2>
-        <button onClick={onRequestClose} aria-label="Close modal">
-          <FiX size={20} />
-        </button>
-      </ModalHeader>
+      <div style={{ padding: '1rem' }}>
+        <ModalHeader>
+          <h2>Contact Category</h2>
+          <button onClick={onRequestClose} aria-label="Close modal">
+            <FiX size={20} />
+          </button>
+        </ModalHeader>
 
-      <FormGroup>
-        <label>Actual Category:</label>
-        <CurrentCategory>
-          {contact?.contact_category || 'Not set'}
-        </CurrentCategory>
-      </FormGroup>
+        <FormGroup>
+          <Label>Current Category</Label>
+          <CurrentCategory>
+            {contact?.contact_category ? getCategoryEmoji(contact.contact_category) : 'Not set'}
+          </CurrentCategory>
+        </FormGroup>
 
-      <FormGroup>
-        <label htmlFor="category">Select New Category:</label>
-        <Select
-          id="category"
-          value={category}
-          onChange={(e) => {
-            setCategory(e.target.value);
-            setMessage({ type: '', text: '' });
-          }}
-        >
-          <option value="">Select a category...</option>
-          <option value="Founder">Founder</option>
-          <option value="Professional Investor">Professional Investor</option>
-          <option value="Advisor">Advisor</option>
-          <option value="Team">Team</option>
-          <option value="Friend and Family">Friend and Family</option>
-          <option value="Manager">Manager</option>
-          <option value="Institution">Institution</option>
-          <option value="Media">Media</option>
-          <option value="Student">Student</option>
-          <option value="Supplier">Supplier</option>
-          <option value="Skip">Skip</option>
-        </Select>
-      </FormGroup>
+        <FormGroup>
+          <Label htmlFor="category">Select New Category</Label>
+          <Select
+            id="category"
+            value={category}
+            onChange={(e) => {
+              setCategory(e.target.value);
+              setMessage({ type: '', text: '' });
+            }}
+          >
+            <option value="">Select a category...</option>
+            <option value="Founder">💻 Founder</option>
+            <option value="Professional Investor">💰 Investor</option>
+            <option value="Advisor">🧠 Advisor</option>
+            <option value="Team">⚽ Team</option>
+            <option value="Friend and Family">❤️ Loved one</option>
+            <option value="Manager">💼 Manager</option>
+            <option value="Institution">🏛️ Institution</option>
+            <option value="Media">📰 Media</option>
+            <option value="Student">🎓 Student</option>
+            <option value="Supplier">📦 Supplier</option>
+            <option value="Inbox">📬 Inbox</option>
+          </Select>
+        </FormGroup>
 
-      <ButtonGroup>
-        <CancelButton onClick={onRequestClose} disabled={loading}>
-          Cancel
-        </CancelButton>
-        <SaveButton onClick={handleSave} disabled={loading}>
-          Save Changes
-        </SaveButton>
-        <SkipButton onClick={handleSkip} disabled={loading}>
-          Skip
-        </SkipButton>
-      </ButtonGroup>
+        <ButtonContainer>
+          <SkipButton onClick={handleSkip} disabled={loading}>
+            Skip
+          </SkipButton>
+          <SaveButton onClick={handleSave} disabled={loading}>
+            Save Changes
+          </SaveButton>
+        </ButtonContainer>
 
-      {message.text && (
-        <Message className={message.type}>
-          {message.text}
-        </Message>
-      )}
+        {message.text && message.type === 'error' && (
+          <ErrorMessage>{message.text}</ErrorMessage>
+        )}
+        
+        {loading && (
+          <div style={{ textAlign: 'center', marginTop: '10px' }}>
+            <div className="spinner" style={{ 
+              width: '20px', 
+              height: '20px', 
+              border: '3px solid #f3f3f3', 
+              borderTop: '3px solid #000000', 
+              borderRadius: '50%', 
+              animation: 'spin 1s linear infinite' 
+            }}></div>
+          </div>
+        )}
+      </div>
     </Modal>
   );
 };
 
 export default CategoryModal; 
+
+// Add CSS for spinner
+const style = document.createElement('style');
+style.innerHTML = `
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`;
+document.head.appendChild(style);
