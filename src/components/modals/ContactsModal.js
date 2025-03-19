@@ -3749,7 +3749,7 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
   
   // Function to delete a note
   const handleDeleteNote = async (noteId, contactNoteId) => {
-    if (!confirm('Are you sure you want to delete this note?')) {
+    if (!window.confirm('Are you sure you want to delete this note?')) {
       return;
     }
     
@@ -3807,7 +3807,7 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
     ];
     
     if (loadingNotes) {
-      return <Loading>Loading notes...</Loading>;
+      return <div style={{ textAlign: 'center', padding: '40px 0' }}>Loading notes...</div>;
     }
     
     return (
