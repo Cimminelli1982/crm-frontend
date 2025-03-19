@@ -13,7 +13,7 @@ const PageContainer = styled.div`
 `;
 
 const PageHeader = styled.div`
-  padding: 1.5rem;
+  padding: 1.5rem 1.5rem 0.5rem 1.5rem; /* Reduced bottom padding */
 `;
 
 const HeaderContent = styled.div`
@@ -193,13 +193,13 @@ const ContentSection = styled.div`
 const FilterButtonsContainer = styled.div`
   display: flex;
   gap: 0.75rem;
-  padding: 1rem 0;
+  padding: 2rem 0 0.5rem 0;  /* Reduced bottom padding from 1rem to 0.5rem */
   margin: 0 1.5rem;
   overflow-x: auto;
   
   @media (max-width: 768px) {
     flex-wrap: nowrap;
-    padding: 0.75rem 0;
+    padding: 1.5rem 0 0.25rem 0;  /* Reduced bottom padding in mobile view */
     margin: 0 1rem;
   }
 `;
