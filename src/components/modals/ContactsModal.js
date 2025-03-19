@@ -3299,15 +3299,31 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
 
       if (introsError) throw introsError;
 
-      // Fetch all contacts for name resolution
-      const { data: contactsData, error: contactsError } = await supabase
-        .from('contacts')
-        .select('id, first_name, last_name');
+      // Get a unique list of all contact IDs involved in the introductions
+      // We do this to optimize the contact data fetching
+      const allContactIds = new Set();
+      introsData.forEach(intro => {
+        intro.contacts_introduced.forEach(id => {
+          if (id !== contact.id) { // Exclude current contact
+            allContactIds.add(id);
+          }
+        });
+      });
+      
+      // Fetch only the needed contacts for name resolution
+      if (allContactIds.size > 0) {
+        const { data: contactsData, error: contactsError } = await supabase
+          .from('contacts')
+          .select('id, first_name, last_name')
+          .in('id', Array.from(allContactIds));
 
-      if (contactsError) throw contactsError;
+        if (contactsError) throw contactsError;
+        setContacts(contactsData);
+      } else {
+        setContacts([]);
+      }
 
       setIntroductions(introsData);
-      setContacts(contactsData);
     } catch (error) {
       console.error('Error fetching introductions:', error);
     } finally {
@@ -3323,11 +3339,22 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
   }, [activeTab]);
 
   const getContactNames = (contactIds) => {
-    return contactIds
-      .filter(id => id !== contact.id) // Filter out the current contact
+    // Safety check for null/undefined
+    if (!contactIds || !Array.isArray(contactIds)) return 'No contacts';
+    
+    // If there are no other contacts in the introduction (unlikely), return a placeholder
+    const filteredIds = contactIds.filter(id => id !== contact.id);
+    if (filteredIds.length === 0) return 'No contacts';
+    
+    return filteredIds
       .map(id => {
         const contactData = contacts.find(c => c.id === id);
-        return contactData ? `${contactData.first_name} ${contactData.last_name}` : 'Unknown';
+        // Add more detailed info for debugging if needed
+        if (!contactData) {
+          console.log(`Contact not found for ID: ${id}`);
+          return `Contact #${id}`; // More helpful than just "Unknown"
+        }
+        return `${contactData.first_name} ${contactData.last_name}`;
       })
       .join(', ');
   };

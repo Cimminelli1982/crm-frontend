@@ -589,6 +589,19 @@ const SaveButton = styled(Button)`
 `;
 
 const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, editingIntro }) => {
+  // Debug logging for props
+  useEffect(() => {
+    if (isOpen && editingIntro) {
+      console.log("Edit Introduction Modal opened with:", {
+        introId: editingIntro.intro_id,
+        date: editingIntro.intro_date,
+        contactsIntroduced: editingIntro.contacts_introduced,
+        rationale: editingIntro.introduction_rationale,
+        note: editingIntro.introduction_note
+      });
+    }
+  }, [isOpen, editingIntro]);
+  
   const [contacts, setContacts] = useState([]);
   const [selectedContacts, setSelectedContacts] = useState([]);
   const [rationale, setRationale] = useState('');
@@ -653,6 +666,48 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
         .select('id, first_name, last_name, contact_category')
         .order('first_name');
 
+      // If we're in edit mode, make sure we fetch ALL contacts included in the introduction
+      if (editingIntro && !search) {
+        // First, fetch contacts specifically included in the introduction
+        const { data: introContacts, error: introError } = await supabase
+          .from('contacts')
+          .select('id, first_name, last_name, contact_category')
+          .in('id', editingIntro.contacts_introduced);
+          
+        if (introError) throw introError;
+        
+        // Then fetch other contacts for the dropdown (if searching)
+        if (search) {
+          query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%`);
+        }
+        
+        // Apply category filters if any are selected
+        if (categoryFilters.length > 0) {
+          query = query.in('contact_category', categoryFilters);
+        }
+        
+        const { data: otherContacts, error } = await query;
+        if (error) throw error;
+        
+        // Combine the results, prioritizing intro contacts
+        const allContacts = [...introContacts];
+        
+        // Add other contacts that aren't already in the intro contacts
+        otherContacts.forEach(contact => {
+          if (!allContacts.some(c => c.id === contact.id)) {
+            allContacts.push(contact);
+          }
+        });
+        
+        // Set selected contacts from the introduction
+        setSelectedContacts(introContacts);
+        setContacts(allContacts);
+        fetchPreviousIntroductions(introContacts.map(c => c.id));
+        
+        return;
+      }
+      
+      // Standard search case
       if (search) {
         query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%`);
       }
@@ -663,17 +718,7 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
       }
 
       const { data, error } = await query;
-
       if (error) throw error;
-
-      if (editingIntro) {
-        // If editing, set the selected contacts from the existing introduction
-        const selectedContactsData = data.filter(contact => 
-          editingIntro.contacts_introduced.includes(contact.id)
-        );
-        setSelectedContacts(selectedContactsData);
-        fetchPreviousIntroductions(selectedContactsData.map(c => c.id));
-      }
 
       // Filter out already selected contacts
       const filteredContacts = data.filter(contact => 
@@ -844,16 +889,26 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
 
       if (editingIntro) {
         // Update existing introduction
-        const { error: updateError } = await supabase
+        const updateData = {
+          intro_date: introDate,
+          contacts_introduced: selectedContacts.map(contact => contact.id),
+          introduction_rationale: rationale,
+          introduction_note: note
+        };
+        
+        console.log("Updating introduction with data:", updateData);
+        const { data: updatedData, error: updateError } = await supabase
           .from('contact_introductions')
-          .update({
-            intro_date: introDate,
-            contacts_introduced: selectedContacts.map(contact => contact.id),
-            introduction_rationale: rationale,
-            introduction_note: note
-          })
-          .eq('intro_id', editingIntro.intro_id);
+          .update(updateData)
+          .eq('intro_id', editingIntro.intro_id)
+          .select(); // Add select() to return the updated data
+        
         error = updateError;
+        
+        // If there's data returned, log it for debugging
+        if (updatedData) {
+          console.log("Updated introduction:", updatedData);
+        }
       } else {
         // Create new introduction
         const { error: insertError } = await supabase
@@ -866,7 +921,11 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
       if (error) throw error;
 
       toast.success(`Introduction ${editingIntro ? 'updated' : 'created'} successfully`);
-      onRequestClose();
+      
+      // Force a small delay to ensure the DB operation completes before closing
+      setTimeout(() => {
+        onRequestClose();
+      }, 500);
     } catch (error) {
       console.error(`Error ${editingIntro ? 'updating' : 'creating'} introduction:`, error);
       toast.error(`Failed to ${editingIntro ? 'update' : 'create'} introduction`);
@@ -1010,7 +1069,8 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
             )}
           </FormGroup>
 
-          {selectedContacts.length >= 2 && introHistory.length > 0 && (
+          {/* Only show previous introductions when NOT in edit mode */}
+          {selectedContacts.length >= 2 && introHistory.length > 0 && !editingIntro && (
             <IntroHistoryContainer>
               <IntroHistoryHeader>
                 <h4>

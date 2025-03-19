@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import NewContacts from './pages/NewContacts';
 import { supabase } from './lib/supabaseClient';
 import Layout from './components/layout/Layout';
+import { Toaster } from 'react-hot-toast';
 
 // Import new pages for navigation
 import LastInteractions from './pages/contacts/LastInteractions';
@@ -51,6 +52,29 @@ const App = () => {
 
   return (
     <Router>
+      <Toaster position="top-right" toastOptions={{
+        style: {
+          background: '#333',
+          color: '#fff',
+          borderRadius: '4px',
+        },
+        success: {
+          duration: 3000,
+          style: {
+            background: '#000',
+            color: '#00ff00',
+            border: '1px solid #00ff00',
+          },
+        },
+        error: {
+          duration: 4000,
+          style: {
+            background: '#000',
+            color: '#ff0000',
+            border: '1px solid #ff0000',
+          },
+        },
+      }} />
       <Routes>
         <Route path="/login" element={!session ? <Login /> : <Navigate to="/" />} />
         

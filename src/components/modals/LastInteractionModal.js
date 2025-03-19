@@ -6,26 +6,27 @@ import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
 
 // ==================== Styled Components ====================
-// Define the 4-color palette
-const COLORS = {
-  WHITE: '#FFFFFF',
-  BLACK: '#000000',
-  LIGHT_GRAY: '#E5E5E5',
-  DARK_GRAY: '#4A4A4A'
-};
+const ModalContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  height: 75vh;
+  min-height: 600px;
+  overflow: hidden;
+`;
+
 const ModalHeader = styled.div`
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 15px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid ${COLORS.LIGHT_GRAY};
+  align-items: flex-start;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e5e7eb;
 
   .header-left {
     h2 {
       margin: 0;
       font-size: 1.25rem;
-      color: ${COLORS.BLACK};
+      color: #000000;
       font-weight: 600;
     }
   }
@@ -39,16 +40,16 @@ const ModalHeader = styled.div`
       background: none;
       border: none;
       cursor: pointer;
-      color: ${COLORS.DARK_GRAY};
-      padding: 4px;
+      color: #4b5563;
+      padding: 8px;
       border-radius: 4px;
       display: flex;
       align-items: center;
       justify-content: center;
       
       &:hover {
-        color: ${COLORS.BLACK};
-        background-color: ${COLORS.LIGHT_GRAY};
+        color: #000000;
+        background-color: #f3f4f6;
       }
     }
   }
@@ -56,44 +57,71 @@ const ModalHeader = styled.div`
 
 const TabContainer = styled.div`
   display: flex;
-  margin-bottom: 15px;
+  gap: 2px;
+  margin-bottom: 24px;
 `;
 
 const TabButton = styled.button`
-  background-color: ${props => (props.active ? COLORS.BLACK : COLORS.LIGHT_GRAY)};
-  color: ${props => (props.active ? COLORS.WHITE : COLORS.BLACK)};
-  padding: 8px;
+  background-color: transparent;
+  color: ${props => (props.active ? '#000000' : '#6b7280')};
+  padding: 12px 20px;
   border: none;
-  border-radius: 4px 4px 0 0;
+  border-bottom: 2px solid ${props => (props.active ? '#000000' : 'transparent')};
   cursor: pointer;
-  margin-right: 5px;
-  transition: all 0.2s;
+  font-weight: ${props => (props.active ? '600' : '500')};
+  transition: all 0.2s ease;
 
   &:hover {
-    background-color: ${props => (props.active ? COLORS.BLACK : COLORS.DARK_GRAY)};
-    color: ${COLORS.WHITE};
+    color: #000000;
+    border-bottom-color: ${props => (props.active ? '#000000' : '#d1d5db')};
   }
 `;
 
 const TabContent = styled.div`
-  margin-bottom: 15px;
+  margin-bottom: 24px;
+`;
+
+const ContentSection = styled.div`
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 `;
 
 const InteractionList = styled.div`
-  background-color: ${COLORS.LIGHT_GRAY};
-  padding: 10px;
-  border-radius: 4px;
-  margin-bottom: 15px;
+  background-color: #f9fafb;
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 24px;
   height: 400px;
   overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: #f1f1f1;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 3px;
+  }
+  
+  &::-webkit-scrollbar-thumb:hover {
+    background: #555;
+  }
 `;
 
 const InteractionItem = styled.div`
-  background-color: ${COLORS.WHITE};
-  padding: 12px;
-  border-radius: 4px;
-  margin-bottom: 8px;
-  border: 1px solid ${COLORS.LIGHT_GRAY};
+  background-color: #ffffff;
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 
   &:last-child {
     margin-bottom: 0;
@@ -101,74 +129,85 @@ const InteractionItem = styled.div`
 
   .date {
     font-size: 0.875rem;
-    color: ${COLORS.DARK_GRAY};
-    margin-bottom: 4px;
+    color: #6b7280;
+    margin-bottom: 8px;
   }
 
   .content {
-    color: ${COLORS.BLACK};
+    color: #111827;
+    font-size: 0.9375rem;
   }
 
   .type {
     font-size: 0.75rem;
-    color: ${COLORS.WHITE};
-    background-color: ${COLORS.BLACK};
-    padding: 2px 6px;
+    color: #ffffff;
+    background-color: #000000;
+    padding: 3px 8px;
     border-radius: 12px;
     display: inline-block;
-    margin-bottom: 4px;
+    margin-bottom: 8px;
+    font-weight: 500;
   }
 `;
 
 const NoInteractions = styled.div`
   text-align: center;
-  padding: 20px;
-  color: ${COLORS.DARK_GRAY};
+  padding: 32px;
+  color: #6b7280;
   font-style: italic;
   height: 400px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
+  background-color: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
 `;
 
 const Table = styled.table`
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  background-color: ${COLORS.WHITE};
+  background-color: #ffffff;
   border-radius: 8px;
   overflow: hidden;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 `;
 
 const TableHeader = styled.thead`
-  background-color: ${COLORS.LIGHT_GRAY};
+  background-color: #f9fafb;
   
   th {
-    padding: 12px 16px;
-    text-align: center;
+    padding: 14px 16px;
+    text-align: left;
     font-weight: 600;
     font-size: 0.875rem;
-    color: ${COLORS.BLACK};
-    border-bottom: 1px solid ${COLORS.LIGHT_GRAY};
+    color: #111827;
+    border-bottom: 1px solid #e5e7eb;
+    
+    &.centered {
+      text-align: center;
+    }
   }
 `;
 
 const TableBody = styled.tbody`
   tr {
     &:hover {
-      background-color: ${COLORS.LIGHT_GRAY};
+      background-color: #f3f4f6;
     }
     
     &:not(:last-child) {
-      border-bottom: 1px solid ${COLORS.LIGHT_GRAY};
+      border-bottom: 1px solid #e5e7eb;
     }
   }
   
   td {
-    padding: 12px 16px;
+    padding: 14px 16px;
     font-size: 0.875rem;
-    color: ${COLORS.BLACK};
+    color: #1f2937;
     vertical-align: middle;
     
     &.centered {
@@ -189,45 +228,48 @@ const PaginationContainer = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 1rem;
-  padding: 0.5rem 0;
+  margin-top: 16px;
+  padding: 12px 0;
 `;
 
 const PageInfo = styled.span`
   font-size: 0.875rem;
-  color: ${COLORS.DARK_GRAY};
+  color: #6b7280;
 `;
 
 const PaginationButton = styled.button`
-  padding: 0.5rem 1rem;
-  border: 1px solid ${COLORS.LIGHT_GRAY};
-  border-radius: 0.375rem;
-  background-color: ${COLORS.WHITE};
+  padding: 8px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background-color: #ffffff;
   font-size: 0.875rem;
-  color: ${COLORS.BLACK};
+  color: #111827;
   cursor: pointer;
+  transition: all 0.2s ease;
   
   &:hover:not(:disabled) {
-    background-color: ${COLORS.LIGHT_GRAY};
+    background-color: #f3f4f6;
+    border-color: #d1d5db;
   }
   
   &:disabled {
     cursor: not-allowed;
     opacity: 0.5;
-    color: ${COLORS.DARK_GRAY};
+    color: #9ca3af;
   }
   
-  margin: 0 0.25rem;
+  margin: 0 4px;
 `;
 
 const Tag = styled.div`
   display: inline-flex;
   align-items: center;
-  padding: 4px 8px;
-  background-color: ${props => props.color || COLORS.LIGHT_GRAY};
-  color: ${props => props.textColor || COLORS.BLACK};
+  padding: 4px 10px;
+  background-color: ${props => props.color || '#f3f4f6'};
+  color: ${props => props.textColor || '#111827'};
   border-radius: 16px;
-  font-size: 0.875rem;
+  font-size: 0.75rem;
+  font-weight: 500;
   gap: 6px;
   max-width: 200px;
 
@@ -240,25 +282,27 @@ const Tag = styled.div`
 `;
 
 const DirectionTag = styled(Tag)`
-  background-color: ${props => props.direction === 'Received' ? COLORS.LIGHT_GRAY : COLORS.DARK_GRAY};
-  color: ${props => props.direction === 'Received' ? COLORS.BLACK : COLORS.WHITE};
+  background-color: ${props => props.direction === 'Received' ? '#f3f4f6' : '#4b5563'};
+  color: ${props => props.direction === 'Received' ? '#111827' : '#ffffff'};
 `;
 
 const ActionButton = styled.button`
-  font-size: 0.8em;
-  padding: 5px 10px;
-  background: ${COLORS.BLACK};
-  color: ${COLORS.WHITE};
+  font-size: 0.8125rem;
+  padding: 8px 12px;
+  background: #000000;
+  color: #ffffff;
   border: none;
-  border-radius: 3px;
+  border-radius: 6px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 6px;
+  font-weight: 500;
+  transition: all 0.2s ease;
   
   &:hover {
-    background: ${COLORS.DARK_GRAY};
+    background: #1f2937;
   }
   
   /* Header button styles */
@@ -266,16 +310,16 @@ const ActionButton = styled.button`
     width: 36px;
     height: 36px;
     padding: 0;
-    border-radius: 4px;
+    border-radius: 6px;
   }
 `;
 
 const MessageCounter = styled.div`
-  font-size: 0.85rem;
-  color: ${COLORS.DARK_GRAY};
-  margin-bottom: 10px;
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-bottom: 12px;
   text-align: right;
-  padding-right: 5px;
+  padding-right: 8px;
 `;
 
 // ==================== Modal Component ====================
@@ -741,7 +785,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
         <>
           <NoInteractions>
             No WhatsApp messages found for page {currentPage}
-            <div style={{ fontSize: '0.85em', marginTop: '15px', color: '#333' }}>
+            <div style={{ fontSize: '0.85em', marginTop: '16px', color: '#4b5563' }}>
               <button 
                 type="button"
                 onClick={() => {
@@ -749,18 +793,18 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
                   emergencyFetchPage(currentPage);
                 }} 
                 style={{ 
-                  marginTop: '15px',
-                  padding: '8px 12px', 
-                  background: '#d32f2f', 
+                  marginTop: '16px',
+                  padding: '8px 16px', 
+                  background: '#000000', 
                   color: 'white',
                   border: 'none',
-                  borderRadius: '4px',
+                  borderRadius: '6px',
                   cursor: 'pointer',
                   fontWeight: 'bold',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.15)'
                 }}
               >
-                EMERGENCY PAGE {currentPage} FETCH
+                Retry Fetch
               </button>
             </div>
           </NoInteractions>
@@ -869,12 +913,25 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
         <NoInteractions>
           No meetings found for this contact
           <div style={{ marginTop: '20px' }}>
-            <ActionButton 
+            <button 
               onClick={() => window.open('/planner', '_blank')}
-              variant="meeting"
+              style={{ 
+                padding: '8px 16px', 
+                background: '#000000', 
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontWeight: '500',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+                fontSize: '0.875rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
             >
               Schedule a Meeting
-            </ActionButton>
+            </button>
           </div>
         </NoInteractions>
       );
@@ -890,12 +947,25 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           <div style={{ fontWeight: 'bold', color: '#374151' }}>
             {startRecord}-{endRecord} of {totalRecords} meetings
           </div>
-          <ActionButton 
+          <button 
             onClick={() => window.open('/planner', '_blank')}
-            variant="meeting"
+            style={{ 
+              padding: '8px 16px', 
+              background: '#000000', 
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: '500',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+              fontSize: '0.875rem',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
           >
             View All Meetings
-          </ActionButton>
+          </button>
         </div>
         <div style={{ height: '400px', overflowY: 'auto', marginBottom: '15px' }}>
         <Table>
@@ -912,21 +982,21 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
               // Determine category style
               const getCategoryColor = (category) => {
                 switch (category?.toLowerCase()) {
-                  case 'inbox': return COLORS.LIGHT_GRAY;
-                  case 'karma_points': return COLORS.LIGHT_GRAY;
-                  case 'dealflow': return COLORS.DARK_GRAY;
-                  case 'portfolio': return COLORS.DARK_GRAY;
-                  default: return COLORS.LIGHT_GRAY;
+                  case 'inbox': return '#f3f4f6';
+                  case 'karma_points': return '#f3f4f6';
+                  case 'dealflow': return '#4b5563';
+                  case 'portfolio': return '#4b5563';
+                  default: return '#f3f4f6';
                 }
               };
               
               const getCategoryTextColor = (category) => {
                 switch (category?.toLowerCase()) {
-                  case 'inbox': return COLORS.BLACK;
-                  case 'karma_points': return COLORS.BLACK;
-                  case 'dealflow': return COLORS.WHITE;
-                  case 'portfolio': return COLORS.WHITE;
-                  default: return COLORS.BLACK;
+                  case 'inbox': return '#111827';
+                  case 'karma_points': return '#111827';
+                  case 'dealflow': return '#ffffff';
+                  case 'portfolio': return '#ffffff';
+                  default: return '#111827';
                 }
               };
 
@@ -1548,10 +1618,10 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           <NoInteractions>
             No emails found for this contact
             
-            <div style={{ fontSize: '0.85em', marginTop: '15px', color: '#333' }}>
+            <div style={{ fontSize: '0.85em', marginTop: '16px', color: '#6b7280' }}>
               <p>Please make sure the contact has valid email addresses and the emails table exists in the database.</p>
               
-              <div style={{ marginTop: '10px' }}>
+              <div style={{ marginTop: '16px' }}>
                 <button 
                   type="button"
                   onClick={() => {
@@ -1559,18 +1629,18 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
                     fetchEmails();
                   }} 
                   style={{ 
-                    marginTop: '15px',
-                    padding: '8px 12px', 
-                    background: '#0056b3', 
+                    marginTop: '16px',
+                    padding: '8px 16px', 
+                    background: '#000000', 
                     color: 'white',
                     border: 'none',
-                    borderRadius: '4px',
+                    borderRadius: '6px',
                     cursor: 'pointer',
-                    fontWeight: 'bold',
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                    fontWeight: '500',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.15)'
                   }}
                 >
-                  REFRESH EMAILS
+                  Refresh Emails
                 </button>
               </div>
             </div>
@@ -1775,23 +1845,23 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           bottom: 'auto',
           marginRight: '-50%',
           transform: 'translate(-50%, -50%)',
-          padding: '20px',
+          padding: '24px',
           border: 'none',
-          borderRadius: '0.5rem',
-          boxShadow: `0 4px 6px ${COLORS.BLACK}`,
+          borderRadius: '8px',
+          boxShadow: '0 10px 25px rgba(0, 0, 0, 0.2)',
           maxWidth: '1250px',
           width: '90%',
-          height: '650px',       // Fixed height for consistency
-          overflow: 'auto',      // Ensure content is scrollable
-          backgroundColor: COLORS.WHITE
+          height: '75vh',       // More responsive height
+          minHeight: '600px',   // Minimum height for consistency
+          backgroundColor: '#ffffff'
         },
         overlay: {
-          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          backgroundColor: 'rgba(0, 0, 0, 0.75)',
           zIndex: 1000
         }
       }}
     >
-      <div style={{ padding: '1rem' }}>
+      <ModalContainer>
         <ModalHeader>
           <div className="header-left">
             <h2>Last Interactions</h2>
@@ -1873,17 +1943,19 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           </TabButton>
         </TabContainer>
 
-        {/* Render content based on active tab */}
-        {activeTab === 'Whatsapp' ? (
-          renderWhatsAppTable()
-        ) : activeTab === 'Email' ? (
-          renderEmailsTable()
-        ) : activeTab === 'Meeting' ? (
-          renderMeetingsTable()
-        ) : (
-          <TabContent>{renderGenericInteractions()}</TabContent>
-        )}
-      </div>
+        <ContentSection>
+          {/* Render content based on active tab */}
+          {activeTab === 'Whatsapp' ? (
+            renderWhatsAppTable()
+          ) : activeTab === 'Email' ? (
+            renderEmailsTable()
+          ) : activeTab === 'Meeting' ? (
+            renderMeetingsTable()
+          ) : (
+            <TabContent>{renderGenericInteractions()}</TabContent>
+          )}
+        </ContentSection>
+      </ModalContainer>
     </Modal>
   );
 };

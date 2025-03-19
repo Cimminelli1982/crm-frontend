@@ -265,6 +265,7 @@ const KeepInTouchTable = () => {
   const [showKeepInTouchModal, setShowKeepInTouchModal] = useState(false);
   const [showLastInteractionModal, setShowLastInteractionModal] = useState(false);
   const [selectedContactForEdit, setSelectedContactForEdit] = useState(null);
+  const [filterCounts, setFilterCounts] = useState({ overdue: 0, upcoming: 0, needFixing: 0 });
   
   useEffect(() => {
     fetchContacts();
@@ -272,7 +273,27 @@ const KeepInTouchTable = () => {
   
   useEffect(() => {
     applyFilter(activeFilter);
+    updateFilterCounts();
   }, [contacts, activeFilter]);
+  
+  // Calculate and update filter counts
+  const updateFilterCounts = () => {
+    const today = new Date();
+    const nextWeek = addDays(today, 7);
+    
+    setFilterCounts({
+      overdue: contacts.filter(c => c.nextDueDate && c.nextDueDate < today).length,
+      upcoming: contacts.filter(c => 
+        c.nextDueDate && 
+        c.nextDueDate >= today && 
+        c.nextDueDate <= nextWeek
+      ).length,
+      needFixing: contacts.filter(c => 
+        !c.nextDueDate && 
+        c.keep_in_touch_frequency
+      ).length
+    });
+  };
   
   const fetchContacts = async () => {
     try {
@@ -352,24 +373,6 @@ const KeepInTouchTable = () => {
     setActiveFilter(activeFilter === filter ? null : filter);
   };
   
-  const getFilterCounts = () => {
-    const today = new Date();
-    const nextWeek = addDays(today, 7);
-
-    return {
-      overdue: contacts.filter(c => c.nextDueDate && c.nextDueDate < today).length,
-      upcoming: contacts.filter(c => 
-        c.nextDueDate && 
-        c.nextDueDate >= today && 
-        c.nextDueDate <= nextWeek
-      ).length,
-      needFixing: contacts.filter(c => 
-        !c.nextDueDate && 
-        c.keep_in_touch_frequency
-      ).length
-    };
-  };
-  
   const handleCellClick = (contact, type) => {
     setSelectedContactForEdit(contact);
     switch (type) {
@@ -447,7 +450,7 @@ const KeepInTouchTable = () => {
           onClick={() => handleFilterClick('overdue')}
         >
           Overdue
-          <span className="count">{getFilterCounts().overdue}</span>
+          <span className="count">{filterCounts.overdue}</span>
         </FilterButton>
         
         <FilterButton
@@ -456,7 +459,7 @@ const KeepInTouchTable = () => {
           onClick={() => handleFilterClick('upcoming')}
         >
           Upcoming
-          <span className="count">{getFilterCounts().upcoming}</span>
+          <span className="count">{filterCounts.upcoming}</span>
         </FilterButton>
         
         <FilterButton
@@ -465,7 +468,7 @@ const KeepInTouchTable = () => {
           onClick={() => handleFilterClick('needFixing')}
         >
           Need Fixing
-          <span className="count">{getFilterCounts().needFixing}</span>
+          <span className="count">{filterCounts.needFixing}</span>
         </FilterButton>
       </FiltersContainer>
       

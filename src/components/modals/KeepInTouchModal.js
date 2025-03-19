@@ -3,6 +3,7 @@ import Modal from 'react-modal';
 import { FiX } from 'react-icons/fi';
 import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
+import toast from 'react-hot-toast';
 
 // Styled Components
 const ModalHeader = styled.div`
@@ -137,12 +138,6 @@ const ErrorMessage = styled.p`
   margin-top: 8px;
 `;
 
-const SuccessMessage = styled.p`
-  color: #10b981;
-  font-size: 0.875rem;
-  margin-top: 8px;
-`;
-
 const FollowUpText = styled.p`
   font-size: 0.75rem;
   color: #6b7280;
@@ -156,7 +151,6 @@ const KeepInTouchModal = ({ isOpen, onRequestClose, contact }) => {
   const [christmasWishes, setChristmasWishes] = useState(contact.christmas_wishes || 'No wishes');
   const [easterWishes, setEasterWishes] = useState(contact.easter_wishes || 'No wishes');
   const [loading, setLoading] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [nextFollowUp, setNextFollowUp] = useState('N/A');
 
@@ -219,11 +213,16 @@ const KeepInTouchModal = ({ isOpen, onRequestClose, contact }) => {
         .update(updateData)
         .eq('id', contact.id);
       if (error) throw error;
-      setSuccessMessage('Frequency or Wishes updated!');
-      setTimeout(() => setSuccessMessage(''), 3000);
+      
+      // Show success toast and close modal
+      toast.success('Keep in touch settings updated!');
+      setTimeout(() => {
+        onRequestClose(); // Close the modal after a short delay
+      }, 800);
     } catch (error) {
       console.error('Supabase update error:', error);
       setErrorMessage('Error updating data');
+      toast.error('Failed to update settings');
     } finally {
       setLoading(false);
     }
@@ -337,7 +336,7 @@ const KeepInTouchModal = ({ isOpen, onRequestClose, contact }) => {
                           setErrorMessage('Error fetching updated birthday');
                         } else {
                           setBirthdayDate(data.birthday);
-                          setSuccessMessage('Birthday date reset successfully');
+                          toast.success('Birthday date reset successfully');
                         }
                       }
                       setLoading(false);
@@ -422,8 +421,6 @@ const KeepInTouchModal = ({ isOpen, onRequestClose, contact }) => {
             Save
           </SaveButton>
         </ButtonContainer>
-        
-        {successMessage && <SuccessMessage>{successMessage}</SuccessMessage>}
         
         {loading && (
           <div style={{ textAlign: 'center', marginTop: '10px' }}>

@@ -604,15 +604,15 @@ const ClickableCell = styled.td`
   
   &:hover::after {
     content: "${props => props.hoverText || 'Click to edit'}";
-  position: absolute;
+    position: absolute;
     top: 0;
     right: 0;
-    background-color: #3b82f6;
+    background-color: #000000;
     color: white;
     font-size: 10px;
     padding: 2px 5px;
     border-radius: 0 0 0 4px;
-    opacity: 0.8;
+    opacity: 0.9;
     z-index: 10; /* Ensure it's above other elements */
   }
 `;
@@ -777,6 +777,117 @@ const RecentContactsList = forwardRef(({
   
   // Modal state
   const [showEditModal, setShowEditModal] = useState(false);
+  
+  // Calculate counts for each filter type for badges
+  const calculateFilterCounts = async () => {
+    try {
+      // Calculate count for "Last Interaction" filter
+      const lastInteractionOneWeekAgo = new Date();
+      lastInteractionOneWeekAgo.setDate(lastInteractionOneWeekAgo.getDate() - 7);
+      const lastInteractionDate = lastInteractionOneWeekAgo.toISOString();
+      const { count: lastInteractionCount } = await supabase
+        .from('contacts')
+        .select('*', { count: 'exact', head: true })
+        .gte('last_interaction', lastInteractionDate)
+        .not('contact_category', 'eq', 'Skip');
+        
+      // Calculate count for "Missing Category" filter (now showing Inbox contacts)
+      const { count: recentlyCreatedCount } = await supabase
+        .from('contacts')
+        .select('*', { count: 'exact', head: true })
+        .eq('contact_category', 'Inbox');
+        
+      // Calculate count for "Missing Keep In Touch" filter
+      const { count: missingKeepInTouchCount } = await supabase
+        .from('contacts')
+        .select('*', { count: 'exact', head: true })
+        .is('keep_in_touch_frequency', null)
+        .not('contact_category', 'eq', 'Skip');
+        
+      // Calculate count for "Missing Score" filter - only showing contacts with recent interactions
+      const missingScoreOneWeekAgo = new Date();
+      missingScoreOneWeekAgo.setDate(missingScoreOneWeekAgo.getDate() - 7);
+      const missingScoreDate = missingScoreOneWeekAgo.toISOString();
+      const { count: missingScoreCount } = await supabase
+        .from('contacts')
+        .select('*', { count: 'exact', head: true })
+        .is('score', null)
+        .not('contact_category', 'eq', 'Skip')
+        .gte('last_interaction', missingScoreDate);
+        
+      // Calculate count for "Missing Cities" filter using the stored procedure
+      const { data: missingCitiesData, error: missingCitiesError } = await supabase
+        .rpc('get_contacts_without_cities_count');
+        
+      // Handle the response and extract the count
+      let missingCitiesCount = 0;
+      if (missingCitiesError) {
+        console.error('Error fetching missing cities count:', missingCitiesError);
+      } else if (Array.isArray(missingCitiesData) && missingCitiesData.length > 0) {
+        missingCitiesCount = missingCitiesData[0].count;
+      } else if (typeof missingCitiesData === 'object' && missingCitiesData !== null) {
+        missingCitiesCount = missingCitiesData.count;
+      } else {
+        missingCitiesCount = missingCitiesData || 0;
+      }
+      
+      // Calculate count for "Missing Companies" filter using the stored procedure
+      const { data: missingCompaniesData, error: missingCompaniesError } = await supabase
+        .rpc('get_contacts_without_companies_count');
+        
+      // Handle the response and extract the count
+      let missingCompaniesCount = 0;
+      if (missingCompaniesError) {
+        console.error('Error fetching missing companies count:', missingCompaniesError);
+      } else if (Array.isArray(missingCompaniesData) && missingCompaniesData.length > 0) {
+        missingCompaniesCount = missingCompaniesData[0].count;
+      } else if (typeof missingCompaniesData === 'object' && missingCompaniesData !== null) {
+        missingCompaniesCount = missingCompaniesData.count;
+      } else {
+        missingCompaniesCount = missingCompaniesData || 0;
+      }
+      
+      // Calculate count for "Missing Tags" filter using the stored procedure
+      const { data: missingTagsData, error: missingTagsError } = await supabase
+        .rpc('get_contacts_without_tags_count');
+        
+      // Handle the response and extract the count
+      let missingTagsCount = 0;
+      if (missingTagsError) {
+        console.error('Error fetching missing tags count:', missingTagsError);
+      } else if (Array.isArray(missingTagsData) && missingTagsData.length > 0) {
+        missingTagsCount = missingTagsData[0].count;
+      } else if (typeof missingTagsData === 'object' && missingTagsData !== null) {
+        missingTagsCount = missingTagsData.count;
+      } else {
+        missingTagsCount = missingTagsData || 0;
+      }
+        
+      // Update filter counts state
+      setFilterCountsData({
+        lastInteraction: lastInteractionCount || 0,
+        recentlyCreated: recentlyCreatedCount || 0,
+        missingKeepInTouch: missingKeepInTouchCount || 0,
+        missingScore: missingScoreCount || 0,
+        missingCities: missingCitiesCount || 0,
+        missingCompanies: missingCompaniesCount || 0,
+        missingTags: missingTagsCount || 0
+      });
+      
+      return {
+        lastInteraction: lastInteractionCount || 0,
+        recentlyCreated: recentlyCreatedCount || 0,
+        missingKeepInTouch: missingKeepInTouchCount || 0,
+        missingScore: missingScoreCount || 0,
+        missingCities: missingCitiesCount || 0,
+        missingCompanies: missingCompaniesCount || 0,
+        missingTags: missingTagsCount || 0
+      };
+    } catch (error) {
+      console.error('Error calculating filter counts:', error);
+      return null;
+    }
+  };
   const [modalContact, setModalContact] = useState(null);
   const [modalType, setModalType] = useState('contact'); // 'contact', 'company', or 'tags'
   const [modalContent, setModalContent] = useState(null);
@@ -1169,106 +1280,6 @@ const RecentContactsList = forwardRef(({
         .from('contacts')
         .select('*', { count: 'exact', head: true })
         .not('contact_category', 'eq', 'Skip');
-      
-      // Calculate counts for each filter type for badges
-      const calculateFilterCounts = async () => {
-        try {
-          // Calculate count for "Last Interaction" filter
-          const lastInteractionOneWeekAgo = new Date();
-          lastInteractionOneWeekAgo.setDate(lastInteractionOneWeekAgo.getDate() - 7);
-          const lastInteractionDate = lastInteractionOneWeekAgo.toISOString();
-          const { count: lastInteractionCount } = await supabase
-            .from('contacts')
-            .select('*', { count: 'exact', head: true })
-            .gte('last_interaction', lastInteractionDate)
-            .not('contact_category', 'eq', 'Skip');
-            
-          // Calculate count for "Missing Category" filter (now showing Inbox contacts)
-          const { count: recentlyCreatedCount } = await supabase
-            .from('contacts')
-            .select('*', { count: 'exact', head: true })
-            .eq('contact_category', 'Inbox');
-            
-          // Calculate count for "Missing Keep In Touch" filter
-          const { count: missingKeepInTouchCount } = await supabase
-            .from('contacts')
-            .select('*', { count: 'exact', head: true })
-            .is('keep_in_touch_frequency', null)
-            .not('contact_category', 'eq', 'Skip');
-            
-          // Calculate count for "Missing Score" filter - only showing contacts with recent interactions
-          const missingScoreOneWeekAgo = new Date();
-          missingScoreOneWeekAgo.setDate(missingScoreOneWeekAgo.getDate() - 7);
-          const missingScoreDate = missingScoreOneWeekAgo.toISOString();
-          const { count: missingScoreCount } = await supabase
-            .from('contacts')
-            .select('*', { count: 'exact', head: true })
-            .is('score', null)
-            .not('contact_category', 'eq', 'Skip')
-            .gte('last_interaction', missingScoreDate);
-            
-          // Calculate count for "Missing Cities" filter using the stored procedure
-          const { data: missingCitiesData, error: missingCitiesError } = await supabase
-            .rpc('get_contacts_without_cities_count');
-            
-          // Handle the response and extract the count
-          let missingCitiesCount = 0;
-          if (missingCitiesError) {
-            console.error('Error fetching missing cities count:', missingCitiesError);
-          } else if (Array.isArray(missingCitiesData) && missingCitiesData.length > 0) {
-            missingCitiesCount = missingCitiesData[0].count;
-          } else if (typeof missingCitiesData === 'object' && missingCitiesData !== null) {
-            missingCitiesCount = missingCitiesData.count;
-          } else {
-            missingCitiesCount = missingCitiesData || 0;
-          }
-          
-          // Calculate count for "Missing Companies" filter using the stored procedure
-          const { data: missingCompaniesData, error: missingCompaniesError } = await supabase
-            .rpc('get_contacts_without_companies_count');
-            
-          // Handle the response and extract the count
-          let missingCompaniesCount = 0;
-          if (missingCompaniesError) {
-            console.error('Error fetching missing companies count:', missingCompaniesError);
-          } else if (Array.isArray(missingCompaniesData) && missingCompaniesData.length > 0) {
-            missingCompaniesCount = missingCompaniesData[0].count;
-          } else if (typeof missingCompaniesData === 'object' && missingCompaniesData !== null) {
-            missingCompaniesCount = missingCompaniesData.count;
-          } else {
-            missingCompaniesCount = missingCompaniesData || 0;
-          }
-          
-          // Calculate count for "Missing Tags" filter using the stored procedure
-          const { data: missingTagsData, error: missingTagsError } = await supabase
-            .rpc('get_contacts_without_tags_count');
-            
-          // Handle the response and extract the count
-          let missingTagsCount = 0;
-          if (missingTagsError) {
-            console.error('Error fetching missing tags count:', missingTagsError);
-          } else if (Array.isArray(missingTagsData) && missingTagsData.length > 0) {
-            missingTagsCount = missingTagsData[0].count;
-          } else if (typeof missingTagsData === 'object' && missingTagsData !== null) {
-            missingTagsCount = missingTagsData.count;
-          } else {
-            missingTagsCount = missingTagsData || 0;
-          }
-            
-          // Update filter counts state
-          setFilterCountsData({
-            lastInteraction: lastInteractionCount || 0,
-            recentlyCreated: recentlyCreatedCount || 0,
-            missingKeepInTouch: missingKeepInTouchCount || 0,
-            missingScore: missingScoreCount || 0,
-            missingCities: missingCitiesCount || 0,
-            missingCompanies: missingCompaniesCount || 0,
-            missingTags: missingTagsCount || 0
-          });
-        } catch (error) {
-          console.error('Error calculating filter counts:', error);
-        }
-      };
       
       // Run the filter counts calculation
       calculateFilterCounts();
@@ -2088,9 +2099,27 @@ const RecentContactsList = forwardRef(({
       setContacts(contacts.map(c => 
         c.id === contactId ? { ...c, score } : c
       ));
+      
+      // Show success notification
+      toast.success('Contact score updated successfully');
+      
+      // Refresh based on active filter
+      if (activeFilter === 'missingScore') {
+        // If we're in the missing score filter, refresh the entire list
+        fetchContacts();
+      } else {
+        // Calculate updated filter counts
+        calculateFilterCounts().then(() => {
+          // Make sure parent knows the counts have been updated
+          if (onCountUpdate) {
+            onCountUpdate(totalCount || 0, filterCountsData);
+          }
+        });
+      }
     } catch (error) {
       console.error('Error updating contact score:', error);
       setError(error.message);
+      toast.error('Failed to update contact score');
     }
   };
   
