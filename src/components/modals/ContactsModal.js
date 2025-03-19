@@ -976,7 +976,7 @@ const IntroAddButton = styled.button`
   align-items: center;
   justify-content: center;
   padding: 8px 16px;
-  background-color: #2563eb;
+  background-color: #000000;
   color: white;
   border: none;
   border-radius: 6px;
@@ -986,7 +986,7 @@ const IntroAddButton = styled.button`
   transition: background-color 0.2s;
 
   &:hover {
-    background-color: #1d4ed8;
+    background-color: #333333;
   }
 
   svg {

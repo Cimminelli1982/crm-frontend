@@ -573,17 +573,17 @@ const CancelButton = styled(Button)`
 
 // Save/create button
 const SaveButton = styled(Button)`
-  background-color: #2563eb;
+  background-color: #000000;
   color: white;
   border: none;
   white-space: nowrap;
   
   &:hover {
-    background-color: #1d4ed8;
+    background-color: #333333;
   }
   
   &:disabled {
-    background-color: #93c5fd;
+    background-color: #666666;
     cursor: not-allowed;
   }
 `;
@@ -767,7 +767,8 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
     switch (field) {
       case 'selectedContacts':
         if (!value || value.length < 2) {
-          errors.selectedContacts = 'Please select at least two contacts for the introduction';
+          // Still check for 2+ contacts but don't display error message
+          errors.selectedContacts = '';
         } else {
           delete errors.selectedContacts;
         }
@@ -789,7 +790,8 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
       default:
         // Validate all fields
         if (!selectedContacts || selectedContacts.length < 2) {
-          errors.selectedContacts = 'Please select at least two contacts for the introduction';
+          // Still check for 2+ contacts but don't display error message
+          errors.selectedContacts = '';
         } else {
           delete errors.selectedContacts;
         }
@@ -945,12 +947,6 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
                 </ContactTag>
               ))}
             </ContactsList>
-            {validationErrors.selectedContacts && (
-              <ValidationMessage type="error">
-                <FiAlertTriangle size={14} />
-                {validationErrors.selectedContacts}
-              </ValidationMessage>
-            )}
 
             <SearchRow>
               <SearchContainer>
