@@ -10,6 +10,7 @@ import {
 } from 'react-icons/fa';
 import { format, parseISO, isValid, differenceInDays, differenceInMonths, differenceInYears, isSameDay, subDays } from 'date-fns';
 import Modal from 'react-modal';
+import toast from 'react-hot-toast';
 import NameEditForm from './forms/NameEditForm';
 import CompanyEditForm from './forms/CompanyEditForm';
 import TagsModal from '../modals/TagsModal';
@@ -2592,6 +2593,63 @@ const RecentContactsList = forwardRef(({
 
     try {
       setIsLoading(true);
+      
+      // First, delete related records in meetings_contacts
+      const { error: meetingsContactsError } = await supabase
+        .from('meetings_contacts')
+        .delete()
+        .eq('contact_id', contactId);
+
+      if (meetingsContactsError) {
+        console.warn('Error deleting related meetings_contacts:', meetingsContactsError);
+        // Continue anyway since we want to try other deletions
+      }
+      
+      // Delete related records in contact_tags
+      const { error: tagsError } = await supabase
+        .from('contact_tags')
+        .delete()
+        .eq('contact_id', contactId);
+        
+      if (tagsError) {
+        console.warn('Error deleting related contact_tags:', tagsError);
+        // Continue anyway since we want to try other deletions
+      }
+      
+      // Delete related records in contact_companies
+      const { error: companiesError } = await supabase
+        .from('contact_companies')
+        .delete()
+        .eq('contact_id', contactId);
+        
+      if (companiesError) {
+        console.warn('Error deleting related contact_companies:', companiesError);
+        // Continue anyway since we want to try other deletions
+      }
+      
+      // Delete related records in contact_cities
+      const { error: citiesError } = await supabase
+        .from('contact_cities')
+        .delete()
+        .eq('contact_id', contactId);
+        
+      if (citiesError) {
+        console.warn('Error deleting related contact_cities:', citiesError);
+        // Continue anyway since we want to try other deletions
+      }
+      
+      // Delete related records in contact_introductions
+      const { error: introductionsError } = await supabase
+        .from('contact_introductions')
+        .delete()
+        .contains('contacts_introduced', [contactId]);
+        
+      if (introductionsError) {
+        console.warn('Error deleting related contact_introductions:', introductionsError);
+        // Continue anyway since we want to try other deletions
+      }
+      
+      // Finally, delete the contact
       const { error } = await supabase
         .from('contacts')
         .delete()
@@ -2601,9 +2659,11 @@ const RecentContactsList = forwardRef(({
 
       // Update local state by removing the deleted contact
       setContacts(contacts.filter(c => c.id !== contactId));
+      toast.success('Contact deleted successfully');
     } catch (err) {
       console.error('Error deleting contact:', err);
       setError(err.message);
+      toast.error(`Failed to delete contact: ${err.message}`);
     } finally {
       setIsLoading(false);
     }
