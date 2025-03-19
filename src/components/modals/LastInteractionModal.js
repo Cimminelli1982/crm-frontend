@@ -1657,33 +1657,34 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     
     // Create email-like display styles using our color palette
     const emailContainer = {
-      backgroundColor: COLORS.WHITE,
+      backgroundColor: '#ffffff',
       borderRadius: '8px',
-      boxShadow: `0 2px 10px ${COLORS.LIGHT_GRAY}`,
+      boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
       padding: '20px',
       marginBottom: '20px',
       marginTop: '20px',
       maxWidth: '100%',
-      overflowWrap: 'break-word'
+      overflowWrap: 'break-word',
+      border: '1px solid #e5e7eb'
     };
     
     const emailHeader = {
-      borderBottom: `1px solid ${COLORS.LIGHT_GRAY}`,
-      paddingBottom: '15px',
-      marginBottom: '15px'
+      borderBottom: '1px solid #e5e7eb',
+      paddingBottom: '16px',
+      marginBottom: '16px'
     };
     
     const emailSubject = {
       fontSize: '1.2rem',
       fontWeight: 'bold',
-      marginBottom: '10px',
-      color: COLORS.BLACK
+      marginBottom: '12px',
+      color: '#111827'
     };
     
     const emailMeta = {
       display: 'flex',
       justifyContent: 'space-between',
-      color: COLORS.DARK_GRAY,
+      color: '#6b7280',
       fontSize: '0.9rem',
       marginBottom: '8px'
     };
@@ -1691,14 +1692,14 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     const emailMetaLabel = {
       fontWeight: 'bold',
       marginRight: '10px',
-      color: COLORS.BLACK
+      color: '#111827'
     };
     
     const emailBody = {
       padding: '10px 0',
       fontSize: '0.95rem',
       lineHeight: '1.6',
-      color: COLORS.BLACK,
+      color: '#1f2937',
       whiteSpace: 'pre-wrap'  // Preserves line breaks in the email body
     };
     
@@ -1708,8 +1709,8 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       fontSize: '0.8rem',
       fontWeight: 'bold',
       marginLeft: '10px',
-      color: direction === 'Received' ? COLORS.BLACK : COLORS.WHITE,
-      backgroundColor: direction === 'Received' ? COLORS.LIGHT_GRAY : COLORS.DARK_GRAY,
+      color: direction === 'Received' ? '#111827' : '#ffffff',
+      backgroundColor: direction === 'Received' ? '#f3f4f6' : '#4b5563',
     };
 
     // Button container style
@@ -1724,27 +1725,27 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     const buttonBaseStyle = {
       padding: '10px 20px',
       border: 'none',
-      borderRadius: '4px',
+      borderRadius: '6px',
       fontSize: '0.95rem',
-      fontWeight: 'bold',
+      fontWeight: '500',
       cursor: 'pointer',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       minWidth: '120px',
-      boxShadow: `0 2px 4px ${COLORS.LIGHT_GRAY}`
+      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
     };
     
     const inboxButtonStyle = {
       ...buttonBaseStyle,
-      backgroundColor: COLORS.BLACK,
-      color: COLORS.WHITE
+      backgroundColor: '#000000',
+      color: '#ffffff'
     };
     
     const skipButtonStyle = {
       ...buttonBaseStyle,
-      backgroundColor: COLORS.DARK_GRAY,
-      color: COLORS.WHITE
+      backgroundColor: '#4b5563',
+      color: '#ffffff'
     };
     
     // Handler for the Skip button
