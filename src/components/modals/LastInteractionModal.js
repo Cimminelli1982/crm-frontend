@@ -340,9 +340,14 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
   const WHATSAPP_TABLE = 'whatsapp'; // Changed from 'whatsapp_messages'
   const EMAILS_TABLE = 'emails';
   const MEETINGS_TABLE = 'meetings';
+  const CHATS_TABLE = 'chats';
+  const CONTACT_CHATS_TABLE = 'contact_chats';
 
   // Add a new debug mode state
   const [debugMode, setDebugMode] = useState(true);
+  
+  // Add state for group chat data
+  const [groupChats, setGroupChats] = useState([]);
   
   // Remove the debug function for supabase connection
   // Phone number normalization function
@@ -408,11 +413,105 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       
       if (activeTab === 'Meeting') {
         fetchMeetings();
+      } else if (activeTab === 'WhatsappChat') {
+        fetchWhatsAppChats();
       } else {
         fetchInteractions();
       }
     }
   }, [activeTab]);
+  
+  // Function to fetch WhatsApp group chats only
+  const fetchWhatsAppChats = async () => {
+    setLoading(true);
+    console.log('FETCH WHATSAPP GROUP CHATS STARTED');
+    
+    try {
+      if (!contact || !contact.id) {
+        console.error('No contact data available');
+        setLoading(false);
+        setGroupChats([]);
+        return;
+      }
+      
+      console.log(`Fetching WhatsApp group chats for contact ID: ${contact.id}`);
+      
+      // Step 1: Get all chats this contact is a part of from contact_chats
+      const { data: contactChatsData, error: contactChatsError } = await supabase
+        .from(CONTACT_CHATS_TABLE)
+        .select('chat_id')
+        .eq('contact_id', contact.id);
+      
+      if (contactChatsError) {
+        console.error('Error fetching contact_chats:', contactChatsError);
+        setLoading(false);
+        setGroupChats([]);
+        return;
+      }
+      
+      if (!contactChatsData || contactChatsData.length === 0) {
+        console.log('No chats found for this contact');
+        setLoading(false);
+        setGroupChats([]);
+        return;
+      }
+      
+      // Extract chat IDs
+      const chatIds = contactChatsData.map(item => item.chat_id);
+      console.log(`Found ${chatIds.length} chat IDs for this contact`);
+      
+      // Step 2: Get details of GROUP chats only from the chats table
+      const { data: chatsData, error: chatsError } = await supabase
+        .from(CHATS_TABLE)
+        .select('*')
+        .in('id', chatIds)
+        .eq('chat_type', 'group')  // Only get group chats
+        .order('last_message_at', { ascending: false });
+      
+      if (chatsError) {
+        console.error('Error fetching group chats data:', chatsError);
+        setLoading(false);
+        setGroupChats([]);
+        return;
+      }
+      
+      console.log(`Fetched ${chatsData?.length || 0} group chats`);
+      
+      // Step 3: For each group chat, fetch the most recent messages
+      const chatsWithMessages = await Promise.all(
+        (chatsData || []).map(async (chat) => {
+          // Fetch most recent messages for this chat
+          const { data: messagesData, error: messagesError } = await supabase
+            .from(WHATSAPP_TABLE)
+            .select('*')
+            .eq('chat_id', chat.id)
+            .order('created_at', { ascending: false })
+            .limit(20); // Get last 20 messages
+          
+          if (messagesError) {
+            console.error(`Error fetching messages for chat ${chat.id}:`, messagesError);
+            return { ...chat, messages: [] };
+          }
+          
+          return { ...chat, messages: messagesData || [] };
+        })
+      );
+      
+      console.log(`Processed ${chatsWithMessages.length} group chats with messages`);
+      
+      // Update state with the fetched group chats
+      setGroupChats(chatsWithMessages);
+      setTotalRecords(chatsWithMessages.length);
+      setTotalPages(Math.max(Math.ceil(chatsWithMessages.length / ITEMS_PER_PAGE), 1));
+      
+    } catch (err) {
+      console.error('Error in fetchWhatsAppChats:', err);
+      setGroupChats([]);
+    } finally {
+      setLoading(false);
+      console.log('FETCH WHATSAPP GROUP CHATS COMPLETED');
+    }
+  };
 
   const countWhatsAppRecords = async () => {
     try {
@@ -456,14 +555,17 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       
       console.log(`[LIMIT-OFFSET] Using limit=${limit}, offset=${offset} for page ${page}`);
       
-      // FIRST ATTEMPT: Try exact match with limit/offset
+      // FIRST ATTEMPT: Try exact match with limit/offset - show individual and null chat_id messages
       let query = supabase
         .from(WHATSAPP_TABLE)
-        .select('*', { count: 'exact' })
+        .select('*, chats:chat_id(chat_type)', { count: 'exact' })
         .order('created_at', { ascending: false })
         .in('contact_mobile', mobilesArray)
         .limit(limit)
         .offset(offset);
+        
+      // Exclude only messages associated with group chats
+      query = query.not('chats.chat_type', 'eq', 'group');
       
       console.log('[LIMIT-OFFSET] Executing query...');
       let { data, count, error } = await query;
@@ -526,12 +628,13 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           .map(mobile => `contact_mobile.ilike.%${mobile.slice(-8)}`);
         
         if (orConditions.length > 0) {
-          // Try flexible search with limit/offset
+          // Try flexible search with limit/offset - show individual and null chat_id messages
           const flexQuery = supabase
             .from(WHATSAPP_TABLE)
-            .select('*', { count: 'exact' })
+            .select('*, chats:chat_id(chat_type)', { count: 'exact' })
             .order('created_at', { ascending: false })
             .or(orConditions.join(','))
+            .not('chats.chat_type', 'eq', 'group')
             .limit(limit)
             .offset(offset);
           
@@ -664,12 +767,13 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
         const from = 0;  
         const to = ITEMS_PER_PAGE - 1;
         
-        // Basic query construction
+        // Basic query construction - show individual and null chat_id messages
         let query = supabase
           .from(WHATSAPP_TABLE)
-          .select('*', { count: 'exact' })
+          .select('*, chats:chat_id(chat_type)', { count: 'exact' })
           .order('created_at', { ascending: false })
           .in('contact_mobile', mobilesArray)
+          .not('chats.chat_type', 'eq', 'group')
           .range(from, to);
         
         console.log('Executing initial query...');
@@ -897,7 +1001,11 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     `;
 
     return (
-      <>        
+      <>
+        <MessageCounter>
+          Individual WhatsApp Messages - Page {currentPage} of {totalPages}
+        </MessageCounter>
+        
         <ChatContainer>
           {interactions.map((interaction, index) => {
             const isIncoming = 
@@ -1205,12 +1313,13 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
         return;
       }
       
-      // Build the flexible query
+      // Build the flexible query - show individual and null chat_id messages
       const flexQuery = supabase
         .from(WHATSAPP_TABLE)
-        .select('*', { count: 'exact' })
+        .select('*, chats:chat_id(chat_type)', { count: 'exact' })
         .order('created_at', { ascending: false })
         .or(orConditions.join(','))
+        .not('chats.chat_type', 'eq', 'group')
         .range(from, to);
       
       // Log query details
@@ -1308,8 +1417,9 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       
       const allRecordsQuery = supabase
         .from(WHATSAPP_TABLE)
-        .select('*')
+        .select('*, chats:chat_id(chat_type)')
         .in('contact_mobile', mobilesArray)
+        .not('chats.chat_type', 'eq', 'group')
         .order('created_at', { ascending: false });
       
       const { data: allData, error: allError } = await allRecordsQuery;
@@ -1383,11 +1493,12 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
         return;
       }
       
-      // Fetch ALL flexible matches
+      // Fetch ALL flexible matches - show individual and null chat_id messages
       const flexQuery = supabase
         .from(WHATSAPP_TABLE)
-        .select('*')
+        .select('*, chats:chat_id(chat_type)')
         .or(orConditions.join(','))
+        .not('chats.chat_type', 'eq', 'group')
         .order('created_at', { ascending: false });
       
       const { data: flexData, error: flexError } = await flexQuery;
@@ -1964,6 +2075,236 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     );
   };
 
+  // Render WhatsApp chats (groups and individuals)
+  const renderWhatsAppChatsTable = () => {
+    if (loading) {
+      return (
+        <>
+          <NoInteractions>Loading WhatsApp chats...</NoInteractions>
+        </>
+      );
+    }
+    
+    if (!groupChats.length) {
+      return (
+        <>
+          <NoInteractions>
+            No WhatsApp chats found for this contact
+            <div style={{ fontSize: '0.85em', marginTop: '16px', color: '#4b5563' }}>
+              <p>This contact may not be a part of any WhatsApp groups or chats.</p>
+              
+              <button 
+                type="button"
+                onClick={() => {
+                  console.log("Retry chats fetch button clicked");
+                  fetchWhatsAppChats();
+                }} 
+                style={{ 
+                  marginTop: '16px',
+                  padding: '8px 16px', 
+                  background: '#000000', 
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.15)'
+                }}
+              >
+                Retry Fetch
+              </button>
+            </div>
+          </NoInteractions>
+        </>
+      );
+    }
+    
+    // Pagination for chats list
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    const endIndex = startIndex + ITEMS_PER_PAGE;
+    const paginatedChats = groupChats.slice(startIndex, endIndex);
+    
+    return (
+      <>
+        <div style={{ marginBottom: '20px' }}>
+          <h3 style={{ marginBottom: '10px', fontSize: '1.1rem', fontWeight: '600' }}>
+            WhatsApp Chats ({groupChats.length})
+          </h3>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {paginatedChats.map((chat) => {
+              // Determine if this is a group or individual chat
+              const isGroup = chat.chat_type === 'group' || chat.is_group_chat;
+              
+              return (
+                <div 
+                  key={chat.id} 
+                  style={{
+                    backgroundColor: '#ffffff',
+                    borderRadius: '8px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+                    padding: '16px',
+                    border: '1px solid #e5e7eb'
+                  }}
+                >
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center',
+                    marginBottom: '10px' 
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: '600' }}>
+                        {chat.chat_name || (isGroup ? 'Group Chat' : 'Individual Chat')}
+                      </h4>
+                      
+                      <Tag 
+                        color={isGroup ? '#4b5563' : '#f3f4f6'}
+                        textColor={isGroup ? '#ffffff' : '#111827'}
+                      >
+                        <span>{isGroup ? 'Group Chat' : 'Individual Chat'}</span>
+                      </Tag>
+                    </div>
+                    
+                    <div>
+                      <span style={{ 
+                        fontSize: '0.85rem', 
+                        color: '#6b7280' 
+                      }}>
+                        {chat.last_message_at 
+                          ? formatDate(chat.last_message_at) 
+                          : (chat.messages && chat.messages[0]?.created_at)
+                            ? formatDate(chat.messages[0].created_at)
+                            : formatDate(chat.created_at)}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {/* Show the last few messages if available */}
+                  {chat.messages && chat.messages.length > 0 ? (
+                    <div style={{ 
+                      backgroundColor: '#f9fafb', 
+                      borderRadius: '6px',
+                      padding: '12px',
+                      maxHeight: '200px',
+                      overflowY: 'auto',
+                      border: '1px solid #f3f4f6'
+                    }}>
+                      {/* Display 3 most recent messages */}
+                      {chat.messages.slice(0, 3).map((message, idx) => {
+                        const isIncoming = 
+                          message.direction?.toLowerCase() === 'inbound' || 
+                          message.direction?.toLowerCase() === 'incoming' ||
+                          message.direction?.toLowerCase() === 'received' || 
+                          message.direction?.toLowerCase() === 'in';
+                        
+                        const direction = isIncoming ? 'Received' : 'Sent';
+                        
+                        return (
+                          <div 
+                            key={message.id || idx}
+                            style={{
+                              padding: '8px',
+                              borderBottom: idx < 2 ? '1px solid #eaeaea' : 'none',
+                              marginBottom: idx < 2 ? '8px' : 0
+                            }}
+                          >
+                            <div style={{ 
+                              display: 'flex', 
+                              justifyContent: 'space-between',
+                              fontSize: '0.8rem',
+                              color: '#6b7280',
+                              marginBottom: '4px'
+                            }}>
+                              <DirectionTag direction={direction}>
+                                <span>{direction}</span>
+                              </DirectionTag>
+                              <span>{formatDate(message.created_at)}</span>
+                            </div>
+                            <div style={{ fontSize: '0.9rem' }}>
+                              {message.message && 
+                                (message.message.length > 100 
+                                  ? `${message.message.substring(0, 100)}...` 
+                                  : message.message)
+                              }
+                            </div>
+                          </div>
+                        );
+                      })}
+                      
+                      {chat.messages.length > 3 && (
+                        <div style={{ 
+                          textAlign: 'center', 
+                          fontSize: '0.85rem', 
+                          color: '#6b7280',
+                          marginTop: '8px',
+                          padding: '4px'
+                        }}>
+                          + {chat.messages.length - 3} more messages
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ 
+                      padding: '16px', 
+                      textAlign: 'center',
+                      color: '#6b7280',
+                      fontStyle: 'italic',
+                      backgroundColor: '#f9fafb',
+                      borderRadius: '6px',
+                      border: '1px solid #f3f4f6'
+                    }}>
+                      No messages found for this chat
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        
+        {/* Pagination controls */}
+        {groupChats.length > ITEMS_PER_PAGE && (
+          <PaginationContainer>
+            <PageInfo>
+              Page {currentPage} of {totalPages}
+            </PageInfo>
+            <div>
+              <PaginationButton
+                type="button"
+                onClick={() => handlePageChange(1)}
+                disabled={currentPage === 1}
+              >
+                First
+              </PaginationButton>
+              <PaginationButton
+                type="button"
+                onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+              >
+                Previous
+              </PaginationButton>
+              <PaginationButton
+                type="button"
+                onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Next
+              </PaginationButton>
+              <PaginationButton
+                type="button"
+                onClick={() => handlePageChange(totalPages)}
+                disabled={currentPage === totalPages}
+              >
+                Last
+              </PaginationButton>
+            </div>
+          </PaginationContainer>
+        )}
+      </>
+    );
+  };
+
   return (
     <Modal
       isOpen={isOpen}
@@ -2052,6 +2393,17 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
               WhatsApp
             </TabButton>
           )}
+          {(contact.mobile || contact.mobile2) && (
+            <TabButton
+              active={activeTab === 'WhatsappChat'}
+              onClick={() => {
+                setActiveTab('WhatsappChat');
+                setCurrentPage(1);
+              }}
+            >
+              WhatsApp Group Chat
+            </TabButton>
+          )}
           {(contact.email || contact.email2 || contact.email3) && (
             <TabButton
               active={activeTab === 'Email'}
@@ -2078,6 +2430,8 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           {/* Render content based on active tab */}
           {activeTab === 'Whatsapp' ? (
             renderWhatsAppTable()
+          ) : activeTab === 'WhatsappChat' ? (
+            renderWhatsAppChatsTable()
           ) : activeTab === 'Email' ? (
             renderEmailsTable()
           ) : activeTab === 'Meeting' ? (
