@@ -7,6 +7,7 @@
   BROWSER = "none"
   PORT = "3000"
   CI = "false"
+  NODE_VERSION = "18"
   # HubSpot and Apollo environment variables should be set in the Netlify UI
   # Required variables: APOLLO_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
   # DO NOT add sensitive values here
