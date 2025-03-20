@@ -11,8 +11,7 @@ import CityModal from './CityModal';
 import { toast } from 'react-hot-toast';
 import { format } from 'date-fns';
 import NewIntroductionModal from './NewIntroductionModal';
-import ReactQuill from 'react-quill';
-import 'react-quill/dist/quill.snow.css';
+import NotesTab from '../contacts/NotesTab';
 
 // Define Contact Categories with the specified options
 const ContactCategories = [
@@ -1074,12 +1073,7 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
   // State for contact enrichment from various sources
   const [isEnriching, setIsEnriching] = useState(null); // null, 'apollo', 'airtable', or 'hubspot'
   
-  // State for notes functionality
-  const [notes, setNotes] = useState([]);
-  const [newNoteContent, setNewNoteContent] = useState('');
-  const [newNoteTitle, setNewNoteTitle] = useState('');
-  const [isAddingNote, setIsAddingNote] = useState(false);
-  const [loadingNotes, setLoadingNotes] = useState(false);
+  // Notes functionality has been moved to NotesTab component
   
   // Function to refresh all contact data after enrichment
   const refreshContactData = async () => {
@@ -3340,15 +3334,13 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
     }
   };
 
-  // Add useEffect to fetch introductions and notes when tab changes
+  // Add useEffect to fetch introductions when tab changes
   useEffect(() => {
     if (activeTab === 'intros') {
       fetchIntroductions();
     }
     
-    if (activeTab === 'notes') {
-      fetchNotes();
-    }
+    // Notes tab is now handled by the NotesTab component
   }, [activeTab]);
 
   const getContactNames = (contactIds) => {
@@ -3587,7 +3579,7 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
             {activeTab === 'related' && renderRelatedTab()}
             {activeTab === 'intros' && renderIntrosTab()}
             {activeTab === 'deals' && <div>Deals tab content coming soon</div>}
-            {activeTab === 'notes' && renderNotesTab()}
+            {activeTab === 'notes' && <NotesTab contact={contact} />}
           </ContentSection>
           
           {activeTab !== 'merge' && (
@@ -3654,335 +3646,6 @@ const ContactsModal = ({ isOpen, onRequestClose, contact }) => {
       )}
     </>
   );
-
-  // Function to fetch notes for the current contact
-  const fetchNotes = async () => {
-    if (!contact) return;
-    
-    setLoadingNotes(true);
-    try {
-      // Query to get all notes associated with this contact via the junction table
-      const { data, error } = await supabase
-        .from('contact_notes')
-        .select(`
-          id,
-          note_id,
-          notes:note_id (
-            id,
-            title,
-            content,
-            created_at,
-            updated_at,
-            created_by
-          )
-        `)
-        .eq('contact_id', contact.id)
-        .order('created_at', { foreignTable: 'notes', ascending: false });
-      
-      if (error) {
-        throw error;
-      }
-      
-      // Transform the data to get just the notes
-      const notesData = data.map(item => ({
-        ...item.notes,
-        contactNoteId: item.id
-      }));
-      
-      setNotes(notesData);
-    } catch (error) {
-      console.error('Error fetching notes:', error);
-      toast.error('Failed to load notes');
-    } finally {
-      setLoadingNotes(false);
-    }
-  };
-  
-  // Function to add a new note
-  const handleAddNote = async () => {
-    if (!newNoteContent.trim()) {
-      toast.error('Note content cannot be empty');
-      return;
-    }
-    
-    try {
-      // First create the note
-      const { data: noteData, error: noteError } = await supabase
-        .from('notes')
-        .insert([
-          { 
-            title: newNoteTitle.trim() || 'Untitled Note',
-            content: newNoteContent
-          }
-        ])
-        .select();
-      
-      if (noteError) throw noteError;
-      
-      // Get the new note ID
-      const newNoteId = noteData[0].id;
-      
-      // Then create the association in the junction table
-      const { error: junctionError } = await supabase
-        .from('contact_notes')
-        .insert([
-          {
-            contact_id: contact.id,
-            note_id: newNoteId
-          }
-        ]);
-      
-      if (junctionError) throw junctionError;
-      
-      // Success! Reset the form and refresh notes
-      toast.success('Note added successfully');
-      setNewNoteTitle('');
-      setNewNoteContent('');
-      setIsAddingNote(false);
-      fetchNotes();
-      
-    } catch (error) {
-      console.error('Error adding note:', error);
-      toast.error('Failed to add note');
-    }
-  };
-  
-  // Function to delete a note
-  const handleDeleteNote = async (noteId, contactNoteId) => {
-    if (!window.confirm('Are you sure you want to delete this note?')) {
-      return;
-    }
-    
-    try {
-      // Delete the entry from the junction table first
-      const { error: junctionError } = await supabase
-        .from('contact_notes')
-        .delete()
-        .eq('id', contactNoteId);
-      
-      if (junctionError) throw junctionError;
-      
-      // Then check if the note is used by any other contacts
-      const { data: otherConnections, error: checkError } = await supabase
-        .from('contact_notes')
-        .select('id')
-        .eq('note_id', noteId);
-      
-      if (checkError) throw checkError;
-      
-      // If no other contacts are using this note, delete the note itself
-      if (otherConnections.length === 0) {
-        const { error: deleteError } = await supabase
-          .from('notes')
-          .delete()
-          .eq('id', noteId);
-        
-        if (deleteError) throw deleteError;
-      }
-      
-      toast.success('Note deleted successfully');
-      fetchNotes();
-      
-    } catch (error) {
-      console.error('Error deleting note:', error);
-      toast.error('Failed to delete note');
-    }
-  };
-  
-  // Function to render the Notes tab
-  const renderNotesTab = () => {
-    // Create styles for the notes tab
-    const toolbarOptions = [
-      ['bold', 'italic', 'underline', 'strike'],
-      ['blockquote', 'code-block'],
-      [{ 'header': 1 }, { 'header': 2 }],
-      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-      [{ 'script': 'sub'}, { 'script': 'super' }],
-      [{ 'indent': '-1'}, { 'indent': '+1' }],
-      [{ 'direction': 'rtl' }],
-      [{ 'size': ['small', false, 'large', 'huge'] }],
-      [{ 'color': [] }, { 'background': [] }],
-      [{ 'align': [] }],
-      ['clean']
-    ];
-    
-    if (loadingNotes) {
-      return <div style={{ textAlign: 'center', padding: '40px 0' }}>Loading notes...</div>;
-    }
-    
-    return (
-      <div style={{ padding: '0 24px' }}>
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
-          marginBottom: '24px'
-        }}>
-          <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '600' }}>Notes</h3>
-          {!isAddingNote && (
-            <ActionButton onClick={() => setIsAddingNote(true)}>
-              <FiPlus size={16} />
-              Add New Note
-            </ActionButton>
-          )}
-        </div>
-        
-        {isAddingNote && (
-          <div style={{ 
-            marginBottom: '32px',
-            padding: '16px',
-            border: '1px solid #e5e7eb',
-            borderRadius: '8px',
-            backgroundColor: '#f9fafb'
-          }}>
-            <input
-              type="text"
-              value={newNoteTitle}
-              onChange={(e) => setNewNoteTitle(e.target.value)}
-              placeholder="Note Title (optional)"
-              style={{
-                width: '100%',
-                padding: '10px',
-                marginBottom: '12px',
-                borderRadius: '4px',
-                border: '1px solid #d1d5db',
-                fontSize: '16px'
-              }}
-            />
-            
-            <div style={{ marginBottom: '16px', minHeight: '200px' }}>
-              <ReactQuill
-                value={newNoteContent}
-                onChange={setNewNoteContent}
-                modules={{ toolbar: toolbarOptions }}
-                style={{ height: '180px' }}
-              />
-            </div>
-            
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-              <button
-                onClick={() => {
-                  setIsAddingNote(false);
-                  setNewNoteTitle('');
-                  setNewNoteContent('');
-                }}
-                style={{
-                  padding: '8px 16px',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '4px',
-                  backgroundColor: 'white',
-                  cursor: 'pointer'
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAddNote}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#000000',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
-                }}
-              >
-                Save Note
-              </button>
-            </div>
-          </div>
-        )}
-        
-        {notes.length > 0 ? (
-          <div>
-            {notes.map((note) => (
-              <div 
-                key={note.id}
-                style={{
-                  marginBottom: '20px',
-                  padding: '16px',
-                  backgroundColor: 'white',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '8px',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-                }}
-              >
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: '12px' 
-                }}>
-                  <h4 style={{ 
-                    margin: 0, 
-                    fontSize: '16px',
-                    fontWeight: '600',
-                    color: '#111827'
-                  }}>
-                    {note.title || 'Untitled Note'}
-                  </h4>
-                  <div>
-                    <button
-                      onClick={() => handleDeleteNote(note.id, note.contactNoteId)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        color: '#6b7280'
-                      }}
-                    >
-                      <FiTrash2 size={16} />
-                    </button>
-                  </div>
-                </div>
-                
-                <div 
-                  style={{ 
-                    marginBottom: '12px',
-                    fontSize: '14px'
-                  }}
-                  dangerouslySetInnerHTML={{ __html: note.content }}
-                />
-                
-                <div style={{ 
-                  fontSize: '12px', 
-                  color: '#6b7280',
-                  display: 'flex',
-                  gap: '16px'
-                }}>
-                  <span>
-                    Created: {format(new Date(note.created_at), 'MMM dd, yyyy h:mm a')}
-                  </span>
-                  {note.updated_at !== note.created_at && (
-                    <span>
-                      Updated: {format(new Date(note.updated_at), 'MMM dd, yyyy h:mm a')}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div style={{ 
-            textAlign: 'center', 
-            padding: '32px',
-            backgroundColor: '#f9fafb',
-            borderRadius: '8px',
-            border: '1px solid #e5e7eb',
-            color: '#6b7280'
-          }}>
-            <p>No notes for this contact yet.</p>
-            {!isAddingNote && (
-              <ActionButton onClick={() => setIsAddingNote(true)}>
-                <FiPlus size={16} />
-                Add First Note
-              </ActionButton>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
-};
+}
 
 export default ContactsModal; 

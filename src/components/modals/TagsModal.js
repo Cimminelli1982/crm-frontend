@@ -380,7 +380,7 @@ const TagsModal = ({ isOpen, onRequestClose, contact, meeting }) => {
   }, [isOpen, entityId]);
 
   useEffect(() => {
-    if (searchTerm.length >= 3) {
+    if (searchTerm.length >= 2) {
       fetchTagSuggestions(searchTerm);
       setShowSuggestions(true);
     } else {
