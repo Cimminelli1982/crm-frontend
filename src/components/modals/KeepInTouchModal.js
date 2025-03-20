@@ -246,7 +246,7 @@ const KeepInTouchModal = ({ isOpen, onRequestClose, contact }) => {
           boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
           maxWidth: '500px',
           width: '90%',
-          minHeight: '450px'
+          minHeight: '490px'
         },
         overlay: {
           backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -277,95 +277,101 @@ const KeepInTouchModal = ({ isOpen, onRequestClose, contact }) => {
           </TabButton>
         </TabsContainer>
         
-        {activeTab === 'Frequency' && (
-          <div>
-            <FormGroup>
-              <Label>Current Keep in Touch Frequency</Label>
-              <CurrentValue>
-                {contact.keep_in_touch_frequency || 'Not set'}
-              </CurrentValue>
-            </FormGroup>
+        <div style={{ height: '340px' }}> {/* Fixed exact height container for tabs */}
+          {activeTab === 'Frequency' && (
+            <div style={{ height: '340px' }}>
+              <FormGroup>
+                <Label>Current Keep in Touch Frequency</Label>
+                <CurrentValue>
+                  {contact.keep_in_touch_frequency || 'Not set'}
+                </CurrentValue>
+              </FormGroup>
+              
+              <FormGroup>
+                <Label>Select New Keep in Touch Frequency</Label>
+                <Select
+                  aria-label="Keep in Touch frequency dropdown"
+                  value={frequency}
+                  onChange={(e) => {
+                    setFrequency(e.target.value);
+                    setErrorMessage('');
+                    calculateNextFollowUp(e.target.value);
+                  }}
+                >
+                  <option value="">Choose a frequency</option>
+                  <option value="Do not keep in touch">Do not keep in touch</option>
+                  <option value="Weekly">Weekly</option>
+                  <option value="Monthly">Monthly</option>
+                  <option value="Quarterly">Quarterly</option>
+                  <option value="Twice per Year">Twice per Year</option>
+                  <option value="Once per Year">Once per Year</option>
+                </Select>
+              </FormGroup>
+              
+              <FollowUpText>Next follow-up: {nextFollowUp}</FollowUpText>
+            </div>
+          )}
+          
+          {activeTab === 'Wishes' && (
+            <div style={{ height: '340px', overflowY: 'auto' }}>
+              <FormGroup>
+                <Label>
+                  Birthday date: {contact.birthday || '-'}
+                  {contact.birthday && (
+                    <button
+                      onClick={async () => {
+                        setLoading(true);
+                        const { error } = await supabase
+                          .from('contacts')
+                          .update({ birthday: null })
+                          .eq('id', contact.id);
+                        if (error) {
+                          setErrorMessage('Error resetting birthday date');
+                        } else {
+                          const { data, error: fetchError } = await supabase
+                            .from('contacts')
+                            .select('birthday')
+                            .eq('id', contact.id)
+                            .single();
+                          if (fetchError) {
+                            setErrorMessage('Error fetching updated birthday');
+                          } else {
+                            setBirthdayDate(data.birthday);
+                            toast.success('Birthday date reset successfully');
+                          }
+                        }
+                        setLoading(false);
+                      }}
+                      style={{
+                        marginLeft: '10px',
+                        backgroundColor: '#dc3545',
+                        color: '#fff',
+                        padding: '5px 10px',
+                        borderRadius: '4px',
+                        border: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Reset Birthday
+                    </button>
+                  )}
+                </Label>
+                <Input
+                  type="text"
+                  aria-label="Birthday date input"
+                  value={birthdayDate || ''}
+                  onChange={(e) => setBirthdayDate(e.target.value)}
+                  placeholder="YYYY-MM-DD"
+                  style={{ height: '30px', width: '95%' }} /* Adjusted height and width */
+                />
+              </FormGroup>
             
-            <FormGroup>
-              <Label>Select New Keep in Touch Frequency</Label>
-              <Select
-                aria-label="Keep in Touch frequency dropdown"
-                value={frequency}
-                onChange={(e) => {
-                  setFrequency(e.target.value);
-                  setErrorMessage('');
-                  calculateNextFollowUp(e.target.value);
-                }}
-              >
-                <option value="">Choose a frequency</option>
-                <option value="Do not keep in touch">Do not keep in touch</option>
-                <option value="Weekly">Weekly</option>
-                <option value="Monthly">Monthly</option>
-                <option value="Quarterly">Quarterly</option>
-                <option value="Twice per Year">Twice per Year</option>
-                <option value="Once per Year">Once per Year</option>
-              </Select>
-            </FormGroup>
-            
-            <FollowUpText>Next follow-up: {nextFollowUp}</FollowUpText>
-          </div>
-        )}
-        
-        {activeTab === 'Wishes' && (
-          <div>
             <FormGroup>
               <Label>
-                Birthday date: {contact.birthday || '-'}
-                {contact.birthday && (
-                  <button
-                    onClick={async () => {
-                      setLoading(true);
-                      const { error } = await supabase
-                        .from('contacts')
-                        .update({ birthday: null })
-                        .eq('id', contact.id);
-                      if (error) {
-                        setErrorMessage('Error resetting birthday date');
-                      } else {
-                        const { data, error: fetchError } = await supabase
-                          .from('contacts')
-                          .select('birthday')
-                          .eq('id', contact.id)
-                          .single();
-                        if (fetchError) {
-                          setErrorMessage('Error fetching updated birthday');
-                        } else {
-                          setBirthdayDate(data.birthday);
-                          toast.success('Birthday date reset successfully');
-                        }
-                      }
-                      setLoading(false);
-                    }}
-                    style={{
-                      marginLeft: '10px',
-                      backgroundColor: '#dc3545',
-                      color: '#fff',
-                      padding: '5px 10px',
-                      borderRadius: '4px',
-                      border: 'none',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Reset Birthday
-                  </button>
-                )}
+                <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <span role="img" aria-label="cake">🎂</span> Birthday Wishes
+                </span>
               </Label>
-              <Input
-                type="text"
-                aria-label="Birthday date input"
-                value={birthdayDate || ''}
-                onChange={(e) => setBirthdayDate(e.target.value)}
-                placeholder="YYYY-MM-DD"
-              />
-            </FormGroup>
-            
-            <FormGroup>
-              <Label>Birthday Wishes</Label>
               <Select
                 aria-label="Birthday wishes dropdown"
                 value={birthdayWishes}
@@ -381,7 +387,11 @@ const KeepInTouchModal = ({ isOpen, onRequestClose, contact }) => {
             </FormGroup>
             
             <FormGroup>
-              <Label>Christmas Wishes</Label>
+              <Label>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <span role="img" aria-label="santa">🎅</span> Christmas Wishes
+                </span>
+              </Label>
               <Select
                 aria-label="Christmas wishes dropdown"
                 value={christmasWishes}
@@ -397,7 +407,11 @@ const KeepInTouchModal = ({ isOpen, onRequestClose, contact }) => {
             </FormGroup>
             
             <FormGroup>
-              <Label>Easter Wishes</Label>
+              <Label>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <span role="img" aria-label="chick">🐣</span> Easter Wishes
+                </span>
+              </Label>
               <Select
                 aria-label="Easter wishes dropdown"
                 value={easterWishes}
@@ -413,6 +427,7 @@ const KeepInTouchModal = ({ isOpen, onRequestClose, contact }) => {
             </FormGroup>
           </div>
         )}
+        </div> {/* Close the fixed height container */}
         
         {errorMessage && <ErrorMessage>{errorMessage}</ErrorMessage>}
         
