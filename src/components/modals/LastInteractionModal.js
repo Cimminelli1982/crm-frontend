@@ -9,8 +9,7 @@ import styled from 'styled-components';
 const ModalContainer = styled.div`
   display: flex;
   flex-direction: column;
-  height: 75vh;
-  min-height: 600px;
+  height: 100%;
   overflow: hidden;
 `;
 
@@ -86,6 +85,7 @@ const ContentSection = styled.div`
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  max-height: calc(100% - 110px); // Accounting for header and tabs
 `;
 
 const InteractionList = styled.div`
@@ -317,7 +317,7 @@ const ActionButton = styled.button`
 const MessageCounter = styled.div`
   font-size: 0.875rem;
   color: #6b7280;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   text-align: right;
   padding-right: 8px;
 `;
@@ -816,52 +816,116 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     const startRecord = (currentPage - 1) * ITEMS_PER_PAGE + 1;
     const endRecord = Math.min(startRecord + interactions.length - 1, totalRecords);
 
+    // New styled components for WhatsApp chat interface
+    const ChatContainer = styled.div`
+      height: 400px;
+      overflow-y: auto;
+      margin-bottom: 15px;
+      background-color: #f0f0f0;
+      border-radius: 8px;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    `;
+    
+    const MessageBubble = styled.div`
+      max-width: 80%;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      line-height: 1.3;
+      position: relative;
+      word-break: break-word;
+      
+      ${props => props.direction === 'Sent' ? `
+        align-self: flex-end;
+        background-color: #000000;
+        color: white;
+        border-bottom-right-radius: 2px;
+        
+        &:after {
+          content: '';
+          position: absolute;
+          bottom: 0;
+          right: -8px;
+          width: 0;
+          height: 0;
+          border: 8px solid transparent;
+          border-left-color: #000000;
+          border-right: 0;
+          border-bottom: 0;
+        }
+      ` : `
+        align-self: flex-start;
+        background-color: #ffffff;
+        border-bottom-left-radius: 2px;
+        
+        &:after {
+          content: '';
+          position: absolute;
+          bottom: 0;
+          left: -8px;
+          width: 0;
+          height: 0;
+          border: 8px solid transparent;
+          border-right-color: #ffffff;
+          border-left: 0;
+          border-bottom: 0;
+        }
+      `}
+    `;
+    
+    const MessageMeta = styled.div`
+      font-size: 0.65rem;
+      color: ${props => props.direction === 'Sent' ? '#cccccc' : '#8696a0'};
+      margin-top: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: ${props => props.direction === 'Sent' ? 'flex-end' : 'flex-start'};
+      gap: 4px;
+    `;
+    
+    const MessageDate = styled.span`
+      font-size: 0.65rem;
+    `;
+    
+    const MessagePhone = styled.span`
+      font-size: 0.65rem;
+      color: #374151;
+      font-weight: 500;
+    `;
+
     return (
       <>        
-        <div style={{ height: '400px', overflowY: 'auto', marginBottom: '15px' }}>
-        <Table>
-          <thead>
-            <tr>
-              <th style={{ width: '10%' }}>Date</th>
-              <th style={{ width: '10%' }}>Mobile</th>
-              <th style={{ width: '10%' }}>Direction</th>
-              <th style={{ width: '70%' }}>Message</th>
-            </tr>
-          </thead>
-          <tbody>
-            {interactions.map((interaction, index) => {
-              const isIncoming = 
-                interaction.direction?.toLowerCase() === 'inbound' || 
-                interaction.direction?.toLowerCase() === 'incoming' ||
-                interaction.direction?.toLowerCase() === 'received' || 
-                interaction.direction?.toLowerCase() === 'in';
-              
-              const direction = isIncoming ? 'Received' : 'Sent';
-              
-              return (
-                <tr key={interaction.id || index}>
-                  <td className="centered">
-                    {formatDate(interaction.whatsapp_date || interaction.created_at)}
-                  </td>
-                  <td className="tag-cell">
-                    <Tag color="#f3f4f6" textColor="#374151">
-                      <span>{interaction.contact_mobile}</span>
-                    </Tag>
-                  </td>
-                  <td className="tag-cell">
-                    <DirectionTag direction={direction}>
-                      <span>{direction}</span>
-                    </DirectionTag>
-                  </td>
-                  <td>
-                    {interaction.message}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </Table>
-        </div>
+        <ChatContainer>
+          {interactions.map((interaction, index) => {
+            const isIncoming = 
+              interaction.direction?.toLowerCase() === 'inbound' || 
+              interaction.direction?.toLowerCase() === 'incoming' ||
+              interaction.direction?.toLowerCase() === 'received' || 
+              interaction.direction?.toLowerCase() === 'in';
+            
+            const direction = isIncoming ? 'Received' : 'Sent';
+            const formattedDate = formatDate(interaction.whatsapp_date || interaction.created_at);
+            const messageTxt = interaction.message?.replace(/<a href=".*?">.*?<\/a>/g, "LINK") || "";
+            
+            return (
+              <MessageBubble 
+                key={interaction.id || index} 
+                direction={direction}
+              >
+                {messageTxt}
+                <MessageMeta direction={direction}>
+                  <MessageDate>{formattedDate}</MessageDate>
+                  {direction === 'Received' && 
+                    <MessagePhone>• {interaction.contact_mobile}</MessagePhone>
+                  }
+                </MessageMeta>
+              </MessageBubble>
+            );
+          })}
+        </ChatContainer>
         
         <PaginationContainer>
           <PageInfo>
@@ -1662,10 +1726,12 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
       padding: '20px',
       marginBottom: '20px',
-      marginTop: '20px',
+      marginTop: '0',
       maxWidth: '100%',
       overflowWrap: 'break-word',
-      border: '1px solid #e5e7eb'
+      border: '1px solid #e5e7eb',
+      display: 'flex',
+      flexDirection: 'column'
     };
     
     const emailHeader = {
@@ -1696,11 +1762,15 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     };
     
     const emailBody = {
-      padding: '10px 0',
+      padding: '15px',
       fontSize: '0.95rem',
       lineHeight: '1.6',
       color: '#1f2937',
-      whiteSpace: 'pre-wrap'  // Preserves line breaks in the email body
+      whiteSpace: 'pre-wrap',  // Preserves line breaks in the email body
+      display: 'block',
+      textOverflow: 'initial',
+      overflow: 'visible',
+      wordBreak: 'break-word'
     };
     
     const directionButtonStyle = {
@@ -1732,20 +1802,28 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
+      gap: '8px',
       minWidth: '120px',
-      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+      transition: 'all 0.2s ease'
     };
     
     const inboxButtonStyle = {
       ...buttonBaseStyle,
       backgroundColor: '#000000',
-      color: '#ffffff'
+      color: '#ffffff',
+      '&:hover': {
+        backgroundColor: '#333333'
+      }
     };
     
     const skipButtonStyle = {
       ...buttonBaseStyle,
       backgroundColor: '#4b5563',
-      color: '#ffffff'
+      color: '#ffffff',
+      '&:hover': {
+        backgroundColor: '#374151'
+      }
     };
     
     // Handler for the Skip button
@@ -1771,11 +1849,35 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       }
     };
     
-    // Extract thread_id from the email or use email id as fallback
+    // Generate a search URL for Superhuman to find this email thread
     const getThreadUrl = () => {
-      // If thread_id exists in the email data, use it
-      const threadId = latestEmail.thread_id || latestEmail.id;
-      return `https://mail.superhuman.com/thread/${threadId}`;
+      // If we have a thread_id, use that for precision
+      if (latestEmail.thread_id) {
+        return `https://mail.superhuman.com/thread/${latestEmail.thread_id}`;
+      }
+      
+      // Otherwise, create a search based on the subject and contact name
+      const searchTerms = [];
+      
+      // Add the subject (if it exists and isn't empty)
+      if (latestEmail.subject && latestEmail.subject.trim() !== '' && latestEmail.subject.toLowerCase() !== 'no subject') {
+        // Use the first few words of the subject to avoid overly specific searches
+        const subjectWords = latestEmail.subject.split(' ').slice(0, 4).join(' ');
+        searchTerms.push(encodeURIComponent(subjectWords));
+      }
+      
+      // Add the contact name
+      if (contact.first_name || contact.last_name) {
+        searchTerms.push(encodeURIComponent(`${contact.first_name || ''} ${contact.last_name || ''}`));
+      }
+      
+      // If no good search terms, fall back to email address
+      if (searchTerms.length === 0 && contact.email) {
+        searchTerms.push(encodeURIComponent(contact.email));
+      }
+      
+      // Join terms with URL-encoded spaces
+      return `https://mail.superhuman.com/search/${searchTerms.join('%20')}`;
     };
 
     return (
@@ -1784,7 +1886,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           Latest email ({totalRecords} total emails)
         </MessageCounter>
         
-        <div style={{ height: '400px', overflowY: 'auto', marginBottom: '15px' }}>
+        <div style={{ overflowY: 'auto' }}>
         <div style={emailContainer}>
           <div style={emailHeader}>
             <div style={emailSubject}>
@@ -1810,22 +1912,50 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
             </div>
           </div>
           
-          <div style={emailBody}>
-            {latestEmail.body_plain || '(No content)'}
+          <div style={{
+            minHeight: '120px',
+            maxHeight: '180px',
+            overflowY: 'auto',
+            border: '1px solid #f0f0f0',
+            borderRadius: '4px',
+            backgroundColor: '#fafafa',
+            margin: '10px 0',
+            padding: '15px'
+          }}>
+            <div 
+              style={{
+                margin: 0,
+                fontFamily: 'inherit',
+                fontSize: '1rem',
+                lineHeight: '1.7',
+                color: '#1f2937',
+                whiteSpace: 'normal',
+                wordBreak: 'break-word',
+                fontWeight: '400',
+                letterSpacing: '0.01em'
+              }}
+              dangerouslySetInnerHTML={{ 
+                __html: latestEmail.body_plain ? 
+                  latestEmail.body_plain.replace(/\n/g, '<br>') : 
+                  '(No content)' 
+              }}
+            />
           </div>
           
           <div style={buttonContainer}>
             <button
               onClick={() => window.open(getThreadUrl(), '_blank')}
               style={inboxButtonStyle}
+              title="View in Superhuman"
             >
-              Inbox
+              Open in Superhuman
             </button>
             <button
               onClick={handleSkip}
               style={skipButtonStyle}
+              title="Mark contact as Skip"
             >
-              Skip
+              Skip Contact
             </button>
           </div>
         </div>
@@ -1852,8 +1982,8 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           boxShadow: '0 10px 25px rgba(0, 0, 0, 0.2)',
           maxWidth: '1250px',
           width: '90%',
-          height: '75vh',       // More responsive height
-          minHeight: '600px',   // Minimum height for consistency
+          height: 'auto',       // Auto height instead of fixed
+          maxHeight: '80vh',    // Maximum height as percentage of viewport
           backgroundColor: '#ffffff'
         },
         overlay: {
@@ -1879,9 +2009,9 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
             )}
             {contact?.email && (
               <ActionButton 
-                onClick={() => window.open(`mailto:${contact.email}`, '_blank')}
+                onClick={() => window.open(`https://mail.superhuman.com/search/${encodeURIComponent(contact.first_name || '')}%20${encodeURIComponent(contact.last_name || '')}`, '_blank')}
                 aria-label="Email"
-                title="Open Gmail"
+                title="Search in Superhuman"
               >
                 <FiMail size={20} />
               </ActionButton>
