@@ -46,6 +46,10 @@ const ContactTable = styled.table`
   border-spacing: 0;
   margin-bottom: 1.5rem;
   table-layout: fixed;
+  background-color: #ffffff;
+  margin-left: 1.5rem;
+  margin-right: 1.5rem;
+  width: calc(100% - 3rem);
   
   th:nth-child(1) { width: 20%; }  /* Name */
   th:nth-child(2) { width: 15%; }  /* Company */
@@ -57,33 +61,43 @@ const ContactTable = styled.table`
 `;
 
 const TableHead = styled.thead`
-  background-color: #f9fafb;
-  
   th {
-    padding: 0.875rem 1rem;
+    padding: 14px 16px;
     text-align: left;
     font-weight: 600;
-    font-size: 0.75rem;
-    color: #4b5563;
-    border-bottom: 1px solid #e5e7eb;
+    font-size: 0.875rem;
+    color: #111827;
+    border-bottom: 1px solid #000000;
     position: sticky;
     top: 0;
     z-index: 10;
     white-space: nowrap;
+    
+    &.centered {
+      text-align: center;
+    }
   }
 `;
 
 const TableBody = styled.tbody`
   tr {
     &:hover {
-      background-color: #f9fafb;
+      background-color: #f3f4f6;
+    }
+    
+    &:not(:last-child) {
+      border-bottom: 1px solid #e5e7eb;
     }
     
     td {
-      padding: 1rem;
-      border-bottom: 1px solid #e5e7eb;
+      padding: 14px 16px;
       font-size: 0.875rem;
       color: #1f2937;
+      vertical-align: middle;
+      
+      &.centered {
+        text-align: center;
+      }
     }
   }
 `;
@@ -91,6 +105,7 @@ const TableBody = styled.tbody`
 const ClickableCell = styled.td`
   cursor: pointer;
   position: relative;
+  padding: 14px 16px;
   
   &:hover {
     background-color: rgba(59, 130, 246, 0.05);
@@ -180,6 +195,27 @@ const Tag = styled.span`
   font-weight: 500;
 `;
 
+const CompanyTag = styled.div`
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  border-radius: 0.375rem;
+  background-color: white;
+  color: black;
+  font-weight: 500;
+  border: 1px solid black;
+  text-transform: uppercase;
+  max-width: 200px;
+  
+  span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 150px;
+  }
+`;
+
 const DateCell = styled.td`
   color: ${props => props.isOverdue ? '#dc2626' : props.isUpcoming ? '#059669' : '#6b7280'};
   font-weight: ${props => (props.isOverdue || props.isUpcoming) ? '500' : 'normal'};
@@ -187,41 +223,32 @@ const DateCell = styled.td`
 
 const FiltersContainer = styled.div`
   display: flex;
-  gap: 1rem;
+  gap: 6px; /* Add spacing between buttons */
   margin-bottom: 1.5rem;
+  padding-left: 1.5rem; /* Align with page title */
+  margin-top: -0.5rem; /* Reduce space to get closer to subtitle */
 `;
 
 const FilterButton = styled.button`
   padding: 0.5rem 1rem;
-  border-radius: 0.375rem;
+  border-radius: 0;
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
   
   ${props => props.active ? `
-    background-color: ${props.color};
+    background-color: black;
     color: white;
-    border: none;
+    border: 1px solid black;
   ` : `
     background-color: white;
-    color: ${props.color};
-    border: 1px solid ${props.color};
+    color: black;
+    border: 1px solid black;
   `}
   
   &:hover {
     opacity: 0.9;
-  }
-  
-  span.count {
-    background-color: ${props => props.active ? 'rgba(255, 255, 255, 0.2)' : props.color};
-    color: ${props => props.active ? 'white' : 'white'};
-    padding: 0.125rem 0.5rem;
-    border-radius: 1rem;
-    font-size: 0.75rem;
   }
 `;
 
@@ -315,16 +342,15 @@ const KeepInTouchTable = () => {
       // Process contacts data
       const processedContacts = data.map(contact => ({
         ...contact,
-        company: contact.company_info?.name || contact.company,
         tags: contact.tags?.map(t => t.tags?.name).filter(Boolean) || [],
         nextDueDate: calculateNextDueDate(contact.last_interaction, contact.keep_in_touch_frequency)
       }));
       
-      // Sort by next due date
+      // Sort by next due date descending (latest first)
       const sortedContacts = processedContacts.sort((a, b) => {
-        if (!a.nextDueDate) return 1;
+        if (!a.nextDueDate) return 1; // Contacts without nextDueDate go to the end
         if (!b.nextDueDate) return -1;
-        return a.nextDueDate - b.nextDueDate;
+        return b.nextDueDate - a.nextDueDate; // Descending order (larger/later dates first)
       });
       
       setContacts(sortedContacts);
@@ -445,30 +471,24 @@ const KeepInTouchTable = () => {
       
       <FiltersContainer>
         <FilterButton
-          color="#DC2626"
           active={activeFilter === 'overdue'}
           onClick={() => handleFilterClick('overdue')}
         >
           Overdue
-          <span className="count">{filterCounts.overdue}</span>
         </FilterButton>
         
         <FilterButton
-          color="#059669"
           active={activeFilter === 'upcoming'}
           onClick={() => handleFilterClick('upcoming')}
         >
           Upcoming
-          <span className="count">{filterCounts.upcoming}</span>
         </FilterButton>
         
         <FilterButton
-          color="#6B7280"
           active={activeFilter === 'needFixing'}
           onClick={() => handleFilterClick('needFixing')}
         >
           Need Fixing
-          <span className="count">{filterCounts.needFixing}</span>
         </FilterButton>
       </FiltersContainer>
       
@@ -500,7 +520,13 @@ const KeepInTouchTable = () => {
                 
                 <ClickableCell onClick={() => handleCellClick(contact, 'company')}>
                   <div className="cell-content">
-                    {contact.company || <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Not set</span>}
+                    {contact.company_info?.name ? (
+                      <CompanyTag>
+                        <span>{contact.company_info.name}</span>
+                      </CompanyTag>
+                    ) : (
+                      <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Not set</span>
+                    )}
                   </div>
                 </ClickableCell>
                 

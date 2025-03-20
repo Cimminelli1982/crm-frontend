@@ -12,7 +12,6 @@ const PageContainer = styled.div`
 
 const PageHeader = styled.div`
   padding: 1.5rem;
-  border-bottom: 1px solid #e5e7eb;
   
   h1 {
     font-size: 1.5rem;
@@ -67,7 +66,6 @@ const KeepInTouch = () => {
       <PageHeader>
         <h1>
           Keep in Touch
-          {totalCount > 0 && <span className="counter">({totalCount})</span>}
         </h1>
         <p>View and manage your follow-up schedule with important contacts.</p>
       </PageHeader>
