@@ -148,6 +148,12 @@ const RationaleBadge = styled.span`
   background-color: white;
   border: 1.5px solid black;
   color: black;
+  cursor: pointer;
+  position: relative;
+  
+  &:hover {
+    background-color: #f3f4f6;
+  }
 `;
 
 const ButtonGroup = styled.div`
@@ -231,6 +237,29 @@ const TruncatedText = styled.div`
   }
 `;
 
+const RationaleDropdown = styled.div`
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: white;
+  border: 1px solid #d1d5db;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  z-index: 1000;
+  width: 150px;
+`;
+
+const RationaleOption = styled.div`
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  
+  &:hover {
+    background-color: #f3f4f6;
+  }
+`;
+
 const Introductions = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -241,6 +270,7 @@ const Introductions = () => {
   const [showContactSelect, setShowContactSelect] = useState(null);
   const [selectedContact, setSelectedContact] = useState(null);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+  const [activeRationaleDropdown, setActiveRationaleDropdown] = useState(null);
   const [formData, setFormData] = useState({
     intro_date: format(new Date(), 'yyyy-MM-dd'),
     contacts_introduced: [],
@@ -446,6 +476,52 @@ const Introductions = () => {
       alert('Error fetching contact details');
     }
   };
+  
+  const handleRationaleClick = (introId, e) => {
+    // Close any active dropdown when clicking anywhere else
+    if (activeRationaleDropdown && activeRationaleDropdown !== introId) {
+      setActiveRationaleDropdown(null);
+    }
+    
+    // Toggle the dropdown
+    setActiveRationaleDropdown(activeRationaleDropdown === introId ? null : introId);
+    e.stopPropagation(); // Prevent event from propagating to the document
+  };
+  
+  const handleRationaleChange = async (introId, newRationale) => {
+    try {
+      const { error } = await supabase
+        .from('contact_introductions')
+        .update({ introduction_rationale: newRationale })
+        .eq('intro_id', introId);
+
+      if (error) throw error;
+      
+      // Close the dropdown
+      setActiveRationaleDropdown(null);
+      
+      // Refresh the data
+      fetchData();
+    } catch (error) {
+      console.error('Error updating rationale:', error);
+      alert('Error updating rationale: ' + error.message);
+    }
+  };
+  
+  // Add click handler to close dropdown when clicking outside
+  useEffect(() => {
+    const handleDocumentClick = () => {
+      if (activeRationaleDropdown !== null) {
+        setActiveRationaleDropdown(null);
+      }
+    };
+    
+    document.addEventListener('click', handleDocumentClick);
+    
+    return () => {
+      document.removeEventListener('click', handleDocumentClick);
+    };
+  }, [activeRationaleDropdown]);
 
   const renderContactsCell = (intro) => (
     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -514,7 +590,7 @@ const Introductions = () => {
               <td>{format(new Date(intro.intro_date), 'MM/yy')}</td>
               <td>{renderContactsCell(intro)}</td>
               <td>
-                <RationaleBadge>
+                <RationaleBadge onClick={(e) => handleRationaleClick(intro.intro_id, e)}>
                   {intro.introduction_rationale === 'Karma Points' && (
                     <>🎰 Karma Points</>
                   )}
@@ -523,6 +599,26 @@ const Introductions = () => {
                   )}
                   {intro.introduction_rationale === 'Portfolio Company Related' && (
                     <>🤑 Portfolio</>
+                  )}
+                  
+                  {activeRationaleDropdown === intro.intro_id && (
+                    <RationaleDropdown onClick={(e) => e.stopPropagation()}>
+                      <RationaleOption 
+                        onClick={() => handleRationaleChange(intro.intro_id, 'Karma Points')}
+                      >
+                        🎰 Karma Points
+                      </RationaleOption>
+                      <RationaleOption 
+                        onClick={() => handleRationaleChange(intro.intro_id, 'Dealflow Related')}
+                      >
+                        🌈 Dealflow
+                      </RationaleOption>
+                      <RationaleOption 
+                        onClick={() => handleRationaleChange(intro.intro_id, 'Portfolio Company Related')}
+                      >
+                        🤑 Portfolio
+                      </RationaleOption>
+                    </RationaleDropdown>
                   )}
                 </RationaleBadge>
               </td>
