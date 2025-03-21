@@ -490,12 +490,23 @@ const Introductions = () => {
   
   const handleRationaleChange = async (introId, newRationale) => {
     try {
-      const { error } = await supabase
+      console.log(`Updating introduction ${introId} with new rationale: ${newRationale}`);
+      
+      // Using the exact intro_id as a number, not a string
+      const numericIntroId = parseInt(introId, 10);
+      
+      // Update the record using the correct field name and ID
+      const { data, error } = await supabase
         .from('contact_introductions')
         .update({ introduction_rationale: newRationale })
-        .eq('intro_id', introId);
+        .eq('intro_id', numericIntroId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Update error details:', error);
+        throw error;
+      }
+      
+      console.log('Update successful, response:', data);
       
       // Close the dropdown
       setActiveRationaleDropdown(null);
