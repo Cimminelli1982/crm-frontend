@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { format, parseISO, addDays, addWeeks, addMonths, addQuarters, addYears } from 'date-fns';
+import { FiClock } from 'react-icons/fi';
 import ContactsModal from '../modals/ContactsModal';
 import CompanyModal from '../modals/CompanyModal';
 import TagsModal from '../modals/TagsModal';
@@ -49,16 +50,22 @@ const ContactTable = styled.table`
   padding: 0 1rem;
   
   /* Column width specifications */
-  th:nth-child(1) { width: 15%; }  /* Name */
-  th:nth-child(2) { width: 18%; }  /* Company */
-  th:nth-child(3) { width: 15%; }  /* Category */
-  th:nth-child(4) { width: 18%; }  /* Tags */
+  th:nth-child(1) { width: 19%; }  /* Name */
+  th:nth-child(2) { width: 16%; }  /* Company */
+  th:nth-child(3) { width: 12%; }  /* Category */
+  th:nth-child(4) { width: 16%; }  /* Tags */
   th:nth-child(5) { width: 10%; }  /* Keep in Touch */
-  th:nth-child(6) { width: 12%; }  /* Last Interaction */
-  th:nth-child(7) { width: 12%; }  /* Next Due */
+  th:nth-child(6) { width: 8%; }   /* Last Interaction */
+  th:nth-child(7) { width: 8%; }   /* Snooze */
+  th:nth-child(8) { width: 11%; }  /* Next Due */
   
   @media (max-width: 1200px) {
-    th:nth-child(4) { width: 16%; } /* Slightly reduce Tags column on smaller screens */
+    th:nth-child(1) { width: 20%; } /* Increase Name column on smaller screens */
+    th:nth-child(2) { width: 15%; } /* Reduce Company column on smaller screens */
+    th:nth-child(3) { width: 11%; } /* Reduce Category column on smaller screens */
+    th:nth-child(4) { width: 16%; } /* Keep Tags column the same on smaller screens */
+    th:nth-child(6) { width: 7%; }  /* Reduce Last Interaction column on smaller screens */
+    th:nth-child(7) { width: 7%; }  /* Reduce Snooze column on smaller screens */
   }
 `;
 
@@ -271,6 +278,147 @@ const TruncatedText = styled.span`
   text-overflow: ellipsis;
 `;
 
+// Last interaction date formatter
+const LastInteractionDate = styled.span`
+  color: #000000;
+  font-weight: normal;
+  position: relative; /* Added for overlay positioning */
+`;
+
+const HoverOverlay = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(59, 130, 246, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+  cursor: pointer;
+  
+  &:hover {
+    opacity: 1;
+  }
+  
+  span {
+    background-color: #3b82f6;
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+`;
+
+const SnoozeSelectContainer = styled.div`
+  position: relative;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+`;
+
+const SnoozeSelect = styled.select`
+  padding: 0.35rem;
+  border-radius: 0.25rem;
+  border: 1px solid #000000;
+  font-size: 0.7rem;
+  background-color: white;
+  cursor: pointer;
+  width: 95%;
+  margin: 0 auto;
+  appearance: menulist;
+  
+  &:hover {
+    border-color: #000000;
+  }
+  
+  &:focus {
+    outline: none;
+    border-color: #000000;
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
+  }
+`;
+
+const SnoozeIndicator = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  font-size: 0.7rem;
+  font-weight: ${props => props.days > 0 ? '500' : 'normal'};
+  color: #000000;
+  padding: 0.35rem;
+  background-color: white;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  border: 1px solid ${props => props.days > 0 ? '#000000' : '#d1d5db'};
+  width: 95%;
+  margin: 0 auto;
+  transition: all 0.2s;
+  
+  svg {
+    font-size: 0.8rem;
+  }
+  
+  &:hover {
+    background-color: #f3f4f6;
+  }
+`;
+
+const EmptySnoozeIndicator = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem;
+  color: #6b7280;
+  font-size: 0.7rem;
+  cursor: pointer;
+  width: 95%;
+  margin: 0 auto;
+  border: 1px dashed #d1d5db;
+  border-radius: 0.25rem;
+  transition: all 0.2s;
+  
+  &:hover {
+    border-color: #000000;
+    background-color: #f3f4f6;
+  }
+  
+  &::before {
+    content: "+";
+    margin-right: 4px;
+    font-weight: bold;
+  }
+`;
+
+const StatusBubble = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.12rem 0.4rem;
+  font-size: 0.6rem;
+  font-weight: 600;
+  border-radius: 1rem;
+  margin-left: 0.5rem;
+  white-space: nowrap;
+  
+  /* Overdue: black with white text */
+  ${props => props.overdue && `
+    background-color: #000000;
+    color: #FFFFFF;
+  `}
+  
+  /* Upcoming: white with black text and border */
+  ${props => props.upcoming && `
+    background-color: #FFFFFF;
+    color: #000000;
+    border: 1px solid #000000;
+  `}
+`;
+
 const FiltersContainer = styled.div`
   display: flex;
   gap: 6px; /* Add spacing between buttons */
@@ -323,29 +471,43 @@ const getTagColor = (tagName) => {
   return colors[index];
 };
 
-const calculateNextDueDate = (lastInteraction, frequency) => {
+const calculateNextDueDate = (lastInteraction, frequency, snoozeDays = 0) => {
   if (!lastInteraction || !frequency || frequency === 'Do not keep') return null;
   
   try {
     const lastDate = new Date(lastInteraction);
     if (isNaN(lastDate.getTime())) return null;
     
+    let nextDueDate;
+    
     switch (frequency) {
       case 'Weekly':
-        return addWeeks(lastDate, 1);
+        nextDueDate = addWeeks(lastDate, 1);
+        break;
       case 'Monthly':
-        return addMonths(lastDate, 1);
+        nextDueDate = addMonths(lastDate, 1);
+        break;
       case 'Quarterly':
-        return addMonths(lastDate, 3);
+        nextDueDate = addMonths(lastDate, 3);
+        break;
       case 'Twice per Year':
       case 'Twice a year':
-        return addMonths(lastDate, 6);
+        nextDueDate = addMonths(lastDate, 6);
+        break;
       case 'Once per Year':
       case 'Once a year':
-        return addYears(lastDate, 1);
+        nextDueDate = addYears(lastDate, 1);
+        break;
       default:
         return null;
     }
+    
+    // Add snooze days if any
+    if (snoozeDays > 0) {
+      nextDueDate = addDays(nextDueDate, snoozeDays);
+    }
+    
+    return nextDueDate;
   } catch (error) {
     console.error('Error calculating next due date:', error);
     return null;
@@ -366,6 +528,8 @@ const KeepInTouchTable = () => {
   const [showLastInteractionModal, setShowLastInteractionModal] = useState(false);
   const [selectedContactForEdit, setSelectedContactForEdit] = useState(null);
   const [filterCounts, setFilterCounts] = useState({ overdue: 0, upcoming: 0, needFixing: 0 });
+  const [contactSnoozes, setContactSnoozes] = useState({});
+  const [showSnoozeDropdown, setShowSnoozeDropdown] = useState({});
   
   useEffect(() => {
     fetchContacts();
@@ -374,7 +538,7 @@ const KeepInTouchTable = () => {
   useEffect(() => {
     applyFilter(activeFilter);
     updateFilterCounts();
-  }, [contacts, activeFilter]);
+  }, [contacts, activeFilter, contactSnoozes]);
   
   // Calculate and update filter counts
   const updateFilterCounts = () => {
@@ -382,15 +546,22 @@ const KeepInTouchTable = () => {
     const nextWeek = addDays(today, 7);
     
     setFilterCounts({
-      overdue: contacts.filter(c => c.nextDueDate && c.nextDueDate < today).length,
-      upcoming: contacts.filter(c => 
-        c.nextDueDate && 
-        c.nextDueDate >= today && 
-        c.nextDueDate <= nextWeek
-      ).length,
+      overdue: contacts.filter(c => {
+        // Recalculate next due date with current snooze days to ensure accuracy
+        const snoozeDays = contactSnoozes[c.id] || 0;
+        const dueDate = calculateNextDueDate(c.last_interaction, c.keep_in_touch_frequency, snoozeDays);
+        return dueDate && dueDate < today;
+      }).length,
+      upcoming: contacts.filter(c => { 
+        // Recalculate next due date with current snooze days to ensure accuracy
+        const snoozeDays = contactSnoozes[c.id] || 0;
+        const dueDate = calculateNextDueDate(c.last_interaction, c.keep_in_touch_frequency, snoozeDays);
+        return dueDate && dueDate >= today && dueDate <= nextWeek;
+      }).length,
       needFixing: contacts.filter(c => 
-        !c.nextDueDate && 
-        c.keep_in_touch_frequency
+        (!c.nextDueDate || !c.last_interaction) && 
+        c.keep_in_touch_frequency && 
+        c.keep_in_touch_frequency !== 'Do not keep'
       ).length
     });
   };
@@ -423,21 +594,46 @@ const KeepInTouchTable = () => {
         
       if (companiesError) throw companiesError;
       
+      // Fetch snooze data for contacts
+      const { data: snoozeData, error: snoozeError } = await supabase
+        .from('contact_snoozes')
+        .select('contact_id, snooze_days')
+        .in('contact_id', contactIds);
+        
+      if (snoozeError) {
+        console.error('Error fetching snooze data:', snoozeError);
+        // Continue without snooze data if table doesn't exist yet
+      }
+      
+      // Create a map of contact IDs to snooze days
+      const snoozeMap = {};
+      if (snoozeData) {
+        snoozeData.forEach(item => {
+          snoozeMap[item.contact_id] = item.snooze_days;
+        });
+      }
+      
+      // Update the contactSnoozes state
+      setContactSnoozes(snoozeMap);
+      
       // Process contacts data
       const processedContacts = data.map(contact => {
         // Get companies for this contact
         const companies = companiesData ? companiesData.filter(cc => cc.contact_id === contact.id) : [];
+        // Get snooze days for this contact
+        const snoozeDays = snoozeMap[contact.id] || 0;
         
         return {
           ...contact,
           tags: contact.tags?.map(t => t.tags?.name).filter(Boolean) || [],
-          nextDueDate: calculateNextDueDate(contact.last_interaction, contact.keep_in_touch_frequency),
+          nextDueDate: calculateNextDueDate(contact.last_interaction, contact.keep_in_touch_frequency, snoozeDays),
           contact_companies: companies,
           companiesList: companies.map(cc => ({
             id: cc.company_id,
             name: cc.companies?.name || 'Unknown',
             website: cc.companies?.website
-          }))
+          })),
+          snoozeDays
         };
       });
       
@@ -468,21 +664,26 @@ const KeepInTouchTable = () => {
 
     switch (filter) {
       case 'overdue':
-        setFilteredContacts(contacts.filter(contact => 
-          contact.nextDueDate && contact.nextDueDate < today
-        ));
+        setFilteredContacts(contacts.filter(contact => {
+          // Recalculate next due date with current snooze days to ensure accuracy
+          const snoozeDays = contactSnoozes[contact.id] || 0;
+          const dueDate = calculateNextDueDate(contact.last_interaction, contact.keep_in_touch_frequency, snoozeDays);
+          return dueDate && dueDate < today;
+        }));
         break;
       case 'upcoming':
-        setFilteredContacts(contacts.filter(contact => 
-          contact.nextDueDate && 
-          contact.nextDueDate >= today && 
-          contact.nextDueDate <= nextWeek
-        ));
+        setFilteredContacts(contacts.filter(contact => {
+          // Recalculate next due date with current snooze days to ensure accuracy
+          const snoozeDays = contactSnoozes[contact.id] || 0;
+          const dueDate = calculateNextDueDate(contact.last_interaction, contact.keep_in_touch_frequency, snoozeDays);
+          return dueDate && dueDate >= today && dueDate <= nextWeek;
+        }));
         break;
       case 'needFixing':
         setFilteredContacts(contacts.filter(contact => 
-          !contact.nextDueDate && 
-          contact.keep_in_touch_frequency
+          (!contact.nextDueDate || !contact.last_interaction) && 
+          contact.keep_in_touch_frequency && 
+          contact.keep_in_touch_frequency !== 'Do not keep'
         ));
         break;
       default:
@@ -531,15 +732,110 @@ const KeepInTouchTable = () => {
     fetchContacts(); // Refresh the list after modal closes
   };
   
-  const formatDate = (date) => {
+  const formatLastInteractionDate = (date) => {
     if (!date) return '-';
     try {
       const parsedDate = new Date(date);
       if (isNaN(parsedDate.getTime())) return '-';
-      return format(parsedDate, 'MMM d, yyyy');
+      
+      const currentYear = new Date().getFullYear();
+      const dateYear = parsedDate.getFullYear();
+      
+      // If it's the current year, only show month and day
+      if (dateYear === currentYear) {
+        return format(parsedDate, 'MMM d');
+      } 
+      // If it's a previous year, only show the year
+      else {
+        return format(parsedDate, 'yyyy');
+      }
     } catch (error) {
       console.error('Error formatting date:', error);
       return '-';
+    }
+  };
+  
+  const formatNextDueDate = (date) => {
+    if (!date) return '-';
+    try {
+      const parsedDate = new Date(date);
+      if (isNaN(parsedDate.getTime())) return '-';
+      
+      const now = new Date();
+      const oneMonthAgo = new Date();
+      oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+      
+      // If it's more than a month overdue, just show "Overdue"
+      if (parsedDate < oneMonthAgo) {
+        return 'Overdue';
+      }
+      // Otherwise show full date
+      else {
+        return format(parsedDate, 'MMM d, yyyy');
+      }
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return '-';
+    }
+  };
+  
+  const toggleSnoozeDropdown = (contactId) => {
+    setShowSnoozeDropdown(prev => ({
+      ...prev,
+      [contactId]: !prev[contactId]
+    }));
+  };
+  
+  const handleSnoozeChange = async (contactId, snoozeDays) => {
+    try {
+      // Convert to integer and handle string input
+      const parsedSnoozeDays = parseInt(snoozeDays, 10);
+      
+      // Update local state first for immediate UI feedback
+      setContactSnoozes(prev => ({
+        ...prev,
+        [contactId]: parsedSnoozeDays
+      }));
+      
+      // Hide the dropdown after selection
+      setShowSnoozeDropdown(prev => ({
+        ...prev,
+        [contactId]: false
+      }));
+      
+      // Update contacts with new due dates
+      setContacts(prevContacts => {
+        return prevContacts.map(contact => {
+          if (contact.id === contactId) {
+            return {
+              ...contact,
+              nextDueDate: calculateNextDueDate(
+                contact.last_interaction, 
+                contact.keep_in_touch_frequency, 
+                parsedSnoozeDays
+              )
+            };
+          }
+          return contact;
+        });
+      });
+      
+      // Update database
+      const { error } = await supabase
+        .from('contact_snoozes')
+        .upsert({ 
+          contact_id: contactId, 
+          snooze_days: parsedSnoozeDays,
+          updated_at: new Date().toISOString()
+        }, { 
+          onConflict: 'contact_id' 
+        });
+        
+      if (error) throw error;
+    } catch (err) {
+      console.error('Error updating snooze days:', err);
+      // Revert the change in state if the update fails
+      fetchContacts();
     }
   };
   
@@ -596,12 +892,19 @@ const KeepInTouchTable = () => {
             <th>Tags</th>
             <th>Keep in Touch</th>
             <th>Last Interaction</th>
-            <th>Next Due</th>
+            <th>Snooze</th>
+            <th className="centered">Next Due</th>
           </tr>
         </TableHead>
         <TableBody>
           {filteredContacts.map(contact => {
-            const nextDueDate = contact.nextDueDate;
+            const snoozeDays = contactSnoozes[contact.id] || 0;
+            // Recalculate next due date with current snooze days to ensure accuracy
+            const nextDueDate = calculateNextDueDate(
+              contact.last_interaction, 
+              contact.keep_in_touch_frequency, 
+              snoozeDays
+            );
             const isOverdue = nextDueDate && nextDueDate < new Date();
             const isUpcoming = nextDueDate && !isOverdue && nextDueDate < addDays(new Date(), 7);
             
@@ -609,7 +912,11 @@ const KeepInTouchTable = () => {
               <tr key={contact.id}>
                 <ClickableCell onClick={() => handleCellClick(contact, 'name')}>
                   <div className="cell-content">
-                    {contact.first_name} {contact.last_name}
+                    <span style={{ fontWeight: 'bold' }}>
+                      {contact.first_name} {contact.last_name}
+                    </span>
+                    {isOverdue && <StatusBubble overdue>Overdue</StatusBubble>}
+                    {isUpcoming && !isOverdue && <StatusBubble upcoming>Soon</StatusBubble>}
                   </div>
                 </ClickableCell>
                 
@@ -698,12 +1005,63 @@ const KeepInTouchTable = () => {
                 </ClickableCell>
                 
                 <ClickableCell onClick={() => handleCellClick(contact, 'lastInteraction')}>
-                  {formatDate(contact.last_interaction)}
+                  <div className="cell-content" style={{ justifyContent: 'center' }}>
+                    <LastInteractionDate>
+                      {formatLastInteractionDate(contact.last_interaction)}
+                    </LastInteractionDate>
+                  </div>
                 </ClickableCell>
                 
-                <DateCell isOverdue={isOverdue} isUpcoming={isUpcoming}>
-                  {nextDueDate ? formatDate(nextDueDate) : '-'}
-                </DateCell>
+                <td className="centered">
+                  <div className="cell-content" style={{ justifyContent: 'center' }}>
+                    {contact.keep_in_touch_frequency && contact.keep_in_touch_frequency !== 'Do not keep' ? (
+                      <SnoozeSelectContainer>
+                        {showSnoozeDropdown[contact.id] ? (
+                          <SnoozeSelect 
+                            value={contactSnoozes[contact.id] || 0}
+                            onChange={(e) => handleSnoozeChange(contact.id, e.target.value)}
+                            onBlur={() => toggleSnoozeDropdown(contact.id)}
+                            autoFocus
+                          >
+                            <option value="0">No snooze</option>
+                            <option value="1">+1 day</option>
+                            <option value="2">+2 days</option>
+                            <option value="3">+3 days</option>
+                            <option value="7">+1 week</option>
+                            <option value="14">+2 weeks</option>
+                            <option value="30">+1 month</option>
+                          </SnoozeSelect>
+                        ) : (
+                          <>
+                            {contactSnoozes[contact.id] > 0 ? (
+                              <SnoozeIndicator 
+                                days={contactSnoozes[contact.id]} 
+                                onClick={() => toggleSnoozeDropdown(contact.id)}
+                              >
+                                <FiClock /> {contactSnoozes[contact.id]} day{contactSnoozes[contact.id] > 1 ? 's' : ''}
+                              </SnoozeIndicator>
+                            ) : (
+                              <EmptySnoozeIndicator onClick={() => toggleSnoozeDropdown(contact.id)}>
+                                Snooze
+                              </EmptySnoozeIndicator>
+                            )}
+                          </>
+                        )}
+                      </SnoozeSelectContainer>
+                    ) : (
+                      <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>-</span>
+                    )}
+                  </div>
+                </td>
+                
+                <ClickableCell onClick={() => handleCellClick(contact, 'lastInteraction')} className="centered">
+                  <div className="cell-content" style={{ justifyContent: 'center', position: 'relative', textAlign: 'center' }}>
+                    <DateCell isOverdue={isOverdue} isUpcoming={isUpcoming}>
+                      {nextDueDate ? formatNextDueDate(nextDueDate) : '-'}
+                    </DateCell>
+                    <HoverOverlay></HoverOverlay>
+                  </div>
+                </ClickableCell>
               </tr>
             );
           })}

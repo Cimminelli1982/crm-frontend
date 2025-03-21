@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import Modal from 'react-modal';
-import { FiX, FiMail } from 'react-icons/fi';
+import { FiX, FiMail, FiClock } from 'react-icons/fi';
 import { RiWhatsappFill, RiLinkedinBoxFill } from 'react-icons/ri';
 import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
+import { addDays } from 'date-fns';
 
 // ==================== Styled Components ====================
 const ModalContainer = styled.div`
@@ -78,6 +79,65 @@ const TabButton = styled.button`
 
 const TabContent = styled.div`
   margin-bottom: 24px;
+`;
+
+const SnoozeContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 24px;
+  background-color: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+`;
+
+const SnoozeTitle = styled.h3`
+  margin: 0 0 16px 0;
+  font-size: 1.1rem;
+  color: #111827;
+  font-weight: 600;
+`;
+
+const SnoozeOptionsGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+`;
+
+const SnoozeButton = styled.button`
+  padding: 16px;
+  background-color: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  
+  &:hover {
+    border-color: #000000;
+    background-color: #f3f4f6;
+  }
+  
+  .button-icon {
+    font-size: 24px;
+    margin-bottom: 8px;
+    color: #4b5563;
+  }
+  
+  .button-text {
+    font-size: 1rem;
+    font-weight: 500;
+    color: #111827;
+  }
+  
+  .button-subtext {
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin-top: 4px;
+  }
 `;
 
 const ContentSection = styled.div`
@@ -349,6 +409,9 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
   
   // Add state for group chat data
   const [groupChats, setGroupChats] = useState([]);
+  
+  // Add state for snooze success
+  const [snoozeSuccess, setSnoozeSuccess] = useState(false);
   
   // Remove the debug function for supabase connection
   // Phone number normalization function
@@ -3310,6 +3373,14 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           >
             Meetings
           </TabButton>
+          <TabButton
+            active={activeTab === 'Snooze'}
+            onClick={() => {
+              setActiveTab('Snooze');
+            }}
+          >
+            Snooze
+          </TabButton>
         </TabContainer>
 
         <ContentSection>
@@ -3322,6 +3393,8 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
             renderEmailsTable()
           ) : activeTab === 'Meeting' ? (
             renderMeetingsTable()
+          ) : activeTab === 'Snooze' ? (
+            renderSnoozeTab()
           ) : (
             <TabContent>{renderGenericInteractions()}</TabContent>
           )}
@@ -3329,6 +3402,108 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       </ModalContainer>
     </Modal>
   );
+  // Add snooze tab rendering function
+  const renderSnoozeTab = () => {
+    if (loading) {
+      return <NoInteractions>Processing...</NoInteractions>;
+    }
+    
+    if (snoozeSuccess) {
+      return (
+        <NoInteractions>
+          <div style={{ fontSize: '32px', marginBottom: '16px' }}>✅</div>
+          Contact snoozed successfully!
+          <div style={{ marginTop: '16px', fontSize: '0.875rem', color: '#4b5563' }}>
+            This modal will close automatically.
+          </div>
+        </NoInteractions>
+      );
+    }
+    
+    return (
+      <SnoozeContainer>
+        <SnoozeTitle>Snooze this contact</SnoozeTitle>
+        <p style={{ margin: '0 0 24px 0', color: '#4b5563' }}>
+          Postpone the next due date for this contact by selecting one of the options below:
+        </p>
+        
+        <SnoozeOptionsGrid>
+          <SnoozeButton onClick={() => snoozeContact(10)}>
+            <div className="button-icon"><FiClock /></div>
+            <div className="button-text">10 Days</div>
+            <div className="button-subtext">Snooze for 10 days</div>
+          </SnoozeButton>
+          
+          <SnoozeButton onClick={() => snoozeContact(30)}>
+            <div className="button-icon"><FiClock /></div>
+            <div className="button-text">30 Days</div>
+            <div className="button-subtext">Snooze for 30 days</div>
+          </SnoozeButton>
+          
+          <SnoozeButton onClick={() => snoozeContact(100)}>
+            <div className="button-icon"><FiClock /></div>
+            <div className="button-text">100 Days</div>
+            <div className="button-subtext">Snooze for 100 days</div>
+          </SnoozeButton>
+        </SnoozeOptionsGrid>
+        
+        {/* Show current due date info */}
+        <div style={{ marginTop: '32px', padding: '16px', backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+          <div style={{ fontWeight: '500', marginBottom: '8px' }}>Current information:</div>
+          <div>Last interaction: {contact.last_interaction ? new Date(contact.last_interaction).toLocaleDateString() : 'None'}</div>
+          <div>Keep in touch frequency: {contact.keep_in_touch_frequency || 'Not set'}</div>
+        </div>
+      </SnoozeContainer>
+    );
+  };
+
+  // Function to handle snoozing a contact's next due date
+  const snoozeContact = async (days) => {
+    try {
+      setLoading(true);
+      
+      // Make sure we have a contact
+      if (!contact || !contact.id) {
+        console.error('No contact data available');
+        return;
+      }
+      
+      // Calculate the new due date by adding days to the current date
+      const today = new Date();
+      const newDueDate = addDays(today, days);
+      
+      // Format for database
+      const formattedDate = newDueDate.toISOString();
+      
+      // Update last_interaction to the new date
+      const { error } = await supabase
+        .from('contacts')
+        .update({ last_interaction: formattedDate })
+        .eq('id', contact.id);
+      
+      if (error) {
+        console.error('Error updating contact:', error);
+        alert('Failed to snooze contact');
+        setLoading(false);
+        return;
+      }
+      
+      // Show success message
+      setSnoozeSuccess(true);
+      
+      // Reset after a delay
+      setTimeout(() => {
+        setSnoozeSuccess(false);
+        onRequestClose();
+      }, 2000);
+      
+    } catch (err) {
+      console.error('Error in snoozeContact:', err);
+      alert('An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
 };
 
 export default LastInteractionModal;
