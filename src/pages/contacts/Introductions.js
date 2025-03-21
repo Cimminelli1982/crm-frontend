@@ -48,11 +48,11 @@ const TableHead = styled.thead`
     font-weight: 500;
     color: black;
     border-bottom: 1px solid black;
-    &.date-col { width: 5%; }
-    &.contacts-col { width: 35%; }
-    &.rationale-col { width: 15%; }
-    &.note-col { width: 35%; }
-    &.actions-col { width: 10%; }
+    &.date-col { width: 3%; }
+    &.contacts-col { width: 38%; }
+    &.rationale-col { width: 12%; }
+    &.note-col { width: 42%; }
+    &.actions-col { width: 5%; }
   }
 `;
 
@@ -107,16 +107,30 @@ const FormGroup = styled.div`
     color: #374151;
   }
 
-  input, textarea {
+  input {
     width: 100%;
     padding: 8px 12px;
     border: 1px solid #d1d5db;
-    border-radius: 6px;
+    border-radius: 4px;
     font-size: 0.875rem;
+    height: 38px;
+    box-sizing: border-box;
   }
-
+  
   textarea {
-    min-height: 100px;
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    min-height: 80px;
+    font-family: inherit;
+    box-sizing: border-box;
+  }
+  
+  /* Ensure the react-select components match our styling */
+  .css-13cymwt-control {
+    min-height: 38px;
   }
 `;
 
@@ -260,6 +274,53 @@ const RationaleOption = styled.div`
   }
 `;
 
+const InlineNoteEditor = styled.div`
+  position: relative;
+  width: 100%;
+  
+  textarea {
+    width: 100%;
+    padding: 8px;
+    font-size: 0.875rem;
+    border: 1px solid black;
+    border-radius: 0;
+    min-height: 60px;
+    font-family: inherit;
+  }
+  
+  &::after {
+    content: 'Press Enter to save, Esc to cancel';
+    position: absolute;
+    bottom: -20px;
+    right: 0;
+    font-size: 0.7rem;
+    color: #6b7280;
+  }
+`;
+
+const NoteText = styled.div`
+  cursor: pointer;
+  padding: 4px;
+  
+  &:hover {
+    background-color: #f3f4f6;
+  }
+`;
+
+const DeleteButton = styled.button`
+  padding: 4px 8px;
+  background-color: ${props => props.confirm ? '#ef4444' : 'black'};
+  color: white;
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+  font-size: 0.75rem;
+  
+  &:hover {
+    background-color: ${props => props.confirm ? '#dc2626' : '#333333'};
+  }
+`;
+
 const Introductions = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -271,6 +332,9 @@ const Introductions = () => {
   const [selectedContact, setSelectedContact] = useState(null);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [activeRationaleDropdown, setActiveRationaleDropdown] = useState(null);
+  const [editingNote, setEditingNote] = useState(null);
+  const [editingNoteText, setEditingNoteText] = useState('');
+  const [deletingIntro, setDeletingIntro] = useState(null);
   const [formData, setFormData] = useState({
     intro_date: format(new Date(), 'yyyy-MM-dd'),
     contacts_introduced: [],
@@ -320,6 +384,21 @@ const Introductions = () => {
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Function to handle key presses in the modal
+  const handleModalKeyDown = (e) => {
+    // If Enter is pressed (not in a textarea) and not with modifiers, submit the form
+    if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA' && !e.shiftKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      handleSubmit(e);
+    }
+    
+    // If Escape is pressed, close the modal
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      setIsModalOpen(false);
     }
   };
 
@@ -519,6 +598,78 @@ const Introductions = () => {
     }
   };
   
+  // Function to handle inline note editing
+  const handleNoteClick = (intro) => {
+    setEditingNote(intro.intro_id);
+    setEditingNoteText(intro.introduction_note || '');
+  };
+  
+  const handleNoteSave = async () => {
+    try {
+      // Convert to numeric ID
+      const numericIntroId = parseInt(editingNote, 10);
+      
+      const { error } = await supabase
+        .from('contact_introductions')
+        .update({ introduction_note: editingNoteText })
+        .eq('intro_id', numericIntroId);
+        
+      if (error) throw error;
+      
+      // Exit edit mode
+      setEditingNote(null);
+      
+      // Refresh data
+      fetchData();
+    } catch (error) {
+      console.error('Error updating note:', error);
+      alert('Error updating note: ' + error.message);
+    }
+  };
+  
+  const handleNoteCancel = () => {
+    setEditingNote(null);
+  };
+  
+  // Handle delete functionality with confirmation
+  const handleDeleteClick = (introId) => {
+    if (deletingIntro === introId) {
+      // This is the confirmation click, proceed with deletion
+      deleteIntroduction(introId);
+      setDeletingIntro(null);
+    } else {
+      // First click, set up confirmation
+      setDeletingIntro(introId);
+      
+      // Auto-reset confirmation after 5 seconds
+      setTimeout(() => {
+        if (deletingIntro === introId) {
+          setDeletingIntro(null);
+        }
+      }, 5000);
+    }
+  };
+  
+  const deleteIntroduction = async (introId) => {
+    try {
+      const numericIntroId = parseInt(introId, 10);
+      
+      // Delete the introduction
+      const { error } = await supabase
+        .from('contact_introductions')
+        .delete()
+        .eq('intro_id', numericIntroId);
+        
+      if (error) throw error;
+      
+      // Refresh the data
+      fetchData();
+    } catch (error) {
+      console.error('Error deleting introduction:', error);
+      alert('Error deleting introduction: ' + error.message);
+    }
+  };
+  
   // Add click handler to close dropdown when clicking outside
   useEffect(() => {
     const handleDocumentClick = () => {
@@ -567,13 +718,43 @@ const Introductions = () => {
     </div>
   );
 
-  const renderNote = (note) => {
-    if (!note) return '-';
-    return (
-      <TruncatedText data-tooltip={note}>
-        {note}
-      </TruncatedText>
-    );
+  const renderNote = (intro) => {
+    if (editingNote === intro.intro_id) {
+      // Show inline editor when this note is being edited
+      return (
+        <InlineNoteEditor>
+          <textarea 
+            value={editingNoteText}
+            onChange={(e) => setEditingNoteText(e.target.value)}
+            autoFocus
+            onKeyDown={(e) => {
+              // Save on Enter (without shift for newlines)
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleNoteSave();
+              }
+              // Cancel on Escape
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                handleNoteCancel();
+              }
+            }}
+          />
+        </InlineNoteEditor>
+      );
+    } else {
+      // Show text with click handler to enter edit mode
+      const note = intro.introduction_note;
+      return (
+        <NoteText onClick={() => handleNoteClick(intro)}>
+          {!note ? '-' : (
+            <TruncatedText data-tooltip={note}>
+              {note}
+            </TruncatedText>
+          )}
+        </NoteText>
+      );
+    }
   };
 
   return (
@@ -633,9 +814,14 @@ const Introductions = () => {
                   )}
                 </RationaleBadge>
               </td>
-              <td>{renderNote(intro.introduction_note)}</td>
+              <td>{renderNote(intro)}</td>
               <td>
-                <Button onClick={() => handleEdit(intro)}>Edit</Button>
+                <DeleteButton 
+                  confirm={deletingIntro === intro.intro_id}
+                  onClick={() => handleDeleteClick(intro.intro_id)}
+                >
+                  {deletingIntro === intro.intro_id ? 'Confirm' : 'Delete'}
+                </DeleteButton>
               </td>
             </tr>
           ))}
@@ -650,15 +836,23 @@ const Introductions = () => {
       >
         <ModalContent>
           <h2 style={{ marginBottom: '24px' }}>New Introduction</h2>
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} onKeyDown={handleModalKeyDown}>
             <FormGroup>
               <label>Date</label>
-              <input
-                type="date"
-                value={formData.intro_date}
-                onChange={(e) => setFormData({ ...formData, intro_date: e.target.value })}
-                required
-              />
+              <div style={{ height: '38px' }}>
+                <input
+                  type="date"
+                  value={formData.intro_date}
+                  onChange={(e) => setFormData({ ...formData, intro_date: e.target.value })}
+                  required
+                  style={{ 
+                    width: '100%',
+                    height: '38px',
+                    padding: '2px 8px',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
             </FormGroup>
 
             <FormGroup>
@@ -709,16 +903,24 @@ const Introductions = () => {
                 onClick={() => setIsModalOpen(false)} 
                 style={{ backgroundColor: '#6b7280' }}
               >
-                Cancel
+                Cancel (Esc)
               </Button>
               <Button 
                 type="submit"
                 disabled={!formData.contacts_introduced.length || !formData.introduction_rationale}
                 style={{ backgroundColor: '#000000' }}
               >
-                Create Introduction
+                Create Introduction (Enter)
               </Button>
             </ButtonGroup>
+            <div style={{ 
+              marginTop: '15px', 
+              fontSize: '0.75rem', 
+              color: '#6b7280',
+              textAlign: 'center' 
+            }}>
+              Tip: Press Enter to submit, Esc to cancel
+            </div>
           </form>
         </ModalContent>
       </Modal>
