@@ -8,6 +8,8 @@ import ContactsModal from '../../components/modals/ContactsModal';
 
 const PageContainer = styled.div`
   padding: 24px;
+  background-color: white;
+  border-radius: 8px;
 `;
 
 const PageHeader = styled.div`
@@ -32,22 +34,22 @@ const IntroductionsTable = styled.table`
   border-spacing: 0;
   margin-top: 24px;
   background: #fff;
-  border: 1px solid #e5e7eb;
+  border: none;
   border-radius: 8px;
   overflow: hidden;
 `;
 
 const TableHead = styled.thead`
-  background: #f9fafb;
+  background: white;
   th {
     padding: 12px 16px;
     text-align: left;
     font-size: 0.875rem;
     font-weight: 500;
-    color: #4b5563;
-    border-bottom: 1px solid #e5e7eb;
-    &.date-col { width: 10%; }
-    &.contacts-col { width: 30%; }
+    color: black;
+    border-bottom: 1px solid black;
+    &.date-col { width: 5%; }
+    &.contacts-col { width: 35%; }
     &.rationale-col { width: 15%; }
     &.note-col { width: 35%; }
     &.actions-col { width: 10%; }
@@ -59,31 +61,30 @@ const TableBody = styled.tbody`
     &:hover {
       background-color: #f9fafb;
     }
-    &:not(:last-child) {
-      border-bottom: 1px solid #e5e7eb;
-    }
+    /* Removing row borders */
   }
   td {
     padding: 12px 16px;
     font-size: 0.875rem;
     color: #1f2937;
     vertical-align: middle;
+    border-bottom: none;
   }
 `;
 
 const Button = styled.button`
   padding: 6px 12px;
-  border-radius: 6px;
+  border-radius: 0px;
   font-size: 0.875rem;
   font-weight: 500;
-  background-color: #3b82f6;
+  background-color: #000000;
   color: white;
   border: none;
   cursor: pointer;
   transition: background-color 0.2s ease;
   
   &:hover {
-    background-color: #2563eb;
+    background-color: #333333;
   }
 
   &:disabled {
@@ -138,27 +139,15 @@ const modalStyles = {
 };
 
 const RationaleBadge = styled.span`
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   padding: 2px 8px;
-  border-radius: 9999px;
+  border-radius: 0;
   font-size: 0.75rem;
   font-weight: 500;
-  background-color: ${props => {
-    switch (props.type) {
-      case 'Karma Points': return '#DCFCE7';
-      case 'Dealflow Related': return '#FEF3C7';
-      case 'Portfolio Company Related': return '#DBEAFE';
-      default: return '#F3F4F6';
-    }
-  }};
-  color: ${props => {
-    switch (props.type) {
-      case 'Karma Points': return '#166534';
-      case 'Dealflow Related': return '#92400E';
-      case 'Portfolio Company Related': return '#1E40AF';
-      default: return '#374151';
-    }
-  }};
+  background-color: white;
+  border: 1.5px solid black;
+  color: black;
 `;
 
 const ButtonGroup = styled.div`
@@ -260,9 +249,9 @@ const Introductions = () => {
   });
 
   const rationaleOptions = [
-    { value: 'Karma Points', label: 'Karma Points' },
-    { value: 'Dealflow Related', label: 'Dealflow Related' },
-    { value: 'Portfolio Company Related', label: 'Portfolio Company Related' },
+    { value: 'Karma Points', label: '🎰 Karma Points' },
+    { value: 'Dealflow Related', label: '🌈 Dealflow' },
+    { value: 'Portfolio Company Related', label: '🤑 Portfolio' },
   ];
 
   useEffect(() => {
@@ -271,10 +260,11 @@ const Introductions = () => {
 
   const fetchData = async () => {
     try {
-      // Fetch contacts
+      // Fetch contacts - get all contacts with no limit
       const { data: contactsData, error: contactsError } = await supabase
         .from('contacts')
-        .select('id, first_name, last_name');
+        .select('id, first_name, last_name')
+        .order('last_modified', { ascending: false });
       
       if (contactsError) throw contactsError;
       setContacts(contactsData);
@@ -286,6 +276,15 @@ const Introductions = () => {
         .order('intro_date', { ascending: false });
 
       if (introductionsError) throw introductionsError;
+      
+      // Log the introductions data to debug contact IDs
+      console.log('Introductions data:', introductionsData);
+      if (introductionsData && introductionsData.length > 0) {
+        console.log('First introduction contacts_introduced type:', 
+                   typeof introductionsData[0].contacts_introduced,
+                   'value:', introductionsData[0].contacts_introduced);
+      }
+      
       setIntroductions(introductionsData);
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -415,9 +414,16 @@ const Introductions = () => {
   };
 
   const getContactNames = (contactIds) => {
+    // Log for debugging purposes
+    console.log('Contact IDs to find:', contactIds);
+    console.log('Available contacts:', contacts.map(c => c.id));
+    
     return contactIds
       .map(id => {
         const contact = contacts.find(c => c.id === id);
+        if (!contact) {
+          console.log('Contact not found for ID:', id);
+        }
         return contact ? `${contact.first_name} ${contact.last_name}` : 'Unknown';
       })
       .join(', ');
@@ -505,11 +511,19 @@ const Introductions = () => {
         <TableBody>
           {introductions.map(intro => (
             <tr key={intro.intro_id}>
-              <td>{format(new Date(intro.intro_date), 'dd/MM/yyyy')}</td>
+              <td>{format(new Date(intro.intro_date), 'MM/yy')}</td>
               <td>{renderContactsCell(intro)}</td>
               <td>
-                <RationaleBadge type={intro.introduction_rationale}>
-                  {intro.introduction_rationale}
+                <RationaleBadge>
+                  {intro.introduction_rationale === 'Karma Points' && (
+                    <>🎰 Karma Points</>
+                  )}
+                  {intro.introduction_rationale === 'Dealflow Related' && (
+                    <>🌈 Dealflow</>
+                  )}
+                  {intro.introduction_rationale === 'Portfolio Company Related' && (
+                    <>🤑 Portfolio</>
+                  )}
                 </RationaleBadge>
               </td>
               <td>{renderNote(intro.introduction_note)}</td>
@@ -593,6 +607,7 @@ const Introductions = () => {
               <Button 
                 type="submit"
                 disabled={!formData.contacts_introduced.length || !formData.introduction_rationale}
+                style={{ backgroundColor: '#000000' }}
               >
                 Create Introduction
               </Button>
@@ -680,6 +695,7 @@ const Introductions = () => {
               <Button 
                 type="submit"
                 disabled={!formData.contacts_introduced.length || !formData.introduction_rationale}
+                style={{ backgroundColor: '#000000' }}
               >
                 Update Introduction
               </Button>
