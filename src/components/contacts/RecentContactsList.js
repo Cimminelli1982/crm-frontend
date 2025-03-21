@@ -802,7 +802,8 @@ const RecentContactsList = forwardRef(({
         .from('contacts')
         .select('*', { count: 'exact', head: true })
         .is('keep_in_touch_frequency', null)
-        .not('contact_category', 'eq', 'Skip');
+        .not('contact_category', 'eq', 'Skip')
+        .not('contact_category', 'eq', 'WhatsApp Group Contact');
         
       // Calculate count for "Missing Score" filter - only showing contacts with recent interactions
       const missingScoreOneWeekAgo = new Date();
@@ -813,6 +814,7 @@ const RecentContactsList = forwardRef(({
         .select('*', { count: 'exact', head: true })
         .is('score', null)
         .not('contact_category', 'eq', 'Skip')
+        .not('contact_category', 'eq', 'WhatsApp Group Contact')
         .gte('last_interaction', missingScoreDate);
         
       // Calculate count for "Missing Cities" filter using the stored procedure
@@ -1012,11 +1014,12 @@ const RecentContactsList = forwardRef(({
             query = query
               .gte('last_interaction', lastInteractionFormattedDate)
               .not('contact_category', 'eq', 'Skip')
+              .not('contact_category', 'eq', 'WhatsApp Group Contact')
               .order('last_interaction', { ascending: false })
               .range(lastInteractionFrom, lastInteractionTo);
               
             sortDescription = 'last_interaction desc';
-            filterDescription = `last_interaction >= ${lastInteractionFormattedDate}, excluding "Skip" category`;
+            filterDescription = `last_interaction >= ${lastInteractionFormattedDate}, excluding "Skip" and "WhatsApp Group Contact" categories`;
             break;
             
           case 'missingKeepInTouch':
@@ -1028,11 +1031,12 @@ const RecentContactsList = forwardRef(({
             query = query
               .is('keep_in_touch_frequency', null)
               .not('contact_category', 'eq', 'Skip')
+              .not('contact_category', 'eq', 'WhatsApp Group Contact')
               .order('last_modified', { ascending: false })
               .range(missingKeepInTouchFrom, missingKeepInTouchTo);
               
             sortDescription = 'last_modified desc';
-            filterDescription = 'keep_in_touch_frequency is null, excluding Skip category';
+            filterDescription = 'keep_in_touch_frequency is null, excluding Skip and WhatsApp Group Contact categories';
             break;
             
           case 'missingScore':
@@ -1048,12 +1052,13 @@ const RecentContactsList = forwardRef(({
             query = query
               .is('score', null)
               .not('contact_category', 'eq', 'Skip')
+              .not('contact_category', 'eq', 'WhatsApp Group Contact')
               .gte('last_interaction', missingScoreFormattedDate)
               .order('last_interaction', { ascending: false })
               .range(missingScoreFrom, missingScoreTo);
               
             sortDescription = 'last_interaction desc';
-            filterDescription = 'score is null, excluding Skip category, with recent interactions';
+            filterDescription = 'score is null, excluding Skip and WhatsApp Group Contact categories, with recent interactions';
             break;
             
           case 'keepInTouch':

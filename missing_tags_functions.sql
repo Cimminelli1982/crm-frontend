@@ -13,6 +13,7 @@ BEGIN
     WHERE ct.contact_id = c.id
   )
   AND c.contact_category != 'Skip'
+  AND c.contact_category != 'WhatsApp Group Contact'
   AND c.last_interaction >= (NOW() - INTERVAL '7 days');
 END;
 $;
@@ -42,6 +43,7 @@ BEGIN
       WHERE ct.contact_id = c.id
     )
     AND c.contact_category != 'Skip'
+    AND c.contact_category != 'WhatsApp Group Contact'
     AND c.last_interaction >= (NOW() - INTERVAL '7 days')
     AND (
       search_term = '' 
