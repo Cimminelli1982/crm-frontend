@@ -45,29 +45,33 @@ const ContactTable = styled.table`
   border-collapse: separate;
   border-spacing: 0;
   margin-bottom: 1.5rem;
-  table-layout: fixed;
-  background-color: #ffffff;
-  margin-left: 1.5rem;
-  margin-right: 1.5rem;
-  width: calc(100% - 3rem);
+  table-layout: fixed; /* Use fixed layout for better column control */
+  padding: 0 1rem;
   
-  th:nth-child(1) { width: 20%; }  /* Name */
-  th:nth-child(2) { width: 15%; }  /* Company */
+  /* Column width specifications */
+  th:nth-child(1) { width: 15%; }  /* Name */
+  th:nth-child(2) { width: 18%; }  /* Company */
   th:nth-child(3) { width: 15%; }  /* Category */
-  th:nth-child(4) { width: 20%; }  /* Tags */
+  th:nth-child(4) { width: 18%; }  /* Tags */
   th:nth-child(5) { width: 10%; }  /* Keep in Touch */
-  th:nth-child(6) { width: 10%; }  /* Last Interaction */
-  th:nth-child(7) { width: 10%; }  /* Next Due */
+  th:nth-child(6) { width: 12%; }  /* Last Interaction */
+  th:nth-child(7) { width: 12%; }  /* Next Due */
+  
+  @media (max-width: 1200px) {
+    th:nth-child(4) { width: 16%; } /* Slightly reduce Tags column on smaller screens */
+  }
 `;
 
 const TableHead = styled.thead`
+  background-color: white;
+  
   th {
-    padding: 14px 16px;
+    padding: 0.875rem 1rem;
     text-align: left;
-    font-weight: 600;
-    font-size: 0.875rem;
-    color: #111827;
-    border-bottom: 1px solid #000000;
+    font-weight: 700;
+    font-size: 0.75rem;
+    color: black;
+    border-bottom: 1px solid black;
     position: sticky;
     top: 0;
     z-index: 10;
@@ -81,23 +85,31 @@ const TableHead = styled.thead`
 
 const TableBody = styled.tbody`
   tr {
+    border-bottom: 1px solid #e5e7eb;
+    transition: background-color 0.15s;
+    
     &:hover {
-      background-color: #f3f4f6;
+      background-color: #f9fafb;
     }
     
-    &:not(:last-child) {
-      border-bottom: 1px solid #e5e7eb;
+    &:last-child {
+      border-bottom: none;
+    }
+  }
+  
+  td {
+    padding: 0.875rem 1rem;
+    font-size: 0.875rem;
+    color: #1f2937;
+    vertical-align: middle;
+    
+    &.centered {
+      text-align: center;
     }
     
-    td {
-      padding: 14px 16px;
-      font-size: 0.875rem;
-      color: #1f2937;
-      vertical-align: middle;
-      
-      &.centered {
-        text-align: center;
-      }
+    .cell-content {
+      display: flex;
+      align-items: center;
     }
   }
 `;
@@ -105,33 +117,42 @@ const TableBody = styled.tbody`
 const ClickableCell = styled.td`
   cursor: pointer;
   position: relative;
-  padding: 14px 16px;
+  transition: background-color 0.2s;
   
-  &:hover {
-    background-color: rgba(59, 130, 246, 0.05);
-  }
+  /* For proper content handling */
+  overflow: hidden; /* Prevent content overflow */
   
   .cell-content {
     display: flex;
     align-items: center;
+    width: 100%;
+    min-width: 0; /* Allow children to truncate */
+    padding: 0.25rem 0; /* Add some vertical padding */
     gap: 0.5rem;
+  }
+  
+  &:hover {
+    background-color: rgba(59, 130, 246, 0.05);
   }
 `;
 
 const CategoryBadge = styled.span`
   display: inline-flex;
   align-items: center;
-  padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
-  border-radius: 0.25rem;
+  justify-content: center;
+  padding: 0.15rem 0.25rem;
+  min-width: 80px;
+  font-size: 0.7rem;
+  border-radius: 0.375rem;
   background-color: ${props => {
     switch (props.category) {
       case 'Client': return '#e0f2fe';
       case 'Lead': return '#fef3c7';
       case 'Partner': return '#f3e8ff';
       case 'Vendor': return '#dcfce7';
+      case 'Inbox': return '#ffefef';
       case 'Skip': return '#f3f4f6';
-      default: return '#e5e7eb';
+      default: return '#f3f4f6';
     }
   }};
   color: ${props => {
@@ -140,11 +161,14 @@ const CategoryBadge = styled.span`
       case 'Lead': return '#92400e';
       case 'Partner': return '#6b21a8';
       case 'Vendor': return '#15803d';
+      case 'Inbox': return '#ef4444';
       case 'Skip': return '#4b5563';
-      default: return '#374151';
+      default: return '#4b5563';
     }
   }};
   font-weight: 500;
+  margin-right: 0.25rem;
+  margin-bottom: 0.25rem;
 `;
 
 const KeepInTouchBadge = styled.span`
@@ -155,47 +179,63 @@ const KeepInTouchBadge = styled.span`
   border-radius: 0.25rem;
   background-color: ${props => {
     switch (props.frequency) {
-      case 'Weekly': return '#fee2e2';
-      case 'Monthly': return '#fef3c7';
-      case 'Quarterly': return '#e0f2fe';
-      case 'Twice per Year': return '#dcfce7';
-      case 'Once per Year': return '#f3e8ff';
-      case 'Do not keep': return '#f3f4f6';
-      default: return '#fecaca';
+      case 'Weekly': return '#000000';           /* Black for weekly */
+      case 'Monthly': return '#000000';          /* Black for monthly */
+      case 'Quarterly': return '#444444';        /* Dark gray for quarterly */
+      case 'Twice per Year': 
+      case 'Twice a year': return '#888888';     /* Medium gray for twice a year */
+      case 'Once per Year':
+      case 'Once a year': return '#ffffff';      /* White for once a year */
+      case 'Do not keep': return '#ffffff';      /* White for do not keep */
+      default: return '#ffffff';                 /* Default white */
     }
   }};
   color: ${props => {
     switch (props.frequency) {
-      case 'Weekly': return '#b91c1c';
-      case 'Monthly': return '#92400e';
-      case 'Quarterly': return '#0369a1';
-      case 'Twice per Year': return '#15803d';
-      case 'Once per Year': return '#6b21a8';
-      case 'Do not keep': return '#4b5563';
-      default: return '#b91c1c';
+      case 'Weekly': return '#ffffff';           /* White text for weekly */
+      case 'Monthly': return '#ffffff';          /* White text for monthly */
+      case 'Quarterly': return '#ffffff';        /* White text for quarterly */
+      case 'Twice per Year':
+      case 'Twice a year': return '#333333';     /* Dark gray text for twice a year */
+      case 'Once per Year':
+      case 'Once a year': return '#000000';      /* Black text for once a year */
+      case 'Do not keep': return '#000000';      /* Black text for do not keep */
+      default: return '#000000';                 /* Default black text */
     }
   }};
   font-weight: 500;
+  border: 1px solid #d1d5db;
 `;
 
 const TagsContainer = styled.div`
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem;
+  align-items: center;
+  width: 100%; /* Use full width of the cell */
+  min-width: 0; /* Allow proper truncation */
 `;
 
 const Tag = styled.span`
   display: inline-flex;
   align-items: center;
-  padding: 0.125rem 0.375rem;
+  padding: 0.25rem 0.5rem;
   font-size: 0.75rem;
-  border-radius: 0.25rem;
-  background-color: #e5e7eb;
-  color: #374151;
+  border-radius: 1rem;
+  background-color: ${props => props.color || '#f3f4f6'};
+  color: ${props => props.textColor || '#4b5563'};
   font-weight: 500;
+  margin-right: 0.25rem;
+  margin-bottom: 0.25rem;
+  border: 1px solid black;
 `;
 
-const CompanyTag = styled.div`
+const CompaniesContainer = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+`;
+
+const CompanyBadge = styled.span`
   display: inline-flex;
   align-items: center;
   padding: 0.25rem 0.5rem;
@@ -204,9 +244,10 @@ const CompanyTag = styled.div`
   background-color: white;
   color: black;
   font-weight: 500;
+  margin-right: 0.25rem;
+  margin-bottom: 0.25rem;
   border: 1px solid black;
   text-transform: uppercase;
-  max-width: 200px;
   
   span {
     white-space: nowrap;
@@ -217,8 +258,17 @@ const CompanyTag = styled.div`
 `;
 
 const DateCell = styled.td`
-  color: ${props => props.isOverdue ? '#dc2626' : props.isUpcoming ? '#059669' : '#6b7280'};
+  color: ${props => props.isOverdue ? '#dc2626' : props.isUpcoming ? '#059669' : '#000000'};
   font-weight: ${props => (props.isOverdue || props.isUpcoming) ? '500' : 'normal'};
+`;
+
+// Truncated text with ellipsis
+const TruncatedText = styled.span`
+  display: block;
+  max-width: ${props => props.maxWidth || '150px'};
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 `;
 
 const FiltersContainer = styled.div`
@@ -252,6 +302,27 @@ const FilterButton = styled.button`
   }
 `;
 
+// Helper function to get a random color for tags
+const getTagColor = (tagName) => {
+  // Generate a consistent color based on the tag name
+  const colors = [
+    { bg: '#fee2e2', text: '#b91c1c' }, // Red
+    { bg: '#fef3c7', text: '#92400e' }, // Amber
+    { bg: '#ecfccb', text: '#3f6212' }, // Lime
+    { bg: '#d1fae5', text: '#065f46' }, // Emerald
+    { bg: '#e0f2fe', text: '#0369a1' }, // Sky
+    { bg: '#ede9fe', text: '#5b21b6' }, // Violet
+    { bg: '#fae8ff', text: '#86198f' }, // Fuchsia
+    { bg: '#fce7f3', text: '#9d174d' }  // Pink
+  ];
+  
+  // Use the sum of character codes to pick a color
+  const sum = tagName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const index = sum % colors.length;
+  
+  return colors[index];
+};
+
 const calculateNextDueDate = (lastInteraction, frequency) => {
   if (!lastInteraction || !frequency || frequency === 'Do not keep') return null;
   
@@ -267,9 +338,11 @@ const calculateNextDueDate = (lastInteraction, frequency) => {
       case 'Quarterly':
         return addMonths(lastDate, 3);
       case 'Twice per Year':
+      case 'Twice a year':
         return addMonths(lastDate, 6);
       case 'Once per Year':
-        return addDays(lastDate, 365);
+      case 'Once a year':
+        return addYears(lastDate, 1);
       default:
         return null;
     }
@@ -327,11 +400,11 @@ const KeepInTouchTable = () => {
       setIsLoading(true);
       setError(null);
       
+      // First fetch contacts with tags
       const { data, error } = await supabase
         .from('contacts')
         .select(`
           *,
-          company_info:company_id(name),
           tags:contact_tags(tag_id, tags(name))
         `)
         .in('keep_in_touch_frequency', ['Weekly', 'Monthly', 'Quarterly', 'Twice per Year', 'Once per Year'])
@@ -339,12 +412,34 @@ const KeepInTouchTable = () => {
         
       if (error) throw error;
       
+      // Get all contact IDs
+      const contactIds = data.map(contact => contact.id);
+      
+      // Fetch company data using the same structure as RecentContactsList
+      const { data: companiesData, error: companiesError } = await supabase
+        .from('contact_companies')
+        .select('contact_id, company_id, companies:company_id(id, name, website)')
+        .in('contact_id', contactIds);
+        
+      if (companiesError) throw companiesError;
+      
       // Process contacts data
-      const processedContacts = data.map(contact => ({
-        ...contact,
-        tags: contact.tags?.map(t => t.tags?.name).filter(Boolean) || [],
-        nextDueDate: calculateNextDueDate(contact.last_interaction, contact.keep_in_touch_frequency)
-      }));
+      const processedContacts = data.map(contact => {
+        // Get companies for this contact
+        const companies = companiesData ? companiesData.filter(cc => cc.contact_id === contact.id) : [];
+        
+        return {
+          ...contact,
+          tags: contact.tags?.map(t => t.tags?.name).filter(Boolean) || [],
+          nextDueDate: calculateNextDueDate(contact.last_interaction, contact.keep_in_touch_frequency),
+          contact_companies: companies,
+          companiesList: companies.map(cc => ({
+            id: cc.company_id,
+            name: cc.companies?.name || 'Unknown',
+            website: cc.companies?.website
+          }))
+        };
+      });
       
       // Sort by next due date descending (latest first)
       const sortedContacts = processedContacts.sort((a, b) => {
@@ -520,13 +615,17 @@ const KeepInTouchTable = () => {
                 
                 <ClickableCell onClick={() => handleCellClick(contact, 'company')}>
                   <div className="cell-content">
-                    {contact.company_info?.name ? (
-                      <CompanyTag>
-                        <span>{contact.company_info.name}</span>
-                      </CompanyTag>
-                    ) : (
-                      <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Not set</span>
-                    )}
+                    <CompaniesContainer>
+                      {contact.companiesList?.length > 0 ? (
+                        contact.companiesList.map(company => (
+                          <CompanyBadge key={company.id}>
+                            <span>{company.name}</span>
+                          </CompanyBadge>
+                        ))
+                      ) : (
+                        <span style={{ color: '#444444', fontStyle: 'italic' }}>No company</span>
+                      )}
+                    </CompaniesContainer>
                   </div>
                 </ClickableCell>
                 
@@ -534,7 +633,20 @@ const KeepInTouchTable = () => {
                   <div className="cell-content">
                     {contact.contact_category ? (
                       <CategoryBadge category={contact.contact_category}>
-                        {contact.contact_category}
+                        {contact.contact_category === 'Professional Investor' ? '💰 Investor' :
+                         contact.contact_category === 'Friend and Family' ? '❤️ Loved one' :
+                         contact.contact_category === 'Client' ? '🤝 Client' :
+                         contact.contact_category === 'Colleague' ? '👥 Colleague' :
+                         contact.contact_category === 'Prospect' ? '🎯 Prospect' :
+                         contact.contact_category === 'Advisor' ? '🧠 Advisor' :
+                         contact.contact_category === 'Team' ? '⚽ Team' :
+                         contact.contact_category === 'Manager' ? '💼 Manager' :
+                         contact.contact_category === 'Founder' ? '💻 Founder' :
+                         contact.contact_category === 'Supplier' ? '📦 Supplier' :
+                         contact.contact_category === 'Skip' ? '❌ Skip' :
+                         contact.contact_category === 'Inbox' ? '📬 Inbox' :
+                         contact.contact_category === 'Other' ? '📌 Other' :
+                         `⚪ ${contact.contact_category}`}
                       </CategoryBadge>
                     ) : (
                       <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Not set</span>
@@ -545,20 +657,43 @@ const KeepInTouchTable = () => {
                 <ClickableCell onClick={() => handleCellClick(contact, 'tags')}>
                   <TagsContainer>
                     {contact.tags && contact.tags.length > 0 ? (
-                      contact.tags.map((tag, index) => (
-                        <Tag key={index}>{tag}</Tag>
-                      ))
+                      contact.tags.slice(0, 3).map((tag, index) => {
+                        const tagColor = getTagColor(tag);
+                        return (
+                          <Tag key={index} color={tagColor.bg} textColor={tagColor.text}>
+                            {tag}
+                          </Tag>
+                        );
+                      })
                     ) : (
                       <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No tags</span>
+                    )}
+                    {contact.tags && contact.tags.length > 3 && (
+                      <span style={{ 
+                        fontSize: '0.75rem',
+                        color: '#4b5563',
+                        marginLeft: '2px'
+                      }}>
+                        +{contact.tags.length - 3}
+                      </span>
                     )}
                   </TagsContainer>
                 </ClickableCell>
                 
                 <ClickableCell onClick={() => handleCellClick(contact, 'keepInTouch')}>
                   <div className="cell-content">
-                    <KeepInTouchBadge frequency={contact.keep_in_touch_frequency}>
-                      {contact.keep_in_touch_frequency}
-                    </KeepInTouchBadge>
+                    {contact.keep_in_touch_frequency ? (
+                      contact.keep_in_touch_frequency === 'Do not keep' || contact.keep_in_touch_frequency === 'Do not keep in touch' ? (
+                        <span style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '1.2em' }}>❌</span>
+                      ) : (
+                        <KeepInTouchBadge frequency={contact.keep_in_touch_frequency}>
+                          {contact.keep_in_touch_frequency === 'Monthly' ? '❤️ ' : ''}
+                          {contact.keep_in_touch_frequency}
+                        </KeepInTouchBadge>
+                      )
+                    ) : (
+                      <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Not set</span>
+                    )}
                   </div>
                 </ClickableCell>
                 
