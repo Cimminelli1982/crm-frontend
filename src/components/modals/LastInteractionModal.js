@@ -343,8 +343,9 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
   const CHATS_TABLE = 'chats';
   const CONTACT_CHATS_TABLE = 'contact_chats';
 
-  // Add a new debug mode state
-  const [debugMode, setDebugMode] = useState(true);
+  // Debug states
+  const [debugMode, setDebugMode] = useState(false);
+  const [debugFilter, setDebugFilter] = useState('original');
   
   // Add state for group chat data
   const [groupChats, setGroupChats] = useState([]);
@@ -355,6 +356,67 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     if (!phone) return null;
     // Remove all non-digit characters
     return phone.replace(/\D/g, '');
+  };
+  
+  // Debug function to test mobile number formats vs database
+  const checkMobileFormats = async (mobile) => {
+    if (!mobile) return [];
+    
+    console.log('DEBUG: Analyzing mobile', mobile);
+    
+    const variations = [
+      mobile,                                    // Original format
+      mobile.replace(/\D/g, ''),                 // Remove all non-digits
+      mobile.startsWith('+') ? mobile.substring(1) : mobile, // Without leading +
+      mobile.startsWith('+') ? mobile.substring(1) : `+${mobile}`, // Toggle leading +
+      mobile.startsWith('+') ? mobile : `+${mobile}`, // With leading +
+      mobile.replace(/\D/g, '').slice(-10),      // Last 10 digits only
+      mobile.replace(/\D/g, '').slice(-8),       // Last 8 digits only
+    ];
+    
+    console.log('DEBUG: Testing variations:', variations);
+    
+    const results = [];
+    
+    for (const variant of variations) {
+      // Skip empty variants
+      if (!variant) continue;
+      
+      // Direct match
+      const { data: exactMatches } = await supabase
+        .from(WHATSAPP_TABLE)
+        .select('id, contact_mobile, message')
+        .eq('contact_mobile', variant)
+        .limit(3);
+        
+      if (exactMatches && exactMatches.length > 0) {
+        results.push({
+          variant,
+          type: 'exact-match',
+          count: exactMatches.length,
+          examples: exactMatches.map(m => m.contact_mobile)
+        });
+      }
+      
+      // Partial match with ILIKE
+      const { data: partialMatches } = await supabase
+        .from(WHATSAPP_TABLE)
+        .select('id, contact_mobile, message')
+        .ilike('contact_mobile', `%${variant.slice(-8)}%`)
+        .limit(3);
+        
+      if (partialMatches && partialMatches.length > 0) {
+        results.push({
+          variant,
+          type: 'contains-last-8',
+          count: partialMatches.length,
+          examples: partialMatches.map(m => m.contact_mobile)
+        });
+      }
+    }
+    
+    console.log('DEBUG: Mobile format matches:', results);
+    return results;
   };
 
   // Decide default tab on mount
@@ -768,18 +830,149 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
         const to = ITEMS_PER_PAGE - 1;
         
         // Basic query construction - show individual and null chat_id messages
+        console.log('DEBUG: WhatsApp Filtering - Mobile numbers:', mobilesArray);
+        
+        // ORIGINAL WORKING QUERY - For comparison purposes
+        const originalQuery = supabase
+          .from(WHATSAPP_TABLE)
+          .select('*, chats:chat_id(chat_type)', { count: 'exact' })
+          .in('contact_mobile', mobilesArray)
+          .not('chats.chat_type', 'eq', 'group');
+        
+        // DEBUG: Print original query SQL
+        if (typeof originalQuery.toSQL === 'function') {
+          console.log('DEBUG: Original query SQL:', originalQuery.toSQL());
+        }
+        
+        // DEBUG: Test simple query to see if ANY data exists
+        const simpleQuery = supabase
+          .from(WHATSAPP_TABLE)
+          .select('*', { count: 'exact' })
+          .in('contact_mobile', mobilesArray);
+        
+        // Execute debug simple query to check for data
+        simpleQuery.then(({data: simpleData, count: simpleCount}) => {
+          console.log(`DEBUG: Simple query found ${simpleCount || 0} messages`); 
+          if (simpleData && simpleData.length > 0) {
+            console.log('DEBUG: Sample record:', simpleData[0]);
+          }
+        });
+        
+        // Query with filter based on debug mode
+        console.log('DEBUG: Raw mobile numbers:', contact.mobile, contact.mobile2);
+
+        // First, let's run a direct database check on WhatsApp table
+        console.log('DEBUG: Running direct table check...');
+        
+        // Check the entire table size
+        supabase
+          .from(WHATSAPP_TABLE)
+          .select('*', { count: 'exact', head: true })
+          .then(({count, error}) => {
+            console.log(`DEBUG: Table ${WHATSAPP_TABLE} has ${count || 0} total records. Error:`, error);
+          });
+          
+        // Double check normalized numbers
+        const rawMobileNumbers = [];
+        if (contact.mobile) rawMobileNumbers.push(contact.mobile);
+        if (contact.mobile2) rawMobileNumbers.push(contact.mobile2);
+        
+        console.log('DEBUG: Raw mobile formats:', rawMobileNumbers);
+        
+        // Check for any messages with the last 4 digits
+        const lastDigitsChecks = rawMobileNumbers
+          .filter(num => num && num.length > 4)
+          .map(num => num.slice(-4));
+          
+        if (lastDigitsChecks.length > 0) {
+          console.log('DEBUG: Checking by last 4 digits:', lastDigitsChecks);
+          lastDigitsChecks.forEach(digits => {
+            supabase
+              .from(WHATSAPP_TABLE)
+              .select('*')
+              .ilike('contact_mobile', `%${digits}`)
+              .limit(5)
+              .then(({data, error}) => {
+                console.log(`DEBUG: Last 4 digits check '${digits}' found:`, 
+                  data ? `${data.length} records` : 'none', 
+                  error ? `Error: ${error.message}` : '');
+                if (data && data.length > 0) {
+                  console.log('DEBUG: Sample record with matching digits:', data[0]);
+                }
+              });
+          });
+        }
+        
+        // DIRECT APPROACH: First get all messages, then filter in JavaScript
+        console.log('DEBUG: Using most direct approach possible');
+        
+        // Create conditions for last 8 digits of phone numbers - don't normalize
+        const rawMobiles = [];
+        if (contact.mobile) rawMobiles.push(contact.mobile);
+        if (contact.mobile2) rawMobiles.push(contact.mobile2);
+        console.log('DEBUG: Raw mobile numbers:', rawMobiles);
+        
+        // Use the raw mobile numbers directly
+        const lastDigitsConditions = rawMobiles
+          .filter(mobile => mobile && mobile.length > 4)
+          .map(mobile => {
+            // Get last 8 digits for partial matching
+            const last8 = mobile.slice(-8);
+            return `contact_mobile.ilike.%${last8}`;
+          });
+        
+        console.log('DEBUG: Using conditions:', lastDigitsConditions);
+        
+        // Now proceed with a simple query WITHOUT any group filtering
         let query = supabase
           .from(WHATSAPP_TABLE)
           .select('*, chats:chat_id(chat_type)', { count: 'exact' })
           .order('created_at', { ascending: false })
-          .in('contact_mobile', mobilesArray)
-          .not('chats.chat_type', 'eq', 'group')
-          .range(from, to);
+          .or(lastDigitsConditions.join(','));
+          
+        // IMPORTANT: We will filter in JavaScript instead of SQL
+        console.log('DEBUG: Will apply group filtering in JavaScript after query');
+        
+        // Apply filter based on current debug setting
+        if (debugMode && debugFilter === 'or-null-nongroup') {
+          query = query.or('chat_id.is.null,not.chats.chat_type.eq.group');
+          console.log('DEBUG: Using OR filter (NULL OR NOT GROUP)');
+        } else if (debugMode && debugFilter === 'null-only') {
+          query = query.is('chat_id', null);
+          console.log('DEBUG: Using NULL chat_id filter');
+        } else if (debugMode && debugFilter === 'all-messages') {
+          // Remove any chat filters
+          console.log('DEBUG: Showing ALL messages');
+        } else {
+          // Default/original filter: not group chats
+          query = query.not('chats.chat_type', 'eq', 'group');
+          console.log('DEBUG: Using original NOT GROUP filter');
+        }
+        
+        query = query.range(from, to);
+          
+        // DEBUG: Print query SQL
+        if (typeof query.toSQL === 'function') {
+          console.log('DEBUG: New query SQL:', query.toSQL());
+        }
         
         console.log('Executing initial query...');
         
         // Execute the query
         const { data: responseData, error, count: totalCount } = await query;
+        
+        // DEBUG: Log query results
+        console.log(`DEBUG: Query returned ${responseData ? responseData.length : 0} results out of ${totalCount || 0} total`);
+        if (error) {
+          console.error('DEBUG: Query error:', error);
+        }
+        if (responseData && responseData.length > 0) {
+          console.log('DEBUG: First result:', responseData[0]);
+          // Check if any results have chat_id
+          const withChatId = responseData.filter(r => r.chat_id);
+          const withoutChatId = responseData.filter(r => !r.chat_id);
+          console.log(`DEBUG: Results with chat_id: ${withChatId.length}, without chat_id: ${withoutChatId.length}`);
+        }
         
         if (error) {
           console.error('Query error:', error);
@@ -788,9 +981,49 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
         
         console.log(`Query returned ${responseData ? responseData.length : 0} records out of ${totalCount} total`);
         
-        // Update state with the results
-        data = responseData || [];
-        count = totalCount || 0;
+        // Always print what we received
+        if (responseData && responseData.length > 0) {
+          console.log('DEBUG: FILTERING CHECK - responseData before filtering:', responseData.map(m => ({
+            id: m.id,
+            chatId: m.chat_id,
+            chatType: m.chats?.chat_type,
+            isGroup: m.chats?.chat_type === 'group'
+          })));
+        }
+        
+        // Filter out group chats in JavaScript (even in debug mode now)
+        const filteredData = (responseData || []).filter(message => {
+          // Log chat details for debugging
+          if (message.chat_id) {
+            console.log(`DEBUG: Message ${message.id} has chat_id ${message.chat_id}`);
+          }
+          
+          // We need to exclude any messages that:
+          // 1. Have chats.chat_type === 'group'
+          // 2. OR have a chat_id but no chats data (could be a group chat not properly joined)
+          
+          // Check if message is linked to a chat but doesn't have the chat details
+          const hasChatIdOnly = message.chat_id && !message.chats;
+          
+          // Check if message is explicitly linked to a group chat
+          const isGroupChat = message.chats && message.chats.chat_type === 'group';
+          
+          // Only keep messages that are either:
+          // - Not linked to any chat (chat_id is null)
+          // - OR properly linked to a non-group chat
+          return !hasChatIdOnly && !isGroupChat;
+        });
+        
+        console.log(`FILTERING: ${responseData ? responseData.length - filteredData.length : 0} group messages removed`);
+        console.log('DEBUG: Filtered data:', filteredData?.map(m => ({
+          id: m.id,
+          chatId: m.chat_id,
+          chatType: m.chats?.chat_type
+        })));
+        
+        // Update state with filtered results
+        data = filteredData || [];
+        count = filteredData.length; // Update count to filtered length
         
         // Calculate total pages
         const totalPagesCount = Math.max(Math.ceil(count / ITEMS_PER_PAGE), 1);
@@ -873,9 +1106,467 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     const formattedNumber = mobile.startsWith('+') ? mobile.substring(1) : mobile;
     window.open(`https://wa.me/${formattedNumber}`, '_blank');
   };
+  
+  // Debug function to test different filter strategies
+  const testDebugFilter = async () => {
+    setLoading(true);
+    console.log(`DEBUG: Testing filter strategy: ${debugFilter}`);
+    
+    // First, let's directly check the WhatsApp table to see if there's any data
+    console.log('DEBUG: Checking WhatsApp table overall data');
+    
+    try {
+      const { count: totalCount, error: totalError } = await supabase
+        .from(WHATSAPP_TABLE)
+        .select('*', { count: 'exact', head: true });
+      
+      console.log(`DEBUG: WhatsApp table has ${totalCount || 0} total records`);
+      if (totalError) console.error('DEBUG: Error querying table:', totalError);
+      
+      // Get a sample of records to verify the schema
+      const { data: sampleData, error: sampleError } = await supabase
+        .from(WHATSAPP_TABLE)
+        .select('*')
+        .limit(3);
+        
+      if (sampleData && sampleData.length > 0) {
+        console.log('DEBUG: Sample record structure:', sampleData[0]);
+        
+        // Check field names, especially contact_mobile
+        console.log('DEBUG: Field names:', Object.keys(sampleData[0]));
+        
+        // Check a few contact_mobile values
+        const mobileExamples = sampleData.map(d => d.contact_mobile);
+        console.log('DEBUG: Example contact_mobile values:', mobileExamples);
+      } else {
+        console.error('DEBUG: Could not get sample data. Error:', sampleError);
+      }
+    } catch (err) {
+      console.error('DEBUG: Error checking table:', err);
+    }
+    
+    const mobilesArray = [];
+    if (contact.mobile) mobilesArray.push(normalizePhoneNumber(contact.mobile));
+    if (contact.mobile2) mobilesArray.push(normalizePhoneNumber(contact.mobile2));
+    
+    // Log raw and normalized numbers
+    console.log('DEBUG: Raw mobile numbers:', contact.mobile, contact.mobile2);
+    console.log('DEBUG: Normalized mobile numbers:', mobilesArray);
+    
+    if (mobilesArray.length === 0) {
+      console.log('DEBUG: No mobile numbers to search with');
+      setLoading(false);
+      return;
+    }
+    
+    // For simple search, try to match just the last 4 digits
+    const lastDigits = [];
+    if (contact.mobile && contact.mobile.length > 4) lastDigits.push(contact.mobile.slice(-4));
+    if (contact.mobile2 && contact.mobile2.length > 4) lastDigits.push(contact.mobile2.slice(-4));
+    
+    let testQuery;
+    
+    switch(debugFilter) {
+      case 'original':
+        // Original filter that worked
+        testQuery = supabase
+          .from(WHATSAPP_TABLE)
+          .select('*, chats:chat_id(chat_type)', { count: 'exact' })
+          .in('contact_mobile', mobilesArray)
+          .not('chats.chat_type', 'eq', 'group');
+        break;
+        
+      case 'or-null-nongroup':
+        // Test OR with both conditions
+        testQuery = supabase
+          .from(WHATSAPP_TABLE)
+          .select('*, chats:chat_id(chat_type)', { count: 'exact' })
+          .in('contact_mobile', mobilesArray)
+          .or('chat_id.is.null,not.chats.chat_type.eq.group');
+        break;
+        
+      case 'null-only':
+        // Only null chat_id
+        testQuery = supabase
+          .from(WHATSAPP_TABLE)
+          .select('*, chats:chat_id(chat_type)', { count: 'exact' })
+          .in('contact_mobile', mobilesArray)
+          .is('chat_id', null);
+        break;
+        
+      case 'direct-messages':
+        // Messages with contact_mobile but no query on chat
+        // Get phone variations just like the main query
+        console.log('DEBUG: Checking for direct messages only');
+        const phoneVars = [];
+        
+        // For each mobile number, create variations
+        mobilesArray.forEach(mobile => {
+          if (!mobile) return;
+          
+          // Add variations
+          phoneVars.push(
+            mobile,
+            mobile.replace(/\D/g, ''),
+            mobile.startsWith('+') ? mobile.substring(1) : mobile,
+            mobile.startsWith('+') ? mobile : `+${mobile}`,
+            mobile.replace(/\D/g, '').slice(-10)
+          );
+        });
+        
+        // Filter out duplicates and empty values
+        const uniqueVars = [...new Set(phoneVars)].filter(Boolean);
+        console.log('DEBUG: Trying with phone variations:', uniqueVars);
+        
+        // Create OR conditions for partial matching
+        const lastDigitsConditions = uniqueVars.map(phone => {
+          const last8 = phone.slice(-8);
+          return `contact_mobile.ilike.%${last8}`;
+        });
+        
+        // Look for direct messages without filtering by chat
+        testQuery = supabase
+          .from(WHATSAPP_TABLE)
+          .select('*', { count: 'exact' })
+          .order('created_at', { ascending: false })
+          .or(lastDigitsConditions.join(','))
+          .limit(50);
+        break;
+        
+      case 'analyze-messages':
+        // This option is specifically designed to analyze what's happening
+        console.log('DEBUG: Starting comprehensive message analysis');
+        
+        // First, get raw mobile numbers
+        const rawNumbers = [];
+        if (contact.mobile) rawNumbers.push(contact.mobile);
+        if (contact.mobile2) rawNumbers.push(contact.mobile2);
+        
+        // Create last 8 digits conditions
+        const last8Conditions = rawNumbers
+          .filter(mobile => mobile && mobile.length > 4)
+          .map(mobile => `contact_mobile.ilike.%${mobile.slice(-8)}`);
+          
+        console.log('DEBUG: Using last 8 digits conditions:', last8Conditions);
+        
+        // Get all messages that match by mobile number - no filtering by chat
+        const { data: allMatchingMessages } = await supabase
+          .from(WHATSAPP_TABLE)
+          .select('*, chats:chat_id(chat_type)')
+          .or(last8Conditions.join(','))
+          .order('created_at', { ascending: false })
+          .limit(100);
+          
+        if (allMatchingMessages && allMatchingMessages.length > 0) {
+          console.log(`DEBUG: Found ${allMatchingMessages.length} total messages`);
+          
+          // Categorize messages
+          const groupMessages = allMatchingMessages.filter(m => m.chats?.chat_type === 'group');
+          const nullChatMessages = allMatchingMessages.filter(m => m.chat_id === null);
+          const nonGroupChatMessages = allMatchingMessages.filter(m => 
+            m.chat_id !== null && m.chats?.chat_type !== 'group'
+          );
+          
+          console.log('DEBUG: Message breakdown:', {
+            total: allMatchingMessages.length,
+            group: groupMessages.length,
+            nullChat: nullChatMessages.length,
+            nonGroup: nonGroupChatMessages.length
+          });
+          
+          // Show some examples
+          if (groupMessages.length > 0) {
+            console.log('DEBUG: Example group message:', {
+              id: groupMessages[0].id,
+              chatId: groupMessages[0].chat_id,
+              chatType: groupMessages[0].chats?.chat_type,
+              mobile: groupMessages[0].contact_mobile
+            });
+          }
+          
+          // Show non-group example
+          if (nonGroupChatMessages.length > 0) {
+            console.log('DEBUG: Example non-group message:', {
+              id: nonGroupChatMessages[0].id,
+              chatId: nonGroupChatMessages[0].chat_id,
+              chatType: nonGroupChatMessages[0].chats?.chat_type,
+              mobile: nonGroupChatMessages[0].contact_mobile
+            });
+          }
+          
+          // Try building query with simplified filtering
+          testQuery = supabase
+            .from(WHATSAPP_TABLE)
+            .select('*, chats:chat_id(chat_type)', { count: 'exact' })
+            .or(last8Conditions.join(','))
+            .is('chats.chat_type', null)
+            .order('created_at', { ascending: false })
+            .limit(50);
+            
+          console.log('DEBUG: Using IS NULL on chats.chat_type as test filter');
+        } else {
+          console.log('DEBUG: No messages found with mobile match');
+          // Get some examples from the database
+          testQuery = supabase
+            .from(WHATSAPP_TABLE)
+            .select('*', { count: 'exact' })
+            .limit(20);
+        }
+        break;
+        
+      case 'nongroup-only':
+        // Only non-group chats
+        testQuery = supabase
+          .from(WHATSAPP_TABLE)
+          .select('*, chats:chat_id(chat_type)', { count: 'exact' })
+          .in('contact_mobile', mobilesArray)
+          .not('chats.chat_type', 'eq', 'group');
+        break;
+        
+      case 'all-messages':
+        // All messages regardless of chat
+        testQuery = supabase
+          .from(WHATSAPP_TABLE)
+          .select('*, chats:chat_id(chat_type)', { count: 'exact' })
+          .in('contact_mobile', mobilesArray);
+        break;
+        
+      case 'last-4-digits':
+        // Try matching by last 4 digits instead of exact match
+        if (lastDigits.length > 0) {
+          console.log('DEBUG: Searching by last 4 digits:', lastDigits);
+          const orConditions = lastDigits.map(digits => 
+            `contact_mobile.ilike.%${digits}`
+          );
+          testQuery = supabase
+            .from(WHATSAPP_TABLE)
+            .select('*', { count: 'exact' })
+            .or(orConditions.join(','));
+        } else {
+          testQuery = supabase
+            .from(WHATSAPP_TABLE)
+            .select('*', { count: 'exact' })
+            .in('contact_mobile', mobilesArray);
+        }
+        break;
+        
+      case 'table-scan':
+        // List most recent messages from the table
+        testQuery = supabase
+          .from(WHATSAPP_TABLE)
+          .select('*', { count: 'exact' })
+          .order('created_at', { ascending: false })
+          .limit(20);
+        break;
+        
+      case 'mobile-formats':
+        // Special case: check mobile number formats in table directly
+        console.log('DEBUG: Running advanced mobile formats diagnostic');
+        try {
+          let matchesFound = false;
+          
+          if (contact.mobile) {
+            console.log('MOBILE 1 ANALYSIS:');
+            const mobile1Matches = await checkMobileFormats(contact.mobile);
+            
+            if (mobile1Matches.length > 0) {
+              // We found some matching mobile format - let's use that format
+              const bestMatch = mobile1Matches.find(m => m.type === 'exact-match') || mobile1Matches[0];
+              console.log('DEBUG: Best match found:', bestMatch);
+              
+              // Use this format in a real query
+              if (bestMatch.examples && bestMatch.examples.length > 0) {
+                const format = bestMatch.examples[0];
+                console.log(`DEBUG: Using format '${format}' to fetch messages`);
+                
+                const { data: messages } = await supabase
+                  .from(WHATSAPP_TABLE)
+                  .select('*, chats:chat_id(chat_type)')
+                  .eq('contact_mobile', format)
+                  .not('chats.chat_type', 'eq', 'group')
+                  .order('created_at', { ascending: false })
+                  .limit(20);
+                  
+                if (messages && messages.length > 0) {
+                  console.log(`DEBUG: Found ${messages.length} messages using format '${format}'`);
+                  setInteractions(messages);
+                  setTotalRecords(messages.length);
+                  setTotalPages(1);
+                  setLoading(false);
+                  matchesFound = true;
+                  return;
+                }
+              }
+              
+              // Try a partial match
+              if (bestMatch.variant) {
+                const { data: messages } = await supabase
+                  .from(WHATSAPP_TABLE)
+                  .select('*, chats:chat_id(chat_type)')
+                  .ilike('contact_mobile', `%${bestMatch.variant.slice(-8)}`)
+                  .not('chats.chat_type', 'eq', 'group')
+                  .order('created_at', { ascending: false })
+                  .limit(20);
+                  
+                if (messages && messages.length > 0) {
+                  console.log(`DEBUG: Found ${messages.length} messages using last 8 digits`);
+                  setInteractions(messages);
+                  setTotalRecords(messages.length);
+                  setTotalPages(1);
+                  setLoading(false);
+                  matchesFound = true;
+                  return;
+                }
+              }
+            }
+          }
+          
+          if (!matchesFound && contact.mobile2) {
+            console.log('MOBILE 2 ANALYSIS:');
+            const mobile2Matches = await checkMobileFormats(contact.mobile2);
+            
+            if (mobile2Matches.length > 0) {
+              const bestMatch = mobile2Matches.find(m => m.type === 'exact-match') || mobile2Matches[0];
+              console.log('DEBUG: Best match found for mobile2:', bestMatch);
+              
+              // Try using this format
+              if (bestMatch.examples && bestMatch.examples.length > 0) {
+                const format = bestMatch.examples[0];
+                const { data: messages } = await supabase
+                  .from(WHATSAPP_TABLE)
+                  .select('*, chats:chat_id(chat_type)')
+                  .eq('contact_mobile', format)
+                  .not('chats.chat_type', 'eq', 'group')
+                  .order('created_at', { ascending: false })
+                  .limit(20);
+                  
+                if (messages && messages.length > 0) {
+                  console.log(`DEBUG: Found ${messages.length} messages using format '${format}'`);
+                  setInteractions(messages);
+                  setTotalRecords(messages.length);
+                  setTotalPages(1);
+                  setLoading(false);
+                  matchesFound = true;
+                  return;
+                }
+              }
+            }
+          }
+          
+          if (!matchesFound) {
+            console.log('DEBUG: No matching mobile formats found, falling back to table scan');
+            const { data: latestMessages } = await supabase
+              .from(WHATSAPP_TABLE)
+              .select('*, chats:chat_id(chat_type)')
+              .order('created_at', { ascending: false })
+              .limit(20);
+              
+            if (latestMessages && latestMessages.length > 0) {
+              console.log('DEBUG: Latest messages from table:', latestMessages.map(m => ({
+                id: m.id,
+                mobile: m.contact_mobile,
+                date: m.created_at
+              })));
+              setInteractions(latestMessages);
+              setTotalRecords(latestMessages.length);
+              setTotalPages(1);
+              setLoading(false);
+              return;
+            }
+          }
+        } catch (err) {
+          console.error('DEBUG: Error in mobile formats analysis:', err);
+        }
+        
+        // Continue with a simple table scan if all else fails
+        testQuery = supabase
+          .from(WHATSAPP_TABLE)
+          .select('*', { count: 'exact' })
+          .limit(20);
+        break;
+        
+      default:
+        testQuery = supabase
+          .from(WHATSAPP_TABLE)
+          .select('*, chats:chat_id(chat_type)', { count: 'exact' })
+          .in('contact_mobile', mobilesArray);
+    }
+    
+    // Log the SQL query if available
+    if (typeof testQuery.toSQL === 'function') {
+      console.log(`DEBUG: ${debugFilter} SQL:`, testQuery.toSQL());
+    }
+    
+    // Execute test query
+    try {
+      const {data, count, error} = await testQuery;
+      
+      console.log(`DEBUG: Test query "${debugFilter}" returned:`, { 
+        count: count || 0, 
+        results: data?.length || 0,
+        error
+      });
+      
+      if (data && data.length > 0) {
+        console.log('DEBUG: First result:', data[0]);
+        // Check chat_id distribution
+        const withChatId = data.filter(r => r.chat_id);
+        const withoutChatId = data.filter(r => !r.chat_id);
+        console.log(`DEBUG: Results with chat_id: ${withChatId.length}, without chat_id: ${withoutChatId.length}`);
+        
+        // Update state with filtered results
+        setInteractions(data);
+        setTotalRecords(count || 0);
+        setTotalPages(Math.max(Math.ceil((count || 0) / ITEMS_PER_PAGE), 1));
+      } else {
+        console.log('DEBUG: No results found');
+        setInteractions([]);
+        setTotalRecords(0);
+        setTotalPages(1);
+      }
+    } catch (err) {
+      console.error('DEBUG: Error executing test query:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Update the renderWhatsAppTable function to make the button properly clickable
   const renderWhatsAppTable = () => {
+    // DEBUG: Log what's being rendered
+    console.log(`DEBUG: Rendering WhatsApp table with ${interactions.length} messages`);
+    if (interactions.length > 0) {
+      console.log('DEBUG: First interaction to render:', interactions[0]);
+    }
+    
+    // FINAL FILTER: Filter interactions right at render time to guarantee no group messages
+    // This will ensure the messages displayed don't include group chats regardless of earlier failures
+    const finalFilteredMessages = interactions.filter(message => {
+      // Log each message's chat properties for debugging
+      if (message.chat_id) {
+        console.log(`DEBUG: Message ${message.id} has chat_id ${message.chat_id}`);
+      }
+      
+      // We need to exclude any messages that:
+      // 1. Have chats.chat_type === 'group'
+      // 2. OR have a chat_id but no chats data (could be a group chat not properly joined)
+      
+      // Check if message is linked to a chat but doesn't have the chat details
+      const hasChatIdOnly = message.chat_id && !message.chats;
+      
+      // Check if message is explicitly linked to a group chat
+      const isGroupChat = message.chats && message.chats.chat_type === 'group';
+      
+      // Only keep messages that are either:
+      // - Not linked to any chat (chat_id is null)
+      // - OR properly linked to a non-group chat
+      return !hasChatIdOnly && !isGroupChat;
+    });
+    
+    console.log(`FINAL FILTER: Removed ${interactions.length - finalFilteredMessages.length} group messages at render time`);
+    console.log('DEBUG: Final filtered messages:', finalFilteredMessages);
+    
+    // Use the filtered messages for rendering instead of original interactions
     if (loading) {
       return (
         <>
@@ -884,11 +1575,14 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       );
     }
     
-    if (!interactions.length) {
+    // If there are no filtered messages but we had interactions, that means all were group chats
+    if (!finalFilteredMessages.length) {
       return (
         <>
           <NoInteractions>
-            No WhatsApp messages found for page {currentPage}
+            {interactions.length > 0 
+              ? "All messages are group chats - check the 'WhatsApp Group Chat' tab" 
+              : "No WhatsApp messages found for page " + currentPage}
             <div style={{ fontSize: '0.85em', marginTop: '16px', color: '#4b5563' }}>
               <button 
                 type="button"
@@ -918,7 +1612,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
 
     // Calculate record ranges for display
     const startRecord = (currentPage - 1) * ITEMS_PER_PAGE + 1;
-    const endRecord = Math.min(startRecord + interactions.length - 1, totalRecords);
+    const endRecord = Math.min(startRecord + finalFilteredMessages.length - 1, totalRecords);
 
     // New styled components for WhatsApp chat interface
     const ChatContainer = styled.div`
@@ -1007,7 +1701,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
         </MessageCounter>
         
         <ChatContainer>
-          {interactions.map((interaction, index) => {
+          {finalFilteredMessages.map((interaction, index) => {
             const isIncoming = 
               interaction.direction?.toLowerCase() === 'inbound' || 
               interaction.direction?.toLowerCase() === 'incoming' ||
@@ -1302,9 +1996,16 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     try {
       console.log(`[FLEX ${page}] Starting flexible search for range ${from}-${to}`);
       
-      // Create conditions for matching last digits
-      const orConditions = mobilesArray
-        .filter(mobile => mobile && mobile.length > 7)
+      // IMPORTANT: We need the RAW mobile numbers, NOT the normalized ones
+      // Get the raw mobile numbers from contact
+      const rawMobiles = [];
+      if (contact.mobile) rawMobiles.push(contact.mobile);
+      if (contact.mobile2) rawMobiles.push(contact.mobile2);
+      console.log(`[FLEX ${page}] Raw mobile numbers:`, rawMobiles);
+      
+      // Create conditions for matching last digits using raw mobile numbers
+      const orConditions = rawMobiles
+        .filter(mobile => mobile && mobile.length > 4)
         .map(mobile => `contact_mobile.ilike.%${mobile.slice(-8)}`);
       
       if (orConditions.length === 0) {
@@ -1313,13 +2014,12 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
         return;
       }
       
-      // Build the flexible query - show individual and null chat_id messages
+      // Build the flexible query without filtering - we'll filter in JavaScript
       const flexQuery = supabase
         .from(WHATSAPP_TABLE)
         .select('*, chats:chat_id(chat_type)', { count: 'exact' })
         .order('created_at', { ascending: false })
         .or(orConditions.join(','))
-        .not('chats.chat_type', 'eq', 'group')
         .range(from, to);
       
       // Log query details
@@ -1357,8 +2057,33 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       
       // Update state with flexible search results
       if (data && data.length > 0) {
-        // Add comprehensive debug info
-        const dataWithDebug = data.map((record, index) => ({
+        // Filter out group chats in JavaScript
+        const filteredData = data.filter(message => {
+          // Log chat details for debugging
+          if (message.chat_id) {
+            console.log(`DEBUG FLEX: Message ${message.id} has chat_id ${message.chat_id}`);
+          }
+          
+          // We need to exclude any messages that:
+          // 1. Have chats.chat_type === 'group'
+          // 2. OR have a chat_id but no chats data (could be a group chat not properly joined)
+          
+          // Check if message is linked to a chat but doesn't have the chat details
+          const hasChatIdOnly = message.chat_id && !message.chats;
+          
+          // Check if message is explicitly linked to a group chat
+          const isGroupChat = message.chats && message.chats.chat_type === 'group';
+          
+          // Only keep messages that are either:
+          // - Not linked to any chat (chat_id is null)
+          // - OR properly linked to a non-group chat
+          return !hasChatIdOnly && !isGroupChat;
+        });
+        
+        console.log(`[FLEX ${page}] Filtered out ${data.length - filteredData.length} group messages in JavaScript`);
+        
+        // Add comprehensive debug info to filtered data
+        const dataWithDebug = filteredData.map((record, index) => ({
           ...record,
           _debugInfo: {
             page,
@@ -1371,11 +2096,11 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           debugId: `flex${page}-idx${index}-pos${from + index}`
         }));
         
-        console.log(`[FLEX ${page}] Setting ${dataWithDebug.length} flex records in state`);
+        console.log(`[FLEX ${page}] Setting ${dataWithDebug.length} filtered flex records in state`);
         
         setInteractions(dataWithDebug);
-        setTotalRecords(count || 0);
-        setTotalPages(Math.max(Math.ceil((count || 0) / ITEMS_PER_PAGE), 1));
+        setTotalRecords(filteredData.length);
+        setTotalPages(Math.max(Math.ceil(filteredData.length / ITEMS_PER_PAGE), 1));
       } else {
         console.log(`[FLEX ${page}] No data found, setting empty state`);
         setInteractions([]);
@@ -1419,7 +2144,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
         .from(WHATSAPP_TABLE)
         .select('*, chats:chat_id(chat_type)')
         .in('contact_mobile', mobilesArray)
-        .not('chats.chat_type', 'eq', 'group')
+        .or('chat_id.is.null,not.chats.chat_type.eq.group')
         .order('created_at', { ascending: false });
       
       const { data: allData, error: allError } = await allRecordsQuery;
@@ -1435,8 +2160,33 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       console.log(`[EMERGENCY] Total records found: ${allData?.length || 0}`);
       
       if (allData && allData.length > 0) {
+        // EXTRA FILTERING: Filter out any messages with chat_id that might be group chats
+        const filteredAllData = allData.filter(message => {
+          // Log each message's chat properties for debugging
+          if (message.chat_id) {
+            console.log(`[EMERGENCY] Message ${message.id} has chat_id ${message.chat_id}`);
+          }
+          
+          // We need to exclude any messages that:
+          // 1. Have chats.chat_type === 'group'
+          // 2. OR have a chat_id but no chats data (could be a group chat not properly joined)
+          
+          // Check if message is linked to a chat but doesn't have the chat details
+          const hasChatIdOnly = message.chat_id && !message.chats;
+          
+          // Check if message is explicitly linked to a group chat
+          const isGroupChat = message.chats && message.chats.chat_type === 'group';
+          
+          // Only keep messages that are either:
+          // - Not linked to any chat (chat_id is null)
+          // - OR properly linked to a non-group chat
+          return !hasChatIdOnly && !isGroupChat;
+        });
+        
+        console.log(`[EMERGENCY] Filtered out ${allData.length - filteredAllData.length} potential group messages`);
+        
         // Manually calculate data for this page
-        const pageData = allData.slice(offset, offset + ITEMS_PER_PAGE);
+        const pageData = filteredAllData.slice(offset, offset + ITEMS_PER_PAGE);
         
         if (pageData.length > 0) {
           console.log(`[EMERGENCY] Found ${pageData.length} records for page ${page}`);
@@ -1452,8 +2202,8 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           }));
           
           setInteractions(dataWithDebug);
-          setTotalRecords(allData.length);
-          setTotalPages(Math.max(Math.ceil(allData.length / ITEMS_PER_PAGE), 1));
+          setTotalRecords(filteredAllData.length);
+          setTotalPages(Math.max(Math.ceil(filteredAllData.length / ITEMS_PER_PAGE), 1));
         } else {
           console.log(`[EMERGENCY] No records for page ${page} (out of bounds)`);
           
@@ -1498,7 +2248,7 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
         .from(WHATSAPP_TABLE)
         .select('*, chats:chat_id(chat_type)')
         .or(orConditions.join(','))
-        .not('chats.chat_type', 'eq', 'group')
+        .or('chat_id.is.null,not.chats.chat_type.eq.group')
         .order('created_at', { ascending: false });
       
       const { data: flexData, error: flexError } = await flexQuery;
@@ -1511,8 +2261,33 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       console.log(`[EMERGENCY-FLEX] Total flex matches: ${flexData?.length || 0}`);
       
       if (flexData && flexData.length > 0) {
+        // EXTRA FILTERING: Filter out any messages with chat_id that might be group chats
+        const filteredFlexData = flexData.filter(message => {
+          // Log each message's chat properties for debugging
+          if (message.chat_id) {
+            console.log(`[EMERGENCY-FLEX] Message ${message.id} has chat_id ${message.chat_id}`);
+          }
+          
+          // We need to exclude any messages that:
+          // 1. Have chats.chat_type === 'group'
+          // 2. OR have a chat_id but no chats data (could be a group chat not properly joined)
+          
+          // Check if message is linked to a chat but doesn't have the chat details
+          const hasChatIdOnly = message.chat_id && !message.chats;
+          
+          // Check if message is explicitly linked to a group chat
+          const isGroupChat = message.chats && message.chats.chat_type === 'group';
+          
+          // Only keep messages that are either:
+          // - Not linked to any chat (chat_id is null)
+          // - OR properly linked to a non-group chat
+          return !hasChatIdOnly && !isGroupChat;
+        });
+        
+        console.log(`[EMERGENCY-FLEX] Filtered out ${flexData.length - filteredFlexData.length} potential group messages`);
+        
         // Manual pagination for flex data
-        const pageFlexData = flexData.slice(offset, offset + ITEMS_PER_PAGE);
+        const pageFlexData = filteredFlexData.slice(offset, offset + ITEMS_PER_PAGE);
         
         if (pageFlexData.length > 0) {
           console.log(`[EMERGENCY-FLEX] Found ${pageFlexData.length} flex records for page ${page}`);
@@ -1528,8 +2303,8 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           }));
           
           setInteractions(dataWithDebug);
-          setTotalRecords(flexData.length);
-          setTotalPages(Math.max(Math.ceil(flexData.length / ITEMS_PER_PAGE), 1));
+          setTotalRecords(filteredFlexData.length);
+          setTotalPages(Math.max(Math.ceil(filteredFlexData.length / ITEMS_PER_PAGE), 1));
         } else {
           console.log(`[EMERGENCY-FLEX] No flex records for page ${page} (out of bounds)`);
           setInteractions([]);
@@ -2334,51 +3109,162 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       }}
     >
       <ModalContainer>
-        <ModalHeader>
-          <div className="header-left">
-            <h2>Last Interactions</h2>
-          </div>
-          <div className="header-right">
-            {contact?.mobile && (
-              <ActionButton 
-                onClick={() => handleWhatsAppClick(contact.mobile)}
-                aria-label="WhatsApp"
-                title="Open WhatsApp"
+        <ModalHeader style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+            <div className="header-left">
+              <h2>Last Interactions</h2>
+            </div>
+            <div className="header-right">
+              <button 
+                onClick={() => setDebugMode(!debugMode)}
+                style={{ 
+                  padding: '4px 8px', 
+                  background: debugMode ? '#ff5722' : '#4a90e2', 
+                  color: 'white', 
+                  border: 'none', 
+                  borderRadius: '4px',
+                  marginRight: '10px'
+                }}
               >
-                <RiWhatsappFill size={20} />
-              </ActionButton>
-            )}
-            {contact?.email && (
-              <ActionButton 
-                onClick={() => window.open(`https://mail.superhuman.com/search/${encodeURIComponent(contact.first_name || '')}%20${encodeURIComponent(contact.last_name || '')}`, '_blank')}
-                aria-label="Email"
-                title="Search in Superhuman"
-              >
-                <FiMail size={20} />
-              </ActionButton>
-            )}
-            {contact?.linkedin_url ? (
-              <ActionButton 
-                onClick={() => window.open(contact.linkedin_url, '_blank')}
-                aria-label="LinkedIn"
-                title="Open LinkedIn"
-              >
-                <RiLinkedinBoxFill size={20} />
-              </ActionButton>
-            ) : contact?.full_name && (
-              <ActionButton 
-                onClick={() => window.open(`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(contact.full_name || '')}`, '_blank')}
-                aria-label="LinkedIn Search"
-                title="Search on LinkedIn"
-              >
-                <RiLinkedinBoxFill size={20} />
-              </ActionButton>
-            )}
-            <button onClick={onRequestClose} aria-label="Close modal">
-              <FiX size={20} />
-            </button>
+                {debugMode ? 'Hide Debug' : 'Debug Mode'}
+              </button>
+              {contact?.mobile && (
+                <ActionButton 
+                  onClick={() => handleWhatsAppClick(contact.mobile)}
+                  aria-label="WhatsApp"
+                  title="Open WhatsApp"
+                >
+                  <RiWhatsappFill size={20} />
+                </ActionButton>
+              )}
+              {contact?.email && (
+                <ActionButton 
+                  onClick={() => window.open(`https://mail.superhuman.com/search/${encodeURIComponent(contact.first_name || '')}%20${encodeURIComponent(contact.last_name || '')}`, '_blank')}
+                  aria-label="Email"
+                  title="Search in Superhuman"
+                >
+                  <FiMail size={20} />
+                </ActionButton>
+              )}
+              {contact?.linkedin_url ? (
+                <ActionButton 
+                  onClick={() => window.open(contact.linkedin_url, '_blank')}
+                  aria-label="LinkedIn"
+                  title="Open LinkedIn"
+                >
+                  <RiLinkedinBoxFill size={20} />
+                </ActionButton>
+              ) : contact?.full_name && (
+                <ActionButton 
+                  onClick={() => window.open(`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(contact.full_name || '')}`, '_blank')}
+                  aria-label="LinkedIn Search"
+                  title="Search on LinkedIn"
+                >
+                  <RiLinkedinBoxFill size={20} />
+                </ActionButton>
+              )}
+              <button onClick={onRequestClose} aria-label="Close modal">
+                <FiX size={20} />
+              </button>
+            </div>
           </div>
         </ModalHeader>
+
+        {/* Debug Controls */}
+        {debugMode && (
+          <div style={{ 
+            margin: '10px 0', 
+            padding: '8px', 
+            background: '#f0f0f0', 
+            borderRadius: '4px', 
+            border: '1px solid #ddd'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+              <strong style={{ marginRight: '10px' }}>Debug Filters:</strong>
+              <select 
+                value={debugFilter} 
+                onChange={(e) => setDebugFilter(e.target.value)}
+                style={{ padding: '4px', marginRight: '10px' }}
+              >
+                <option value="original">Original (Not Group)</option>
+                <option value="or-null-nongroup">OR (Null OR Not Group)</option>
+                <option value="null-only">Null chat_id Only</option>
+                <option value="nongroup-only">Non-Group Only</option>
+                <option value="all-messages">All Messages</option>
+                <option value="last-4-digits">Last 4 Digits</option>
+                <option value="table-scan">Recent Messages Scan</option>
+                <option value="mobile-formats">Check Mobile Formats</option>
+                <option value="direct-messages">Direct Messages Only</option>
+                <option value="analyze-messages">Analyze All Messages</option>
+              </select>
+              <button 
+                onClick={testDebugFilter}
+                style={{ padding: '4px 8px', background: '#4a90e2', color: 'white', border: 'none', borderRadius: '4px' }}
+              >
+                Test Filter
+              </button>
+            </div>
+            <div style={{ fontSize: '12px', color: '#555' }}>
+              <div>Current filter: <code>{debugFilter}</code></div>
+              <div>Results: {interactions?.length || 0} messages</div>
+              {debugFilter === 'mobile-formats' && (
+                <div style={{ marginTop: '10px' }}>
+                  <button
+                    onClick={async () => {
+                      console.log('Applying format fix to main query');
+                      
+                      // Get the contact's mobile numbers
+                      const mobile1 = contact?.mobile;
+                      const mobile2 = contact?.mobile2;
+                      
+                      // Check for mobile number format matches
+                      let formatMatches = [];
+                      if (mobile1) {
+                        formatMatches = await checkMobileFormats(mobile1);
+                      }
+                      if (formatMatches.length === 0 && mobile2) {
+                        formatMatches = await checkMobileFormats(mobile2);
+                      }
+                      
+                      if (formatMatches.length > 0) {
+                        // We found a format match, use it for the main query
+                        const bestMatch = formatMatches.find(m => m.type === 'exact-match') || formatMatches[0];
+                        console.log('Using best match format:', bestMatch);
+                        
+                        // Get example mobile formats from the database
+                        if (bestMatch.examples && bestMatch.examples.length > 0) {
+                          // Store the information in a session/debug variable
+                          window.whatsAppFormats = {
+                            originalMobile: mobile1 || mobile2,
+                            foundFormat: bestMatch.examples[0],
+                            matchType: bestMatch.type,
+                            variant: bestMatch.variant
+                          };
+                          alert('Successfully identified number format. Check console for details.');
+                        } else {
+                          alert('Found match but no examples to use. Check console for details.');
+                        }
+                      } else {
+                        alert('Could not identify matching mobile format. See console logs.');
+                      }
+                    }}
+                    style={{ 
+                      backgroundColor: '#4CAF50', 
+                      color: 'white',
+                      border: 'none',
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '12px'
+                    }}
+                  >
+                    Apply Format Fix
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Tabs */}
         <TabContainer>
