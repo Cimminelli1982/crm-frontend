@@ -170,6 +170,7 @@ const getCategoryEmoji = (category) => {
     case 'Institution': return '🏛️ Institution';
     case 'Media': return '📰 Media';
     case 'Student': return '🎓 Student';
+    case 'WhatsApp Group Contact': return '🥶 WhatsApp Group Contact';
     default: return `⚪ ${category}`;
   }
 };
@@ -297,6 +298,7 @@ const CategoryModal = ({ isOpen, onRequestClose, contact }) => {
             <option value="Student">🎓 Student</option>
             <option value="Supplier">📦 Supplier</option>
             <option value="Inbox">📬 Inbox</option>
+            <option value="WhatsApp Group Contact">🥶 WhatsApp Group Contact</option>
           </Select>
         </FormGroup>
 
