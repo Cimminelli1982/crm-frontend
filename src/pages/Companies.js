@@ -80,12 +80,12 @@ const ActionButton = styled.button`
 `;
 
 const PrimaryButton = styled(ActionButton)`
-  background-color: #3b82f6;
+  background-color: black;
   color: white;
   border: none;
   
   &:hover {
-    background-color: #2563eb;
+    background-color: #333;
   }
 `;
 
