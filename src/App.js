@@ -18,6 +18,7 @@ import Deals from './pages/companies/Deals';
 import Startups from './pages/companies/Startups';
 import Investors from './pages/companies/Investors';
 import Planner from './pages/Planner';
+import ContactEnrichment from './pages/ContactEnrichment';
 
 // Create a component that applies the layout
 const AppLayout = () => (
@@ -101,6 +102,7 @@ const App = () => {
 
             {/* Other main sections */}
             <Route path="/planner" element={<Planner />} />
+            <Route path="/contact/enrichment/:id" element={<ContactEnrichment />} />
           </Route>
         ) : (
           <Route path="*" element={<Navigate to="/login" />} />
