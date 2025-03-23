@@ -272,6 +272,30 @@ const ActionMenuItem = styled.button`
   }
 `;
 
+const DeleteButton = styled.button`
+  background-color: black;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  
+  &:hover {
+    background-color: #333;
+  }
+  
+  &.confirm {
+    background-color: #ef4444;
+    
+    &:hover {
+      background-color: #dc2626;
+    }
+  }
+`;
+
 const CategoryBadge = styled.div`
   display: inline-flex;
   align-items: center;
@@ -510,6 +534,7 @@ const Companies = () => {
   const [editingDescriptionCompanyId, setEditingDescriptionCompanyId] = useState(null);
   const [editingDescriptionValue, setEditingDescriptionValue] = useState('');
   const [actionMenuOpen, setActionMenuOpen] = useState(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null); // Track which company is in delete confirmation state
   
   // Filter counts
   const [filterCounts, setFilterCounts] = useState({
@@ -888,6 +913,21 @@ const Companies = () => {
     fetchFilterCounts();
   }, [refreshTrigger, activeFilter, sortBy, sortOrder]);
   
+  // Add event listener to handle clicks outside delete button (safety measure)
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (deleteConfirmId !== null && !e.target.closest('button')) {
+        setDeleteConfirmId(null);
+      }
+    };
+    
+    document.addEventListener('click', handleClickOutside);
+    
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [deleteConfirmId]);
+  
   // Listen for custom events to open contact modal
   useEffect(() => {
     const handleOpenContactModal = (event) => {
@@ -1220,6 +1260,7 @@ const Companies = () => {
     setShowContactModal(false);
     setSelectedCompany(null);
     setSelectedContact(null);
+    setDeleteConfirmId(null); // Reset any delete confirmation
     // Refresh the companies list to show any newly created company
     setRefreshTrigger(prev => prev + 1);
   };
@@ -1227,6 +1268,66 @@ const Companies = () => {
   // Handle action menu toggle
   const handleActionMenuToggle = (companyId) => {
     setActionMenuOpen(actionMenuOpen === companyId ? null : companyId);
+  };
+  
+  // Handle delete company - first click sets confirmation state
+  const handleDeleteCompany = async (companyId) => {
+    // If already in delete confirmation mode for this company
+    if (deleteConfirmId === companyId) {
+      try {
+        // First, delete all associated records from junction tables
+        
+        // Delete company-tag relationships
+        const { error: tagsError } = await supabase
+          .from('companies_tags')
+          .delete()
+          .eq('company_id', companyId);
+          
+        if (tagsError) console.error('Error deleting company tags:', tagsError);
+        
+        // Delete company-city relationships
+        const { error: citiesError } = await supabase
+          .from('companies_cities')
+          .delete()
+          .eq('company_id', companyId);
+          
+        if (citiesError) console.error('Error deleting company cities:', citiesError);
+        
+        // Delete company-contact relationships
+        const { error: contactsError } = await supabase
+          .from('contact_companies')
+          .delete()
+          .eq('company_id', companyId);
+          
+        if (contactsError) console.error('Error deleting company contacts:', contactsError);
+        
+        // Finally, delete the company
+        const { error: companyError } = await supabase
+          .from('companies')
+          .delete()
+          .eq('id', companyId);
+          
+        if (companyError) throw companyError;
+        
+        // Update local state to remove the company
+        setCompanies(companies.filter(company => company.id !== companyId));
+        
+        // Reset confirmation state
+        setDeleteConfirmId(null);
+      } catch (error) {
+        console.error('Error deleting company:', error);
+        // Reset confirmation state on error
+        setDeleteConfirmId(null);
+      }
+    } else {
+      // First click, set confirmation state
+      setDeleteConfirmId(companyId);
+      
+      // Auto-reset after 5 seconds for safety
+      setTimeout(() => {
+        setDeleteConfirmId(current => current === companyId ? null : current);
+      }, 5000);
+    }
   };
   
   // Get filter title based on active filter
@@ -1469,28 +1570,13 @@ const Companies = () => {
                     <CompanyName title={company.name}>
                       {formatCompanyName(company.name)}
                     </CompanyName>
-                    <ActionMenu>
-                      <ActionMenuToggle 
-                        onClick={() => handleActionMenuToggle(company.id)}
-                        title="Company actions"
-                      >
-                        <FaEllipsisH />
-                      </ActionMenuToggle>
-                      <ActionMenuDropdown isOpen={actionMenuOpen === company.id}>
-                        <ActionMenuItem onClick={() => handleOpenCompanyModal(company)}>
-                          <FiEdit size={14} />
-                          Edit Company
-                        </ActionMenuItem>
-                        <ActionMenuItem onClick={() => handleOpenTagsModal(company)}>
-                          <FiTag size={14} />
-                          Manage Tags
-                        </ActionMenuItem>
-                        <ActionMenuItem onClick={() => handleOpenCityModal(company)}>
-                          <FiMapPin size={14} />
-                          Manage Cities
-                        </ActionMenuItem>
-                      </ActionMenuDropdown>
-                    </ActionMenu>
+                    <DeleteButton 
+                      onClick={() => handleDeleteCompany(company.id)}
+                      className={deleteConfirmId === company.id ? 'confirm' : ''}
+                      title={deleteConfirmId === company.id ? "Click again to confirm deletion" : "Delete company"}
+                    >
+                      {deleteConfirmId === company.id ? "Confirm" : "Delete"}
+                    </DeleteButton>
                   </CompanyHeader>
                 </div>
                 
