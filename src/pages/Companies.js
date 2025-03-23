@@ -282,6 +282,7 @@ const DeleteButton = styled.button`
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.2s;
+  margin-left: 5px;
   
   &:hover {
     background-color: #333;
@@ -292,6 +293,31 @@ const DeleteButton = styled.button`
     
     &:hover {
       background-color: #dc2626;
+    }
+  }
+`;
+
+const SkipButton = styled.button`
+  background-color: #6B7280;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  margin-left: 5px;
+  
+  &:hover {
+    background-color: #4B5563;
+  }
+  
+  &.confirm {
+    background-color: #9CA3AF;
+    
+    &:hover {
+      background-color: #6B7280;
     }
   }
 `;
@@ -535,6 +561,7 @@ const Companies = () => {
   const [editingDescriptionValue, setEditingDescriptionValue] = useState('');
   const [actionMenuOpen, setActionMenuOpen] = useState(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null); // Track which company is in delete confirmation state
+  const [skipConfirmId, setSkipConfirmId] = useState(null); // Track which company is in skip confirmation state
   
   // Filter counts
   const [filterCounts, setFilterCounts] = useState({
@@ -950,8 +977,9 @@ const Companies = () => {
   // Add event listener to handle clicks outside delete button (safety measure)
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (deleteConfirmId !== null && !e.target.closest('button')) {
+      if ((deleteConfirmId !== null || skipConfirmId !== null) && !e.target.closest('button')) {
         setDeleteConfirmId(null);
+        setSkipConfirmId(null);
       }
     };
     
@@ -960,7 +988,7 @@ const Companies = () => {
     return () => {
       document.removeEventListener('click', handleClickOutside);
     };
-  }, [deleteConfirmId]);
+  }, [deleteConfirmId, skipConfirmId]);
   
   // Listen for custom events to open contact modal
   useEffect(() => {
@@ -1295,6 +1323,7 @@ const Companies = () => {
     setSelectedCompany(null);
     setSelectedContact(null);
     setDeleteConfirmId(null); // Reset any delete confirmation
+    setSkipConfirmId(null); // Reset any skip confirmation
     // Refresh the companies list to show any newly created company
     setRefreshTrigger(prev => prev + 1);
   };
@@ -1302,6 +1331,42 @@ const Companies = () => {
   // Handle action menu toggle
   const handleActionMenuToggle = (companyId) => {
     setActionMenuOpen(actionMenuOpen === companyId ? null : companyId);
+  };
+  
+  // Handle skip company - change category to Skip so it disappears from view
+  const handleSkipCompany = async (companyId) => {
+    // If already in skip confirmation mode for this company
+    if (skipConfirmId === companyId) {
+      try {
+        // Update company category to "Skip"
+        const { error } = await supabase
+          .from('companies')
+          .update({ category: 'Skip', modified_at: new Date() })
+          .eq('id', companyId);
+          
+        if (error) throw error;
+        
+        // Update local state to remove the company
+        setCompanies(companies.filter(company => company.id !== companyId));
+        
+        // Reset confirmation state
+        setSkipConfirmId(null);
+      } catch (error) {
+        console.error('Error setting company to Skip:', error);
+        // Reset confirmation state on error
+        setSkipConfirmId(null);
+      }
+    } else {
+      // First click, set confirmation state
+      setSkipConfirmId(companyId);
+      // Reset delete confirmation if it was active
+      setDeleteConfirmId(null);
+      
+      // Auto-reset after 5 seconds for safety
+      setTimeout(() => {
+        setSkipConfirmId(current => current === companyId ? null : current);
+      }, 5000);
+    }
   };
   
   // Handle delete company - first click sets confirmation state
@@ -1356,6 +1421,8 @@ const Companies = () => {
     } else {
       // First click, set confirmation state
       setDeleteConfirmId(companyId);
+      // Reset skip confirmation if it was active
+      setSkipConfirmId(null);
       
       // Auto-reset after 5 seconds for safety
       setTimeout(() => {
@@ -1604,13 +1671,22 @@ const Companies = () => {
                     <CompanyName title={company.name}>
                       {formatCompanyName(company.name)}
                     </CompanyName>
-                    <DeleteButton 
-                      onClick={() => handleDeleteCompany(company.id)}
-                      className={deleteConfirmId === company.id ? 'confirm' : ''}
-                      title={deleteConfirmId === company.id ? "Click again to confirm deletion" : "Delete company"}
-                    >
-                      {deleteConfirmId === company.id ? "Confirm" : "Delete"}
-                    </DeleteButton>
+                    <div style={{ display: 'flex' }}>
+                      <SkipButton 
+                        onClick={() => handleSkipCompany(company.id)}
+                        className={skipConfirmId === company.id ? 'confirm' : ''}
+                        title={skipConfirmId === company.id ? "Click again to confirm setting category to Skip" : "Skip company"}
+                      >
+                        {skipConfirmId === company.id ? "Confirm" : "Skip"}
+                      </SkipButton>
+                      <DeleteButton 
+                        onClick={() => handleDeleteCompany(company.id)}
+                        className={deleteConfirmId === company.id ? 'confirm' : ''}
+                        title={deleteConfirmId === company.id ? "Click again to confirm deletion" : "Delete company"}
+                      >
+                        {deleteConfirmId === company.id ? "Confirm" : "Delete"}
+                      </DeleteButton>
+                    </div>
                   </CompanyHeader>
                 </div>
                 
