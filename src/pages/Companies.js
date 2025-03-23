@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabaseClient';
 import { FiFilter, FiSearch, FiPlus, FiChevronDown, FiClock, FiAlertCircle, FiRefreshCw, FiGlobe, FiMapPin, FiEdit, FiTag, FiLinkedin } from 'react-icons/fi';
 import { FaBuilding, FaEllipsisH, FaTimesCircle } from 'react-icons/fa';
 import Modal from 'react-modal';
+import Select from 'react-select';
 import CompanyModal from '../components/modals/CompanyModal';
 import TagsModal from '../components/modals/TagsModal';
 import CityModal from '../components/modals/CityModal';
@@ -106,69 +107,14 @@ const SearchContainer = styled.div`
   background-color: white;
   border: 1px solid black;
   border-radius: 0.375rem;
-  overflow: hidden;
+  overflow: visible;
   margin-top: 1rem;
   box-shadow: none;
-`;
-
-const SearchDropdown = styled.div`
   position: relative;
-  min-width: 140px;
-  border-right: 1px solid black;
+  z-index: 1;
 `;
 
-const DropdownButton = styled.button`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 0.625rem 1rem;
-  font-size: 0.875rem;
-  color: black;
-  background: none;
-  border: none;
-  cursor: pointer;
-  
-  &:hover {
-    background-color: rgba(0, 0, 0, 0.05);
-  }
-`;
-
-const DropdownMenu = styled.div`
-  position: absolute;
-  top: 100%;
-  left: 0;
-  width: 100%;
-  background-color: white;
-  border: 1px solid black;
-  border-radius: 0.375rem;
-  box-shadow: none;
-  z-index: 50;
-  max-height: 250px;
-  overflow-y: auto;
-  display: ${props => props.isOpen ? 'block' : 'none'};
-`;
-
-const DropdownItem = styled.button`
-  display: block;
-  width: 100%;
-  padding: 0.5rem 1rem;
-  text-align: left;
-  font-size: 0.875rem;
-  color: black;
-  background: none;
-  border: none;
-  cursor: pointer;
-  
-  &:hover {
-    background-color: rgba(0, 0, 0, 0.05);
-  }
-  
-  &.active {
-    background-color: rgba(0, 0, 0, 0.1);
-    font-weight: 500;
-  }
-`;
+// Removed unused dropdown styled components as we're now using a native select
 
 const SearchInput = styled.input`
   flex: 1;
@@ -561,7 +507,6 @@ const Companies = () => {
   const [filteredCount, setFilteredCount] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [searchField, setSearchField] = useState('name');
-  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -788,11 +733,60 @@ const Companies = () => {
       // Apply search filters for related entities
       if (searchTerm.length >= 3) {
         if (searchField === 'contact') {
+          // First, make sure we have contacts data
+          try {
+            // For contact search, we need to ensure we have all the contacts data
+            const { data: contactsData, error: contactsError } = await supabase
+              .from('contact_companies')
+              .select(`
+                company_id,
+                contact_id,
+                contacts:contact_id (id, first_name, last_name, email, mobile)
+              `);
+              
+            if (!contactsError && contactsData) {
+              // Group contacts by company and update allCompanies
+              const contactsByCompany = {};
+              contactsData.forEach(item => {
+                if (item.company_id && item.contacts) {
+                  if (!contactsByCompany[item.company_id]) {
+                    contactsByCompany[item.company_id] = [];
+                  }
+                  contactsByCompany[item.company_id].push(item.contacts);
+                }
+              });
+              
+              // Update contacts for all companies
+              allCompanies = allCompanies.map(company => ({
+                ...company,
+                contacts: contactsByCompany[company.id] || []
+              }));
+            }
+          } catch (e) {
+            console.error('Error fetching contact data for search:', e);
+          }
+          
+          // Now filter by contacts
           allCompanies = allCompanies.filter(company => 
-            company.contacts.some(contact => 
-              (contact.first_name && contact.first_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-              (contact.last_name && contact.last_name.toLowerCase().includes(searchTerm.toLowerCase()))
-            )
+            company.contacts && company.contacts.some(contact => {
+              if (!contact) return false;
+              
+              const firstName = contact.first_name || '';
+              const lastName = contact.last_name || '';
+              const email = contact.email || '';
+              const mobile = contact.mobile || '';
+              
+              const fullName = `${firstName} ${lastName}`.toLowerCase();
+              const searchLower = searchTerm.toLowerCase();
+              
+              return (
+                fullName.includes(searchLower) ||
+                firstName.toLowerCase().includes(searchLower) ||
+                lastName.toLowerCase().includes(searchLower) ||
+                email.toLowerCase().includes(searchLower) ||
+                mobile.toLowerCase().includes(searchLower)
+              );
+            })
           );
         } else if (searchField === 'tags') {
           allCompanies = allCompanies.filter(company => 
@@ -908,6 +902,8 @@ const Companies = () => {
     fetchFilterCounts();
   }, [refreshTrigger, activeFilter, sortBy, sortOrder]);
   
+  // We're using a native select now, so no custom dropdown state needed
+  
   // Handle search input change
   const handleSearch = (e) => {
     const value = e.target.value;
@@ -921,9 +917,19 @@ const Companies = () => {
   
   // Handle search field change
   const handleSearchFieldChange = (field) => {
+    if (field === searchField) {
+      return;
+    }
+    
     setSearchField(field);
-    setDropdownOpen(false);
     setSearchTerm('');
+    setActiveFilter(null); // Reset any active filters
+    
+    // If selected related contact, ensure contacts are loaded
+    if (field === 'contact') {
+      // Trigger a refresh to load the contact data
+      setRefreshTrigger(prev => prev + 1);
+    }
   };
   
   // Handle filter button click
@@ -1137,26 +1143,89 @@ const Companies = () => {
         </HeaderContent>
         
         <SearchContainer>
-          <SearchDropdown>
-            <DropdownButton onClick={() => setDropdownOpen(!dropdownOpen)}>
-              {searchFields.find(f => f.id === searchField)?.label}
-              <FiChevronDown />
-            </DropdownButton>
-            <DropdownMenu isOpen={dropdownOpen}>
-              {searchFields.map(field => (
-                <DropdownItem 
-                  key={field.id}
-                  className={field.id === searchField ? 'active' : ''}
-                  onClick={() => handleSearchFieldChange(field.id)}
-                >
-                  {field.label}
-                </DropdownItem>
-              ))}
-            </DropdownMenu>
-          </SearchDropdown>
+          <div 
+            id="searchDropdownContainer"
+            style={{
+              minWidth: '160px',
+              borderRight: '1px solid black',
+              display: 'flex',
+              alignItems: 'center'
+            }}
+          >
+            <Select
+              value={searchFields.find(option => option.id === searchField)}
+              onChange={(selectedOption) => handleSearchFieldChange(selectedOption.id)}
+              options={searchFields}
+              getOptionLabel={(option) => option.label}
+              getOptionValue={(option) => option.id}
+              isSearchable={false}
+              menuPortalTarget={document.body}
+              menuPosition="fixed"
+              styles={{
+                container: (provided) => ({
+                  ...provided,
+                  width: '100%',
+                  zIndex: 9999,
+                }),
+                control: (provided) => ({
+                  ...provided,
+                  border: 'none',
+                  boxShadow: 'none',
+                  background: 'none',
+                  minHeight: 'unset',
+                  padding: '0.2rem 0',
+                  cursor: 'pointer'
+                }),
+                indicatorSeparator: () => ({
+                  display: 'none'
+                }),
+                dropdownIndicator: (provided) => ({
+                  ...provided,
+                  padding: '0 8px',
+                  color: 'black'
+                }),
+                menu: (provided) => ({
+                  ...provided,
+                  width: '100%',
+                  marginTop: '2px',
+                  borderRadius: '0.375rem',
+                  border: '1px solid black',
+                  boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                  zIndex: 9999,
+                  position: 'absolute'
+                }),
+                menuPortal: (provided) => ({
+                  ...provided,
+                  zIndex: 9999
+                }),
+                option: (provided, state) => ({
+                  ...provided,
+                  padding: '0.5rem 1rem',
+                  color: state.isFocused ? 'white' : state.isSelected ? 'black' : 'black',
+                  backgroundColor: state.isFocused ? 'black' : 'white',
+                  fontWeight: state.isSelected ? '600' : 'normal',
+                  cursor: 'pointer',
+                  '&:hover': {
+                    backgroundColor: 'black',
+                    color: 'white'
+                  }
+                }),
+                singleValue: (provided) => ({
+                  ...provided,
+                  color: 'black',
+                  fontSize: '0.875rem',
+                  fontWeight: '500'
+                }),
+                valueContainer: (provided) => ({
+                  ...provided,
+                  padding: '0 8px',
+                })
+              }}
+            />
+          </div>
           <SearchInput 
             type="text" 
-            placeholder={`Search by ${searchFields.find(f => f.id === searchField)?.label.toLowerCase()}...`} 
+            placeholder={`Search by ${searchField === 'name' ? 'company name' : searchFields.find(f => f.id === searchField)?.label.toLowerCase()}...`} 
             value={searchTerm}
             onChange={handleSearch}
           />
@@ -1282,22 +1351,40 @@ const Companies = () => {
                     {company.category || "Uncategorized"}
                   </CategoryBadge>
                   {showCategoryDropdown && editingCategoryCompanyId === company.id && (
-                    <DropdownMenu isOpen={true} style={{ 
+                    <div style={{ 
                       position: 'absolute', 
                       top: '30px', 
                       left: '0',
                       width: '200px', 
-                      zIndex: 100
+                      zIndex: 100,
+                      background: 'white',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '4px',
+                      boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+                      overflow: 'hidden'
                     }}>
                       {COMPANY_CATEGORIES.map(category => (
-                        <DropdownItem 
+                        <button 
                           key={category} 
                           onClick={() => handleCategorySelect(category)}
+                          style={{
+                            display: 'block',
+                            width: '100%',
+                            padding: '0.5rem 1rem',
+                            textAlign: 'left',
+                            fontSize: '0.875rem',
+                            color: 'black',
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer'
+                          }}
+                          onMouseOver={(e) => e.target.style.backgroundColor = 'rgba(0, 0, 0, 0.05)'}
+                          onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
                         >
                           {category}
-                        </DropdownItem>
+                        </button>
                       ))}
-                    </DropdownMenu>
+                    </div>
                   )}
                 </EditableBadge>
                 
