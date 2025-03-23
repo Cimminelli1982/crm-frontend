@@ -945,7 +945,7 @@ const Companies = () => {
   
   // Handle creating a new company
   const handleAddCompany = () => {
-    setSelectedCompany(null);
+    setSelectedCompany(null); // Set to null to indicate we're creating a new company
     setShowCompanyModal(true);
   };
   
@@ -1220,6 +1220,7 @@ const Companies = () => {
     setShowContactModal(false);
     setSelectedCompany(null);
     setSelectedContact(null);
+    // Refresh the companies list to show any newly created company
     setRefreshTrigger(prev => prev + 1);
   };
   

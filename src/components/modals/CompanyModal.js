@@ -98,7 +98,7 @@ const CompanyTag = styled.div`
 const SearchContainer = styled.div`
   position: relative;
   margin-bottom: 16px;
-  width: 90%;
+  width: 85%; /* Adjusted to match dropdown width */
 `;
 
 const SearchIcon = styled.div`
@@ -134,6 +134,7 @@ const SuggestionsContainer = styled.div`
   background-color: white;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   z-index: 10;
+  width: 87%; /* Match the width of the search container */
 `;
 
 const SuggestionItem = styled.button`
@@ -654,18 +655,20 @@ const NewCompanyModal = ({ isOpen, onClose, onSave }) => {
               })}
             </TagsList>
 
-            <SearchContainer>
-              <SearchIcon>
-                <FiSearch size={16} />
-              </SearchIcon>
-              <SearchInput
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search or create new tag..."
-                onFocus={() => setShowTagSuggestions(true)}
-              />
-            </SearchContainer>
+            <FormGroup style={{ width: '87%' }}>
+              <SearchContainer style={{ width: '100%' }}>
+                <SearchIcon>
+                  <FiSearch size={16} />
+                </SearchIcon>
+                <SearchInput
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search or create new tag..."
+                  onFocus={() => setShowTagSuggestions(true)}
+                />
+              </SearchContainer>
+            </FormGroup>
 
             {showTagSuggestions && searchTerm.length >= 3 && (
               <SuggestionsContainer>
@@ -733,9 +736,19 @@ const CompanyModal = ({ isOpen, onRequestClose, contact }) => {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showNewCompanyModal, setShowNewCompanyModal] = useState(false);
 
+  // If contact is null, show the new company modal
+  useEffect(() => {
+    if (isOpen && contact === null) {
+      setShowNewCompanyModal(true);
+    }
+  }, [isOpen, contact]);
+
   // Fetch related companies for the contact
   const fetchRelatedCompanies = async () => {
     try {
+      // Skip if contact is null (creating new company)
+      if (!contact || !contact.id) return;
+      
       console.log('Fetching related companies for contact ID:', contact.id);
       
       // First check if the contact_companies table exists
@@ -990,7 +1003,17 @@ const CompanyModal = ({ isOpen, onRequestClose, contact }) => {
   };
 
   const handleCreateCompany = (newCompany) => {
-    // Add the newly created company to the contact
+    // If creating a new company without a contact (from Companies page)
+    if (!contact) {
+      // Just close the modal after creating the company
+      setMessage({ type: 'success', text: 'Company created successfully' });
+      setTimeout(() => {
+        onRequestClose();
+      }, 1500);
+      return;
+    }
+    
+    // Otherwise add the newly created company to the contact
     handleAddCompany(newCompany);
   };
 
@@ -1095,7 +1118,7 @@ const CompanyModal = ({ isOpen, onRequestClose, contact }) => {
       >
         <div style={{ padding: '1rem' }}>
           <ModalHeader>
-            <h2>Manage Companies</h2>
+            <h2>{contact ? "Manage Companies" : "Create Company"}</h2>
             <button onClick={onRequestClose} aria-label="Close modal">
               <FiX size={20} />
             </button>
@@ -1133,17 +1156,19 @@ const CompanyModal = ({ isOpen, onRequestClose, contact }) => {
 
           <Section>
             <SectionTitle>Add Companies</SectionTitle>
-            <SearchContainer>
-              <SearchIcon>
-                <FiSearch size={16} />
-              </SearchIcon>
-              <SearchInput
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search for a company (type at least 3 letters)..."
-              />
-            </SearchContainer>
+            <FormGroup style={{ width: '87%' }}>
+              <SearchContainer style={{ width: '100%' }}>
+                <SearchIcon>
+                  <FiSearch size={16} />
+                </SearchIcon>
+                <SearchInput
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search for a company (type at least 3 letters)..."
+                />
+              </SearchContainer>
+            </FormGroup>
 
             {showSuggestions && (
               <SuggestionsContainer>
