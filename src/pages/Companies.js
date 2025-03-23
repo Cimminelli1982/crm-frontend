@@ -562,10 +562,11 @@ const Companies = () => {
     try {
       setIsLoading(true);
       
-      // First, fetch all companies
+      // First, fetch all companies (excluding 'Skip' category)
       const { data: companiesData, error: companiesError } = await supabase
         .from('companies')
-        .select('*');
+        .select('*')
+        .neq('category', 'Skip'); // Filter out companies with 'Skip' category
       
       if (companiesError) throw companiesError;
       
@@ -622,14 +623,22 @@ const Companies = () => {
       
       // Now fetch the related data for each entity separately (more reliable)
       try {
-        // Fetch tags for all companies
+        // Get array of company IDs (all non-Skip companies)
+        const companyIds = allCompanies.map(company => company.id);
+        
+        if (companyIds.length === 0) {
+          return; // No companies to fetch related data for
+        }
+        
+        // Fetch tags for all filtered companies
         const { data: tagsData, error: tagsError } = await supabase
           .from('companies_tags')
           .select(`
             company_id,
             tag_id,
             tags:tag_id (id, name)
-          `);
+          `)
+          .in('company_id', companyIds); // Only get tags for non-Skip companies
           
         if (!tagsError && tagsData) {
           // Group tags by company
@@ -654,14 +663,22 @@ const Companies = () => {
       }
       
       try {
-        // Fetch cities for all companies
+        // Get array of company IDs again (in case it changed)
+        const companyIds = allCompanies.map(company => company.id);
+        
+        if (companyIds.length === 0) {
+          return; // No companies to fetch related data for
+        }
+        
+        // Fetch cities for all filtered companies
         const { data: citiesData, error: citiesError } = await supabase
           .from('companies_cities')
           .select(`
             company_id,
             city_id,
             cities:city_id (id, name)
-          `);
+          `)
+          .in('company_id', companyIds); // Only get cities for non-Skip companies
           
         if (!citiesError && citiesData) {
           // Group cities by company
@@ -686,14 +703,22 @@ const Companies = () => {
       }
       
       try {
-        // Fetch contacts for all companies
+        // Get array of company IDs again (in case it changed)
+        const companyIds = allCompanies.map(company => company.id);
+        
+        if (companyIds.length === 0) {
+          return; // No companies to fetch related data for
+        }
+        
+        // Fetch contacts for all filtered companies
         const { data: contactsData, error: contactsError } = await supabase
           .from('contact_companies')
           .select(`
             company_id,
             contact_id,
             contacts:contact_id (id, first_name, last_name, last_interaction)
-          `);
+          `)
+          .in('company_id', companyIds); // Only get contacts for non-Skip companies
           
         if (!contactsError && contactsData) {
           // Group contacts by company
@@ -746,6 +771,13 @@ const Companies = () => {
         if (searchField === 'contact') {
           // First, make sure we have contacts data
           try {
+            // Get array of company IDs (all current non-Skip companies)
+            const companyIds = allCompanies.map(company => company.id);
+            
+            if (companyIds.length === 0) {
+              return; // No companies to fetch related data for
+            }
+            
             // For contact search, we need to ensure we have all the contacts data
             const { data: contactsData, error: contactsError } = await supabase
               .from('contact_companies')
@@ -753,7 +785,8 @@ const Companies = () => {
                 company_id,
                 contact_id,
                 contacts:contact_id (id, first_name, last_name, email, mobile)
-              `);
+              `)
+              .in('company_id', companyIds); // Only get contacts for non-Skip companies
               
             if (!contactsError && contactsData) {
               // Group contacts by company and update allCompanies
@@ -824,10 +857,11 @@ const Companies = () => {
   // Fetch total count and filter counts
   const fetchFilterCounts = async () => {
     try {
-      // Get all companies to calculate counts client-side
+      // Get all companies to calculate counts client-side (excluding 'Skip' category)
       const { data: allCompaniesData, error: companiesError } = await supabase
         .from('companies')
-        .select('*');
+        .select('*')
+        .neq('category', 'Skip'); // Filter out companies with 'Skip' category
       
       if (companiesError) throw companiesError;
       
