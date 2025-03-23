@@ -11,12 +11,12 @@ const PageHeader = styled.div`
   h1 {
     font-size: 1.5rem;
     font-weight: 600;
-    color: #111827;
+    color: white;
     margin-bottom: 8px;
   }
   
   p {
-    color: #6b7280;
+    color: white;
     font-size: 0.875rem;
   }
 `;
