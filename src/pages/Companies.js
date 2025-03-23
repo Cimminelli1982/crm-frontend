@@ -945,6 +945,87 @@ const Companies = () => {
     setShowCityModal(true);
   };
   
+  // Handle removing a tag from a company
+  const handleRemoveTag = async (companyId, tagId) => {
+    try {
+      const { error } = await supabase
+        .from('companies_tags')
+        .delete()
+        .eq('company_id', companyId)
+        .eq('tag_id', tagId);
+      
+      if (error) throw error;
+      
+      // Update local state
+      setCompanies(companies.map(company => {
+        if (company.id === companyId) {
+          return {
+            ...company,
+            tags: company.tags.filter(tag => tag.id !== tagId)
+          };
+        }
+        return company;
+      }));
+      
+    } catch (error) {
+      console.error('Error removing tag:', error);
+    }
+  };
+  
+  // Handle removing a city from a company
+  const handleRemoveCity = async (companyId, cityId) => {
+    try {
+      const { error } = await supabase
+        .from('companies_cities')
+        .delete()
+        .eq('company_id', companyId)
+        .eq('city_id', cityId);
+      
+      if (error) throw error;
+      
+      // Update local state
+      setCompanies(companies.map(company => {
+        if (company.id === companyId) {
+          return {
+            ...company,
+            cities: company.cities.filter(city => city.id !== cityId)
+          };
+        }
+        return company;
+      }));
+      
+    } catch (error) {
+      console.error('Error removing city:', error);
+    }
+  };
+  
+  // Handle removing a contact from a company
+  const handleRemoveContact = async (companyId, contactId) => {
+    try {
+      const { error } = await supabase
+        .from('contact_companies')
+        .delete()
+        .eq('company_id', companyId)
+        .eq('contact_id', contactId);
+      
+      if (error) throw error;
+      
+      // Update local state
+      setCompanies(companies.map(company => {
+        if (company.id === companyId) {
+          return {
+            ...company,
+            contacts: company.contacts.filter(contact => contact.id !== contactId)
+          };
+        }
+        return company;
+      }));
+      
+    } catch (error) {
+      console.error('Error removing contact:', error);
+    }
+  };
+  
   // Handle category inline edit
   const handleCategoryClick = (company) => {
     setEditingCategoryCompanyId(company.id);
@@ -1011,13 +1092,10 @@ const Companies = () => {
           company
       ));
       
-      // Clean up
+      // Clean up and close editor
       setEditingDescriptionCompanyId(null);
       setEditingDescriptionValue('');
       setEditingDescription(false);
-      
-      // Refresh data
-      setRefreshTrigger(prev => prev + 1);
       
     } catch (error) {
       console.error('Error updating company description:', error);
@@ -1365,6 +1443,16 @@ const Companies = () => {
                         }}
                         value={editingDescriptionValue}
                         onChange={e => setEditingDescriptionValue(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Escape') {
+                            setEditingDescription(false);
+                            setEditingDescriptionCompanyId(null);
+                          } else if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleDescriptionSave();
+                          }
+                        }}
+                        autoFocus
                       />
                       <div style={{ 
                         display: 'flex', 
@@ -1372,13 +1460,27 @@ const Companies = () => {
                         marginTop: '5px',
                         gap: '5px'
                       }}>
-                        <button onClick={() => setEditingDescription(false)} style={{
-                          padding: '2px 6px',
-                          fontSize: '0.75rem',
-                          border: '1px solid #d1d5db',
-                          borderRadius: '4px',
-                          background: 'white'
+                        <span style={{ 
+                          fontSize: '0.7rem', 
+                          color: '#6b7280', 
+                          marginRight: 'auto',
+                          alignSelf: 'center'
                         }}>
+                          Press Esc to cancel, Enter to save
+                        </span>
+                        <button 
+                          onClick={() => {
+                            setEditingDescription(false);
+                            setEditingDescriptionCompanyId(null);
+                          }} 
+                          style={{
+                            padding: '2px 6px',
+                            fontSize: '0.75rem',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '4px',
+                            background: 'white'
+                          }}
+                        >
                           Cancel
                         </button>
                         <button onClick={handleDescriptionSave} style={{
@@ -1417,6 +1519,21 @@ const Companies = () => {
                               textColor={color.text}
                             >
                               {tag.name}
+                              <span 
+                                style={{ 
+                                  marginLeft: '4px', 
+                                  cursor: 'pointer',
+                                  fontWeight: 'bold',
+                                  fontSize: '10px'
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveTag(company.id, tag.id);
+                                }}
+                                title="Remove tag"
+                              >
+                                ×
+                              </span>
                             </Tag>
                           );
                         })}
@@ -1441,6 +1558,21 @@ const Companies = () => {
                             <CityBadge key={city.id}>
                               {flag && <span className="flag">{flag}</span>}
                               {city.name}
+                              <span 
+                                style={{ 
+                                  marginLeft: '4px', 
+                                  cursor: 'pointer',
+                                  fontWeight: 'bold',
+                                  fontSize: '10px'
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveCity(company.id, city.id);
+                                }}
+                                title="Remove city"
+                              >
+                                ×
+                              </span>
                             </CityBadge>
                           );
                         })}
@@ -1498,6 +1630,21 @@ const Companies = () => {
                         {company.contacts.slice(0, 2).map(contact => (
                           <ContactBadge key={contact.id}>
                             {formatContactName(contact)}
+                            <span 
+                              style={{ 
+                                marginLeft: '4px', 
+                                cursor: 'pointer',
+                                fontWeight: 'bold',
+                                fontSize: '10px'
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveContact(company.id, contact.id);
+                              }}
+                              title="Remove contact"
+                            >
+                              ×
+                            </span>
                           </ContactBadge>
                         ))}
                         {company.contacts.length > 2 && (
