@@ -1670,8 +1670,8 @@ const Companies = () => {
                           </Tag>
                         )}
                         <Tag 
-                          color="black" 
-                          textColor="white"
+                          color="white" 
+                          textColor="black"
                           style={{ 
                             cursor: 'pointer', 
                             minWidth: '22px',
@@ -1682,7 +1682,8 @@ const Companies = () => {
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            fontWeight: 'bold'
+                            fontWeight: 'bold',
+                            border: '1px solid black'
                           }}
                           onClick={() => handleOpenTagsModal(company)}
                         >
@@ -1691,9 +1692,9 @@ const Companies = () => {
                       </>
                     ) : (
                       <Tag 
-                        color="black" 
-                        textColor="white"
-                        style={{ cursor: 'pointer' }}
+                        color="white" 
+                        textColor="black"
+                        style={{ cursor: 'pointer', border: '1px solid black' }}
                         onClick={() => handleOpenTagsModal(company)}
                       >
                         + Add Tags
@@ -1801,7 +1802,12 @@ const Companies = () => {
                           {company.contacts.slice(0, 2).map(contact => (
                             <ContactBadge 
                               key={contact.id}
-                              style={{ cursor: 'pointer' }}
+                              style={{ 
+                                cursor: 'pointer',
+                                backgroundColor: 'black',
+                                color: 'white',
+                                borderColor: 'black'
+                              }}
                               onClick={() => handleContactClick(contact.id)}
                             >
                               {formatContactName(contact)}
@@ -1825,7 +1831,12 @@ const Companies = () => {
                           {company.contacts.length > 2 && (
                             <ContactBadge
                               title={company.contacts.slice(2).map(contact => formatContactName(contact)).join(', ')}
-                              style={{ cursor: 'pointer' }}
+                              style={{ 
+                                cursor: 'pointer',
+                                backgroundColor: 'black',
+                                color: 'white',
+                                borderColor: 'black'
+                              }}
                               onClick={() => handleOpenContactsModal(company)}
                             >
                               +{company.contacts.length - 2} more
@@ -1840,19 +1851,10 @@ const Companies = () => {
                           backgroundColor: 'black',
                           color: 'white',
                           borderColor: 'black',
-                          minWidth: '22px',
-                          width: company.contacts && company.contacts.length === 0 ? 'auto' : '22px',
-                          height: company.contacts && company.contacts.length === 0 ? 'auto' : '22px',
-                          borderRadius: company.contacts && company.contacts.length === 0 ? '16px' : '50%',
-                          padding: company.contacts && company.contacts.length === 0 ? '0.25rem 0.5rem' : '0',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontWeight: 'bold'
                         }}
                         onClick={() => handleOpenContactsModal(company)}
                       >
-                        {company.contacts && company.contacts.length === 0 ? '+ Add Contact' : '+'}
+                        + Add
                       </ContactBadge>
                     </RelatedContactsList>
                   </RelatedContactsContainer>

@@ -332,17 +332,15 @@ const CompanyContactsModal = ({ isOpen, onRequestClose, company, onContactClick 
       console.log('Adding contact:', contactToAdd);
       console.log('Company:', company);
       
-      // Ensure company.id is treated as an integer if needed
-      const companyId = parseInt(company.id, 10);
-      if (isNaN(companyId)) {
-        throw new Error('Invalid company ID');
+      if (!company.id) {
+        throw new Error('Missing company ID');
       }
       
       // Check if already associated
       const { data: existingCheck, error: checkError } = await supabase
         .from('contact_companies')
         .select('company_id, contact_id')
-        .eq('company_id', companyId)
+        .eq('company_id', company.id)
         .eq('contact_id', contactToAdd.id);
         
       if (checkError) {
@@ -359,7 +357,7 @@ const CompanyContactsModal = ({ isOpen, onRequestClose, company, onContactClick 
       }
       
       const newAssociation = {
-        company_id: companyId,
+        company_id: company.id,
         contact_id: contactToAdd.id,
         created_at: new Date().toISOString()
       };
