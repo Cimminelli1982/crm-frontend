@@ -392,11 +392,13 @@ const CompanyCityModal = ({ isOpen, onRequestClose, company }) => {
       console.log('Adding city:', cityToAdd);
       console.log('Company:', company);
       
-      // Ensure company.id is treated as an integer if needed
-      const companyId = parseInt(company.id, 10);
-      if (isNaN(companyId)) {
+      // Get company ID (should be a UUID string, not an integer)
+      const companyId = company.id;
+      if (!companyId) {
         throw new Error('Invalid company ID');
       }
+      
+      console.log('Using company ID:', companyId, 'Type:', typeof companyId);
       
       // Check if already associated
       const { data: existingCheck, error: checkError } = await supabase
@@ -419,11 +421,14 @@ const CompanyCityModal = ({ isOpen, onRequestClose, company }) => {
       }
       
       const newAssociation = {
-        company_id: companyId,
+        company_id: companyId, // Use the UUID string directly, no parsing
         city_id: cityToAdd.id,
         created_at: new Date().toISOString()
       };
-      console.log('Creating new association:', newAssociation);
+      console.log('Creating new association:', newAssociation, 'Types:', {
+        company_id_type: typeof companyId,
+        city_id_type: typeof cityToAdd.id
+      });
       
       const { data, error } = await supabase
         .from('companies_cities')
