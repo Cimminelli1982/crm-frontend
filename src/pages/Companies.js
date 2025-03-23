@@ -467,6 +467,7 @@ const getFlagEmoji = (cityName) => {
 
 // Category options
 const COMPANY_CATEGORIES = [
+  'Skip',
   'Advisory',
   'Corporation',
   'Institution',
@@ -498,6 +499,8 @@ const Companies = () => {
   const [showCityModal, setShowCityModal] = useState(false);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [editingCategoryCompanyId, setEditingCategoryCompanyId] = useState(null);
+  const [focusedCategoryIndex, setFocusedCategoryIndex] = useState(0);
+  const categoryDropdownRef = useRef(null);
   const [editingDescription, setEditingDescription] = useState(false);
   const [editingDescriptionCompanyId, setEditingDescriptionCompanyId] = useState(null);
   const [editingDescriptionValue, setEditingDescriptionValue] = useState('');
@@ -1026,15 +1029,78 @@ const Companies = () => {
     }
   };
   
+  // Click outside handler for category dropdown
+  useEffect(() => {
+    if (!showCategoryDropdown) return;
+    
+    const handleClickOutside = (event) => {
+      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(event.target)) {
+        setShowCategoryDropdown(false);
+        setFocusedCategoryIndex(0);
+      }
+    };
+    
+    const handleKeyDown = (event) => {
+      if (!showCategoryDropdown) return;
+      
+      switch (event.key) {
+        case 'ArrowDown':
+          event.preventDefault();
+          setFocusedCategoryIndex(prev => 
+            prev < COMPANY_CATEGORIES.length - 1 ? prev + 1 : prev
+          );
+          break;
+        case 'ArrowUp':
+          event.preventDefault();
+          setFocusedCategoryIndex(prev => 
+            prev > 0 ? prev - 1 : 0
+          );
+          break;
+        case 'Enter':
+          event.preventDefault();
+          if (editingCategoryCompanyId) {
+            handleCategorySelect(COMPANY_CATEGORIES[focusedCategoryIndex]);
+          }
+          break;
+        case 'Escape':
+          event.preventDefault();
+          setShowCategoryDropdown(false);
+          setFocusedCategoryIndex(0);
+          break;
+        default:
+          break;
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showCategoryDropdown, focusedCategoryIndex, editingCategoryCompanyId]);
+  
   // Handle category inline edit
   const handleCategoryClick = (company) => {
     setEditingCategoryCompanyId(company.id);
     setShowCategoryDropdown(true);
+    setFocusedCategoryIndex(0); // Reset focused index
   };
   
   // Handle category selection
   const handleCategorySelect = async (category) => {
     if (!editingCategoryCompanyId) return;
+    
+    // Clean up dropdown state first
+    setEditingCategoryCompanyId(null);
+    setShowCategoryDropdown(false);
+    setFocusedCategoryIndex(0);
+    
+    // If Skip option was selected, just close the dropdown without making changes
+    if (category === 'Skip') {
+      return;
+    }
     
     try {
       const { data, error } = await supabase
@@ -1049,13 +1115,6 @@ const Companies = () => {
       setCompanies(companies.map(company => 
         company.id === editingCategoryCompanyId ? { ...company, category } : company
       ));
-      
-      // Clean up
-      setEditingCategoryCompanyId(null);
-      setShowCategoryDropdown(false);
-      
-      // Refresh data
-      setRefreshTrigger(prev => prev + 1);
       
     } catch (error) {
       console.error('Error updating company category:', error);
@@ -1391,19 +1450,22 @@ const Companies = () => {
                       {company.category || "Uncategorized"}
                     </CategoryBadge>
                     {showCategoryDropdown && editingCategoryCompanyId === company.id && (
-                      <div style={{ 
-                        position: 'absolute', 
-                        top: '30px', 
-                        left: '0',
-                        width: '200px', 
-                        zIndex: 100,
-                        background: 'white',
-                        border: '1px solid #e5e7eb',
-                        borderRadius: '4px',
-                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
-                        overflow: 'hidden'
-                      }}>
-                        {COMPANY_CATEGORIES.map(category => (
+                      <div 
+                        ref={categoryDropdownRef}
+                        style={{ 
+                          position: 'absolute', 
+                          top: '30px', 
+                          left: '0',
+                          width: '200px', 
+                          zIndex: 100,
+                          background: 'white',
+                          border: '1px solid #e5e7eb',
+                          borderRadius: '4px',
+                          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+                          overflow: 'hidden'
+                        }}
+                      >
+                        {COMPANY_CATEGORIES.map((category, index) => (
                           <button 
                             key={category} 
                             onClick={() => handleCategorySelect(category)}
@@ -1414,12 +1476,20 @@ const Companies = () => {
                               textAlign: 'left',
                               fontSize: '0.875rem',
                               color: 'black',
-                              background: 'none',
+                              background: index === focusedCategoryIndex ? 'rgba(0, 0, 0, 0.1)' : 'none',
                               border: 'none',
-                              cursor: 'pointer'
+                              cursor: 'pointer',
+                              fontWeight: index === focusedCategoryIndex ? '500' : 'normal'
                             }}
-                            onMouseOver={(e) => e.target.style.backgroundColor = 'rgba(0, 0, 0, 0.05)'}
-                            onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+                            onMouseOver={(e) => {
+                              e.target.style.backgroundColor = 'rgba(0, 0, 0, 0.05)';
+                              setFocusedCategoryIndex(index);
+                            }}
+                            onMouseOut={(e) => {
+                              if (index !== focusedCategoryIndex) {
+                                e.target.style.backgroundColor = 'transparent';
+                              }
+                            }}
                           >
                             {category}
                           </button>
