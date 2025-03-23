@@ -20,7 +20,7 @@ const PageContainer = styled.div`
 `;
 
 const PageHeader = styled.div`
-  padding: 1.5rem 1.5rem 0.5rem 1.5rem;
+  padding: 1.5rem 1.5rem 0 1.5rem;
 `;
 
 const HeaderContent = styled.div`
@@ -37,7 +37,7 @@ const HeaderTitle = styled.div`
 const Title = styled.h1`
   font-size: 1.5rem;
   font-weight: 600;
-  color: white;
+  color: black;
   margin: 0;
   display: flex;
   align-items: center;
@@ -47,16 +47,7 @@ const Title = styled.h1`
 const CompanyCount = styled.span`
   font-size: 1rem;
   font-weight: 400;
-  color: white;
-`;
-
-const Description = styled.p`
-  color: white;
-  margin: 0;
-  max-width: 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: black;
 `;
 
 const HeaderActions = styled.div`
@@ -108,7 +99,7 @@ const SearchContainer = styled.div`
   border: 1px solid black;
   border-radius: 0.375rem;
   overflow: visible;
-  margin-top: 1rem;
+  margin-top: 2rem;
   box-shadow: none;
   position: relative;
   z-index: 1;
@@ -146,13 +137,12 @@ const FilterButtonsContainer = styled.div`
   display: flex;
   gap: 0.75rem;
   padding: 2rem 0 0.5rem 0;
-  margin: 0 1.5rem;
+  margin: 0;
   overflow-x: auto;
   
   @media (max-width: 768px) {
     flex-wrap: nowrap;
     padding: 1.5rem 0 0.25rem 0;
-    margin: 0 1rem;
   }
 `;
 
@@ -178,14 +168,6 @@ const FilterButton = styled.button`
   
   svg {
     font-size: 1rem;
-  }
-  
-  .count {
-    margin-left: 0.25rem;
-    background-color: ${props => props.active ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)'};
-    padding: 0.125rem 0.375rem;
-    border-radius: 1rem;
-    font-size: 0.75rem;
   }
 `;
 
@@ -216,6 +198,9 @@ const CompanyCard = styled.div`
   border: 1px solid #e5e7eb;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   position: relative;
+  height: 360px;
+  display: flex;
+  flex-direction: column;
   
   &:hover {
     transform: translateY(-4px);
@@ -312,6 +297,7 @@ const CompanyDescription = styled.p`
   -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 0 0 auto;
 `;
 
 const TagsContainer = styled.div`
@@ -337,7 +323,7 @@ const CitiesContainer = styled.div`
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-bottom: 16px;
+  margin-bottom: 0;
 `;
 
 const CityBadge = styled.span`
@@ -361,31 +347,23 @@ const ExternalLinksContainer = styled.div`
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 12px;
+  min-height: 24px;
 `;
 
 const ExternalLink = styled.a`
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  color: #6b7280;
+  color: black;
   text-decoration: none;
   font-size: 0.875rem;
   
   &:hover {
-    color: #3b82f6;
     text-decoration: underline;
-  }
-  
-  svg {
-    font-size: 1.25rem;
   }
 `;
 
 const RelatedContactsContainer = styled.div`
-  margin-top: 16px;
-  border-top: 1px solid #e5e7eb;
-  padding-top: 12px;
+  padding: 0;
 `;
 
 const RelatedContactsHeader = styled.div`
@@ -1121,13 +1099,7 @@ const Companies = () => {
           <HeaderTitle>
             <Title>
               {getFilterTitle()}
-              {filteredCount > 0 && (
-                <CompanyCount>({filteredCount})</CompanyCount>
-              )}
             </Title>
-            <Description>
-              View and manage your company database
-            </Description>
           </HeaderTitle>
           
           <HeaderActions>
@@ -1241,7 +1213,6 @@ const Companies = () => {
           >
             <FiClock />
             Recently Created
-            <span className="count">{filterCounts.recentlyCreated}</span>
           </FilterButton>
           <FilterButton 
             active={activeFilter === 'recentlyEdited'} 
@@ -1249,7 +1220,6 @@ const Companies = () => {
           >
             <FiEdit />
             Recently Edited
-            <span className="count">{filterCounts.recentlyEdited}</span>
           </FilterButton>
           <FilterButton 
             active={activeFilter === 'lastInteracted'} 
@@ -1257,7 +1227,6 @@ const Companies = () => {
           >
             <FiAlertCircle />
             Last Interacted
-            <span className="count">{filterCounts.lastInteracted}</span>
           </FilterButton>
           <FilterButton 
             active={activeFilter === 'missingCategory'} 
@@ -1265,7 +1234,6 @@ const Companies = () => {
           >
             <FaBuilding />
             Missing Category
-            <span className="count">{filterCounts.missingCategory}</span>
           </FilterButton>
           <FilterButton 
             active={activeFilter === 'missingCities'} 
@@ -1273,7 +1241,6 @@ const Companies = () => {
           >
             <FiMapPin />
             Missing Cities
-            <span className="count">{filterCounts.missingCities}</span>
           </FilterButton>
           <FilterButton 
             active={activeFilter === 'missingDescription'} 
@@ -1281,7 +1248,6 @@ const Companies = () => {
           >
             <FiEdit />
             Missing Description
-            <span className="count">{filterCounts.missingDescription}</span>
           </FilterButton>
           <FilterButton 
             active={activeFilter === 'missingTags'} 
@@ -1289,15 +1255,6 @@ const Companies = () => {
           >
             <FiTag />
             Missing Tags
-            <span className="count">{filterCounts.missingTags}</span>
-          </FilterButton>
-          <FilterButton 
-            active={activeFilter === 'missingWebsite'} 
-            onClick={() => handleFilterButtonClick('missingWebsite')}
-          >
-            <FiGlobe />
-            Missing Website
-            <span className="count">{filterCounts.missingWebsite}</span>
           </FilterButton>
         </FilterButtonsContainer>
       </PageHeader>
@@ -1315,86 +1272,93 @@ const Companies = () => {
           <CompaniesGrid>
             {companies.map(company => (
               <CompanyCard key={company.id}>
-                <CompanyHeader>
-                  <CompanyName title={company.name}>
-                    {formatCompanyName(company.name)}
-                  </CompanyName>
-                  <ActionMenu>
-                    <ActionMenuToggle 
-                      onClick={() => handleActionMenuToggle(company.id)}
-                      title="Company actions"
+                {/* SECTION 1: Title & Actions - Fixed Height */}
+                <div style={{ height: "40px", marginBottom: "0" }}>
+                  <CompanyHeader>
+                    <CompanyName title={company.name}>
+                      {formatCompanyName(company.name)}
+                    </CompanyName>
+                    <ActionMenu>
+                      <ActionMenuToggle 
+                        onClick={() => handleActionMenuToggle(company.id)}
+                        title="Company actions"
+                      >
+                        <FaEllipsisH />
+                      </ActionMenuToggle>
+                      <ActionMenuDropdown isOpen={actionMenuOpen === company.id}>
+                        <ActionMenuItem onClick={() => handleOpenCompanyModal(company)}>
+                          <FiEdit size={14} />
+                          Edit Company
+                        </ActionMenuItem>
+                        <ActionMenuItem onClick={() => handleOpenTagsModal(company)}>
+                          <FiTag size={14} />
+                          Manage Tags
+                        </ActionMenuItem>
+                        <ActionMenuItem onClick={() => handleOpenCityModal(company)}>
+                          <FiMapPin size={14} />
+                          Manage Cities
+                        </ActionMenuItem>
+                      </ActionMenuDropdown>
+                    </ActionMenu>
+                  </CompanyHeader>
+                </div>
+                
+                {/* SECTION 2: Category - Fixed Height */}
+                <div style={{ height: "24px", marginTop: "-4px", marginBottom: "6px" }}>
+                  <EditableBadge>
+                    <CategoryBadge 
+                      onClick={() => handleCategoryClick(company)}
+                      title="Click to edit category"
                     >
-                      <FaEllipsisH />
-                    </ActionMenuToggle>
-                    <ActionMenuDropdown isOpen={actionMenuOpen === company.id}>
-                      <ActionMenuItem onClick={() => handleOpenCompanyModal(company)}>
-                        <FiEdit size={14} />
-                        Edit Company
-                      </ActionMenuItem>
-                      <ActionMenuItem onClick={() => handleOpenTagsModal(company)}>
-                        <FiTag size={14} />
-                        Manage Tags
-                      </ActionMenuItem>
-                      <ActionMenuItem onClick={() => handleOpenCityModal(company)}>
-                        <FiMapPin size={14} />
-                        Manage Cities
-                      </ActionMenuItem>
-                    </ActionMenuDropdown>
-                  </ActionMenu>
-                </CompanyHeader>
+                      {company.category || "Uncategorized"}
+                    </CategoryBadge>
+                    {showCategoryDropdown && editingCategoryCompanyId === company.id && (
+                      <div style={{ 
+                        position: 'absolute', 
+                        top: '30px', 
+                        left: '0',
+                        width: '200px', 
+                        zIndex: 100,
+                        background: 'white',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '4px',
+                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+                        overflow: 'hidden'
+                      }}>
+                        {COMPANY_CATEGORIES.map(category => (
+                          <button 
+                            key={category} 
+                            onClick={() => handleCategorySelect(category)}
+                            style={{
+                              display: 'block',
+                              width: '100%',
+                              padding: '0.5rem 1rem',
+                              textAlign: 'left',
+                              fontSize: '0.875rem',
+                              color: 'black',
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer'
+                            }}
+                            onMouseOver={(e) => e.target.style.backgroundColor = 'rgba(0, 0, 0, 0.05)'}
+                            onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+                          >
+                            {category}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </EditableBadge>
+                </div>
                 
-                <EditableBadge>
-                  <CategoryBadge 
-                    onClick={() => handleCategoryClick(company)}
-                    title="Click to edit category"
-                  >
-                    {company.category || "Uncategorized"}
-                  </CategoryBadge>
-                  {showCategoryDropdown && editingCategoryCompanyId === company.id && (
-                    <div style={{ 
-                      position: 'absolute', 
-                      top: '30px', 
-                      left: '0',
-                      width: '200px', 
-                      zIndex: 100,
-                      background: 'white',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '4px',
-                      boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
-                      overflow: 'hidden'
-                    }}>
-                      {COMPANY_CATEGORIES.map(category => (
-                        <button 
-                          key={category} 
-                          onClick={() => handleCategorySelect(category)}
-                          style={{
-                            display: 'block',
-                            width: '100%',
-                            padding: '0.5rem 1rem',
-                            textAlign: 'left',
-                            fontSize: '0.875rem',
-                            color: 'black',
-                            background: 'none',
-                            border: 'none',
-                            cursor: 'pointer'
-                          }}
-                          onMouseOver={(e) => e.target.style.backgroundColor = 'rgba(0, 0, 0, 0.05)'}
-                          onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
-                        >
-                          {category}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </EditableBadge>
-                
-                <div>
+                {/* SECTION 3: Description - Fixed Height */}
+                <div style={{ height: "60px", marginBottom: "14px" }}>
                   {editingDescription && editingDescriptionCompanyId === company.id ? (
-                    <div style={{ marginTop: '10px', marginBottom: '10px' }}>
+                    <div>
                       <textarea
                         style={{ 
                           width: '100%', 
-                          minHeight: '80px', 
+                          height: '40px', 
                           padding: '8px',
                           border: '1px solid #d1d5db',
                           borderRadius: '4px'
@@ -1409,7 +1373,7 @@ const Companies = () => {
                         gap: '5px'
                       }}>
                         <button onClick={() => setEditingDescription(false)} style={{
-                          padding: '4px 8px',
+                          padding: '2px 6px',
                           fontSize: '0.75rem',
                           border: '1px solid #d1d5db',
                           borderRadius: '4px',
@@ -1418,7 +1382,7 @@ const Companies = () => {
                           Cancel
                         </button>
                         <button onClick={handleDescriptionSave} style={{
-                          padding: '4px 8px',
+                          padding: '2px 6px',
                           fontSize: '0.75rem',
                           border: 'none',
                           borderRadius: '4px',
@@ -1439,83 +1403,122 @@ const Companies = () => {
                   )}
                 </div>
                 
-                {company.tags && company.tags.length > 0 && (
+                {/* SECTION 4: Tags - Fixed Height */}
+                <div style={{ height: "60px", marginBottom: "16px", overflow: "hidden" }}>
                   <TagsContainer>
-                    {company.tags.slice(0, 3).map(tag => {
-                      const color = getTagColor(tag.name);
-                      return (
-                        <Tag 
-                          key={tag.id} 
-                          color={color.bg}
-                          textColor={color.text}
-                        >
-                          {tag.name}
-                        </Tag>
-                      );
-                    })}
-                    {company.tags.length > 3 && (
-                      <Tag>+{company.tags.length - 3} more</Tag>
+                    {company.tags && company.tags.length > 0 ? (
+                      <>
+                        {company.tags.slice(0, 3).map(tag => {
+                          const color = getTagColor(tag.name);
+                          return (
+                            <Tag 
+                              key={tag.id} 
+                              color={color.bg}
+                              textColor={color.text}
+                            >
+                              {tag.name}
+                            </Tag>
+                          );
+                        })}
+                        {company.tags.length > 3 && (
+                          <Tag>+{company.tags.length - 3} more</Tag>
+                        )}
+                      </>
+                    ) : (
+                      <Tag color="#f3f4f6" textColor="#4b5563">No tags</Tag>
                     )}
                   </TagsContainer>
-                )}
+                </div>
                 
-                {company.cities && company.cities.length > 0 && (
+                {/* SECTION 5: Cities - Fixed Height */}
+                <div style={{ height: "30px", marginBottom: "0", overflow: "hidden" }}>
                   <CitiesContainer>
-                    {company.cities.slice(0, 3).map(city => {
-                      const flag = getFlagEmoji(city.name);
-                      return (
-                        <CityBadge key={city.id}>
-                          {flag && <span className="flag">{flag}</span>}
-                          {city.name}
-                        </CityBadge>
-                      );
-                    })}
-                    {company.cities.length > 3 && (
-                      <CityBadge>+{company.cities.length - 3} more</CityBadge>
+                    {company.cities && company.cities.length > 0 ? (
+                      <>
+                        {company.cities.slice(0, 3).map(city => {
+                          const flag = getFlagEmoji(city.name);
+                          return (
+                            <CityBadge key={city.id}>
+                              {flag && <span className="flag">{flag}</span>}
+                              {city.name}
+                            </CityBadge>
+                          );
+                        })}
+                        {company.cities.length > 3 && (
+                          <CityBadge>+{company.cities.length - 3} more</CityBadge>
+                        )}
+                      </>
+                    ) : (
+                      <CityBadge>No cities</CityBadge>
                     )}
                   </CitiesContainer>
-                )}
+                </div>
                 
-                <ExternalLinksContainer>
-                  {company.website && getWebsiteDisplay(company.website) && (
-                    <ExternalLink 
-                      href={getWebsiteDisplay(company.website).url} 
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <FiGlobe />
-                      {getWebsiteDisplay(company.website).domain}
-                    </ExternalLink>
-                  )}
-                  {company.linkedin && (
-                    <ExternalLink 
-                      href={company.linkedin.startsWith('http') ? company.linkedin : `https://linkedin.com/company/${company.linkedin}`} 
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <FiLinkedin />
-                      LinkedIn
-                    </ExternalLink>
-                  )}
-                </ExternalLinksContainer>
+                {/* SECTION 6: Links - Fixed Height */}
+                <div style={{ 
+                  height: "40px",
+                  marginTop: "10px",
+                  marginBottom: "10px"
+                }}>
+                  <ExternalLinksContainer>
+                    {company.website && getWebsiteDisplay(company.website) ? (
+                      <ExternalLink 
+                        href={getWebsiteDisplay(company.website).url} 
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Web
+                      </ExternalLink>
+                    ) : (
+                      <span style={{ color: "#9ca3af", fontSize: "0.875rem" }}>No website</span>
+                    )}
+                    {company.linkedin && (
+                      <ExternalLink 
+                        href={company.linkedin.startsWith('http') ? company.linkedin : `https://linkedin.com/company/${company.linkedin}`} 
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        LinkedIn
+                      </ExternalLink>
+                    )}
+                  </ExternalLinksContainer>
+                </div>
                 
-                {company.contacts && company.contacts.length > 0 && (
+                {/* Divider before contacts */}
+                <div style={{borderBottom: "1px solid #e5e7eb"}}></div>
+                
+                {/* SECTION 7: Contacts - Remaining Height */}
+                <div style={{ marginTop: "10px", flex: "1 1 auto" }}>
                   <RelatedContactsContainer>
                     <RelatedContactsHeader>
-                      <h4>Associated Contacts ({company.contacts.length})</h4>
+                      <h4>Associated Contacts</h4>
                     </RelatedContactsHeader>
-                    <RelatedContactsList>
-                      {company.contacts.slice(0, 2).map(contact => (
-                        <ContactBadge key={contact.id}>
-                          {formatContactName(contact)}
+                    {company.contacts && company.contacts.length > 0 ? (
+                      <RelatedContactsList>
+                        {company.contacts.slice(0, 2).map(contact => (
+                          <ContactBadge key={contact.id}>
+                            {formatContactName(contact)}
+                          </ContactBadge>
+                        ))}
+                        {company.contacts.length > 2 && (
+                          <ContactBadge>+{company.contacts.length - 2} more</ContactBadge>
+                        )}
+                      </RelatedContactsList>
+                    ) : (
+                      <RelatedContactsList>
+                        <ContactBadge 
+                          style={{ 
+                            cursor: 'pointer',
+                            background: '#f3f4f6'
+                          }}
+                          onClick={() => handleOpenCompanyModal(company)}
+                        >
+                          + Add
                         </ContactBadge>
-                      ))}
-                      {company.contacts.length > 2 && (
-                        <ContactBadge>+{company.contacts.length - 2} more</ContactBadge>
-                      )}
-                    </RelatedContactsList>
+                      </RelatedContactsList>
+                    )}
                   </RelatedContactsContainer>
-                )}
+                </div>
               </CompanyCard>
             ))}
           </CompaniesGrid>
