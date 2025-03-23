@@ -606,48 +606,35 @@ const Companies = () => {
     try {
       setIsLoading(true);
       
-      let query = supabase
+      // First, fetch all companies
+      const { data: companiesData, error: companiesError } = await supabase
         .from('companies')
-        .select(`
-          *,
-          companies_tags!inner (
-            tag_id,
-            tags:tag_id (
-              id,
-              name
-            )
-          ),
-          companies_cities!inner (
-            city_id,
-            cities:city_id (
-              id,
-              name
-            )
-          ),
-          contact_companies!inner (
-            contact_id,
-            contacts:contact_id (
-              id,
-              first_name,
-              last_name,
-              last_interaction
-            )
-          )
-        `);
+        .select('*');
       
-      // Apply search filters
+      if (companiesError) throw companiesError;
+      
+      // Set companies with basic data first
+      let allCompanies = companiesData.map(company => ({
+        ...company,
+        tags: [],
+        cities: [],
+        contacts: []
+      }));
+      
+      // Apply search filters if needed
       if (searchTerm.length >= 3) {
         if (searchField === 'name') {
-          query = query.ilike('name', `%${searchTerm}%`);
+          allCompanies = allCompanies.filter(company => 
+            company.name && company.name.toLowerCase().includes(searchTerm.toLowerCase())
+          );
         } else if (searchField === 'website') {
-          query = query.ilike('website', `%${searchTerm}%`);
+          allCompanies = allCompanies.filter(company => 
+            company.website && company.website.toLowerCase().includes(searchTerm.toLowerCase())
+          );
         } else if (searchField === 'category') {
-          query = query.ilike('category', `%${searchTerm}%`);
-        } else if (searchField === 'contact') {
-          // This would require a more complex query in a real app
-          query = query.filter('contact_companies.contacts.first_name.ilike', `%${searchTerm}%`);
-        } else if (searchField === 'tags') {
-          query = query.filter('companies_tags.tags.name.ilike', `%${searchTerm}%`);
+          allCompanies = allCompanies.filter(company => 
+            company.category && company.category.toLowerCase().includes(searchTerm.toLowerCase())
+          );
         }
       }
       
@@ -655,73 +642,133 @@ const Companies = () => {
       if (activeFilter) {
         switch (activeFilter) {
           case 'missingCategory':
-            query = query.is('category', null);
-            break;
-          case 'missingCities':
-            // This would require a more complex query in a real app
-            // For this implementation, we'll filter client-side
+            allCompanies = allCompanies.filter(company => !company.category);
             break;
           case 'missingDescription':
-            query = query.is('description', null);
-            break;
-          case 'missingTags':
-            // This would require a more complex query in a real app
-            // For this implementation, we'll filter client-side
+            allCompanies = allCompanies.filter(company => !company.description);
             break;
           case 'missingWebsite':
-            query = query.is('website', null);
+            allCompanies = allCompanies.filter(company => !company.website);
             break;
           case 'recentlyCreated':
-            // All results are sorted by created_at by default
+            allCompanies.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
             break;
           case 'recentlyEdited':
-            setSortBy('modified_at');
-            break;
-          case 'lastInteracted':
-            // This would require a more complex query in a real app
-            // For this implementation, we'll filter client-side
+            allCompanies.sort((a, b) => new Date(b.modified_at || 0) - new Date(a.modified_at || 0));
             break;
           default:
             break;
         }
+      } else {
+        // Default sort by created_at
+        allCompanies.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
       }
       
-      // Apply sorting
-      if (sortBy) {
-        query = query.order(sortBy, { ascending: sortOrder === 'asc', nullsLast: true });
+      // Now fetch the related data for each entity separately (more reliable)
+      try {
+        // Fetch tags for all companies
+        const { data: tagsData, error: tagsError } = await supabase
+          .from('companies_tags')
+          .select(`
+            company_id,
+            tag_id,
+            tags:tag_id (id, name)
+          `);
+          
+        if (!tagsError && tagsData) {
+          // Group tags by company
+          const tagsByCompany = {};
+          tagsData.forEach(item => {
+            if (item.company_id && item.tags) {
+              if (!tagsByCompany[item.company_id]) {
+                tagsByCompany[item.company_id] = [];
+              }
+              tagsByCompany[item.company_id].push(item.tags);
+            }
+          });
+          
+          // Add tags to companies
+          allCompanies = allCompanies.map(company => ({
+            ...company,
+            tags: tagsByCompany[company.id] || []
+          }));
+        }
+      } catch (e) {
+        console.error('Error fetching tags:', e);
       }
       
-      // Execute query
-      const { data, error } = await query;
+      try {
+        // Fetch cities for all companies
+        const { data: citiesData, error: citiesError } = await supabase
+          .from('companies_cities')
+          .select(`
+            company_id,
+            city_id,
+            cities:city_id (id, name)
+          `);
+          
+        if (!citiesError && citiesData) {
+          // Group cities by company
+          const citiesByCompany = {};
+          citiesData.forEach(item => {
+            if (item.company_id && item.cities) {
+              if (!citiesByCompany[item.company_id]) {
+                citiesByCompany[item.company_id] = [];
+              }
+              citiesByCompany[item.company_id].push(item.cities);
+            }
+          });
+          
+          // Add cities to companies
+          allCompanies = allCompanies.map(company => ({
+            ...company,
+            cities: citiesByCompany[company.id] || []
+          }));
+        }
+      } catch (e) {
+        console.error('Error fetching cities:', e);
+      }
       
-      if (error) throw error;
+      try {
+        // Fetch contacts for all companies
+        const { data: contactsData, error: contactsError } = await supabase
+          .from('contact_companies')
+          .select(`
+            company_id,
+            contact_id,
+            contacts:contact_id (id, first_name, last_name, last_interaction)
+          `);
+          
+        if (!contactsError && contactsData) {
+          // Group contacts by company
+          const contactsByCompany = {};
+          contactsData.forEach(item => {
+            if (item.company_id && item.contacts) {
+              if (!contactsByCompany[item.company_id]) {
+                contactsByCompany[item.company_id] = [];
+              }
+              contactsByCompany[item.company_id].push(item.contacts);
+            }
+          });
+          
+          // Add contacts to companies
+          allCompanies = allCompanies.map(company => ({
+            ...company,
+            contacts: contactsByCompany[company.id] || []
+          }));
+        }
+      } catch (e) {
+        console.error('Error fetching contacts:', e);
+      }
       
-      // Process data to extract nested objects
-      const processedData = data.map(company => {
-        const tags = company.companies_tags.map(tagRelation => tagRelation.tags);
-        const cities = company.companies_cities.map(cityRelation => cityRelation.cities);
-        const contacts = company.contact_companies.map(contactRelation => contactRelation.contacts);
-        
-        // Remove the nested join data to avoid confusion
-        const { companies_tags, companies_cities, contact_companies, ...companyData } = company;
-        
-        return {
-          ...companyData,
-          tags,
-          cities,
-          contacts
-        };
-      });
-      
-      // Apply client-side filters for complex cases
-      let filteredData = processedData;
+      // Apply client-side filters that depend on relationships
       if (activeFilter === 'missingCities') {
-        filteredData = processedData.filter(company => company.cities.length === 0);
+        allCompanies = allCompanies.filter(company => company.cities.length === 0);
       } else if (activeFilter === 'missingTags') {
-        filteredData = processedData.filter(company => company.tags.length === 0);
+        allCompanies = allCompanies.filter(company => company.tags.length === 0);
       } else if (activeFilter === 'lastInteracted') {
         // Sort by the most recent last_interaction of any contact
-        filteredData = processedData.sort((a, b) => {
+        allCompanies.sort((a, b) => {
           const aLatest = a.contacts.reduce((latest, contact) => {
             if (!contact.last_interaction) return latest;
             return contact.last_interaction > latest ? contact.last_interaction : latest;
@@ -738,8 +785,26 @@ const Companies = () => {
         });
       }
       
-      setCompanies(filteredData);
-      setFilteredCount(filteredData.length);
+      // Apply search filters for related entities
+      if (searchTerm.length >= 3) {
+        if (searchField === 'contact') {
+          allCompanies = allCompanies.filter(company => 
+            company.contacts.some(contact => 
+              (contact.first_name && contact.first_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+              (contact.last_name && contact.last_name.toLowerCase().includes(searchTerm.toLowerCase()))
+            )
+          );
+        } else if (searchField === 'tags') {
+          allCompanies = allCompanies.filter(company => 
+            company.tags.some(tag => 
+              tag.name && tag.name.toLowerCase().includes(searchTerm.toLowerCase())
+            )
+          );
+        }
+      }
+      
+      setCompanies(allCompanies);
+      setFilteredCount(allCompanies.length);
       
       // Update filter counts
       await fetchFilterCounts();
@@ -754,50 +819,82 @@ const Companies = () => {
   // Fetch total count and filter counts
   const fetchFilterCounts = async () => {
     try {
-      // Get total count
-      const { count, error: countError } = await supabase
+      // Get all companies to calculate counts client-side
+      const { data: allCompaniesData, error: companiesError } = await supabase
         .from('companies')
-        .select('*', { count: 'exact', head: true });
+        .select('*');
       
-      if (countError) throw countError;
-      setTotalCount(count || 0);
+      if (companiesError) throw companiesError;
       
-      // Get missing category count
-      const { count: missingCategoryCount, error: categoryError } = await supabase
-        .from('companies')
-        .select('*', { count: 'exact', head: true })
-        .is('category', null);
+      const totalCount = allCompaniesData.length;
+      setTotalCount(totalCount);
       
-      if (categoryError) throw categoryError;
+      // Calculate missing fields counts
+      const missingCategoryCount = allCompaniesData.filter(c => !c.category).length;
+      const missingDescriptionCount = allCompaniesData.filter(c => !c.description).length;
+      const missingWebsiteCount = allCompaniesData.filter(c => !c.website).length;
       
-      // Get missing description count
-      const { count: missingDescriptionCount, error: descriptionError } = await supabase
-        .from('companies')
-        .select('*', { count: 'exact', head: true })
-        .is('description', null);
+      // Get missing tags count
+      let missingTagsCount = 0;
+      try {
+        // Get all companies with tags
+        const { data: companiesWithTags } = await supabase
+          .from('companies_tags')
+          .select('company_id');
+        
+        // Create a set of company IDs that have tags
+        const companyIdsWithTags = new Set();
+        if (companiesWithTags) {
+          companiesWithTags.forEach(item => {
+            if (item.company_id) {
+              companyIdsWithTags.add(item.company_id);
+            }
+          });
+        }
+        
+        // Count companies without tags
+        missingTagsCount = allCompaniesData.filter(company => 
+          !companyIdsWithTags.has(company.id)
+        ).length;
+      } catch (e) {
+        console.error('Error calculating missing tags count:', e);
+      }
       
-      if (descriptionError) throw descriptionError;
-      
-      // Get missing website count
-      const { count: missingWebsiteCount, error: websiteError } = await supabase
-        .from('companies')
-        .select('*', { count: 'exact', head: true })
-        .is('website', null);
-      
-      if (websiteError) throw websiteError;
-      
-      // For missing tags and cities, we'd need custom SQL in a real app
-      // Here we'll just set placeholder values
+      // Get missing cities count
+      let missingCitiesCount = 0;
+      try {
+        // Get all companies with cities
+        const { data: companiesWithCities } = await supabase
+          .from('companies_cities')
+          .select('company_id');
+        
+        // Create a set of company IDs that have cities
+        const companyIdsWithCities = new Set();
+        if (companiesWithCities) {
+          companiesWithCities.forEach(item => {
+            if (item.company_id) {
+              companyIdsWithCities.add(item.company_id);
+            }
+          });
+        }
+        
+        // Count companies without cities
+        missingCitiesCount = allCompaniesData.filter(company => 
+          !companyIdsWithCities.has(company.id)
+        ).length;
+      } catch (e) {
+        console.error('Error calculating missing cities count:', e);
+      }
       
       setFilterCounts({
-        missingCategory: missingCategoryCount || 0,
-        missingCities: 0, // Placeholder
-        missingDescription: missingDescriptionCount || 0,
-        missingTags: 0, // Placeholder
-        missingWebsite: missingWebsiteCount || 0,
-        recentlyCreated: count || 0, // Using total as placeholder
-        recentlyEdited: count || 0, // Using total as placeholder
-        lastInteracted: count || 0 // Using total as placeholder
+        missingCategory: missingCategoryCount,
+        missingCities: missingCitiesCount,
+        missingDescription: missingDescriptionCount,
+        missingTags: missingTagsCount,
+        missingWebsite: missingWebsiteCount,
+        recentlyCreated: totalCount, // Using total as reference
+        recentlyEdited: totalCount, // Using total as reference
+        lastInteracted: totalCount // Using total as reference
       });
       
     } catch (error) {
