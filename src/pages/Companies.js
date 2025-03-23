@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { supabase } from '../lib/supabaseClient';
-import { FiFilter, FiSearch, FiPlus, FiChevronDown, FiClock, FiAlertCircle, FiRefreshCw, FiGlobe, FiMapPin, FiEdit, FiTag, FiLinkedin } from 'react-icons/fi';
+import { FiFilter, FiSearch, FiPlus, FiChevronDown, FiClock, FiAlertCircle, FiRefreshCw, FiGlobe, FiMapPin, FiEdit, FiTag, FiLinkedin, FiUser } from 'react-icons/fi';
 import { FaBuilding, FaEllipsisH, FaTimesCircle } from 'react-icons/fa';
 import Modal from 'react-modal';
 import Select from 'react-select';
 import CompanyModal from '../components/modals/CompanyModal';
-import TagsModal from '../components/modals/TagsModal';
-import CityModal from '../components/modals/CityModal';
+import CompanyTagsModal from '../components/modals/CompanyTagsModal';
+import CompanyCityModal from '../components/modals/CompanyCityModal';
+import CompanyContactsModal from '../components/modals/CompanyContactsModal';
+import ContactsModal from '../components/modals/ContactsModal';
 
 Modal.setAppElement('#root');
 
@@ -494,9 +496,12 @@ const Companies = () => {
   
   // Modal states
   const [selectedCompany, setSelectedCompany] = useState(null);
+  const [selectedContact, setSelectedContact] = useState(null);
   const [showCompanyModal, setShowCompanyModal] = useState(false);
   const [showTagsModal, setShowTagsModal] = useState(false);
   const [showCityModal, setShowCityModal] = useState(false);
+  const [showContactsModal, setShowContactsModal] = useState(false);
+  const [showContactModal, setShowContactModal] = useState(false);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [editingCategoryCompanyId, setEditingCategoryCompanyId] = useState(null);
   const [focusedCategoryIndex, setFocusedCategoryIndex] = useState(0);
@@ -883,6 +888,20 @@ const Companies = () => {
     fetchFilterCounts();
   }, [refreshTrigger, activeFilter, sortBy, sortOrder]);
   
+  // Listen for custom events to open contact modal
+  useEffect(() => {
+    const handleOpenContactModal = (event) => {
+      setSelectedContact(event.detail);
+      setShowContactModal(true);
+    };
+    
+    window.addEventListener('openContactModal', handleOpenContactModal);
+    
+    return () => {
+      window.removeEventListener('openContactModal', handleOpenContactModal);
+    };
+  }, []);
+  
   // We're using a native select now, so no custom dropdown state needed
   
   // Handle search input change
@@ -944,8 +963,39 @@ const Companies = () => {
   
   // Handle opening city modal
   const handleOpenCityModal = (company) => {
+    console.log('Opening city modal for company:', company.id, company.name);
     setSelectedCompany(company);
     setShowCityModal(true);
+  };
+
+  // Handle opening contacts modal
+  const handleOpenContactsModal = (company) => {
+    console.log('Opening contacts modal for company:', company.id, company.name);
+    setSelectedCompany(company);
+    setShowContactsModal(true);
+  };
+  
+  // Handle contact click to open contact modal
+  const handleContactClick = async (contactId) => {
+    if (contactId) {
+      try {
+        console.log('Opening contact modal for contact ID:', contactId);
+        // Fetch full contact details
+        const { data, error } = await supabase
+          .from('contacts')
+          .select('*')
+          .eq('id', contactId)
+          .single();
+        
+        if (error) throw error;
+        
+        // Set the selected contact and show the modal
+        setSelectedContact(data);
+        setShowContactModal(true);
+      } catch (error) {
+        console.error('Error fetching contact details:', error);
+      }
+    }
   };
   
   // Handle removing a tag from a company
@@ -1166,7 +1216,10 @@ const Companies = () => {
     setShowCompanyModal(false);
     setShowTagsModal(false);
     setShowCityModal(false);
+    setShowContactsModal(false);
+    setShowContactModal(false);
     setSelectedCompany(null);
+    setSelectedContact(null);
     setRefreshTrigger(prev => prev + 1);
   };
   
@@ -1608,11 +1661,43 @@ const Companies = () => {
                           );
                         })}
                         {company.tags.length > 3 && (
-                          <Tag>+{company.tags.length - 3} more</Tag>
+                          <Tag 
+                            title={company.tags.slice(3).map(tag => tag.name).join(', ')}
+                            style={{ cursor: 'pointer' }}
+                            onClick={() => handleOpenTagsModal(company)}
+                          >
+                            +{company.tags.length - 3} more
+                          </Tag>
                         )}
+                        <Tag 
+                          color="black" 
+                          textColor="white"
+                          style={{ 
+                            cursor: 'pointer', 
+                            minWidth: '22px',
+                            width: '22px',
+                            height: '22px',
+                            borderRadius: '50%',
+                            padding: '0',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: 'bold'
+                          }}
+                          onClick={() => handleOpenTagsModal(company)}
+                        >
+                          +
+                        </Tag>
                       </>
                     ) : (
-                      <Tag color="#f3f4f6" textColor="#4b5563">No tags</Tag>
+                      <Tag 
+                        color="black" 
+                        textColor="white"
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => handleOpenTagsModal(company)}
+                      >
+                        + Add Tags
+                      </Tag>
                     )}
                   </TagsContainer>
                 </div>
@@ -1625,7 +1710,11 @@ const Companies = () => {
                         {company.cities.slice(0, 3).map(city => {
                           const flag = getFlagEmoji(city.name);
                           return (
-                            <CityBadge key={city.id}>
+                            <CityBadge 
+                              key={city.id}
+                              style={{ cursor: 'pointer' }}
+                              onClick={() => handleOpenCityModal(company)}
+                            >
                               {flag && <span className="flag">{flag}</span>}
                               {city.name}
                               <span 
@@ -1647,11 +1736,22 @@ const Companies = () => {
                           );
                         })}
                         {company.cities.length > 3 && (
-                          <CityBadge>+{company.cities.length - 3} more</CityBadge>
+                          <CityBadge 
+                            title={company.cities.slice(3).map(city => city.name).join(', ')}
+                            style={{ cursor: 'pointer' }}
+                            onClick={() => handleOpenCityModal(company)}
+                          >
+                            +{company.cities.length - 3} more
+                          </CityBadge>
                         )}
                       </>
                     ) : (
-                      <CityBadge>No cities</CityBadge>
+                      <CityBadge 
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => handleOpenCityModal(company)}
+                      >
+                        + Add City
+                      </CityBadge>
                     )}
                   </CitiesContainer>
                 </div>
@@ -1659,8 +1759,8 @@ const Companies = () => {
                 {/* SECTION 6: Links - Fixed Height */}
                 <div style={{ 
                   height: "40px",
-                  marginTop: "10px",
-                  marginBottom: "10px"
+                  marginTop: "15px",
+                  marginBottom: "5px"
                 }}>
                   <ExternalLinksContainer>
                     {company.website && getWebsiteDisplay(company.website) ? (
@@ -1695,45 +1795,66 @@ const Companies = () => {
                     <RelatedContactsHeader>
                       <h4>Associated Contacts</h4>
                     </RelatedContactsHeader>
-                    {company.contacts && company.contacts.length > 0 ? (
-                      <RelatedContactsList>
-                        {company.contacts.slice(0, 2).map(contact => (
-                          <ContactBadge key={contact.id}>
-                            {formatContactName(contact)}
-                            <span 
-                              style={{ 
-                                marginLeft: '4px', 
-                                cursor: 'pointer',
-                                fontWeight: 'bold',
-                                fontSize: '10px'
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRemoveContact(company.id, contact.id);
-                              }}
-                              title="Remove contact"
+                    <RelatedContactsList>
+                      {company.contacts && company.contacts.length > 0 ? (
+                        <>
+                          {company.contacts.slice(0, 2).map(contact => (
+                            <ContactBadge 
+                              key={contact.id}
+                              style={{ cursor: 'pointer' }}
+                              onClick={() => handleContactClick(contact.id)}
                             >
-                              ×
-                            </span>
-                          </ContactBadge>
-                        ))}
-                        {company.contacts.length > 2 && (
-                          <ContactBadge>+{company.contacts.length - 2} more</ContactBadge>
-                        )}
-                      </RelatedContactsList>
-                    ) : (
-                      <RelatedContactsList>
-                        <ContactBadge 
-                          style={{ 
-                            cursor: 'pointer',
-                            background: '#f3f4f6'
-                          }}
-                          onClick={() => handleOpenCompanyModal(company)}
-                        >
-                          + Add
-                        </ContactBadge>
-                      </RelatedContactsList>
-                    )}
+                              {formatContactName(contact)}
+                              <span 
+                                style={{ 
+                                  marginLeft: '4px', 
+                                  cursor: 'pointer',
+                                  fontWeight: 'bold',
+                                  fontSize: '10px'
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveContact(company.id, contact.id);
+                                }}
+                                title="Remove contact"
+                              >
+                                ×
+                              </span>
+                            </ContactBadge>
+                          ))}
+                          {company.contacts.length > 2 && (
+                            <ContactBadge
+                              title={company.contacts.slice(2).map(contact => formatContactName(contact)).join(', ')}
+                              style={{ cursor: 'pointer' }}
+                              onClick={() => handleOpenContactsModal(company)}
+                            >
+                              +{company.contacts.length - 2} more
+                            </ContactBadge>
+                          )}
+                        </>
+                      ) : null}
+                      
+                      <ContactBadge 
+                        style={{ 
+                          cursor: 'pointer',
+                          backgroundColor: 'black',
+                          color: 'white',
+                          borderColor: 'black',
+                          minWidth: '22px',
+                          width: company.contacts && company.contacts.length === 0 ? 'auto' : '22px',
+                          height: company.contacts && company.contacts.length === 0 ? 'auto' : '22px',
+                          borderRadius: company.contacts && company.contacts.length === 0 ? '16px' : '50%',
+                          padding: company.contacts && company.contacts.length === 0 ? '0.25rem 0.5rem' : '0',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 'bold'
+                        }}
+                        onClick={() => handleOpenContactsModal(company)}
+                      >
+                        {company.contacts && company.contacts.length === 0 ? '+ Add Contact' : '+'}
+                      </ContactBadge>
+                    </RelatedContactsList>
                   </RelatedContactsContainer>
                 </div>
               </CompanyCard>
@@ -1752,18 +1873,34 @@ const Companies = () => {
       )}
       
       {showTagsModal && selectedCompany && (
-        <TagsModal
+        <CompanyTagsModal
           isOpen={showTagsModal}
           onRequestClose={handleModalClose}
-          contact={selectedCompany}
+          company={selectedCompany}
         />
       )}
       
       {showCityModal && selectedCompany && (
-        <CityModal
+        <CompanyCityModal
           isOpen={showCityModal}
           onRequestClose={handleModalClose}
-          contact={selectedCompany}
+          company={selectedCompany}
+        />
+      )}
+      
+      {showContactsModal && selectedCompany && (
+        <CompanyContactsModal
+          isOpen={showContactsModal}
+          onRequestClose={handleModalClose}
+          company={selectedCompany}
+        />
+      )}
+      
+      {showContactModal && selectedContact && (
+        <ContactsModal
+          isOpen={showContactModal}
+          onRequestClose={handleModalClose}
+          contact={selectedContact}
         />
       )}
     </PageContainer>
