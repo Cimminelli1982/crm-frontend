@@ -79,6 +79,7 @@ async function getHubSpotCompanyData(company) {
           'website', 
           'domain',
           'description',
+          'about_us',      // Backup for description
           // Location for city relationship
           'city',
           // LinkedIn for social link
@@ -119,6 +120,7 @@ async function getHubSpotCompanyData(company) {
         'website', 
         'domain',
         'description',
+        'about_us',      // Backup for description
         // Location for city relationship
         'city',
         // LinkedIn for social link
@@ -292,6 +294,7 @@ async function processCompanyBatch(companies) {
               'website', 
               'domain',
               'description',
+              'about_us',      // Backup for description
               // Location for city relationship
               'city',
               // LinkedIn for social link
@@ -332,6 +335,16 @@ async function processCompanyBatch(companies) {
       }
       
       console.log(`Found HubSpot match for ${company.name}: ${hubspotCompany.properties.name} (ID: ${hubspotCompany.id})`);
+      
+      // DEBUG: Let's see ALL available properties from HubSpot
+      console.log(`===== HUBSPOT PROPERTIES FOR ${company.name} =====`);
+      for (const key in hubspotCompany.properties) {
+        if (hubspotCompany.properties[key]) {
+          console.log(`PROPERTY: ${key} = ${hubspotCompany.properties[key]}`);
+        }
+      }
+      console.log(`=== END HUBSPOT PROPERTIES ===`);
+      
       console.log(`HubSpot match details: Website: ${hubspotCompany.properties.website || 'N/A'}, Type: ${hubspotCompany.properties.type || 'N/A'}, LinkedIn: ${hubspotCompany.properties.linkedin_company_page || 'N/A'}`);
       console.log(`Current company values: Website: ${company.website || 'N/A'}, Description: ${company.description ? 'Has description' : 'No description'}, Category: ${company.category || 'N/A'}, LinkedIn: ${company.linkedin || 'N/A'}`);
       
@@ -361,22 +374,50 @@ async function processCompanyBatch(companies) {
       // Prepare update data - ONLY include the fields we care about
       const updateData = {};
       
-      // Only add fields if they're missing in Supabase
-      if (!company.website && websiteValue) {
+      console.log(`DECISION MAKING FOR COMPANY ${company.name}:`);
+      
+      // Website decision
+      console.log(`WEBSITE: Company has ${company.website ? company.website : 'NO WEBSITE'}`);
+      console.log(`WEBSITE: HubSpot has ${websiteValue ? websiteValue : 'NO WEBSITE'}`);
+      if (websiteValue && (!company.website || company.website.length < 10)) {
         updateData.website = websiteValue;
+        console.log(`WEBSITE DECISION: Will update with "${websiteValue}"`);
+      } else {
+        console.log(`WEBSITE DECISION: Will NOT update`);
       }
       
-      if (!company.description && hubspotCompany.properties.description) {
-        updateData.description = hubspotCompany.properties.description;
+      // Description decision
+      const hubspotDescription = hubspotCompany.properties.description || hubspotCompany.properties.about_us;
+      console.log(`DESCRIPTION: Company has ${company.description ? (company.description.length + ' chars') : 'NO DESCRIPTION'}`);
+      console.log(`DESCRIPTION: HubSpot has description=${hubspotCompany.properties.description ? 'YES' : 'NO'}, about_us=${hubspotCompany.properties.about_us ? 'YES' : 'NO'}`);
+      console.log(`DESCRIPTION: Combined HubSpot text is ${hubspotDescription ? (hubspotDescription.length + ' chars') : 'NOT AVAILABLE'}`);
+      
+      if (hubspotDescription && (!company.description || company.description.length < 50)) {
+        updateData.description = hubspotDescription;
+        console.log(`DESCRIPTION DECISION: Will update with "${hubspotDescription.substring(0, 50)}..."`);
+      } else {
+        console.log(`DESCRIPTION DECISION: Will NOT update`);
       }
       
-      if (!company.linkedin && linkedinValue) {
+      // LinkedIn decision
+      console.log(`LINKEDIN: Company has ${company.linkedin ? company.linkedin : 'NO LINKEDIN'}`);
+      console.log(`LINKEDIN: HubSpot has ${linkedinValue ? linkedinValue : 'NO LINKEDIN'}`);
+      if (linkedinValue && (!company.linkedin || !company.linkedin.includes('linkedin.com'))) {
         updateData.linkedin = linkedinValue;
+        console.log(`LINKEDIN DECISION: Will update with "${linkedinValue}"`);
+      } else {
+        console.log(`LINKEDIN DECISION: Will NOT update`);
       }
       
-      // Use industry or type for category
-      if (!company.category && (hubspotCompany.properties.industry || hubspotCompany.properties.type)) {
-        updateData.category = hubspotCompany.properties.industry || hubspotCompany.properties.type;
+      // Category decision
+      const categoryValue = hubspotCompany.properties.industry || hubspotCompany.properties.type;
+      console.log(`CATEGORY: Company has ${company.category ? company.category : 'NO CATEGORY'}`);
+      console.log(`CATEGORY: HubSpot has ${categoryValue ? categoryValue : 'NO CATEGORY'}`);
+      if (categoryValue && (!company.category || company.category.length < 3)) {
+        updateData.category = categoryValue;
+        console.log(`CATEGORY DECISION: Will update with "${categoryValue}"`);
+      } else {
+        console.log(`CATEGORY DECISION: Will NOT update`);
       }
       
       // Always include hubspot_id for reference
@@ -644,16 +685,37 @@ async function processCompanyBatch(companies) {
         }
       }
       
-      results.enriched++;
-      results.details.push({
-        company_id: company.id,
-        name: company.name,
-        status: 'enriched',
-        hubspot_id: hubspotCompany.id,
-        hubspot_name: hubspotCompany.properties.name,
-        updated_fields: Object.keys(updateData).filter(k => !!updateData[k]),
-        updated_relations: updatedRelations
-      });
+      // Only count as enriched if we actually updated fields beyond just hubspot_id
+      // or if we added city or tag relations
+      const realFieldsUpdated = Object.keys(updateData)
+        .filter(k => !!updateData[k] && k !== 'hubspot_id')
+        .length > 0;
+      
+      const wasActuallyEnriched = realFieldsUpdated || updatedRelations.city || updatedRelations.tags;
+      
+      if (wasActuallyEnriched) {
+        results.enriched++;
+        results.details.push({
+          company_id: company.id,
+          name: company.name,
+          status: 'enriched',
+          hubspot_id: hubspotCompany.id,
+          hubspot_name: hubspotCompany.properties.name,
+          updated_fields: Object.keys(updateData).filter(k => !!updateData[k]),
+          updated_relations: updatedRelations
+        });
+      } else {
+        // If we only added the hubspot_id without any real enrichment, count as skipped
+        results.skipped++;
+        results.details.push({
+          company_id: company.id,
+          name: company.name,
+          status: 'skipped',
+          hubspot_id: hubspotCompany.id,
+          hubspot_name: hubspotCompany.properties.name,
+          reason: 'No meaningful fields to update - company already had all data'
+        });
+      }
       
     } catch (error) {
       results.errors++;
