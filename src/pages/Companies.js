@@ -1284,26 +1284,20 @@ const Companies = () => {
       if (value.length >= 3 && searchField === 'name') {
         setIsLoading(true);
         try {
-          // Fetch companies - excluding those with 'Skip' category but including null category
+          // Use server-side filtering with ilike for better search and to avoid pagination issues
           console.log("Fetching from Supabase URL:", supabase.supabaseUrl);
-          const { data: allCompanies, error } = await supabase
+          console.log(`Searching for companies with name containing: "${value}"`);
+          
+          // Use direct server-side search with ilike
+          const { data: matchingCompanies, error } = await supabase
             .from('companies')
             .select('*')
-            .or('category.neq.Skip,category.is.null');
+            .ilike('name', `%${value}%`);
             
           if (error) {
             console.error("Error fetching companies:", error);
             return;
           }
-          
-          console.log(`Fetched ${allCompanies.length} total companies`);
-          
-          // Perform client-side filtering
-          const searchLower = value.toLowerCase();
-          const matchingCompanies = allCompanies.filter(company => {
-            if (!company.name) return false;
-            return company.name.toLowerCase().includes(searchLower);
-          });
           
           console.log(`Found ${matchingCompanies.length} companies matching "${value}"`);
           if (matchingCompanies.length > 0) {
