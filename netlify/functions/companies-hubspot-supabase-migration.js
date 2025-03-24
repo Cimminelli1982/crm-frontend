@@ -224,16 +224,67 @@ async function processCompanyBatch(companies) {
       
       
       // Try to find a match in HubSpot
-      const hubspotCompany = await getHubSpotCompanyData(company);
-      
-      if (!hubspotCompany) {
-        // We couldn't find a match by domain or name
-        results.skipped++;
+      let hubspotCompany;
+      try {
+        // Special case for records that look like Airtable IDs
+        if (company.name.startsWith('rec') && company.name.length === 17) {
+          console.log(`${company.name} appears to be an Airtable ID, skipping HubSpot lookup`);
+          results.skipped++;
+          results.details.push({
+            company_id: company.id,
+            name: company.name,
+            status: 'skipped',
+            reason: 'Company name appears to be an Airtable ID'
+          });
+          continue;
+        }
+        
+        // Try to match with HubSpot
+        hubspotCompany = await getHubSpotCompanyData(company);
+        
+        if (!hubspotCompany) {
+          console.log(`No HubSpot match found for ${company.name}, trying a generic lookup`);
+          
+          // Last resort - try to lookup by exact name in HubSpot
+          const exactNameSearchResponse = await hubspot.crm.companies.searchApi.doSearch({
+            filterGroups: [{
+              filters: [{
+                propertyName: 'name',
+                operator: 'EQ',
+                value: company.name
+              }]
+            }],
+            limit: 1,
+            properties: [
+              'name', 'domain', 'description', 'category', 'website', 'linkedin_company_page'
+            ]
+          });
+          
+          if (exactNameSearchResponse.results && exactNameSearchResponse.results.length > 0) {
+            hubspotCompany = exactNameSearchResponse.results[0];
+            console.log(`Found exact name match for ${company.name}`);
+          }
+        }
+        
+        if (!hubspotCompany) {
+          // We couldn't find a match by any method
+          results.skipped++;
+          results.details.push({
+            company_id: company.id,
+            name: company.name,
+            status: 'skipped',
+            reason: 'No matching company found in HubSpot'
+          });
+          continue;
+        }
+      } catch (lookupError) {
+        console.error(`Error looking up company ${company.name} in HubSpot:`, lookupError);
+        results.errors++;
         results.details.push({
           company_id: company.id,
           name: company.name,
-          status: 'skipped',
-          reason: 'No matching company found in HubSpot'
+          status: 'error',
+          error: `HubSpot lookup error: ${lookupError.message}`
         });
         continue;
       }
@@ -257,23 +308,22 @@ async function processCompanyBatch(companies) {
         category = industryToCategoryMap[hubspotCompany.properties.industry] || hubspotCompany.properties.industry;
       }
       
-      // Prepare data for update, prioritizing HubSpot data
+      // Prepare data for update, only include fields that actually exist in the schema
       const updateData = {
         website: hubspotCompany.properties.website || company.website,
         description: hubspotCompany.properties.description || company.description,
-        industry: hubspotCompany.properties.industry || company.industry,
         category: category || company.category,
-        employees: hubspotCompany.properties.numberofemployees || company.employees,
         linkedin_url: hubspotCompany.properties.linkedin_company_page || company.linkedin_url,
-        enrichment_source: 'hubspot',
-        enrichment_date: new Date().toISOString(),
-        hubspot_id: hubspotCompany.id,
-        hubspot_match_name: hubspotCompany.properties.name
+        // Only add hubspot_id if it exists in the schema
+        hubspot_id: hubspotCompany.id
       };
+      
+      // Log what we're updating
+      console.log(`Update data for ${company.name}: ${JSON.stringify(updateData)}`);
       
       // Log the enrichment data
       console.log(`Updating company ${company.name} with HubSpot data:`, 
-        Object.keys(updateData).filter(k => !!updateData[k] && k !== 'enrichment_date').reduce((obj, key) => {
+        Object.keys(updateData).filter(k => !!updateData[k]).reduce((obj, key) => {
           obj[key] = updateData[key];
           return obj;
         }, {})
@@ -508,7 +558,7 @@ async function processCompanyBatch(companies) {
         status: 'enriched',
         hubspot_id: hubspotCompany.id,
         hubspot_name: hubspotCompany.properties.name,
-        updated_fields: Object.keys(updateData).filter(k => !!updateData[k] && k !== 'enrichment_date'),
+        updated_fields: Object.keys(updateData).filter(k => !!updateData[k]),
         updated_relations: updatedRelations
       });
       
