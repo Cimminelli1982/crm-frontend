@@ -187,6 +187,7 @@ const Sidebar = ({ user, onSignOut }) => {
   const [openMenus, setOpenMenus] = useState({
     contacts: true,
     companies: false,
+    admin: false,
   });
 
   const toggleMenu = (menu) => {
@@ -231,6 +232,17 @@ const Sidebar = ({ user, onSignOut }) => {
       icon: faCalendarAlt,
       path: '/planner',
       subItems: []
+    },
+    {
+      id: 'admin',
+      name: 'Admin Tools',
+      icon: faHandshake,
+      path: '/admin',
+      subItems: [
+        { name: 'HubSpot Migration', path: '/admin/hubspot-migration' },
+        { name: 'HubSpot Test', path: '/admin/hubspot-test' },
+        { name: 'Contact Enrichment', path: '/admin/contact-enrichment' }
+      ]
     }
   ];
 

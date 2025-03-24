@@ -2045,8 +2045,8 @@ const Companies = () => {
                       <ContactBadge 
                         style={{ 
                           cursor: 'pointer',
-                          backgroundColor: 'black',
-                          color: 'white',
+                          backgroundColor: 'white',
+                          color: 'black',
                           borderColor: 'black',
                         }}
                         onClick={() => handleOpenContactsModal(company)}

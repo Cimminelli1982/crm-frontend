@@ -18,6 +18,9 @@ import Deals from './pages/companies/Deals';
 import Startups from './pages/companies/Startups';
 import Investors from './pages/companies/Investors';
 import Planner from './pages/Planner';
+import ContactEnrichment from './pages/ContactEnrichment';
+import HubSpotMigrationTest from './components/HubSpotMigrationTest';
+import HubSpotTest from './components/HubSpotTest';
 
 // Create a component that applies the layout
 const AppLayout = () => (
@@ -101,6 +104,11 @@ const App = () => {
 
             {/* Other main sections */}
             <Route path="/planner" element={<Planner />} />
+            
+            {/* Admin and Test routes */}
+            <Route path="/admin/hubspot-migration" element={<HubSpotMigrationTest />} />
+            <Route path="/admin/hubspot-test" element={<HubSpotTest />} />
+            <Route path="/admin/contact-enrichment" element={<ContactEnrichment />} />
           </Route>
         ) : (
           <Route path="*" element={<Navigate to="/login" />} />

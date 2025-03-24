@@ -7,6 +7,7 @@
     "@fortawesome/free-brands-svg-icons": "^6.4.2",
     "@fortawesome/free-solid-svg-icons": "^6.4.2",
     "@fortawesome/react-fontawesome": "^0.2.0",
+    "@hubspot/api-client": "^9.0.0",
     "@supabase/supabase-js": "^2.33.1",
     "@tanstack/react-table": "^8.21.2",
     "@tanstack/table-core": "^8.21.2",
@@ -20,6 +21,7 @@
     "@tiptap/starter-kit": "^2.11.5",
     "axios": "^1.5.0",
     "date-fns": "^2.30.0",
+    "node-fetch": "^2.6.7",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hot-toast": "^2.4.1",
@@ -36,7 +38,9 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "dev": "netlify dev",
+    "trigger-hubspot-migration": "curl -X POST -H 'Authorization: Bearer YOUR_MIGRATION_SECRET_KEY' -H 'Content-Type: application/json' -d '{\"limit\": 25}' http://localhost:8888/.netlify/functions/companies-hubspot-supabase-migration"
   },
   "eslintConfig": {
     "extends": [
@@ -64,6 +68,6 @@
   },
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
   "engines": {
-    "node": "18.x"
+    "node": ">=18.x"
   }
 }
