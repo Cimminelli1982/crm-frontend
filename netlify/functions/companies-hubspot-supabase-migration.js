@@ -203,19 +203,25 @@ async function processCompanyBatch(companies) {
       results.processed++;
       console.log(`Processing company: ${company.name} (ID: ${company.id})`);
       
-      // Only skip companies that have been previously enriched by HubSpot AND have a hubspot_id
-      if (company.enrichment_source === 'hubspot' && company.hubspot_id) {
-        console.log(`Skipping previously enriched company: ${company.name}`);
+      // Only skip companies that have all the required fields filled in
+      const requiredFields = ['website', 'description', 'category', 'linkedin_url'];
+      const missingFields = requiredFields.filter(field => !company[field]);
+      
+      if (missingFields.length === 0) {
+        console.log(`Skipping company with all required fields: ${company.name}`);
         results.skipped++;
         results.details.push({
           company_id: company.id,
           name: company.name,
           status: 'skipped',
-          reason: 'Already enriched from HubSpot',
-          hubspot_id: company.hubspot_id
+          reason: 'All required fields already filled',
+          has_fields: requiredFields
         });
         continue;
       }
+      
+      console.log(`Company ${company.name} is missing fields: ${missingFields.join(', ')}`);
+      
       
       // Try to find a match in HubSpot
       const hubspotCompany = await getHubSpotCompanyData(company);
@@ -590,63 +596,126 @@ exports.handler = async (event, context) => {
       scheduled
     });
     
-    // Fetch companies from Supabase - prioritize those that have names but no enrichment
-    // We'll try this query first to find companies that have never been enriched
-    const { data: unenrichedCompanies, error: unenrichedError, count: unenrichedCount } = await supabase
+    // Fetch companies from Supabase - prioritize those missing required fields
+    const requiredFields = ['website', 'description', 'category', 'linkedin_url'];
+    
+    // Try to find companies missing all required fields first
+    console.log('Attempting to find companies missing required fields...');
+    
+    // Build a query that finds companies missing at least one of the required fields
+    let query = supabase
       .from('companies')
-      .select('*', { count: 'exact' })
-      .is('enrichment_source', null)
+      .select('*', { count: 'exact' });
+    
+    // We'll use OR conditions for each missing field
+    let orConditions = requiredFields.map(field => {
+      return `${field}.is.null`;
+    });
+    
+    query = query
+      .or(orConditions.join(','))
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
+    
+    const { data: incompleteCompanies, error: incompleteError, count: incompleteCount } = await query;
     
     let companies;
     let fetchError;
     let count;
     
-    if (unenrichedError) {
-      console.error('Error fetching unenriched companies:', unenrichedError);
-      // Fall back to default query
-      const result = await supabase
+    if (incompleteError) {
+      console.error('Error with complex query for incomplete companies:', incompleteError);
+      // Fall back to simpler query - find those missing any required field
+      
+      // Try a simpler approach - find companies missing website
+      const websiteResult = await supabase
         .from('companies')
         .select('*', { count: 'exact' })
+        .is('website', null)
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
       
-      companies = result.data;
-      fetchError = result.error;
-      count = result.count;
-    } else if (unenrichedCompanies && unenrichedCompanies.length > 0) {
-      // Use the unenriched companies if we found any
-      console.log(`Found ${unenrichedCount} unenriched companies`);
-      companies = unenrichedCompanies;
-      fetchError = null;
-      count = unenrichedCount;
-    } else {
-      // If no unenriched companies, try to get those without HubSpot enrichment
-      const result = await supabase
-        .from('companies')
-        .select('*', { count: 'exact' })
-        .not('enrichment_source', 'eq', 'hubspot')
-        .order('created_at', { ascending: false })
-        .range(offset, offset + limit - 1);
-      
-      companies = result.data;
-      fetchError = result.error;
-      count = result.count;
-      
-      // If still no companies, get any companies
-      if (!companies || companies.length === 0) {
-        console.log('No un-enriched companies found, getting any companies');
-        const finalResult = await supabase
+      if (websiteResult.data && websiteResult.data.length > 0) {
+        console.log(`Found ${websiteResult.count} companies missing website`);
+        companies = websiteResult.data;
+        fetchError = null;
+        count = websiteResult.count;
+      } else {
+        // Try companies missing description
+        const descriptionResult = await supabase
           .from('companies')
           .select('*', { count: 'exact' })
+          .is('description', null)
           .order('created_at', { ascending: false })
           .range(offset, offset + limit - 1);
         
-        companies = finalResult.data;
-        fetchError = finalResult.error;
-        count = finalResult.count;
+        if (descriptionResult.data && descriptionResult.data.length > 0) {
+          console.log(`Found ${descriptionResult.count} companies missing description`);
+          companies = descriptionResult.data;
+          fetchError = null;
+          count = descriptionResult.count;
+        } else {
+          // Try companies missing category
+          const categoryResult = await supabase
+            .from('companies')
+            .select('*', { count: 'exact' })
+            .is('category', null)
+            .order('created_at', { ascending: false })
+            .range(offset, offset + limit - 1);
+          
+          if (categoryResult.data && categoryResult.data.length > 0) {
+            console.log(`Found ${categoryResult.count} companies missing category`);
+            companies = categoryResult.data;
+            fetchError = null;
+            count = categoryResult.count;
+          } else {
+            // Try companies missing linkedin_url
+            const linkedinResult = await supabase
+              .from('companies')
+              .select('*', { count: 'exact' })
+              .is('linkedin_url', null)
+              .order('created_at', { ascending: false })
+              .range(offset, offset + limit - 1);
+            
+            if (linkedinResult.data && linkedinResult.data.length > 0) {
+              console.log(`Found ${linkedinResult.count} companies missing LinkedIn URL`);
+              companies = linkedinResult.data;
+              fetchError = null;
+              count = linkedinResult.count;
+            } else {
+              // Fall back to any companies
+              console.log('No companies missing any required fields, getting any companies');
+              const finalResult = await supabase
+                .from('companies')
+                .select('*', { count: 'exact' })
+                .order('created_at', { ascending: false })
+                .range(offset, offset + limit - 1);
+              
+              companies = finalResult.data;
+              fetchError = finalResult.error;
+              count = finalResult.count;
+            }
+          }
+        }
       }
+    } else if (incompleteCompanies && incompleteCompanies.length > 0) {
+      // Use the incomplete companies if we found any
+      console.log(`Found ${incompleteCount} companies missing at least one required field`);
+      companies = incompleteCompanies;
+      fetchError = null;
+      count = incompleteCount;
+    } else {
+      // If no incomplete companies, get any companies
+      console.log('No companies missing required fields, getting any companies');
+      const finalResult = await supabase
+        .from('companies')
+        .select('*', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1);
+      
+      companies = finalResult.data;
+      fetchError = finalResult.error;
+      count = finalResult.count;
     }
     
     if (fetchError) {
