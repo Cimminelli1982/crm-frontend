@@ -308,6 +308,7 @@ async function processCompanyBatch(companies) {
       }
       
       console.log(`Found HubSpot match for ${company.name}: ${hubspotCompany.properties.name} (ID: ${hubspotCompany.id})`);
+      console.log(`HubSpot match details: Website: ${hubspotCompany.properties.website || 'N/A'}, Type: ${hubspotCompany.properties.type || 'N/A'}, LinkedIn: ${hubspotCompany.properties.linkedin_company_page || 'N/A'}`);
       
       // Extract category from HubSpot if available - prefer type field
       let category = null;
@@ -329,9 +330,7 @@ async function processCompanyBatch(companies) {
         // Social media
         linkedin_url: hubspotCompany.properties.linkedin_company_page || company.linkedin_url,
         // HubSpot system identifier
-        hubspot_id: hubspotCompany.id,
-        // Store the name we matched with for reference
-        hubspot_match_name: hubspotCompany.properties.name
+        hubspot_id: hubspotCompany.id
       };
       
       // Log what we're updating
