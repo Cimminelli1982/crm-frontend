@@ -206,7 +206,7 @@ async function processCompanyBatch(companies) {
       console.log(`Processing company: ${company.name} (ID: ${company.id})`);
       
       // Only skip companies that have all the required fields filled in
-      const requiredFields = ['website', 'description', 'category', 'linkedin_url'];
+      const requiredFields = ['website', 'description', 'category', 'linkedin'];
       const missingFields = requiredFields.filter(field => !company[field]);
       
       if (missingFields.length === 0) {
@@ -309,6 +309,7 @@ async function processCompanyBatch(companies) {
       
       console.log(`Found HubSpot match for ${company.name}: ${hubspotCompany.properties.name} (ID: ${hubspotCompany.id})`);
       console.log(`HubSpot match details: Website: ${hubspotCompany.properties.website || 'N/A'}, Type: ${hubspotCompany.properties.type || 'N/A'}, LinkedIn: ${hubspotCompany.properties.linkedin_company_page || 'N/A'}`);
+      console.log(`Current company values: Website: ${company.website || 'N/A'}, Description: ${company.description ? 'Has description' : 'No description'}, Category: ${company.category || 'N/A'}, LinkedIn: ${company.linkedin || 'N/A'}`);
       
       // Extract category from HubSpot if available - prefer type field
       let category = null;
@@ -327,8 +328,8 @@ async function processCompanyBatch(companies) {
         description: hubspotCompany.properties.description || hubspotCompany.properties.about_us || company.description,
         // Use type as category if available
         category: hubspotCompany.properties.type || company.category,
-        // Social media
-        linkedin_url: hubspotCompany.properties.linkedin_company_page || company.linkedin_url,
+        // Social media - field is called 'linkedin' in the schema
+        linkedin: hubspotCompany.properties.linkedin_company_page || company.linkedin,
         // HubSpot system identifier
         hubspot_id: hubspotCompany.id
       };
@@ -662,7 +663,7 @@ exports.handler = async (event, context) => {
     });
     
     // Fetch companies from Supabase - prioritize those missing required fields
-    const requiredFields = ['website', 'description', 'category', 'linkedin_url'];
+    const requiredFields = ['website', 'description', 'category', 'linkedin'];
     
     // Try to find companies missing all required fields first
     console.log('Attempting to find companies missing required fields...');
