@@ -764,11 +764,11 @@ const Companies = () => {
       let companiesData;
       let companiesError;
       
-      // Get all companies first 
+      // Get all companies first - including those with null category, excluding 'Skip'
       let { data: allCompaniesData, error: allCompaniesError } = await supabase
         .from('companies')
         .select('*')
-        .neq('category', 'Skip'); // Filter out companies with 'Skip' category
+        .or('category.neq.Skip,category.is.null'); // Filter out Skip category but include null category
       
       if (allCompaniesError) {
         throw allCompaniesError;
@@ -1126,11 +1126,11 @@ const Companies = () => {
   // Fetch total count and filter counts
   const fetchFilterCounts = async () => {
     try {
-      // Get all companies to calculate counts client-side (excluding 'Skip' category)
+      // Get all companies to calculate counts client-side (excluding 'Skip' category, including null)
       const { data: allCompaniesData, error: companiesError } = await supabase
         .from('companies')
         .select('*')
-        .neq('category', 'Skip'); // Filter out companies with 'Skip' category
+        .or('category.neq.Skip,category.is.null'); // Filter out Skip category but include null category
       
       if (companiesError) throw companiesError;
       
@@ -1284,12 +1284,12 @@ const Companies = () => {
       if (value.length >= 3 && searchField === 'name') {
         setIsLoading(true);
         try {
-          // Just fetch all companies once
+          // Fetch companies - excluding those with 'Skip' category but including null category
           console.log("Fetching from Supabase URL:", supabase.supabaseUrl);
           const { data: allCompanies, error } = await supabase
             .from('companies')
             .select('*')
-            .neq('category', 'Skip');
+            .or('category.neq.Skip,category.is.null');
             
           if (error) {
             console.error("Error fetching companies:", error);
