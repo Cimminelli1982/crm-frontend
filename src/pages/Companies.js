@@ -1288,7 +1288,10 @@ const Companies = () => {
           console.log(`Searching for companies with ${searchField} containing: "${value}"`);
           
           // Use direct server-side search with ilike
-          let query = supabase.from('companies').select('*');
+          // Always filter out companies with 'Skip' category
+          let query = supabase.from('companies')
+            .select('*')
+            .neq('category', 'Skip');
           
           // Different search approach based on search field
           if (searchField === 'tags') {
