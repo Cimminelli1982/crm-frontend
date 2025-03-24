@@ -10,6 +10,8 @@ import CompanyTagsModal from '../components/modals/CompanyTagsModal';
 import CompanyCityModal from '../components/modals/CompanyCityModal';
 import CompanyContactsModal from '../components/modals/CompanyContactsModal';
 import ContactsModal from '../components/modals/ContactsModal';
+import MergeCompanyModal from '../components/modals/MergeCompanyModal';
+import EditCompanyModal from '../components/modals/EditCompanyModal';
 
 Modal.setAppElement('#root');
 
@@ -222,6 +224,12 @@ const CompanyName = styled.h3`
   font-weight: 600;
   color: #111827;
   margin: 0 0 8px 0;
+  cursor: pointer;
+  
+  &:hover {
+    text-decoration: underline;
+    color: black;
+  }
 `;
 
 const ActionMenu = styled.div`
@@ -265,10 +273,18 @@ const ActionMenuItem = styled.button`
   background: none;
   border: none;
   cursor: pointer;
+  position: relative;
   
   &:hover {
-    background-color: #f3f4f6;
-    color: #111827;
+    background-color: black;
+    color: white;
+  }
+  
+  &:hover::after {
+    content: ">";
+    position: absolute;
+    right: 12px;
+    font-weight: bold;
   }
 `;
 
@@ -350,6 +366,15 @@ const CompanyDescription = styled.p`
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 0 0 auto;
+  cursor: pointer;
+  
+  &:hover {
+    background-color: #f9fafb;
+    border-radius: 4px;
+    padding: 4px;
+    margin: -4px;
+    margin-bottom: 12px;
+  }
 `;
 
 const TagsContainer = styled.div`
@@ -548,6 +573,7 @@ const Companies = () => {
   const [selectedCompany, setSelectedCompany] = useState(null);
   const [selectedContact, setSelectedContact] = useState(null);
   const [showCompanyModal, setShowCompanyModal] = useState(false);
+  const [showEditCompanyModal, setShowEditCompanyModal] = useState(false); // New state for edit company modal
   const [showTagsModal, setShowTagsModal] = useState(false);
   const [showCityModal, setShowCityModal] = useState(false);
   const [showContactsModal, setShowContactsModal] = useState(false);
@@ -556,12 +582,16 @@ const Companies = () => {
   const [editingCategoryCompanyId, setEditingCategoryCompanyId] = useState(null);
   const [focusedCategoryIndex, setFocusedCategoryIndex] = useState(0);
   const categoryDropdownRef = useRef(null);
+  const [editingName, setEditingName] = useState(false);
+  const [editingNameCompanyId, setEditingNameCompanyId] = useState(null);
+  const [editingNameValue, setEditingNameValue] = useState('');
   const [editingDescription, setEditingDescription] = useState(false);
   const [editingDescriptionCompanyId, setEditingDescriptionCompanyId] = useState(null);
   const [editingDescriptionValue, setEditingDescriptionValue] = useState('');
   const [actionMenuOpen, setActionMenuOpen] = useState(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null); // Track which company is in delete confirmation state
   const [skipConfirmId, setSkipConfirmId] = useState(null); // Track which company is in skip confirmation state
+  const [showMergeModal, setShowMergeModal] = useState(false); // To control the display of the merge modal
   
   // Filter counts
   const [filterCounts, setFilterCounts] = useState({
@@ -974,21 +1004,43 @@ const Companies = () => {
     fetchFilterCounts();
   }, [refreshTrigger, activeFilter, sortBy, sortOrder]);
   
-  // Add event listener to handle clicks outside delete button (safety measure)
+  // Add event listener to handle clicks outside menu/buttons and escape key
   useEffect(() => {
     const handleClickOutside = (e) => {
+      // Close confirmation states if clicking outside
       if ((deleteConfirmId !== null || skipConfirmId !== null) && !e.target.closest('button')) {
+        setDeleteConfirmId(null);
+        setSkipConfirmId(null);
+      }
+      
+      // Close action menu if clicking outside
+      if (actionMenuOpen !== null && !e.target.closest('.action-menu-container')) {
+        setActionMenuOpen(null);
+      }
+    };
+    
+    // Handle escape key press
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        // Close action menu
+        if (actionMenuOpen !== null) {
+          setActionMenuOpen(null);
+        }
+        
+        // Reset confirmation states
         setDeleteConfirmId(null);
         setSkipConfirmId(null);
       }
     };
     
     document.addEventListener('click', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
     
     return () => {
       document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [deleteConfirmId, skipConfirmId]);
+  }, [deleteConfirmId, skipConfirmId, actionMenuOpen]);
   
   // Listen for custom events to open contact modal
   useEffect(() => {
@@ -1273,6 +1325,46 @@ const Companies = () => {
     }
   };
   
+  // Handle name inline edit
+  const handleNameClick = (company) => {
+    setEditingNameCompanyId(company.id);
+    setEditingNameValue(company.name || '');
+    setEditingName(true);
+  };
+  
+  // Handle name save
+  const handleNameSave = async () => {
+    if (!editingNameCompanyId || !editingNameValue.trim()) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('companies')
+        .update({ 
+          name: editingNameValue.trim(), 
+          modified_at: new Date() 
+        })
+        .eq('id', editingNameCompanyId)
+        .select();
+      
+      if (error) throw error;
+      
+      // Update local state
+      setCompanies(companies.map(company => 
+        company.id === editingNameCompanyId ? 
+          { ...company, name: editingNameValue.trim() } : 
+          company
+      ));
+      
+      // Clean up and close editor
+      setEditingNameCompanyId(null);
+      setEditingNameValue('');
+      setEditingName(false);
+      
+    } catch (error) {
+      console.error('Error updating company name:', error);
+    }
+  };
+
   // Handle description inline edit
   const handleDescriptionClick = (company) => {
     setEditingDescriptionCompanyId(company.id);
@@ -1315,22 +1407,52 @@ const Companies = () => {
   
   // Handle modal close
   const handleModalClose = () => {
+    // Close all modals
     setShowCompanyModal(false);
+    setShowEditCompanyModal(false); // Close edit company modal
     setShowTagsModal(false);
     setShowCityModal(false);
     setShowContactsModal(false);
     setShowContactModal(false);
+    setShowMergeModal(false);
+    
+    // Reset selection states
     setSelectedCompany(null);
     setSelectedContact(null);
-    setDeleteConfirmId(null); // Reset any delete confirmation
-    setSkipConfirmId(null); // Reset any skip confirmation
+    
+    // Reset confirmation states
+    setDeleteConfirmId(null);
+    setSkipConfirmId(null);
+    
+    // Reset inline editing states
+    setEditingName(false);
+    setEditingNameCompanyId(null);
+    setEditingNameValue('');
+    setEditingDescription(false);
+    setEditingDescriptionCompanyId(null);
+    setEditingDescriptionValue('');
+    
     // Refresh the companies list to show any newly created company
     setRefreshTrigger(prev => prev + 1);
   };
   
   // Handle action menu toggle
   const handleActionMenuToggle = (companyId) => {
-    setActionMenuOpen(actionMenuOpen === companyId ? null : companyId);
+    // Reset any confirmation states when opening/closing the menu
+    if (actionMenuOpen === companyId) {
+      setActionMenuOpen(null);
+      setDeleteConfirmId(null);
+      setSkipConfirmId(null);
+    } else {
+      setActionMenuOpen(companyId);
+    }
+  };
+  
+  // Handle merge company action
+  const handleMergeCompany = (company) => {
+    setSelectedCompany(company);
+    setShowMergeModal(true);
+    setActionMenuOpen(null); // Close the action menu
   };
   
   // Handle skip company - change category to Skip so it disappears from view
@@ -1668,25 +1790,95 @@ const Companies = () => {
                 {/* SECTION 1: Title & Actions - Fixed Height */}
                 <div style={{ height: "40px", marginBottom: "0" }}>
                   <CompanyHeader>
-                    <CompanyName title={company.name}>
-                      {formatCompanyName(company.name)}
-                    </CompanyName>
-                    <div style={{ display: 'flex' }}>
-                      <SkipButton 
-                        onClick={() => handleSkipCompany(company.id)}
-                        className={skipConfirmId === company.id ? 'confirm' : ''}
-                        title={skipConfirmId === company.id ? "Click again to confirm setting category to Skip" : "Skip company"}
+                    {editingName && editingNameCompanyId === company.id ? (
+                      <div style={{ flex: 1 }}>
+                        <input
+                          style={{ 
+                            width: '100%', 
+                            padding: '4px',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '4px',
+                            fontSize: '1.1rem',
+                            fontWeight: '600'
+                          }}
+                          value={editingNameValue}
+                          onChange={e => setEditingNameValue(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Escape') {
+                              setEditingName(false);
+                              setEditingNameCompanyId(null);
+                            } else if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleNameSave();
+                            }
+                          }}
+                          autoFocus
+                        />
+                        <div style={{ 
+                          display: 'flex', 
+                          justifyContent: 'flex-end', 
+                          marginTop: '5px',
+                          gap: '5px',
+                          fontSize: '0.7rem'
+                        }}>
+                          <span style={{ 
+                            color: '#6b7280', 
+                            marginRight: 'auto',
+                            alignSelf: 'center'
+                          }}>
+                            Press Esc to cancel, Enter to save
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <CompanyName 
+                        title="Click to edit company name"
+                        onClick={() => handleNameClick(company)}
                       >
-                        {skipConfirmId === company.id ? "Confirm" : "Skip"}
-                      </SkipButton>
-                      <DeleteButton 
-                        onClick={() => handleDeleteCompany(company.id)}
-                        className={deleteConfirmId === company.id ? 'confirm' : ''}
-                        title={deleteConfirmId === company.id ? "Click again to confirm deletion" : "Delete company"}
+                        {formatCompanyName(company.name)}
+                      </CompanyName>
+                    )}
+                    <ActionMenu className="action-menu-container">
+                      <ActionMenuToggle 
+                        onClick={() => handleActionMenuToggle(company.id)}
+                        title="Company actions"
+                        className="action-menu-container"
                       >
-                        {deleteConfirmId === company.id ? "Confirm" : "Delete"}
-                      </DeleteButton>
-                    </div>
+                        <FaEllipsisH />
+                      </ActionMenuToggle>
+                      <ActionMenuDropdown isOpen={actionMenuOpen === company.id} className="action-menu-container">
+                        <ActionMenuItem onClick={() => handleOpenCompanyModal(company)}>
+                          Edit
+                        </ActionMenuItem>
+                        {skipConfirmId === company.id ? (
+                          <ActionMenuItem 
+                            onClick={() => handleSkipCompany(company.id)}
+                            style={{ color: '#4B5563', fontWeight: 'bold' }}
+                          >
+                            Confirm Skip
+                          </ActionMenuItem>
+                        ) : (
+                          <ActionMenuItem onClick={() => handleSkipCompany(company.id)}>
+                            Skip
+                          </ActionMenuItem>
+                        )}
+                        <ActionMenuItem onClick={() => handleMergeCompany(company)}>
+                          Merge
+                        </ActionMenuItem>
+                        {deleteConfirmId === company.id ? (
+                          <ActionMenuItem 
+                            onClick={() => handleDeleteCompany(company.id)}
+                            style={{ color: '#EF4444', fontWeight: 'bold' }}
+                          >
+                            Confirm Delete
+                          </ActionMenuItem>
+                        ) : (
+                          <ActionMenuItem onClick={() => handleDeleteCompany(company.id)}>
+                            Delete
+                          </ActionMenuItem>
+                        )}
+                      </ActionMenuDropdown>
+                    </ActionMenu>
                   </CompanyHeader>
                 </div>
                 
@@ -2100,6 +2292,14 @@ const Companies = () => {
           isOpen={showContactModal}
           onRequestClose={handleModalClose}
           contact={selectedContact}
+        />
+      )}
+
+      {showMergeModal && selectedCompany && (
+        <MergeCompanyModal
+          isOpen={showMergeModal}
+          onRequestClose={handleModalClose}
+          company={selectedCompany}
         />
       )}
     </PageContainer>
