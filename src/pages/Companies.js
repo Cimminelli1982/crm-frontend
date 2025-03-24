@@ -566,43 +566,31 @@ const Companies = () => {
     try {
       setIsLoading(true);
       
-      // DEBUGGING: First try a direct approach for company name search
-      if (searchTerm.length >= 3 && searchField === 'name') {
+      // Use server-side search for company name
+      if (searchTerm.length >= 2 && searchField === 'name') {
         try {
-          console.log("DEBUG: Performing direct name search for:", searchTerm);
+          console.log("Performing server-side name search for:", searchTerm);
           
-          // Fetch all companies first
-          const { data: allCompanies, error: allCompaniesError } = await supabase
+          // Simple, direct approach with ILIKE for name searching
+          const { data: matchingCompanies, error: matchingError } = await supabase
             .from('companies')
             .select('*')
-            .neq('category', 'Skip');
+            .ilike('name', `%${searchTerm}%`)
+            .neq('category', 'Skip')
+            .or('category.is.null'); // Include companies with null category
             
-          if (allCompaniesError) {
-            console.error("Error fetching all companies:", allCompaniesError);
-            throw allCompaniesError;
+          if (matchingError) {
+            console.error("Error searching companies by name:", matchingError);
+            throw matchingError;
           }
           
-          console.log(`DEBUG: Found total of ${allCompanies.length} companies before filtering`);
-          
-          // Manual client-side filtering for company name
-          const searchLower = searchTerm.toLowerCase();
-          const filteredCompanies = allCompanies.filter(company => {
-            if (!company.name) return false;
-            const companyNameLower = company.name.toLowerCase();
-            const includes = companyNameLower.includes(searchLower);
-            if (includes) {
-              console.log(`MATCH: "${company.name}" contains "${searchTerm}"`);
-            }
-            return includes;
-          });
-          
-          console.log(`DEBUG: After filtering, found ${filteredCompanies.length} companies containing "${searchTerm}" in name`);
-          if (filteredCompanies.length > 0) {
-            console.log("Matches:", filteredCompanies.map(c => c.name));
+          console.log(`Found ${matchingCompanies?.length || 0} companies matching "${searchTerm}" in name`);
+          if (matchingCompanies?.length > 0) {
+            console.log("Matches:", matchingCompanies.map(c => c.name));
           }
           
           // Set the filtered companies
-          let companiesData = filteredCompanies;
+          let companiesData = matchingCompanies || [];
           
           // Get IDs of filtered companies
           const companyIds = companiesData.map(company => company.id);
@@ -716,7 +704,7 @@ const Companies = () => {
       let companiesData;
       let companiesError;
       
-      // Get all companies first - including those with null category, excluding 'Skip'
+      // Get all companies - including those with null category, excluding 'Skip'
       let { data: allCompaniesData, error: allCompaniesError } = await supabase
         .from('companies')
         .select('*')
@@ -1176,18 +1164,19 @@ const Companies = () => {
   
   // We're using a native select now, so no custom dropdown state needed
   
-  // Direct search functionality - completely bypasses the fetchCompanies function
+  // Direct search functionality - uses server-side search for efficiency
   const handleSearch = async (e) => {
     const value = e.target.value;
     setSearchTerm(value);
     console.log(`Search term changed to: "${value}"`);
     
-    // Only trigger search if length is 3+ characters or 0 (clearing)
-    if (value.length >= 3 || value.length === 0) {
+    // Only trigger search if length is 2+ characters for name search, 3+ for others, or 0 (clearing)
+    const minLength = searchField === 'name' ? 2 : 3;
+    if (value.length >= minLength || value.length === 0) {
       console.log(`Triggering search for: "${value}"`);
       
       // For name, website, category, contacts, and tags searches, we'll implement a direct search approach
-      if (value.length >= 3 && ['name', 'website', 'category', 'contact', 'tags'].includes(searchField)) {
+      if ((value.length >= minLength) && ['name', 'website', 'category', 'contact', 'tags'].includes(searchField)) {
         setIsLoading(true);
         try {
           // Use server-side filtering with ilike for better search and to avoid pagination issues
@@ -1201,7 +1190,18 @@ const Companies = () => {
             .neq('category', 'Skip');
           
           // Different search approach based on search field
-          if (searchField === 'tags') {
+          if (searchField === 'name') {
+            // For name search, use a simple, reliable approach
+            console.log("Performing company name search");
+            
+            // Use the simplest, most reliable approach for name search
+            query = supabase
+              .from('companies')
+              .select('*')
+              .ilike('name', `%${value}%`)
+              .neq('category', 'Skip');
+            
+          } else if (searchField === 'tags') {
             // For tags search, we need to join with companies_tags and tags tables
             console.log("Performing tags search");
             // Get tag IDs that match the search term
@@ -1302,7 +1302,7 @@ const Companies = () => {
             query = query.in('id', companyIds);
             
           } else {
-            // Simple field search for name, website, category
+            // Simple field search for website, category
             query = query.ilike(searchField, `%${value}%`);
           }
           
@@ -1314,9 +1314,39 @@ const Companies = () => {
             return;
           }
           
-          console.log(`Found ${matchingCompanies.length} companies matching "${value}"`);
-          if (matchingCompanies.length > 0) {
+          console.log(`Found ${matchingCompanies?.length || 0} companies matching "${value}"`);
+          if (matchingCompanies && matchingCompanies.length > 0) {
             console.log("Matching companies:", matchingCompanies.map(c => c.name));
+          } else {
+            console.log("No companies found with query, trying broader approach");
+            
+            // Try a broader search without category filters
+            const { data: broaderResult } = await supabase
+              .from('companies')
+              .select('*')
+              .ilike('name', `%${value}%`);
+              
+            console.log("Broader query result:", broaderResult);
+            
+            // If still no results, try an even broader approach with 'or' syntax
+            if (!broaderResult || broaderResult.length === 0) {
+              console.log("Still no results, trying widest possible search");
+              
+              const { data: widestSearch } = await supabase
+                .from('companies')
+                .select('*')
+                .or(`name.ilike.%${value}%`);
+              
+              console.log("Widest search results:", widestSearch);
+              
+              if (widestSearch && widestSearch.length > 0) {
+                matchingCompanies = widestSearch;
+                console.log("Using widest search results");
+              }
+            } else {
+              matchingCompanies = broaderResult;
+              console.log("Using broader search results");
+            }
           }
           
           // Direct update the debug output
@@ -1855,27 +1885,103 @@ const Companies = () => {
       try {
         console.log(`Starting deletion process for company ${companyId}`);
         
-        // Instead of deleting, mark the company as "Deleted" category
-        // This approach avoids foreign key constraint issues while removing
-        // the company from normal view
-        
-        console.log(`Updating company ${companyId} to Deleted category`);
-        const { error: updateError } = await supabase
-          .from('companies')
-          .update({ 
-            category: 'Deleted',
-            modified_at: new Date()
-          })
-          .eq('id', companyId);
+        // STEP 1: Find contacts with direct foreign key to this company
+        console.log(`Finding contacts with direct company_id foreign key to ${companyId}`);
+        const { data: directLinkedContacts, error: contactsFetchError } = await supabase
+          .from('contacts')
+          .select('id')
+          .eq('company_id', companyId);
           
-        if (updateError) {
-          console.error('Error marking company as deleted:', updateError);
-          throw new Error(`Failed to mark company as deleted: ${updateError.message}`);
+        if (contactsFetchError) {
+          console.error('Error fetching directly linked contacts:', contactsFetchError);
+          throw new Error(`Failed to fetch linked contacts: ${contactsFetchError.message}`);
         }
         
-        // Update local state to remove the company from view
+        // If there are directly linked contacts, handle them first
+        if (directLinkedContacts && directLinkedContacts.length > 0) {
+          const contactIds = directLinkedContacts.map(c => c.id);
+          console.log(`Found ${contactIds.length} contacts directly linked to company:`, contactIds);
+          
+          // Delete tags for these contacts first
+          for (const contactId of contactIds) {
+            console.log(`Deleting tags for contact ${contactId}`);
+            const { error: tagDeleteError } = await supabase
+              .from('contact_tags')
+              .delete()
+              .eq('contact_id', contactId);
+              
+            if (tagDeleteError) {
+              console.error(`Error deleting tags for contact ${contactId}:`, tagDeleteError);
+              throw new Error(`Failed to delete contact tags: ${tagDeleteError.message}`);
+            }
+          }
+          
+          // Now update the contacts to break the direct foreign key constraint
+          for (const contactId of contactIds) {
+            console.log(`Updating contact ${contactId} to remove company_id`);
+            const { error: contactUpdateError } = await supabase
+              .from('contacts')
+              .update({ company_id: null })
+              .eq('id', contactId);
+              
+            if (contactUpdateError) {
+              console.error(`Error updating contact ${contactId}:`, contactUpdateError);
+              throw new Error(`Failed to update contact: ${contactUpdateError.message}`);
+            }
+          }
+        }
+        
+        // STEP 2: Delete company-tag relationships (junction table)
+        console.log(`Deleting company tags for company ${companyId}`);
+        const { error: tagsError } = await supabase
+          .from('companies_tags')
+          .delete()
+          .eq('company_id', companyId);
+          
+        if (tagsError) {
+          console.error('Error deleting company tags:', tagsError);
+          throw new Error(`Failed to delete company tags: ${tagsError.message}`);
+        }
+        
+        // STEP 3: Delete company-city relationships (junction table)
+        console.log(`Deleting company cities for company ${companyId}`);
+        const { error: citiesError } = await supabase
+          .from('companies_cities')
+          .delete()
+          .eq('company_id', companyId);
+          
+        if (citiesError) {
+          console.error('Error deleting company cities:', citiesError);
+          throw new Error(`Failed to delete company cities: ${citiesError.message}`);
+        }
+        
+        // STEP 4: Delete company-contact relationships (junction table)
+        console.log(`Deleting company-contact relationships for company ${companyId}`);
+        const { error: contactsError } = await supabase
+          .from('contact_companies')
+          .delete()
+          .eq('company_id', companyId);
+          
+        if (contactsError) {
+          console.error('Error deleting company contacts:', contactsError);
+          throw new Error(`Failed to delete company contacts: ${contactsError.message}`);
+        }
+        
+        // STEP 5: Finally, delete the company record itself
+        console.log(`Deleting company ${companyId}`);
+        const { error: companyError } = await supabase
+          .from('companies')
+          .delete()
+          .eq('id', companyId);
+          
+        if (companyError) {
+          console.error('Error deleting company record:', companyError);
+          throw new Error(`Failed to delete company: ${companyError.message}`);
+        }
+        
+        // Update local state to remove the company
         setCompanies(companies.filter(company => company.id !== companyId));
-        console.log(`Company ${companyId} marked as deleted`);
+        console.log(`Company ${companyId} successfully deleted`);
         
         // Reset confirmation state
         setDeleteConfirmId(null);
