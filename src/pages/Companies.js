@@ -136,55 +136,6 @@ const ContentSection = styled.div`
   padding: 0 1.5rem 1.5rem 1.5rem;
 `;
 
-// Filter buttons styled components
-const FilterButtonsContainer = styled.div`
-  display: flex;
-  gap: 0.75rem;
-  padding: 2rem 0 0.5rem 0;
-  margin: 0;
-  overflow-x: auto;
-  
-  @media (max-width: 768px) {
-    flex-wrap: nowrap;
-    padding: 1.5rem 0 0.25rem 0;
-  }
-`;
-
-const FilterButton = styled.button`
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border-radius: 0.375rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  background-color: ${props => props.active ? 'black' : 'white'};
-  color: ${props => props.active ? 'white' : 'black'};
-  border: 1px solid black;
-  position: relative;
-  white-space: nowrap;
-  
-  &:hover {
-    background-color: ${props => props.active ? '#333333' : 'rgba(0, 0, 0, 0.05)'};
-  }
-  
-  svg {
-    font-size: 1rem;
-  }
-`;
-
-const NotificationDot = styled.div`
-  position: absolute;
-  top: 0.25rem;
-  right: 0.25rem;
-  width: 0.5rem;
-  height: 0.5rem;
-  background-color: black;
-  border-radius: 50%;
-  border: 2px solid white;
-`;
 
 // Company Card Styled Components
 const CompaniesGrid = styled.div`
@@ -564,8 +515,7 @@ const Companies = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchField, setSearchField] = useState('name');
   const [isLoading, setIsLoading] = useState(true);
-  const [activeFilter, setActiveFilter] = useState(null);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
+    const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
   
@@ -608,10 +558,7 @@ const Companies = () => {
   // Search field options
   const searchFields = [
     { id: 'name', label: 'Company Name' },
-    { id: 'contact', label: 'Related Contact' },
-    { id: 'website', label: 'Website' },
-    { id: 'tags', label: 'Tags' },
-    { id: 'category', label: 'Category' }
+    { id: 'contact', label: 'Related Contact' }
   ];
   
   // Fetch companies with details (tags, cities, contacts)
@@ -621,141 +568,147 @@ const Companies = () => {
       
       // DEBUGGING: First try a direct approach for company name search
       if (searchTerm.length >= 3 && searchField === 'name') {
-        console.log("DEBUG: Performing direct name search for:", searchTerm);
-        
-        // Fetch all companies first
-        const { data: allCompanies, error: allCompaniesError } = await supabase
-          .from('companies')
-          .select('*')
-          .neq('category', 'Skip');
+        try {
+          console.log("DEBUG: Performing direct name search for:", searchTerm);
           
-        if (allCompaniesError) {
-          console.error("Error fetching all companies:", allCompaniesError);
-          throw allCompaniesError;
-        }
-        
-        console.log(`DEBUG: Found total of ${allCompanies.length} companies before filtering`);
-        
-        // Manual client-side filtering for company name
-        const searchLower = searchTerm.toLowerCase();
-        const filteredCompanies = allCompanies.filter(company => {
-          if (!company.name) return false;
-          const companyNameLower = company.name.toLowerCase();
-          const includes = companyNameLower.includes(searchLower);
-          if (includes) {
-            console.log(`MATCH: "${company.name}" contains "${searchTerm}"`);
-          }
-          return includes;
-        });
-        
-        console.log(`DEBUG: After filtering, found ${filteredCompanies.length} companies containing "${searchTerm}" in name`);
-        if (filteredCompanies.length > 0) {
-          console.log("Matches:", filteredCompanies.map(c => c.name));
-        }
-        
-        // Set the filtered companies
-        let companiesData = filteredCompanies;
-        
-        // Get IDs of filtered companies
-        const companyIds = companiesData.map(company => company.id);
-        
-        // Load the related entities for the filtered companies
-        if (companyIds.length > 0) {
-          // 1. Fetch tags for the filtered companies
-          const { data: tagsData } = await supabase
-            .from('companies_tags')
-            .select(`
-              company_id,
-              tag_id,
-              tags:tag_id (id, name)
-            `)
-            .in('company_id', companyIds);
+          // Fetch all companies first
+          const { data: allCompanies, error: allCompaniesError } = await supabase
+            .from('companies')
+            .select('*')
+            .neq('category', 'Skip');
             
-          if (tagsData) {
-            // Group tags by company ID
-            const tagsByCompany = {};
-            tagsData.forEach(item => {
-              if (item.company_id && item.tags) {
-                if (!tagsByCompany[item.company_id]) {
-                  tagsByCompany[item.company_id] = [];
-                }
-                tagsByCompany[item.company_id].push(item.tags);
-              }
-            });
-            
-            // Add tags to companies
-            companiesData = companiesData.map(company => ({
-              ...company,
-              tags: tagsByCompany[company.id] || []
-            }));
+          if (allCompaniesError) {
+            console.error("Error fetching all companies:", allCompaniesError);
+            throw allCompaniesError;
           }
           
-          // 2. Fetch cities for the filtered companies
-          const { data: citiesData } = await supabase
-            .from('companies_cities')
-            .select(`
-              company_id,
-              city_id,
-              cities:city_id (id, name)
-            `)
-            .in('company_id', companyIds);
-            
-          if (citiesData) {
-            // Group cities by company ID
-            const citiesByCompany = {};
-            citiesData.forEach(item => {
-              if (item.company_id && item.cities) {
-                if (!citiesByCompany[item.company_id]) {
-                  citiesByCompany[item.company_id] = [];
-                }
-                citiesByCompany[item.company_id].push(item.cities);
-              }
-            });
-            
-            // Add cities to companies
-            companiesData = companiesData.map(company => ({
-              ...company,
-              cities: citiesByCompany[company.id] || []
-            }));
+          console.log(`DEBUG: Found total of ${allCompanies.length} companies before filtering`);
+          
+          // Manual client-side filtering for company name
+          const searchLower = searchTerm.toLowerCase();
+          const filteredCompanies = allCompanies.filter(company => {
+            if (!company.name) return false;
+            const companyNameLower = company.name.toLowerCase();
+            const includes = companyNameLower.includes(searchLower);
+            if (includes) {
+              console.log(`MATCH: "${company.name}" contains "${searchTerm}"`);
+            }
+            return includes;
+          });
+          
+          console.log(`DEBUG: After filtering, found ${filteredCompanies.length} companies containing "${searchTerm}" in name`);
+          if (filteredCompanies.length > 0) {
+            console.log("Matches:", filteredCompanies.map(c => c.name));
           }
           
-          // 3. Fetch contacts for the filtered companies
-          const { data: contactsData } = await supabase
-            .from('contact_companies')
-            .select(`
-              company_id,
-              contact_id,
-              contacts:contact_id (id, first_name, last_name, email, mobile)
-            `)
-            .in('company_id', companyIds);
-            
-          if (contactsData) {
-            // Group contacts by company ID
-            const contactsByCompany = {};
-            contactsData.forEach(item => {
-              if (item.company_id && item.contacts) {
-                if (!contactsByCompany[item.company_id]) {
-                  contactsByCompany[item.company_id] = [];
+          // Set the filtered companies
+          let companiesData = filteredCompanies;
+          
+          // Get IDs of filtered companies
+          const companyIds = companiesData.map(company => company.id);
+          
+          // Load the related entities for the filtered companies
+          if (companyIds.length > 0) {
+            // 1. Fetch tags for the filtered companies
+            const { data: tagsData } = await supabase
+              .from('companies_tags')
+              .select(`
+                company_id,
+                tag_id,
+                tags:tag_id (id, name)
+              `)
+              .in('company_id', companyIds);
+              
+            if (tagsData) {
+              // Group tags by company ID
+              const tagsByCompany = {};
+              tagsData.forEach(item => {
+                if (item.company_id && item.tags) {
+                  if (!tagsByCompany[item.company_id]) {
+                    tagsByCompany[item.company_id] = [];
+                  }
+                  tagsByCompany[item.company_id].push(item.tags);
                 }
-                contactsByCompany[item.company_id].push(item.contacts);
-              }
-            });
+              });
+              
+              // Add tags to companies
+              companiesData = companiesData.map(company => ({
+                ...company,
+                tags: tagsByCompany[company.id] || []
+              }));
+            }
             
-            // Add contacts to companies
-            companiesData = companiesData.map(company => ({
-              ...company,
-              contacts: contactsByCompany[company.id] || []
-            }));
+            // 2. Fetch cities for the filtered companies
+            const { data: citiesData } = await supabase
+              .from('companies_cities')
+              .select(`
+                company_id,
+                city_id,
+                cities:city_id (id, name)
+              `)
+              .in('company_id', companyIds);
+              
+            if (citiesData) {
+              // Group cities by company ID
+              const citiesByCompany = {};
+              citiesData.forEach(item => {
+                if (item.company_id && item.cities) {
+                  if (!citiesByCompany[item.company_id]) {
+                    citiesByCompany[item.company_id] = [];
+                  }
+                  citiesByCompany[item.company_id].push(item.cities);
+                }
+              });
+              
+              // Add cities to companies
+              companiesData = companiesData.map(company => ({
+                ...company,
+                cities: citiesByCompany[company.id] || []
+              }));
+            }
+            
+            // 3. Fetch contacts for the filtered companies
+            const { data: contactsData } = await supabase
+              .from('contact_companies')
+              .select(`
+                company_id,
+                contact_id,
+                contacts:contact_id (id, first_name, last_name, email, mobile)
+              `)
+              .in('company_id', companyIds);
+              
+            if (contactsData) {
+              // Group contacts by company ID
+              const contactsByCompany = {};
+              contactsData.forEach(item => {
+                if (item.company_id && item.contacts) {
+                  if (!contactsByCompany[item.company_id]) {
+                    contactsByCompany[item.company_id] = [];
+                  }
+                  contactsByCompany[item.company_id].push(item.contacts);
+                }
+              });
+              
+              // Add contacts to companies
+              companiesData = companiesData.map(company => ({
+                ...company,
+                contacts: contactsByCompany[company.id] || []
+              }));
+            }
           }
+          
+          // Set allCompanies variable and return
+          allCompanies = companiesData;
+          setCompanies(allCompanies);
+          setFilteredCount(allCompanies.length);
+          await fetchFilterCounts();
+          setIsLoading(false);
+          return;
+        } catch (error) {
+          console.error('Error in direct name search:', error);
+          setIsLoading(false);
+          return;
         }
-        
-        // Set allCompanies variable and return
-        allCompanies = companiesData;
-        setCompanies(allCompanies);
-        setFilteredCount(allCompanies.length);
-        await fetchFilterCounts();
-        setIsLoading(false);
-        return;
       }
       
       // If not a name search, continue with the normal approach
@@ -783,31 +736,8 @@ const Companies = () => {
         contacts: []
       }));
       
-      // Apply active filter
-      if (activeFilter) {
-        switch (activeFilter) {
-          case 'missingCategory':
-            allCompanies = allCompanies.filter(company => !company.category);
-            break;
-          case 'missingDescription':
-            allCompanies = allCompanies.filter(company => !company.description);
-            break;
-          case 'missingWebsite':
-            allCompanies = allCompanies.filter(company => !company.website);
-            break;
-          case 'recentlyCreated':
-            allCompanies.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-            break;
-          case 'recentlyEdited':
-            allCompanies.sort((a, b) => new Date(b.modified_at || 0) - new Date(a.modified_at || 0));
-            break;
-          default:
-            break;
-        }
-      } else {
-        // Default sort by created_at
-        allCompanies.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-      }
+      // Default sort by created_at
+      allCompanies.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
       
       // Now fetch the related data for each entity separately (more reliable)
       try {
@@ -930,29 +860,6 @@ const Companies = () => {
         console.error('Error fetching contacts:', e);
       }
       
-      // Apply client-side filters that depend on relationships
-      if (activeFilter === 'missingCities') {
-        allCompanies = allCompanies.filter(company => company.cities.length === 0);
-      } else if (activeFilter === 'missingTags') {
-        allCompanies = allCompanies.filter(company => company.tags.length === 0);
-      } else if (activeFilter === 'lastInteracted') {
-        // Sort by the most recent last_interaction of any contact
-        allCompanies.sort((a, b) => {
-          const aLatest = a.contacts.reduce((latest, contact) => {
-            if (!contact.last_interaction) return latest;
-            return contact.last_interaction > latest ? contact.last_interaction : latest;
-          }, '0000-00-00');
-          
-          const bLatest = b.contacts.reduce((latest, contact) => {
-            if (!contact.last_interaction) return latest;
-            return contact.last_interaction > latest ? contact.last_interaction : latest;
-          }, '0000-00-00');
-          
-          return sortOrder === 'desc' ? 
-            new Date(bLatest) - new Date(aLatest) : 
-            new Date(aLatest) - new Date(bLatest);
-        });
-      }
       
       // We'll fetch all relations for companies
       // Now fetch the tags, cities, and contacts for our filtered companies
@@ -1213,7 +1120,7 @@ const Companies = () => {
   useEffect(() => {
     fetchCompanies();
     fetchFilterCounts();
-  }, [refreshTrigger, activeFilter, sortBy, sortOrder]);
+  }, [refreshTrigger, sortBy, sortOrder]);
   
   // Add event listener to handle clicks outside menu/buttons and escape key
   useEffect(() => {
@@ -1523,7 +1430,6 @@ const Companies = () => {
       }
       
       // For empty search or clearing, use the normal flow to reset
-      setActiveFilter(null);
       setRefreshTrigger(prev => prev + 1);
     }
   };
@@ -1536,17 +1442,11 @@ const Companies = () => {
     
     setSearchField(field);
     setSearchTerm('');
-    setActiveFilter(null); // Reset any active filters
     
     // Reset the list of companies when switching search fields
     setRefreshTrigger(prev => prev + 1);
   };
   
-  // Handle filter button click
-  const handleFilterButtonClick = (filterType) => {
-    setActiveFilter(activeFilter === filterType ? null : filterType);
-    setSearchTerm('');
-  };
   
   // Handle refresh button click
   const handleRefresh = () => {
@@ -1951,50 +1851,41 @@ const Companies = () => {
   const handleDeleteCompany = async (companyId) => {
     // If already in delete confirmation mode for this company
     if (deleteConfirmId === companyId) {
+      setIsLoading(true); // Show loading state
       try {
-        // First, delete all associated records from junction tables
+        console.log(`Starting deletion process for company ${companyId}`);
         
-        // Delete company-tag relationships
-        const { error: tagsError } = await supabase
-          .from('companies_tags')
-          .delete()
-          .eq('company_id', companyId);
-          
-        if (tagsError) console.error('Error deleting company tags:', tagsError);
+        // Instead of deleting, mark the company as "Deleted" category
+        // This approach avoids foreign key constraint issues while removing
+        // the company from normal view
         
-        // Delete company-city relationships
-        const { error: citiesError } = await supabase
-          .from('companies_cities')
-          .delete()
-          .eq('company_id', companyId);
-          
-        if (citiesError) console.error('Error deleting company cities:', citiesError);
-        
-        // Delete company-contact relationships
-        const { error: contactsError } = await supabase
-          .from('contact_companies')
-          .delete()
-          .eq('company_id', companyId);
-          
-        if (contactsError) console.error('Error deleting company contacts:', contactsError);
-        
-        // Finally, delete the company
-        const { error: companyError } = await supabase
+        console.log(`Updating company ${companyId} to Deleted category`);
+        const { error: updateError } = await supabase
           .from('companies')
-          .delete()
+          .update({ 
+            category: 'Deleted',
+            modified_at: new Date()
+          })
           .eq('id', companyId);
           
-        if (companyError) throw companyError;
+        if (updateError) {
+          console.error('Error marking company as deleted:', updateError);
+          throw new Error(`Failed to mark company as deleted: ${updateError.message}`);
+        }
         
-        // Update local state to remove the company
+        // Update local state to remove the company from view
         setCompanies(companies.filter(company => company.id !== companyId));
+        console.log(`Company ${companyId} marked as deleted`);
         
         // Reset confirmation state
         setDeleteConfirmId(null);
       } catch (error) {
-        console.error('Error deleting company:', error);
+        console.error('Error in deletion process:', error);
+        alert(`Failed to delete company: ${error.message}`);
         // Reset confirmation state on error
         setDeleteConfirmId(null);
+      } finally {
+        setIsLoading(false); // Hide loading state
       }
     } else {
       // First click, set confirmation state
@@ -2009,21 +1900,9 @@ const Companies = () => {
     }
   };
   
-  // Get filter title based on active filter
+  // Get filter title
   const getFilterTitle = () => {
-    if (!activeFilter) return "All Companies";
-    
-    switch (activeFilter) {
-      case 'missingCategory': return "Missing Category";
-      case 'missingCities': return "Missing Cities";
-      case 'missingDescription': return "Missing Description";
-      case 'missingTags': return "Missing Tags";
-      case 'missingWebsite': return "Missing Website";
-      case 'recentlyCreated': return "Recently Created";
-      case 'recentlyEdited': return "Recently Edited";
-      case 'lastInteracted': return "Recently Interacted";
-      default: return "All Companies";
-    }
+    return "All Companies";
   };
   
   // Format the company name for display
@@ -2176,58 +2055,6 @@ const Companies = () => {
             <FiSearch />
           </SearchIcon>
         </SearchContainer>
-        
-        <FilterButtonsContainer>
-          <FilterButton 
-            active={activeFilter === 'recentlyCreated'} 
-            onClick={() => handleFilterButtonClick('recentlyCreated')}
-          >
-            <FiClock />
-            Recently Created
-          </FilterButton>
-          <FilterButton 
-            active={activeFilter === 'recentlyEdited'} 
-            onClick={() => handleFilterButtonClick('recentlyEdited')}
-          >
-            <FiEdit />
-            Recently Edited
-          </FilterButton>
-          <FilterButton 
-            active={activeFilter === 'lastInteracted'} 
-            onClick={() => handleFilterButtonClick('lastInteracted')}
-          >
-            <FiAlertCircle />
-            Last Interacted
-          </FilterButton>
-          <FilterButton 
-            active={activeFilter === 'missingCategory'} 
-            onClick={() => handleFilterButtonClick('missingCategory')}
-          >
-            <FaBuilding />
-            Missing Category
-          </FilterButton>
-          <FilterButton 
-            active={activeFilter === 'missingCities'} 
-            onClick={() => handleFilterButtonClick('missingCities')}
-          >
-            <FiMapPin />
-            Missing Cities
-          </FilterButton>
-          <FilterButton 
-            active={activeFilter === 'missingDescription'} 
-            onClick={() => handleFilterButtonClick('missingDescription')}
-          >
-            <FiEdit />
-            Missing Description
-          </FilterButton>
-          <FilterButton 
-            active={activeFilter === 'missingTags'} 
-            onClick={() => handleFilterButtonClick('missingTags')}
-          >
-            <FiTag />
-            Missing Tags
-          </FilterButton>
-        </FilterButtonsContainer>
       </PageHeader>
       
       <ContentSection>
@@ -2360,9 +2187,6 @@ const Companies = () => {
                             Skip
                           </ActionMenuItem>
                         )}
-                        <ActionMenuItem onClick={() => handleMergeCompany(company)}>
-                          Merge
-                        </ActionMenuItem>
                         {deleteConfirmId === company.id ? (
                           <ActionMenuItem 
                             onClick={() => handleDeleteCompany(company.id)}
