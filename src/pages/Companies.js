@@ -608,6 +608,7 @@ const Companies = () => {
   // Search field options
   const searchFields = [
     { id: 'name', label: 'Company Name' },
+    { id: 'exact_name', label: 'Exact Company Name' },
     { id: 'contact', label: 'Related Contact' },
     { id: 'website', label: 'Website' },
     { id: 'tags', label: 'Tags' },
@@ -619,13 +620,161 @@ const Companies = () => {
     try {
       setIsLoading(true);
       
-      // First, fetch all companies (excluding 'Skip' category)
-      const { data: companiesData, error: companiesError } = await supabase
+      // DEBUGGING: First try a direct approach for company name search
+      if (searchTerm.length >= 3 && searchField === 'name') {
+        console.log("DEBUG: Performing direct name search for:", searchTerm);
+        
+        // Fetch all companies first
+        const { data: allCompanies, error: allCompaniesError } = await supabase
+          .from('companies')
+          .select('*')
+          .neq('category', 'Skip');
+          
+        if (allCompaniesError) {
+          console.error("Error fetching all companies:", allCompaniesError);
+          throw allCompaniesError;
+        }
+        
+        console.log(`DEBUG: Found total of ${allCompanies.length} companies before filtering`);
+        
+        // Manual client-side filtering for company name
+        const searchLower = searchTerm.toLowerCase();
+        const filteredCompanies = allCompanies.filter(company => {
+          if (!company.name) return false;
+          const companyNameLower = company.name.toLowerCase();
+          const includes = companyNameLower.includes(searchLower);
+          if (includes) {
+            console.log(`MATCH: "${company.name}" contains "${searchTerm}"`);
+          }
+          return includes;
+        });
+        
+        console.log(`DEBUG: After filtering, found ${filteredCompanies.length} companies containing "${searchTerm}" in name`);
+        if (filteredCompanies.length > 0) {
+          console.log("Matches:", filteredCompanies.map(c => c.name));
+        }
+        
+        // Set the filtered companies
+        let companiesData = filteredCompanies;
+        
+        // Get IDs of filtered companies
+        const companyIds = companiesData.map(company => company.id);
+        
+        // Load the related entities for the filtered companies
+        if (companyIds.length > 0) {
+          // 1. Fetch tags for the filtered companies
+          const { data: tagsData } = await supabase
+            .from('companies_tags')
+            .select(`
+              company_id,
+              tag_id,
+              tags:tag_id (id, name)
+            `)
+            .in('company_id', companyIds);
+            
+          if (tagsData) {
+            // Group tags by company ID
+            const tagsByCompany = {};
+            tagsData.forEach(item => {
+              if (item.company_id && item.tags) {
+                if (!tagsByCompany[item.company_id]) {
+                  tagsByCompany[item.company_id] = [];
+                }
+                tagsByCompany[item.company_id].push(item.tags);
+              }
+            });
+            
+            // Add tags to companies
+            companiesData = companiesData.map(company => ({
+              ...company,
+              tags: tagsByCompany[company.id] || []
+            }));
+          }
+          
+          // 2. Fetch cities for the filtered companies
+          const { data: citiesData } = await supabase
+            .from('companies_cities')
+            .select(`
+              company_id,
+              city_id,
+              cities:city_id (id, name)
+            `)
+            .in('company_id', companyIds);
+            
+          if (citiesData) {
+            // Group cities by company ID
+            const citiesByCompany = {};
+            citiesData.forEach(item => {
+              if (item.company_id && item.cities) {
+                if (!citiesByCompany[item.company_id]) {
+                  citiesByCompany[item.company_id] = [];
+                }
+                citiesByCompany[item.company_id].push(item.cities);
+              }
+            });
+            
+            // Add cities to companies
+            companiesData = companiesData.map(company => ({
+              ...company,
+              cities: citiesByCompany[company.id] || []
+            }));
+          }
+          
+          // 3. Fetch contacts for the filtered companies
+          const { data: contactsData } = await supabase
+            .from('contact_companies')
+            .select(`
+              company_id,
+              contact_id,
+              contacts:contact_id (id, first_name, last_name, email, mobile)
+            `)
+            .in('company_id', companyIds);
+            
+          if (contactsData) {
+            // Group contacts by company ID
+            const contactsByCompany = {};
+            contactsData.forEach(item => {
+              if (item.company_id && item.contacts) {
+                if (!contactsByCompany[item.company_id]) {
+                  contactsByCompany[item.company_id] = [];
+                }
+                contactsByCompany[item.company_id].push(item.contacts);
+              }
+            });
+            
+            // Add contacts to companies
+            companiesData = companiesData.map(company => ({
+              ...company,
+              contacts: contactsByCompany[company.id] || []
+            }));
+          }
+        }
+        
+        // Set allCompanies variable and return
+        allCompanies = companiesData;
+        setCompanies(allCompanies);
+        setFilteredCount(allCompanies.length);
+        await fetchFilterCounts();
+        setIsLoading(false);
+        return;
+      }
+      
+      // If not a name search, continue with the normal approach
+      // Variable to hold our companies data
+      let companiesData;
+      let companiesError;
+      
+      // Get all companies first 
+      let { data: allCompaniesData, error: allCompaniesError } = await supabase
         .from('companies')
         .select('*')
         .neq('category', 'Skip'); // Filter out companies with 'Skip' category
       
-      if (companiesError) throw companiesError;
+      if (allCompaniesError) {
+        throw allCompaniesError;
+      }
+      
+      companiesData = allCompaniesData;
       
       // Set companies with basic data first
       let allCompanies = companiesData.map(company => ({
@@ -634,23 +783,6 @@ const Companies = () => {
         cities: [],
         contacts: []
       }));
-      
-      // Apply search filters if needed
-      if (searchTerm.length >= 3) {
-        if (searchField === 'name') {
-          allCompanies = allCompanies.filter(company => 
-            company.name && company.name.toLowerCase().includes(searchTerm.toLowerCase())
-          );
-        } else if (searchField === 'website') {
-          allCompanies = allCompanies.filter(company => 
-            company.website && company.website.toLowerCase().includes(searchTerm.toLowerCase())
-          );
-        } else if (searchField === 'category') {
-          allCompanies = allCompanies.filter(company => 
-            company.category && company.category.toLowerCase().includes(searchTerm.toLowerCase())
-          );
-        }
-      }
       
       // Apply active filter
       if (activeFilter) {
@@ -823,80 +955,160 @@ const Companies = () => {
         });
       }
       
-      // Apply search filters for related entities
-      if (searchTerm.length >= 3) {
-        if (searchField === 'contact') {
-          // First, make sure we have contacts data
-          try {
-            // Get array of company IDs (all current non-Skip companies)
-            const companyIds = allCompanies.map(company => company.id);
-            
-            if (companyIds.length === 0) {
-              return; // No companies to fetch related data for
-            }
-            
-            // For contact search, we need to ensure we have all the contacts data
-            const { data: contactsData, error: contactsError } = await supabase
-              .from('contact_companies')
-              .select(`
-                company_id,
-                contact_id,
-                contacts:contact_id (id, first_name, last_name, email, mobile)
-              `)
-              .in('company_id', companyIds); // Only get contacts for non-Skip companies
-              
-            if (!contactsError && contactsData) {
-              // Group contacts by company and update allCompanies
-              const contactsByCompany = {};
-              contactsData.forEach(item => {
-                if (item.company_id && item.contacts) {
-                  if (!contactsByCompany[item.company_id]) {
-                    contactsByCompany[item.company_id] = [];
-                  }
-                  contactsByCompany[item.company_id].push(item.contacts);
-                }
-              });
-              
-              // Update contacts for all companies
-              allCompanies = allCompanies.map(company => ({
-                ...company,
-                contacts: contactsByCompany[company.id] || []
-              }));
-            }
-          } catch (e) {
-            console.error('Error fetching contact data for search:', e);
-          }
-          
-          // Now filter by contacts
-          allCompanies = allCompanies.filter(company => 
-            company.contacts && company.contacts.some(contact => {
-              if (!contact) return false;
-              
-              const firstName = contact.first_name || '';
-              const lastName = contact.last_name || '';
-              const email = contact.email || '';
-              const mobile = contact.mobile || '';
-              
-              const fullName = `${firstName} ${lastName}`.toLowerCase();
-              const searchLower = searchTerm.toLowerCase();
-              
-              return (
-                fullName.includes(searchLower) ||
-                firstName.toLowerCase().includes(searchLower) ||
-                lastName.toLowerCase().includes(searchLower) ||
-                email.toLowerCase().includes(searchLower) ||
-                mobile.toLowerCase().includes(searchLower)
-              );
-            })
-          );
-        } else if (searchField === 'tags') {
-          allCompanies = allCompanies.filter(company => 
-            company.tags.some(tag => 
-              tag.name && tag.name.toLowerCase().includes(searchTerm.toLowerCase())
-            )
-          );
+      // We'll fetch all relations for companies
+      // Now fetch the tags, cities, and contacts for our filtered companies
+      try {
+        const companyIds = companiesData.map(company => company.id);
+        
+        if (companyIds.length === 0) {
+          // No companies to fetch data for
+          console.log("No companies to fetch relations for");
+          allCompanies = [];
+          return;
         }
+        
+        // Now we need to load the related entities 
+        // (tags, contacts, cities) for the filtered companies
+        
+        // 1. Fetch tags
+        const { data: tagsData, error: tagsError } = await supabase
+          .from('companies_tags')
+          .select(`
+            company_id,
+            tag_id,
+            tags:tag_id (id, name)
+          `)
+          .in('company_id', companyIds);
+          
+        if (!tagsError && tagsData) {
+          // Group tags by company ID
+          const tagsByCompany = {};
+          tagsData.forEach(item => {
+            if (item.company_id && item.tags) {
+              if (!tagsByCompany[item.company_id]) {
+                tagsByCompany[item.company_id] = [];
+              }
+              tagsByCompany[item.company_id].push(item.tags);
+            }
+          });
+          
+          // Add tags to corresponding companies
+          companiesData = companiesData.map(company => ({
+            ...company,
+            tags: tagsByCompany[company.id] || []
+          }));
+          
+          // If searching by tags, filter companies that have a matching tag
+          if (searchField === 'tags' && searchTerm.length >= 3) {
+            const searchLower = searchTerm.toLowerCase();
+            
+            console.log(`Filtering by tags containing: "${searchLower}"`);
+            
+            // Filter companies with matching tags
+            companiesData = companiesData.filter(company => 
+              company.tags && company.tags.some(tag => 
+                tag.name && tag.name.toLowerCase().includes(searchLower)
+              )
+            );
+            
+            console.log(`After tag filtering: ${companiesData.length} companies`);
+          }
+        }
+        
+        // 2. Fetch cities
+        const { data: citiesData, error: citiesError } = await supabase
+          .from('companies_cities')
+          .select(`
+            company_id,
+            city_id,
+            cities:city_id (id, name)
+          `)
+          .in('company_id', companiesData.map(c => c.id));
+          
+        if (!citiesError && citiesData) {
+          // Group cities by company ID
+          const citiesByCompany = {};
+          citiesData.forEach(item => {
+            if (item.company_id && item.cities) {
+              if (!citiesByCompany[item.company_id]) {
+                citiesByCompany[item.company_id] = [];
+              }
+              citiesByCompany[item.company_id].push(item.cities);
+            }
+          });
+          
+          // Add cities to corresponding companies
+          companiesData = companiesData.map(company => ({
+            ...company,
+            cities: citiesByCompany[company.id] || []
+          }));
+        }
+        
+        // 3. Fetch contacts
+        const { data: contactsData, error: contactsError } = await supabase
+          .from('contact_companies')
+          .select(`
+            company_id,
+            contact_id,
+            contacts:contact_id (id, first_name, last_name, email, mobile)
+          `)
+          .in('company_id', companiesData.map(c => c.id));
+          
+        if (!contactsError && contactsData) {
+          // Group contacts by company ID
+          const contactsByCompany = {};
+          contactsData.forEach(item => {
+            if (item.company_id && item.contacts) {
+              if (!contactsByCompany[item.company_id]) {
+                contactsByCompany[item.company_id] = [];
+              }
+              contactsByCompany[item.company_id].push(item.contacts);
+            }
+          });
+          
+          // Add contacts to corresponding companies
+          companiesData = companiesData.map(company => ({
+            ...company,
+            contacts: contactsByCompany[company.id] || []
+          }));
+          
+          // If searching by contacts, filter companies that have a matching contact
+          if (searchField === 'contact' && searchTerm.length >= 3) {
+            const searchLower = searchTerm.toLowerCase();
+            
+            console.log(`Filtering by contacts containing: "${searchLower}"`);
+            
+            // Filter companies with matching contacts
+            companiesData = companiesData.filter(company => 
+              company.contacts && company.contacts.some(contact => {
+                if (!contact) return false;
+                
+                const firstName = (contact.first_name || '').toLowerCase();
+                const lastName = (contact.last_name || '').toLowerCase();
+                const fullName = `${firstName} ${lastName}`;
+                const email = (contact.email || '').toLowerCase();
+                const mobile = (contact.mobile || '').toLowerCase();
+                
+                return (
+                  firstName.includes(searchLower) ||
+                  lastName.includes(searchLower) ||
+                  fullName.includes(searchLower) ||
+                  email.includes(searchLower) ||
+                  mobile.includes(searchLower)
+                );
+              })
+            );
+            
+            console.log(`After contact filtering: ${companiesData.length} companies`);
+          }
+        }
+        
+      } catch (error) {
+        console.error('Error fetching relations for companies:', error);
       }
+      
+      // Set allCompanies to the filtered companiesData
+      allCompanies = companiesData;
       
       setCompanies(allCompanies);
       setFilteredCount(allCompanies.length);
@@ -1058,12 +1270,154 @@ const Companies = () => {
   
   // We're using a native select now, so no custom dropdown state needed
   
-  // Handle search input change
-  const handleSearch = (e) => {
+  // Direct search functionality - completely bypasses the fetchCompanies function
+  const handleSearch = async (e) => {
     const value = e.target.value;
     setSearchTerm(value);
+    console.log(`Search term changed to: "${value}"`);
     
+    // Only trigger search if length is 3+ characters or 0 (clearing)
     if (value.length >= 3 || value.length === 0) {
+      console.log(`Triggering search for: "${value}"`);
+      
+      // For name searches, we'll implement a direct search approach
+      if (value.length >= 3 && searchField === 'name') {
+        setIsLoading(true);
+        try {
+          // Just fetch all companies once
+          const { data: allCompanies, error } = await supabase
+            .from('companies')
+            .select('*')
+            .neq('category', 'Skip');
+            
+          if (error) {
+            console.error("Error fetching companies:", error);
+            return;
+          }
+          
+          console.log(`Fetched ${allCompanies.length} total companies`);
+          
+          // Perform client-side filtering
+          const searchLower = value.toLowerCase();
+          const matchingCompanies = allCompanies.filter(company => {
+            if (!company.name) return false;
+            return company.name.toLowerCase().includes(searchLower);
+          });
+          
+          console.log(`Found ${matchingCompanies.length} companies matching "${value}"`);
+          if (matchingCompanies.length > 0) {
+            console.log("Matching companies:", matchingCompanies.map(c => c.name));
+          }
+          
+          // Direct update the debug output
+          const debugElement = document.getElementById('search-debug');
+          if (debugElement) {
+            debugElement.innerHTML = `
+              <div style="background: #f0f0f0; padding: 10px; margin-bottom: 10px; border-radius: 5px;">
+                <strong>Direct Search:</strong> Found ${matchingCompanies.length} companies containing "${value}"<br/>
+                ${matchingCompanies.length > 0 ? 
+                  matchingCompanies.slice(0, 5).map(c => `- ${c.name}`).join('<br/>') + 
+                  (matchingCompanies.length > 5 ? `<br/>...and ${matchingCompanies.length - 5} more` : '')
+                  : 'No matches found'}
+              </div>
+            `;
+          }
+          
+          // Now load related data (tags, cities, contacts) for these companies
+          const companyIds = matchingCompanies.map(company => company.id);
+          
+          if (companyIds.length > 0) {
+            // Process in parallel all the relationship fetches
+            const [tagsResult, citiesResult, contactsResult] = await Promise.all([
+              // Fetch tags
+              supabase
+                .from('companies_tags')
+                .select('company_id, tag_id, tags:tag_id (id, name)')
+                .in('company_id', companyIds),
+              
+              // Fetch cities
+              supabase
+                .from('companies_cities')
+                .select('company_id, city_id, cities:city_id (id, name)')
+                .in('company_id', companyIds),
+              
+              // Fetch contacts
+              supabase
+                .from('contact_companies')
+                .select('company_id, contact_id, contacts:contact_id (id, first_name, last_name, email, mobile)')
+                .in('company_id', companyIds)
+            ]);
+            
+            // Process tags
+            if (!tagsResult.error && tagsResult.data) {
+              const tagsByCompany = {};
+              tagsResult.data.forEach(item => {
+                if (item.company_id && item.tags) {
+                  if (!tagsByCompany[item.company_id]) {
+                    tagsByCompany[item.company_id] = [];
+                  }
+                  tagsByCompany[item.company_id].push(item.tags);
+                }
+              });
+              
+              // Add tags to each company
+              matchingCompanies.forEach(company => {
+                company.tags = tagsByCompany[company.id] || [];
+              });
+            }
+            
+            // Process cities
+            if (!citiesResult.error && citiesResult.data) {
+              const citiesByCompany = {};
+              citiesResult.data.forEach(item => {
+                if (item.company_id && item.cities) {
+                  if (!citiesByCompany[item.company_id]) {
+                    citiesByCompany[item.company_id] = [];
+                  }
+                  citiesByCompany[item.company_id].push(item.cities);
+                }
+              });
+              
+              // Add cities to each company
+              matchingCompanies.forEach(company => {
+                company.cities = citiesByCompany[company.id] || [];
+              });
+            }
+            
+            // Process contacts
+            if (!contactsResult.error && contactsResult.data) {
+              const contactsByCompany = {};
+              contactsResult.data.forEach(item => {
+                if (item.company_id && item.contacts) {
+                  if (!contactsByCompany[item.company_id]) {
+                    contactsByCompany[item.company_id] = [];
+                  }
+                  contactsByCompany[item.company_id].push(item.contacts);
+                }
+              });
+              
+              // Add contacts to each company
+              matchingCompanies.forEach(company => {
+                company.contacts = contactsByCompany[company.id] || [];
+              });
+            }
+          }
+          
+          // Directly set the companies
+          setCompanies(matchingCompanies);
+          setFilteredCount(matchingCompanies.length);
+          
+        } catch (error) {
+          console.error("Error during direct search:", error);
+        } finally {
+          setIsLoading(false);
+        }
+        
+        // Skip the regular fetchCompanies call by not triggering refreshTrigger
+        return;
+      }
+      
+      // For other search types or clearing, use the normal flow
       setActiveFilter(null);
       setRefreshTrigger(prev => prev + 1);
     }
@@ -1775,6 +2129,48 @@ const Companies = () => {
       </PageHeader>
       
       <ContentSection>
+        {/* Quick Test Debug Element */}
+        <div id="search-debug"></div>
+        
+        {/* Search Debug Element */}
+        {searchTerm.length >= 3 && (
+          <div style={{ 
+            padding: '1rem', 
+            margin: '0 0 1rem 0',
+            backgroundColor: '#f3f4f6', 
+            borderRadius: '0.375rem',
+            fontSize: '0.875rem',
+            color: '#4b5563',
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '0.5rem'
+            }}>
+              <div>
+                <strong>Searching for:</strong> "{searchTerm}" in {searchFields.find(f => f.id === searchField)?.label}
+              </div>
+              <div>
+                <strong>Results:</strong> {companies.length} companies
+              </div>
+            </div>
+            
+            {/* Show the names of the first few companies found */}
+            {companies.length > 0 && (
+              <div>
+                <strong>Top matches:</strong>
+                <ul style={{ margin: '0.5rem 0', paddingLeft: '1.5rem' }}>
+                  {companies.slice(0, 5).map(company => (
+                    <li key={company.id}>{company.name}</li>
+                  ))}
+                  {companies.length > 5 && <li>... and {companies.length - 5} more</li>}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+        
         {isLoading ? (
           <div style={{ textAlign: 'center', padding: '2rem' }}>
             <p>Loading companies...</p>
