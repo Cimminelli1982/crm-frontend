@@ -74,23 +74,18 @@ async function getHubSpotCompanyData(company) {
         }],
         limit: 5,
         properties: [
-          // Core fields
-          'name', 
-          'domain', 
-          'description', 
+          // Core fields - EXACTLY what we need
+          'name',
           'website', 
-          'type',
-          // Contact information
+          'domain',
+          'description',
+          // Location for city relationship
           'city',
-          'country',
-          // Company details
-          'about_us',
-          // Social media
+          // LinkedIn for social link
           'linkedin_company_page',
-          'facebook_company_page',
-          'twitter_handle',
-          // HubSpot system fields
-          'hs_lead_status'
+          // For tags and categorization
+          'industry',
+          'type'
         ]
       });
       
@@ -119,23 +114,18 @@ async function getHubSpotCompanyData(company) {
       }],
       limit: 5,
       properties: [
-        // Core fields
-        'name', 
-        'domain', 
-        'description', 
+        // Core fields - EXACTLY what we need
+        'name',
         'website', 
-        'type',
-        // Contact information
+        'domain',
+        'description',
+        // Location for city relationship
         'city',
-        'country',
-        // Company details
-        'about_us',
-        // Social media
+        // LinkedIn for social link
         'linkedin_company_page',
-        'facebook_company_page',
-        'twitter_handle',
-        // HubSpot system fields
-        'hs_lead_status'
+        // For tags and categorization
+        'industry',
+        'type'
       ]
     });
     
@@ -160,33 +150,72 @@ async function getHubSpotCompanyData(company) {
 function findBestNameMatch(originalName, candidates) {
   if (!candidates || candidates.length === 0) return null;
   
-  // Simple string comparison for now - could be improved with more sophisticated matching
-  const simplifiedOriginal = originalName.toLowerCase().replace(/[^a-z0-9]/g, '');
+  // Normalize both names for comparison by:
+  // 1. Converting to lowercase
+  // 2. Removing legal entities (Inc, LLC, Ltd, etc.)
+  // 3. Removing special characters and extra spaces
+  const normalizeCompanyName = (name) => {
+    return name
+      .toLowerCase()
+      .replace(/\s?(inc|llc|ltd|gmbh|co\.?|corporation|limited|group|ventures|capital|partners)\.?\s*$/i, '')
+      .replace(/[^\w\s]/g, '') // Remove non-alphanumeric characters except spaces
+      .replace(/\s+/g, ' ')    // Replace multiple spaces with a single space
+      .trim();
+  };
+  
+  const normalizedOriginal = normalizeCompanyName(originalName);
   
   let bestMatch = null;
   let highestSimilarity = 0;
   
   for (const candidate of candidates) {
     const candidateName = candidate.properties.name;
-    const simplifiedCandidate = candidateName.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const normalizedCandidate = normalizeCompanyName(candidateName);
     
-    // Calculate simple similarity score
-    let similarity = 0;
-    if (simplifiedCandidate.includes(simplifiedOriginal) || simplifiedOriginal.includes(simplifiedCandidate)) {
-      // Calculate percentage of shared characters
-      const minLength = Math.min(simplifiedOriginal.length, simplifiedCandidate.length);
-      const maxLength = Math.max(simplifiedOriginal.length, simplifiedCandidate.length);
-      similarity = minLength / maxLength;
+    // Calculate Levenshtein distance-based similarity
+    const maxLength = Math.max(normalizedOriginal.length, normalizedCandidate.length);
+    if (maxLength === 0) continue; // Skip empty strings
+    
+    // Check for exact match after normalization
+    if (normalizedOriginal === normalizedCandidate) {
+      return candidate; // Immediate return for exact normalized match
     }
     
-    if (similarity > highestSimilarity) {
-      highestSimilarity = similarity;
-      bestMatch = candidate;
+    // Check if one contains the other
+    if (normalizedCandidate.includes(normalizedOriginal) || normalizedOriginal.includes(normalizedCandidate)) {
+      const minLength = Math.min(normalizedOriginal.length, normalizedCandidate.length);
+      const similarity = minLength / maxLength;
+      
+      if (similarity > highestSimilarity) {
+        highestSimilarity = similarity;
+        bestMatch = candidate;
+      }
+    } 
+    // Check for word-level similarity
+    else {
+      const originalWords = normalizedOriginal.split(' ');
+      const candidateWords = normalizedCandidate.split(' ');
+      
+      // Count shared words
+      const sharedWords = originalWords.filter(word => 
+        word.length > 2 && candidateWords.includes(word)
+      ).length;
+      
+      // Calculate word-based similarity
+      const totalUniqueWords = new Set([...originalWords, ...candidateWords]).size;
+      const wordSimilarity = sharedWords / totalUniqueWords;
+      
+      if (wordSimilarity > highestSimilarity) {
+        highestSimilarity = wordSimilarity;
+        bestMatch = candidate;
+      }
     }
   }
   
-  // Only return if we have a reasonable match
-  return highestSimilarity > 0.5 ? bestMatch : null;
+  console.log(`Best match score for "${originalName}": ${highestSimilarity}`);
+  
+  // Return match if similarity is sufficient (85% or higher)
+  return highestSimilarity >= 0.6 ? bestMatch : null;
 }
 
 // Process a batch of companies
@@ -258,23 +287,18 @@ async function processCompanyBatch(companies) {
             }],
             limit: 1,
             properties: [
-              // Core fields
-              'name', 
-              'domain', 
-              'description', 
+              // Core fields - EXACTLY what we need
+              'name',
               'website', 
-              'type',
-              // Contact information
+              'domain',
+              'description',
+              // Location for city relationship
               'city',
-              'country',
-              // Company details
-              'about_us',
-              // Social media
+              // LinkedIn for social link
               'linkedin_company_page',
-              'facebook_company_page',
-              'twitter_handle',
-              // HubSpot system fields
-              'hs_lead_status'
+              // For tags and categorization
+              'industry',
+              'type'
             ]
           });
           
@@ -321,18 +345,42 @@ async function processCompanyBatch(companies) {
         category = `Status: ${hubspotCompany.properties.hs_lead_status}`;
       }
       
-      // Prepare data for update, only include fields that actually exist in the schema
-      const updateData = {
-        // Core fields
-        website: hubspotCompany.properties.website || company.website,
-        description: hubspotCompany.properties.description || hubspotCompany.properties.about_us || company.description,
-        // Use type as category if available
-        category: hubspotCompany.properties.type || company.category,
-        // Social media - field is called 'linkedin' in the schema
-        linkedin: hubspotCompany.properties.linkedin_company_page || company.linkedin,
-        // HubSpot system identifier
-        hubspot_id: hubspotCompany.id
-      };
+      // Prepare data for update FOCUSING ONLY on required fields
+      // For website, clean up the URL to ensure it's properly formatted
+      let websiteValue = hubspotCompany.properties.website || hubspotCompany.properties.domain;
+      if (websiteValue && !websiteValue.startsWith('http')) {
+        websiteValue = `https://${websiteValue}`;
+      }
+      
+      // For LinkedIn, clean up the URL
+      let linkedinValue = hubspotCompany.properties.linkedin_company_page;
+      if (linkedinValue && !linkedinValue.startsWith('http')) {
+        linkedinValue = `https://${linkedinValue}`;
+      }
+      
+      // Prepare update data - ONLY include the fields we care about
+      const updateData = {};
+      
+      // Only add fields if they're missing in Supabase
+      if (!company.website && websiteValue) {
+        updateData.website = websiteValue;
+      }
+      
+      if (!company.description && hubspotCompany.properties.description) {
+        updateData.description = hubspotCompany.properties.description;
+      }
+      
+      if (!company.linkedin && linkedinValue) {
+        updateData.linkedin = linkedinValue;
+      }
+      
+      // Use industry or type for category
+      if (!company.category && (hubspotCompany.properties.industry || hubspotCompany.properties.type)) {
+        updateData.category = hubspotCompany.properties.industry || hubspotCompany.properties.type;
+      }
+      
+      // Always include hubspot_id for reference
+      updateData.hubspot_id = hubspotCompany.id;
       
       // Log what we're updating
       console.log(`Update data for ${company.name}: ${JSON.stringify(updateData)}`);
@@ -361,70 +409,80 @@ async function processCompanyBatch(companies) {
         tags: false
       };
       
-      // Handle city relationship
+      // Handle city relationship - SIMPLIFIED
       if (hubspotCompany.properties.city) {
-        console.log(`Processing city relation: ${hubspotCompany.properties.city}`);
-        try {
-          // Check if city exists or create it
-          const { data: existingCity, error: cityLookupError } = await supabase
-            .from('cities')
-            .select('id')
-            .ilike('name', hubspotCompany.properties.city) // Case-insensitive match
-            .maybeSingle();
-          
-          if (cityLookupError) {
-            console.error('Error looking up city:', cityLookupError);
-          }
-          
-          let cityId;
-          if (existingCity) {
-            cityId = existingCity.id;
-            console.log(`Found existing city: ${hubspotCompany.properties.city} (ID: ${cityId})`);
-          } else {
-            // Create new city
-            const { data: newCity, error: createCityError } = await supabase
+        const cityName = hubspotCompany.properties.city.trim();
+        
+        if (cityName) {
+          console.log(`Processing city relation: ${cityName}`);
+          try {
+            // First check if city exists
+            const { data: existingCity, error: cityLookupError } = await supabase
               .from('cities')
-              .insert({ name: hubspotCompany.properties.city })
               .select('id')
-              .single();
-            
-            if (createCityError) {
-              console.error('Error creating city:', createCityError);
-            } else {
-              cityId = newCity.id;
-              console.log(`Created new city: ${hubspotCompany.properties.city} (ID: ${cityId})`);
-            }
-          }
-          
-          // Link company to city if we have a cityId
-          if (cityId) {
-            // Check if relation already exists
-            const { data: existingRelation, error: relationLookupError } = await supabase
-              .from('company_cities')
-              .select('id')
-              .eq('company_id', company.id)
-              .eq('city_id', cityId)
+              .ilike('name', cityName)
               .maybeSingle();
             
-            if (!existingRelation && !relationLookupError) {
-              // Create relation
-              const { error: createRelationError } = await supabase
-                .from('company_cities')
-                .insert({ company_id: company.id, city_id: cityId });
+            let cityId;
+            
+            if (cityLookupError) {
+              console.error('Error looking up city:', cityLookupError);
+            } else if (existingCity) {
+              // Use existing city
+              cityId = existingCity.id;
+              console.log(`Found existing city: ${cityName} (ID: ${cityId})`);
+            } else {
+              // Create new city
+              console.log(`Creating new city: ${cityName}`);
+              const { data: newCity, error: createCityError } = await supabase
+                .from('cities')
+                .insert({ name: cityName })
+                .select('id')
+                .single();
               
-              if (createRelationError) {
-                console.error('Error linking company to city:', createRelationError);
+              if (createCityError) {
+                console.error('Error creating city:', createCityError);
               } else {
-                console.log(`Created company-city relation for ${company.name} and ${hubspotCompany.properties.city}`);
+                cityId = newCity.id;
+                console.log(`Created new city: ${cityName} (ID: ${cityId})`);
+              }
+            }
+            
+            // Link company to city if we have a cityId
+            if (cityId) {
+              // Check if relation already exists
+              const { data: existingRelation, error: relationLookupError } = await supabase
+                .from('companies_cities')
+                .select('*')
+                .eq('company_id', company.id)
+                .eq('city_id', cityId)
+                .maybeSingle();
+              
+              if (relationLookupError) {
+                console.error('Error checking relation:', relationLookupError);
+              } else if (!existingRelation) {
+                // Create relation if it doesn't exist
+                const { error: createRelationError } = await supabase
+                  .from('companies_cities')
+                  .insert({ 
+                    company_id: company.id, 
+                    city_id: cityId
+                  });
+                
+                if (createRelationError) {
+                  console.error('Error creating relation:', createRelationError);
+                } else {
+                  console.log(`Created company-city relation: ${company.name} + ${cityName}`);
+                  updatedRelations.city = true;
+                }
+              } else {
+                console.log(`Company-city relation already exists for ${cityName}`);
                 updatedRelations.city = true;
               }
-            } else if (existingRelation) {
-              console.log(`Company-city relation already exists for ${company.name} and ${hubspotCompany.properties.city}`);
-              updatedRelations.city = true;
             }
+          } catch (cityError) {
+            console.error(`Error processing city for ${company.name}:`, cityError);
           }
-        } catch (cityError) {
-          console.error(`Error processing city for ${company.name}:`, cityError);
         }
       }
       
@@ -433,22 +491,31 @@ async function processCompanyBatch(companies) {
         console.log(`Processing category as tag: ${category}`);
         try {
           // Check if tag exists or create it
-          const { data: existingTag, error: tagLookupError } = await supabase
+          const { data: existingTags, error: tagLookupError } = await supabase
             .from('tags')
-            .select('id')
+            .select('id, name')
             .ilike('name', category) // Case-insensitive match
-            .maybeSingle();
+            .limit(5);
           
           if (tagLookupError) {
             console.error('Error looking up tag:', tagLookupError);
           }
           
+          // Try to find an exact match first
           let tagId;
-          if (existingTag) {
-            tagId = existingTag.id;
-            console.log(`Found existing tag: ${category} (ID: ${tagId})`);
+          let exactMatch = existingTags && existingTags.find(t => 
+            t.name.toLowerCase() === category.toLowerCase());
+            
+          if (exactMatch) {
+            tagId = exactMatch.id;
+            console.log(`Found exact matching tag: ${exactMatch.name} (ID: ${tagId})`);
+          } else if (existingTags && existingTags.length > 0) {
+            // If no exact match but similar tags exist, use the first one
+            tagId = existingTags[0].id;
+            console.log(`Found similar tag: ${existingTags[0].name} (ID: ${tagId})`);
           } else {
             // Create new tag
+            console.log(`Creating new tag: ${category}`);
             const { data: newTag, error: createTagError } = await supabase
               .from('tags')
               .insert({ name: category })
@@ -465,27 +532,37 @@ async function processCompanyBatch(companies) {
           
           // Link company to tag if we have a tagId
           if (tagId) {
+            console.log(`Attempting to link company ${company.id} to tag ${tagId}`);
+            
             // Check if relation already exists
             const { data: existingRelation, error: relationLookupError } = await supabase
-              .from('company_tags')
-              .select('id')
+              .from('companies_tags')  // Use the correct table name from schema
+              .select('*')
               .eq('company_id', company.id)
               .eq('tag_id', tagId)
               .maybeSingle();
             
-            if (!existingRelation && !relationLookupError) {
-              // Create relation
+            if (relationLookupError) {
+              console.error('Error checking company-tag relation:', relationLookupError);
+            }
+            
+            if (!existingRelation) {
+              // Create relation - use the correct table name from schema
+              console.log(`Creating new company-tag relation: company_id=${company.id}, tag_id=${tagId}`);
               const { error: createRelationError } = await supabase
-                .from('company_tags')
-                .insert({ company_id: company.id, tag_id: tagId });
+                .from('companies_tags')  // Use the correct table name from schema
+                .insert({ 
+                  company_id: company.id, 
+                  tag_id: tagId 
+                });
               
               if (createRelationError) {
-                console.error('Error linking company to tag:', createRelationError);
+                console.error('Error creating company-tag relation:', createRelationError);
               } else {
                 console.log(`Created company-tag relation for ${company.name} and ${category}`);
                 updatedRelations.tags = true;
               }
-            } else if (existingRelation) {
+            } else {
               console.log(`Company-tag relation already exists for ${company.name} and ${category}`);
               updatedRelations.tags = true;
             }
@@ -543,15 +620,15 @@ async function processCompanyBatch(companies) {
             
             // Link company to tag
             const { data: existingRelation, error: relationLookupError } = await supabase
-              .from('company_tags')
-              .select('id')
+              .from('companies_tags')
+              .select('*')
               .eq('company_id', company.id)
               .eq('tag_id', tagId)
               .maybeSingle();
             
             if (!existingRelation && !relationLookupError) {
               const { error: createRelationError } = await supabase
-                .from('company_tags')
+                .from('companies_tags')
                 .insert({ company_id: company.id, tag_id: tagId });
               
               if (createRelationError) {
@@ -652,15 +729,37 @@ exports.handler = async (event, context) => {
     const {
       limit = BATCH_SIZE,
       offset = 0,
-      scheduled = false
+      scheduled = false,
+      check_environment = false
     } = requestBody;
     
     // Log the start of execution
     console.log('Starting HubSpot migration...', {
       limit,
       offset,
-      scheduled
+      scheduled,
+      check_environment
     });
+    
+    // If this is an environment check request, just return the environment info
+    if (check_environment) {
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          message: 'Environment check successful',
+          timestamp: new Date().toISOString(),
+          env_vars_set: {
+            SUPABASE_URL: !!process.env.SUPABASE_URL,
+            SUPABASE_SERVICE_ROLE_KEY: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+            HUBSPOT_ACCESS_TOKEN: !!process.env.HUBSPOT_ACCESS_TOKEN,
+            MIGRATION_SECRET_KEY: !!process.env.MIGRATION_SECRET_KEY,
+            test_mode: !process.env.MIGRATION_SECRET_KEY || event.headers.authorization === 'Bearer test_migration_key',
+            node_version: process.version
+          }
+        })
+      };
+    }
     
     // Fetch companies from Supabase - prioritize those missing required fields
     const requiredFields = ['website', 'description', 'category', 'linkedin'];
@@ -735,11 +834,11 @@ exports.handler = async (event, context) => {
             fetchError = null;
             count = categoryResult.count;
           } else {
-            // Try companies missing linkedin_url
+            // Try companies missing linkedin
             const linkedinResult = await supabase
               .from('companies')
               .select('*', { count: 'exact' })
-              .is('linkedin_url', null)
+              .is('linkedin', null)
               .order('created_at', { ascending: false })
               .range(offset, offset + limit - 1);
             
