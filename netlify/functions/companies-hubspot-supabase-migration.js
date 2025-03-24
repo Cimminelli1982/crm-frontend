@@ -16,14 +16,16 @@ const BATCH_SIZE = 25;
 const headers = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Content-Type': 'application/json'
 };
 
 // Handle preflight OPTIONS request
 const handleOptions = () => {
+  console.log('Handling OPTIONS request');
   return {
     statusCode: 200,
-    headers,
+    headers: headers,
     body: ''
   };
 };
@@ -246,8 +248,19 @@ async function processCompanyBatch(companies) {
   return results;
 }
 
-// Main handler function
+// Main handler function - ensuring proper Netlify function format
 exports.handler = async (event, context) => {
+  // Allow CORS for development
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS'
+  };
+  
+  console.log('Function called: companies-hubspot-supabase-migration');
+  console.log('HTTP Method:', event.httpMethod);
+  console.log('Has authorization header:', !!event.headers.authorization);
+  
   // Handle OPTIONS request
   if (event.httpMethod === 'OPTIONS') {
     return handleOptions();
@@ -255,19 +268,21 @@ exports.handler = async (event, context) => {
   
   // Only allow POST requests
   if (event.httpMethod !== 'POST') {
+    console.log('Method not allowed:', event.httpMethod);
     return {
       statusCode: 405,
-      headers,
-      body: JSON.stringify({ error: 'Method not allowed' })
+      headers: corsHeaders,
+      body: JSON.stringify({ error: 'Method not allowed', method: event.httpMethod })
     };
   }
   
   // Validate authentication
   if (!validateAuth(event)) {
+    console.log('Unauthorized access attempt');
     return {
       statusCode: 401,
-      headers,
-      body: JSON.stringify({ error: 'Unauthorized' })
+      headers: headers,
+      body: JSON.stringify({ error: 'Unauthorized', headers_received: event.headers })
     };
   }
   
@@ -335,18 +350,20 @@ exports.handler = async (event, context) => {
       details: results.details
     };
     
+    console.log('Successfully processed companies:', results.processed);
     return {
       statusCode: 200,
-      headers,
+      headers: headers,
       body: JSON.stringify(response)
     };
     
   } catch (error) {
     console.error('Error in HubSpot migration function:', error);
     
+    console.error('Returning error response:', error.message);
     return {
       statusCode: 500,
-      headers,
+      headers: headers,
       body: JSON.stringify({
         error: 'Internal server error',
         message: error.message,

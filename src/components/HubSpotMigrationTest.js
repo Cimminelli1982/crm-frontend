@@ -15,21 +15,41 @@ const HubSpotMigrationTest = () => {
     setError(null);
     
     try {
-      const response = await axios.post('/.netlify/functions/companies-hubspot-supabase-migration', {
-        limit,
-        offset
-      }, {
-        headers: {
-          'Authorization': `Bearer ${secretKey}`,
-          'Content-Type': 'application/json'
+      // Try using direct function call first
+      console.log('Attempting migration with secret key:', secretKey);
+      console.log('Using limit:', limit, 'and offset:', offset);
+      
+      // First try the direct function endpoint
+      try {
+        const response = await axios.post('/.netlify/functions/companies-hubspot-supabase-migration', {
+          limit,
+          offset
+        }, {
+          headers: {
+            'Authorization': `Bearer ${secretKey}`,
+            'Content-Type': 'application/json'
+          }
+        });
+      
+        setResult(response.data);
+        
+        // Auto-update offset for next batch if there are more items
+        if (response.data.remaining > 0) {
+          setOffset(response.data.next_offset);
         }
-      });
-      
-      setResult(response.data);
-      
-      // Auto-update offset for next batch if there are more items
-      if (response.data.remaining > 0) {
-        setOffset(response.data.next_offset);
+      } catch (directError) {
+        console.error('Error with direct function call:', directError);
+        console.log('Response error:', directError.response?.data);
+        
+        // Show detailed error
+        setError({
+          message: 'Function request failed',
+          status: directError.response?.status,
+          statusText: directError.response?.statusText,
+          data: directError.response?.data,
+          originalError: directError.message,
+          path: '/.netlify/functions/companies-hubspot-supabase-migration'
+        });
       }
     } catch (err) {
       console.error('Error running HubSpot migration:', err);
