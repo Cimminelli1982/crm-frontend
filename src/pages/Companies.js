@@ -1285,6 +1285,7 @@ const Companies = () => {
         setIsLoading(true);
         try {
           // Just fetch all companies once
+          console.log("Fetching from Supabase URL:", supabase.supabaseUrl);
           const { data: allCompanies, error } = await supabase
             .from('companies')
             .select('*')
