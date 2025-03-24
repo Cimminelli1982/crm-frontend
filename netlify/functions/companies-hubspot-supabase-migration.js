@@ -74,22 +74,23 @@ async function getHubSpotCompanyData(company) {
         }],
         limit: 5,
         properties: [
+          // Core fields
           'name', 
           'domain', 
           'description', 
-          'industry', 
           'website', 
-          'phone', 
+          'type',
+          // Contact information
           'city',
           'country',
-          'category',
-          'numberofemployees',
-          'annualrevenue',
-          'founded_year',
+          // Company details
+          'about_us',
+          // Social media
           'linkedin_company_page',
           'facebook_company_page',
           'twitter_handle',
-          'instagram_handle'
+          // HubSpot system fields
+          'hs_lead_status'
         ]
       });
       
@@ -118,22 +119,23 @@ async function getHubSpotCompanyData(company) {
       }],
       limit: 5,
       properties: [
+        // Core fields
         'name', 
         'domain', 
         'description', 
-        'industry', 
         'website', 
-        'phone', 
+        'type',
+        // Contact information
         'city',
         'country',
-        'category',
-        'numberofemployees',
-        'annualrevenue',
-        'founded_year',
+        // Company details
+        'about_us',
+        // Social media
         'linkedin_company_page',
         'facebook_company_page',
         'twitter_handle',
-        'instagram_handle'
+        // HubSpot system fields
+        'hs_lead_status'
       ]
     });
     
@@ -256,7 +258,23 @@ async function processCompanyBatch(companies) {
             }],
             limit: 1,
             properties: [
-              'name', 'domain', 'description', 'category', 'website', 'linkedin_company_page'
+              // Core fields
+              'name', 
+              'domain', 
+              'description', 
+              'website', 
+              'type',
+              // Contact information
+              'city',
+              'country',
+              // Company details
+              'about_us',
+              // Social media
+              'linkedin_company_page',
+              'facebook_company_page',
+              'twitter_handle',
+              // HubSpot system fields
+              'hs_lead_status'
             ]
           });
           
@@ -291,31 +309,29 @@ async function processCompanyBatch(companies) {
       
       console.log(`Found HubSpot match for ${company.name}: ${hubspotCompany.properties.name} (ID: ${hubspotCompany.id})`);
       
-      // Extract category from HubSpot if available
+      // Extract category from HubSpot if available - prefer type field
       let category = null;
-      if (hubspotCompany.properties.category) {
-        category = hubspotCompany.properties.category;
-      } else if (hubspotCompany.properties.industry) {
-        // Map industry to category if possible
-        const industryToCategoryMap = {
-          'TECHNOLOGY': 'Tech',
-          'FINANCIAL_SERVICES': 'Financial Services',
-          'HEALTHCARE': 'Healthcare',
-          'EDUCATION': 'Education',
-          'MANUFACTURING': 'Manufacturing'
-          // Add more mappings as needed
-        };
-        category = industryToCategoryMap[hubspotCompany.properties.industry] || hubspotCompany.properties.industry;
+      if (hubspotCompany.properties.type) {
+        // Use type directly as the category - it's already a business category
+        category = hubspotCompany.properties.type;
+      } else if (hubspotCompany.properties.hs_lead_status) {
+        // If lead status is available, might be useful as category
+        category = `Status: ${hubspotCompany.properties.hs_lead_status}`;
       }
       
       // Prepare data for update, only include fields that actually exist in the schema
       const updateData = {
+        // Core fields
         website: hubspotCompany.properties.website || company.website,
-        description: hubspotCompany.properties.description || company.description,
-        category: category || company.category,
+        description: hubspotCompany.properties.description || hubspotCompany.properties.about_us || company.description,
+        // Use type as category if available
+        category: hubspotCompany.properties.type || company.category,
+        // Social media
         linkedin_url: hubspotCompany.properties.linkedin_company_page || company.linkedin_url,
-        // Only add hubspot_id if it exists in the schema
-        hubspot_id: hubspotCompany.id
+        // HubSpot system identifier
+        hubspot_id: hubspotCompany.id,
+        // Store the name we matched with for reference
+        hubspot_match_name: hubspotCompany.properties.name
       };
       
       // Log what we're updating
