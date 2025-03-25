@@ -12,6 +12,7 @@ import CompanyContactsModal from '../components/modals/CompanyContactsModal';
 import ContactsModal from '../components/modals/ContactsModal';
 import MergeCompanyModal from '../components/modals/MergeCompanyModal';
 import EditCompanyModal from '../components/modals/EditCompanyModal';
+import CompanyMainModal from '../components/modals/CompanyMainModal';
 
 Modal.setAppElement('#root');
 
@@ -541,7 +542,8 @@ const Companies = () => {
   const [actionMenuOpen, setActionMenuOpen] = useState(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null); // Track which company is in delete confirmation state
   const [skipConfirmId, setSkipConfirmId] = useState(null); // Track which company is in skip confirmation state
-  const [showMergeModal, setShowMergeModal] = useState(false); // To control the display of the merge modal
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [showCompanyMainModal, setShowCompanyMainModal] = useState(false); // To control the display of the merge modal
   
   // Filter counts
   const [filterCounts, setFilterCounts] = useState({
@@ -1452,7 +1454,7 @@ const Companies = () => {
   // Handle opening company modal
   const handleOpenCompanyModal = (company) => {
     setSelectedCompany(company);
-    setShowCompanyModal(true);
+    setShowCompanyMainModal(true);
   };
   
   // Handle opening tags modal
@@ -2648,6 +2650,19 @@ const Companies = () => {
           isOpen={showCompanyModal}
           onRequestClose={handleModalClose}
           contact={selectedCompany}
+        />
+      )}
+      
+      {/* Company Main Modal */}
+      {showCompanyMainModal && selectedCompany && (
+        <CompanyMainModal
+          isOpen={showCompanyMainModal}
+          onClose={() => {
+            setShowCompanyMainModal(false);
+            fetchCompanies(); // Refresh data when modal is closed
+          }}
+          companyId={selectedCompany?.id}
+          refreshData={fetchCompanies}
         />
       )}
       
