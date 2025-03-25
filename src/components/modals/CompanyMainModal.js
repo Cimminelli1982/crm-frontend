@@ -509,6 +509,20 @@ function CompanyMainModal({ isOpen, onClose, companyId, refreshData }) {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   
+  // Use refs for input focus
+  const nameInputRef = useRef(null);
+  const websiteInputRef = useRef(null);
+  const linkedinInputRef = useRef(null);
+  const descriptionInputRef = useRef(null);
+  
+  // Form data as state
+  const [formData, setFormData] = useState({
+    name: '',
+    website: '',
+    linkedin: '',
+    description: ''
+  });
+  
   // Modal states
   const [showTagsModal, setShowTagsModal] = useState(false);
   const [showCityModal, setShowCityModal] = useState(false);
@@ -526,11 +540,19 @@ function CompanyMainModal({ isOpen, onClose, companyId, refreshData }) {
     }
   }, [isOpen, companyId]);
   
-  // Debug company state changes
+  // Debug company state changes and initialize form data
   useEffect(() => {
     if (company) {
       console.log('%c ============ COMPANY STATE UPDATED ============', 'background: #222; color: #bada55');
       console.log('Company state updated:', company);
+      
+      // Initialize the form with company data
+      setFormData({
+        name: company.name || '',
+        website: company.website || '',
+        linkedin: company.linkedin || '',
+        description: company.description || ''
+      });
     }
   }, [company]);
 
@@ -716,11 +738,28 @@ function CompanyMainModal({ isOpen, onClose, companyId, refreshData }) {
         .select('contacts(id, first_name, last_name), is_primary')
         .eq('company_id', companyId);
         
-      if (contactsError) throw contactsError;
-      setContacts(contactsData.map(c => ({
-        ...c.contacts,
-        is_primary: c.is_primary
-      })));
+      if (contactsError) {
+        console.error('Error fetching related contacts:', contactsError);
+        throw contactsError;
+      }
+      
+      console.log('Fetched related contacts data:', contactsData);
+      
+      // Make sure we have valid contact data before mapping
+      if (contactsData && contactsData.length > 0) {
+        const validContacts = contactsData
+          .filter(c => c.contacts && c.contacts.id && c.contacts.first_name)
+          .map(c => ({
+            ...c.contacts,
+            is_primary: c.is_primary
+          }));
+          
+        console.log('Processed contacts:', validContacts);
+        setContacts(validContacts);
+      } else {
+        console.log('No related contacts found');
+        setContacts([]);
+      }
     } catch (error) {
       console.error('Error fetching company data:', error);
     } finally {
@@ -926,6 +965,29 @@ function CompanyMainModal({ isOpen, onClose, companyId, refreshData }) {
     };
   }, [showCategoryDropdown]);
   
+  // Handle field focus - this prevents the component from losing focus on re-render
+  const handleInputChange = (field, value, inputRef) => {
+    // Update the form data
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+    
+    // Maintain focus on the current input field
+    if (inputRef && inputRef.current) {
+      const input = inputRef.current;
+      const currentPos = input.selectionStart;
+      
+      // Use setTimeout to ensure the focus is maintained after the component re-renders
+      setTimeout(() => {
+        if (input) {
+          input.focus();
+          input.setSelectionRange(currentPos, currentPos);
+        }
+      }, 0);
+    }
+  };
+  
   // State for contact modal
   const [selectedContact, setSelectedContact] = useState(null);
   const [showContactModal, setShowContactModal] = useState(false);
@@ -960,7 +1022,16 @@ function CompanyMainModal({ isOpen, onClose, companyId, refreshData }) {
   
   // Handler for opening individual contact modal
   const handleOpenContactModal = async (contact) => {
+    console.log('Opening contact modal for contact:', contact);
+    
     try {
+      if (!contact || !contact.id) {
+        console.error('Invalid contact object - missing ID:', contact);
+        return;
+      }
+      
+      console.log('Fetching full contact data for ID:', contact.id);
+      
       // We need the full contact details, not just the minimal data from the relation
       const { data: fullContactData, error } = await supabase
         .from('contacts')
@@ -973,11 +1044,14 @@ function CompanyMainModal({ isOpen, onClose, companyId, refreshData }) {
         return;
       }
       
-      if (fullContactData) {
+      console.log('Fetched contact data from server:', fullContactData);
+      
+      if (fullContactData && fullContactData.first_name) {
+        console.log('Setting selected contact and opening modal');
         setSelectedContact(fullContactData);
         setShowContactModal(true);
       } else {
-        console.error('Contact not found');
+        console.error('Contact data is incomplete or missing required fields:', fullContactData);
       }
     } catch (error) {
       console.error('Error opening contact modal:', error);
@@ -988,6 +1062,51 @@ function CompanyMainModal({ isOpen, onClose, companyId, refreshData }) {
     setShowContactModal(false);
     setSelectedContact(null);
     fetchCompanyData(); // Refresh data after closing
+  };
+
+  // Function to save all form changes
+  const handleSaveChanges = async () => {
+    try {
+      console.log('Saving form changes', formData);
+      
+      const { error } = await supabase
+        .from('companies')
+        .update({
+          name: formData.name,
+          website: formData.website,
+          linkedin: formData.linkedin,
+          description: formData.description,
+          modified_at: new Date()
+        })
+        .eq('id', companyId);
+        
+      if (error) {
+        console.error('Error saving company data:', error);
+        return;
+      }
+      
+      // Update the company state to reflect changes
+      setCompany({
+        ...company,
+        name: formData.name,
+        website: formData.website,
+        linkedin: formData.linkedin,
+        description: formData.description,
+        modified_at: new Date()
+      });
+      
+      console.log('Company data saved successfully');
+      
+      // Refresh data if needed
+      if (refreshData) {
+        refreshData();
+      }
+      
+      // Close modal after saving
+      onClose();
+    } catch (error) {
+      console.error('Error saving company changes:', error);
+    }
   };
 
 const ModalContainer = styled.div`
@@ -1133,9 +1252,11 @@ const ModalContainer = styled.div`
                       <Input
                         id="name"
                         type="text"
-                        value={company.name || ''}
-                        onChange={() => {
-                          console.log('Company name change attempted');
+                        defaultValue={company?.name || ''}
+                        onBlur={(e) => {
+                          // Only update on blur (when leaving the field)
+                          console.log('Input blurred, saving value:', e.target.value);
+                          setFormData({...formData, name: e.target.value});
                         }}
                         placeholder="Company name"
                       />
@@ -1173,8 +1294,12 @@ const ModalContainer = styled.div`
                       <Input
                         id="website"
                         type="text"
-                        value={company.website || ''}
-                        onChange={() => {}}
+                        defaultValue={company?.website || ''}
+                        onBlur={(e) => {
+                          // Only update on blur (when leaving the field)
+                          console.log('Website input blurred, saving value:', e.target.value);
+                          setFormData({...formData, website: e.target.value});
+                        }}
                         placeholder="https://example.com"
                       />
                       {console.log('Company website in input:', company.website)}
@@ -1186,8 +1311,12 @@ const ModalContainer = styled.div`
                       <Input
                         id="linkedin"
                         type="text"
-                        value={company.linkedin || ''}
-                        onChange={() => {}}
+                        defaultValue={company?.linkedin || ''}
+                        onBlur={(e) => {
+                          // Only update on blur (when leaving the field)
+                          console.log('LinkedIn input blurred, saving value:', e.target.value);
+                          setFormData({...formData, linkedin: e.target.value});
+                        }}
                         placeholder="LinkedIn profile URL"
                       />
                     </FormGroup>
@@ -1304,8 +1433,12 @@ const ModalContainer = styled.div`
                       <Label htmlFor="description">Description</Label>
                       <Textarea
                         id="description"
-                        value={company.description || ''}
-                        onChange={() => {}}
+                        defaultValue={company?.description || ''}
+                        onBlur={(e) => {
+                          // Only update on blur (when leaving the field)
+                          console.log('Description input blurred, saving value:', e.target.value);
+                          setFormData({...formData, description: e.target.value});
+                        }}
                         placeholder="Company description"
                       />
                     </FormGroup>
@@ -1366,10 +1499,7 @@ const ModalContainer = styled.div`
                 fontSize: '0.875rem',
                 fontWeight: '500'
               }}
-              onClick={() => {
-                // Save changes would go here
-                onClose();
-              }}
+              onClick={handleSaveChanges}
             >
               Save Changes
             </button>
@@ -1404,13 +1534,18 @@ const ModalContainer = styled.div`
       )}
 
       {/* Individual Contact Modal */}
-      {showContactModal && selectedContact && (
-        <ContactsModal
-          isOpen={showContactModal}
-          onRequestClose={handleCloseContactModal}
-          contactId={selectedContact.id}
-        />
-      )}
+      {showContactModal && selectedContact && selectedContact.first_name ? (
+        <>
+          {console.log('Rendering ContactsModal with contact:', selectedContact)}
+          <ContactsModal
+            isOpen={showContactModal}
+            onRequestClose={handleCloseContactModal}
+            contact={selectedContact}
+          />
+        </>
+      ) : showContactModal ? (
+        console.log('Cannot render ContactsModal - incomplete contact data:', selectedContact)
+      ) : null}
     </>
   );
 }
