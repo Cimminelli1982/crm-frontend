@@ -721,60 +721,53 @@ const Companies = () => {
           console.error('Error fetching cities:', error);
         }
         
-        // STEP 2.3: Fetch and join contacts data - USING THE SAME IMPROVED METHOD
+        // STEP 2.3: Fetch and join contacts data - SIMPLIFIED VERSION
         try {
           console.log('Starting contact association fetch for companies');
           
           // Fetch all contact associations at once
-          const { data: allContactAssociations, error: contactsAssocError } = await supabase
+          const { data: contactAssocs, error: contactsAssocError } = await supabase
             .from('contact_companies')
             .select('company_id, contact_id');
 
           if (contactsAssocError) {
             console.error('Error fetching contact_companies:', contactsAssocError);
           } else {
-            console.log(`Found ${allContactAssociations?.length || 0} total contact-company associations`);
+            console.log(`Found ${contactAssocs?.length || 0} total contact-company associations`);
             
-            // Check which companies have associated contacts
-            const companiesWithContactsMap = {};
-            allContactAssociations?.forEach(assoc => {
-              companiesWithContactsMap[assoc.company_id] = true;
-            });
+            // Count companies with at least one contact
+            const companiesWithContacts = new Set();
+            contactAssocs?.forEach(assoc => companiesWithContacts.add(assoc.company_id));
+            console.log(`Found ${companiesWithContacts.size} companies with at least one contact`);
             
-            const companiesWithContacts = Object.keys(companiesWithContactsMap);
-            console.log(`Found ${companiesWithContacts.length} companies with at least one contact`);
-            
-            if (allContactAssociations && allContactAssociations.length > 0) {
+            if (contactAssocs && contactAssocs.length > 0) {
               // Get all unique contact IDs
-              const allContactIds = [...new Set(allContactAssociations.map(item => item.contact_id))];
-              console.log(`Found ${allContactIds.length} unique contacts to fetch details for`);
+              const contactIds = [...new Set(contactAssocs.map(item => item.contact_id))];
+              console.log(`Found ${contactIds.length} unique contacts to fetch details for`);
               
               // Fetch all contact details at once
-              const { data: allContactDetails, error: contactsDetailsError } = await supabase
+              const { data: contactDetails, error: contactsDetailsError } = await supabase
                 .from('contacts')
                 .select('id, first_name, last_name, email, mobile, last_interaction');
 
               if (contactsDetailsError) {
                 console.error('Error fetching contact details:', contactsDetailsError);
               } else {
-                console.log(`Successfully fetched ${allContactDetails?.length || 0} contacts from contacts table`);
-                console.log('First few contacts:', allContactDetails?.slice(0, 3));
+                console.log(`Successfully fetched ${contactDetails?.length || 0} contacts from contacts table`);
                 
                 // Create a contact lookup map for fast access
                 const contactMap = {};
-                allContactDetails?.forEach(contact => {
+                contactDetails?.forEach(contact => {
                   if (contact && contact.id) {
                     contactMap[contact.id] = contact;
                   }
                 });
                 
-                console.log(`Created contact map with ${Object.keys(contactMap).length} entries`);
-                
                 // Group contact associations by company
                 const contactsByCompany = {};
                 let missingContactCount = 0;
                 
-                allContactAssociations.forEach(assoc => {
+                contactAssocs.forEach(assoc => {
                   const contact = contactMap[assoc.contact_id];
                   if (contact && assoc.company_id) {
                     if (!contactsByCompany[assoc.company_id]) {
@@ -789,12 +782,6 @@ const Companies = () => {
                 console.log(`Found ${missingContactCount} contact associations with missing contacts`);
                 console.log(`Created contact groupings for ${Object.keys(contactsByCompany).length} companies`);
                 
-                // Sample a random company to check its contacts
-                const sampleCompanyId = Object.keys(contactsByCompany)[0];
-                if (sampleCompanyId) {
-                  console.log(`Sample - Company ${sampleCompanyId} has ${contactsByCompany[sampleCompanyId].length} contacts`);
-                }
-                
                 // Add contacts to each company
                 companiesData.forEach(company => {
                   company.contacts = contactsByCompany[company.id] || [];
@@ -803,40 +790,36 @@ const Companies = () => {
                 // Log how many companies have contacts after assignment
                 const companiesWithContactsCount = companiesData.filter(c => c.contacts && c.contacts.length > 0).length;
                 console.log(`After assignment: ${companiesWithContactsCount} out of ${companiesData.length} companies have contacts`);
-              }
-            } else {
-              console.log('No contact associations found');
-            }
-          }
-          
-          // STEP 3: Additional filtering by contact if needed
-          if (searchField === 'contact' && searchTerm.length >= 3) {
-            const searchLower = searchTerm.toLowerCase();
-            
-            console.log(`Filtering by contacts containing: "${searchLower}"`);
-            
-            // Filter companies with matching contacts
-            companiesData = companiesData.filter(company => 
-                  company.contacts && company.contacts.some(contact => {
-                    if (!contact) return false;
-                    
-                    const firstName = (contact.first_name || '').toLowerCase();
-                    const lastName = (contact.last_name || '').toLowerCase();
-                    const fullName = `${firstName} ${lastName}`;
-                    const email = (contact.email || '').toLowerCase();
-                    const mobile = (contact.mobile || '').toLowerCase();
-                    
-                    return (
-                      firstName.includes(searchLower) ||
-                      lastName.includes(searchLower) ||
-                      fullName.includes(searchLower) ||
-                      email.includes(searchLower) ||
-                      mobile.includes(searchLower)
-                    );
-                  })
-                );
                 
-                console.log(`After contact filtering: ${companiesData.length} companies`);
+                // Additional filtering by contact if needed
+                if (searchField === 'contact' && searchTerm.length >= 3) {
+                  const searchLower = searchTerm.toLowerCase();
+                  
+                  console.log(`Filtering by contacts containing: "${searchLower}"`);
+                  
+                  // Filter companies with matching contacts
+                  companiesData = companiesData.filter(company => 
+                    company.contacts && company.contacts.some(contact => {
+                      if (!contact) return false;
+                      
+                      const firstName = (contact.first_name || '').toLowerCase();
+                      const lastName = (contact.last_name || '').toLowerCase();
+                      const fullName = `${firstName} ${lastName}`;
+                      const email = (contact.email || '').toLowerCase();
+                      const mobile = (contact.mobile || '').toLowerCase();
+                      
+                      return (
+                        firstName.includes(searchLower) ||
+                        lastName.includes(searchLower) ||
+                        fullName.includes(searchLower) ||
+                        email.includes(searchLower) ||
+                        mobile.includes(searchLower)
+                      );
+                    })
+                  );
+                  
+                  console.log(`After contact filtering: ${companiesData.length} companies`);
+                }
               }
             }
           }
