@@ -1131,13 +1131,13 @@ const Companies = () => {
             
           } else if (searchField === 'contact') {
             // For contact search, we need to join with contact_companies and contacts tables
-            console.log("Performing contacts search");
+            console.log("Performing contacts search directly");
             
             try {
               // STEP 1: Find contacts matching the search term - more comprehensive search
               const { data: matchingContacts, error: contactsError } = await supabase
                 .from('contacts')
-                .select('id')
+                .select('id, first_name, last_name, email')
                 .or(`first_name.ilike.%${value}%,last_name.ilike.%${value}%,email.ilike.%${value}%`);
                 
               if (contactsError) {
@@ -1154,12 +1154,14 @@ const Companies = () => {
               }
               
               console.log(`Found ${matchingContacts.length} matching contacts`);
+              console.log("First 5 matching contacts:", matchingContacts.slice(0, 5).map(c => 
+                `${c.first_name} ${c.last_name} (${c.id})`));
               
               // STEP 2: Find companies linked to these contacts
               const contactIds = matchingContacts.map(contact => contact.id);
               const { data: companyContactLinks, error: linksError } = await supabase
                 .from('contact_companies')
-                .select('company_id')
+                .select('company_id, contact_id')  // Include contact_id for debugging
                 .in('contact_id', contactIds);
                 
               if (linksError) {
@@ -1175,23 +1177,84 @@ const Companies = () => {
                 return;
               }
               
+              console.log(`Found ${companyContactLinks.length} company-contact associations`);
+              
               // STEP 3: Get unique company IDs
               const companyIds = [...new Set(companyContactLinks.map(link => link.company_id))];
-              console.log(`Found ${companyIds.length} companies with matching contacts`);
+              console.log(`Found ${companyIds.length} unique companies with matching contacts`);
               
-              // STEP 4: Query companies including the ones without a category
-              // Different from the original - including companies with null category
-              // This is key to ensuring we search ALL companies!
-              query = supabase
+              // STEP 4: Query companies directly to include ones without a category
+              const { data: matchingCompanies, error: companiesError } = await supabase
                 .from('companies')
                 .select('*')
                 .in('id', companyIds)
-                .neq('category', 'Skip') // Still exclude Skip category
-                .or('category.is.null'); // But include NULL category companies
+                .or('category.neq.Skip,category.is.null'); // Include NULL category companies & exclude Skip
                 
-              console.log(`Using companyIds: ${companyIds.slice(0, 5).join(', ')}${companyIds.length > 5 ? '...' : ''}`);
+              if (companiesError) {
+                console.error("Error fetching companies by contact:", companiesError);
+                throw companiesError;
+              }
+              
+              console.log(`Direct contact search found ${matchingCompanies?.length || 0} companies`);
+                
+              if (matchingCompanies && matchingCompanies.length > 0) {
+                console.log("First 5 company matches:", 
+                  matchingCompanies.slice(0, 5).map(c => ({ id: c.id, name: c.name })));
+                  
+                // Create a map of contact IDs to contact data for faster lookups
+                const contactMap = {};
+                matchingContacts.forEach(contact => {
+                  contactMap[contact.id] = contact;
+                });
+                
+                // Create a map of company IDs to associated contact IDs
+                const companyContactsMap = {};
+                companyContactLinks.forEach(link => {
+                  if (!companyContactsMap[link.company_id]) {
+                    companyContactsMap[link.company_id] = [];
+                  }
+                  companyContactsMap[link.company_id].push(link.contact_id);
+                });
+                
+                // Associate contacts with their companies
+                const companiesWithContacts = matchingCompanies.map(company => {
+                  // Get contact IDs for this company
+                  const contactsForCompany = companyContactsMap[company.id] || [];
+                  
+                  // Look up full contact data for each ID
+                  const contactsData = contactsForCompany
+                    .map(contactId => contactMap[contactId])
+                    .filter(contact => contact !== undefined); // Filter out any undefined entries
+                    
+                  return {
+                    ...company,
+                    contacts: contactsData, // Pre-populate contacts array
+                    tags: [],  // Initialize empty tags array
+                    cities: [] // Initialize empty cities array
+                  };
+                });
+                
+                // Directly set companies and update UI
+                setCompanies(companiesWithContacts);
+                setFilteredCount(companiesWithContacts.length);
+                setIsLoading(false);
+                
+                // After setting companies, trigger a refresh to load other relationships
+                setTimeout(() => {
+                  setRefreshTrigger(prev => prev + 1);
+                }, 500);
+                
+                // Early return to avoid the regular flow
+                return;
+              } else {
+                console.log("No companies found with matching contacts");
+                setCompanies([]);
+                setFilteredCount(0);
+                setIsLoading(false);
+                return;
+              }
             } catch (error) {
-              console.error("Error in contact search process:", error);
+              console.error("Error in direct contact search:", error);
               setCompanies([]);
               setFilteredCount(0);
               setIsLoading(false);
