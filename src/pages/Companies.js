@@ -745,15 +745,22 @@ const Companies = () => {
               const contactIds = [...new Set(contactAssocs.map(item => item.contact_id))];
               console.log(`Found ${contactIds.length} unique contacts to fetch details for`);
               
-              // Fetch all contact details at once
+              // Fetch only the specific contacts we need using their IDs
               const { data: contactDetails, error: contactsDetailsError } = await supabase
                 .from('contacts')
-                .select('id, first_name, last_name, email, mobile, last_interaction');
+                .select('id, first_name, last_name, email, mobile, last_interaction')
+                .in('id', contactIds); // Filter to only include contacts we need
 
               if (contactsDetailsError) {
                 console.error('Error fetching contact details:', contactsDetailsError);
               } else {
-                console.log(`Successfully fetched ${contactDetails?.length || 0} contacts from contacts table`);
+                console.log(`Successfully fetched ${contactDetails?.length || 0} out of ${contactIds.length} needed contacts`);
+                // Check if we're missing any contacts
+                if (contactDetails && contactIds.length !== contactDetails.length) {
+                  const fetchedIds = new Set(contactDetails.map(c => c.id));
+                  const missingIds = contactIds.filter(id => !fetchedIds.has(id));
+                  console.log(`Missing ${missingIds.length} contacts: ${missingIds.slice(0, 5).join(', ')}${missingIds.length > 5 ? '...' : ''}`);
+                }
                 
                 // Create a contact lookup map for fast access
                 const contactMap = {};
