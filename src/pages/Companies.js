@@ -566,158 +566,44 @@ const Companies = () => {
     try {
       setIsLoading(true);
       
-      // Use server-side search for company name
+      // Variable to hold companies data
+      let companiesData = [];
+      
+      // STEP 1: Fetch base companies data based on search parameters
       if (searchTerm.length >= 2 && searchField === 'name') {
-        try {
-          console.log("Performing server-side name search for:", searchTerm);
+        // Use server-side search for company name
+        console.log("Performing server-side name search for:", searchTerm);
+        
+        const { data: matchingCompanies, error: matchingError } = await supabase
+          .from('companies')
+          .select('*')
+          .ilike('name', `%${searchTerm}%`)
+          .neq('category', 'Skip')
+          .or('category.is.null'); // Include companies with null category
           
-          // Simple, direct approach with ILIKE for name searching
-          const { data: matchingCompanies, error: matchingError } = await supabase
-            .from('companies')
-            .select('*')
-            .ilike('name', `%${searchTerm}%`)
-            .neq('category', 'Skip')
-            .or('category.is.null'); // Include companies with null category
-            
-          if (matchingError) {
-            console.error("Error searching companies by name:", matchingError);
-            throw matchingError;
-          }
-          
-          console.log(`Found ${matchingCompanies?.length || 0} companies matching "${searchTerm}" in name`);
-          if (matchingCompanies?.length > 0) {
-            console.log("Matches:", matchingCompanies.map(c => c.name));
-          }
-          
-          // Set the filtered companies
-          let companiesData = matchingCompanies || [];
-          
-          // Get IDs of filtered companies
-          const companyIds = companiesData.map(company => company.id);
-          
-          // Load the related entities for the filtered companies
-          if (companyIds.length > 0) {
-            // 1. Fetch tags for the filtered companies
-            const { data: tagsData } = await supabase
-              .from('companies_tags')
-              .select(`
-                company_id,
-                tag_id,
-                tags:tag_id (id, name)
-              `)
-              .in('company_id', companyIds);
-              
-            if (tagsData) {
-              // Group tags by company ID
-              const tagsByCompany = {};
-              tagsData.forEach(item => {
-                if (item.company_id && item.tags) {
-                  if (!tagsByCompany[item.company_id]) {
-                    tagsByCompany[item.company_id] = [];
-                  }
-                  tagsByCompany[item.company_id].push(item.tags);
-                }
-              });
-              
-              // Add tags to companies
-              companiesData = companiesData.map(company => ({
-                ...company,
-                tags: tagsByCompany[company.id] || []
-              }));
-            }
-            
-            // 2. Fetch cities for the filtered companies
-            const { data: citiesData } = await supabase
-              .from('companies_cities')
-              .select(`
-                company_id,
-                city_id,
-                cities:city_id (id, name)
-              `)
-              .in('company_id', companyIds);
-              
-            if (citiesData) {
-              // Group cities by company ID
-              const citiesByCompany = {};
-              citiesData.forEach(item => {
-                if (item.company_id && item.cities) {
-                  if (!citiesByCompany[item.company_id]) {
-                    citiesByCompany[item.company_id] = [];
-                  }
-                  citiesByCompany[item.company_id].push(item.cities);
-                }
-              });
-              
-              // Add cities to companies
-              companiesData = companiesData.map(company => ({
-                ...company,
-                cities: citiesByCompany[company.id] || []
-              }));
-            }
-            
-            // 3. Fetch contacts for the filtered companies
-            const { data: contactsData } = await supabase
-              .from('contact_companies')
-              .select(`
-                company_id,
-                contact_id,
-                contacts:contact_id (id, first_name, last_name, email, mobile)
-              `)
-              .in('company_id', companyIds);
-              
-            if (contactsData) {
-              // Group contacts by company ID
-              const contactsByCompany = {};
-              contactsData.forEach(item => {
-                if (item.company_id && item.contacts) {
-                  if (!contactsByCompany[item.company_id]) {
-                    contactsByCompany[item.company_id] = [];
-                  }
-                  contactsByCompany[item.company_id].push(item.contacts);
-                }
-              });
-              
-              // Add contacts to companies
-              companiesData = companiesData.map(company => ({
-                ...company,
-                contacts: contactsByCompany[company.id] || []
-              }));
-            }
-          }
-          
-          // Set allCompanies variable and return
-          allCompanies = companiesData;
-          setCompanies(allCompanies);
-          setFilteredCount(allCompanies.length);
-          await fetchFilterCounts();
-          setIsLoading(false);
-          return;
-        } catch (error) {
-          console.error('Error in direct name search:', error);
-          setIsLoading(false);
-          return;
+        if (matchingError) {
+          console.error("Error searching companies by name:", matchingError);
+          throw matchingError;
         }
+        
+        console.log(`Found ${matchingCompanies?.length || 0} companies matching "${searchTerm}" in name`);
+        companiesData = matchingCompanies || [];
+      } else {
+        // Get all companies - excluding 'Skip' category, including null category
+        const { data: allCompaniesData, error: allCompaniesError } = await supabase
+          .from('companies')
+          .select('*')
+          .or('category.neq.Skip,category.is.null');
+        
+        if (allCompaniesError) {
+          throw allCompaniesError;
+        }
+        
+        companiesData = allCompaniesData || [];
       }
       
-      // If not a name search, continue with the normal approach
-      // Variable to hold our companies data
-      let companiesData;
-      let companiesError;
-      
-      // Get all companies - including those with null category, excluding 'Skip'
-      let { data: allCompaniesData, error: allCompaniesError } = await supabase
-        .from('companies')
-        .select('*')
-        .or('category.neq.Skip,category.is.null'); // Filter out Skip category but include null category
-      
-      if (allCompaniesError) {
-        throw allCompaniesError;
-      }
-      
-      companiesData = allCompaniesData;
-      
-      // Set companies with basic data first
-      let allCompanies = companiesData.map(company => ({
+      // Initialize empty arrays for relationships 
+      companiesData = companiesData.map(company => ({
         ...company,
         tags: [],
         cities: [],
@@ -725,289 +611,201 @@ const Companies = () => {
       }));
       
       // Default sort by created_at
-      allCompanies.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      companiesData.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
       
-      // Now fetch the related data for each entity separately (more reliable)
-      try {
-        // Get array of company IDs (all non-Skip companies)
-        const companyIds = allCompanies.map(company => company.id);
-        
-        if (companyIds.length === 0) {
-          return; // No companies to fetch related data for
-        }
-        
-        // Fetch tags for all filtered companies
-        const { data: tagsData, error: tagsError } = await supabase
-          .from('companies_tags')
-          .select(`
-            company_id,
-            tag_id,
-            tags:tag_id (id, name)
-          `)
-          .in('company_id', companyIds); // Only get tags for non-Skip companies
-          
-        if (!tagsError && tagsData) {
-          // Group tags by company
-          const tagsByCompany = {};
-          tagsData.forEach(item => {
-            if (item.company_id && item.tags) {
-              if (!tagsByCompany[item.company_id]) {
-                tagsByCompany[item.company_id] = [];
-              }
-              tagsByCompany[item.company_id].push(item.tags);
-            }
-          });
-          
-          // Add tags to companies
-          allCompanies = allCompanies.map(company => ({
-            ...company,
-            tags: tagsByCompany[company.id] || []
-          }));
-        }
-      } catch (e) {
-        console.error('Error fetching tags:', e);
-      }
-      
-      try {
-        // Get array of company IDs again (in case it changed)
-        const companyIds = allCompanies.map(company => company.id);
-        
-        if (companyIds.length === 0) {
-          return; // No companies to fetch related data for
-        }
-        
-        // Fetch cities for all filtered companies
-        const { data: citiesData, error: citiesError } = await supabase
-          .from('companies_cities')
-          .select(`
-            company_id,
-            city_id,
-            cities:city_id (id, name)
-          `)
-          .in('company_id', companyIds); // Only get cities for non-Skip companies
-          
-        if (!citiesError && citiesData) {
-          // Group cities by company
-          const citiesByCompany = {};
-          citiesData.forEach(item => {
-            if (item.company_id && item.cities) {
-              if (!citiesByCompany[item.company_id]) {
-                citiesByCompany[item.company_id] = [];
-              }
-              citiesByCompany[item.company_id].push(item.cities);
-            }
-          });
-          
-          // Add cities to companies
-          allCompanies = allCompanies.map(company => ({
-            ...company,
-            cities: citiesByCompany[company.id] || []
-          }));
-        }
-      } catch (e) {
-        console.error('Error fetching cities:', e);
-      }
-      
-      try {
-        // Get array of company IDs again (in case it changed)
-        const companyIds = allCompanies.map(company => company.id);
-        
-        if (companyIds.length === 0) {
-          return; // No companies to fetch related data for
-        }
-        
-        // Fetch contacts for all filtered companies
-        const { data: contactsData, error: contactsError } = await supabase
-          .from('contact_companies')
-          .select(`
-            company_id,
-            contact_id,
-            contacts:contact_id (id, first_name, last_name, last_interaction)
-          `)
-          .in('company_id', companyIds); // Only get contacts for non-Skip companies
-          
-        if (!contactsError && contactsData) {
-          // Group contacts by company
-          const contactsByCompany = {};
-          contactsData.forEach(item => {
-            if (item.company_id && item.contacts) {
-              if (!contactsByCompany[item.company_id]) {
-                contactsByCompany[item.company_id] = [];
-              }
-              contactsByCompany[item.company_id].push(item.contacts);
-            }
-          });
-          
-          // Add contacts to companies
-          allCompanies = allCompanies.map(company => ({
-            ...company,
-            contacts: contactsByCompany[company.id] || []
-          }));
-        }
-      } catch (e) {
-        console.error('Error fetching contacts:', e);
-      }
-      
-      
-      // We'll fetch all relations for companies
-      // Now fetch the tags, cities, and contacts for our filtered companies
-      try {
+      // STEP 2: If we have companies, fetch their related data
+      if (companiesData.length > 0) {
         const companyIds = companiesData.map(company => company.id);
         
-        if (companyIds.length === 0) {
-          // No companies to fetch data for
-          console.log("No companies to fetch relations for");
-          allCompanies = [];
-          return;
-        }
-        
-        // Now we need to load the related entities 
-        // (tags, contacts, cities) for the filtered companies
-        
-        // 1. Fetch tags
-        const { data: tagsData, error: tagsError } = await supabase
-          .from('companies_tags')
-          .select(`
-            company_id,
-            tag_id,
-            tags:tag_id (id, name)
-          `)
-          .in('company_id', companyIds);
-          
-        if (!tagsError && tagsData) {
-          // Group tags by company ID
-          const tagsByCompany = {};
-          tagsData.forEach(item => {
-            if (item.company_id && item.tags) {
-              if (!tagsByCompany[item.company_id]) {
-                tagsByCompany[item.company_id] = [];
-              }
-              tagsByCompany[item.company_id].push(item.tags);
+        // STEP 2.1: Fetch and join tags data - COMPLETELY SIMPLIFIED METHOD
+        try {
+          // Fetch all tags associations at once
+          const { data: allTagAssociations, error: tagsAssocError } = await supabase
+            .from('companies_tags')
+            .select('company_id, tag_id');
+
+          if (tagsAssocError) {
+            console.error('Error fetching companies_tags:', tagsAssocError);
+          } else if (allTagAssociations && allTagAssociations.length > 0) {
+            // Get all unique tag IDs
+            const allTagIds = [...new Set(allTagAssociations.map(item => item.tag_id))];
+            
+            // Fetch all tag details at once
+            const { data: allTagDetails, error: tagsDetailsError } = await supabase
+              .from('tags')
+              .select('id, name');
+
+            if (tagsDetailsError) {
+              console.error('Error fetching tag details:', tagsDetailsError);
+            } else if (allTagDetails && allTagDetails.length > 0) {
+              // Create a tag lookup map for fast access
+              const tagMap = {};
+              allTagDetails.forEach(tag => {
+                tagMap[tag.id] = tag;
+              });
+              
+              // Group tag associations by company
+              const tagsByCompany = {};
+              allTagAssociations.forEach(assoc => {
+                const tag = tagMap[assoc.tag_id];
+                if (tag && assoc.company_id) {
+                  if (!tagsByCompany[assoc.company_id]) {
+                    tagsByCompany[assoc.company_id] = [];
+                  }
+                  tagsByCompany[assoc.company_id].push({
+                    id: tag.id,
+                    name: tag.name
+                  });
+                }
+              });
+              
+              // Add tags to each company
+              companiesData.forEach(company => {
+                company.tags = tagsByCompany[company.id] || [];
+              });
             }
-          });
-          
-          // Add tags to corresponding companies
-          companiesData = companiesData.map(company => ({
-            ...company,
-            tags: tagsByCompany[company.id] || []
-          }));
-          
-          // If searching by tags, filter companies that have a matching tag
-          if (searchField === 'tags' && searchTerm.length >= 3) {
-            const searchLower = searchTerm.toLowerCase();
-            
-            console.log(`Filtering by tags containing: "${searchLower}"`);
-            
-            // Filter companies with matching tags
-            companiesData = companiesData.filter(company => 
-              company.tags && company.tags.some(tag => 
-                tag.name && tag.name.toLowerCase().includes(searchLower)
-              )
-            );
-            
-            console.log(`After tag filtering: ${companiesData.length} companies`);
           }
+        } catch (error) {
+          console.error('Error fetching company tags:', error);
         }
         
-        // 2. Fetch cities
-        const { data: citiesData, error: citiesError } = await supabase
-          .from('companies_cities')
-          .select(`
-            company_id,
-            city_id,
-            cities:city_id (id, name)
-          `)
-          .in('company_id', companiesData.map(c => c.id));
-          
-        if (!citiesError && citiesData) {
-          // Group cities by company ID
-          const citiesByCompany = {};
-          citiesData.forEach(item => {
-            if (item.company_id && item.cities) {
-              if (!citiesByCompany[item.company_id]) {
-                citiesByCompany[item.company_id] = [];
-              }
-              citiesByCompany[item.company_id].push(item.cities);
+        // STEP 2.2: Fetch and join cities data - USING THE SAME IMPROVED METHOD AS TAGS
+        try {
+          // Fetch all city associations at once
+          const { data: allCityAssociations, error: citiesAssocError } = await supabase
+            .from('companies_cities')
+            .select('company_id, city_id');
+
+          if (citiesAssocError) {
+            console.error('Error fetching companies_cities:', citiesAssocError);
+          } else if (allCityAssociations && allCityAssociations.length > 0) {
+            // Get all unique city IDs
+            const allCityIds = [...new Set(allCityAssociations.map(item => item.city_id))];
+            
+            // Fetch all city details at once
+            const { data: allCityDetails, error: citiesDetailsError } = await supabase
+              .from('cities')
+              .select('id, name');
+
+            if (citiesDetailsError) {
+              console.error('Error fetching city details:', citiesDetailsError);
+            } else if (allCityDetails && allCityDetails.length > 0) {
+              // Create a city lookup map for fast access
+              const cityMap = {};
+              allCityDetails.forEach(city => {
+                cityMap[city.id] = city;
+              });
+              
+              // Group city associations by company
+              const citiesByCompany = {};
+              allCityAssociations.forEach(assoc => {
+                const city = cityMap[assoc.city_id];
+                if (city && assoc.company_id) {
+                  if (!citiesByCompany[assoc.company_id]) {
+                    citiesByCompany[assoc.company_id] = [];
+                  }
+                  citiesByCompany[assoc.company_id].push({
+                    id: city.id,
+                    name: city.name
+                  });
+                }
+              });
+              
+              // Add cities to each company
+              companiesData.forEach(company => {
+                company.cities = citiesByCompany[company.id] || [];
+              });
             }
-          });
-          
-          // Add cities to corresponding companies
-          companiesData = companiesData.map(company => ({
-            ...company,
-            cities: citiesByCompany[company.id] || []
-          }));
+          }
+        } catch (error) {
+          console.error('Error fetching cities:', error);
         }
         
-        // 3. Fetch contacts
-        const { data: contactsData, error: contactsError } = await supabase
-          .from('contact_companies')
-          .select(`
-            company_id,
-            contact_id,
-            contacts:contact_id (id, first_name, last_name, email, mobile)
-          `)
-          .in('company_id', companiesData.map(c => c.id));
-          
-        if (!contactsError && contactsData) {
-          // Group contacts by company ID
-          const contactsByCompany = {};
-          contactsData.forEach(item => {
-            if (item.company_id && item.contacts) {
-              if (!contactsByCompany[item.company_id]) {
-                contactsByCompany[item.company_id] = [];
-              }
-              contactsByCompany[item.company_id].push(item.contacts);
-            }
-          });
-          
-          // Add contacts to corresponding companies
-          companiesData = companiesData.map(company => ({
-            ...company,
-            contacts: contactsByCompany[company.id] || []
-          }));
-          
-          // If searching by contacts, filter companies that have a matching contact
-          if (searchField === 'contact' && searchTerm.length >= 3) {
-            const searchLower = searchTerm.toLowerCase();
+        // STEP 2.3: Fetch and join contacts data - USING THE SAME IMPROVED METHOD
+        try {
+          // Fetch all contact associations at once
+          const { data: allContactAssociations, error: contactsAssocError } = await supabase
+            .from('contact_companies')
+            .select('company_id, contact_id');
+
+          if (contactsAssocError) {
+            console.error('Error fetching contact_companies:', contactsAssocError);
+          } else if (allContactAssociations && allContactAssociations.length > 0) {
+            // Get all unique contact IDs
+            const allContactIds = [...new Set(allContactAssociations.map(item => item.contact_id))];
             
-            console.log(`Filtering by contacts containing: "${searchLower}"`);
-            
-            // Filter companies with matching contacts
-            companiesData = companiesData.filter(company => 
-              company.contacts && company.contacts.some(contact => {
-                if (!contact) return false;
+            // Fetch all contact details at once
+            const { data: allContactDetails, error: contactsDetailsError } = await supabase
+              .from('contacts')
+              .select('id, first_name, last_name, email, mobile, last_interaction');
+
+            if (contactsDetailsError) {
+              console.error('Error fetching contact details:', contactsDetailsError);
+            } else if (allContactDetails && allContactDetails.length > 0) {
+              // Create a contact lookup map for fast access
+              const contactMap = {};
+              allContactDetails.forEach(contact => {
+                contactMap[contact.id] = contact;
+              });
+              
+              // Group contact associations by company
+              const contactsByCompany = {};
+              allContactAssociations.forEach(assoc => {
+                const contact = contactMap[assoc.contact_id];
+                if (contact && assoc.company_id) {
+                  if (!contactsByCompany[assoc.company_id]) {
+                    contactsByCompany[assoc.company_id] = [];
+                  }
+                  contactsByCompany[assoc.company_id].push(contact);
+                }
+              });
+              
+              // Add contacts to each company
+              companiesData.forEach(company => {
+                company.contacts = contactsByCompany[company.id] || [];
+              });
+              
+              // STEP 3: Additional filtering by contact if needed
+              if (searchField === 'contact' && searchTerm.length >= 3) {
+                const searchLower = searchTerm.toLowerCase();
                 
-                const firstName = (contact.first_name || '').toLowerCase();
-                const lastName = (contact.last_name || '').toLowerCase();
-                const fullName = `${firstName} ${lastName}`;
-                const email = (contact.email || '').toLowerCase();
-                const mobile = (contact.mobile || '').toLowerCase();
+                console.log(`Filtering by contacts containing: "${searchLower}"`);
                 
-                return (
-                  firstName.includes(searchLower) ||
-                  lastName.includes(searchLower) ||
-                  fullName.includes(searchLower) ||
-                  email.includes(searchLower) ||
-                  mobile.includes(searchLower)
+                // Filter companies with matching contacts
+                companiesData = companiesData.filter(company => 
+                  company.contacts && company.contacts.some(contact => {
+                    if (!contact) return false;
+                    
+                    const firstName = (contact.first_name || '').toLowerCase();
+                    const lastName = (contact.last_name || '').toLowerCase();
+                    const fullName = `${firstName} ${lastName}`;
+                    const email = (contact.email || '').toLowerCase();
+                    const mobile = (contact.mobile || '').toLowerCase();
+                    
+                    return (
+                      firstName.includes(searchLower) ||
+                      lastName.includes(searchLower) ||
+                      fullName.includes(searchLower) ||
+                      email.includes(searchLower) ||
+                      mobile.includes(searchLower)
+                    );
+                  })
                 );
-              })
-            );
-            
-            console.log(`After contact filtering: ${companiesData.length} companies`);
+                
+                console.log(`After contact filtering: ${companiesData.length} companies`);
+              }
+            }
           }
+        } catch (error) {
+          console.error('Error fetching contacts:', error);
         }
-        
-      } catch (error) {
-        console.error('Error fetching relations for companies:', error);
       }
       
-      // Set allCompanies to the filtered companiesData
-      allCompanies = companiesData;
+      // STEP 4: Set state with the enriched companies data
+      setCompanies(companiesData);
+      setFilteredCount(companiesData.length);
       
-      setCompanies(allCompanies);
-      setFilteredCount(allCompanies.length);
-      
-      // Update filter counts
+      // STEP 5: Update filter counts
       await fetchFilterCounts();
       
     } catch (error) {
