@@ -7,6 +7,7 @@ import dayjs from 'dayjs';
 import CompanyTagsModal from './CompanyTagsModal';
 import CompanyCityModal from './CompanyCityModal';
 import CompanyContactsModal from './CompanyContactsModal';
+import ContactsModal from './ContactsModal';
 
 // Company categories from Companies.js
 const COMPANY_CATEGORIES = [
@@ -925,6 +926,10 @@ function CompanyMainModal({ isOpen, onClose, companyId, refreshData }) {
     };
   }, [showCategoryDropdown]);
   
+  // State for contact modal
+  const [selectedContact, setSelectedContact] = useState(null);
+  const [showContactModal, setShowContactModal] = useState(false);
+
   // Modal handlers
   const handleOpenTagsModal = () => {
     setShowTagsModal(true);
@@ -951,6 +956,38 @@ function CompanyMainModal({ isOpen, onClose, companyId, refreshData }) {
   const handleCloseContactsModal = () => {
     setShowContactsModal(false);
     fetchCompanyData(); // Refresh data
+  };
+  
+  // Handler for opening individual contact modal
+  const handleOpenContactModal = async (contact) => {
+    try {
+      // We need the full contact details, not just the minimal data from the relation
+      const { data: fullContactData, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('id', contact.id)
+        .single();
+        
+      if (error) {
+        console.error('Error fetching full contact details:', error);
+        return;
+      }
+      
+      if (fullContactData) {
+        setSelectedContact(fullContactData);
+        setShowContactModal(true);
+      } else {
+        console.error('Contact not found');
+      }
+    } catch (error) {
+      console.error('Error opening contact modal:', error);
+    }
+  };
+  
+  const handleCloseContactModal = () => {
+    setShowContactModal(false);
+    setSelectedContact(null);
+    fetchCompanyData(); // Refresh data after closing
   };
 
 const ModalContainer = styled.div`
@@ -1208,8 +1245,12 @@ const ModalContainer = styled.div`
                                   fontWeight: 500,
                                   marginRight: '0.5rem',  /* Increased margin between bubbles */
                                   marginBottom: '0.5rem', /* Increased vertical spacing */
-                                  border: '1px solid black'
+                                  border: '1px solid black',
+                                  cursor: 'pointer',
+                                  position: 'relative' /* For absolute positioning of the remove button */
                                 }}
+                                onClick={() => handleOpenContactModal(contact)}
+                                title="Click to view contact details"
                               >
                                 <span style={{ marginRight: '10px' }}>
                                   {contact.first_name} {contact.last_name}
@@ -1225,7 +1266,10 @@ const ModalContainer = styled.div`
                                   )}
                                 </span>
                                 <button 
-                                  onClick={() => handleRemoveContact(contact.id)} 
+                                  onClick={(e) => {
+                                    e.stopPropagation(); // Prevent triggering the parent onClick
+                                    handleRemoveContact(contact.id);
+                                  }} 
                                   style={{
                                     background: 'none',
                                     border: 'none',
@@ -1235,7 +1279,8 @@ const ModalContainer = styled.div`
                                     justifyContent: 'center',
                                     marginLeft: '0.25rem',
                                     color: '#6b7280',
-                                    cursor: 'pointer'
+                                    cursor: 'pointer',
+                                    zIndex: 2 /* Ensure it's above other elements */
                                   }}
                                   title="Remove contact"
                                 >
@@ -1355,6 +1400,15 @@ const ModalContainer = styled.div`
           isOpen={showContactsModal}
           onRequestClose={handleCloseContactsModal}
           company={company}
+        />
+      )}
+
+      {/* Individual Contact Modal */}
+      {showContactModal && selectedContact && (
+        <ContactsModal
+          isOpen={showContactModal}
+          onRequestClose={handleCloseContactModal}
+          contactId={selectedContact.id}
         />
       )}
     </>

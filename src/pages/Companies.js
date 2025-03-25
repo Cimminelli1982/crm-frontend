@@ -157,6 +157,7 @@ const CompanyCard = styled.div`
   height: 360px;
   display: flex;
   flex-direction: column;
+  cursor: pointer;
   
   &:hover {
     transform: translateY(-4px);
@@ -2179,7 +2180,21 @@ const Companies = () => {
         ) : (
           <CompaniesGrid>
             {companies.map(company => (
-              <CompanyCard key={company.id}>
+              <CompanyCard 
+                key={company.id} 
+                onClick={(e) => {
+                  // Prevent opening modal when clicking on editable fields or buttons
+                  if (
+                    e.target.tagName.toLowerCase() === 'button' || 
+                    e.target.tagName.toLowerCase() === 'input' || 
+                    e.target.tagName.toLowerCase() === 'textarea' ||
+                    e.target.closest('.action-menu') // Don't trigger when clicking on the action menu
+                  ) {
+                    return;
+                  }
+                  handleOpenCompanyModal(company);
+                }}
+              >
                 {/* SECTION 1: Title & Actions - Fixed Height */}
                 <div style={{ height: "40px", marginBottom: "0" }}>
                   <CompanyHeader>
@@ -2231,7 +2246,7 @@ const Companies = () => {
                         {formatCompanyName(company.name)}
                       </CompanyName>
                     )}
-                    <ActionMenu className="action-menu-container">
+                    <ActionMenu className="action-menu action-menu-container">
                       <ActionMenuToggle 
                         onClick={() => handleActionMenuToggle(company.id)}
                         title="Company actions"
