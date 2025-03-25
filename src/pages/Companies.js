@@ -1023,15 +1023,54 @@ const Companies = () => {
           
           // Different search approach based on search field
           if (searchField === 'name') {
-            // For name search, use a simple, reliable approach
-            console.log("Performing company name search");
+            // For name search, use a simple direct approach
+            console.log("Performing company name search directly");
             
-            // Use the simplest, most reliable approach for name search
-            query = supabase
-              .from('companies')
-              .select('*')
-              .ilike('name', `%${value}%`)
-              .neq('category', 'Skip');
+            // IMPORTANT: We need a direct query, not a filter on top of previous query!
+            // This is the key fix to ensure we search the entire database
+            try {
+              // Direct query to search by name including ALL companies (except Skip)
+              const { data: nameSearchResults, error: nameSearchError } = await supabase
+                .from('companies')
+                .select('*')
+                .ilike('name', `%${value}%`) // Case-insensitive search
+                .or('category.neq.Skip,category.is.null'); // Include companies with NULL category AND exclude Skip
+                
+              if (nameSearchError) {
+                console.error("Error searching companies by name:", nameSearchError);
+                throw nameSearchError;
+              }
+              
+              console.log(`Direct name search found ${nameSearchResults?.length || 0} companies matching "${value}"`);
+                
+              if (nameSearchResults && nameSearchResults.length > 0) {
+                console.log("First 5 company matches:", 
+                  nameSearchResults.slice(0, 5).map(c => ({ id: c.id, name: c.name, category: c.category || 'null' })));
+                  
+                // Directly set companies and update UI
+                setCompanies(nameSearchResults);
+                setFilteredCount(nameSearchResults.length);
+                setIsLoading(false);
+                
+                // After setting companies, trigger a relationship fetch
+                // (We'll fetch relationships in a separate step)
+                
+                // Early return to avoid the regular flow
+                return;
+              } else {
+                console.log("No companies found matching the name search term");
+                setCompanies([]);
+                setFilteredCount(0);
+                setIsLoading(false);
+                return;
+              }
+            } catch (error) {
+              console.error("Error in direct name search:", error);
+              setCompanies([]);
+              setFilteredCount(0);
+              setIsLoading(false);
+              return;
+            }
             
           } else if (searchField === 'tags') {
             // For tags search, we need to join with companies_tags and tags tables
@@ -1080,58 +1119,84 @@ const Companies = () => {
             const companyIds = [...new Set(companyTagLinks.map(link => link.company_id))];
             console.log(`Found ${companyIds.length} companies with matching tags`);
             
-            // Get the actual companies
-            query = query.in('id', companyIds);
+            // Get the actual companies - make sure to include those with null category
+            query = supabase
+              .from('companies')
+              .select('*')
+              .in('id', companyIds)
+              .neq('category', 'Skip')
+              .or('category.is.null'); // Include companies with NULL category
+              
+            console.log(`Using companyIds: ${companyIds.slice(0, 5).join(', ')}${companyIds.length > 5 ? '...' : ''}`);
             
           } else if (searchField === 'contact') {
             // For contact search, we need to join with contact_companies and contacts tables
             console.log("Performing contacts search");
-            // Get contact IDs that match the search term
-            const { data: matchingContacts, error: contactsError } = await supabase
-              .from('contacts')
-              .select('id')
-              .or(`first_name.ilike.%${value}%,last_name.ilike.%${value}%,email.ilike.%${value}%`);
-              
-            if (contactsError) {
-              console.error("Error searching contacts:", contactsError);
-              return;
-            }
             
-            if (!matchingContacts || matchingContacts.length === 0) {
-              console.log("No matching contacts found");
+            try {
+              // STEP 1: Find contacts matching the search term - more comprehensive search
+              const { data: matchingContacts, error: contactsError } = await supabase
+                .from('contacts')
+                .select('id')
+                .or(`first_name.ilike.%${value}%,last_name.ilike.%${value}%,email.ilike.%${value}%`);
+                
+              if (contactsError) {
+                console.error("Error searching contacts:", contactsError);
+                throw contactsError;
+              }
+              
+              if (!matchingContacts || matchingContacts.length === 0) {
+                console.log("No matching contacts found");
+                setCompanies([]);
+                setFilteredCount(0);
+                setIsLoading(false);
+                return;
+              }
+              
+              console.log(`Found ${matchingContacts.length} matching contacts`);
+              
+              // STEP 2: Find companies linked to these contacts
+              const contactIds = matchingContacts.map(contact => contact.id);
+              const { data: companyContactLinks, error: linksError } = await supabase
+                .from('contact_companies')
+                .select('company_id')
+                .in('contact_id', contactIds);
+                
+              if (linksError) {
+                console.error("Error fetching company-contact links:", linksError);
+                throw linksError;
+              }
+              
+              if (!companyContactLinks || companyContactLinks.length === 0) {
+                console.log("No companies have the matching contacts");
+                setCompanies([]);
+                setFilteredCount(0);
+                setIsLoading(false);
+                return;
+              }
+              
+              // STEP 3: Get unique company IDs
+              const companyIds = [...new Set(companyContactLinks.map(link => link.company_id))];
+              console.log(`Found ${companyIds.length} companies with matching contacts`);
+              
+              // STEP 4: Query companies including the ones without a category
+              // Different from the original - including companies with null category
+              // This is key to ensuring we search ALL companies!
+              query = supabase
+                .from('companies')
+                .select('*')
+                .in('id', companyIds)
+                .neq('category', 'Skip') // Still exclude Skip category
+                .or('category.is.null'); // But include NULL category companies
+                
+              console.log(`Using companyIds: ${companyIds.slice(0, 5).join(', ')}${companyIds.length > 5 ? '...' : ''}`);
+            } catch (error) {
+              console.error("Error in contact search process:", error);
               setCompanies([]);
               setFilteredCount(0);
               setIsLoading(false);
               return;
             }
-            
-            console.log(`Found ${matchingContacts.length} matching contacts`);
-            
-            // Get companies linked to these contacts
-            const contactIds = matchingContacts.map(contact => contact.id);
-            const { data: companyContactLinks, error: linksError } = await supabase
-              .from('contact_companies')
-              .select('company_id')
-              .in('contact_id', contactIds);
-              
-            if (linksError) {
-              console.error("Error fetching company-contact links:", linksError);
-              return;
-            }
-            
-            if (!companyContactLinks || companyContactLinks.length === 0) {
-              console.log("No companies have the matching contacts");
-              setCompanies([]);
-              setFilteredCount(0);
-              setIsLoading(false);
-              return;
-            }
-            
-            const companyIds = [...new Set(companyContactLinks.map(link => link.company_id))];
-            console.log(`Found ${companyIds.length} companies with matching contacts`);
-            
-            // Get the actual companies
-            query = query.in('id', companyIds);
             
           } else {
             // Simple field search for website, category
