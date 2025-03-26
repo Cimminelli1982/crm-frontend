@@ -181,7 +181,8 @@ exports.handler = async (event) => {
             "text": `Open ${buttonText} in CRM`,
             "emoji": true
           },
-          "url": `https://crm-frontend.netlify.app/contacts/${contact.id}`,
+          // This link opens the contact in the CRM frontend
+          "url": `https://crm-frontend.netlify.app/contacts?id=${contact.id}`,
           "action_id": `open_crm_${contact.id}`
         };
       });

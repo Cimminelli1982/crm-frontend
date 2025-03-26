@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { supabase } from '../lib/supabaseClient';
+import { useSearchParams } from 'react-router-dom';
 import RecentContactsList from '../components/contacts/RecentContactsList';
 import { FiFilter, FiSearch, FiPlus, FiChevronDown, FiClock, FiMessageSquare, FiAlertCircle, FiRefreshCw, FiStar, FiMapPin, FiBook } from 'react-icons/fi';
 import { FaTag } from 'react-icons/fa';
+import ContactsModal from '../components/modals/ContactsModal';
 
 const PageContainer = styled.div`
   background-color: white;
@@ -257,6 +259,9 @@ const Contacts = ({ defaultFilter = null }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState(defaultFilter);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [contactToOpen, setContactToOpen] = useState(null);
+  const [showContactModal, setShowContactModal] = useState(false);
+  const [searchParams] = useSearchParams();
   
   // Filter counts for badges
   const [filterCounts, setFilterCounts] = useState({
@@ -271,6 +276,34 @@ const Contacts = ({ defaultFilter = null }) => {
   
   // Reference to the contact list component
   const contactListRef = useRef(null);
+  
+  // Check URL parameters for contact ID to open
+  useEffect(() => {
+    const contactId = searchParams.get('id');
+    if (contactId) {
+      // Fetch the contact data
+      const fetchContact = async () => {
+        try {
+          const { data, error } = await supabase
+            .from('contacts')
+            .select('*')
+            .eq('id', contactId)
+            .single();
+            
+          if (error) throw error;
+          
+          if (data) {
+            setContactToOpen(data);
+            setShowContactModal(true);
+          }
+        } catch (err) {
+          console.error('Error fetching contact:', err);
+        }
+      };
+      
+      fetchContact();
+    }
+  }, [searchParams]);
   
   // Search field options
   const searchFields = [
@@ -493,6 +526,21 @@ const Contacts = ({ defaultFilter = null }) => {
           showIconsOnly={true}
         />
       </ContentSection>
+      
+      {/* ContactsModal for URL-based opening */}
+      {showContactModal && contactToOpen && (
+        <ContactsModal
+          isOpen={showContactModal}
+          onRequestClose={() => {
+            setShowContactModal(false);
+            setContactToOpen(null);
+            // Remove the id parameter from the URL
+            const newUrl = window.location.pathname;
+            window.history.pushState({}, '', newUrl);
+          }}
+          contact={contactToOpen}
+        />
+      )}
     </PageContainer>
   );
 };
