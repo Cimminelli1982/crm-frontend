@@ -78,20 +78,76 @@ exports.handler = async (event) => {
       const nameParts = name.trim().split(/\s+/);
       
       if (nameParts.length > 1) {
-        // Likely first and last name provided
+        // Exact full name provided
         const firstName = nameParts[0];
         const lastName = nameParts.slice(1).join(' ');
         
-        // Try various name combinations
+        // First try exact match (case insensitive)
+        console.log(`Searching for exact match: first="${firstName}", last="${lastName}"`);
+        
+        // Use exact match on both first and last name
+        const exactQuery = supabase
+          .from('contacts')
+          .select('*')
+          .neq('contact_category', 'Skip')
+          .ilike('first_name', firstName)
+          .ilike('last_name', lastName)
+          .order('last_interaction', { ascending: false });
+          
+        const { data: exactMatches, error: exactError } = await exactQuery;
+        
+        if (!exactError && exactMatches && exactMatches.length > 0) {
+          console.log(`Found ${exactMatches.length} exact matches`);
+          return {
+            statusCode: 200,
+            headers: { 'Content-Type': 'application/json' },
+            body: isSlashCommand 
+              ? JSON.stringify({
+                  "response_type": "in_channel",
+                  "text": formatContactsForSlack(exactMatches, name)
+                })
+              : JSON.stringify({ contacts: exactMatches }),
+          };
+        }
+        
+        console.log("No exact matches, trying partial first/last name search");
+        
+        // If no exact matches found, use the original partial search
         query = query.or(
-          `first_name.ilike.%${firstName}%,last_name.ilike.%${lastName}%`,
-          `first_name.ilike.%${lastName}%,last_name.ilike.%${firstName}%` // Handle reversed order
+          `first_name.ilike.%${firstName}%,last_name.ilike.%${lastName}%`
         );
-        console.log(`Searching by full name: first="${firstName}", last="${lastName}"`);
       } else {
         // Single name component - check both first and last name
+        // But make the search stricter - start with starts with match
+        
+        // First try starts-with match for better results
+        console.log(`Trying prefix match for "${name}"`);
+        const prefixQuery = supabase
+          .from('contacts')
+          .select('*')
+          .neq('contact_category', 'Skip')
+          .or(`first_name.ilike.${name}%,last_name.ilike.${name}%`)
+          .order('last_interaction', { ascending: false });
+          
+        const { data: prefixMatches, error: prefixError } = await prefixQuery;
+        
+        if (!prefixError && prefixMatches && prefixMatches.length > 0) {
+          console.log(`Found ${prefixMatches.length} prefix matches`);
+          return {
+            statusCode: 200,
+            headers: { 'Content-Type': 'application/json' },
+            body: isSlashCommand 
+              ? JSON.stringify({
+                  "response_type": "in_channel",
+                  "text": formatContactsForSlack(prefixMatches, name)
+                })
+              : JSON.stringify({ contacts: prefixMatches }),
+          };
+        }
+        
+        // If no prefix matches, fall back to contains search
+        console.log("No prefix matches, falling back to contains search");
         query = query.or(`first_name.ilike.%${name}%,last_name.ilike.%${name}%`);
-        console.log(`Searching by partial name: "${name}"`);
       }
     } else {
       // No search parameters provided
@@ -118,15 +174,14 @@ exports.handler = async (event) => {
     
     console.log(`Query returned ${data ? data.length : 0} results`);
     
-    // Prepare response based on request type
-    if (isSlashCommand) {
-      // Format response for Slack slash command
+    // Helper function to format contacts for Slack
+    function formatContactsForSlack(contacts, searchTerm) {
       let responseText = '';
       
-      if (data && data.length > 0) {
-        if (data.length === 1) {
+      if (contacts && contacts.length > 0) {
+        if (contacts.length === 1) {
           // Single contact found
-          const contact = data[0];
+          const contact = contacts[0];
           responseText = `*Contact Information for ${contact.first_name || ''} ${contact.last_name || ''}*\n\n`;
           
           if (contact.email) responseText += `*Email:* ${contact.email}\n`;
@@ -134,7 +189,8 @@ exports.handler = async (event) => {
           if (contact.mobile) responseText += `*Phone:* ${contact.mobile}\n`;
           if (contact.mobile2) responseText += `*Alt Phone:* ${contact.mobile2}\n`;
           if (contact.job_title) responseText += `*Job Title:* ${contact.job_title}\n`;
-          if (contact.linkedin) responseText += `*LinkedIn:* ${contact.linkedin}\n`;
+          if (contact.linkedin) responseText += `*LinkedIn:* ${contact.linkedin || 'Not available'}\n`;
+          if (contact.contact_category) responseText += `*Category:* ${contact.contact_category}\n`;
           
           // Format dates
           if (contact.last_interaction) {
@@ -155,31 +211,46 @@ exports.handler = async (event) => {
           }
         } else {
           // Multiple contacts found
-          responseText = `*Found ${data.length} contacts matching "${name}"*\n\n`;
+          responseText = `*Found ${contacts.length} contacts matching "${searchTerm}"*\n\n`;
           
-          data.slice(0, 5).forEach((contact, index) => {
+          contacts.slice(0, 5).forEach((contact, index) => {
             responseText += `*${index + 1}. ${contact.first_name || ''} ${contact.last_name || ''}*\n`;
             if (contact.email) responseText += `Email: ${contact.email}\n`;
+            if (contact.email2) responseText += `Alt Email: ${contact.email2}\n`;
+            if (contact.linkedin) responseText += `LinkedIn: ${contact.linkedin || 'Not available'}\n`;
+            if (contact.last_interaction) {
+              try {
+                const lastDate = new Date(contact.last_interaction);
+                responseText += `Last Interaction: ${lastDate.toDateString()}\n`;
+              } catch (e) {}
+            }
             if (contact.job_title) responseText += `Job: ${contact.job_title}\n`;
+            if (contact.contact_category) responseText += `Category: ${contact.contact_category}\n`;
             responseText += '\n';
           });
           
-          if (data.length > 5) {
-            responseText += `_...and ${data.length - 5} more contacts_\n`;
+          if (contacts.length > 5) {
+            responseText += `_...and ${contacts.length - 5} more contacts_\n`;
           }
           
-          responseText += "Use `/lookup [full name]` for a more specific search.";
+          responseText += "Use `/findcontact [full name]` for a more specific search.";
         }
       } else {
-        responseText = `No contacts found matching "${name}"`;
+        responseText = `No contacts found matching "${searchTerm}"`;
       }
       
+      return responseText;
+    }
+  
+    // Prepare response based on request type
+    if (isSlashCommand) {
+      // Format response for Slack slash command
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           "response_type": "in_channel",  // "ephemeral" to only show to the user
-          "text": responseText
+          "text": formatContactsForSlack(data, name)
         })
       };
     } else {
