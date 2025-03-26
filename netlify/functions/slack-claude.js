@@ -28,6 +28,11 @@ async function downloadFileAsBase64(url) {
   }
 }
 
+// Simple in-memory "cache" to track seen events (limited in serverless)
+// Note: This won't persist between function invocations but may help with 
+// duplicate events in quick succession
+const processedEvents = new Set();
+
 // Function to handle the request
 exports.handler = async (event) => {
   console.log("Received event:", JSON.stringify(event.headers));
@@ -44,6 +49,34 @@ exports.handler = async (event) => {
         statusCode: 200,
         body: payload.challenge,
       };
+    }
+    
+    // Event deduplication
+    // Use a combination of team, event_id, and event_ts as a unique key
+    const eventId = payload.event_id || '';
+    const eventTs = payload.event?.ts || '';
+    const teamId = payload.team_id || '';
+    const eventKey = `${teamId}-${eventId}-${eventTs}`;
+    
+    // Check if we've seen this event before
+    if (processedEvents.has(eventKey)) {
+      console.log(`Duplicate event detected: ${eventKey}`);
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ message: 'Duplicate event' }),
+      };
+    }
+    
+    // Add to processed events
+    processedEvents.add(eventKey);
+    
+    // Limit cache size to prevent memory issues
+    if (processedEvents.size > 100) {
+      // Remove oldest items
+      const iterator = processedEvents.values();
+      for (let i = 0; i < 50; i++) {
+        processedEvents.delete(iterator.next().value);
+      }
     }
   
   // Only respond to direct messages to the bot or mentions in channels
@@ -188,12 +221,8 @@ exports.handler = async (event) => {
         console.log("Message after adding attachments:", userMessage);
       }
       
-      // Send typing indicator
-      await web.chat.postMessage({
-        channel: channelId,
-        text: "Thinking...",
-        thread_ts: payload.event.thread_ts,
-      });
+      // Skip sending typing indicator to reduce potential for event loops
+      console.log("Skipping typing indicator to reduce event noise");
       
       // Call Claude API
       console.log("Calling Claude API with message:", userMessage);
