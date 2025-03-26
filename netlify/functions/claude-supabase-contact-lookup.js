@@ -13,9 +13,31 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 exports.handler = async (event) => {
   try {
     console.log("Contact lookup function invoked");
+    console.log("Headers:", JSON.stringify(event.headers));
     
-    // Parse the query parameters
-    const { name, email, id } = JSON.parse(event.body || '{}');
+    // Determine if this is a slash command or direct API call
+    const isSlashCommand = event.headers['content-type'] === 'application/x-www-form-urlencoded';
+    let name, email, id;
+    
+    if (isSlashCommand) {
+      // Parse the URL-encoded form data from Slack slash command
+      const params = new URLSearchParams(event.body);
+      const text = params.get('text') || '';
+      console.log(`Slash command received with text: ${text}`);
+      
+      // The text after the slash command becomes the name to search
+      name = text.trim();
+      
+      // For debugging
+      console.log("Slash command parameters:", Object.fromEntries(params));
+    } else {
+      // Regular JSON API call (from our existing function)
+      const payload = JSON.parse(event.body || '{}');
+      name = payload.name;
+      email = payload.email;
+      id = payload.id;
+    }
+    
     console.log(`Search parameters: name=${name}, email=${email}, id=${id}`);
     
     // Start building the query
@@ -96,11 +118,78 @@ exports.handler = async (event) => {
     
     console.log(`Query returned ${data ? data.length : 0} results`);
     
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contacts: data }),
-    };
+    // Prepare response based on request type
+    if (isSlashCommand) {
+      // Format response for Slack slash command
+      let responseText = '';
+      
+      if (data && data.length > 0) {
+        if (data.length === 1) {
+          // Single contact found
+          const contact = data[0];
+          responseText = `*Contact Information for ${contact.first_name || ''} ${contact.last_name || ''}*\n\n`;
+          
+          if (contact.email) responseText += `*Email:* ${contact.email}\n`;
+          if (contact.email2) responseText += `*Alt Email:* ${contact.email2}\n`;
+          if (contact.mobile) responseText += `*Phone:* ${contact.mobile}\n`;
+          if (contact.mobile2) responseText += `*Alt Phone:* ${contact.mobile2}\n`;
+          if (contact.job_title) responseText += `*Job Title:* ${contact.job_title}\n`;
+          if (contact.linkedin) responseText += `*LinkedIn:* ${contact.linkedin}\n`;
+          
+          // Format dates
+          if (contact.last_interaction) {
+            try {
+              const lastDate = new Date(contact.last_interaction);
+              responseText += `*Last Interaction:* ${lastDate.toDateString()}\n`;
+            } catch (e) {
+              responseText += `*Last Interaction:* ${contact.last_interaction}\n`;
+            }
+          }
+          
+          if (contact.about_the_contact) {
+            responseText += `\n*About:*\n${contact.about_the_contact}\n`;
+          }
+          
+          if (contact.note) {
+            responseText += `\n*Notes:*\n${contact.note}\n`;
+          }
+        } else {
+          // Multiple contacts found
+          responseText = `*Found ${data.length} contacts matching "${name}"*\n\n`;
+          
+          data.slice(0, 5).forEach((contact, index) => {
+            responseText += `*${index + 1}. ${contact.first_name || ''} ${contact.last_name || ''}*\n`;
+            if (contact.email) responseText += `Email: ${contact.email}\n`;
+            if (contact.job_title) responseText += `Job: ${contact.job_title}\n`;
+            responseText += '\n';
+          });
+          
+          if (data.length > 5) {
+            responseText += `_...and ${data.length - 5} more contacts_\n`;
+          }
+          
+          responseText += "Use `/lookup [full name]` for a more specific search.";
+        }
+      } else {
+        responseText = `No contacts found matching "${name}"`;
+      }
+      
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          "response_type": "in_channel",  // "ephemeral" to only show to the user
+          "text": responseText
+        })
+      };
+    } else {
+      // Return regular JSON response for API calls
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contacts: data }),
+      };
+    }
     
   } catch (error) {
     console.error('Function error:', error);
