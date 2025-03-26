@@ -61,7 +61,17 @@ exports.handler = async (event) => {
         note,
         contact_category,
         birthday,
-        last_modified
+        last_modified,
+        contact_companies (
+          id,
+          contact_id,
+          company_id,
+          is_primary,
+          companies (
+            id,
+            name
+          )
+        )
       `)
       .neq('contact_category', 'Skip'); // Apply default filter
       
@@ -78,20 +88,32 @@ exports.handler = async (event) => {
       const nameParts = name.trim().split(/\s+/);
       
       if (nameParts.length > 1) {
-        // Exact full name provided
+        // Full name provided (first and last)
         const firstName = nameParts[0];
         const lastName = nameParts.slice(1).join(' ');
         
-        // First try exact match (case insensitive)
-        console.log(`Searching for exact match: first="${firstName}", last="${lastName}"`);
+        console.log(`Searching for name: first="${firstName}", last="${lastName}"`);
         
-        // Use exact match on both first and last name
+        // Multi-tier search strategy
+        // 1. Try exact match first (strict)
         const exactQuery = supabase
           .from('contacts')
-          .select('*')
+          .select(`
+            *,
+            contact_companies (
+              id,
+              contact_id,
+              company_id,
+              is_primary,
+              companies (
+                id,
+                name
+              )
+            )
+          `)
           .neq('contact_category', 'Skip')
-          .ilike('first_name', firstName)
-          .ilike('last_name', lastName)
+          .eq('first_name', firstName) // Exact match using =
+          .eq('last_name', lastName)   // Exact match using =
           .order('last_interaction', { ascending: false });
           
         const { data: exactMatches, error: exactError } = await exactQuery;
@@ -110,12 +132,107 @@ exports.handler = async (event) => {
           };
         }
         
-        console.log("No exact matches, trying partial first/last name search");
+        console.log("No exact matches, trying case-insensitive exact match");
         
-        // If no exact matches found, use the original partial search
-        query = query.or(
-          `first_name.ilike.%${firstName}%,last_name.ilike.%${lastName}%`
-        );
+        // 2. Try case-insensitive exact match
+        const ciExactQuery = supabase
+          .from('contacts')
+          .select(`
+            *,
+            contact_companies (
+              id,
+              contact_id,
+              company_id,
+              is_primary,
+              companies (
+                id,
+                name
+              )
+            )
+          `)
+          .neq('contact_category', 'Skip')
+          .ilike('first_name', `^${firstName}$`)  // Case-insensitive exact match 
+          .ilike('last_name', `^${lastName}$`)    // Case-insensitive exact match
+          .order('last_interaction', { ascending: false });
+          
+        const { data: ciExactMatches, error: ciExactError } = await ciExactQuery;
+        
+        if (!ciExactError && ciExactMatches && ciExactMatches.length > 0) {
+          console.log(`Found ${ciExactMatches.length} case-insensitive exact matches`);
+          return {
+            statusCode: 200,
+            headers: { 'Content-Type': 'application/json' },
+            body: isSlashCommand 
+              ? JSON.stringify({
+                  "response_type": "in_channel",
+                  "text": formatContactsForSlack(ciExactMatches, name)
+                })
+              : JSON.stringify({ contacts: ciExactMatches }),
+          };
+        }
+        
+        console.log("No case-insensitive exact matches, trying starts-with match");
+        
+        // 3. Try starts-with match (less strict)
+        const startsWithQuery = supabase
+          .from('contacts')
+          .select(`
+            *,
+            contact_companies (
+              id,
+              contact_id,
+              company_id,
+              is_primary,
+              companies (
+                id,
+                name
+              )
+            )
+          `)
+          .neq('contact_category', 'Skip')
+          .ilike('first_name', `${firstName}%`)  // First name starts with
+          .ilike('last_name', `${lastName}%`)    // Last name starts with
+          .order('last_interaction', { ascending: false });
+          
+        const { data: startsWithMatches, error: startsWithError } = await startsWithQuery;
+        
+        if (!startsWithError && startsWithMatches && startsWithMatches.length > 0) {
+          console.log(`Found ${startsWithMatches.length} starts-with matches`);
+          return {
+            statusCode: 200,
+            headers: { 'Content-Type': 'application/json' },
+            body: isSlashCommand 
+              ? JSON.stringify({
+                  "response_type": "in_channel",
+                  "text": formatContactsForSlack(startsWithMatches, name)
+                })
+              : JSON.stringify({ contacts: startsWithMatches }),
+          };
+        }
+        
+        console.log("No starts-with matches, trying fuzzy search");
+        
+        // 4. Finally, try a fuzzy contains search (most flexible)
+        // But limit to top matches only
+        query = supabase
+          .from('contacts')
+          .select(`
+            *,
+            contact_companies (
+              id,
+              contact_id,
+              company_id,
+              is_primary,
+              companies (
+                id,
+                name
+              )
+            )
+          `)
+          .neq('contact_category', 'Skip')
+          .or(`first_name.ilike.%${firstName}%,last_name.ilike.%${lastName}%`)
+          .order('last_interaction', { ascending: false })
+          .limit(3);  // Limit to top 3 most relevant matches
       } else {
         // Single name component - check both first and last name
         // But make the search stricter - start with starts with match
@@ -124,7 +241,19 @@ exports.handler = async (event) => {
         console.log(`Trying prefix match for "${name}"`);
         const prefixQuery = supabase
           .from('contacts')
-          .select('*')
+          .select(`
+            *,
+            contact_companies (
+              id,
+              contact_id,
+              company_id,
+              is_primary,
+              companies (
+                id,
+                name
+              )
+            )
+          `)
           .neq('contact_category', 'Skip')
           .or(`first_name.ilike.${name}%,last_name.ilike.${name}%`)
           .order('last_interaction', { ascending: false });
@@ -147,7 +276,24 @@ exports.handler = async (event) => {
         
         // If no prefix matches, fall back to contains search
         console.log("No prefix matches, falling back to contains search");
-        query = query.or(`first_name.ilike.%${name}%,last_name.ilike.%${name}%`);
+        query = supabase
+          .from('contacts')
+          .select(`
+            *,
+            contact_companies (
+              id,
+              contact_id,
+              company_id,
+              is_primary,
+              companies (
+                id,
+                name
+              )
+            )
+          `)
+          .neq('contact_category', 'Skip')
+          .or(`first_name.ilike.%${name}%,last_name.ilike.%${name}%`)
+          .order('last_interaction', { ascending: false });
       }
     } else {
       // No search parameters provided
@@ -189,6 +335,26 @@ exports.handler = async (event) => {
           if (contact.mobile) responseText += `*Phone:* ${contact.mobile}\n`;
           if (contact.mobile2) responseText += `*Alt Phone:* ${contact.mobile2}\n`;
           if (contact.job_title) responseText += `*Job Title:* ${contact.job_title}\n`;
+          
+          // Display company information
+          if (contact.contact_companies && contact.contact_companies.length > 0) {
+            // Find primary company first
+            const primaryCompany = contact.contact_companies.find(cc => cc.is_primary);
+            
+            if (primaryCompany && primaryCompany.companies) {
+              responseText += `*Primary Company:* ${primaryCompany.companies.name} (${primaryCompany.companies.id})\n`;
+            }
+            
+            // List other companies if any
+            const otherCompanies = contact.contact_companies
+              .filter(cc => !cc.is_primary && cc.companies)
+              .map(cc => cc.companies.name);
+              
+            if (otherCompanies.length > 0) {
+              responseText += `*Other Companies:* ${otherCompanies.join(', ')}\n`;
+            }
+          }
+          
           if (contact.linkedin) responseText += `*LinkedIn:* ${contact.linkedin || 'Not available'}\n`;
           if (contact.contact_category) responseText += `*Category:* ${contact.contact_category}\n`;
           
@@ -217,6 +383,17 @@ exports.handler = async (event) => {
             responseText += `*${index + 1}. ${contact.first_name || ''} ${contact.last_name || ''}*\n`;
             if (contact.email) responseText += `Email: ${contact.email}\n`;
             if (contact.email2) responseText += `Alt Email: ${contact.email2}\n`;
+            
+            // Display company information
+            if (contact.contact_companies && contact.contact_companies.length > 0) {
+              // Find primary company first
+              const primaryCompany = contact.contact_companies.find(cc => cc.is_primary);
+              
+              if (primaryCompany && primaryCompany.companies) {
+                responseText += `Company: ${primaryCompany.companies.name}\n`;
+              }
+            }
+            
             if (contact.linkedin) responseText += `LinkedIn: ${contact.linkedin || 'Not available'}\n`;
             if (contact.last_interaction) {
               try {
