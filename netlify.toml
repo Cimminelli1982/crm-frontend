@@ -8,13 +8,14 @@
   PORT = "3002"
   CI = "false"
   NODE_VERSION = "18"
-  # HubSpot and Apollo environment variables should be set in the Netlify UI
+  # Environment variables should be set in the Netlify UI
   # Required variables: APOLLO_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, HUBSPOT_ACCESS_TOKEN, MIGRATION_SECRET_KEY
+  # For Slack-Claude integration: SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, SLACK_APP_TOKEN, ANTHROPIC_API_KEY
   # DO NOT add sensitive values here
 
 [functions]
   node_bundler = "esbuild"
-  external_node_modules = ["@hubspot/api-client"]
+  external_node_modules = ["@hubspot/api-client", "@slack/bolt", "@slack/web-api", "@anthropic-ai/sdk"]
 
 # API endpoint redirect
 [[redirects]]

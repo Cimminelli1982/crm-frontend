@@ -22,6 +22,36 @@ This application includes integration with Hubspot CRM. To use this feature:
 
 Note: For security, never commit your actual API keys to version control. The `.env` file should be in your `.gitignore`.
 
+## Slack-Claude Integration
+
+This application includes a Netlify function that connects Slack to Claude AI:
+
+1. Setup requirements:
+   - A Slack workspace with admin permissions to create a bot
+   - Anthropic API key for Claude
+
+2. Slack App Setup:
+   - Create a new Slack app at https://api.slack.com/apps
+   - Enable Event Subscriptions and subscribe to the `message.im` event
+   - Set the Request URL to your deployed Netlify function URL: `https://your-site.netlify.app/.netlify/functions/slack-claude`
+   - Add Bot Token Scopes: `chat:write`, `im:history`, `im:read`, `im:write`
+   - Install the app to your workspace
+
+3. Environment Variables:
+   These need to be set in your Netlify environment:
+   ```
+   SLACK_BOT_TOKEN=xoxb-your-bot-token
+   SLACK_SIGNING_SECRET=your-signing-secret
+   SLACK_APP_TOKEN=xapp-your-app-level-token (optional - only for socket mode)
+   ANTHROPIC_API_KEY=your-anthropic-api-key
+   ```
+
+4. Deployment:
+   - The function will be deployed automatically with your Netlify site
+   - You can test locally using `netlify dev`
+
+Usage: After setup, users can message the bot directly in Slack and receive responses from Claude.
+
 ## Available Scripts
 
 In the project directory, you can run:
