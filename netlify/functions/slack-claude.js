@@ -77,14 +77,14 @@ exports.handler = async (event) => {
       const userId = payload.event.user;
       const channelId = payload.event.channel;
       
+      // Array to hold image objects for Claude (defined at this scope)
+      const imageObjects = [];
+      
       console.log("Initial user message:", userMessage);
       
       // Handle files if present (like images, PDFs, etc.)
       if (payload.event.files && payload.event.files.length > 0) {
         console.log("Processing files");
-        
-        // Array to hold image objects for Claude
-        const imageObjects = [];
         let filesText = "";
         
         // Process each file
