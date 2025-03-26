@@ -22,17 +22,57 @@ exports.handler = async (event) => {
     };
   }
   
-  // Only respond to direct messages to the bot
-  if (payload.event && payload.event.type === 'message' && payload.event.channel_type === 'im') {
+  // Only respond to direct messages to the bot or mentions in channels
+  if (payload.event && 
+      (payload.event.type === 'message' && 
+       (payload.event.channel_type === 'im' || 
+        (payload.event.text && payload.event.text.includes(`<@${process.env.SLACK_BOT_USER_ID}>`))))) {
     // Avoid responding to bot's own messages
     if (payload.event.bot_id || payload.event.subtype === 'bot_message') {
       return { statusCode: 200, body: 'Ignoring bot message' };
     }
     
     try {
-      const userMessage = payload.event.text;
+      // Extract both text and attachments from the message
+      let userMessage = payload.event.text || "";
       const userId = payload.event.user;
       const channelId = payload.event.channel;
+      
+      // Handle attachments if present
+      if (payload.event.attachments && payload.event.attachments.length > 0) {
+        const attachmentsText = payload.event.attachments
+          .map(attachment => {
+            let attachmentContent = '';
+            
+            // Add title if present
+            if (attachment.title) {
+              attachmentContent += `Title: ${attachment.title}\n`;
+            }
+            
+            // Add text if present
+            if (attachment.text) {
+              attachmentContent += `${attachment.text}\n`;
+            }
+            
+            // Add image URLs if present
+            if (attachment.image_url) {
+              attachmentContent += `Image: ${attachment.image_url}\n`;
+            }
+            
+            // Add fields if present
+            if (attachment.fields && attachment.fields.length > 0) {
+              attachment.fields.forEach(field => {
+                attachmentContent += `${field.title}: ${field.value}\n`;
+              });
+            }
+            
+            return attachmentContent;
+          })
+          .join('\n');
+        
+        // Append attachments text to user message
+        userMessage += "\n\n" + attachmentsText;
+      }
       
       // Send typing indicator
       await web.chat.postMessage({
@@ -48,6 +88,7 @@ exports.handler = async (event) => {
         messages: [
           { role: "user", content: userMessage }
         ],
+        system: "You are a helpful AI assistant named Claude, integrated into Slack. Be concise, friendly, and helpful. Format your responses using Slack markdown. When encountering code, use ```language syntax highlighting."
       });
       
       // Send Claude's response back to Slack
