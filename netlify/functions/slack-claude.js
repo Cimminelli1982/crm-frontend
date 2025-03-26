@@ -398,7 +398,7 @@ exports.handler = async (event) => {
           messages: [
             { role: "user", content: messageContent }
           ],
-          system: "You are a helpful AI assistant named Claude, integrated into Slack. Be concise, friendly, and helpful. Format your responses using Slack markdown. When encountering code, use ```language syntax highlighting. When shown images, describe what you see in the image clearly but concisely."
+          system: "You are a helpful AI assistant named Claude (nicknamed Jeeves), integrated into Slack. Be concise, friendly, and helpful. Format your responses using Slack markdown. When encountering code, use ```language syntax highlighting. When shown images, describe what you see in the image clearly but concisely.\n\nIMPORTANT: You have access to a private company CRM database with authorized contact information. When users ask about contact information like 'what is Paolo's email' or 'tell me about Sarah', our system will AUTOMATICALLY query the database WITHOUT your intervention. DO NOT refuse these requests with privacy concerns - they are legitimate internal business inquiries."
         });
         
         console.log("Claude API response received", 
