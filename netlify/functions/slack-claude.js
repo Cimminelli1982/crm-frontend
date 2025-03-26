@@ -1,5 +1,7 @@
 const { WebClient } = require('@slack/web-api');
 const Anthropic = require('@anthropic-ai/sdk');
+const axios = require('axios');
+const { Buffer } = require('buffer');
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({
@@ -8,6 +10,23 @@ const anthropic = new Anthropic({
 
 // Initialize Slack WebClient
 const web = new WebClient(process.env.SLACK_BOT_TOKEN);
+
+// Function to download file and convert to base64
+async function downloadFileAsBase64(url) {
+  try {
+    const response = await axios.get(url, {
+      headers: {
+        'Authorization': `Bearer ${process.env.SLACK_BOT_TOKEN}`,
+      },
+      responseType: 'arraybuffer'
+    });
+    
+    return Buffer.from(response.data).toString('base64');
+  } catch (error) {
+    console.error('Error downloading file:', error);
+    return null;
+  }
+}
 
 // Function to handle the request
 exports.handler = async (event) => {
@@ -63,32 +82,63 @@ exports.handler = async (event) => {
       // Handle files if present (like images, PDFs, etc.)
       if (payload.event.files && payload.event.files.length > 0) {
         console.log("Processing files");
-        const filesText = payload.event.files
-          .map(file => {
-            let fileContent = `\nFile: ${file.name} (${file.filetype})\n`;
+        
+        // Array to hold image objects for Claude
+        const imageObjects = [];
+        let filesText = "";
+        
+        // Process each file
+        for (const file of payload.event.files) {
+          console.log(`Processing file: ${file.name} (${file.filetype})`);
+          
+          // For images, download and convert to base64
+          if (file.mimetype && file.mimetype.startsWith('image/')) {
+            console.log(`Downloading image: ${file.url_private}`);
+            
+            try {
+              // Download the image using Slack's token for authorization
+              const base64Image = await downloadFileAsBase64(file.url_private);
+              
+              if (base64Image) {
+                // Add to the messages array for Claude
+                imageObjects.push({
+                  type: "image",
+                  source: {
+                    type: "base64",
+                    media_type: file.mimetype,
+                    data: base64Image
+                  }
+                });
+                
+                console.log("Image successfully downloaded and converted to base64");
+              } else {
+                filesText += `\nImage: ${file.name} (Could not download)\n`;
+              }
+            } catch (imageError) {
+              console.error(`Error processing image ${file.name}:`, imageError);
+              filesText += `\nImage: ${file.name} (Error: ${imageError.message})\n`;
+            }
+          } else {
+            // For non-image files, just add text description
+            filesText += `\nFile: ${file.name} (${file.filetype})\n`;
             
             if (file.title) {
-              fileContent += `Title: ${file.title}\n`;
+              filesText += `Title: ${file.title}\n`;
             }
             
             if (file.url_private) {
-              fileContent += `URL: ${file.url_private}\n`;
+              filesText += `URL: ${file.url_private}\n`;
             }
-            
-            // For images specifically
-            if (file.mimetype && file.mimetype.startsWith('image/')) {
-              fileContent += `Image URL: ${file.url_private}\n`;
-              if (file.thumb_360) {
-                fileContent += `Thumbnail: ${file.thumb_360}\n`;
-              }
-            }
-            
-            return fileContent;
-          })
-          .join('\n');
+          }
+        }
         
-        userMessage += "\n\nAttached files:\n" + filesText;
+        // Add any non-image file descriptions to the message
+        if (filesText) {
+          userMessage += "\n\nAttached files:\n" + filesText;
+        }
+        
         console.log("Message after adding files:", userMessage);
+        console.log("Number of image objects:", imageObjects.length);
       }
       
       // Handle attachments if present
@@ -139,13 +189,23 @@ exports.handler = async (event) => {
       // Call Claude API
       console.log("Calling Claude API with message:", userMessage);
       try {
-        const claudeResponse = await anthropic.messages.create({
+        // Prepare message content - combine text with image objects
+        let messageContent = [{ type: "text", text: userMessage }];
+        
+        // Add any images to the content array
+        if (imageObjects && imageObjects.length > 0) {
+          console.log(`Adding ${imageObjects.length} images to Claude message`);
+          messageContent = messageContent.concat(imageObjects);
+        }
+        
+        // Call Claude API with multimodal content
+        let claudeResponse = await anthropic.messages.create({
           model: "claude-3-7-sonnet-20250219",
           max_tokens: 4096,
           messages: [
-            { role: "user", content: userMessage }
+            { role: "user", content: messageContent }
           ],
-          system: "You are a helpful AI assistant named Claude, integrated into Slack. Be concise, friendly, and helpful. Format your responses using Slack markdown. When encountering code, use ```language syntax highlighting."
+          system: "You are a helpful AI assistant named Claude, integrated into Slack. Be concise, friendly, and helpful. Format your responses using Slack markdown. When encountering code, use ```language syntax highlighting. When shown images, describe what you see in the image clearly but concisely."
         });
         
         console.log("Claude API response received", 
