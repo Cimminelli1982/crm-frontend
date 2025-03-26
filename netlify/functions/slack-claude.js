@@ -2,6 +2,7 @@ const { WebClient } = require('@slack/web-api');
 const Anthropic = require('@anthropic-ai/sdk');
 const axios = require('axios');
 const { Buffer } = require('buffer');
+const contactUtils = require('./claude-supabase-contact-utils');
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({
@@ -156,6 +157,88 @@ exports.handler = async (event) => {
         userMessage = userMessage.replace(`<@${botUserId}>`, '').trim();
         console.log("Removed bot mention, message is now:", userMessage);
       }
+      
+      // Check if this is a contact lookup request
+      if (contactUtils.isContactLookupRequest(userMessage)) {
+        console.log("Detected contact lookup request");
+        const name = contactUtils.extractNameFromRequest(userMessage);
+        
+        if (name) {
+          console.log(`Looking up contact: "${name}"`);
+          
+          // Inform user we're processing
+          await web.chat.postMessage({
+            channel: channelId,
+            text: `Looking up information for "${name}"...`,
+            thread_ts: payload.event.thread_ts,
+          });
+          
+          // Call the contact lookup function
+          const contacts = await contactUtils.lookupContact(name);
+          
+          if (contacts && contacts.length > 0) {
+            // Format contacts for response
+            let responseText = '';
+            
+            if (contacts.length === 1) {
+              // Single contact found
+              responseText = contactUtils.formatContactForDisplay(contacts[0]);
+            } else if (contacts.length <= 5) {
+              // Multiple contacts (but not too many)
+              responseText = `I found ${contacts.length} contacts matching "${name}":\n\n`;
+              
+              contacts.forEach((contact, index) => {
+                responseText += `*${index + 1}. ${contact.first_name || ''} ${contact.last_name || ''}*\n`;
+                if (contact.email) responseText += `Email: ${contact.email}\n`;
+                if (contact.mobile) responseText += `Phone: ${contact.mobile}\n`;
+                if (contact.job_title) responseText += `Job: ${contact.job_title}\n`;
+                responseText += '\n';
+              });
+              
+              responseText += "Ask me for more details about any specific person.";
+            } else {
+              // Many results
+              responseText = `I found ${contacts.length} contacts matching "${name}". Here are the first 5:\n\n`;
+              
+              contacts.slice(0, 5).forEach((contact, index) => {
+                responseText += `*${index + 1}. ${contact.first_name || ''} ${contact.last_name || ''}*\n`;
+                if (contact.email) responseText += `Email: ${contact.email}\n`;
+                responseText += '\n';
+              });
+              
+              responseText += "Please refine your search to get more specific results.";
+            }
+            
+            // Send the response
+            await web.chat.postMessage({
+              channel: channelId,
+              text: responseText,
+              thread_ts: payload.event.thread_ts,
+            });
+            
+            // Don't process this as a regular message
+            return {
+              statusCode: 200,
+              body: JSON.stringify({ message: 'Contact lookup processed' }),
+            };
+          } else {
+            // No contacts found
+            await web.chat.postMessage({
+              channel: channelId,
+              text: `I couldn't find any contacts matching "${name}". Please try with a different name or spelling.`,
+              thread_ts: payload.event.thread_ts,
+            });
+            
+            return {
+              statusCode: 200,
+              body: JSON.stringify({ message: 'No contacts found' }),
+            };
+          }
+        }
+      }
+      
+      // If we get here, it's not a contact lookup request or it failed
+      // Continue with normal Claude processing
       
       // Array to hold image objects for Claude (defined at this scope)
       const imageObjects = [];
