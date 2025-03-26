@@ -37,6 +37,20 @@ const processedEvents = new Set();
 exports.handler = async (event) => {
   console.log("Received event:", JSON.stringify(event.headers));
   
+  // Check for Slack retries first
+  const headers = event.headers || {};
+  const retryNum = headers['x-slack-retry-num'] || headers['X-Slack-Retry-Num'];
+  const retryReason = headers['x-slack-retry-reason'] || headers['X-Slack-Retry-Reason'];
+  
+  if (retryNum) {
+    console.log(`Detected Slack retry #${retryNum} for reason: ${retryReason}`);
+    // Return 200 immediately for retries to prevent double processing
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ message: 'Acknowledged retry' }),
+    };
+  }
+  
   try {
     // Verify the request is from Slack
     const payload = JSON.parse(event.body);
