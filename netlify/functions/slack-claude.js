@@ -1,18 +1,9 @@
-const { App } = require('@slack/bolt');
 const { WebClient } = require('@slack/web-api');
 const Anthropic = require('@anthropic-ai/sdk');
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
-});
-
-// Initialize Slack app
-const app = new App({
-  token: process.env.SLACK_BOT_TOKEN,
-  signingSecret: process.env.SLACK_SIGNING_SECRET,
-  socketMode: false,
-  appToken: process.env.SLACK_APP_TOKEN, // Only needed if using Socket Mode
 });
 
 // Initialize Slack WebClient
@@ -27,7 +18,7 @@ exports.handler = async (event) => {
   if (payload.type === 'url_verification') {
     return {
       statusCode: 200,
-      body: JSON.stringify({ challenge: payload.challenge }),
+      body: payload.challenge,
     };
   }
   
