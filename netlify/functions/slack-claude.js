@@ -82,10 +82,26 @@ exports.handler = async (event) => {
   // Only respond to direct messages to the bot or mentions in channels
   console.log("Event payload:", JSON.stringify(payload.event));
   
-  if (payload.event && 
-      (payload.event.type === 'message' && 
-       (payload.event.channel_type === 'im' || 
-        (payload.event.text && payload.event.text.includes(`<@${process.env.SLACK_BOT_USER_ID}>`))))) {
+  if (payload.event && payload.event.type === 'message') {
+    console.log("Message event detected");
+    
+    // Get bot user ID from environment or extract from app_mention events
+    const botUserId = process.env.SLACK_BOT_USER_ID || 
+                      (payload.authorizations && payload.authorizations[0] ? 
+                       payload.authorizations[0].user_id : null);
+                       
+    console.log(`Bot user ID: ${botUserId || 'not set in environment'}`);
+    
+    // Check if this is a direct message or a mention
+    const isDM = payload.event.channel_type === 'im';
+    const isMention = payload.event.text && 
+                      ((botUserId && payload.event.text.includes(`<@${botUserId}>`)) ||
+                       payload.event.text.match(/<@U[A-Z0-9]+>/));
+    
+    console.log(`Message type: ${isDM ? 'DM' : (isMention ? 'Mention' : 'Other')}`);
+    
+    // Process if it's a DM or mention
+    if (isDM || isMention) {
     console.log("Processing message event");
     
     // Log file details if present
@@ -102,10 +118,11 @@ exports.handler = async (event) => {
     // Check for any indication this is a bot message or our own previous message
     if (payload.event.bot_id || 
         payload.event.subtype === 'bot_message' ||
-        payload.event.user === process.env.SLACK_BOT_USER_ID ||
-        (payload.event.text && 
-         (payload.event.text === "Thinking..." || 
-          payload.event.text.includes("Sorry, I encountered an error"))) ||
+        (botUserId && payload.event.user === botUserId) ||
+        (payload.event.text && (
+          payload.event.text === "Thinking..." || 
+          payload.event.text.includes("Sorry, I encountered an error")
+        )) ||
         // Event timestamp deduplication - only process events from last minute
         (payload.event.ts && (Date.now()/1000 - parseFloat(payload.event.ts)) > 60)) {
       
@@ -115,9 +132,16 @@ exports.handler = async (event) => {
     
     try {
       // Extract both text and attachments from the message
+      // Extract text and remove bot mention if in a channel
       let userMessage = payload.event.text || "";
       const userId = payload.event.user;
       const channelId = payload.event.channel;
+      
+      // Clean up the message by removing the bot mention if in a channel
+      if (!isDM && botUserId && userMessage.includes(`<@${botUserId}>`)) {
+        userMessage = userMessage.replace(`<@${botUserId}>`, '').trim();
+        console.log("Removed bot mention, message is now:", userMessage);
+      }
       
       // Array to hold image objects for Claude (defined at this scope)
       const imageObjects = [];
@@ -297,12 +321,14 @@ exports.handler = async (event) => {
     }
   }
   
-  // Return a 200 for any other event types
-  console.log("Event type not handled, returning 200");
-  return {
-    statusCode: 200,
-    body: JSON.stringify({ message: 'Event received' }),
-  };
+  } else {
+    // Event type not handled or not a direct message/mention
+    console.log("Event type not handled or not directed at bot, returning 200");
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ message: 'Event received but not processed' }),
+    };
+  }
   
   } catch (error) {
     console.error("Unhandled error in handler:", error);
