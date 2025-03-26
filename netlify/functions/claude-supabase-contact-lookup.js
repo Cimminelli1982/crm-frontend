@@ -84,215 +84,50 @@ exports.handler = async (event) => {
       query = query.or(`email.ilike.%${email}%,email2.ilike.%${email}%,email3.ilike.%${email}%`);
       console.log(`Searching by email: ${email}`);
     } else if (name) {
-      // Handle full name or partial name searches
+      // Simple search logic: Split into words and handle differently based on word count
       const nameParts = name.trim().split(/\s+/);
       
-      if (nameParts.length > 1) {
-        // Full name provided (first and last)
+      // Select query with company relationships
+      const baseSelect = `
+        *,
+        contact_companies (
+          id,
+          contact_id,
+          company_id,
+          is_primary,
+          companies (
+            id,
+            name
+          )
+        )
+      `;
+      
+      console.log(`Search with ${nameParts.length} terms: "${name}"`);
+      
+      if (nameParts.length === 1) {
+        // Single term - search in both first_name and last_name
+        const searchTerm = nameParts[0];
+        console.log(`Simple search for "${searchTerm}" in first or last name`);
+        
+        query = supabase
+          .from('contacts')
+          .select(baseSelect)
+          .neq('contact_category', 'Skip')
+          .or(`first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%`)
+          .order('last_interaction', { ascending: false });
+      } else {
+        // Multiple terms - first term as first_name, remaining terms as last_name
         const firstName = nameParts[0];
         const lastName = nameParts.slice(1).join(' ');
         
-        console.log(`Searching for name: first="${firstName}", last="${lastName}"`);
+        console.log(`Search for first_name containing "${firstName}" and last_name containing "${lastName}"`);
         
-        // Multi-tier search strategy
-        // 1. Try exact match first (strict)
-        const exactQuery = supabase
-          .from('contacts')
-          .select(`
-            *,
-            contact_companies (
-              id,
-              contact_id,
-              company_id,
-              is_primary,
-              companies (
-                id,
-                name
-              )
-            )
-          `)
-          .neq('contact_category', 'Skip')
-          .eq('first_name', firstName) // Exact match using =
-          .eq('last_name', lastName)   // Exact match using =
-          .order('last_interaction', { ascending: false });
-          
-        const { data: exactMatches, error: exactError } = await exactQuery;
-        
-        if (!exactError && exactMatches && exactMatches.length > 0) {
-          console.log(`Found ${exactMatches.length} exact matches`);
-          return {
-            statusCode: 200,
-            headers: { 'Content-Type': 'application/json' },
-            body: isSlashCommand 
-              ? JSON.stringify({
-                  "response_type": "in_channel",
-                  "text": formatContactsForSlack(exactMatches, name)
-                })
-              : JSON.stringify({ contacts: exactMatches }),
-          };
-        }
-        
-        console.log("No exact matches, trying case-insensitive exact match");
-        
-        // 2. Try case-insensitive exact match
-        const ciExactQuery = supabase
-          .from('contacts')
-          .select(`
-            *,
-            contact_companies (
-              id,
-              contact_id,
-              company_id,
-              is_primary,
-              companies (
-                id,
-                name
-              )
-            )
-          `)
-          .neq('contact_category', 'Skip')
-          .ilike('first_name', `^${firstName}$`)  // Case-insensitive exact match 
-          .ilike('last_name', `^${lastName}$`)    // Case-insensitive exact match
-          .order('last_interaction', { ascending: false });
-          
-        const { data: ciExactMatches, error: ciExactError } = await ciExactQuery;
-        
-        if (!ciExactError && ciExactMatches && ciExactMatches.length > 0) {
-          console.log(`Found ${ciExactMatches.length} case-insensitive exact matches`);
-          return {
-            statusCode: 200,
-            headers: { 'Content-Type': 'application/json' },
-            body: isSlashCommand 
-              ? JSON.stringify({
-                  "response_type": "in_channel",
-                  "text": formatContactsForSlack(ciExactMatches, name)
-                })
-              : JSON.stringify({ contacts: ciExactMatches }),
-          };
-        }
-        
-        console.log("No case-insensitive exact matches, trying starts-with match");
-        
-        // 3. Try starts-with match (less strict)
-        const startsWithQuery = supabase
-          .from('contacts')
-          .select(`
-            *,
-            contact_companies (
-              id,
-              contact_id,
-              company_id,
-              is_primary,
-              companies (
-                id,
-                name
-              )
-            )
-          `)
-          .neq('contact_category', 'Skip')
-          .ilike('first_name', `${firstName}%`)  // First name starts with
-          .ilike('last_name', `${lastName}%`)    // Last name starts with
-          .order('last_interaction', { ascending: false });
-          
-        const { data: startsWithMatches, error: startsWithError } = await startsWithQuery;
-        
-        if (!startsWithError && startsWithMatches && startsWithMatches.length > 0) {
-          console.log(`Found ${startsWithMatches.length} starts-with matches`);
-          return {
-            statusCode: 200,
-            headers: { 'Content-Type': 'application/json' },
-            body: isSlashCommand 
-              ? JSON.stringify({
-                  "response_type": "in_channel",
-                  "text": formatContactsForSlack(startsWithMatches, name)
-                })
-              : JSON.stringify({ contacts: startsWithMatches }),
-          };
-        }
-        
-        console.log("No starts-with matches, trying fuzzy search");
-        
-        // 4. Finally, try a fuzzy contains search (most flexible)
-        // But limit to top matches only
         query = supabase
           .from('contacts')
-          .select(`
-            *,
-            contact_companies (
-              id,
-              contact_id,
-              company_id,
-              is_primary,
-              companies (
-                id,
-                name
-              )
-            )
-          `)
+          .select(baseSelect)
           .neq('contact_category', 'Skip')
-          .or(`first_name.ilike.%${firstName}%,last_name.ilike.%${lastName}%`)
-          .order('last_interaction', { ascending: false })
-          .limit(3);  // Limit to top 3 most relevant matches
-      } else {
-        // Single name component - check both first and last name
-        // But make the search stricter - start with starts with match
-        
-        // First try starts-with match for better results
-        console.log(`Trying prefix match for "${name}"`);
-        const prefixQuery = supabase
-          .from('contacts')
-          .select(`
-            *,
-            contact_companies (
-              id,
-              contact_id,
-              company_id,
-              is_primary,
-              companies (
-                id,
-                name
-              )
-            )
-          `)
-          .neq('contact_category', 'Skip')
-          .or(`first_name.ilike.${name}%,last_name.ilike.${name}%`)
-          .order('last_interaction', { ascending: false });
-          
-        const { data: prefixMatches, error: prefixError } = await prefixQuery;
-        
-        if (!prefixError && prefixMatches && prefixMatches.length > 0) {
-          console.log(`Found ${prefixMatches.length} prefix matches`);
-          return {
-            statusCode: 200,
-            headers: { 'Content-Type': 'application/json' },
-            body: isSlashCommand 
-              ? JSON.stringify({
-                  "response_type": "in_channel",
-                  "text": formatContactsForSlack(prefixMatches, name)
-                })
-              : JSON.stringify({ contacts: prefixMatches }),
-          };
-        }
-        
-        // If no prefix matches, fall back to contains search
-        console.log("No prefix matches, falling back to contains search");
-        query = supabase
-          .from('contacts')
-          .select(`
-            *,
-            contact_companies (
-              id,
-              contact_id,
-              company_id,
-              is_primary,
-              companies (
-                id,
-                name
-              )
-            )
-          `)
-          .neq('contact_category', 'Skip')
-          .or(`first_name.ilike.%${name}%,last_name.ilike.%${name}%`)
+          .ilike('first_name', `%${firstName}%`)
+          .ilike('last_name', `%${lastName}%`)
           .order('last_interaction', { ascending: false });
       }
     } else {
