@@ -65,10 +65,19 @@ exports.handler = async (event) => {
       console.log("Attachments detected:", JSON.stringify(payload.event.attachments));
     }
     
-    // Avoid responding to bot's own messages
-    if (payload.event.bot_id || payload.event.subtype === 'bot_message') {
-      console.log("Ignoring bot message");
-      return { statusCode: 200, body: 'Ignoring bot message' };
+    // Enhanced bot message detection to prevent infinite loops
+    // Check for any indication this is a bot message or our own previous message
+    if (payload.event.bot_id || 
+        payload.event.subtype === 'bot_message' ||
+        payload.event.user === process.env.SLACK_BOT_USER_ID ||
+        (payload.event.text && 
+         (payload.event.text === "Thinking..." || 
+          payload.event.text.includes("Sorry, I encountered an error"))) ||
+        // Event timestamp deduplication - only process events from last minute
+        (payload.event.ts && (Date.now()/1000 - parseFloat(payload.event.ts)) > 60)) {
+      
+      console.log("Ignoring bot message or old message");
+      return { statusCode: 200, body: 'Ignoring bot message or duplicate' };
     }
     
     try {
