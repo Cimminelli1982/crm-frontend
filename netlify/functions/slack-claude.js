@@ -166,72 +166,103 @@ exports.handler = async (event) => {
         if (name) {
           console.log(`Looking up contact: "${name}"`);
           
-          // Inform user we're processing
-          await web.chat.postMessage({
-            channel: channelId,
-            text: `Looking up information for "${name}"...`,
-            thread_ts: payload.event.thread_ts,
-          });
-          
-          // Call the contact lookup function
-          const contacts = await contactUtils.lookupContact(name);
-          
-          if (contacts && contacts.length > 0) {
-            // Format contacts for response
-            let responseText = '';
+          try {
+            // Inform user we're processing
+            await web.chat.postMessage({
+              channel: channelId,
+              text: `🔍 *CONTACT LOOKUP:* Looking up information for "${name}"...`,
+              thread_ts: payload.event.thread_ts,
+            });
             
-            if (contacts.length === 1) {
-              // Single contact found
-              responseText = contactUtils.formatContactForDisplay(contacts[0]);
-            } else if (contacts.length <= 5) {
-              // Multiple contacts (but not too many)
-              responseText = `I found ${contacts.length} contacts matching "${name}":\n\n`;
-              
-              contacts.forEach((contact, index) => {
-                responseText += `*${index + 1}. ${contact.first_name || ''} ${contact.last_name || ''}*\n`;
-                if (contact.email) responseText += `Email: ${contact.email}\n`;
-                if (contact.mobile) responseText += `Phone: ${contact.mobile}\n`;
-                if (contact.job_title) responseText += `Job: ${contact.job_title}\n`;
-                responseText += '\n';
-              });
-              
-              responseText += "Ask me for more details about any specific person.";
-            } else {
-              // Many results
-              responseText = `I found ${contacts.length} contacts matching "${name}". Here are the first 5:\n\n`;
-              
-              contacts.slice(0, 5).forEach((contact, index) => {
-                responseText += `*${index + 1}. ${contact.first_name || ''} ${contact.last_name || ''}*\n`;
-                if (contact.email) responseText += `Email: ${contact.email}\n`;
-                responseText += '\n';
-              });
-              
-              responseText += "Please refine your search to get more specific results.";
+            // Call the contact lookup function using fetch directly
+            const response = await fetch(`${process.env.URL || 'https://crm-editor-frontend.netlify.app'}/.netlify/functions/claude-supabase-contact-lookup`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name }),
+            });
+            
+            console.log("Contact lookup API response status:", response.status);
+            
+            if (!response.ok) {
+              throw new Error(`Contact lookup API returned ${response.status}`);
             }
             
-            // Send the response
+            const data = await response.json();
+            console.log(`Contact lookup returned: ${JSON.stringify(data)}`);
+            
+            const contacts = data.contacts || [];
+            
+            if (contacts && contacts.length > 0) {
+              // Format contacts for response
+              let responseText = '';
+              
+              if (contacts.length === 1) {
+                // Single contact found
+                responseText = `📇 *CONTACT FOUND*\n\n${contactUtils.formatContactForDisplay(contacts[0])}`;
+              } else if (contacts.length <= 5) {
+                // Multiple contacts (but not too many)
+                responseText = `📇 *CONTACTS FOUND*\nI found ${contacts.length} contacts matching "${name}":\n\n`;
+                
+                contacts.forEach((contact, index) => {
+                  responseText += `*${index + 1}. ${contact.first_name || ''} ${contact.last_name || ''}*\n`;
+                  if (contact.email) responseText += `Email: ${contact.email}\n`;
+                  if (contact.mobile) responseText += `Phone: ${contact.mobile}\n`;
+                  if (contact.job_title) responseText += `Job: ${contact.job_title}\n`;
+                  responseText += '\n';
+                });
+                
+                responseText += "Ask me for more details about any specific person.";
+              } else {
+                // Many results
+                responseText = `📇 *MULTIPLE CONTACTS FOUND*\nI found ${contacts.length} contacts matching "${name}". Here are the first 5:\n\n`;
+                
+                contacts.slice(0, 5).forEach((contact, index) => {
+                  responseText += `*${index + 1}. ${contact.first_name || ''} ${contact.last_name || ''}*\n`;
+                  if (contact.email) responseText += `Email: ${contact.email}\n`;
+                  responseText += '\n';
+                });
+                
+                responseText += "Please refine your search to get more specific results.";
+              }
+              
+              // Send the response
+              await web.chat.postMessage({
+                channel: channelId,
+                text: responseText,
+                thread_ts: payload.event.thread_ts,
+              });
+              
+              // Don't process this as a regular message
+              return {
+                statusCode: 200,
+                body: JSON.stringify({ message: 'Contact lookup processed' }),
+              };
+            } else {
+              // No contacts found
+              await web.chat.postMessage({
+                channel: channelId,
+                text: `📇 *CONTACT LOOKUP:* I couldn't find any contacts matching "${name}" in the company database.\n\nPlease try:\n• A different spelling\n• A more specific name\n• Using the command format: \`/contact [name]\``,
+                thread_ts: payload.event.thread_ts,
+              });
+              
+              return {
+                statusCode: 200,
+                body: JSON.stringify({ message: 'No contacts found' }),
+              };
+            }
+          } catch (error) {
+            console.error("Error in contact lookup:", error);
+            
+            // Send error message back to user
             await web.chat.postMessage({
               channel: channelId,
-              text: responseText,
+              text: `⚠️ *CONTACT LOOKUP ERROR:* I encountered an error looking up "${name}" in the database.\n\nTechnical details: ${error.message}\n\nPlease try again with the command format: \`/contact [name]\``,
               thread_ts: payload.event.thread_ts,
             });
             
-            // Don't process this as a regular message
             return {
-              statusCode: 200,
-              body: JSON.stringify({ message: 'Contact lookup processed' }),
-            };
-          } else {
-            // No contacts found
-            await web.chat.postMessage({
-              channel: channelId,
-              text: `I couldn't find any contacts matching "${name}". Please try with a different name or spelling.`,
-              thread_ts: payload.event.thread_ts,
-            });
-            
-            return {
-              statusCode: 200,
-              body: JSON.stringify({ message: 'No contacts found' }),
+              statusCode: 500,
+              body: JSON.stringify({ error: 'Contact lookup error', details: error.message }),
             };
           }
         }

@@ -6,7 +6,27 @@ const fetch = require('node-fetch');
 
 // Helper to detect contact lookup requests
 function isContactLookupRequest(text) {
-  const patterns = [
+  // First, check for explicit command format
+  const commandPatterns = [
+    /^\/contact\s+(.+)/i,
+    /^\/lookup\s+(.+)/i,
+    /^\/find\s+(.+)/i,
+    /^contact lookup[:\s]+(.+)/i,
+    /^lookup contact[:\s]+(.+)/i,
+    /^crm lookup[:\s]+(.+)/i,
+    /^db lookup[:\s]+(.+)/i
+  ];
+  
+  // If any explicit command pattern matches, prioritize these
+  for (const pattern of commandPatterns) {
+    if (pattern.test(text)) {
+      console.log("Detected explicit contact lookup command");
+      return true;
+    }
+  }
+  
+  // Then check for natural language patterns
+  const naturalPatterns = [
     /what is the (email|phone|contact|info|number) (for|of) (.*)/i,
     /tell me about (.*)/i,
     /find (contact|person|details for) (.*)/i,
@@ -19,12 +39,39 @@ function isContactLookupRequest(text) {
     /how (can i|do i|to) contact (.*)/i
   ];
   
-  return patterns.some(pattern => pattern.test(text));
+  const isNaturalRequest = naturalPatterns.some(pattern => pattern.test(text));
+  if (isNaturalRequest) {
+    console.log("Detected natural language contact lookup request");
+  }
+  
+  return isNaturalRequest;
 }
 
 // Extract name from the request
 function extractNameFromRequest(text) {
-  const patterns = [
+  // First check for command syntax
+  const commandPatterns = [
+    /^\/contact\s+(.+)/i,
+    /^\/lookup\s+(.+)/i, 
+    /^\/find\s+(.+)/i,
+    /^contact lookup[:\s]+(.+)/i,
+    /^lookup contact[:\s]+(.+)/i,
+    /^crm lookup[:\s]+(.+)/i,
+    /^db lookup[:\s]+(.+)/i
+  ];
+  
+  // Check command patterns first
+  for (const pattern of commandPatterns) {
+    const match = text.match(pattern);
+    if (match && match[1]) {
+      const name = match[1].trim();
+      console.log(`Extracted name from command syntax: "${name}"`);
+      return name;
+    }
+  }
+  
+  // Then check natural language patterns
+  const naturalPatterns = [
     /what is the (email|phone|contact|info|number) (for|of) (.*)/i,
     /tell me about (.*)/i,
     /find (contact|person|details for) (.*)/i,
@@ -37,14 +84,17 @@ function extractNameFromRequest(text) {
     /how (can i|do i|to) contact (.*)/i
   ];
   
-  for (const pattern of patterns) {
+  for (const pattern of naturalPatterns) {
     const match = text.match(pattern);
     if (match) {
       // The last capture group contains the name
-      return match[match.length - 1].trim();
+      const name = match[match.length - 1].trim();
+      console.log(`Extracted name from natural language: "${name}"`);
+      return name;
     }
   }
   
+  console.log("Could not extract name from request");
   return null;
 }
 

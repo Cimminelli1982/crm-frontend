@@ -2,9 +2,13 @@ const { createClient } = require('@supabase/supabase-js');
 
 // Initialize Supabase client with project details
 const supabaseUrl = 'https://efazuvegwxouysfcgwja.supabase.co';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+// Use service key for admin privileges or anon key as fallback
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVmYXp1dmVnd3hvdXlzZmNnd2phIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU5Mjk1MjcsImV4cCI6MjA1MTUwNTUyN30.1G5n0CyQEHGeE1XaJld_PbpstUFd0Imaao6N8MUmfvE';
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+console.log(`Initializing Supabase client with URL: ${supabaseUrl}`);
+console.log(`Using key type: ${process.env.SUPABASE_SERVICE_KEY ? 'service key' : 'anon key'}`);
+
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 exports.handler = async (event) => {
   try {
