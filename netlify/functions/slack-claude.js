@@ -188,6 +188,9 @@ exports.handler = async (event) => {
       
       // Call Claude API
       console.log("Calling Claude API with message:", userMessage);
+      // Declare claudeResponse at this scope so it's available outside the try block
+      let claudeResponse;
+      
       try {
         // Prepare message content - combine text with image objects
         let messageContent = [{ type: "text", text: userMessage }];
@@ -199,7 +202,7 @@ exports.handler = async (event) => {
         }
         
         // Call Claude API with multimodal content
-        let claudeResponse = await anthropic.messages.create({
+        claudeResponse = await anthropic.messages.create({
           model: "claude-3-7-sonnet-20250219",
           max_tokens: 4096,
           messages: [
@@ -220,6 +223,10 @@ exports.handler = async (event) => {
       // Send Claude's response back to Slack
       console.log("Sending response back to Slack");
       try {
+        if (!claudeResponse || !claudeResponse.content || !claudeResponse.content[0]) {
+          throw new Error("No valid response received from Claude");
+        }
+        
         await web.chat.postMessage({
           channel: channelId,
           text: claudeResponse.content[0].text,
