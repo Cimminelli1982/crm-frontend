@@ -155,6 +155,46 @@ exports.handler = async (event) => {
     
     console.log(`Query returned ${data ? data.length : 0} results`);
     
+    // Helper function to create CRM button blocks for a contact
+    function createCrmButtonBlocks(contacts) {
+      if (!contacts || contacts.length === 0) {
+        return [];
+      }
+      
+      const blocks = [];
+      
+      // Add a divider before buttons
+      blocks.push({
+        "type": "divider"
+      });
+      
+      // Add a section with CRM buttons
+      const buttons = contacts.slice(0, 5).map(contact => {
+        const buttonText = contact.first_name && contact.last_name 
+          ? `${contact.first_name} ${contact.last_name}` 
+          : (contact.first_name || contact.last_name || 'Contact');
+          
+        return {
+          "type": "button",
+          "text": {
+            "type": "plain_text",
+            "text": `Open ${buttonText} in CRM`,
+            "emoji": true
+          },
+          "url": `https://crm-frontend.netlify.app/contacts/${contact.id}`,
+          "action_id": `open_crm_${contact.id}`
+        };
+      });
+      
+      // Create a section block with the buttons
+      blocks.push({
+        "type": "actions",
+        "elements": buttons
+      });
+      
+      return blocks;
+    }
+    
     // Helper function to format contacts for Slack
     function formatContactsForSlack(contacts, searchTerm) {
       let responseText = '';
@@ -256,13 +296,25 @@ exports.handler = async (event) => {
   
     // Prepare response based on request type
     if (isSlashCommand) {
-      // Format response for Slack slash command
+      // Format response for Slack slash command with blocks
+      const textResponse = formatContactsForSlack(data, name);
+      const blocks = [
+        {
+          "type": "section",
+          "text": {
+            "type": "mrkdwn",
+            "text": textResponse
+          }
+        },
+        ...createCrmButtonBlocks(data)
+      ];
+      
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           "response_type": "in_channel",  // "ephemeral" to only show to the user
-          "text": formatContactsForSlack(data, name)
+          "blocks": blocks
         })
       };
     } else {
