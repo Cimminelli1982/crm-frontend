@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { supabase } from '../lib/supabaseClient';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { FiFilter, FiSearch, FiPlus, FiChevronDown, FiClock, FiAlertCircle, FiRefreshCw, FiGlobe, FiMapPin, FiEdit, FiTag, FiLinkedin, FiUser } from 'react-icons/fi';
 import { FaBuilding, FaEllipsisH, FaTimesCircle } from 'react-icons/fa';
 import Modal from 'react-modal';
 import Select from 'react-select';
 import CompanyModal from '../components/modals/CompanyModal';
+import AddCompanyModal from '../components/modals/AddCompanyModal';
 import CompanyTagsModal from '../components/modals/CompanyTagsModal';
 import CompanyCityModal from '../components/modals/CompanyCityModal';
 import CompanyContactsModal from '../components/modals/CompanyContactsModal';
@@ -510,6 +512,18 @@ const COMPANY_CATEGORIES = [
 ];
 
 const Companies = () => {
+  // URL parameter handling
+  const location = useLocation();
+  const navigate = useNavigate();
+  
+  // Check URL params for modal control
+  useEffect(() => {
+    const queryParams = new URLSearchParams(location.search);
+    if (queryParams.get('addCompany') === 'true') {
+      setShowAddCompanyModal(true);
+    }
+  }, [location]);
+  
   // State variables
   const [companies, setCompanies] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -525,6 +539,7 @@ const Companies = () => {
   const [selectedCompany, setSelectedCompany] = useState(null);
   const [selectedContact, setSelectedContact] = useState(null);
   const [showCompanyModal, setShowCompanyModal] = useState(false);
+const [showAddCompanyModal, setShowAddCompanyModal] = useState(false);
   const [showEditCompanyModal, setShowEditCompanyModal] = useState(false); // New state for edit company modal
   const [showTagsModal, setShowTagsModal] = useState(false);
   const [showCityModal, setShowCityModal] = useState(false);
@@ -1449,7 +1464,7 @@ const Companies = () => {
   // Handle creating a new company
   const handleAddCompany = () => {
     setSelectedCompany(null); // Set to null to indicate we're creating a new company
-    setShowCompanyModal(true);
+    setShowAddCompanyModal(true);
   };
   
   // Handle opening company modal
@@ -1758,7 +1773,15 @@ const Companies = () => {
   const handleModalClose = () => {
     // Close all modals
     setShowCompanyModal(false);
+    setShowAddCompanyModal(false);
     setShowEditCompanyModal(false); // Close edit company modal
+    
+    // Clear URL parameters if present
+    const queryParams = new URLSearchParams(location.search);
+    if (queryParams.has('addCompany')) {
+      queryParams.delete('addCompany');
+      navigate({ search: queryParams.toString() }, { replace: true });
+    }
     setShowTagsModal(false);
     setShowCityModal(false);
     setShowContactsModal(false);
@@ -2030,6 +2053,9 @@ const Companies = () => {
               <FiPlus />
               Add Company
             </PrimaryButton>
+            <SecondaryButton onClick={() => navigate('?addCompany=true')}>
+              Add Company Direct
+            </SecondaryButton>
           </HeaderActions>
         </HeaderContent>
         
@@ -2660,6 +2686,17 @@ const Companies = () => {
       </ContentSection>
       
       {/* Modals */}
+      {showAddCompanyModal && (
+        <AddCompanyModal
+          isOpen={showAddCompanyModal}
+          onRequestClose={handleModalClose}
+          onSuccess={(newCompany) => {
+            console.log('Company created:', newCompany);
+            setRefreshTrigger(prev => prev + 1);
+          }}
+        />
+      )}
+      
       {showCompanyModal && (
         <CompanyModal
           isOpen={showCompanyModal}
