@@ -150,27 +150,89 @@ exports.handler = async (event, context) => {
 
     // Check if we got organization data
     if (!apolloData.organization) {
-      // Try to suggest alternative domains for big companies
-      let suggestion = "";
-      if (processedDomain === "intesa.com") {
-        suggestion = "Try intesasanpaolo.com instead";
-      } else if (processedDomain.includes("intesa")) {
-        suggestion = "Try intesasanpaolo.com instead";
-      }
-      
       console.log(`→ APOLLO RETURNED NO DATA FOR DOMAIN: ${processedDomain}`);
-      if (suggestion) {
-        console.log(`→ SUGGESTION: ${suggestion}`);
-      }
       
-      return {
-        statusCode: 404,
-        headers,
-        body: JSON.stringify({ 
-          error: "No organization data found for the provided website",
-          suggestion: suggestion || null
-        })
-      };
+      // Try fallback - search by company name if available
+      if (company && company.name) {
+        console.log(`→ TRYING FALLBACK SEARCH BY COMPANY NAME: ${company.name}`);
+        
+        // Create alternate API request to search by name
+        const nameSearchData = {
+          api_key: APOLLO_API_KEY,
+          q_organization_name: company.name
+        };
+        
+        try {
+          // Call Apollo API with name search
+          const nameSearchResponse = await fetch(APOLLO_API_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(nameSearchData),
+          });
+          
+          const nameSearchResults = await nameSearchResponse.json();
+          console.log('→ NAME SEARCH RESPONSE STATUS:', nameSearchResponse.status);
+          console.log('→ NAME SEARCH FOUND ORGANIZATION?', !!nameSearchResults.organization);
+          
+          // If we found a match by name, use it
+          if (nameSearchResults.organization) {
+            console.log('→ FOUND ORGANIZATION BY NAME SEARCH!');
+            apolloData.organization = nameSearchResults.organization;
+            // Continue with the regular flow - the next part of code will handle the description
+          } else {
+            console.log('→ NO RESULTS FOUND BY NAME SEARCH EITHER');
+            return {
+              statusCode: 404,
+              headers,
+              body: JSON.stringify({ 
+                error: "No organization data found for the provided website or company name",
+                companyId: companyId
+              })
+            };
+          }
+        } catch (nameSearchError) {
+          console.log('→ ERROR IN NAME SEARCH:', nameSearchError.message);
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ 
+              error: "No organization data found for the provided website and name search failed",
+              companyId: companyId
+            })
+          };
+        }
+      } else {
+        // If Apollo failed but we have a description already in the DB, return it
+        if (company && company.description) {
+          console.log('→ USING EXISTING COMPANY DESCRIPTION FROM DATABASE');
+          // Return the existing description
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({
+              message: "Using existing company description",
+              data: {
+                companyId,
+                description: company.description,
+                website,
+                linkedin: company.linkedin || null,
+                source: "database"
+              }
+            })
+          };
+        } else {
+          return {
+            statusCode: 404,
+            headers,
+            body: JSON.stringify({ 
+              error: "No organization data found for the provided website",
+              companyId: companyId
+            })
+          };
+        }
+      }
     }
 
     // Extract the description from Apollo response
@@ -193,48 +255,33 @@ exports.handler = async (event, context) => {
       };
     }
 
-    // Update company description in Supabase
-    const companyUpdateData = {
+    // Don't update Supabase - instead return data to frontend for review
+    
+    // Prepare data that WOULD be sent to Supabase
+    const enrichedData = {
       description: description,
-      modified_at: new Date().toISOString(),
-      enrichment_source: 'apollo',
-      enrichment_date: new Date().toISOString()
+      linkedin: apolloData.organization.linkedin_url || null
     };
     
-    // If we also got LinkedIn data and there isn't one already, add it
-    if (apolloData.organization.linkedin_url && !company.linkedin) {
-      companyUpdateData.linkedin = apolloData.organization.linkedin_url;
-    }
-
-    // Update the company in Supabase
-    const { error: updateCompanyError } = await supabase
-      .from('companies')
-      .update(companyUpdateData)
-      .eq('id', companyId);
+    // Log what we found
+    console.log('→ FOUND DESCRIPTION:', description ? 'YES' : 'NO', description ? `(${description.length} chars)` : '');
+    console.log('→ FOUND LINKEDIN:', enrichedData.linkedin ? 'YES' : 'NO');
     
-    if (updateCompanyError) {
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({ 
-          error: "Failed to update company with enriched data", 
-          details: updateCompanyError 
-        })
-      };
-    }
-
     // Prepare response data
     const responseData = {
-      message: "Company description successfully enriched",
+      message: "Company data enriched from Apollo - review and save",
       data: {
         companyId,
-        description,
+        description: enrichedData.description,
         website,
-        linkedin: companyUpdateData.linkedin || null
+        linkedin: enrichedData.linkedin,
+        // Include additional fields that might be useful for review
+        name: apolloData.organization.name || null,
+        foundMatch: true
       }
     };
     
-    console.log('→ SUCCESS! DATA ENRICHED AND SAVED TO SUPABASE');
+    console.log('→ SUCCESS! DATA RETRIEVED FOR FRONTEND REVIEW');
     
     return {
       statusCode: 200,

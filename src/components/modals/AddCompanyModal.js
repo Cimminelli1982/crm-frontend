@@ -1476,8 +1476,16 @@ const AddCompanyModal = ({ isOpen, onRequestClose, onSuccess }) => {
                         onClick={() => {
                           // Only proceed if we have a company ID and website
                           if (supabaseData?.id && editableData.website) {
-                            // Show loading message
-                            setMessage({ type: 'info', text: 'Fetching description from Apollo...' });
+                            // Show loading message with debug info
+                            const debugMsg = `CompanyID: ${supabaseData.id}, Website: ${editableData.website}`;
+                            console.log('Apollo debug info (Description):', debugMsg);
+                            setMessage({ type: 'info', text: `Fetching description from Apollo... ${debugMsg}` });
+
+                            const requestBody = {
+                              companyId: supabaseData.id,
+                              website: editableData.website
+                            };
+                            console.log('Request Body:', JSON.stringify(requestBody));
 
                             // Call the Apollo function with the specific URL
                             fetch('https://crm-editor-frontend.netlify.app/.netlify/functions/apollo-website-description-enrich', {
@@ -1485,10 +1493,7 @@ const AddCompanyModal = ({ isOpen, onRequestClose, onSuccess }) => {
                               headers: {
                                 'Content-Type': 'application/json',
                               },
-                              body: JSON.stringify({
-                                companyId: supabaseData.id,
-                                website: editableData.website
-                              }),
+                              body: JSON.stringify(requestBody),
                             })
                             .then(response => response.json())
                             .then(data => {
@@ -1497,15 +1502,24 @@ const AddCompanyModal = ({ isOpen, onRequestClose, onSuccess }) => {
                                 return;
                               }
                               
-                              // Update the description field
-                              handleFieldChange('description', data.data.description);
+                              // Update the fields with data from Apollo, but don't save yet
+                              if (data.data.description) {
+                                handleFieldChange('description', data.data.description);
+                              }
                               
                               // If we got LinkedIn data and don't have it already, update that too
                               if (data.data.linkedin && !editableData.linkedin) {
                                 handleFieldChange('linkedin', data.data.linkedin);
                               }
                               
-                              setMessage({ type: 'info', text: 'Description updated from Apollo' });
+                              // Show message about Apollo enrichment with review prompt
+                              setMessage({ 
+                                type: 'info', 
+                                text: 'Data retrieved from Apollo. Review and save changes if the information is correct.' 
+                              });
+                              
+                              // Mark form as modified so user knows they need to save
+                              setIsModified(true);
                             })
                             .catch(error => {
                               console.error('Error calling Apollo enrichment:', error);
