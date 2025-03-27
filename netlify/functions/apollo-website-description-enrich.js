@@ -15,10 +15,28 @@ const APOLLO_API_URL = 'https://api.apollo.io/v1/organizations/enrich';
 // Netlify serverless function handler
 exports.handler = async (event, context) => {
   console.log('Apollo Website Description Enrichment function called', { body: event.body });
+  
+  // Define CORS headers
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS'
+  };
+  
+  // Handle OPTIONS request (preflight CORS check)
+  if (event.httpMethod === "OPTIONS") {
+    return {
+      statusCode: 204,
+      headers,
+      body: ''
+    };
+  }
+  
   // Only allow POST requests
   if (event.httpMethod !== "POST") {
     return {
       statusCode: 405,
+      headers,
       body: JSON.stringify({ error: "Method not allowed" })
     };
   }
@@ -39,6 +57,7 @@ exports.handler = async (event, context) => {
     if (!companyId) {
       return {
         statusCode: 400,
+        headers,
         body: JSON.stringify({ error: "Company ID is required" })
       };
     }
@@ -46,6 +65,7 @@ exports.handler = async (event, context) => {
     if (!website) {
       return {
         statusCode: 400,
+        headers,
         body: JSON.stringify({ error: "Website is required" })
       };
     }
@@ -60,6 +80,7 @@ exports.handler = async (event, context) => {
     if (error) {
       return {
         statusCode: 500,
+        headers,
         body: JSON.stringify({ error: "Failed to fetch company data", details: error })
       };
     }
@@ -67,6 +88,7 @@ exports.handler = async (event, context) => {
     if (!company) {
       return {
         statusCode: 404,
+        headers,
         body: JSON.stringify({ error: "Company not found" })
       };
     }
@@ -110,6 +132,7 @@ exports.handler = async (event, context) => {
       console.log('DEBUG - Apollo API error details:', apolloData);
       return {
         statusCode: apolloResponse.status,
+        headers,
         body: JSON.stringify({ error: "Apollo API error", details: apolloData })
       };
     }
@@ -118,6 +141,7 @@ exports.handler = async (event, context) => {
     if (!apolloData.organization) {
       return {
         statusCode: 404,
+        headers,
         body: JSON.stringify({ error: "No organization data found for the provided website" })
       };
     }
@@ -130,6 +154,7 @@ exports.handler = async (event, context) => {
     if (!description) {
       return {
         statusCode: 404,
+        headers,
         body: JSON.stringify({ error: "No description found for the organization" })
       };
     }
@@ -156,6 +181,7 @@ exports.handler = async (event, context) => {
     if (updateCompanyError) {
       return {
         statusCode: 500,
+        headers,
         body: JSON.stringify({ 
           error: "Failed to update company with enriched data", 
           details: updateCompanyError 
@@ -178,6 +204,7 @@ exports.handler = async (event, context) => {
     
     return {
       statusCode: 200,
+      headers,
       body: JSON.stringify(responseData)
     };
   } catch (error) {
@@ -187,6 +214,7 @@ exports.handler = async (event, context) => {
     
     return {
       statusCode: 500,
+      headers,
       body: JSON.stringify({ 
         error: errorMessage,
         stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
