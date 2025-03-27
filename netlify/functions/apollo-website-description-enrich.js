@@ -46,13 +46,9 @@ exports.handler = async (event, context) => {
     const requestBody = JSON.parse(event.body);
     const { companyId, website } = requestBody;
     
-    // Add detailed debug logging
-    console.log('DEBUG - Request details:', { 
-      companyId, 
-      originalWebsite: website,
-      headers: event.headers,
-      requestURL: event.rawUrl || 'Not available'
-    });
+    // Simple debug for website input
+    console.log('→ GOT WEBSITE?', website ? 'YES' : 'NO');
+    console.log('→ WEBSITE VALUE:', website);
     
     if (!companyId) {
       return {
@@ -101,12 +97,9 @@ exports.handler = async (event, context) => {
       domain: processedDomain
     };
     
-    // Add debug log for Apollo request
-    console.log('DEBUG - Apollo API request:', { 
-      originalWebsite: website,
-      processedDomain: processedDomain,
-      apolloRequestURL: APOLLO_API_URL
-    });
+    // Simple debug for Apollo input
+    console.log('→ PROCESSED DOMAIN FOR APOLLO:', processedDomain);
+    console.log('→ APOLLO API KEY PRESENT?', !!APOLLO_API_KEY);
 
     // Call Apollo API
     const apolloResponse = await fetch(APOLLO_API_URL, {
@@ -119,14 +112,15 @@ exports.handler = async (event, context) => {
 
     const apolloData = await apolloResponse.json();
     
-    // Log Apollo response status and data summary
-    console.log('DEBUG - Apollo API response:', { 
-      status: apolloResponse.status,
-      ok: apolloResponse.ok,
-      hasOrganization: !!apolloData.organization,
-      dataKeys: Object.keys(apolloData),
-      organizationKeys: apolloData.organization ? Object.keys(apolloData.organization) : []
-    });
+    // Simple debug for Apollo response
+    console.log('→ APOLLO API RESPONSE STATUS:', apolloResponse.status);
+    console.log('→ FOUND ORGANIZATION?', !!apolloData.organization);
+    
+    if (apolloData.organization) {
+      console.log('→ HAS SHORT DESCRIPTION?', !!apolloData.organization.short_description);
+      console.log('→ HAS LONG DESCRIPTION?', !!apolloData.organization.long_description);
+      console.log('→ HAS LINKEDIN URL?', !!apolloData.organization.linkedin_url);
+    }
     
     if (!apolloResponse.ok) {
       console.log('DEBUG - Apollo API error details:', apolloData);
@@ -150,6 +144,13 @@ exports.handler = async (event, context) => {
     const description = apolloData.organization.short_description || 
                         apolloData.organization.long_description || 
                         null;
+                        
+    // Final debug - did we get a usable description?
+    console.log('→ FINAL DESCRIPTION FOUND?', !!description);
+    if (description) {
+      console.log('→ DESCRIPTION LENGTH:', description.length);
+      console.log('→ DESCRIPTION PREVIEW:', description.substring(0, 100) + '...');
+    }
                         
     if (!description) {
       return {
@@ -200,7 +201,7 @@ exports.handler = async (event, context) => {
       }
     };
     
-    console.log('Apollo company description enrichment successful:', responseData);
+    console.log('→ SUCCESS! DATA ENRICHED AND SAVED TO SUPABASE');
     
     return {
       statusCode: 200,
