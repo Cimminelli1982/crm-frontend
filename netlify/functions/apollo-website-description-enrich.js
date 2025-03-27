@@ -97,9 +97,13 @@ exports.handler = async (event, context) => {
       domain: processedDomain
     };
     
-    // Simple debug for Apollo input
+    // Enhanced Apollo input debug
     console.log('→ PROCESSED DOMAIN FOR APOLLO:', processedDomain);
     console.log('→ APOLLO API KEY PRESENT?', !!APOLLO_API_KEY);
+    console.log('→ APOLLO API KEY LENGTH:', APOLLO_API_KEY ? APOLLO_API_KEY.length : 0);
+
+    // Log entire request payload for troubleshooting
+    console.log('→ FULL APOLLO REQUEST PAYLOAD:', JSON.stringify(apolloRequestData));
 
     // Call Apollo API
     const apolloResponse = await fetch(APOLLO_API_URL, {
@@ -112,14 +116,27 @@ exports.handler = async (event, context) => {
 
     const apolloData = await apolloResponse.json();
     
-    // Simple debug for Apollo response
+    // Enhanced Apollo response debugging
     console.log('→ APOLLO API RESPONSE STATUS:', apolloResponse.status);
+    console.log('→ RESPONSE TYPE:', typeof apolloData);
+    console.log('→ FULL RESPONSE DATA:', JSON.stringify(apolloData));
     console.log('→ FOUND ORGANIZATION?', !!apolloData.organization);
     
     if (apolloData.organization) {
       console.log('→ HAS SHORT DESCRIPTION?', !!apolloData.organization.short_description);
       console.log('→ HAS LONG DESCRIPTION?', !!apolloData.organization.long_description);
       console.log('→ HAS LINKEDIN URL?', !!apolloData.organization.linkedin_url);
+    } else {
+      console.log('→ ORGANIZATION DATA MISSING - ALL RESPONSE KEYS:', Object.keys(apolloData));
+      
+      // Check for error messages that might indicate the issue
+      if (apolloData.message) {
+        console.log('→ APOLLO ERROR MESSAGE:', apolloData.message);
+      }
+      
+      if (apolloData.error) {
+        console.log('→ APOLLO ERROR DETAILS:', apolloData.error);
+      }
     }
     
     if (!apolloResponse.ok) {
@@ -133,10 +150,26 @@ exports.handler = async (event, context) => {
 
     // Check if we got organization data
     if (!apolloData.organization) {
+      // Try to suggest alternative domains for big companies
+      let suggestion = "";
+      if (processedDomain === "intesa.com") {
+        suggestion = "Try intesasanpaolo.com instead";
+      } else if (processedDomain.includes("intesa")) {
+        suggestion = "Try intesasanpaolo.com instead";
+      }
+      
+      console.log(`→ APOLLO RETURNED NO DATA FOR DOMAIN: ${processedDomain}`);
+      if (suggestion) {
+        console.log(`→ SUGGESTION: ${suggestion}`);
+      }
+      
       return {
         statusCode: 404,
         headers,
-        body: JSON.stringify({ error: "No organization data found for the provided website" })
+        body: JSON.stringify({ 
+          error: "No organization data found for the provided website",
+          suggestion: suggestion || null
+        })
       };
     }
 
