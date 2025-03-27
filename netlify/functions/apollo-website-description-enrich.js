@@ -28,6 +28,14 @@ exports.handler = async (event, context) => {
     const requestBody = JSON.parse(event.body);
     const { companyId, website } = requestBody;
     
+    // Add detailed debug logging
+    console.log('DEBUG - Request details:', { 
+      companyId, 
+      originalWebsite: website,
+      headers: event.headers,
+      requestURL: event.rawUrl || 'Not available'
+    });
+    
     if (!companyId) {
       return {
         statusCode: 400,
@@ -64,10 +72,19 @@ exports.handler = async (event, context) => {
     }
 
     // Prepare data for Apollo API
+    const processedDomain = website.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+    
     const apolloRequestData = {
       api_key: APOLLO_API_KEY,
-      domain: website.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0]
+      domain: processedDomain
     };
+    
+    // Add debug log for Apollo request
+    console.log('DEBUG - Apollo API request:', { 
+      originalWebsite: website,
+      processedDomain: processedDomain,
+      apolloRequestURL: APOLLO_API_URL
+    });
 
     // Call Apollo API
     const apolloResponse = await fetch(APOLLO_API_URL, {
@@ -80,7 +97,17 @@ exports.handler = async (event, context) => {
 
     const apolloData = await apolloResponse.json();
     
+    // Log Apollo response status and data summary
+    console.log('DEBUG - Apollo API response:', { 
+      status: apolloResponse.status,
+      ok: apolloResponse.ok,
+      hasOrganization: !!apolloData.organization,
+      dataKeys: Object.keys(apolloData),
+      organizationKeys: apolloData.organization ? Object.keys(apolloData.organization) : []
+    });
+    
     if (!apolloResponse.ok) {
+      console.log('DEBUG - Apollo API error details:', apolloData);
       return {
         statusCode: apolloResponse.status,
         body: JSON.stringify({ error: "Apollo API error", details: apolloData })

@@ -1473,7 +1473,54 @@ const AddCompanyModal = ({ isOpen, onRequestClose, onSuccess }) => {
                     <span>Description</span>
                     {isSupabase && (
                       <button 
-                        onClick={() => {/* Apollo action */}} 
+                        onClick={() => {
+                          // Only proceed if we have a company ID and website
+                          if (supabaseData?.id && editableData.website) {
+                            // Show loading message
+                            setMessage({ type: 'info', text: 'Fetching description from Apollo...' });
+
+                            // Call the Apollo function with the specific URL
+                            fetch('https://crm-editor-frontend.netlify.app/.netlify/functions/apollo-website-description-enrich', {
+                              method: 'POST',
+                              headers: {
+                                'Content-Type': 'application/json',
+                              },
+                              body: JSON.stringify({
+                                companyId: supabaseData.id,
+                                website: editableData.website
+                              }),
+                            })
+                            .then(response => response.json())
+                            .then(data => {
+                              if (data.error) {
+                                setMessage({ type: 'error', text: `Apollo error: ${data.error}` });
+                                return;
+                              }
+                              
+                              // Update the description field
+                              handleFieldChange('description', data.data.description);
+                              
+                              // If we got LinkedIn data and don't have it already, update that too
+                              if (data.data.linkedin && !editableData.linkedin) {
+                                handleFieldChange('linkedin', data.data.linkedin);
+                              }
+                              
+                              setMessage({ type: 'info', text: 'Description updated from Apollo' });
+                            })
+                            .catch(error => {
+                              console.error('Error calling Apollo enrichment:', error);
+                              setMessage({ type: 'error', text: 'Failed to get description from Apollo' });
+                            });
+                          } else {
+                            // Show message if missing required data
+                            setMessage({ 
+                              type: 'error', 
+                              text: !supabaseData?.id 
+                                ? 'Save company first to use Apollo enrichment' 
+                                : 'Website is required for Apollo enrichment'
+                            });
+                          }
+                        }} 
                         style={{ 
                           backgroundColor: 'black', 
                           color: 'white', 
@@ -1522,7 +1569,52 @@ const AddCompanyModal = ({ isOpen, onRequestClose, onSuccess }) => {
                     <span>LinkedIn</span>
                     {isSupabase && (
                       <button 
-                        onClick={() => {/* Apollo action */}} 
+                        onClick={() => {
+                          // Only proceed if we have a company ID and website
+                          if (supabaseData?.id && editableData.website) {
+                            // Show loading message
+                            setMessage({ type: 'info', text: 'Fetching LinkedIn from Apollo...' });
+
+                            // Call the Apollo function with the specific URL
+                            fetch('https://crm-editor-frontend.netlify.app/.netlify/functions/apollo-website-description-enrich', {
+                              method: 'POST',
+                              headers: {
+                                'Content-Type': 'application/json',
+                              },
+                              body: JSON.stringify({
+                                companyId: supabaseData.id,
+                                website: editableData.website
+                              }),
+                            })
+                            .then(response => response.json())
+                            .then(data => {
+                              if (data.error) {
+                                setMessage({ type: 'error', text: `Apollo error: ${data.error}` });
+                                return;
+                              }
+                              
+                              // Update the LinkedIn field if available
+                              if (data.data.linkedin) {
+                                handleFieldChange('linkedin', data.data.linkedin);
+                                setMessage({ type: 'info', text: 'LinkedIn updated from Apollo' });
+                              } else {
+                                setMessage({ type: 'info', text: 'No LinkedIn data found in Apollo' });
+                              }
+                            })
+                            .catch(error => {
+                              console.error('Error calling Apollo enrichment:', error);
+                              setMessage({ type: 'error', text: 'Failed to get LinkedIn from Apollo' });
+                            });
+                          } else {
+                            // Show message if missing required data
+                            setMessage({ 
+                              type: 'error', 
+                              text: !supabaseData?.id 
+                                ? 'Save company first to use Apollo enrichment' 
+                                : 'Website is required for Apollo enrichment'
+                            });
+                          }
+                        }} 
                         style={{ 
                           backgroundColor: 'black', 
                           color: 'white', 
