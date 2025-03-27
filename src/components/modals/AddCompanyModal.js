@@ -1471,7 +1471,7 @@ const AddCompanyModal = ({ isOpen, onRequestClose, onSuccess }) => {
                 <FieldLabel style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <span>Description</span>
-                    {isSupabase && (
+                    {isSupabase && !editableData.description && (
                       <button 
                         onClick={() => {
                           // Only proceed if we have a company ID and website
@@ -1581,7 +1581,7 @@ const AddCompanyModal = ({ isOpen, onRequestClose, onSuccess }) => {
                 <FieldLabel style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <span>LinkedIn</span>
-                    {isSupabase && (
+                    {isSupabase && !editableData.linkedin && (
                       <button 
                         onClick={() => {
                           // Only proceed if we have a company ID and website
