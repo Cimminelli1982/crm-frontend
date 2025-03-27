@@ -1589,8 +1589,8 @@ const AddCompanyModal = ({ isOpen, onRequestClose, onSuccess }) => {
                             // Show loading message
                             setMessage({ type: 'info', text: 'Fetching LinkedIn from Apollo...' });
 
-                            // Call the Apollo function with the specific URL
-                            fetch('https://crm-editor-frontend.netlify.app/.netlify/functions/apollo-website-description-enrich', {
+                            // Call the LinkedIn-specific Apollo function
+                            fetch('https://crm-editor-frontend.netlify.app/.netlify/functions/apollo-website-linkedin-enrich', {
                               method: 'POST',
                               headers: {
                                 'Content-Type': 'application/json',
@@ -1610,7 +1610,11 @@ const AddCompanyModal = ({ isOpen, onRequestClose, onSuccess }) => {
                               // Update the LinkedIn field if available
                               if (data.data.linkedin) {
                                 handleFieldChange('linkedin', data.data.linkedin);
-                                setMessage({ type: 'info', text: 'LinkedIn updated from Apollo' });
+                                setMessage({ 
+                                  type: 'info', 
+                                  text: 'LinkedIn URL found from Apollo. Review and save changes if correct.' 
+                                });
+                                setIsModified(true);
                               } else {
                                 setMessage({ type: 'info', text: 'No LinkedIn data found in Apollo' });
                               }
