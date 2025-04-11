@@ -17,7 +17,7 @@ const LayoutContainer = styled.div`
 `;
 
 // Sidebar styling
-const Sidebar = styled.aside`
+const SidebarContainer = styled.aside`
   width: 260px;
   background-color: #000000;
   color: #ffffff;
@@ -29,8 +29,8 @@ const Sidebar = styled.aside`
   z-index: 50;
   
   @media (max-width: 768px) {
-    width: ${props => (props.isOpen ? '260px' : '0')};
-    transform: ${props => (props.isOpen ? 'translateX(0)' : 'translateX(-100%)')};
+    width: ${props => (props.$isOpen ? '260px' : '0')};
+    transform: ${props => (props.$isOpen ? 'translateX(0)' : 'translateX(-100%)')};
   }
 `;
 
@@ -79,9 +79,9 @@ const MenuItemHeader = styled.div`
   align-items: center;
   justify-content: space-between;
   padding: 0.75rem 1.5rem 0.75rem 2.25rem;
-  color: ${props => (props.active ? '#00ff00' : '#ffffff')};
-  background-color: ${props => (props.active ? '#333333' : 'transparent')};
-  border-left: 3px solid ${props => (props.active ? '#444444' : 'transparent')};
+  color: ${props => (props.$active ? '#00ff00' : '#ffffff')};
+  background-color: ${props => (props.$active ? '#333333' : 'transparent')};
+  border-left: 3px solid ${props => (props.$active ? '#444444' : 'transparent')};
   text-decoration: none;
   transition: all 0.2s;
   cursor: pointer;
@@ -90,15 +90,15 @@ const MenuItemHeader = styled.div`
   position: relative;
   
   &:before {
-    content: ${props => props.active ? '"> "' : '"$ "'};
+    content: ${props => props.$active ? '"> "' : '"$ "'};
     font-family: monospace;
-    color: ${props => (props.active ? '#00ff00' : '#86c786')};
+    color: ${props => (props.$active ? '#00ff00' : '#86c786')};
     position: absolute;
     left: 12px;
   }
   
   &:hover {
-    background-color: ${props => (props.active ? '#333333' : '#222222')};
+    background-color: ${props => (props.$active ? '#333333' : '#222222')};
     color: #00ff00;
   }
 `;
@@ -115,7 +115,7 @@ const MenuItemLink = styled(Link)`
 
 // Submenu container
 const SubMenu = styled.div`
-  max-height: ${props => (props.isOpen ? '500px' : '0')};
+  max-height: ${props => (props.$isOpen ? '500px' : '0')};
   overflow: hidden;
   transition: max-height 0.3s ease;
   background-color: #111111;
@@ -147,9 +147,9 @@ const SubMenuItem = styled(Link)`
   display: flex;
   align-items: center;
   padding: 0.625rem 1.5rem 0.625rem 2.5rem;
-  color: ${props => (props.active ? '#00ff00' : '#86c786')};
-  background-color: ${props => (props.active ? '#222222' : 'transparent')};
-  border-left: 3px solid ${props => (props.active ? '#444444' : 'transparent')};
+  color: ${props => (props.$active ? '#00ff00' : '#86c786')};
+  background-color: ${props => (props.$active ? '#222222' : 'transparent')};
+  border-left: 3px solid ${props => (props.$active ? '#444444' : 'transparent')};
   font-size: 0.875rem;
   font-family: 'Courier New', Courier, monospace;
   letter-spacing: 0.5px;
@@ -158,10 +158,10 @@ const SubMenuItem = styled(Link)`
   position: relative;
   
   &:before {
-    content: ${props => props.active ? '">" ' : '"$ "'};
+    content: ${props => props.$active ? '">" ' : '"$ "'};
     position: absolute;
     left: 1rem;
-    color: ${props => props.active ? '#00ff00' : '#86c786'};
+    color: ${props => props.$active ? '#00ff00' : '#86c786'};
     font-size: 0.8rem;
   }
   
@@ -318,8 +318,7 @@ const Layout = ({ children }) => {
   
   // State to track which menu items are expanded
   const [expandedMenus, setExpandedMenus] = useState({
-    contacts: true,
-    companies: true
+    v1: true
   });
   
   const toggleSidebar = () => {
@@ -379,7 +378,7 @@ const Layout = ({ children }) => {
   return (
     <LayoutContainer>
       {/* Sidebar Navigation */}
-      <Sidebar isOpen={sidebarOpen}>
+      <SidebarContainer $isOpen={sidebarOpen}>
         <SidebarHeader>
           <Logo>
             <img 
@@ -390,92 +389,48 @@ const Layout = ({ children }) => {
         </SidebarHeader>
         
         <SidebarContent>
-          {/* Contacts Menu */}
+          {/* V1 Menu */}
           <MenuItem>
             <MenuItemHeader 
-              active={isPathActive('/contacts')} 
-              onClick={() => toggleMenu('contacts')}
+              $active={isPathActive('/')} 
+              onClick={() => toggleMenu('v1')}
             >
-              <MenuItemLink to="/contacts">
-                Contacts
+              <MenuItemLink to="/">
+                CRM v1
               </MenuItemLink>
-              {expandedMenus.contacts ? "[open]" : "[+]"}
+              {expandedMenus.v1 ? "[open]" : "[+]"}
             </MenuItemHeader>
             
-            <SubMenu isOpen={expandedMenus.contacts}>
+            <SubMenu $isOpen={expandedMenus.v1}>
               <SubMenuItem 
-                to="/contacts/last-interactions" 
-                active={isPathActive('/contacts/last-interactions')}
+                to="/contacts/simple" 
+                $active={isPathActive('/contacts/simple')}
               >
                 Last Interactions
               </SubMenuItem>
               
               <SubMenuItem 
                 to="/contacts/keep-in-touch" 
-                active={isPathActive('/contacts/keep-in-touch')}
+                $active={isPathActive('/contacts/keep-in-touch')}
               >
                 Keep in Touch
               </SubMenuItem>
               
               <SubMenuItem 
-                to="/contacts/introductions" 
-                active={isPathActive('/contacts/introductions')}
-              >
-                Introductions
-              </SubMenuItem>
-              
-              <SubMenuItem 
-                to="/contacts/lists" 
-                active={isPathActive('/contacts/lists')}
-              >
-                Lists
-              </SubMenuItem>
-            </SubMenu>
-          </MenuItem>
-          
-          {/* Companies Menu */}
-          <MenuItem>
-            <MenuItemHeader 
-              active={isPathActive('/companies')} 
-              onClick={() => toggleMenu('companies')}
-            >
-              <MenuItemLink to="/companies">
-                Companies
-              </MenuItemLink>
-              {expandedMenus.companies ? "[open]" : "[+]"}
-            </MenuItemHeader>
-            
-            <SubMenu isOpen={expandedMenus.companies}>
-              <SubMenuItem 
                 to="/companies/deals" 
-                active={isPathActive('/companies/deals')}
+                $active={isPathActive('/companies/deals')}
               >
                 Deals
               </SubMenuItem>
               
               <SubMenuItem 
-                to="/companies/startups" 
-                active={isPathActive('/companies/startups')}
+                to="/companies" 
+                $active={isPathActive('/companies') && !isPathActive('/companies/deals') && 
+                         !isPathActive('/companies/startups') && !isPathActive('/companies/investors')}
               >
-                Startups
-              </SubMenuItem>
-              
-              <SubMenuItem 
-                to="/companies/investors" 
-                active={isPathActive('/companies/investors')}
-              >
-                Investors
+                Companies
               </SubMenuItem>
             </SubMenu>
-          </MenuItem>
-          
-          {/* Single-level menu items */}
-          <MenuItem>
-            <MenuItemHeader active={isPathActive('/planner')}>
-              <MenuItemLink to="/planner">
-                Planner
-              </MenuItemLink>
-            </MenuItemHeader>
           </MenuItem>
         </SidebarContent>
         
@@ -491,7 +446,7 @@ const Layout = ({ children }) => {
             exit
           </SignOutButton>
         </SidebarFooter>
-      </Sidebar>
+      </SidebarContainer>
       
       {/* Main Content Area */}
       <Main>

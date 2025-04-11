@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { 
+  createBrowserRouter, 
+  createRoutesFromElements,
+  RouterProvider, 
+  Routes, 
+  Route, 
+  Navigate, 
+  Outlet 
+} from 'react-router-dom';
 import Login from './pages/Login';
 import Contacts from './pages/Contacts';
 import Dashboard from './pages/Dashboard';
@@ -13,8 +21,12 @@ import LastInteractions from './pages/contacts/LastInteractions';
 import KeepInTouch from './pages/contacts/KeepInTouch';
 import Introductions from './pages/contacts/Introductions';
 import Lists from './pages/contacts/Lists';
+import SimpleContacts from './pages/contacts/SimpleContacts';
+import SimpleKeepInTouch from './pages/contacts/SimpleKeepInTouch';
 import Companies from './pages/Companies';
+import SimpleCompanies from './pages/companies/SimpleCompanies';
 import Deals from './pages/companies/Deals';
+import SimpleDeals from './pages/companies/SimpleDeals';
 import Startups from './pages/companies/Startups';
 import Investors from './pages/companies/Investors';
 import Planner from './pages/Planner';
@@ -53,8 +65,123 @@ const App = () => {
     return <div>Loading...</div>;
   }
 
+  // Create a ProtectedRoute component for auth checking
+  const ProtectedRoute = ({ children }) => {
+    if (!session) {
+      return <Navigate to="/login" />;
+    }
+    return children;
+  };
+
+  // Create LoginRoute component that redirects if already logged in
+  const LoginRoute = () => {
+    if (session) {
+      return <Navigate to="/" />;
+    }
+    return <Login />;
+  };
+
+  // Define routes without conditionals
+  const router = createBrowserRouter(
+    [
+      {
+        path: "/login",
+        element: <LoginRoute />
+      },
+      {
+        path: "/",
+        element: <ProtectedRoute><AppLayout /></ProtectedRoute>,
+        children: [
+          {
+            path: "/",
+            element: <Navigate to="/contacts" />
+          },
+          {
+            path: "dashboard",
+            element: <Dashboard />
+          },
+          {
+            path: "new-contacts",
+            element: <NewContacts />
+          },
+          // Contacts section
+          {
+            path: "contacts",
+            element: <Contacts />
+          },
+          {
+            path: "contacts/simple",
+            element: <SimpleContacts />
+          },
+          {
+            path: "contacts/last-interactions",
+            element: <LastInteractions />
+          },
+          {
+            path: "contacts/keep-in-touch",
+            element: <SimpleKeepInTouch />
+          },
+          {
+            path: "contacts/introductions",
+            element: <Introductions />
+          },
+          {
+            path: "contacts/lists",
+            element: <Lists />
+          },
+          // Companies section
+          {
+            path: "companies",
+            element: <SimpleCompanies />
+          },
+          {
+            path: "companies/deals",
+            element: <SimpleDeals />
+          },
+          {
+            path: "companies/startups",
+            element: <Startups />
+          },
+          {
+            path: "companies/investors",
+            element: <Investors />
+          },
+          // Other sections
+          {
+            path: "planner",
+            element: <Planner />
+          },
+          // Admin routes
+          {
+            path: "admin/hubspot-migration",
+            element: <HubSpotMigrationTest />
+          },
+          {
+            path: "admin/hubspot-test",
+            element: <HubSpotTest />
+          },
+          {
+            path: "admin/contact-enrichment",
+            element: <ContactEnrichment />
+          }
+        ]
+      },
+      {
+        path: "*",
+        element: <Navigate to="/login" />
+      }
+    ],
+    {
+      // Enable future flags for React Router v7 compatibility
+      future: {
+        v7_startTransition: true,
+        v7_relativeSplatPath: true
+      }
+    }
+  );
+
   return (
-    <Router>
+    <>
       <Toaster position="top-right" toastOptions={{
         style: {
           background: '#333',
@@ -78,43 +205,8 @@ const App = () => {
           },
         },
       }} />
-      <Routes>
-        <Route path="/login" element={!session ? <Login /> : <Navigate to="/" />} />
-        
-        {/* Protected routes */}
-        {session ? (
-          <Route element={<AppLayout />}>
-            {/* Main routes */}
-            <Route path="/" element={<Navigate to="/contacts" />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/new-contacts" element={<NewContacts />} />
-
-            {/* Contacts section */}
-            <Route path="/contacts" element={<Contacts />} />
-            <Route path="/contacts/last-interactions" element={<LastInteractions />} />
-            <Route path="/contacts/keep-in-touch" element={<KeepInTouch />} />
-            <Route path="/contacts/introductions" element={<Introductions />} />
-            <Route path="/contacts/lists" element={<Lists />} />
-
-            {/* Companies section */}
-            <Route path="/companies" element={<Companies />} />
-            <Route path="/companies/deals" element={<Deals />} />
-            <Route path="/companies/startups" element={<Startups />} />
-            <Route path="/companies/investors" element={<Investors />} />
-
-            {/* Other main sections */}
-            <Route path="/planner" element={<Planner />} />
-            
-            {/* Admin and Test routes */}
-            <Route path="/admin/hubspot-migration" element={<HubSpotMigrationTest />} />
-            <Route path="/admin/hubspot-test" element={<HubSpotTest />} />
-            <Route path="/admin/contact-enrichment" element={<ContactEnrichment />} />
-          </Route>
-        ) : (
-          <Route path="*" element={<Navigate to="/login" />} />
-        )}
-      </Routes>
-    </Router>
+      <RouterProvider router={router} />
+    </>
   );
 };
 

@@ -1,0 +1,353 @@
+{
+  "Companies": {
+    "fields": [
+      {
+        "name": "Company Name",
+        "type": "string",
+        "example": "Voxy"
+      },
+      {
+        "name": "Description",
+        "type": "string",
+        "example": "Voxy offers language training that meets business needs with job-specific programs to increase produ"
+      },
+      {
+        "name": "Last Modified",
+        "type": "date-string",
+        "example": "2025-02-24T20:50:41.000Z"
+      },
+      {
+        "name": "Website",
+        "type": "string",
+        "example": "voxy.com"
+      },
+      {
+        "name": "Linkedin",
+        "type": "string",
+        "example": "https://linkedin.com/company/1075944"
+      },
+      {
+        "name": "Hubspot",
+        "type": "object",
+        "example": "[object Object]"
+      },
+      {
+        "name": "Web",
+        "type": "object",
+        "example": "[object Object]"
+      },
+      {
+        "name": "Linkedin Page",
+        "type": "object",
+        "example": "[object Object]"
+      },
+      {
+        "name": "Related Contacts",
+        "type": "array",
+        "example": "Array with 1 items"
+      },
+      {
+        "name": "Company Airtable ID",
+        "type": "string",
+        "example": "rec022CAUP89JcCHF"
+      },
+      {
+        "name": "Last Activity week",
+        "type": "object",
+        "example": "[object Object]"
+      },
+      {
+        "name": "Last Activity year",
+        "type": "object",
+        "example": "[object Object]"
+      },
+      {
+        "name": "Find Linkedin",
+        "type": "object",
+        "example": "[object Object]"
+      },
+      {
+        "name": "Google",
+        "type": "object",
+        "example": "[object Object]"
+      },
+      {
+        "name": "CONTACTS copy",
+        "type": "array",
+        "example": "Array with 1 items"
+      }
+    ]
+  },
+  "Contacts": {
+    "fields": [
+      {
+        "name": "Name",
+        "type": "string",
+        "example": "Moonfare's"
+      },
+      {
+        "name": "Surname",
+        "type": "string",
+        "example": "The Satellite"
+      },
+      {
+        "name": "Contact",
+        "type": "string",
+        "example": "Moonfare's The Satellite"
+      },
+      {
+        "name": "Company (string from Hubspot)",
+        "type": "string",
+        "example": "Moonfare"
+      },
+      {
+        "name": "Primary email",
+        "type": "string",
+        "example": "thesatellite@moonfare.com"
+      },
+      {
+        "name": "Last modified",
+        "type": "date-string",
+        "example": "2025-03-09T16:06:31.000Z"
+      },
+      {
+        "name": "Last contact",
+        "type": "date-string",
+        "example": "2025-03-09"
+      },
+      {
+        "name": "HubSpot ID",
+        "type": "string",
+        "example": "From automation (to be reviewed if still working after name change field) "
+      },
+      {
+        "name": "WhatsApp",
+        "type": "object",
+        "example": "[object Object]"
+      },
+      {
+        "name": "Contact Airtable ID",
+        "type": "string",
+        "example": "rec00JI57dK2q3tmK"
+      },
+      {
+        "name": "Linkedin Profile",
+        "type": "object",
+        "example": "[object Object]"
+      },
+      {
+        "name": "Emails",
+        "type": "object",
+        "example": "[object Object]"
+      },
+      {
+        "name": "Birthday wishes",
+        "type": "string",
+        "example": "Undefined"
+      },
+      {
+        "name": "Christmas wishes",
+        "type": "string",
+        "example": "Undefined"
+      },
+      {
+        "name": "Easter wishes",
+        "type": "string",
+        "example": "Undefined"
+      },
+      {
+        "name": "Week modified",
+        "type": "number",
+        "example": "11"
+      },
+      {
+        "name": "Hubspot Profile",
+        "type": "object",
+        "example": "[object Object]"
+      },
+      {
+        "name": "Search Google",
+        "type": "object",
+        "example": "[object Object]"
+      },
+      {
+        "name": "Next Keep in touch",
+        "type": "date-string",
+        "example": "2025-03-09"
+      },
+      {
+        "name": "Days since last interaction",
+        "type": "number",
+        "example": "18"
+      },
+      {
+        "name": "Keep in Touch Status",
+        "type": "string",
+        "example": "Default"
+      },
+      {
+        "name": "Find on Linkedin",
+        "type": "object",
+        "example": "[object Object]"
+      },
+      {
+        "name": "Show/Hide Details Contact",
+        "type": "string",
+        "example": "No"
+      },
+      {
+        "name": "Search Hubspot",
+        "type": "string",
+        "example": "https://app-eu1.hubspot.com/contacts/144666820/record/0-1/13292343785?globalSearchQuery=Moonfare's+T"
+      },
+      {
+        "name": "Check duplicates",
+        "type": "object",
+        "example": "[object Object]"
+      },
+      {
+        "name": "Check HubSpot Contact",
+        "type": "string",
+        "example": "https://velvety-liger-28d410.netlify.app/.netlify/functions/hubspot-search?email=thesatellite%40moon"
+      },
+      {
+        "name": "Link CRM",
+        "type": "object",
+        "example": "[object Object]"
+      },
+      {
+        "name": "TEST CONTACT",
+        "type": "string",
+        "example": "https://velvety-liger-28d410.netlify.app/.netlify/functions/contact-records?contactId=Moonfare%27s%2"
+      },
+      {
+        "name": "Full Name",
+        "type": "string",
+        "example": "Moonfare's The Satellite"
+      },
+      {
+        "name": "Week Last interaction",
+        "type": "number",
+        "example": "11"
+      },
+      {
+        "name": "Year Last Interaction",
+        "type": "number",
+        "example": "2025"
+      },
+      {
+        "name": "CRM CONTACT",
+        "type": "string",
+        "example": "https://airtable.com/appTMYAU4N43eJdxG/pagknyvJzu0i0bCE3?9HzLA=rec00JI57dK2q3tmK"
+      },
+      {
+        "name": "Last Email Received",
+        "type": "date-string",
+        "example": "2025-02-09"
+      },
+      {
+        "name": "Profile",
+        "type": "object",
+        "example": "[object Object]"
+      },
+      {
+        "name": "Days Since Whatsapp",
+        "type": "number",
+        "example": "99999"
+      },
+      {
+        "name": "Days Since Email",
+        "type": "number",
+        "example": "46"
+      },
+      {
+        "name": "Last interaction",
+        "type": "date-string",
+        "example": "2025-03-09"
+      }
+    ]
+  },
+  "Tasks": {
+    "fields": [
+      {
+        "name": "ACTIONS",
+        "type": "string",
+        "example": "Parlare con Paul per Bardo"
+      },
+      {
+        "name": "Status",
+        "type": "string",
+        "example": "Done"
+      },
+      {
+        "name": "Created date",
+        "type": "date-string",
+        "example": "2024-11-18"
+      },
+      {
+        "name": "Done Date",
+        "type": "date-string",
+        "example": "2024-11-18"
+      },
+      {
+        "name": "Done Date Week",
+        "type": "number",
+        "example": "47"
+      },
+      {
+        "name": "Done Date Year",
+        "type": "number",
+        "example": "2024"
+      },
+      {
+        "name": "Project",
+        "type": "string",
+        "example": "2336453097"
+      },
+      {
+        "name": "Project Category",
+        "type": "string",
+        "example": "Personal"
+      }
+    ]
+  },
+  "Notes": {
+    "fields": [
+      {
+        "name": "Note",
+        "type": "string",
+        "example": "Edoardo Cassina - Call - 2/9/2024"
+      },
+      {
+        "name": "Related Contacts",
+        "type": "array",
+        "example": "Array with 1 items"
+      },
+      {
+        "name": "Related Companies",
+        "type": "array",
+        "example": "Array with 1 items"
+      },
+      {
+        "name": "Related Events",
+        "type": "array",
+        "example": "Array with 1 items"
+      },
+      {
+        "name": "Date",
+        "type": "date-string",
+        "example": "2024-09-02"
+      },
+      {
+        "name": "Note text",
+        "type": "string",
+        "example": "Mi ha dato picche"
+      },
+      {
+        "name": "CONTACTS copy",
+        "type": "array",
+        "example": "Array with 1 items"
+      }
+    ]
+  }
+}
