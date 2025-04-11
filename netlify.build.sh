@@ -4,7 +4,7 @@
 
 # Force npm to install regardless of lockfile
 echo "Force installing ag-grid packages..."
-npm install ag-grid-community ag-grid-react --no-save
+npm install ag-grid-community ag-grid-react @ag-grid-community/client-side-row-model --no-save
 
 # Run the normal build command
 echo "Running build command..."
