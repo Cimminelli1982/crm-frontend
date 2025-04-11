@@ -1,8 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
-import 'ag-grid-community/styles/ag-grid.min.css';
-import 'ag-grid-community/styles/ag-theme-alpine.min.css';
+import './ag-grid.css';
 import App from './App';
 import { AuthProvider } from './context/AuthContext';
 
