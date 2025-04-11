@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
-import { AgGridReact } from 'ag-grid-react';
+import { AgGridReact } from '../../ag-grid-setup';
 
 // Styled components
 const Container = styled.div`

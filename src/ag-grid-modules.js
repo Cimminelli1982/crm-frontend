@@ -5,11 +5,7 @@ import { ClientSideRowModelModule } from '@ag-grid-community/client-side-row-mod
 
 // Register required modules
 export function registerAgGridModules() {
-  // If modules are already registered, don't register them again
-  if (ModuleRegistry.isRegistered('clientSideRowModel')) {
-    return;
-  }
-  
+  // Simply register the modules - AG Grid handles duplicates internally
   ModuleRegistry.registerModules([
     ClientSideRowModelModule
   ]);
