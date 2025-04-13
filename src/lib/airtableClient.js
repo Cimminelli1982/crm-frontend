@@ -84,9 +84,17 @@ export const deleteRecord = async (tableName, recordId) => {
 // Helper function to query records
 export const queryRecords = async (tableName, filterFormula) => {
   try {
-    const records = await airtableBase(tableName).select({
-      filterByFormula: filterFormula
-    }).all();
+    // Create select options - if no filter formula, just get all records
+    const selectOptions = filterFormula 
+      ? { filterByFormula: filterFormula } 
+      : {};
+    
+    // Log the query we're about to make
+    console.log(`Querying ${tableName} with options:`, selectOptions);
+    
+    const records = await airtableBase(tableName).select(selectOptions).all();
+    
+    console.log(`Query returned ${records.length} records`);
     
     return records.map(record => ({
       id: record.id,
@@ -102,12 +110,39 @@ export const queryRecords = async (tableName, filterFormula) => {
 export const getCompanyByWebsite = async (website) => {
   if (!website) return null;
   
-  // Format website for search (remove protocol and www)
-  const formattedWebsite = website.replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+  // Format website for search (remove protocol and www) and convert to lowercase
+  const formattedWebsite = website.replace(/^https?:\/\//i, '').replace(/^www\./i, '').toLowerCase();
+  
+  // Add debugging
+  console.log('Searching Airtable for website:', website);
+  console.log('Formatted website for search:', formattedWebsite);
   
   try {
-    // Search using the "Website" field from the Airtable schema
-    const filterFormula = `FIND("${formattedWebsite}", {Website}) > 0`;
+    // First try to get all companies to debug
+    console.log('Getting all companies from Airtable first for debugging...');
+    const allCompanies = await queryRecords('Companies', '');
+    console.log(`Found ${allCompanies.length} total companies in Airtable`);
+    
+    if (allCompanies.length > 0) {
+      // Log some sample websites to help debug the format
+      const sampleCompanies = allCompanies.slice(0, 5);
+      console.log('Sample companies from Airtable:');
+      sampleCompanies.forEach(company => {
+        console.log(`- Name: ${company['Company Name']}, Website: ${company['Website']}`);
+      });
+    }
+    
+    // Create a more flexible filter formula that tries different matches
+    const filterFormula = `
+      OR(
+        LOWER({Website}) = LOWER("${formattedWebsite}"),
+        LOWER({Website}) = LOWER("${formattedWebsite}/"),
+        FIND(LOWER("${formattedWebsite}"), LOWER({Website})) > 0,
+        FIND(LOWER("${website}"), LOWER({Website})) > 0
+      )
+    `;
+    
+    console.log('Using filter formula:', filterFormula);
     const companies = await queryRecords('Companies', filterFormula);
     
     console.log(`Found ${companies.length} companies in Airtable matching website: ${formattedWebsite}`);

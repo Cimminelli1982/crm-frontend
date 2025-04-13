@@ -23,6 +23,11 @@ import Introductions from './pages/contacts/Introductions';
 import Lists from './pages/contacts/Lists';
 import SimpleContacts from './pages/contacts/SimpleContacts';
 import SimpleKeepInTouch from './pages/contacts/SimpleKeepInTouch';
+import EmailInbox from './pages/contacts/EmailInbox';
+import ContactsInbox from './pages/contacts/ContactsInbox';
+import ContactRecord from './pages/ContactRecord';
+import ContactEdit from './pages/ContactEdit';
+import ContactIntegrity from './pages/ContactIntegrity';
 import Companies from './pages/Companies';
 import SimpleCompanies from './pages/companies/SimpleCompanies';
 import Deals from './pages/companies/Deals';
@@ -128,6 +133,26 @@ const App = () => {
           {
             path: "contacts/lists",
             element: <Lists />
+          },
+          {
+            path: "contacts/email-inbox",
+            element: <EmailInbox />
+          },
+          {
+            path: "contacts/inbox",
+            element: <ContactsInbox />
+          },
+          {
+            path: "contacts/:id",
+            element: <ContactRecord />
+          },
+          {
+            path: "contacts/edit/:id",
+            element: <ContactEdit />
+          },
+          {
+            path: "contacts/integrity/:id",
+            element: <ContactIntegrity />
           },
           // Companies section
           {

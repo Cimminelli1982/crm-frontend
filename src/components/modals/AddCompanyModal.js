@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Modal from 'react-modal';
 import { FiX, FiSearch, FiExternalLink, FiUser, FiMapPin, FiTag, FiEdit, FiPlus, FiSave } from 'react-icons/fi';
 import { supabase } from '../../lib/supabaseClient';
+import { getCompanyByWebsite } from '../../lib/airtableClient';
 import styled from 'styled-components';
 
 // Styled components
@@ -1290,8 +1291,41 @@ const AddCompanyModal = ({ isOpen, onRequestClose, onSuccess }) => {
         });
       }
       
-      // For now, other data sources are not implemented
-      setAirtableData(null);
+      // Try to find company in Airtable
+      try {
+        console.log('Searching Airtable for website:', website);
+        const airtableCompany = await getCompanyByWebsite(website);
+        
+        if (airtableCompany) {
+          setAirtableData(airtableCompany);
+          console.log('Found company in Airtable:', airtableCompany);
+          
+          // If no Supabase data but we have Airtable data, pre-fill the form
+          if (!supabaseCompany && airtableCompany) {
+            setEditableData({
+              name: airtableCompany.name || '',
+              website: website,
+              category: editableData.category || '',
+              description: airtableCompany.description || '',
+              linkedin: airtableCompany.linkedin || ''
+            });
+            
+            // Set message to inform user
+            setMessage({ 
+              type: 'info', 
+              text: 'Company data found in Airtable. You can review and save to create in Supabase.' 
+            });
+          }
+        } else {
+          setAirtableData(null);
+          console.log('No matching company found in Airtable');
+        }
+      } catch (airtableError) {
+        console.error('Error searching Airtable:', airtableError);
+        setAirtableData(null);
+      }
+      
+      // For now, HubSpot is not implemented
       setHubspotData(null);
       
       // Show message if no data found
@@ -1412,6 +1446,80 @@ const AddCompanyModal = ({ isOpen, onRequestClose, onSuccess }) => {
           ) : (!data && !isSupabase) ? (
             <div style={{ textAlign: 'center', color: '#6b7280', padding: '20px' }}>
               No data available
+            </div>
+          ) : (source === 'Airtable' && data) ? (
+            // Special handling for Airtable data
+            <div>
+              <FieldGroup>
+                <FieldLabel>Name</FieldLabel>
+                <FieldValue>{data.name || 'No name available'}</FieldValue>
+              </FieldGroup>
+              
+              <FieldGroup>
+                <FieldLabel>Website</FieldLabel>
+                <FieldValue>
+                  {data.website ? (
+                    <ExternalLink href={data.website.startsWith('http') ? data.website : `https://${data.website}`} target="_blank" rel="noopener noreferrer">
+                      {data.website} <FiExternalLink size={12} />
+                    </ExternalLink>
+                  ) : (
+                    'No website available'
+                  )}
+                </FieldValue>
+              </FieldGroup>
+              
+              <FieldGroup>
+                <FieldLabel>Description</FieldLabel>
+                <FieldValue className={!data.description ? 'empty' : ''}>
+                  {data.description || 'No description available'}
+                </FieldValue>
+              </FieldGroup>
+              
+              <FieldGroup>
+                <FieldLabel>LinkedIn</FieldLabel>
+                <FieldValue>
+                  {data.linkedin ? (
+                    <ExternalLink href={data.linkedin.startsWith('http') ? data.linkedin : `https://${data.linkedin}`} target="_blank" rel="noopener noreferrer">
+                      {data.linkedin} <FiExternalLink size={12} />
+                    </ExternalLink>
+                  ) : (
+                    'No LinkedIn available'
+                  )}
+                </FieldValue>
+              </FieldGroup>
+              
+              <FieldGroup>
+                <FieldLabel>Airtable ID</FieldLabel>
+                <FieldValue>{data.airtable_id || data.id || 'Not available'}</FieldValue>
+              </FieldGroup>
+              
+              <button
+                onClick={() => {
+                  // Copy data from Airtable to the editable form
+                  setEditableData({
+                    ...editableData,
+                    name: data.name || editableData.name,
+                    website: data.website || editableData.website,
+                    description: data.description || editableData.description,
+                    linkedin: data.linkedin || editableData.linkedin
+                  });
+                  setIsModified(true);
+                  setMessage({ type: 'info', text: 'Airtable data copied to form fields. Review and save to create in Supabase.' });
+                }}
+                style={{
+                  backgroundColor: '#10B981',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  padding: '8px 16px',
+                  marginTop: '16px',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: '500'
+                }}
+              >
+                Copy to Form
+              </button>
             </div>
           ) : (
             <>

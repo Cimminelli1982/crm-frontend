@@ -2,48 +2,11 @@
 import 'ag-grid-community/styles/ag-grid.min.css';
 import 'ag-grid-community/styles/ag-theme-alpine.min.css';
 
-// Import all core modules
-import { 
-  ModuleRegistry, 
-  ClientSideRowModelModule,
-  ColumnApi,
-  GridApi,
-  Grid,
-  CsvExportModule,
-  ColumnsToolPanelModule,
-  FiltersToolPanelModule,
-  MenuModule, 
-  RowGroupingModule,
-  SideBarModule,
-  ColumnAutoSizeModule,
-  ValidationModule,
-  ResizeObserverService,
-  ExcelExportModule
-} from 'ag-grid-community';
-
-// Register required modules
-ModuleRegistry.registerModules([
-  ClientSideRowModelModule,
-  CsvExportModule,
-  ColumnsToolPanelModule,
-  FiltersToolPanelModule,
-  MenuModule,
-  RowGroupingModule,
-  SideBarModule,
-  ColumnAutoSizeModule,
-  ValidationModule,
-  ExcelExportModule
-]);
-
-// Make sure Grid is initialized - needed for v33+
-try {
-  new Grid(document.createElement('div'), { modules: [] });
-} catch (e) {
-  console.warn('AG Grid initialization warning:', e);
-}
+// Import AgGrid React component
+import { AgGridReact } from 'ag-grid-react';
 
 // Export components for convenience
-export { AgGridReact } from 'ag-grid-react';
+export { AgGridReact };
 
 // Helper functions to handle grid formatting safely
 export const safeValueFormatter = (formatter) => {

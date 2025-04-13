@@ -528,6 +528,10 @@ const Companies = () => {
   const [companies, setCompanies] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
   const [filteredCount, setFilteredCount] = useState(0);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10); // Display 10 companies per page
   const [searchTerm, setSearchTerm] = useState('');
   const [searchField, setSearchField] = useState('name');
   const [isLoading, setIsLoading] = useState(true);
@@ -956,6 +960,10 @@ const [showAddCompanyModal, setShowAddCompanyModal] = useState(false);
   
   // Initial data fetch
   useEffect(() => {
+    // Reset to page 1 when the company list is refreshed due to filters/sort changes
+    if (refreshTrigger > 0) { // Only reset page on refreshes, not initial load
+      setCurrentPage(1);
+    }
     fetchCompanies();
     fetchFilterCounts();
   }, [refreshTrigger, sortBy, sortOrder]);
@@ -1019,6 +1027,9 @@ const [showAddCompanyModal, setShowAddCompanyModal] = useState(false);
     const value = e.target.value;
     setSearchTerm(value);
     console.log(`Search term changed to: "${value}"`);
+    
+    // Reset to page 1 when search term changes
+    setCurrentPage(1);
     
     // Only trigger search if length is 2+ characters for name search, 3+ for others, or 0 (clearing)
     const minLength = searchField === 'name' ? 2 : 3;
@@ -1451,6 +1462,9 @@ const [showAddCompanyModal, setShowAddCompanyModal] = useState(false);
     setSearchField(field);
     setSearchTerm('');
     
+    // Reset to page 1 when search field changes
+    setCurrentPage(1);
+    
     // Reset the list of companies when switching search fields
     setRefreshTrigger(prev => prev + 1);
   };
@@ -1458,7 +1472,78 @@ const [showAddCompanyModal, setShowAddCompanyModal] = useState(false);
   
   // Handle refresh button click
   const handleRefresh = () => {
+    // Reset to page 1 when refreshing
+    setCurrentPage(1);
     setRefreshTrigger(prev => prev + 1);
+  };
+  
+  // Handle refreshing a single company
+  const handleRefreshCompany = async (companyId) => {
+    try {
+      // Close the action menu
+      setActionMenuOpen(null);
+      
+      // Show loading for this company (we could add a special state for this)
+      const companyIndex = companies.findIndex(c => c.id === companyId);
+      if (companyIndex === -1) return;
+      
+      // Get company's current data
+      const companyToUpdate = companies[companyIndex];
+      
+      // Fetch updated company data from Supabase
+      const { data: updatedCompany, error } = await supabase
+        .from('companies')
+        .select('*')
+        .eq('id', companyId)
+        .single();
+        
+      if (error) throw error;
+      
+      // Fetch related data (tags, cities, contacts)
+      if (updatedCompany) {
+        // Get tags
+        const { data: tagData } = await supabase
+          .from('companies_tags')
+          .select('tag_id(id, name)')
+          .eq('company_id', companyId);
+          
+        const tags = tagData ? tagData.map(t => t.tag_id).filter(Boolean) : [];
+        
+        // Get cities
+        const { data: cityData } = await supabase
+          .from('companies_cities')
+          .select('city_id(id, name)')
+          .eq('company_id', companyId);
+          
+        const cities = cityData ? cityData.map(c => c.city_id).filter(Boolean) : [];
+        
+        // Get contacts
+        const { data: contactData } = await supabase
+          .from('contact_companies')
+          .select('contact_id(id, first_name, last_name, email)')
+          .eq('company_id', companyId);
+          
+        const contacts = contactData ? contactData.map(c => c.contact_id).filter(Boolean) : [];
+        
+        // Create updated company with related data
+        const completeUpdatedCompany = {
+          ...updatedCompany,
+          tags,
+          cities,
+          contacts
+        };
+        
+        // Update the company in the list
+        const updatedCompanies = [...companies];
+        updatedCompanies[companyIndex] = completeUpdatedCompany;
+        setCompanies(updatedCompanies);
+        
+        // Show success message or indicator (could use a toast)
+        console.log(`Company ${updatedCompany.name} refreshed successfully`);
+      }
+    } catch (error) {
+      console.error('Error refreshing company:', error);
+    }
   };
   
   // Handle creating a new company
@@ -2204,8 +2289,12 @@ const [showAddCompanyModal, setShowAddCompanyModal] = useState(false);
             <p>No companies found. Try changing your search or filter criteria.</p>
           </div>
         ) : (
-          <CompaniesGrid>
-            {companies.map(company => (
+          <>
+            <CompaniesGrid>
+            {/* Paginate companies - only show itemsPerPage (10) companies for the current page */}
+            {companies
+              .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+              .map(company => (
               <CompanyCard 
                 key={company.id} 
                 onClick={(e) => {
@@ -2283,6 +2372,9 @@ const [showAddCompanyModal, setShowAddCompanyModal] = useState(false);
                       <ActionMenuDropdown isOpen={actionMenuOpen === company.id} className="action-menu-container">
                         <ActionMenuItem onClick={() => handleOpenCompanyModal(company)}>
                           Edit
+                        </ActionMenuItem>
+                        <ActionMenuItem onClick={() => handleRefreshCompany(company.id)}>
+                          Refresh Data
                         </ActionMenuItem>
                         {skipConfirmId === company.id ? (
                           <ActionMenuItem 
@@ -2682,6 +2774,53 @@ const [showAddCompanyModal, setShowAddCompanyModal] = useState(false);
               </CompanyCard>
             ))}
           </CompaniesGrid>
+          
+          {/* Pagination Controls */}
+          {companies.length > itemsPerPage && (
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'center', 
+              margin: '20px 0', 
+              gap: '10px'
+            }}>
+              <button 
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                style={{
+                  padding: '8px 16px',
+                  border: '1px solid #e5e7eb',
+                  backgroundColor: currentPage === 1 ? '#f3f4f6' : 'white',
+                  borderRadius: '4px',
+                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer'
+                }}
+              >
+                Previous
+              </button>
+              
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <span>
+                  Page {currentPage} of {Math.ceil(companies.length / itemsPerPage)} &nbsp;|&nbsp;
+                  {companies.length} total {companies.length === 1 ? 'company' : 'companies'} &nbsp;|&nbsp;
+                  Showing {Math.min(companies.length, (currentPage - 1) * itemsPerPage + 1)}-{Math.min(companies.length, currentPage * itemsPerPage)}
+                </span>
+              </div>
+              
+              <button 
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(companies.length / itemsPerPage)))}
+                disabled={currentPage >= Math.ceil(companies.length / itemsPerPage)}
+                style={{
+                  padding: '8px 16px',
+                  border: '1px solid #e5e7eb',
+                  backgroundColor: currentPage >= Math.ceil(companies.length / itemsPerPage) ? '#f3f4f6' : 'white',
+                  borderRadius: '4px',
+                  cursor: currentPage >= Math.ceil(companies.length / itemsPerPage) ? 'not-allowed' : 'pointer'
+                }}
+              >
+                Next
+              </button>
+            </div>
+          )}
+          </>
         )}
       </ContentSection>
       

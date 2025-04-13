@@ -311,7 +311,7 @@ const SimpleContacts = () => {
   // Row clicked handler - wrapped in React.useCallback to prevent recreation
   const handleRowClicked = React.useCallback((params) => {
     if (params.data && params.data.contact_id) {
-      navigate(`/contacts/${params.data.contact_id}`);
+      navigate(`/contacts/integrity/${params.data.contact_id}`);
     }
   }, [navigate]);
 
@@ -345,7 +345,10 @@ const SimpleContacts = () => {
       const { count, error: countError } = await retrySupabaseRequest(async () => {
         return supabase
           .from('contacts')
-          .select('*', { count: 'exact', head: true });
+          .select('*', { count: 'exact', head: true })
+          .not('category', 'eq', 'Skip')
+          .not('category', 'eq', 'Inbox')
+          .not('category', 'eq', 'WhatsApp Group Contact');
       });
         
       if (countError) throw countError;
@@ -372,6 +375,9 @@ const SimpleContacts = () => {
               created_at
             `)
             .gte('last_interaction_at', formattedDate)
+            .not('category', 'eq', 'Skip')
+            .not('category', 'eq', 'Inbox')
+            .not('category', 'eq', 'WhatsApp Group Contact')
             .order('last_interaction_at', { ascending: false, nullsFirst: false })
             .range(from, to);
         });
@@ -724,7 +730,7 @@ const SimpleContacts = () => {
 
   return (
     <Container>
-      <Title>Recent Contacts - Last 21 Days ({contacts.length})</Title>
+      <Title>Last Interaction ({contacts.length})</Title>
       
       {error && <ErrorText>Error: {error}</ErrorText>}
       

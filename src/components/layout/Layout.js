@@ -355,6 +355,8 @@ const Layout = ({ children }) => {
       if (path.includes('/last-interactions')) return 'Last Interactions';
       if (path.includes('/keep-in-touch')) return 'Keep in Touch';
       if (path.includes('/introductions')) return 'Introductions';
+      if (path.includes('/email-inbox')) return 'Email Inbox';
+      if (path.includes('/inbox')) return 'Contacts Inbox';
       return 'Contacts';
     }
     
@@ -414,6 +416,20 @@ const Layout = ({ children }) => {
                 $active={isPathActive('/contacts/keep-in-touch')}
               >
                 Keep in Touch
+              </SubMenuItem>
+
+              <SubMenuItem 
+                to="/contacts/inbox" 
+                $active={isPathActive('/contacts/inbox')}
+              >
+                Contacts Inbox
+              </SubMenuItem>
+              
+              <SubMenuItem 
+                to="/contacts/email-inbox" 
+                $active={isPathActive('/contacts/email-inbox')}
+              >
+                Email Inbox
               </SubMenuItem>
               
               <SubMenuItem 
