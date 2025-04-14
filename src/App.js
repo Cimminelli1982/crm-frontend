@@ -28,6 +28,7 @@ import ContactsInbox from './pages/contacts/ContactsInbox';
 import ContactRecord from './pages/ContactRecord';
 import ContactEdit from './pages/ContactEdit';
 import ContactIntegrity from './pages/ContactIntegrity';
+import DuplicateManager from './pages/contacts/DuplicateManager';
 import Companies from './pages/Companies';
 import SimpleCompanies from './pages/companies/SimpleCompanies';
 import Deals from './pages/companies/Deals';
@@ -153,6 +154,10 @@ const App = () => {
           {
             path: "contacts/integrity/:id",
             element: <ContactIntegrity />
+          },
+          {
+            path: "contacts/duplicate-manager",
+            element: <DuplicateManager />
           },
           // Companies section
           {

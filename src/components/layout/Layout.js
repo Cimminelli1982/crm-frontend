@@ -433,6 +433,13 @@ const Layout = ({ children }) => {
               </SubMenuItem>
               
               <SubMenuItem 
+                to="/contacts/duplicate-manager" 
+                $active={isPathActive('/contacts/duplicate-manager')}
+              >
+                Duplicate Manager
+              </SubMenuItem>
+              
+              <SubMenuItem 
                 to="/companies/deals" 
                 $active={isPathActive('/companies/deals')}
               >

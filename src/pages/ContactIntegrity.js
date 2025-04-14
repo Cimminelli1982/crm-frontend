@@ -987,27 +987,67 @@ const ContactIntegrity = () => {
                          selectedDuplicate.emails?.[0]?.email ||
                          '';
       
-      // Create a record in the contact_duplicates table
-      const { data: duplicateRecord, error: duplicateError } = await supabase
+      // First check if there's already a record for this pair of contacts
+      const { data: existingDuplicate, error: checkError } = await supabase
         .from('contact_duplicates')
-        .insert({
-          duplicate_id: uuidv4(), // Generate a new UUID
-          primary_contact_id: id,
-          duplicate_contact_id: selectedDuplicate.contact_id,
-          mobile_number: primaryMobile,
-          email: primaryEmail,
-          detected_at: new Date().toISOString(),
-          status: 'pending',
-          notes: 'Manually merged via Contact Integrity page',
-          merge_selections: mergeSelections,
-          duplicate_data: duplicateSnapshot
-        })
-        .select()
-        .single();
-        
-      if (duplicateError) throw duplicateError;
+        .select('duplicate_id, status')
+        .eq('primary_contact_id', id)
+        .eq('duplicate_contact_id', selectedDuplicate.contact_id)
+        .maybeSingle();
       
-      toast.success('Merge request submitted. The system will process it shortly.');
+      if (checkError) throw checkError;
+      
+      let duplicateRecord;
+      
+      if (existingDuplicate) {
+        // Update the existing record with new merge selections and reset status
+        const { data: updatedRecord, error: updateError } = await supabase
+          .from('contact_duplicates')
+          .update({
+            status: 'pending',
+            notes: 'Manually merged via Contact Integrity page - Updated',
+            merge_selections: mergeSelections,
+            duplicate_data: duplicateSnapshot,
+            start_trigger: true, // Set trigger to start the merge process
+            detected_at: new Date().toISOString(),
+            resolved_at: null,
+            error_message: null
+          })
+          .eq('duplicate_id', existingDuplicate.duplicate_id)
+          .select()
+          .single();
+          
+        if (updateError) throw updateError;
+        duplicateRecord = updatedRecord;
+        toast.success('Updated existing merge settings. The system will process it shortly.');
+      } else {
+        // Create a new record in the contact_duplicates table
+        const { data: newRecord, error: insertError } = await supabase
+          .from('contact_duplicates')
+          .insert({
+            duplicate_id: uuidv4(), // Generate a new UUID
+            primary_contact_id: id,
+            duplicate_contact_id: selectedDuplicate.contact_id,
+            mobile_number: primaryMobile,
+            email: primaryEmail,
+            detected_at: new Date().toISOString(),
+            status: 'pending',
+            notes: 'Manually merged via Contact Integrity page',
+            merge_selections: mergeSelections,
+            duplicate_data: duplicateSnapshot,
+            start_trigger: true // Set trigger to start the merge process
+          })
+          .select()
+          .single();
+          
+        if (insertError) throw insertError;
+        duplicateRecord = newRecord;
+        toast.success('Merge request submitted. The system will process it shortly.');
+      }
+      
+      if (!duplicateRecord) throw new Error('Failed to create or update merge record');
+      
+      // Only show one success message (we already showed one above based on whether it's new or updated)
       
       // Check the status of the merge periodically
       const checkMergeStatus = async (duplicateId) => {
@@ -1750,7 +1790,42 @@ const ContactIntegrity = () => {
                       value={typeof tag === 'object' ? tag.id || '' : tag || ''}
                       onChange={(e) => {
                         const newTags = [...tags];
-                        newTags[index] = e.target.value;
+                        
+                        // Check if new tag needs to be created
+                        if (e.target.value === 'new_tag') {
+                          // Open a dialog to create a new tag
+                          const tagName = prompt('Enter a name for the new tag:');
+                          if (tagName && tagName.trim()) {
+                            // Create a new tag in the database
+                            const createNewTag = async () => {
+                              try {
+                                const { data, error } = await supabase
+                                  .from('tags')
+                                  .insert({ name: tagName.trim() })
+                                  .select()
+                                  .single();
+                                
+                                if (error) throw error;
+                                
+                                // Add the new tag to allTags
+                                setAllTags([...allTags, data]);
+                                
+                                // Set the new tag as selected
+                                newTags[index] = data.tag_id;
+                                
+                                toast.success(`Tag "${tagName}" created successfully`);
+                              } catch (err) {
+                                console.error('Error creating tag:', err);
+                                toast.error('Failed to create new tag');
+                              }
+                            };
+                            
+                            createNewTag();
+                          }
+                        } else {
+                          newTags[index] = e.target.value;
+                        }
+                        
                         setTags(newTags);
                       }}
                     >
@@ -1760,6 +1835,9 @@ const ContactIntegrity = () => {
                           {t.name}
                         </option>
                       ))}
+                      <option value="new_tag" style={{ fontStyle: 'italic', color: '#00ff00' }}>
+                        + Create new tag...
+                      </option>
                     </Select>
                   </div>
                   
@@ -1801,7 +1879,49 @@ const ContactIntegrity = () => {
                       value={typeof city === 'object' ? city.id || '' : city || ''}
                       onChange={(e) => {
                         const newCities = [...cities];
-                        newCities[index] = e.target.value;
+                        
+                        // Check if new city needs to be created
+                        if (e.target.value === 'new_city') {
+                          // Ask for city name
+                          const cityName = prompt('Enter city name:');
+                          if (cityName && cityName.trim()) {
+                            // Ask for country
+                            const country = prompt('Enter country:');
+                            if (country && country.trim()) {
+                              // Create a new city in the database
+                              const createNewCity = async () => {
+                                try {
+                                  const { data, error } = await supabase
+                                    .from('cities')
+                                    .insert({ 
+                                      name: cityName.trim(),
+                                      country: country.trim()
+                                    })
+                                    .select()
+                                    .single();
+                                  
+                                  if (error) throw error;
+                                  
+                                  // Add the new city to allCities
+                                  setAllCities([...allCities, data]);
+                                  
+                                  // Set the new city as selected
+                                  newCities[index] = data.city_id;
+                                  
+                                  toast.success(`City "${cityName}, ${country}" created successfully`);
+                                } catch (err) {
+                                  console.error('Error creating city:', err);
+                                  toast.error('Failed to create new city');
+                                }
+                              };
+                              
+                              createNewCity();
+                            }
+                          }
+                        } else {
+                          newCities[index] = e.target.value;
+                        }
+                        
                         setCities(newCities);
                       }}
                     >
@@ -1811,6 +1931,9 @@ const ContactIntegrity = () => {
                           {c.name}, {c.country}
                         </option>
                       ))}
+                      <option value="new_city" style={{ fontStyle: 'italic', color: '#00ff00' }}>
+                        + Create new city...
+                      </option>
                     </Select>
                   </div>
                   
@@ -1850,7 +1973,53 @@ const ContactIntegrity = () => {
                   <div style={{ flex: 2 }}>
                     <Select
                       value={company.company_id || ''}
-                      onChange={(e) => handleCompanyChange(index, 'company_id', e.target.value)}
+                      onChange={(e) => {
+                        // Check if new company needs to be created
+                        if (e.target.value === 'new_company') {
+                          // Ask for company name
+                          const companyName = prompt('Enter company name:');
+                          if (companyName && companyName.trim()) {
+                            // Ask for optional website
+                            const website = prompt('Enter company website (optional):');
+                            const createNewCompany = async () => {
+                              try {
+                                const newCompany = {
+                                  name: companyName.trim(),
+                                  category: 'Inbox'
+                                };
+                                
+                                // Add website if provided
+                                if (website && website.trim()) {
+                                  newCompany.website = website.trim();
+                                }
+                                
+                                const { data, error } = await supabase
+                                  .from('companies')
+                                  .insert(newCompany)
+                                  .select()
+                                  .single();
+                                
+                                if (error) throw error;
+                                
+                                // Add the new company to allCompanies
+                                setAllCompanies([...allCompanies, data]);
+                                
+                                // Set the new company as selected
+                                handleCompanyChange(index, 'company_id', data.company_id);
+                                
+                                toast.success(`Company "${companyName}" created successfully`);
+                              } catch (err) {
+                                console.error('Error creating company:', err);
+                                toast.error('Failed to create new company');
+                              }
+                            };
+                            
+                            createNewCompany();
+                          }
+                        } else {
+                          handleCompanyChange(index, 'company_id', e.target.value);
+                        }
+                      }}
                     >
                       <option value="">Select a company</option>
                       {allCompanies.map(comp => (
@@ -1858,6 +2027,9 @@ const ContactIntegrity = () => {
                           {comp.name}
                         </option>
                       ))}
+                      <option value="new_company" style={{ fontStyle: 'italic', color: '#00ff00' }}>
+                        + Create new company...
+                      </option>
                     </Select>
                   </div>
                   

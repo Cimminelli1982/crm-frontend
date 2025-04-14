@@ -212,7 +212,8 @@ const Sidebar = ({ user, onSignOut }) => {
       subItems: [
         { name: 'Last Interactions', path: '/contacts/last-interactions' },
         { name: 'Keep in Touch', path: '/contacts/keep-in-touch' },
-        { name: 'Introductions', path: '/contacts/introductions' }
+        { name: 'Introductions', path: '/contacts/introductions' },
+        { name: 'Duplicate Manager', path: '/contacts/duplicate-manager' }
       ]
     },
     {
