@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
+import { v4 as uuidv4 } from 'uuid';
 import { 
   FiCheck, 
   FiX, 
@@ -929,6 +930,7 @@ const ContactIntegrity = () => {
       description: 'current',
       score: 'current',
       birthday: 'current',
+      keep_in_touch_frequency: 'current',
       // For collections, we'll have special handling
       emails: 'combine',
       mobiles: 'combine',
@@ -946,6 +948,7 @@ const ContactIntegrity = () => {
     if (!contact.description && duplicate.description) initialSelections.description = 'duplicate';
     if ((contact.score === null || contact.score === undefined) && duplicate.score !== null) initialSelections.score = 'duplicate';
     if (!contact.birthday && duplicate.birthday) initialSelections.birthday = 'duplicate';
+    if (!contact.keep_in_touch_frequency && duplicate.keep_in_touch_frequency) initialSelections.keep_in_touch_frequency = 'duplicate';
     
     setMergeSelections(initialSelections);
   };
@@ -965,333 +968,87 @@ const ContactIntegrity = () => {
     setSaving(true);
     
     try {
-      // Start a database transaction to ensure data integrity
-      const { error: txError } = await supabase.rpc('begin_transaction');
-      if (txError) throw txError;
+      // Create a complete snapshot of the duplicate contact and its related data
+      const duplicateSnapshot = {
+        contact: selectedDuplicate,
+        emails: selectedDuplicate.emails || [],
+        mobiles: selectedDuplicate.mobiles || [],
+        tags: selectedDuplicate.tags || [],
+        cities: selectedDuplicate.cities || [],
+        companies: selectedDuplicate.companies || []
+      };
       
-      // Create a new contact object with merged fields
-      const mergedContact = { ...contact };
+      // First primary mobile or email for the duplicate record
+      const primaryMobile = selectedDuplicate.mobiles?.find(m => m.is_primary)?.mobile || 
+                          selectedDuplicate.mobiles?.[0]?.mobile || 
+                          '';
+                          
+      const primaryEmail = selectedDuplicate.emails?.find(e => e.is_primary)?.email || 
+                         selectedDuplicate.emails?.[0]?.email ||
+                         '';
       
-      // Apply field selections from the merge options
-      Object.keys(mergeSelections).forEach(field => {
-        if (['emails', 'mobiles', 'tags', 'cities', 'companies'].includes(field)) {
-          // Skip collections - handled separately
+      // Create a record in the contact_duplicates table
+      const { data: duplicateRecord, error: duplicateError } = await supabase
+        .from('contact_duplicates')
+        .insert({
+          duplicate_id: uuidv4(), // Generate a new UUID
+          primary_contact_id: id,
+          duplicate_contact_id: selectedDuplicate.contact_id,
+          mobile_number: primaryMobile,
+          email: primaryEmail,
+          detected_at: new Date().toISOString(),
+          status: 'pending',
+          notes: 'Manually merged via Contact Integrity page',
+          merge_selections: mergeSelections,
+          duplicate_data: duplicateSnapshot
+        })
+        .select()
+        .single();
+        
+      if (duplicateError) throw duplicateError;
+      
+      toast.success('Merge request submitted. The system will process it shortly.');
+      
+      // Check the status of the merge periodically
+      const checkMergeStatus = async (duplicateId) => {
+        // Wait a moment to let the database process the merge
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        const { data: statusData, error: statusError } = await supabase
+          .from('contact_duplicates')
+          .select('status, error_message')
+          .eq('duplicate_id', duplicateId)
+          .single();
+          
+        if (statusError) {
+          console.error('Error checking merge status:', statusError);
           return;
         }
         
-        if (mergeSelections[field] === 'duplicate') {
-          mergedContact[field] = selectedDuplicate[field];
-        }
-      });
-      
-      // 1. Update the main contact with merged data
-      const { error: updateError } = await supabase
-        .from('contacts')
-        .update({
-          first_name: mergedContact.first_name,
-          last_name: mergedContact.last_name,
-          category: mergedContact.category,
-          job_role: mergedContact.job_role,
-          linkedin: mergedContact.linkedin,
-          description: mergedContact.description,
-          score: mergedContact.score,
-          birthday: mergedContact.birthday,
-          last_modified_at: new Date().toISOString()
-        })
-        .eq('contact_id', id);
-        
-      if (updateError) throw updateError;
-      
-      // Prepare email records based on merge selection
-      let emailsToInsert = [];
-      if (mergeSelections.emails === 'current') {
-        // Keep current emails, no action needed
-        emailsToInsert = emails.map(e => ({
-          contact_id: id,
-          email: e.email.trim(),
-          type: e.type || 'personal',
-          is_primary: e.is_primary
-        }));
-      } else if (mergeSelections.emails === 'duplicate') {
-        // Use duplicate's emails
-        emailsToInsert = selectedDuplicate.emails.map(e => ({
-          contact_id: id,
-          email: e.email.trim(),
-          type: e.type || 'personal',
-          is_primary: e.is_primary
-        }));
-      } else if (mergeSelections.emails === 'combine') {
-        // Combine both, avoiding duplicates
-        const combinedEmails = [...emails];
-        const existingEmails = new Set(emails.map(e => e.email.toLowerCase()));
-        
-        for (const dupEmail of selectedDuplicate.emails) {
-          if (!existingEmails.has(dupEmail.email.toLowerCase())) {
-            combinedEmails.push({
-              ...dupEmail,
-              contact_id: id
-            });
+        if (statusData.status === 'completed') {
+          toast.success('Contacts successfully merged!');
+          // Refresh the contact data if we're still on this page
+          if (id) {
+            loadContact(id);
           }
+        } else if (statusData.status === 'failed') {
+          toast.error(`Merge failed: ${statusData.error_message || 'Unknown error'}`);
+        } else if (['pending', 'processing'].includes(statusData.status)) {
+          // Still processing, check again in a few seconds (up to 5 attempts)
+          setTimeout(() => checkMergeStatus(duplicateId), 2000);
         }
-        
-        emailsToInsert = combinedEmails.map(e => ({
-          contact_id: id,
-          email: e.email.trim(),
-          type: e.type || 'personal',
-          is_primary: e.is_primary
-        }));
-      }
+      };
       
-      // Prepare mobile records based on merge selection
-      let mobilesToInsert = [];
-      if (mergeSelections.mobiles === 'current') {
-        // Keep current mobiles, no action needed
-        mobilesToInsert = mobiles.map(m => ({
-          contact_id: id,
-          mobile: m.mobile.trim(),
-          type: m.type || 'personal',
-          is_primary: m.is_primary
-        }));
-      } else if (mergeSelections.mobiles === 'duplicate') {
-        // Use duplicate's mobiles
-        mobilesToInsert = selectedDuplicate.mobiles.map(m => ({
-          contact_id: id,
-          mobile: m.mobile.trim(),
-          type: m.type || 'personal',
-          is_primary: m.is_primary
-        }));
-      } else if (mergeSelections.mobiles === 'combine') {
-        // Combine both, avoiding duplicates
-        const combinedMobiles = [...mobiles];
-        const existingMobiles = new Set(mobiles.map(m => m.mobile.toLowerCase()));
-        
-        for (const dupMobile of selectedDuplicate.mobiles) {
-          if (!existingMobiles.has(dupMobile.mobile.toLowerCase())) {
-            combinedMobiles.push({
-              ...dupMobile,
-              contact_id: id
-            });
-          }
-        }
-        
-        mobilesToInsert = combinedMobiles.map(m => ({
-          contact_id: id,
-          mobile: m.mobile.trim(),
-          type: m.type || 'personal',
-          is_primary: m.is_primary
-        }));
-      }
+      // Start checking for the merge status
+      checkMergeStatus(duplicateRecord.duplicate_id);
       
-      // 2. Delete old email and mobile records for target contact
-      await Promise.all([
-        supabase.from('contact_emails').delete().eq('contact_id', id),
-        supabase.from('contact_mobiles').delete().eq('contact_id', id)
-      ]);
-      
-      // 3. Insert the new email and mobile records
-      if (emailsToInsert.length > 0) {
-        const { error: emailError } = await supabase
-          .from('contact_emails')
-          .insert(emailsToInsert);
-          
-        if (emailError) throw emailError;
-      }
-      
-      if (mobilesToInsert.length > 0) {
-        const { error: mobileError } = await supabase
-          .from('contact_mobiles')
-          .insert(mobilesToInsert);
-          
-        if (mobileError) throw mobileError;
-      }
-      
-      // 4. Handle tags, cities, and companies relationships
-      let tagIds = [];
-      let cityIds = [];
-      let companyRelationships = [];
-      
-      // Process tags based on merge selection
-      if (mergeSelections.tags === 'current') {
-        tagIds = tags.map(t => typeof t === 'object' ? t.id : t);
-      } else if (mergeSelections.tags === 'duplicate') {
-        tagIds = selectedDuplicate.tags.map(t => t.id);
-      } else if (mergeSelections.tags === 'combine') {
-        // Combine tags, ensuring no duplicates
-        const tagSet = new Set([
-          ...tags.map(t => typeof t === 'object' ? t.id : t),
-          ...selectedDuplicate.tags.map(t => t.id)
-        ]);
-        tagIds = Array.from(tagSet);
-      }
-      
-      // Process cities based on merge selection
-      if (mergeSelections.cities === 'current') {
-        cityIds = cities.map(c => typeof c === 'object' ? c.id : c);
-      } else if (mergeSelections.cities === 'duplicate') {
-        cityIds = selectedDuplicate.cities.map(c => c.id);
-      } else if (mergeSelections.cities === 'combine') {
-        // Combine cities, ensuring no duplicates
-        const citySet = new Set([
-          ...cities.map(c => typeof c === 'object' ? c.id : c),
-          ...selectedDuplicate.cities.map(c => c.id)
-        ]);
-        cityIds = Array.from(citySet);
-      }
-      
-      // Process companies based on merge selection
-      if (mergeSelections.companies === 'current') {
-        companyRelationships = companies.map(c => ({
-          company_id: c.company_id,
-          relationship: c.relationship || 'not_set',
-          is_primary: !!c.is_primary
-        }));
-      } else if (mergeSelections.companies === 'duplicate') {
-        companyRelationships = selectedDuplicate.companies.map(c => ({
-          company_id: c.companies.company_id,
-          relationship: c.relationship || 'not_set',
-          is_primary: !!c.is_primary
-        }));
-      } else if (mergeSelections.companies === 'combine') {
-        // Start with current companies
-        companyRelationships = companies.map(c => ({
-          company_id: c.company_id,
-          relationship: c.relationship || 'not_set',
-          is_primary: !!c.is_primary
-        }));
-        
-        // Add unique companies from duplicate
-        const existingCompanyIds = new Set(companies.map(c => c.company_id));
-        for (const dupCompany of selectedDuplicate.companies) {
-          if (!existingCompanyIds.has(dupCompany.companies.company_id)) {
-            companyRelationships.push({
-              company_id: dupCompany.companies.company_id,
-              relationship: dupCompany.relationship || 'not_set',
-              is_primary: !!dupCompany.is_primary
-            });
-          }
-        }
-      }
-      
-      // 5. Delete old relationship records for target contact
-      await Promise.all([
-        supabase.from('contact_tags').delete().eq('contact_id', id),
-        supabase.from('contact_cities').delete().eq('contact_id', id),
-        supabase.from('contact_companies').delete().eq('contact_id', id)
-      ]);
-      
-      // 6. Insert new relationship records
-      const relationshipPromises = [];
-      
-      if (tagIds.length > 0) {
-        relationshipPromises.push(
-          supabase.from('contact_tags').insert(
-            tagIds.map(tagId => ({ contact_id: id, tag_id: tagId }))
-          )
-        );
-      }
-      
-      if (cityIds.length > 0) {
-        relationshipPromises.push(
-          supabase.from('contact_cities').insert(
-            cityIds.map(cityId => ({ contact_id: id, city_id: cityId }))
-          )
-        );
-      }
-      
-      if (companyRelationships.length > 0) {
-        relationshipPromises.push(
-          supabase.from('contact_companies').insert(
-            companyRelationships.map(rel => ({
-              contact_id: id,
-              company_id: rel.company_id,
-              relationship: rel.relationship,
-              is_primary: rel.is_primary
-            }))
-          )
-        );
-      }
-      
-      await Promise.all(relationshipPromises);
-      
-      // 7. Update related entities to point to the surviving contact
-      const tablesWithContactReference = [
-        'interactions',
-        'notes_contacts',
-        'contact_email_threads',
-        'attachments',
-        'keep_in_touch',
-        'deals_contacts',
-        'meeting_contacts',
-        'investments_contacts'
-      ];
-      
-      // Update references from duplicate to current contact
-      const updatePromises = tablesWithContactReference.map(table => 
-        supabase.from(table)
-          .update({ contact_id: id })
-          .eq('contact_id', selectedDuplicate.contact_id)
-      );
-      
-      await Promise.all(updatePromises);
-      
-      // 8. Delete the duplicate contact after moving all its relationships
-      const { error: deleteError } = await supabase
-        .from('contacts')
-        .delete()
-        .eq('contact_id', selectedDuplicate.contact_id);
-        
-      if (deleteError) throw deleteError;
-      
-      // 9. Commit the transaction
-      const { error: commitError } = await supabase.rpc('commit_transaction');
-      if (commitError) throw commitError;
-      
-      // Update local state with merged data
-      setContact(mergedContact);
-      setEmails(emailsToInsert.map(e => ({ ...e })));
-      setMobiles(mobilesToInsert.map(m => ({ ...m })));
-      
-      // Update tags
-      if (tagIds.length > 0) {
-        const { data: updatedTags } = await supabase
-          .from('tags')
-          .select('id, name')
-          .in('id', tagIds);
-        setTags(updatedTags || []);
-      } else {
-        setTags([]);
-      }
-      
-      // Update cities
-      if (cityIds.length > 0) {
-        const { data: updatedCities } = await supabase
-          .from('cities')
-          .select('id, name')
-          .in('id', cityIds);
-        setCities(updatedCities || []);
-      } else {
-        setCities([]);
-      }
-      
-      // Update companies
-      setCompanies(companyRelationships);
-      
-      // Clear the duplicate selection and search results
-      toast.success('Contact successfully merged and duplicate deleted');
+      // Clear the UI state
       setSelectedDuplicate(null);
       setSearchResults([]);
-      setActiveTab('basic');
       
     } catch (err) {
-      console.error('Error merging contacts:', err);
-      toast.error('Failed to merge contacts: ' + (err.message || 'Unknown error'));
-      
-      // Try to rollback the transaction
-      try {
-        await supabase.rpc('rollback_transaction');
-      } catch (e) {
-        console.error('Error rolling back transaction:', e);
-      }
+      console.error('Error initiating merge:', err);
+      toast.error('Failed to initiate merge: ' + (err.message || 'Unknown error'));
     } finally {
       setSaving(false);
     }
@@ -2452,6 +2209,49 @@ const ContactIntegrity = () => {
                       </td>
                     </tr>
                     <tr>
+                      <td>Cities</td>
+                      <td>
+                        {cities.length > 0 ? cities.length + ' cities' : '-'}
+                      </td>
+                      <td>
+                        {selectedDuplicate.cities.length > 0 ? selectedDuplicate.cities.length + ' cities' : '-'}
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <MergeOption>
+                            <MergeRadio
+                              type="radio"
+                              name="merge_cities"
+                              value="current"
+                              checked={mergeSelections.cities === 'current'}
+                              onChange={() => handleMergeSelectionChange('cities', 'current')}
+                            />
+                            <span>Current</span>
+                          </MergeOption>
+                          <MergeOption>
+                            <MergeRadio
+                              type="radio"
+                              name="merge_cities"
+                              value="duplicate"
+                              checked={mergeSelections.cities === 'duplicate'}
+                              onChange={() => handleMergeSelectionChange('cities', 'duplicate')}
+                            />
+                            <span>Duplicate</span>
+                          </MergeOption>
+                          <MergeOption>
+                            <MergeRadio
+                              type="radio"
+                              name="merge_cities"
+                              value="combine"
+                              checked={mergeSelections.cities === 'combine'}
+                              onChange={() => handleMergeSelectionChange('cities', 'combine')}
+                            />
+                            <span>Combine</span>
+                          </MergeOption>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
                       <td>Companies</td>
                       <td>
                         {companies.length > 0 ? companies.length + ' companies' : '-'}
@@ -2490,6 +2290,93 @@ const ContactIntegrity = () => {
                               onChange={() => handleMergeSelectionChange('companies', 'combine')}
                             />
                             <span>Combine</span>
+                          </MergeOption>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>LinkedIn</td>
+                      <td>{contact.linkedin || '-'}</td>
+                      <td>{selectedDuplicate.linkedin || '-'}</td>
+                      <td>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <MergeOption>
+                            <MergeRadio
+                              type="radio"
+                              name="merge_linkedin"
+                              value="current"
+                              checked={mergeSelections.linkedin === 'current'}
+                              onChange={() => handleMergeSelectionChange('linkedin', 'current')}
+                            />
+                            <span>Current</span>
+                          </MergeOption>
+                          <MergeOption>
+                            <MergeRadio
+                              type="radio"
+                              name="merge_linkedin"
+                              value="duplicate"
+                              checked={mergeSelections.linkedin === 'duplicate'}
+                              onChange={() => handleMergeSelectionChange('linkedin', 'duplicate')}
+                            />
+                            <span>Duplicate</span>
+                          </MergeOption>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>Score</td>
+                      <td>{contact.score || '-'}</td>
+                      <td>{selectedDuplicate.score || '-'}</td>
+                      <td>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <MergeOption>
+                            <MergeRadio
+                              type="radio"
+                              name="merge_score"
+                              value="current"
+                              checked={mergeSelections.score === 'current'}
+                              onChange={() => handleMergeSelectionChange('score', 'current')}
+                            />
+                            <span>Current</span>
+                          </MergeOption>
+                          <MergeOption>
+                            <MergeRadio
+                              type="radio"
+                              name="merge_score"
+                              value="duplicate"
+                              checked={mergeSelections.score === 'duplicate'}
+                              onChange={() => handleMergeSelectionChange('score', 'duplicate')}
+                            />
+                            <span>Duplicate</span>
+                          </MergeOption>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>Keep In Touch Frequency</td>
+                      <td>{contact.keep_in_touch_frequency || '-'}</td>
+                      <td>{selectedDuplicate.keep_in_touch_frequency || '-'}</td>
+                      <td>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <MergeOption>
+                            <MergeRadio
+                              type="radio"
+                              name="merge_keep_in_touch_frequency"
+                              value="current"
+                              checked={mergeSelections.keep_in_touch_frequency === 'current'}
+                              onChange={() => handleMergeSelectionChange('keep_in_touch_frequency', 'current')}
+                            />
+                            <span>Current</span>
+                          </MergeOption>
+                          <MergeOption>
+                            <MergeRadio
+                              type="radio"
+                              name="merge_keep_in_touch_frequency"
+                              value="duplicate"
+                              checked={mergeSelections.keep_in_touch_frequency === 'duplicate'}
+                              onChange={() => handleMergeSelectionChange('keep_in_touch_frequency', 'duplicate')}
+                            />
+                            <span>Duplicate</span>
                           </MergeOption>
                         </div>
                       </td>
