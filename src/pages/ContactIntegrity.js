@@ -544,7 +544,6 @@ const ContactIntegrity = () => {
   
   // Remove mobile row
   const removeMobile = (index) => {
-    if (mobiles.length <= 1) return;
     setMobiles(mobiles.filter((_, i) => i !== index));
   };
   
@@ -1463,8 +1462,8 @@ const ContactIntegrity = () => {
     }
   };
   
-  // Save connections (emails, mobiles, tags, cities, companies)
-  const saveConnections = async () => {
+  // Save just emails
+  const saveEmails = async () => {
     if (!id) {
       toast.error('Please save basic information first');
       setActiveTab('basic');
@@ -1474,11 +1473,6 @@ const ContactIntegrity = () => {
     setSaving(true);
     
     try {
-      // Start a transaction
-      const { error: txError } = await supabase.rpc('begin_transaction');
-      if (txError) throw txError;
-      
-      // Update emails
       // Delete existing email records
       const { error: deleteEmailsError } = await supabase
         .from('contact_emails')
@@ -1502,7 +1496,26 @@ const ContactIntegrity = () => {
         if (insertEmailsError) throw insertEmailsError;
       }
       
-      // Update mobiles
+      toast.success('Email addresses updated successfully');
+    } catch (err) {
+      console.error('Error saving emails:', err);
+      toast.error('Failed to update email addresses');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Save just mobiles
+  const saveMobiles = async () => {
+    if (!id) {
+      toast.error('Please save basic information first');
+      setActiveTab('basic');
+      return;
+    }
+    
+    setSaving(true);
+    
+    try {
       // Delete existing mobile records
       const { error: deleteMobilesError } = await supabase
         .from('contact_mobiles')
@@ -1526,7 +1539,26 @@ const ContactIntegrity = () => {
         if (insertMobilesError) throw insertMobilesError;
       }
       
-      // Update tags
+      toast.success('Mobile numbers updated successfully');
+    } catch (err) {
+      console.error('Error saving mobiles:', err);
+      toast.error('Failed to update mobile numbers');
+    } finally {
+      setSaving(false);
+    }
+  };
+  
+  // Save just tags
+  const saveTags = async () => {
+    if (!id) {
+      toast.error('Please save basic information first');
+      setActiveTab('basic');
+      return;
+    }
+    
+    setSaving(true);
+    
+    try {
       // Delete existing tag associations
       const { error: deleteTagsError } = await supabase
         .from('contact_tags')
@@ -1547,7 +1579,26 @@ const ContactIntegrity = () => {
         if (insertTagsError) throw insertTagsError;
       }
       
-      // Update cities
+      toast.success('Tags updated successfully');
+    } catch (err) {
+      console.error('Error saving tags:', err);
+      toast.error('Failed to update tags');
+    } finally {
+      setSaving(false);
+    }
+  };
+  
+  // Save just cities
+  const saveCities = async () => {
+    if (!id) {
+      toast.error('Please save basic information first');
+      setActiveTab('basic');
+      return;
+    }
+    
+    setSaving(true);
+    
+    try {
       // Delete existing city associations
       const { error: deleteCitiesError } = await supabase
         .from('contact_cities')
@@ -1568,7 +1619,26 @@ const ContactIntegrity = () => {
         if (insertCitiesError) throw insertCitiesError;
       }
       
-      // Update companies
+      toast.success('Cities updated successfully');
+    } catch (err) {
+      console.error('Error saving cities:', err);
+      toast.error('Failed to update cities');
+    } finally {
+      setSaving(false);
+    }
+  };
+  
+  // Save just companies
+  const saveCompanies = async () => {
+    if (!id) {
+      toast.error('Please save basic information first');
+      setActiveTab('basic');
+      return;
+    }
+    
+    setSaving(true);
+    
+    try {
       // Delete existing company associations
       const { error: deleteCompaniesError } = await supabase
         .from('contact_companies')
@@ -1592,22 +1662,10 @@ const ContactIntegrity = () => {
         if (insertCompaniesError) throw insertCompaniesError;
       }
       
-      // Commit the transaction
-      const { error: commitError } = await supabase.rpc('commit_transaction');
-      if (commitError) throw commitError;
-      
-      toast.success('Contact connections updated successfully');
-      
+      toast.success('Companies updated successfully');
     } catch (err) {
-      console.error('Error saving connections:', err);
-      toast.error('Failed to update contact connections');
-      
-      // Try to rollback the transaction
-      try {
-        await supabase.rpc('rollback_transaction');
-      } catch (e) {
-        console.error('Error rolling back transaction:', e);
-      }
+      console.error('Error saving companies:', err);
+      toast.error('Failed to update companies');
     } finally {
       setSaving(false);
     }
@@ -1855,9 +1913,14 @@ const ContactIntegrity = () => {
                 </ItemRow>
               ))}
               
-              <ActionButton onClick={addEmail} style={{ marginTop: '8px' }}>
-                <FiPlus /> Add Email
-              </ActionButton>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
+                <ActionButton onClick={addEmail}>
+                  <FiPlus /> Add Email
+                </ActionButton>
+                <ActionButton onClick={() => saveEmails()} disabled={saving || !id}>
+                  <FiSave /> {saving ? 'Saving...' : 'Save Emails'}
+                </ActionButton>
+              </div>
             </MultipleItemContainer>
           </Card>
           
@@ -1906,9 +1969,14 @@ const ContactIntegrity = () => {
                 </ItemRow>
               ))}
               
-              <ActionButton onClick={addMobile} style={{ marginTop: '8px' }}>
-                <FiPlus /> Add Mobile
-              </ActionButton>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
+                <ActionButton onClick={addMobile}>
+                  <FiPlus /> Add Mobile
+                </ActionButton>
+                <ActionButton onClick={() => saveMobiles()} disabled={saving || !id}>
+                  <FiSave /> {saving ? 'Saving...' : 'Save Mobiles'}
+                </ActionButton>
+              </div>
             </MultipleItemContainer>
           </Card>
           
@@ -1952,12 +2020,14 @@ const ContactIntegrity = () => {
                 </ItemRow>
               ))}
               
-              <ActionButton 
-                onClick={() => setTags([...tags, ''])} 
-                style={{ marginTop: '8px' }}
-              >
-                <FiPlus /> Add Tag
-              </ActionButton>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
+                <ActionButton onClick={() => setTags([...tags, ''])}>
+                  <FiPlus /> Add Tag
+                </ActionButton>
+                <ActionButton onClick={() => saveTags()} disabled={saving || !id}>
+                  <FiSave /> {saving ? 'Saving...' : 'Save Tags'}
+                </ActionButton>
+              </div>
             </MultipleItemContainer>
           </Card>
           
@@ -2001,12 +2071,14 @@ const ContactIntegrity = () => {
                 </ItemRow>
               ))}
               
-              <ActionButton 
-                onClick={() => setCities([...cities, ''])} 
-                style={{ marginTop: '8px' }}
-              >
-                <FiPlus /> Add City
-              </ActionButton>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
+                <ActionButton onClick={() => setCities([...cities, ''])}>
+                  <FiPlus /> Add City
+                </ActionButton>
+                <ActionButton onClick={() => saveCities()} disabled={saving || !id}>
+                  <FiSave /> {saving ? 'Saving...' : 'Save Cities'}
+                </ActionButton>
+              </div>
             </MultipleItemContainer>
           </Card>
           
@@ -2066,17 +2138,16 @@ const ContactIntegrity = () => {
                 </ItemRow>
               ))}
               
-              <ActionButton onClick={addCompany} style={{ marginTop: '8px' }}>
-                <FiPlus /> Add Company
-              </ActionButton>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
+                <ActionButton onClick={addCompany}>
+                  <FiPlus /> Add Company
+                </ActionButton>
+                <ActionButton onClick={() => saveCompanies()} disabled={saving || !id}>
+                  <FiSave /> {saving ? 'Saving...' : 'Save Companies'}
+                </ActionButton>
+              </div>
             </MultipleItemContainer>
           </Card>
-          
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
-            <ActionButton onClick={saveConnections} disabled={saving}>
-              <FiSave /> {saving ? 'Saving...' : 'Save Connections'}
-            </ActionButton>
-          </div>
         </TabContent>
         
         <TabContent active={activeTab === 'duplicates'}>
