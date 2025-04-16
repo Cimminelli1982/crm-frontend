@@ -10,6 +10,10 @@ const Container = styled.div`
   padding: 20px 40px 20px 20px;
   height: calc(100vh - 60px);
   width: 100%;
+  
+  .action-cell-no-click {
+    z-index: 5;
+  }
 `;
 
 const ErrorText = styled.div`
@@ -348,45 +352,118 @@ const TooltipCellRenderer = (props) => {
   );
 };
 
-// Cell renderer for action buttons
+// Cell renderer for action buttons with improved event handling
 const ActionCellRenderer = (props) => {
-  const handleSkip = () => {
-    if (props.onSkip) {
-      props.onSkip(props.data);
-    }
-  };
+  // Create refs to store references to the buttons
+  const skipButtonRef = React.useRef(null);
+  const addButtonRef = React.useRef(null);
   
-  const handleAddToCRM = () => {
-    if (props.onAddToCRM) {
-      props.onAddToCRM(props.data);
-    }
-  };
+  React.useEffect(() => {
+    // Get the buttons from refs after render
+    const skipButton = skipButtonRef.current;
+    const addButton = addButtonRef.current;
+    
+    if (!skipButton || !addButton) return;
+    
+    // Function to handle skip button click with complete event isolation
+    const skipClickHandler = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      
+      // Delay the actual action just to be sure all event bubbling is done
+      setTimeout(() => {
+        if (props.onSkip) {
+          props.onSkip(props.data);
+        }
+      }, 10);
+      
+      return false;
+    };
+    
+    // Function to handle add to CRM button click with complete event isolation
+    const addClickHandler = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      
+      // Delay the actual action just to be sure all event bubbling is done
+      setTimeout(() => {
+        if (props.onAddToCRM) {
+          props.onAddToCRM(props.data);
+        }
+      }, 10);
+      
+      return false;
+    };
+    
+    // Add the click handlers to both buttons
+    skipButton.addEventListener('click', skipClickHandler, true);
+    addButton.addEventListener('click', addClickHandler, true);
+    
+    // Cleanup - remove handlers when component unmounts
+    return () => {
+      skipButton.removeEventListener('click', skipClickHandler, true);
+      addButton.removeEventListener('click', addClickHandler, true);
+    };
+  }, [props]);
   
   return (
-    <div style={{ 
-      display: 'flex', 
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingTop: '8px',
-      paddingBottom: '4px',
-      height: '100%'
-    }}>
-      <ActionButton 
-        onClick={handleSkip} 
-        color="#333" 
-        textColor="#ff5555" 
-        borderColor="#ff5555"
+    <div
+      className="action-buttons-container"
+      style={{ 
+        display: 'flex', 
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingTop: '4px',
+        paddingBottom: '0px',
+        height: '100%'
+      }}
+      // This is critical - stop propagation at the container level too
+      onClick={(e) => { 
+        e.stopPropagation(); 
+        e.preventDefault();
+      }}
+    >
+      <div 
+        ref={skipButtonRef}
+        style={{
+          backgroundColor: '#333',
+          color: '#ff5555',
+          border: '1px solid #ff5555',
+          borderRadius: '4px',
+          padding: '4px 8px',
+          margin: '0 5px',
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '5px',
+          fontSize: '11px',
+          height: '22px'
+        }}
       >
-        <FiXCircle /> Skip
-      </ActionButton>
-      <ActionButton 
-        onClick={handleAddToCRM}
-        color="#333"
-        textColor="#55ff55"
-        borderColor="#55ff55"
+        <FiXCircle /> Spam
+      </div>
+      
+      <div 
+        ref={addButtonRef}
+        style={{
+          backgroundColor: '#333',
+          color: '#55ff55',
+          border: '1px solid #55ff55',
+          borderRadius: '4px',
+          padding: '4px 8px',
+          margin: '0 5px',
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '5px',
+          fontSize: '11px',
+          height: '22px'
+        }}
       >
         <FiCheckCircle /> Add to CRM
-      </ActionButton>
+      </div>
     </div>
   );
 };
@@ -503,7 +580,7 @@ const EmailModal = ({ email, onClose, onSkip, onAddToCRM }) => {
             textColor="#ff5555" 
             borderColor="#ff5555"
           >
-            <FiXCircle /> Skip
+            <FiXCircle /> Spam
           </ActionButton>
           <ActionButton 
             onClick={() => {
@@ -530,6 +607,7 @@ const EmailInbox = () => {
   const [dataLoaded, setDataLoaded] = useState(false);
   const [showGrid, setShowGrid] = useState(false);
   const [selectedEmail, setSelectedEmail] = useState(null);
+  const [confirmSpam, setConfirmSpam] = useState(null);
   const navigate = useNavigate();
   
   // Column definitions
@@ -591,16 +669,18 @@ const EmailInbox = () => {
     },
     {
       headerName: 'Actions',
+      field: 'actions',
       minWidth: 220,
       width: 220,
       cellRenderer: ActionCellRenderer,
       cellRendererParams: {
-        onSkip: handleSkipEmail,
+        onSkip: handleSpamClick,
         onAddToCRM: handleAddToCRM
       },
       sortable: false,
       filter: false,
       suppressSizeToFit: true,
+      cellClass: 'action-cell-no-click'
     }
   ], []);
   
@@ -623,18 +703,31 @@ const EmailInbox = () => {
   
   // Handle row click to show email details modal
   const handleRowClick = React.useCallback((event) => {
+    // Check if this is a click on the action buttons
+    if (event.colDef && event.colDef.headerName === 'Actions') {
+      // Skip opening the modal when clicking the actions column
+      return;
+    }
     setSelectedEmail(event.data);
   }, []);
 
-  // Handle skipping an email
-  async function handleSkipEmail(emailData) {
-    console.log('Skip email clicked:', emailData);
+  // Show spam confirmation modal
+  function handleSpamClick(emailData) {
+    console.log('Spam button clicked:', emailData);
+    setConfirmSpam(emailData);
+  }
+  
+  // Handle marking an email as spam after confirmation
+  async function handleConfirmSpam() {
+    if (!confirmSpam) return;
+    
+    const emailData = confirmSpam;
     try {
-      // Update the email record to mark it as rejected
+      // Update the email record to mark it as reject
       const { error } = await supabase
         .from('email_inbox')
         .update({ 
-          special_case: 'rejected', 
+          special_case: 'reject', 
           last_processed_at: new Date().toISOString() 
         })
         .eq('id', emailData.id);
@@ -644,9 +737,12 @@ const EmailInbox = () => {
       // Remove the email from the displayed list
       setEmails(emails.filter(email => email.id !== emailData.id));
       
-      console.log('Email marked as rejected:', emailData.id);
+      // Close the confirmation dialog
+      setConfirmSpam(null);
+      
+      console.log('Email marked as spam:', emailData.id);
     } catch (err) {
-      console.error('Error rejecting email:', err);
+      console.error('Error marking email as spam:', err);
       // You could show an error toast here
     }
   }
@@ -655,11 +751,11 @@ const EmailInbox = () => {
   async function handleAddToCRM(emailData) {
     console.log('Add to CRM clicked:', emailData);
     try {
-      // Update the email record to mark it as added to CRM
+      // Update the email record to mark it with null special_case
       const { error } = await supabase
         .from('email_inbox')
         .update({ 
-          special_case: 'added_to_crm', 
+          special_case: null, 
           last_processed_at: new Date().toISOString() 
         })
         .eq('id', emailData.id);
@@ -671,9 +767,9 @@ const EmailInbox = () => {
       
       // Here you would typically navigate to contact creation screen or similar
       // For now we'll just log it
-      console.log('Email marked as added to CRM:', emailData.id);
+      console.log('Email marked for CRM processing:', emailData.id);
     } catch (err) {
-      console.error('Error adding email to CRM:', err);
+      console.error('Error processing email for CRM:', err);
       // You could show an error toast here
     }
   }
@@ -745,9 +841,61 @@ const EmailInbox = () => {
         <EmailModal 
           email={selectedEmail}
           onClose={() => setSelectedEmail(null)}
-          onSkip={handleSkipEmail}
+          onSkip={handleSpamClick}
           onAddToCRM={handleAddToCRM}
         />
+      )}
+      
+      {/* Spam confirmation modal */}
+      {confirmSpam && (
+        <ModalOverlay onClick={() => setConfirmSpam(null)}>
+          <ModalContent 
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '400px', padding: '20px' }}
+          >
+            <ModalHeader>
+              <ModalTitle>
+                <FiXCircle style={{ marginRight: '10px', color: '#ff5555' }} /> Confirm Spam
+              </ModalTitle>
+              <ModalCloseButton onClick={() => setConfirmSpam(null)}>×</ModalCloseButton>
+            </ModalHeader>
+            
+            <ModalBody>
+              <p style={{ marginBottom: '20px' }}>
+                Are you sure you want to mark this email as spam?
+              </p>
+              <div style={{ 
+                backgroundColor: '#1a1a1a', 
+                padding: '10px', 
+                borderRadius: '4px',
+                marginBottom: '20px' 
+              }}>
+                <p><strong>From:</strong> {confirmSpam.direction?.toLowerCase() === 'sent' ? 
+                  confirmSpam.to_name : confirmSpam.from_name}</p>
+                <p><strong>Subject:</strong> {confirmSpam.subject || '(No Subject)'}</p>
+              </div>
+            </ModalBody>
+            
+            <ModalFooter>
+              <ActionButton 
+                onClick={() => setConfirmSpam(null)}
+                color="#333" 
+                textColor="#cccccc" 
+                borderColor="#555"
+              >
+                Cancel
+              </ActionButton>
+              <ActionButton 
+                onClick={handleConfirmSpam}
+                color="#333"
+                textColor="#ff5555"
+                borderColor="#ff5555"
+              >
+                <FiXCircle /> Mark as Spam
+              </ActionButton>
+            </ModalFooter>
+          </ModalContent>
+        </ModalOverlay>
       )}
       
       {loading !== false ? (
