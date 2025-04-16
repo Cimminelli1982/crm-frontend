@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { AgGridReact } from '../../ag-grid-setup';
-import { FiCheckCircle, FiXCircle, FiArrowRight, FiArrowLeft } from 'react-icons/fi';
+import { FiCheckCircle, FiXCircle, FiArrowRight, FiArrowLeft, FiMail, FiUser, FiCalendar, FiMessageSquare, FiExternalLink } from 'react-icons/fi';
 
 // Styled components
 const Container = styled.div`
@@ -133,6 +133,140 @@ const ActionButton = styled.button`
   }
 `;
 
+// Email Modal Styled Components
+const ModalOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+`;
+
+const ModalContent = styled.div`
+  background-color: #121212;
+  border-radius: 8px;
+  border: 1px solid #333;
+  width: 90%;
+  max-width: 800px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+`;
+
+const ModalHeader = styled.div`
+  padding: 15px 20px;
+  border-bottom: 1px solid #333;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+`;
+
+const ModalTitle = styled.h3`
+  color: #00ff00;
+  margin: 0;
+  font-size: 1.2rem;
+  font-family: 'Courier New', monospace;
+`;
+
+const ModalCloseButton = styled.button`
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
+  &:hover {
+    color: #fff;
+  }
+`;
+
+const ModalBody = styled.div`
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+`;
+
+const ModalFooter = styled.div`
+  padding: 15px 20px;
+  border-top: 1px solid #333;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+`;
+
+const EmailDetails = styled.div`
+  margin-bottom: 20px;
+`;
+
+const EmailInfoItem = styled.div`
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+  font-family: 'Courier New', monospace;
+`;
+
+const EmailInfoLabel = styled.div`
+  color: #999;
+  width: 120px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const EmailInfoValue = styled.div`
+  color: #eee;
+  flex: 1;
+`;
+
+const EmailMessageContainer = styled.div`
+  background-color: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 20px;
+  margin-top: 20px;
+  font-family: 'Courier New', monospace;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  color: #ddd;
+  max-height: 400px;
+  overflow-y: auto;
+`;
+
+const EmailSubject = styled.div`
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #00aaff;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #333;
+  padding-bottom: 10px;
+`;
+
+// Contact cell renderer - simplified with no link
+const ContactCellRenderer = (props) => {
+  const contactName = props.value || 'Unknown';
+  
+  return (
+    <div 
+      style={{ 
+        fontSize: '0.85rem'
+      }}
+    >
+      {contactName}
+    </div>
+  );
+};
+
 // Direction renderer to show arrow icons
 const DirectionCellRenderer = (props) => {
   if (!props.value) return null;
@@ -162,6 +296,56 @@ const DirectionCellRenderer = (props) => {
       </div>
     );
   }
+};
+
+// Custom tooltip style
+const CustomTooltip = styled.div`
+  position: absolute;
+  top: -5px;
+  left: 0;
+  transform: translateY(-100%);
+  background-color: #222;
+  color: #fff;
+  padding: 8px;
+  border-radius: 4px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  max-width: 400px;
+  word-wrap: break-word;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.1s ease, visibility 0.1s ease;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  pointer-events: none;
+`;
+
+// Cell renderer for text with hover tooltip
+const TooltipCellRenderer = (props) => {
+  const fullText = props.value || '';
+  const displayText = fullText.length > 100 ? fullText.substring(0, 100) + '...' : fullText;
+  const [isHovering, setIsHovering] = useState(false);
+  
+  return (
+    <div 
+      style={{ 
+        whiteSpace: 'nowrap', 
+        overflow: 'hidden', 
+        textOverflow: 'ellipsis',
+        position: 'relative'
+      }}
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => setIsHovering(false)}
+    >
+      {displayText}
+      <CustomTooltip style={{ 
+        opacity: isHovering ? 1 : 0, 
+        visibility: isHovering ? 'visible' : 'hidden'
+      }}>
+        {fullText}
+      </CustomTooltip>
+    </div>
+  );
 };
 
 // Cell renderer for action buttons
@@ -207,6 +391,137 @@ const ActionCellRenderer = (props) => {
   );
 };
 
+// Styled Link for Original Email
+const OriginalEmailLink = styled.a`
+  display: inline-flex;
+  align-items: center;
+  color: #00aaff;
+  text-decoration: none;
+  margin-left: auto;
+  font-size: 0.9rem;
+  gap: 5px;
+  border: 1px solid #00aaff;
+  border-radius: 4px;
+  padding: 6px 10px;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background-color: rgba(0, 170, 255, 0.1);
+    text-decoration: none;
+  }
+`;
+
+// Email Modal Component
+const EmailModal = ({ email, onClose, onSkip, onAddToCRM }) => {
+  if (!email) return null;
+  
+  // Format date for display
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Unknown';
+    const date = new Date(dateString);
+    return date.toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+  
+  // Determine contact info based on direction
+  const isSent = email.direction?.toLowerCase() === 'sent';
+  const contactName = isSent ? email.to_name : email.from_name;
+  const contactEmail = isSent ? email.to_email : email.from_email;
+  const myEmail = 'simone@cimminelli.com'; // Hardcoded as requested
+  
+  // Create the Superhuman search URL for the original email
+  const searchEmail = encodeURIComponent(contactEmail);
+  const superhuman_url = `https://mail.superhuman.com/search/${searchEmail}`;
+  
+  return (
+    <ModalOverlay onClick={onClose}>
+      <ModalContent onClick={(e) => e.stopPropagation()}>
+        <ModalHeader>
+          <ModalTitle>
+            <FiMail style={{ marginRight: '10px' }} /> Email Details
+          </ModalTitle>
+          
+          <OriginalEmailLink href={superhuman_url} target="_blank" rel="noopener noreferrer">
+            <FiExternalLink /> Original
+          </OriginalEmailLink>
+          
+          <ModalCloseButton onClick={onClose} style={{ marginLeft: '15px' }}>×</ModalCloseButton>
+        </ModalHeader>
+        
+        <ModalBody>
+          <EmailDetails>
+            <EmailInfoItem>
+              <EmailInfoLabel>
+                <FiUser /> {isSent ? 'To:' : 'From:'}
+              </EmailInfoLabel>
+              <EmailInfoValue>
+                {contactName} &lt;{contactEmail}&gt;
+              </EmailInfoValue>
+            </EmailInfoItem>
+            
+            <EmailInfoItem>
+              <EmailInfoLabel>
+                <FiUser /> {isSent ? 'From:' : 'To:'}
+              </EmailInfoLabel>
+              <EmailInfoValue>
+                Simone Cimminelli &lt;{myEmail}&gt;
+              </EmailInfoValue>
+            </EmailInfoItem>
+            
+            <EmailInfoItem>
+              <EmailInfoLabel>
+                <FiCalendar /> Date:
+              </EmailInfoLabel>
+              <EmailInfoValue>
+                {formatDate(email.message_timestamp)}
+              </EmailInfoValue>
+            </EmailInfoItem>
+          </EmailDetails>
+          
+          <EmailSubject>
+            {email.subject || '(No Subject)'}
+          </EmailSubject>
+          
+          <EmailMessageContainer>
+            <FiMessageSquare style={{ marginRight: '10px', opacity: 0.6 }} />
+            {email.message_text || '(No message content)'}
+          </EmailMessageContainer>
+        </ModalBody>
+        
+        <ModalFooter>
+          <ActionButton 
+            onClick={() => {
+              onSkip(email);
+              onClose();
+            }}
+            color="#333" 
+            textColor="#ff5555" 
+            borderColor="#ff5555"
+          >
+            <FiXCircle /> Skip
+          </ActionButton>
+          <ActionButton 
+            onClick={() => {
+              onAddToCRM(email);
+              onClose();
+            }}
+            color="#333"
+            textColor="#55ff55"
+            borderColor="#55ff55"
+          >
+            <FiCheckCircle /> Add to CRM
+          </ActionButton>
+        </ModalFooter>
+      </ModalContent>
+    </ModalOverlay>
+  );
+};
+
 const EmailInbox = () => {
   const [emails, setEmails] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -214,21 +529,18 @@ const EmailInbox = () => {
   const [gridApi, setGridApi] = useState(null);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [showGrid, setShowGrid] = useState(false);
+  const [selectedEmail, setSelectedEmail] = useState(null);
   const navigate = useNavigate();
   
   // Column definitions
   const columnDefs = useMemo(() => [
     { 
-      headerName: 'Direction', 
+      headerName: '', // Empty header for Direction
       field: 'direction',
-      minWidth: 80,
-      width: 80,
+      minWidth: 50,
+      width: 50,
       cellRenderer: DirectionCellRenderer,
-      filter: 'agSetColumnFilter',
-      filterParams: {
-        values: ['sent', 'received'],
-      },
-      floatingFilter: true,
+      filter: false,
       sortable: true,
     },
     { 
@@ -241,31 +553,26 @@ const EmailInbox = () => {
           ? params.data.to_name 
           : params.data.from_name;
       },
-      minWidth: 150,
-      filter: 'agTextColumnFilter',
-      floatingFilter: true,
+      minWidth: 100,
+      width: 120,
+      cellRenderer: ContactCellRenderer,
+      filter: false,
       sortable: true,
     },
     { 
       headerName: 'Subject', 
       field: 'subject',
       minWidth: 230,
-      filter: 'agTextColumnFilter',
-      floatingFilter: true,
+      cellRenderer: TooltipCellRenderer,
+      filter: false,
       sortable: true,
     },
     { 
       headerName: 'Message', 
       field: 'message_text',
-      valueFormatter: params => {
-        if (!params.value) return '';
-        return params.value.length > 100 
-          ? params.value.substring(0, 100) + '...' 
-          : params.value;
-      },
+      cellRenderer: TooltipCellRenderer,
       minWidth: 300,
-      filter: 'agTextColumnFilter',
-      floatingFilter: true,
+      filter: false,
       sortable: true,
     },
     { 
@@ -276,9 +583,10 @@ const EmailInbox = () => {
         const date = new Date(params.value);
         return `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear().toString().substr(-2)}`;
       },
-      minWidth: 100,
-      filter: 'agDateColumnFilter',
-      floatingFilter: true,
+      minWidth: 70,
+      width: 80,
+      cellStyle: { fontSize: '0.85rem' },
+      filter: false,
       sortable: true,
     },
     {
@@ -312,17 +620,62 @@ const EmailInbox = () => {
       params.api.sizeColumnsToFit();
     }, 0);
   }, []);
+  
+  // Handle row click to show email details modal
+  const handleRowClick = React.useCallback((event) => {
+    setSelectedEmail(event.data);
+  }, []);
 
   // Handle skipping an email
   async function handleSkipEmail(emailData) {
     console.log('Skip email clicked:', emailData);
-    // Implementation will be added later
+    try {
+      // Update the email record to mark it as skipped
+      const { error } = await supabase
+        .from('email_inbox')
+        .update({ 
+          special_case: 'skipped', 
+          last_processed_at: new Date().toISOString() 
+        })
+        .eq('id', emailData.id);
+      
+      if (error) throw error;
+      
+      // Remove the email from the displayed list
+      setEmails(emails.filter(email => email.id !== emailData.id));
+      
+      console.log('Email marked as skipped:', emailData.id);
+    } catch (err) {
+      console.error('Error skipping email:', err);
+      // You could show an error toast here
+    }
   }
   
   // Handle adding email sender to CRM
   async function handleAddToCRM(emailData) {
     console.log('Add to CRM clicked:', emailData);
-    // Implementation will be added later
+    try {
+      // Update the email record to mark it as added to CRM
+      const { error } = await supabase
+        .from('email_inbox')
+        .update({ 
+          special_case: 'added_to_crm', 
+          last_processed_at: new Date().toISOString() 
+        })
+        .eq('id', emailData.id);
+      
+      if (error) throw error;
+      
+      // Remove the email from the displayed list
+      setEmails(emails.filter(email => email.id !== emailData.id));
+      
+      // Here you would typically navigate to contact creation screen or similar
+      // For now we'll just log it
+      console.log('Email marked as added to CRM:', emailData.id);
+    } catch (err) {
+      console.error('Error adding email to CRM:', err);
+      // You could show an error toast here
+    }
   }
 
   // Fetch emails from email_inbox table
@@ -331,15 +684,16 @@ const EmailInbox = () => {
       setLoading(true);
       setError(null);
       
-      // Fetch emails from the email_inbox table
+      // Fetch emails from the email_inbox table with special_case = 'pending_approval'
       const { data, error } = await supabase
         .from('email_inbox')
         .select('*')
+        .eq('special_case', 'pending_approval')
         .order('message_timestamp', { ascending: false });
       
       if (error) throw error;
       
-      console.log(`Successfully fetched ${data.length} emails`);
+      console.log(`Successfully fetched ${data?.length || 0} emails`);
       setEmails(data || []);
       setLoading(false);
       setDataLoaded(true);
@@ -385,6 +739,16 @@ const EmailInbox = () => {
   return (
     <Container>
       {error && <ErrorText>Error: {error}</ErrorText>}
+      
+      {/* Email details modal */}
+      {selectedEmail && (
+        <EmailModal 
+          email={selectedEmail}
+          onClose={() => setSelectedEmail(null)}
+          onSkip={handleSkipEmail}
+          onAddToCRM={handleAddToCRM}
+        />
+      )}
       
       {loading !== false ? (
         <LoadingContainer>
@@ -444,6 +808,8 @@ const EmailInbox = () => {
             sortModel={[
               { colId: 'message_timestamp', sort: 'desc' }
             ]}
+            onRowClicked={handleRowClick}
+            rowStyle={{ cursor: 'pointer' }}
           />
         </div>
       )}
