@@ -280,7 +280,7 @@ const DirectionCellRenderer = (props) => {
         height: '100%',
         paddingTop: '8px' 
       }}>
-        <FiArrowRight color="#00aaff" size={18} />
+        <FiArrowLeft color="#00aaff" size={18} />
       </div>
     );
   } else {
@@ -292,7 +292,7 @@ const DirectionCellRenderer = (props) => {
         height: '100%',
         paddingTop: '8px'
       }}>
-        <FiArrowLeft color="#00ff00" size={18} />
+        <FiArrowRight color="#00ff00" size={18} />
       </div>
     );
   }
@@ -630,11 +630,11 @@ const EmailInbox = () => {
   async function handleSkipEmail(emailData) {
     console.log('Skip email clicked:', emailData);
     try {
-      // Update the email record to mark it as skipped
+      // Update the email record to mark it as rejected
       const { error } = await supabase
         .from('email_inbox')
         .update({ 
-          special_case: 'skipped', 
+          special_case: 'rejected', 
           last_processed_at: new Date().toISOString() 
         })
         .eq('id', emailData.id);
@@ -644,9 +644,9 @@ const EmailInbox = () => {
       // Remove the email from the displayed list
       setEmails(emails.filter(email => email.id !== emailData.id));
       
-      console.log('Email marked as skipped:', emailData.id);
+      console.log('Email marked as rejected:', emailData.id);
     } catch (err) {
-      console.error('Error skipping email:', err);
+      console.error('Error rejecting email:', err);
       // You could show an error toast here
     }
   }
