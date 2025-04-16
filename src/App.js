@@ -32,6 +32,7 @@ import ContactRecord from './pages/ContactRecord';
 import ContactEdit from './pages/ContactEdit';
 import ContactIntegrity from './pages/ContactIntegrity';
 import DuplicateManager from './pages/contacts/DuplicateManager';
+import ContactCrmWorkflow from './pages/contacts/ContactCrmWorkflow';
 import Companies from './pages/Companies';
 import SimpleCompanies from './pages/companies/SimpleCompanies';
 import Deals from './pages/companies/Deals';
@@ -161,6 +162,10 @@ const App = () => {
           {
             path: "contacts/integrity/:id",
             element: <ContactIntegrity />
+          },
+          {
+            path: "contacts/workflow/:id",
+            element: <ContactCrmWorkflow />
           },
           {
             path: "contacts/duplicate-manager",

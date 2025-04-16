@@ -217,6 +217,7 @@ const Main = styled.main`
   margin-left: 260px;
   transition: all 0.3s ease;
   width: calc(100% - 260px);
+  padding-left: 0;
   
   @media (max-width: 768px) {
     margin-left: 0;
@@ -306,9 +307,9 @@ const SignOutButton = styled.button`
 
 // Content container
 const ContentContainer = styled.div`
-  padding: 1.5rem;
+  padding: 0;
   max-width: 1600px;
-  margin: 0 auto;
+  margin: 0;
   background-color: #000000;
   color: white;
 `;

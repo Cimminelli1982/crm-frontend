@@ -1,4 +1,5 @@
-import React, { useState, lazy, Suspense } from 'react';
+import React, { useState, lazy, Suspense, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { FiMail, FiUsers, FiClock, FiCopy } from 'react-icons/fi';
 
@@ -101,7 +102,26 @@ const LoadingFallback = styled.div`
 `;
 
 const Inbox = () => {
-  const [activeTab, setActiveTab] = useState('email');
+  // Check for URL parameters and stored workflow contact
+  const urlParams = new URLSearchParams(window.location.search);
+  const sourceTab = urlParams.get('source');
+  const navigate = useNavigate();
+  
+  // Check session storage for workflow contact
+  const workflowContactId = sessionStorage.getItem('workflow_contact_id');
+  
+  // Set initial active tab based on source parameter
+  const [activeTab, setActiveTab] = useState(sourceTab === 'category' ? 'category' : 'email');
+  
+  // If we have a workflow contact, immediately redirect to workflow page
+  useEffect(() => {
+    if (workflowContactId) {
+      // Clear the session storage first
+      sessionStorage.removeItem('workflow_contact_id');
+      // Redirect to workflow page
+      navigate(`/contacts/workflow/${workflowContactId}`);
+    }
+  }, [workflowContactId, navigate]);
 
   // Define menu items
   const menuItems = [

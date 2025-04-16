@@ -20,6 +20,7 @@ import {
   FiCheckCircle
 } from 'react-icons/fi';
 import Modal from 'react-modal';
+import toast from 'react-hot-toast';
 
 // Styled components
 const Container = styled.div`
@@ -805,29 +806,12 @@ const ContactsInbox = () => {
     }
   };
   
-  // Handler function for Add to CRM button
-  const handleAddToCRM = async (contactData) => {
-    try {
-      setLoading(true);
-      const { error } = await supabase
-        .from('contacts')
-        .update({ category: null })
-        .eq('contact_id', contactData.contact_id);
-        
-      if (error) throw error;
-      
-      // Remove the contact from the list
-      setContacts(prevContacts => 
-        prevContacts.filter(contact => contact.contact_id !== contactData.contact_id)
-      );
-      
-      setLoading(false);
-      console.log('Contact added to CRM:', contactData.contact_id);
-    } catch (err) {
-      console.error('Error adding contact to CRM:', err);
-      setError(`Failed to add contact to CRM: ${err.message || 'Unknown error'}`);
-      setLoading(false);
-    }
+  // Handler function for Add to CRM button - redirect to the workflow page
+  const handleAddToCRM = (contactData) => {
+    // Navigate to the workflow page for this contact through the inbox page
+    navigate(`/inbox?source=category`);
+    // Store the contact_id to process in session storage
+    sessionStorage.setItem('workflow_contact_id', contactData.contact_id);
   };
   
   // Handle delete confirmation
