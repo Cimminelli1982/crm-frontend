@@ -7,6 +7,7 @@ import {
   faBuilding,
   faHandshake,
   faCalendarAlt,
+  faInbox,
   faChevronDown,
   faChevronRight
 } from '@fortawesome/free-solid-svg-icons';
@@ -210,8 +211,9 @@ const Sidebar = ({ user, onSignOut }) => {
       icon: faAddressBook,
       path: '/contacts',
       subItems: [
-        { name: 'Last Interactions', path: '/contacts/last-interactions' },
+        { name: 'Recent Interactions', path: '/contacts/last-interactions' },
         { name: 'Keep in Touch', path: '/contacts/keep-in-touch' },
+        { name: 'Keep in Touch Inbox', path: '/contacts/keep-in-touch-inbox' },
         { name: 'Introductions', path: '/contacts/introductions' },
         { name: 'Duplicate Manager', path: '/contacts/duplicate-manager' }
       ]
@@ -232,6 +234,13 @@ const Sidebar = ({ user, onSignOut }) => {
       name: 'Planner',
       icon: faCalendarAlt,
       path: '/planner',
+      subItems: []
+    },
+    {
+      id: 'inbox',
+      name: 'Processing',
+      icon: faInbox,
+      path: '/inbox',
       subItems: []
     },
     {

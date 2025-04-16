@@ -12,6 +12,7 @@ import Login from './pages/Login';
 import Contacts from './pages/Contacts';
 import Dashboard from './pages/Dashboard';
 import NewContacts from './pages/NewContacts';
+import Inbox from './pages/Inbox';
 import { supabase } from './lib/supabaseClient';
 import Layout from './components/layout/Layout';
 import { Toaster } from 'react-hot-toast';
@@ -25,6 +26,7 @@ import SimpleContacts from './pages/contacts/SimpleContacts';
 import SimpleKeepInTouch from './pages/contacts/SimpleKeepInTouch';
 import EmailInbox from './pages/contacts/EmailInbox';
 import ContactsInbox from './pages/contacts/ContactsInbox';
+import KeepInTouchInbox from './pages/contacts/KeepInTouchInbox';
 import ContactRecord from './pages/ContactRecord';
 import ContactEdit from './pages/ContactEdit';
 import ContactIntegrity from './pages/ContactIntegrity';
@@ -159,6 +161,10 @@ const App = () => {
             path: "contacts/duplicate-manager",
             element: <DuplicateManager />
           },
+          {
+            path: "contacts/keep-in-touch-inbox",
+            element: <KeepInTouchInbox />
+          },
           // Companies section
           {
             path: "companies",
@@ -180,6 +186,10 @@ const App = () => {
           {
             path: "planner",
             element: <Planner />
+          },
+          {
+            path: "inbox",
+            element: <Inbox />
           },
           // Admin routes
           {

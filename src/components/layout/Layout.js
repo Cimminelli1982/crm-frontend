@@ -6,7 +6,8 @@ import {
   FiUsers, FiBriefcase, FiLink, FiCalendar, 
   FiLogOut, FiMenu, FiX, FiClock, FiPlusCircle, 
   FiHeart, FiAlertCircle, FiDollarSign, FiTrendingUp, 
-  FiUserPlus, FiChevronDown, FiChevronRight, FiList 
+  FiUserPlus, FiChevronDown, FiChevronRight, FiList,
+  FiInbox
 } from 'react-icons/fi';
 
 // Main layout container
@@ -369,6 +370,8 @@ const Layout = ({ children }) => {
     
     if (path.includes('/planner')) return 'Planner';
     
+    if (path.includes('/inbox')) return 'Inbox';
+    
     return 'CRM Dashboard';
   };
   
@@ -398,7 +401,7 @@ const Layout = ({ children }) => {
               onClick={() => toggleMenu('v1')}
             >
               <MenuItemLink to="/">
-                CRM v1
+                Contacts
               </MenuItemLink>
               {expandedMenus.v1 ? "[open]" : "[+]"}
             </MenuItemHeader>
@@ -408,7 +411,7 @@ const Layout = ({ children }) => {
                 to="/contacts/simple" 
                 $active={isPathActive('/contacts/simple')}
               >
-                Last Interactions
+                Recent Interactions
               </SubMenuItem>
               
               <SubMenuItem 
@@ -417,27 +420,7 @@ const Layout = ({ children }) => {
               >
                 Keep in Touch
               </SubMenuItem>
-
-              <SubMenuItem 
-                to="/contacts/inbox" 
-                $active={isPathActive('/contacts/inbox')}
-              >
-                Contacts Inbox
-              </SubMenuItem>
               
-              <SubMenuItem 
-                to="/contacts/email-inbox" 
-                $active={isPathActive('/contacts/email-inbox')}
-              >
-                Email Inbox
-              </SubMenuItem>
-              
-              <SubMenuItem 
-                to="/contacts/duplicate-manager" 
-                $active={isPathActive('/contacts/duplicate-manager')}
-              >
-                Duplicate Manager
-              </SubMenuItem>
               
               <SubMenuItem 
                 to="/companies/deals" 
@@ -452,6 +435,13 @@ const Layout = ({ children }) => {
                          !isPathActive('/companies/startups') && !isPathActive('/companies/investors')}
               >
                 Companies
+              </SubMenuItem>
+              
+              <SubMenuItem 
+                to="/inbox" 
+                $active={isPathActive('/inbox')}
+              >
+                Processing
               </SubMenuItem>
             </SubMenu>
           </MenuItem>

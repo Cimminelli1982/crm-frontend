@@ -3,19 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { AgGridReact } from '../../ag-grid-setup';
-import { FiCheckCircle, FiXCircle } from 'react-icons/fi';
+import { FiCheckCircle, FiXCircle, FiArrowRight, FiArrowLeft } from 'react-icons/fi';
 
 // Styled components
 const Container = styled.div`
-  padding: 20px;
-  height: calc(100vh - 120px);
+  padding: 20px 40px 20px 20px;
+  height: calc(100vh - 60px);
   width: 100%;
-`;
-
-const Title = styled.h1`
-  color: #00ff00;
-  margin-bottom: 20px;
-  font-family: 'Courier New', monospace;
 `;
 
 const ErrorText = styled.div`
@@ -139,6 +133,37 @@ const ActionButton = styled.button`
   }
 `;
 
+// Direction renderer to show arrow icons
+const DirectionCellRenderer = (props) => {
+  if (!props.value) return null;
+  
+  if (props.value.toLowerCase() === 'sent') {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        height: '100%',
+        paddingTop: '8px' 
+      }}>
+        <FiArrowRight color="#00aaff" size={18} />
+      </div>
+    );
+  } else {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        height: '100%',
+        paddingTop: '8px'
+      }}>
+        <FiArrowLeft color="#00ff00" size={18} />
+      </div>
+    );
+  }
+};
+
 // Cell renderer for action buttons
 const ActionCellRenderer = (props) => {
   const handleSkip = () => {
@@ -182,7 +207,6 @@ const ActionCellRenderer = (props) => {
   );
 };
 
-
 const EmailInbox = () => {
   const [emails, setEmails] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -195,17 +219,29 @@ const EmailInbox = () => {
   // Column definitions
   const columnDefs = useMemo(() => [
     { 
-      headerName: 'From Name', 
-      field: 'from_name',
-      minWidth: 150,
-      filter: 'agTextColumnFilter',
+      headerName: 'Direction', 
+      field: 'direction',
+      minWidth: 80,
+      width: 80,
+      cellRenderer: DirectionCellRenderer,
+      filter: 'agSetColumnFilter',
+      filterParams: {
+        values: ['sent', 'received'],
+      },
       floatingFilter: true,
       sortable: true,
     },
     { 
-      headerName: 'From Email', 
-      field: 'from_email',
-      minWidth: 170,
+      headerName: 'Contact', 
+      field: 'contact_name',
+      valueGetter: params => {
+        if (!params.data) return '';
+        // If direction is sent, use to_name, otherwise use from_name
+        return params.data.direction?.toLowerCase() === 'sent' 
+          ? params.data.to_name 
+          : params.data.from_name;
+      },
+      minWidth: 150,
       filter: 'agTextColumnFilter',
       floatingFilter: true,
       sortable: true,
@@ -213,6 +249,20 @@ const EmailInbox = () => {
     { 
       headerName: 'Subject', 
       field: 'subject',
+      minWidth: 230,
+      filter: 'agTextColumnFilter',
+      floatingFilter: true,
+      sortable: true,
+    },
+    { 
+      headerName: 'Message', 
+      field: 'message_text',
+      valueFormatter: params => {
+        if (!params.value) return '';
+        return params.value.length > 100 
+          ? params.value.substring(0, 100) + '...' 
+          : params.value;
+      },
       minWidth: 300,
       filter: 'agTextColumnFilter',
       floatingFilter: true,
@@ -223,9 +273,10 @@ const EmailInbox = () => {
       field: 'message_timestamp',
       valueFormatter: (params) => {
         if (!params.value) return '-';
-        return new Date(params.value).toLocaleDateString();
+        const date = new Date(params.value);
+        return `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear().toString().substr(-2)}`;
       },
-      minWidth: 120,
+      minWidth: 100,
       filter: 'agDateColumnFilter',
       floatingFilter: true,
       sortable: true,
@@ -248,6 +299,7 @@ const EmailInbox = () => {
   // Default column properties
   const defaultColDef = useMemo(() => ({
     resizable: true,
+    sortable: true
   }), []);
 
   // Grid ready event handler
@@ -263,110 +315,31 @@ const EmailInbox = () => {
 
   // Handle skipping an email
   async function handleSkipEmail(emailData) {
-    try {
-      setLoading(true);
-      
-      // Add record to emails_spam table
-      const insertResult = await supabase
-        .from('emails_spam')
-        .insert([{ 
-          email: emailData.from_email,
-          counter: 1
-        }]);
-      
-      if (insertResult.error) {
-        console.error('Error inserting to emails_spam:', insertResult.error);
-        throw new Error(insertResult.error.message || 'Failed to add to spam list');
-      }
-      
-      // Delete the email record from email_inbox
-      const deleteResult = await supabase
-        .from('email_inbox')
-        .delete()
-        .eq('id', emailData.id);
-      
-      if (deleteResult.error) {
-        console.error('Error deleting from email_inbox:', deleteResult.error);
-        throw new Error(deleteResult.error.message || 'Failed to delete email');
-      }
-      
-      // Remove the email from the local state
-      setEmails(prevEmails => prevEmails.filter(email => email.id !== emailData.id));
-      
-      console.log(`Email from ${emailData.from_email} added to emails_spam and removed`);
-      setLoading(false);
-    } catch (err) {
-      console.error('Error skipping email:', err);
-      setError(`Failed to skip email: ${err.message || 'Unknown error'}`);
-      setLoading(false);
-    }
+    console.log('Skip email clicked:', emailData);
+    // Implementation will be added later
   }
   
   // Handle adding email sender to CRM
   async function handleAddToCRM(emailData) {
-    try {
-      setLoading(true);
-      
-      // Update the email record to set special_case to null and start_trigger to true
-      const { error: updateError } = await supabase
-        .from('email_inbox')
-        .update({ 
-          special_case: null,
-          start_trigger: true
-        })
-        .eq('id', emailData.id);
-      
-      if (updateError) throw updateError;
-      
-      // Remove the email from the local state
-      setEmails(prevEmails => prevEmails.filter(email => email.id !== emailData.id));
-      
-      console.log(`Email marked for processing: ${emailData.from_email}`);
-      setLoading(false);
-    } catch (err) {
-      console.error('Error marking email for processing:', err);
-      setError(`Failed to process email: ${err.message}`);
-      setLoading(false);
-    }
+    console.log('Add to CRM clicked:', emailData);
+    // Implementation will be added later
   }
 
-  // Fetch emails from email_inbox table with special_case = 'pending_approval'
+  // Fetch emails from email_inbox table
   const fetchEmails = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      // Helper function to retry failed Supabase requests
-      const retrySupabaseRequest = async (request, maxRetries = 3, delay = 1000) => {
-        let lastError;
-        for (let attempt = 0; attempt < maxRetries; attempt++) {
-          try {
-            return await request();
-          } catch (err) {
-            console.log(`Attempt ${attempt + 1} failed, retrying in ${delay}ms...`, err);
-            lastError = err;
-            // Wait before retrying
-            await new Promise(resolve => setTimeout(resolve, delay));
-            // Increase delay for next attempt (exponential backoff)
-            delay *= 1.5;
-          }
-        }
-        // If we get here, all retries failed
-        throw lastError;
-      };
-      
       // Fetch emails from the email_inbox table
-      const { data, error } = await retrySupabaseRequest(async () => {
-        return supabase
-          .from('email_inbox')
-          .select('*')
-          .eq('special_case', 'pending_approval')
-          .order('message_timestamp', { ascending: false });
-      });
+      const { data, error } = await supabase
+        .from('email_inbox')
+        .select('*')
+        .order('message_timestamp', { ascending: false });
       
       if (error) throw error;
       
-      console.log(`Successfully fetched ${data.length} pending approval emails`);
+      console.log(`Successfully fetched ${data.length} emails`);
       setEmails(data || []);
       setLoading(false);
       setDataLoaded(true);
@@ -411,8 +384,6 @@ const EmailInbox = () => {
 
   return (
     <Container>
-      <Title>Email Inbox ({emails.length})</Title>
-      
       {error && <ErrorText>Error: {error}</ErrorText>}
       
       {loading !== false ? (
@@ -439,14 +410,14 @@ const EmailInbox = () => {
           background: '#121212',
           borderRadius: '8px'
         }}>
-          No pending emails found. All emails have been processed.
+          No emails found. The inbox is empty.
         </div>
       ) : (
         <div 
           className="ag-theme-alpine" 
           style={{ 
             height: 'calc(100% - 60px)', 
-            width: '100%',
+            width: 'calc(100% - 20px)',
             opacity: showGrid ? 1 : 0,
             transition: 'opacity 0.5s ease-in-out',
             '--ag-background-color': '#121212',
@@ -469,6 +440,10 @@ const EmailInbox = () => {
             paginationPageSize={50}
             suppressCellFocus={true}
             enableCellTextSelection={true}
+            sortingOrder={['desc', 'asc', null]}
+            sortModel={[
+              { colId: 'message_timestamp', sort: 'desc' }
+            ]}
           />
         </div>
       )}

@@ -8,7 +8,7 @@ import { FiAlertTriangle, FiRefreshCw, FiExternalLink } from 'react-icons/fi';
 
 // Styled components
 const Container = styled.div`
-  padding: 20px;
+  padding: 20px 40px 20px 20px;
   max-width: 1400px;
   margin: 0 auto;
 `;
@@ -183,7 +183,6 @@ const DuplicateManager = () => {
   return (
     <Container>
       <Header>
-        <Title>Duplicate Contact Manager</Title>
         <ActionButton onClick={loadDuplicates}>
           <FiRefreshCw /> Refresh
         </ActionButton>

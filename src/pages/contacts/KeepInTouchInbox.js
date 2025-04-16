@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
@@ -27,15 +28,33 @@ const Container = styled.div`
   width: 100%;
   
   .clickable-cell {
+    cursor: default;
+  }
+  
+  .name-cell-clickable {
     cursor: pointer;
   }
   
   .ag-row {
-    cursor: pointer;
+    cursor: default;
   }
   
   .action-cell-no-click {
     z-index: 5;
+    overflow: visible !important;
+  }
+  
+  .ag-cell {
+    overflow: visible;
+  }
+  
+  .frequency-dropdown-container {
+    position: relative;
+    z-index: 1000;
+  }
+  
+  .frequency-dropdown-menu {
+    z-index: 9999;
   }
 `;
 
@@ -384,92 +403,223 @@ const CancelButton = styled.button`
 `;
 
 
-// Cell renderer for action buttons with improved event handling
-const ActionCellRenderer = (props) => {
-  // Create a ref to store a reference to the button
-  const buttonRef = React.useRef(null);
-  
+// Cell renderer for frequency dropdown with improved event handling
+// Separate dropdown component that renders at the document level
+const FrequencyDropdown = ({ 
+  isOpen, 
+  position, 
+  options, 
+  onSelect, 
+  onClose 
+}) => {
+  // Handle click outside
   React.useEffect(() => {
-    // Get the button from the ref after render
-    const button = buttonRef.current;
-    if (!button) return;
+    if (!isOpen) return;
     
-    // Function to completely halt row click events when skip is clicked
-    const clickHandler = (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      
-      // Delay the actual action just to be sure all event bubbling is done
+    const handleClickOutside = (e) => {
+      // Add a small delay before closing to ensure click events are processed
       setTimeout(() => {
-        if (props.onSkip) {
-          props.onSkip(props.data);
-        }
-      }, 10);
-      
-      return false;
+        onClose();
+      }, 100);
     };
     
-    // Add the click handler
-    button.addEventListener('click', clickHandler, true);
-    
-    // Cleanup - remove the handler when component unmounts
+    // Use mouseup instead of mousedown to allow selecting options
+    document.addEventListener('mouseup', handleClickOutside);
     return () => {
-      button.removeEventListener('click', clickHandler, true);
+      document.removeEventListener('mouseup', handleClickOutside);
     };
-  }, [props]);
+  }, [isOpen, onClose]);
   
-  return (
-    <div
-      className="skip-button-container"
-      style={{ 
-        display: 'flex', 
-        justifyContent: 'center',
-        alignItems: 'center',
-        height: '100%',
-        width: '100%',
-        padding: '8px 0 0 0',
-        margin: 0,
-        boxSizing: 'border-box'
-      }}
-      // This is critical - stop propagation at the containing div level too
-      onClick={(e) => { 
-        e.stopPropagation(); 
+  if (!isOpen) return null;
+  
+  // Calculate position
+  const style = {
+    position: 'fixed',
+    top: `${position.top}px`,
+    left: `${position.left}px`,
+    backgroundColor: '#222',
+    border: '1px solid #00ff00',
+    borderRadius: '4px',
+    width: '180px',
+    zIndex: 99999,
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.5)',
+    maxHeight: '300px',
+    overflowY: 'auto'
+  };
+  
+  return ReactDOM.createPortal(
+    <div 
+      className="frequency-dropdown-menu"
+      style={style}
+      onMouseDown={(e) => {
+        e.stopPropagation();
         e.preventDefault();
+        e.nativeEvent.stopImmediatePropagation();
+        return false;
+      }}
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        e.nativeEvent.stopImmediatePropagation();
+        return false;
       }}
     >
-      <div 
-        ref={buttonRef}
-        style={{
-          backgroundColor: '#222',
-          color: '#ff5555',
-          border: '1px solid #ff5555',
-          padding: '4px 8px',
-          borderRadius: '4px',
-          fontSize: '0.75rem',
-          display: 'inline-flex',
-          alignItems: 'center',
+      {options.map((option) => (
+        <div 
+          key={option}
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            // Use a small timeout to ensure the event is processed
+            setTimeout(() => {
+              onSelect(option);
+            }, 50);
+          }}
+          style={{
+            padding: '8px 12px',
+            cursor: 'pointer',
+            borderBottom: '1px solid #333',
+            transition: 'background-color 0.2s',
+            color: '#e0e0e0',
+            fontSize: '0.8rem',
+            textAlign: 'left'
+          }}
+          onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#333'}
+          onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#222'}
+        >
+          {option}
+        </div>
+      ))}
+    </div>,
+    document.body
+  );
+};
+
+const FrequencyDropdownRenderer = (props) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+  const [selectedFrequency, setSelectedFrequency] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const buttonRef = React.useRef(null);
+  
+  // Frequency options
+  const frequencies = [
+    "Weekly",
+    "Monthly",
+    "Quarterly",
+    "Twice per Year",
+    "Once per Year",
+    "Do not keep in touch",
+    "Not Set"
+  ];
+  
+  // Handle button click to open dropdown
+  const handleButtonClick = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    e.nativeEvent.stopImmediatePropagation();
+    
+    if (isLoading) return;
+    
+    // Calculate position for dropdown
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setPosition({
+        top: rect.bottom + window.scrollY,
+        left: rect.left + window.scrollX
+      });
+    }
+    
+    setIsOpen(!isOpen);
+  };
+  
+  // Handle selection of frequency
+  const handleSelectFrequency = async (frequency) => {
+    try {
+      setIsLoading(true);
+      setSelectedFrequency(frequency);
+      setIsOpen(false);
+      
+      // Call the onSetFrequency prop function with the contact data and selected frequency
+      if (props.onSetFrequency) {
+        await props.onSetFrequency(props.data, frequency);
+      }
+      
+      setIsLoading(false);
+    } catch (error) {
+      console.error("Error setting frequency:", error);
+      setIsLoading(false);
+    }
+  };
+  
+  return (
+    <>
+      <div
+        className="frequency-dropdown-container"
+        style={{ 
+          display: 'flex', 
           justifyContent: 'center',
-          gap: '4px',
-          cursor: 'pointer',
-          transition: 'all 0.2s',
-          width: 'auto',
-          whiteSpace: 'nowrap',
-          height: '24px',
-          lineHeight: '1',
-          boxSizing: 'border-box'
+          alignItems: 'center',
+          height: '100%',
+          width: '100%',
+          padding: '8px 0 0 0',
+          margin: 0,
+          boxSizing: 'border-box',
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
         }}
       >
-        <FiTrash2 size={12} /> Skip
+        <div 
+          ref={buttonRef}
+          onClick={handleButtonClick}
+          style={{
+            backgroundColor: '#222',
+            color: '#00ff00',
+            border: '1px solid #00ff00',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            fontSize: '0.75rem',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '4px',
+            cursor: isLoading ? 'wait' : 'pointer',
+            transition: 'all 0.2s',
+            width: 'auto',
+            whiteSpace: 'nowrap',
+            height: '24px',
+            lineHeight: '1',
+            boxSizing: 'border-box',
+            opacity: isLoading ? 0.7 : 1
+          }}
+        >
+          {isLoading ? (
+            <>Setting...</>
+          ) : selectedFrequency ? (
+            <>{selectedFrequency}</>
+          ) : (
+            <>SET KEEP IN TOUCH {isOpen ? '▲' : '▼'}</>
+          )}
+        </div>
       </div>
-    </div>
+      
+      <FrequencyDropdown
+        isOpen={isOpen}
+        position={position}
+        options={frequencies}
+        onSelect={handleSelectFrequency}
+        onClose={() => setIsOpen(false)}
+      />
+    </>
   );
 };
 
 // Configure Modal for React
 Modal.setAppElement('#root');
 
-const ContactsInbox = () => {
+const KeepInTouchInbox = () => {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true); // Can be true/false or a string message
   const [error, setError] = useState(null);
@@ -699,9 +849,31 @@ const ContactsInbox = () => {
     }));
   };
   
-  // Handler function for skip button - shows modal
-  const handleSkipContact = (contactData) => {
-    handleOpenDeleteModal(contactData);
+  // Handler function for setting frequency
+  const handleSetFrequency = async (contactData, frequency) => {
+    try {
+      console.log(`Setting frequency to ${frequency} for contact ${contactData.contact_id}`);
+      
+      // Update the contact's keep_in_touch_frequency
+      const { error } = await supabase
+        .from('contacts')
+        .update({ keep_in_touch_frequency: frequency })
+        .eq('contact_id', contactData.contact_id);
+        
+      if (error) {
+        throw error;
+      }
+      
+      // Update local state to remove this contact from the list
+      setContacts(prevContacts => 
+        prevContacts.filter(contact => contact.contact_id !== contactData.contact_id)
+      );
+      
+      console.log(`Successfully set frequency to ${frequency} for contact ${contactData.contact_id}`);
+    } catch (err) {
+      console.error('Error setting frequency:', err);
+      setError(`Failed to set frequency: ${err.message || 'Unknown error'}`);
+    }
   };
   
   // Handle delete confirmation
@@ -952,6 +1124,29 @@ const ContactsInbox = () => {
     const lastName = params.data.last_name || '';
     return `${firstName} ${lastName}`.trim() || '(No name)';
   };
+  
+  // React cell renderer for name column
+  const NameCellRenderer = (props) => {
+    const navigate = useNavigate();
+    const value = props.valueFormatted || props.value || '';
+    
+    const handleClick = (e) => {
+      e.stopPropagation();
+      if (props.data && props.data.contact_id) {
+        navigate(`/contacts/integrity/${props.data.contact_id}`);
+      }
+    };
+    
+    return (
+      <div 
+        className="name-link" 
+        style={{ color: '#00ff00', cursor: 'pointer', textDecoration: 'underline' }}
+        onClick={handleClick}
+      >
+        {value}
+      </div>
+    );
+  };
 
   // Column definitions with improved display of related data
   const columnDefs = useMemo(() => [
@@ -963,7 +1158,9 @@ const ContactsInbox = () => {
       filter: 'agTextColumnFilter',
       floatingFilter: true,
       sortable: true,
-      pinned: 'left'
+      pinned: 'left',
+      cellClass: 'name-cell-clickable',
+      cellRenderer: NameCellRenderer
     },
     { 
       headerName: 'Last Interaction', 
@@ -1025,19 +1222,57 @@ const ContactsInbox = () => {
     },
     {
       headerName: 'Actions',
-      width: 120,
-      minWidth: 120,
+      width: 280,
+      minWidth: 280,
       field: 'actions',
-      cellRenderer: ActionCellRenderer,
-      cellRendererParams: {
-        onSkip: handleSkipContact
+      cellRenderer: (params) => {
+        return (
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center'
+          }}>
+            <FrequencyDropdownRenderer
+              {...params}
+              onSetFrequency={handleSetFrequency}
+            />
+            <div 
+              style={{
+                backgroundColor: 'transparent',
+                color: '#ff3333',
+                paddingTop: '8px',
+                paddingRight: '8px',
+                paddingLeft: '8px',
+                paddingBottom: '0',
+                fontSize: '0.75rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '4px',
+                cursor: 'pointer',
+                marginLeft: '8px',
+                whiteSpace: 'nowrap',
+                height: '24px',
+                lineHeight: '1',
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                console.log('Skip button clicked for contact:', params.data);
+              }}
+            >
+              <FiTrash2 size={12} /> Skip
+            </div>
+          </div>
+        );
       },
       sortable: false,
       filter: false,
       suppressSizeToFit: true,
-      cellClass: 'action-cell-no-click'
+      cellClass: 'action-cell-no-click',
+      cellStyle: { overflow: 'visible' }
     }
-  ], [handleSkipContact]);
+  ], [handleSetFrequency]);
   
   // Default column properties
   const defaultColDef = useMemo(() => ({
@@ -1058,22 +1293,20 @@ const ContactsInbox = () => {
 
   // Row clicked handler - wrapped in React.useCallback to prevent recreation
   const handleRowClicked = React.useCallback((params) => {
-    // Always check if this is coming from the actions column
-    if (params.column && params.column.colId === 'actions') {
-      console.log('Ignoring click on actions cell');
-      return;
-    }
-    
-    console.log('Row clicked, navigating to integrity page', params.data);
-    
-    // Navigate to integrity page for this contact
-    if (params.data && params.data.contact_id) {
-      navigate(`/contacts/integrity/${params.data.contact_id}`);
+    // Only navigate when clicking on the Name column
+    if (params.column && params.column.colId === 'name') {
+      console.log('Name cell clicked, navigating to integrity page', params.data);
+      
+      // Navigate to integrity page for this contact
+      if (params.data && params.data.contact_id) {
+        navigate(`/contacts/integrity/${params.data.contact_id}`);
+      }
+    } else {
+      console.log('Ignoring click on non-name column');
     }
   }, [navigate]);
 
-  // Fetch only basic contact data - we'll load related data separately 
-  // to improve initial load performance
+  // Fetch only contacts in specific categories with keep_in_touch_frequency set to "Not Set" or NULL
   const fetchContacts = async () => {
     try {
       setLoading(true);
@@ -1098,22 +1331,30 @@ const ContactsInbox = () => {
         throw lastError;
       };
       
-      // Calculate date 60 days ago
-      const sixtyDaysAgo = new Date();
-      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-      const formattedDate = sixtyDaysAgo.toISOString();
+      // Define the categories to include
+      const allowedCategories = [
+        'Professional Investor', 
+        'Team', 
+        'Advisor', 
+        'Supplier', 
+        'Founder', 
+        'Manager', 
+        'Institution', 
+        'Media', 
+        'Friend and Family'
+      ];
       
-      // Get all contacts count first with retry
+      // Get contacts count first with retry
       const { count, error: countError } = await retrySupabaseRequest(async () => {
         return supabase
           .from('contacts')
           .select('*', { count: 'exact', head: true })
-          .eq('category', 'Inbox')
-          .gte('last_interaction_at', formattedDate);
+          .in('category', allowedCategories)
+          .or('keep_in_touch_frequency.is.null,keep_in_touch_frequency.eq.Not Set');
       });
         
       if (countError) throw countError;
-      console.log(`Total Inbox contacts: ${count}`);
+      console.log(`Total contacts to set keep in touch frequency: ${count}`);
       
       // Function to fetch contacts in batches with retry
       const fetchBatch = async (from, to) => {
@@ -1126,13 +1367,14 @@ const ContactsInbox = () => {
               first_name, 
               last_name, 
               category,
+              keep_in_touch_frequency,
               score, 
               last_interaction_at,
               created_at
             `)
-            .eq('category', 'Inbox')
-            .gte('last_interaction_at', formattedDate)
-            .order('last_interaction_at', { ascending: false })
+            .in('category', allowedCategories)
+            .or('keep_in_touch_frequency.is.null,keep_in_touch_frequency.eq.Not Set')
+            .order('last_interaction_at', { ascending: true })
             .range(from, to);
         });
       };
@@ -1510,7 +1752,7 @@ const ContactsInbox = () => {
           background: '#121212',
           borderRadius: '8px'
         }}>
-          No inbox contacts found. Try refreshing the page or check database connection.
+          No contacts found needing keep in touch frequency. All contacts in key categories have frequencies set.
         </div>
       ) : (
         <div 
@@ -1541,6 +1783,10 @@ const ContactsInbox = () => {
             paginationPageSize={50}
             suppressCellFocus={true}
             enableCellTextSelection={true}
+            sortingOrder={['asc', 'desc', null]}
+            sortModel={[
+              { colId: 'last_interaction_at', sort: 'asc' }
+            ]}
           />
         </div>
       )}
@@ -1903,4 +2149,4 @@ const ContactsInbox = () => {
   );
 };
 
-export default ContactsInbox;
+export default KeepInTouchInbox;
