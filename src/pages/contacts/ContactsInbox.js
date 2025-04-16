@@ -16,7 +16,8 @@ import {
   FiMapPin,
   FiBriefcase,
   FiCalendar,
-  FiLink
+  FiLink,
+  FiCheckCircle
 } from 'react-icons/fi';
 import Modal from 'react-modal';
 
@@ -386,21 +387,40 @@ const CancelButton = styled.button`
 
 // Cell renderer for action buttons with improved event handling
 const ActionCellRenderer = (props) => {
-  // Create a ref to store a reference to the button
-  const buttonRef = React.useRef(null);
+  // Create refs for each button
+  const spamButtonRef = React.useRef(null);
+  const skipButtonRef = React.useRef(null);
+  const crmButtonRef = React.useRef(null);
   
   React.useEffect(() => {
-    // Get the button from the ref after render
-    const button = buttonRef.current;
-    if (!button) return;
+    // Get buttons from refs
+    const spamButton = spamButtonRef.current;
+    const skipButton = skipButtonRef.current;
+    const crmButton = crmButtonRef.current;
     
-    // Function to completely halt row click events when skip is clicked
-    const clickHandler = (e) => {
+    if (!spamButton || !skipButton || !crmButton) return;
+    
+    // Function to handle spam button click
+    const spamClickHandler = (e) => {
       e.stopPropagation();
       e.preventDefault();
       e.stopImmediatePropagation();
       
-      // Delay the actual action just to be sure all event bubbling is done
+      setTimeout(() => {
+        if (props.onSpam) {
+          props.onSpam(props.data);
+        }
+      }, 10);
+      
+      return false;
+    };
+    
+    // Function to handle skip button click
+    const skipClickHandler = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      
       setTimeout(() => {
         if (props.onSkip) {
           props.onSkip(props.data);
@@ -410,21 +430,58 @@ const ActionCellRenderer = (props) => {
       return false;
     };
     
-    // Add the click handler
-    button.addEventListener('click', clickHandler, true);
+    // Function to handle Add to CRM button click
+    const crmClickHandler = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      
+      setTimeout(() => {
+        if (props.onAddToCRM) {
+          props.onAddToCRM(props.data);
+        }
+      }, 10);
+      
+      return false;
+    };
     
-    // Cleanup - remove the handler when component unmounts
+    // Add the click handlers
+    spamButton.addEventListener('click', spamClickHandler, true);
+    skipButton.addEventListener('click', skipClickHandler, true);
+    crmButton.addEventListener('click', crmClickHandler, true);
+    
+    // Cleanup - remove the handlers when component unmounts
     return () => {
-      button.removeEventListener('click', clickHandler, true);
+      spamButton.removeEventListener('click', spamClickHandler, true);
+      skipButton.removeEventListener('click', skipClickHandler, true);
+      crmButton.removeEventListener('click', crmClickHandler, true);
     };
   }, [props]);
   
+  const buttonStyle = {
+    backgroundColor: '#222',
+    padding: '3px 6px',
+    borderRadius: '4px',
+    fontSize: '0.7rem',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '3px',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+    whiteSpace: 'nowrap',
+    height: '18px',
+    lineHeight: '1',
+    boxSizing: 'border-box',
+    margin: '0 3px'
+  };
+  
   return (
     <div
-      className="skip-button-container"
+      className="action-buttons-container"
       style={{ 
         display: 'flex', 
-        justifyContent: 'center',
+        justifyContent: 'space-between',
         alignItems: 'center',
         height: '100%',
         width: '100%',
@@ -432,35 +489,42 @@ const ActionCellRenderer = (props) => {
         margin: 0,
         boxSizing: 'border-box'
       }}
-      // This is critical - stop propagation at the containing div level too
       onClick={(e) => { 
         e.stopPropagation(); 
         e.preventDefault();
       }}
     >
       <div 
-        ref={buttonRef}
+        ref={spamButtonRef}
         style={{
-          backgroundColor: '#222',
+          ...buttonStyle,
           color: '#ff5555',
           border: '1px solid #ff5555',
-          padding: '4px 8px',
-          borderRadius: '4px',
-          fontSize: '0.75rem',
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '4px',
-          cursor: 'pointer',
-          transition: 'all 0.2s',
-          width: 'auto',
-          whiteSpace: 'nowrap',
-          height: '24px',
-          lineHeight: '1',
-          boxSizing: 'border-box'
         }}
       >
-        <FiTrash2 size={12} /> Skip
+        <FiTrash2 size={10} /> Spam
+      </div>
+      
+      <div 
+        ref={skipButtonRef}
+        style={{
+          ...buttonStyle,
+          color: '#ff9900',
+          border: '1px solid #ff9900',
+        }}
+      >
+        <FiX size={10} /> Skip
+      </div>
+      
+      <div 
+        ref={crmButtonRef}
+        style={{
+          ...buttonStyle,
+          color: '#55ff55',
+          border: '1px solid #55ff55',
+        }}
+      >
+        <FiCheckCircle size={10} /> Add to CRM
       </div>
     </div>
   );
@@ -478,6 +542,7 @@ const ContactsInbox = () => {
   const [showGrid, setShowGrid] = useState(false); // Flag to control grid visibility with delay
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [contactToDelete, setContactToDelete] = useState(null);
+  const [confirmSkip, setConfirmSkip] = useState(null);
   const [associatedData, setAssociatedData] = useState({
     chatCount: 0,
     contactChatsCount: 0,
@@ -699,9 +764,70 @@ const ContactsInbox = () => {
     }));
   };
   
-  // Handler function for skip button - shows modal
-  const handleSkipContact = (contactData) => {
+  // Handler function for spam button - shows deletion modal
+  const handleSpamContact = (contactData) => {
     handleOpenDeleteModal(contactData);
+  };
+  
+  // Handler function for skip button - shows confirmation dialog
+  const handleSkipContact = (contactData) => {
+    setConfirmSkip(contactData);
+  };
+  
+  // Handler for confirming skip action
+  const handleConfirmSkip = async () => {
+    if (!confirmSkip) return;
+    
+    const contactData = confirmSkip;
+    try {
+      setLoading(true);
+      const { error } = await supabase
+        .from('contacts')
+        .update({ category: 'Skip' })
+        .eq('contact_id', contactData.contact_id);
+        
+      if (error) throw error;
+      
+      // Remove the contact from the list
+      setContacts(prevContacts => 
+        prevContacts.filter(contact => contact.contact_id !== contactData.contact_id)
+      );
+      
+      // Close the confirmation dialog
+      setConfirmSkip(null);
+      
+      setLoading(false);
+      console.log('Contact marked as Skip:', contactData.contact_id);
+    } catch (err) {
+      console.error('Error marking contact as Skip:', err);
+      setError(`Failed to mark contact as Skip: ${err.message || 'Unknown error'}`);
+      setLoading(false);
+    }
+  };
+  
+  // Handler function for Add to CRM button
+  const handleAddToCRM = async (contactData) => {
+    try {
+      setLoading(true);
+      const { error } = await supabase
+        .from('contacts')
+        .update({ category: null })
+        .eq('contact_id', contactData.contact_id);
+        
+      if (error) throw error;
+      
+      // Remove the contact from the list
+      setContacts(prevContacts => 
+        prevContacts.filter(contact => contact.contact_id !== contactData.contact_id)
+      );
+      
+      setLoading(false);
+      console.log('Contact added to CRM:', contactData.contact_id);
+    } catch (err) {
+      console.error('Error adding contact to CRM:', err);
+      setError(`Failed to add contact to CRM: ${err.message || 'Unknown error'}`);
+      setLoading(false);
+    }
   };
   
   // Handle delete confirmation
@@ -972,20 +1098,9 @@ const ContactsInbox = () => {
         if (!params.value) return '-';
         return new Date(params.value).toLocaleDateString();
       },
-      minWidth: 140,
+      minWidth: 110,
+      width: 110,
       filter: 'agDateColumnFilter',
-      floatingFilter: true,
-      sortable: true,
-    },
-    { 
-      headerName: 'Category', 
-      field: 'category',
-      valueGetter: (params) => {
-        if (!params.data) return '';
-        return params.data.category || params.data.contact_category || '-';
-      },
-      minWidth: 130,
-      filter: 'agTextColumnFilter',
       floatingFilter: true,
       sortable: true,
     },
@@ -996,7 +1111,8 @@ const ContactsInbox = () => {
         if (!params.data) return '';
         return params.data.mobile || '-';
       },
-      minWidth: 150,
+      minWidth: 120,
+      width: 120,
       filter: 'agTextColumnFilter',
       floatingFilter: true,
       sortable: true,
@@ -1025,19 +1141,21 @@ const ContactsInbox = () => {
     },
     {
       headerName: 'Actions',
-      width: 120,
-      minWidth: 120,
+      width: 260,
+      minWidth: 260,
       field: 'actions',
       cellRenderer: ActionCellRenderer,
       cellRendererParams: {
-        onSkip: handleSkipContact
+        onSpam: handleSpamContact,
+        onSkip: handleSkipContact,
+        onAddToCRM: handleAddToCRM
       },
       sortable: false,
       filter: false,
       suppressSizeToFit: true,
       cellClass: 'action-cell-no-click'
     }
-  ], [handleSkipContact]);
+  ], [handleSpamContact, handleSkipContact, handleAddToCRM]);
   
   // Default column properties
   const defaultColDef = useMemo(() => ({
@@ -1544,6 +1662,76 @@ const ContactsInbox = () => {
           />
         </div>
       )}
+      
+      {/* Skip confirmation modal */}
+      <Modal
+        isOpen={confirmSkip !== null}
+        onRequestClose={() => setConfirmSkip(null)}
+        shouldCloseOnOverlayClick={false}
+        style={{
+          content: {
+            top: '50%',
+            left: '50%',
+            right: 'auto',
+            bottom: 'auto',
+            marginRight: '-50%',
+            transform: 'translate(-50%, -50%)',
+            padding: '25px',
+            maxWidth: '400px',
+            width: '90%',
+            backgroundColor: '#121212',
+            border: '1px solid #333',
+            borderRadius: '8px',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.6)',
+            color: '#e0e0e0',
+            zIndex: 1001
+          },
+          overlay: {
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            zIndex: 1000
+          }
+        }}
+      >
+        {confirmSkip && (
+          <>
+            <ModalHeader>
+              <h2 style={{ color: '#ff9900' }}>Confirm Skip</h2>
+              <CloseButton onClick={() => setConfirmSkip(null)} disabled={loading}>
+                <FiX />
+              </CloseButton>
+            </ModalHeader>
+            
+            <div style={{ margin: '15px 0' }}>
+              <p style={{ marginBottom: '20px' }}>
+                Are you sure you want to mark this contact as "Skip"?
+              </p>
+              
+              <ContactDetail>
+                <DetailItem>
+                  <DetailValue>
+                    {confirmSkip.first_name} {confirmSkip.last_name}
+                    {confirmSkip.email ? ` (${confirmSkip.email})` : 
+                     confirmSkip.mobile ? ` (${confirmSkip.mobile})` : ''}
+                  </DetailValue>
+                </DetailItem>
+              </ContactDetail>
+            </div>
+            
+            <ButtonGroup>
+              <CancelButton onClick={() => setConfirmSkip(null)} disabled={loading}>
+                Cancel
+              </CancelButton>
+              <ConfirmButton 
+                onClick={handleConfirmSkip}
+                disabled={loading}
+                style={{ backgroundColor: '#ff9900' }}
+              >
+                {loading ? 'Processing...' : 'Mark as Skip'}
+              </ConfirmButton>
+            </ButtonGroup>
+          </>
+        )}
+      </Modal>
       
       {/* Delete confirmation modal */}
       <Modal
