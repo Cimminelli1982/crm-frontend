@@ -1,31 +1,11 @@
 import React, { useState, lazy, Suspense } from 'react';
 import styled from 'styled-components';
-import { FiList, FiUsers, FiDollarSign, FiBriefcase, FiHeart } from 'react-icons/fi';
+import { FiClock, FiUserCheck, FiUsers } from 'react-icons/fi';
 
-// Placeholder for future list components
-const FoundersList = () => (
-  <div style={{ textAlign: 'center', padding: '40px', color: '#00ff00' }}>
-    Founders list will be implemented soon.
-  </div>
-);
-
-const InvestorsList = () => (
-  <div style={{ textAlign: 'center', padding: '40px', color: '#00ff00' }}>
-    Professional Investors list will be implemented soon.
-  </div>
-);
-
-const ManagersList = () => (
-  <div style={{ textAlign: 'center', padding: '40px', color: '#00ff00' }}>
-    Managers list will be implemented soon.
-  </div>
-);
-
-const CareList = () => (
-  <div style={{ textAlign: 'center', padding: '40px', color: '#00ff00' }}>
-    People I Care list will be implemented soon.
-  </div>
-);
+// Lazy load the components
+const RecentInteractions = lazy(() => import('./SimpleContacts')); // This is the existing page for recent interactions
+const KeepInTouch = lazy(() => import('./SimpleKeepInTouch')); // This is the existing keep in touch page
+const IntroductionsComponent = lazy(() => import('./Introductions')); // This is the existing introductions page
 
 // Style for the main content
 const Container = styled.div`
@@ -64,7 +44,7 @@ const TopMenuContainer = styled.div`
 `;
 
 // Style for the content
-const ListsContent = styled.div`
+const InteractionsContent = styled.div`
   padding: 0;
   width: 100%;
 `;
@@ -113,32 +93,29 @@ const LoadingFallback = styled.div`
   font-family: 'Courier New', monospace;
 `;
 
-const Lists = () => {
-  const [activeTab, setActiveTab] = useState('founders');
+const Interactions = () => {
+  const [activeTab, setActiveTab] = useState('recent');
 
   // Define menu items
   const menuItems = [
-    { id: 'founders', name: 'Founders', icon: <FiList /> },
-    { id: 'investors', name: 'Professional Investors', icon: <FiDollarSign /> },
-    { id: 'managers', name: 'Managers', icon: <FiBriefcase /> },
-    { id: 'care', name: 'People I Care', icon: <FiHeart /> }
+    { id: 'recent', name: 'Recent', icon: <FiUserCheck /> },
+    { id: 'keepintouch', name: 'Keep in Touch', icon: <FiClock /> },
+    { id: 'introductions', name: 'Introductions', icon: <FiUsers /> }
   ];
 
   // Render the active component based on the selected tab
   const renderContent = () => {
     switch (activeTab) {
-      case 'founders':
-        return <FoundersList />;
-      case 'investors':
-        return <InvestorsList />;
-      case 'managers':
-        return <ManagersList />;
-      case 'care':
-        return <CareList />;
+      case 'recent':
+        return <RecentInteractions />;
+      case 'keepintouch':
+        return <KeepInTouch />;
+      case 'introductions':
+        return <IntroductionsComponent />;
       default:
         return (
           <div style={{ color: '#00ff00', textAlign: 'center', paddingTop: '40px' }}>
-            Select a list type from the menu above
+            Select an interaction type from the menu above
           </div>
         );
     }
@@ -158,15 +135,15 @@ const Lists = () => {
         ))}
       </TopMenuContainer>
       
-      <ListsContent>
+      <InteractionsContent>
         <ContentArea>
           <Suspense fallback={<LoadingFallback>Loading...</LoadingFallback>}>
             {renderContent()}
           </Suspense>
         </ContentArea>
-      </ListsContent>
+      </InteractionsContent>
     </Container>
   );
 };
 
-export default Lists;
+export default Interactions;

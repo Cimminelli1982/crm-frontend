@@ -27,6 +27,7 @@ import SimpleKeepInTouch from './pages/contacts/SimpleKeepInTouch';
 import EmailInbox from './pages/contacts/EmailInbox';
 import ContactsInbox from './pages/contacts/ContactsInbox';
 import KeepInTouchInbox from './pages/contacts/KeepInTouchInbox';
+import Interactions from './pages/contacts/Interactions';
 import ContactRecord from './pages/ContactRecord';
 import ContactEdit from './pages/ContactEdit';
 import ContactIntegrity from './pages/ContactIntegrity';
@@ -144,6 +145,10 @@ const App = () => {
           {
             path: "contacts/inbox",
             element: <ContactsInbox />
+          },
+          {
+            path: "contacts/interactions",
+            element: <Interactions />
           },
           {
             path: "contacts/:id",

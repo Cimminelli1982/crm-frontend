@@ -6,8 +6,8 @@ import { AgGridReact } from '../../ag-grid-setup';
 
 // Styled components
 const Container = styled.div`
-  padding: 20px;
-  height: calc(100vh - 120px);
+  padding: 20px 40px 20px 20px;
+  height: calc(100vh - 60px);
   width: 100%;
 `;
 
@@ -730,8 +730,6 @@ const SimpleContacts = () => {
 
   return (
     <Container>
-      <Title>Last Interaction ({contacts.length})</Title>
-      
       {error && <ErrorText>Error: {error}</ErrorText>}
       
       {loading !== false ? (
@@ -765,7 +763,7 @@ const SimpleContacts = () => {
           className="ag-theme-alpine" 
           style={{ 
             height: 'calc(100% - 60px)', 
-            width: '100%',
+            width: 'calc(100% - 20px)',
             opacity: showGrid ? 1 : 0,
             transition: 'opacity 0.5s ease-in-out',
             '--ag-background-color': '#121212',

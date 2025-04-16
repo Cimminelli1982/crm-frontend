@@ -211,22 +211,25 @@ const Sidebar = ({ user, onSignOut }) => {
       icon: faAddressBook,
       path: '/contacts',
       subItems: [
-        { name: 'Recent Interactions', path: '/contacts/last-interactions' },
-        { name: 'Keep in Touch', path: '/contacts/keep-in-touch' },
-        { name: 'Keep in Touch Inbox', path: '/contacts/keep-in-touch-inbox' },
-        { name: 'Introductions', path: '/contacts/introductions' },
-        { name: 'Duplicate Manager', path: '/contacts/duplicate-manager' }
+        { name: 'Interactions', path: '/contacts/interactions' },
+        { name: 'Lists', path: '/contacts/lists' }
       ]
     },
     {
-      id: 'companies',
-      name: 'Companies',
+      id: 'processing',
+      name: 'Processing',
+      icon: faInbox,
+      path: '/inbox',
+      subItems: []
+    },
+    {
+      id: 'opportunities',
+      name: 'Opportunities',
       icon: faBuilding,
-      path: '/companies',
+      path: '/opportunities',
       subItems: [
         { name: 'Deals', path: '/companies/deals' },
-        { name: 'Startups', path: '/companies/startups' },
-        { name: 'Investors', path: '/companies/investors' }
+        { name: 'Companies', path: '/companies' }
       ]
     },
     {

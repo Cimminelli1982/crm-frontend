@@ -408,20 +408,41 @@ const Layout = ({ children }) => {
             
             <SubMenu $isOpen={expandedMenus.v1}>
               <SubMenuItem 
-                to="/contacts/simple" 
-                $active={isPathActive('/contacts/simple')}
+                to="/contacts/interactions" 
+                $active={isPathActive('/contacts/interactions')}
               >
-                Recent Interactions
+                Interactions
               </SubMenuItem>
               
               <SubMenuItem 
-                to="/contacts/keep-in-touch" 
-                $active={isPathActive('/contacts/keep-in-touch')}
+                to="/contacts/lists" 
+                $active={isPathActive('/contacts/lists')}
               >
-                Keep in Touch
+                Lists
               </SubMenuItem>
               
-              
+              <SubMenuItem 
+                to="/inbox" 
+                $active={isPathActive('/inbox')}
+              >
+                Processing
+              </SubMenuItem>
+            </SubMenu>
+          </MenuItem>
+
+          {/* Opportunities Menu */}
+          <MenuItem>
+            <MenuItemHeader 
+              $active={isPathActive('/opportunities')} 
+              onClick={() => toggleMenu('opportunities')}
+            >
+              <MenuItemLink to="/opportunities">
+                Opportunities
+              </MenuItemLink>
+              {expandedMenus.opportunities ? "[open]" : "[+]"}
+            </MenuItemHeader>
+            
+            <SubMenu $isOpen={expandedMenus.opportunities}>
               <SubMenuItem 
                 to="/companies/deals" 
                 $active={isPathActive('/companies/deals')}
@@ -431,17 +452,9 @@ const Layout = ({ children }) => {
               
               <SubMenuItem 
                 to="/companies" 
-                $active={isPathActive('/companies') && !isPathActive('/companies/deals') && 
-                         !isPathActive('/companies/startups') && !isPathActive('/companies/investors')}
+                $active={isPathActive('/companies') && !isPathActive('/companies/deals')}
               >
                 Companies
-              </SubMenuItem>
-              
-              <SubMenuItem 
-                to="/inbox" 
-                $active={isPathActive('/inbox')}
-              >
-                Processing
               </SubMenuItem>
             </SubMenu>
           </MenuItem>
