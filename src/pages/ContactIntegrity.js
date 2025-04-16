@@ -20,7 +20,8 @@ import {
   FiLink,
   FiSave,
   FiRefreshCw,
-  FiGitMerge
+  FiGitMerge,
+  FiMessageSquare
 } from 'react-icons/fi';
 
 // Styled components
@@ -355,6 +356,10 @@ const ContactIntegrity = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [selectedDuplicate, setSelectedDuplicate] = useState(null);
   const [mergeSelections, setMergeSelections] = useState({});
+  const [lastInteractions, setLastInteractions] = useState([]);
+  const [emailMessages, setEmailMessages] = useState([]);
+  const [whatsappMessages, setWhatsappMessages] = useState([]);
+  const [loadingInteractions, setLoadingInteractions] = useState(false);
   
   // Reference data
   const [allTags, setAllTags] = useState([]);
@@ -439,7 +444,14 @@ const ContactIntegrity = () => {
       setContact(contactData);
       
       // Get related data in parallel
-      const [emailsResult, mobilesResult, tagsResult, citiesResult, companiesResult] = await Promise.all([
+      const [
+        emailsResult, 
+        mobilesResult, 
+        tagsResult, 
+        citiesResult, 
+        companiesResult,
+        interactionsResult
+      ] = await Promise.all([
         // Get emails
         supabase
           .from('contact_emails')
@@ -470,7 +482,15 @@ const ContactIntegrity = () => {
         supabase
           .from('contact_companies')
           .select('company_id, relationship, is_primary')
+          .eq('contact_id', contactId),
+          
+        // Get recent interactions
+        supabase
+          .from('interactions')
+          .select('*')
           .eq('contact_id', contactId)
+          .order('interaction_date', { ascending: false })
+          .limit(10)
       ]);
       
       // Ensure there's at least one empty email/mobile row
@@ -481,6 +501,9 @@ const ContactIntegrity = () => {
       setTags(tagsResult.data?.map(t => t.tag_id) || []);
       setCities(citiesResult.data?.map(c => c.city_id) || []);
       setCompanies(companiesResult.data || []);
+      
+      // Set interactions
+      setLastInteractions(interactionsResult.data || []);
       
     } catch (err) {
       console.error('Error loading contact:', err);
@@ -1512,6 +1535,9 @@ const ContactIntegrity = () => {
           </Tab>
           <Tab active={activeTab === 'duplicates'} onClick={() => setActiveTab('duplicates')}>
             Find Duplicates
+          </Tab>
+          <Tab active={activeTab === 'lastInteractions'} onClick={() => setActiveTab('lastInteractions')}>
+            Last Interactions
           </Tab>
         </TabBar>
         
@@ -2572,6 +2598,277 @@ const ContactIntegrity = () => {
                 </div>
               </div>
             )}
+          </Card>
+        </TabContent>
+        
+        <TabContent active={activeTab === 'lastInteractions'}>
+          <Card>
+            <SectionTitle>
+              <FiMessageSquare /> Last Interactions
+            </SectionTitle>
+            
+            {lastInteractions.length === 0 ? (
+              <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>
+                No recent interactions found for this contact
+              </div>
+            ) : (
+              <div>
+                {lastInteractions.map(interaction => (
+                  <div key={interaction.interaction_id} style={{ 
+                    borderBottom: '1px solid #333',
+                    padding: '15px 10px',
+                    marginBottom: '10px'
+                  }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      marginBottom: '8px'
+                    }}>
+                      <div style={{ fontWeight: 'bold', color: '#00ff00' }}>
+                        {interaction.interaction_type} ({interaction.direction})
+                      </div>
+                      <div style={{ color: '#999', fontSize: '0.85rem' }}>
+                        {new Date(interaction.interaction_date).toLocaleString()}
+                      </div>
+                    </div>
+                    <div style={{ 
+                      padding: '12px', 
+                      color: '#eee',
+                      backgroundColor: '#222',
+                      borderRadius: '4px',
+                      whiteSpace: 'pre-wrap',
+                      maxHeight: '300px',
+                      overflow: 'auto',
+                      fontSize: '0.95rem',
+                      lineHeight: '1.4'
+                    }}>
+                      {interaction.summary || 'No summary available'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+          
+          <Card>
+            <SectionTitle>
+              <FiMail /> Email Communications
+            </SectionTitle>
+            
+            <div style={{ padding: '15px 10px' }}>
+              <ActionButton 
+                onClick={async () => {
+                  // Get the primary email for this contact
+                  if (!emails || emails.length === 0) {
+                    alert("No email available for this contact");
+                    return;
+                  }
+                  
+                  // Find the primary email or use the first one
+                  const primaryEmail = emails.find(e => e.is_primary)?.email || 
+                                      emails[0]?.email;
+                  
+                  if (!primaryEmail) {
+                    alert("No email available for this contact");
+                    return;
+                  }
+                  
+                  setLoadingInteractions(true);
+                  
+                  try {
+                    // Fetch email messages where this contact is sender or recipient
+                    const { data: emailData, error: emailError } = await supabase
+                      .from('email_inbox')
+                      .select('*')
+                      .or(`from_email.ilike.${primaryEmail},to_email.ilike.${primaryEmail}`)
+                      .order('message_timestamp', { ascending: false })
+                      .limit(10);
+                      
+                    if (emailError) throw emailError;
+                    setEmailMessages(emailData || []);
+                  } catch (err) {
+                    console.error('Error loading emails:', err);
+                  } finally {
+                    setLoadingInteractions(false);
+                  }
+                }}
+                disabled={loadingInteractions}
+              >
+                <FiRefreshCw /> {loadingInteractions ? 'Loading...' : 'Load Recent Emails'}
+              </ActionButton>
+              
+              {emailMessages.length > 0 ? (
+                <div style={{ marginTop: '15px' }}>
+                  {emailMessages.map(email => (
+                    <div key={email.id} style={{ 
+                      border: '1px solid #333',
+                      borderRadius: '4px',
+                      padding: '15px',
+                      marginBottom: '15px',
+                      backgroundColor: '#1a1a1a'
+                    }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        marginBottom: '10px',
+                        borderBottom: '1px solid #333',
+                        paddingBottom: '8px'
+                      }}>
+                        <div>
+                          <div style={{ fontWeight: 'bold', color: '#eee' }}>
+                            From: {email.from_name || email.from_email}
+                          </div>
+                          <div style={{ color: '#ccc', fontSize: '0.9rem' }}>
+                            To: {email.to_name || email.to_email}
+                          </div>
+                          {email.cc_email && (
+                            <div style={{ color: '#999', fontSize: '0.85rem' }}>
+                              CC: {email.cc_name || email.cc_email}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ color: '#999', fontSize: '0.85rem', textAlign: 'right' }}>
+                          {new Date(email.message_timestamp).toLocaleString()}
+                        </div>
+                      </div>
+                      <div style={{ fontWeight: 'bold', marginBottom: '8px', color: '#00ff00' }}>
+                        {email.subject || '(No Subject)'}
+                      </div>
+                      <div style={{ 
+                        maxHeight: '300px', 
+                        overflow: 'auto', 
+                        backgroundColor: '#222',
+                        padding: '10px',
+                        borderRadius: '4px',
+                        whiteSpace: 'pre-wrap'
+                      }}>
+                        {email.message_text || '(No content)'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ 
+                  padding: '20px', 
+                  textAlign: 'center', 
+                  color: '#999',
+                  marginTop: '15px'
+                }}>
+                  Click 'Load Recent Emails' to fetch email communication for this contact
+                </div>
+              )}
+            </div>
+          </Card>
+          
+          <Card>
+            <SectionTitle>
+              <FiMessageSquare /> WhatsApp Messages
+            </SectionTitle>
+            
+            <div style={{ padding: '15px 10px' }}>
+              <ActionButton 
+                onClick={async () => {
+                  // Get the primary mobile for this contact
+                  if (!mobiles || mobiles.length === 0) {
+                    alert("No mobile number available for this contact");
+                    return;
+                  }
+                  
+                  // Find the primary mobile or use the first one
+                  const primaryMobile = mobiles.find(m => m.is_primary)?.mobile || 
+                                       mobiles[0]?.mobile;
+                  
+                  if (!primaryMobile) {
+                    alert("No mobile number available for this contact");
+                    return;
+                  }
+                  
+                  setLoadingInteractions(true);
+                  
+                  try {
+                    // Fetch WhatsApp messages for this contact
+                    const { data: whatsappData, error: whatsappError } = await supabase
+                      .from('whatsapp_inbox')
+                      .select('*')
+                      .eq('contact_number', primaryMobile)
+                      .order('message_timestamp', { ascending: false })
+                      .limit(10);
+                      
+                    if (whatsappError) throw whatsappError;
+                    setWhatsappMessages(whatsappData || []);
+                  } catch (err) {
+                    console.error('Error loading WhatsApp messages:', err);
+                  } finally {
+                    setLoadingInteractions(false);
+                  }
+                }}
+                disabled={loadingInteractions}
+              >
+                <FiRefreshCw /> {loadingInteractions ? 'Loading...' : 'Load WhatsApp Messages'}
+              </ActionButton>
+              
+              {whatsappMessages.length > 0 ? (
+                <div style={{ marginTop: '15px' }}>
+                  {whatsappMessages.map(message => (
+                    <div key={message.id} style={{ 
+                      border: '1px solid #333',
+                      borderRadius: '4px',
+                      padding: '15px',
+                      marginBottom: '15px',
+                      backgroundColor: message.direction === 'inbound' ? '#1a2a1a' : '#2a1a1a'
+                    }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        marginBottom: '10px'
+                      }}>
+                        <div style={{ 
+                          fontWeight: 'bold', 
+                          color: message.direction === 'inbound' ? '#00cc00' : '#cc9900'
+                        }}>
+                          {message.direction === 'inbound' ? 'Received from' : 'Sent to'}: {message.first_name} {message.last_name}
+                        </div>
+                        <div style={{ color: '#999', fontSize: '0.85rem' }}>
+                          {new Date(message.message_timestamp).toLocaleString()}
+                        </div>
+                      </div>
+                      <div style={{ 
+                        padding: '10px',
+                        backgroundColor: '#222',
+                        borderRadius: '4px',
+                        whiteSpace: 'pre-wrap'
+                      }}>
+                        {message.message_text || '(No text content)'}
+                        {message.attachment_url && (
+                          <div style={{ marginTop: '10px' }}>
+                            <div style={{ color: '#00ff00', fontSize: '0.9rem', marginBottom: '5px' }}>
+                              Attachment: {message.attachment_filename || 'File'}
+                            </div>
+                            <a 
+                              href={message.attachment_url} 
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: '#4d94ff' }}
+                            >
+                              View Attachment
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ 
+                  padding: '20px', 
+                  textAlign: 'center', 
+                  color: '#999',
+                  marginTop: '15px'
+                }}>
+                  Click 'Load WhatsApp Messages' to fetch WhatsApp communication for this contact
+                </div>
+              )}
+            </div>
           </Card>
         </TabContent>
       </TabContainer>
