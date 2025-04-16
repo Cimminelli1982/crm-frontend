@@ -22,7 +22,9 @@ import {
   FiInfo,
   FiHome,
   FiChevronRight,
-  FiSearch
+  FiSearch,
+  FiUser,
+  FiEdit
 } from 'react-icons/fi';
 
 // Styled components
@@ -88,8 +90,6 @@ const StepIndicator = styled.div`
   display: flex;
   margin-bottom: 15px;
   justify-content: space-between;
-  border-bottom: 1px solid #333;
-  padding-bottom: 8px;
 `;
 
 const Step = styled.div`
@@ -202,7 +202,7 @@ const InteractionsLayout = styled.div`
 `;
 
 const ChannelsMenu = styled.div`
-  flex: 0 0 30%;
+  flex: 0 0 20%;
   border-right: 1px solid #333;
   background-color: #111;
   overflow-y: auto;
@@ -248,7 +248,7 @@ const ChannelItem = styled.div`
 `;
 
 const InteractionsContainer = styled.div`
-  flex: 0 0 70%;
+  flex: 0 0 80%;
   padding: 0;
   overflow-y: auto;
   background-color: #1a1a1a;
@@ -373,6 +373,61 @@ const DuplicateDetails = styled.div`
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+`;
+
+const ComparisonTable = styled.table`
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+  
+  th, td {
+    padding: 10px;
+    text-align: left;
+    border-bottom: 1px solid #333;
+  }
+  
+  th {
+    color: #00ff00;
+    font-weight: bold;
+    font-size: 0.9rem;
+  }
+  
+  td {
+    color: #ccc;
+    font-size: 0.9rem;
+  }
+`;
+
+const MergeOption = styled.label`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 5px 0;
+  
+  &:hover {
+    color: #00ff00;
+  }
+`;
+
+const MergeRadio = styled.input`
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #555;
+  border-radius: 50%;
+  margin: 0;
+  cursor: pointer;
+  
+  &:checked {
+    border-color: #00ff00;
+    background-color: #00ff00;
+    box-shadow: inset 0 0 0 3px #222;
+  }
+  
+  &:hover {
+    border-color: #00ff00;
+  }
 `;
 
 const FormGrid = styled.div`
@@ -542,12 +597,45 @@ const Badge = styled.span`
   font-size: 12px;
 `;
 
+const InlineEditInput = styled.input`
+  background-color: transparent;
+  border: none;
+  border-bottom: 1px dashed #00ff00;
+  color: #fff;
+  font-size: 1.5rem;
+  font-weight: bold;
+  padding: 2px 4px;
+  margin: 0 5px 0 0;
+  outline: none;
+  width: ${props => props.width || '150px'};
+  
+  &:focus {
+    background-color: #111;
+    border-bottom: 1px solid #00ff00;
+  }
+`;
+
+const EditIconWrapper = styled.span`
+  opacity: 0;
+  margin-left: 8px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  display: inline-flex;
+  align-items: center;
+`;
+
 const ContactHeader = styled.div`
   margin-bottom: 20px;
   
   h2 {
     color: #fff;
     margin: 0 0 5px 0;
+    display: flex;
+    align-items: center;
+    
+    &:hover ${EditIconWrapper} {
+      opacity: 0.8;
+    }
     font-size: 1.5rem;
   }
   
@@ -619,6 +707,11 @@ const ContactCrmWorkflow = () => {
   const [contact, setContact] = useState(null);
   const [currentStep, setCurrentStep] = useState(parseInt(stepParam) || 1);
   const [loading, setLoading] = useState(true);
+  
+  // State for inline editing
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editLastName, setEditLastName] = useState('');
   const [error, setError] = useState(null);
   
   // Step 1: Relevance confirmation
@@ -628,6 +721,20 @@ const ContactCrmWorkflow = () => {
   // Step 2: Duplicate check
   const [duplicates, setDuplicates] = useState([]);
   const [selectedDuplicate, setSelectedDuplicate] = useState(null);
+  const [mergeSelections, setMergeSelections] = useState({
+    first_name: 'current',
+    last_name: 'current',
+    category: 'current',
+    job_role: 'current', 
+    emails: 'current',
+    mobiles: 'current',
+    tags: 'current',
+    cities: 'current',
+    companies: 'current',
+    linkedin: 'current',
+    score: 'current',
+    keep_in_touch_frequency: 'current'
+  });
   
   // Step 3 & 4: Contact enrichment
   const [formData, setFormData] = useState({
@@ -687,6 +794,46 @@ const ContactCrmWorkflow = () => {
     }
   }, [contactId]);
   
+  // Start editing name
+  const startEditingName = () => {
+    setEditFirstName(contact?.first_name || '');
+    setEditLastName(contact?.last_name || '');
+    setIsEditingName(true);
+  };
+  
+  // Save name changes
+  const saveNameChanges = async () => {
+    try {
+      const { error: updateError } = await supabase
+        .from('contacts')
+        .update({
+          first_name: editFirstName,
+          last_name: editLastName
+        })
+        .eq('contact_id', contactId);
+      
+      if (updateError) throw updateError;
+      
+      // Update local state
+      setContact({
+        ...contact,
+        first_name: editFirstName,
+        last_name: editLastName
+      });
+      
+      setIsEditingName(false);
+      toast.success('Name updated successfully');
+    } catch (err) {
+      console.error('Error updating name:', err);
+      toast.error('Failed to update name');
+    }
+  };
+  
+  // Cancel editing
+  const cancelNameEditing = () => {
+    setIsEditingName(false);
+  };
+  
   // Update URL when step changes and scroll to top left
   useEffect(() => {
     const newSearch = new URLSearchParams(location.search);
@@ -745,6 +892,24 @@ const ContactCrmWorkflow = () => {
         loadEmailAndMobile(contactData.contact_id),
         mockExternalData(contactData)
       ]);
+      
+      // After loading email and mobile, search for duplicates
+      if (currentStep === 2 || !currentStep) {
+        console.log("Automatically searching for duplicates");
+        const nameDuplicates = await searchNameDuplicates();
+        const emailDuplicates = contact.email ? await searchEmailDuplicates() : [];
+        const mobileDuplicates = contact.mobile ? await searchMobileDuplicates() : [];
+        
+        // Combine all duplicates and remove duplicates
+        const allDuplicates = [...nameDuplicates, ...emailDuplicates, ...mobileDuplicates];
+        
+        // Remove duplicates by contact_id
+        const uniqueDuplicates = allDuplicates.filter((duplicate, index, self) =>
+          index === self.findIndex((d) => d.contact_id === duplicate.contact_id)
+        );
+        
+        setDuplicates(uniqueDuplicates);
+      }
       
       setLoading(false);
     } catch (err) {
@@ -1456,6 +1621,14 @@ const ContactCrmWorkflow = () => {
     setSelectedDuplicate(selectedDuplicate?.contact_id === duplicate.contact_id ? null : duplicate);
   };
   
+  // Handle merge selection changes
+  const handleMergeSelectionChange = (field, value) => {
+    setMergeSelections(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+  
   // Initialize merge selections for contact merging
   const initializeMergeSelections = (duplicate) => {
     if (!duplicate) return;
@@ -1945,7 +2118,47 @@ const ContactCrmWorkflow = () => {
       {/* Contact info */}
       {contact && (
         <ContactHeader>
-          <h2>{contact.first_name} {contact.last_name}</h2>
+          <h2>
+            {isEditingName ? (
+              <>
+                <InlineEditInput 
+                  type="text" 
+                  value={editFirstName}
+                  onChange={(e) => setEditFirstName(e.target.value)}
+                  width="120px"
+                  placeholder="First name"
+                  autoFocus
+                />
+                <InlineEditInput 
+                  type="text" 
+                  value={editLastName}
+                  onChange={(e) => setEditLastName(e.target.value)}
+                  width="120px"
+                  placeholder="Last name"
+                />
+                <ActionButton 
+                  variant="primary" 
+                  onClick={saveNameChanges}
+                  style={{ padding: '0px 8px', margin: '0 4px', fontSize: '0.8rem', height: '26px' }}
+                >
+                  <FiCheck size={14} />
+                </ActionButton>
+                <ActionButton 
+                  onClick={cancelNameEditing}
+                  style={{ padding: '0px 8px', margin: '0', fontSize: '0.8rem', height: '26px' }}
+                >
+                  <FiX size={14} />
+                </ActionButton>
+              </>
+            ) : (
+              <>
+                {contact.first_name} {contact.last_name}
+                <EditIconWrapper onClick={startEditingName}>
+                  <FiEdit size={16} color="#00ff00" />
+                </EditIconWrapper>
+              </>
+            )}
+          </h2>
           <div className="contact-details">
             {contact.email && (
               <div className="detail-item">
@@ -2050,7 +2263,9 @@ const ContactCrmWorkflow = () => {
                   >
                     <FiMessageSquare size={16} />
                     <span className="channel-name">All Channels</span>
-                    <span className="channel-count">{interactions.length}</span>
+                    <span className="channel-count">
+                      {interactions.filter(i => !['cc', 'sender', 'to', 'from', 'bcc'].includes(i.interaction_type)).length}
+                    </span>
                   </ChannelItem>
                   
                   {/* Get unique interaction types */}
@@ -2077,11 +2292,30 @@ const ContactCrmWorkflow = () => {
                         active={selectedChannel === type}
                         onClick={() => setSelectedChannel(type)}
                       >
-                        <ChannelIcon size={16} />
-                        <span className="channel-name">
-                          {type === 'cc' ? 'Email (CC)' : type.charAt(0).toUpperCase() + type.slice(1)}
+                        {['cc', 'sender', 'to', 'from', 'bcc'].includes(type) ? (
+                          <div style={{ width: '22px', position: 'relative' }}>
+                            <div style={{ 
+                              position: 'absolute', 
+                              left: '12px', 
+                              top: '0', 
+                              height: '100%', 
+                              borderLeft: '1px solid #333' 
+                            }}></div>
+                          </div>
+                        ) : (
+                          <ChannelIcon size={16} />
+                        )}
+                        <span className="channel-name" style={{
+                          paddingLeft: ['cc', 'sender', 'to', 'from', 'bcc'].includes(type) ? '5px' : '0'
+                        }}>
+                          {type === 'email' ? 'Email thread' : 
+                           ['cc', 'sender', 'to', 'from', 'bcc'].includes(type) ? 'Read email' : 
+                           type.charAt(0).toUpperCase() + type.slice(1)}
                         </span>
-                        <span className="channel-count">{count}</span>
+                        {/* Only show count for non-Email channels (but keep for Email thread) */}
+                        {(type === 'email' || !['cc', 'sender', 'to', 'from', 'bcc'].includes(type)) && (
+                          <span className="channel-count">{count}</span>
+                        )}
                       </ChannelItem>
                     );
                   })}
@@ -2173,76 +2407,8 @@ const ContactCrmWorkflow = () => {
         <>
           <Card>
             <SectionTitle>
-              <FiSearch /> Find Duplicate Contacts
+              <FiSearch /> Check for Duplicate Contacts
             </SectionTitle>
-            
-            <div style={{ display: 'flex', gap: '10px', margin: '15px 0' }}>
-              <div>
-                <h4 style={{ color: '#00ff00', margin: '0 0 8px 0', fontSize: '0.9rem' }}>By Name</h4>
-                <p style={{ color: '#999', marginBottom: '10px', fontSize: '0.8rem' }}>
-                  Uses 80% name similarity threshold for more precise matching
-                </p>
-                <ActionButton onClick={() => {
-                  setDuplicates([]);
-                  setSelectedDuplicate(null);
-                  setLoading(true);
-                  
-                  searchNameDuplicates().then(results => {
-                    setDuplicates(results || []);
-                    setLoading(false);
-                  }).catch(err => {
-                    console.error('Error in name search:', err);
-                    setLoading(false);
-                  });
-                }} disabled={loading}>
-                  <FiSearch /> {loading ? 'Searching...' : 'Search by Name'}
-                </ActionButton>
-              </div>
-              
-              <div>
-                <h4 style={{ color: '#00ff00', margin: '0 0 8px 0', fontSize: '0.9rem' }}>By Email</h4>
-                <p style={{ color: '#999', marginBottom: '10px', fontSize: '0.8rem' }}>
-                  Searches for contacts with matching email addresses
-                </p>
-                <ActionButton onClick={() => {
-                  setDuplicates([]);
-                  setSelectedDuplicate(null);
-                  setLoading(true);
-                  
-                  searchEmailDuplicates().then(results => {
-                    setDuplicates(results || []);
-                    setLoading(false);
-                  }).catch(err => {
-                    console.error('Error in email search:', err);
-                    setLoading(false);
-                  });
-                }} disabled={loading || !contact?.email}>
-                  <FiMail /> {loading ? 'Searching...' : 'Search by Email'}
-                </ActionButton>
-              </div>
-              
-              <div>
-                <h4 style={{ color: '#00ff00', margin: '0 0 8px 0', fontSize: '0.9rem' }}>By Mobile</h4>
-                <p style={{ color: '#999', marginBottom: '10px', fontSize: '0.8rem' }}>
-                  Searches for contacts with matching mobile numbers
-                </p>
-                <ActionButton onClick={() => {
-                  setDuplicates([]);
-                  setSelectedDuplicate(null);
-                  setLoading(true);
-                  
-                  searchMobileDuplicates().then(results => {
-                    setDuplicates(results || []);
-                    setLoading(false);
-                  }).catch(err => {
-                    console.error('Error in mobile search:', err);
-                    setLoading(false);
-                  });
-                }} disabled={loading || !contact?.mobile}>
-                  <FiPhone /> {loading ? 'Searching...' : 'Search by Mobile'}
-                </ActionButton>
-              </div>
-            </div>
             
             {loading ? (
               <LoadingContainer style={{ minHeight: '200px' }}>
@@ -2253,92 +2419,386 @@ const ContactCrmWorkflow = () => {
                 No potential duplicates found for this contact
               </NoDataMessage>
             ) : (
-              <>
-                <div style={{ marginBottom: '20px' }}>
-                  We found {duplicates.length} potential duplicate contacts. 
-                  Select a duplicate to merge with, or continue with this as a new contact.
-                </div>
+              <InteractionsLayout>
+                {/* Duplicates menu - left side (1/3) */}
+                <ChannelsMenu>
+                  {/* Group by match type */}
+                  {/* Matches by Name */}
+                  {duplicates.some(d => d.matched_on && d.matched_on.includes('Name')) && (
+                    <>
+                      <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold' }}>
+                        MATCHES BY NAME
+                      </div>
+                      {duplicates
+                        .filter(d => d.matched_on && d.matched_on.includes('Name'))
+                        .map(duplicate => (
+                          <ChannelItem 
+                            key={duplicate.contact_id}
+                            active={selectedDuplicate?.contact_id === duplicate.contact_id}
+                            onClick={() => handleSelectDuplicate(duplicate)}
+                          >
+                            <FiUser size={16} />
+                            <span className="channel-name">
+                              {duplicate.first_name} {duplicate.last_name}
+                            </span>
+                          </ChannelItem>
+                        ))}
+                    </>
+                  )}
+                  
+                  {/* Matches by Email */}
+                  {duplicates.some(d => d.matched_on && d.matched_on.includes('Email')) && (
+                    <>
+                      <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold' }}>
+                        MATCHES BY EMAIL
+                      </div>
+                      {duplicates
+                        .filter(d => d.matched_on && d.matched_on.includes('Email'))
+                        .map(duplicate => (
+                          <ChannelItem 
+                            key={duplicate.contact_id}
+                            active={selectedDuplicate?.contact_id === duplicate.contact_id}
+                            onClick={() => handleSelectDuplicate(duplicate)}
+                          >
+                            <FiUser size={16} />
+                            <span className="channel-name">
+                              {duplicate.first_name} {duplicate.last_name}
+                            </span>
+                          </ChannelItem>
+                        ))}
+                    </>
+                  )}
+                  
+                  {/* Matches by Mobile */}
+                  {duplicates.some(d => d.matched_on && d.matched_on.includes('Mobile')) && (
+                    <>
+                      <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold' }}>
+                        MATCHES BY MOBILE
+                      </div>
+                      {duplicates
+                        .filter(d => d.matched_on && d.matched_on.includes('Mobile'))
+                        .map(duplicate => (
+                          <ChannelItem 
+                            key={duplicate.contact_id}
+                            active={selectedDuplicate?.contact_id === duplicate.contact_id}
+                            onClick={() => handleSelectDuplicate(duplicate)}
+                          >
+                            <FiUser size={16} />
+                            <span className="channel-name">
+                              {duplicate.first_name} {duplicate.last_name}
+                            </span>
+                          </ChannelItem>
+                        ))}
+                    </>
+                  )}
+                  
+                  {/* Fallback for duplicates without a specified match type */}
+                  {duplicates.some(d => !d.matched_on) && (
+                    <>
+                      <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold' }}>
+                        OTHER MATCHES
+                      </div>
+                      {duplicates
+                        .filter(d => !d.matched_on)
+                        .map(duplicate => (
+                          <ChannelItem 
+                            key={duplicate.contact_id}
+                            active={selectedDuplicate?.contact_id === duplicate.contact_id}
+                            onClick={() => handleSelectDuplicate(duplicate)}
+                          >
+                            <FiUser size={16} />
+                            <span className="channel-name">
+                              {duplicate.first_name} {duplicate.last_name}
+                            </span>
+                          </ChannelItem>
+                        ))}
+                    </>
+                  )}
+                </ChannelsMenu>
                 
-                <DuplicatesList>
-                  {duplicates.map(duplicate => (
-                    <DuplicateItem 
-                      key={duplicate.contact_id} 
-                      selected={selectedDuplicate?.contact_id === duplicate.contact_id}
-                      onClick={() => handleSelectDuplicate(duplicate)}
-                    >
-                      <DuplicateName>
-                        {duplicate.first_name} {duplicate.last_name}
-                      </DuplicateName>
-                      <DuplicateDetails>
-                        {duplicate.email && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <FiMail size={14} />
-                            {duplicate.email}
-                          </div>
-                        )}
-                        {duplicate.mobile && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <FiPhone size={14} />
-                            {duplicate.mobile}
-                          </div>
-                        )}
-                        {duplicate.matched_on && <Badge color="#00ff00" bg="#222">{duplicate.matched_on}</Badge>}
-                        {duplicate.category && <Badge>{duplicate.category}</Badge>}
-                        {duplicate.last_interaction_at && 
-                          <div>Last interaction: {new Date(duplicate.last_interaction_at).toLocaleDateString()}</div>
-                        }
-                      </DuplicateDetails>
-                    </DuplicateItem>
-                  ))}
-                </DuplicatesList>
-                
-                {/* Show merge option UI when a duplicate is selected */}
-                {selectedDuplicate && (
-                  <Card style={{ marginTop: '20px', border: '1px solid #00ff00', backgroundColor: '#111' }}>
-                    <SectionTitle style={{ color: '#00ff00' }}>
-                      <FiGitMerge /> Merge Contact Data
-                    </SectionTitle>
-                    
-                    <div style={{ marginBottom: '15px', color: '#aaa', fontSize: '0.9rem' }}>
-                      This will merge the inbox contact into the selected existing contact.
-                      All data from both contacts will be combined, with the existing contact
-                      being kept as the primary record.
+                {/* Duplicate details - right side (2/3) */}
+                <InteractionsContainer>
+                  {selectedDuplicate ? (
+                    <div style={{ padding: '0 20px 20px 20px', height: '100%', overflowY: 'auto' }}>
+
+                      <ComparisonTable>
+                        <thead>
+                          <tr>
+                            <th>Field</th>
+                            <th>Current Contact</th>
+                            <th>Duplicate Contact</th>
+                            <th>Selection</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td>Name</td>
+                            <td>{contact.first_name} {contact.last_name}</td>
+                            <td>{selectedDuplicate.first_name} {selectedDuplicate.last_name}</td>
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <MergeOption>
+                                  <MergeRadio
+                                    type="radio"
+                                    name="merge_name"
+                                    value="current"
+                                    checked={mergeSelections.first_name === 'current'}
+                                    onChange={() => {
+                                      handleMergeSelectionChange('first_name', 'current');
+                                      handleMergeSelectionChange('last_name', 'current');
+                                    }}
+                                  />
+                                  <span>Current</span>
+                                </MergeOption>
+                                <MergeOption>
+                                  <MergeRadio
+                                    type="radio"
+                                    name="merge_name"
+                                    value="duplicate"
+                                    checked={mergeSelections.first_name === 'duplicate'}
+                                    onChange={() => {
+                                      handleMergeSelectionChange('first_name', 'duplicate');
+                                      handleMergeSelectionChange('last_name', 'duplicate');
+                                    }}
+                                  />
+                                  <span>Duplicate</span>
+                                </MergeOption>
+                              </div>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>Category</td>
+                            <td>{contact.category || '-'}</td>
+                            <td>{selectedDuplicate.category || '-'}</td>
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <MergeOption>
+                                  <MergeRadio
+                                    type="radio"
+                                    name="merge_category"
+                                    value="current"
+                                    checked={mergeSelections.category === 'current'}
+                                    onChange={() => handleMergeSelectionChange('category', 'current')}
+                                  />
+                                  <span>Current</span>
+                                </MergeOption>
+                                <MergeOption>
+                                  <MergeRadio
+                                    type="radio"
+                                    name="merge_category"
+                                    value="duplicate"
+                                    checked={mergeSelections.category === 'duplicate'}
+                                    onChange={() => handleMergeSelectionChange('category', 'duplicate')}
+                                  />
+                                  <span>Duplicate</span>
+                                </MergeOption>
+                              </div>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>Job Role</td>
+                            <td>{contact.job_role || '-'}</td>
+                            <td>{selectedDuplicate.job_role || '-'}</td>
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <MergeOption>
+                                  <MergeRadio
+                                    type="radio"
+                                    name="merge_job_role"
+                                    value="current"
+                                    checked={mergeSelections.job_role === 'current'}
+                                    onChange={() => handleMergeSelectionChange('job_role', 'current')}
+                                  />
+                                  <span>Current</span>
+                                </MergeOption>
+                                <MergeOption>
+                                  <MergeRadio
+                                    type="radio"
+                                    name="merge_job_role"
+                                    value="duplicate"
+                                    checked={mergeSelections.job_role === 'duplicate'}
+                                    onChange={() => handleMergeSelectionChange('job_role', 'duplicate')}
+                                  />
+                                  <span>Duplicate</span>
+                                </MergeOption>
+                              </div>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>Email</td>
+                            <td>{contact.email || '-'}</td>
+                            <td>{selectedDuplicate.email || '-'}</td>
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <MergeOption>
+                                  <MergeRadio
+                                    type="radio"
+                                    name="merge_emails"
+                                    value="current"
+                                    checked={mergeSelections.emails === 'current'}
+                                    onChange={() => handleMergeSelectionChange('emails', 'current')}
+                                  />
+                                  <span>Current</span>
+                                </MergeOption>
+                                <MergeOption>
+                                  <MergeRadio
+                                    type="radio"
+                                    name="merge_emails"
+                                    value="duplicate"
+                                    checked={mergeSelections.emails === 'duplicate'}
+                                    onChange={() => handleMergeSelectionChange('emails', 'duplicate')}
+                                  />
+                                  <span>Duplicate</span>
+                                </MergeOption>
+                                <MergeOption>
+                                  <MergeRadio
+                                    type="radio"
+                                    name="merge_emails"
+                                    value="combine"
+                                    checked={mergeSelections.emails === 'combine'}
+                                    onChange={() => handleMergeSelectionChange('emails', 'combine')}
+                                  />
+                                  <span>Combine</span>
+                                </MergeOption>
+                              </div>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>Mobile</td>
+                            <td>{contact.mobile || '-'}</td>
+                            <td>{selectedDuplicate.mobile || '-'}</td>
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <MergeOption>
+                                  <MergeRadio
+                                    type="radio"
+                                    name="merge_mobiles"
+                                    value="current"
+                                    checked={mergeSelections.mobiles === 'current'}
+                                    onChange={() => handleMergeSelectionChange('mobiles', 'current')}
+                                  />
+                                  <span>Current</span>
+                                </MergeOption>
+                                <MergeOption>
+                                  <MergeRadio
+                                    type="radio"
+                                    name="merge_mobiles"
+                                    value="duplicate"
+                                    checked={mergeSelections.mobiles === 'duplicate'}
+                                    onChange={() => handleMergeSelectionChange('mobiles', 'duplicate')}
+                                  />
+                                  <span>Duplicate</span>
+                                </MergeOption>
+                                <MergeOption>
+                                  <MergeRadio
+                                    type="radio"
+                                    name="merge_mobiles"
+                                    value="combine"
+                                    checked={mergeSelections.mobiles === 'combine'}
+                                    onChange={() => handleMergeSelectionChange('mobiles', 'combine')}
+                                  />
+                                  <span>Combine</span>
+                                </MergeOption>
+                              </div>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>LinkedIn</td>
+                            <td>{contact.linkedin || '-'}</td>
+                            <td>{selectedDuplicate.linkedin || '-'}</td>
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <MergeOption>
+                                  <MergeRadio
+                                    type="radio"
+                                    name="merge_linkedin"
+                                    value="current"
+                                    checked={mergeSelections.linkedin === 'current'}
+                                    onChange={() => handleMergeSelectionChange('linkedin', 'current')}
+                                  />
+                                  <span>Current</span>
+                                </MergeOption>
+                                <MergeOption>
+                                  <MergeRadio
+                                    type="radio"
+                                    name="merge_linkedin"
+                                    value="duplicate"
+                                    checked={mergeSelections.linkedin === 'duplicate'}
+                                    onChange={() => handleMergeSelectionChange('linkedin', 'duplicate')}
+                                  />
+                                  <span>Duplicate</span>
+                                </MergeOption>
+                              </div>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>Keep In Touch</td>
+                            <td>{contact.keep_in_touch_frequency || 'Not Set'}</td>
+                            <td>{selectedDuplicate.keep_in_touch_frequency || 'Not Set'}</td>
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <MergeOption>
+                                  <MergeRadio
+                                    type="radio"
+                                    name="merge_keep_in_touch"
+                                    value="current"
+                                    checked={mergeSelections.keep_in_touch_frequency === 'current'}
+                                    onChange={() => handleMergeSelectionChange('keep_in_touch_frequency', 'current')}
+                                  />
+                                  <span>Current</span>
+                                </MergeOption>
+                                <MergeOption>
+                                  <MergeRadio
+                                    type="radio"
+                                    name="merge_keep_in_touch"
+                                    value="duplicate"
+                                    checked={mergeSelections.keep_in_touch_frequency === 'duplicate'}
+                                    onChange={() => handleMergeSelectionChange('keep_in_touch_frequency', 'duplicate')}
+                                  />
+                                  <span>Duplicate</span>
+                                </MergeOption>
+                              </div>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </ComparisonTable>
+                      
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+                        <ActionButton 
+                          onClick={() => setSelectedDuplicate(null)} 
+                          style={{ marginRight: '10px' }}
+                        >
+                          Cancel
+                        </ActionButton>
+                        <ActionButton 
+                          variant="primary"
+                          onClick={() => handleMergeWithDuplicate()}
+                          disabled={loading}
+                        >
+                          <FiGitMerge /> Merge Contacts
+                        </ActionButton>
+                      </div>
                     </div>
-                    
+                  ) : (
                     <div style={{ 
                       display: 'flex', 
-                      justifyContent: 'space-between', 
-                      padding: '15px', 
-                      backgroundColor: '#222', 
-                      borderRadius: '6px',
-                      marginBottom: '20px'
+                      flexDirection: 'column', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      height: '100%',
+                      padding: '40px 20px',
+                      textAlign: 'center',
+                      color: '#666'
                     }}>
-                      <div>
-                        <h4 style={{ margin: '0 0 5px 0', color: '#00ff00' }}>Current Contact (Inbox)</h4>
-                        <div>{contact.first_name} {contact.last_name}</div>
-                        {contact.email && <div style={{ marginTop: '5px' }}><FiMail size={12} /> {contact.email}</div>}
-                        {contact.mobile && <div style={{ marginTop: '5px' }}><FiPhone size={12} /> {contact.mobile}</div>}
-                      </div>
-                      
-                      <div style={{ fontSize: '24px', display: 'flex', alignItems: 'center', color: '#00ff00' }}>
-                        <FiArrowRight />
-                      </div>
-                      
-                      <div>
-                        <h4 style={{ margin: '0 0 5px 0', color: '#00ff00' }}>Selected Contact (Existing)</h4>
-                        <div>{selectedDuplicate.first_name} {selectedDuplicate.last_name}</div>
-                        {selectedDuplicate.email && <div style={{ marginTop: '5px' }}><FiMail size={12} /> {selectedDuplicate.email}</div>}
-                        {selectedDuplicate.mobile && <div style={{ marginTop: '5px' }}><FiPhone size={12} /> {selectedDuplicate.mobile}</div>}
-                      </div>
+                      <FiGitMerge size={40} style={{ marginBottom: '15px', opacity: 0.5 }} />
+                      <h4 style={{ margin: '0 0 10px 0', color: '#999' }}>Select a Duplicate</h4>
+                      <p style={{ margin: 0, fontSize: '0.9rem' }}>
+                        Select a potential match from the list to view details
+                      </p>
                     </div>
-                    
-                    <div style={{ color: '#ffcc00', fontWeight: 'bold', marginBottom: '15px' }}>
-                      <FiAlertTriangle size={16} style={{ marginRight: '8px' }} />
-                      Warning: This action cannot be undone
-                    </div>
-                  </Card>
-                )}
-              </>
+                  )}
+                </InteractionsContainer>
+              </InteractionsLayout>
             )}
           </Card>
           
@@ -2348,16 +2808,6 @@ const ContactCrmWorkflow = () => {
             </ActionButton>
             
             <div>
-              {selectedDuplicate && (
-                <ActionButton 
-                  variant="warning" 
-                  onClick={handleMergeWithDuplicate} 
-                  disabled={loading}
-                  style={{ marginRight: '10px' }}
-                >
-                  <FiGitMerge /> Merge with Selected
-                </ActionButton>
-              )}
               <ActionButton 
                 variant="primary" 
                 onClick={() => goToStep(3)} 
