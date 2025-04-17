@@ -339,11 +339,130 @@ const WhatsAppMessage = styled.div`
   }
 `;
 
-const WhatsAppContainer = styled.div`
+// Old container component kept for compatibility
+const WhatsAppBubbleContainer = styled.div`
   display: flex;
   width: 100%;
   padding: 4px 0;
   justify-content: ${props => props.direction === 'Outbound' ? 'flex-end' : 'flex-start'};
+`;
+
+// New WhatsApp chat UI components
+const WhatsAppContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: #0b1a1a; /* Dark WhatsApp background */
+  position: relative;
+  border-radius: 4px;
+  overflow: hidden;
+`;
+
+const ChatHeader = styled.div`
+  background-color: #075e54; /* WhatsApp green */
+  color: white;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+`;
+
+const ChatAvatar = styled.div`
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background-color: #128c7e; /* WhatsApp secondary green */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+`;
+
+const ChatInfo = styled.div`
+  flex: 1;
+`;
+
+const ChatName = styled.div`
+  font-weight: bold;
+  font-size: 1rem;
+`;
+
+const ChatStatus = styled.div`
+  font-size: 0.75rem;
+  opacity: 0.8;
+`;
+
+const MessagesContainer = styled.div`
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: calc(100vh - 280px);
+  background-image: url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23103030' fill-opacity='0.4' fill-rule='evenodd'%3E%3Cpath d='M50 50c0-5.523 4.477-10 10-10s10 4.477 10 10-4.477 10-10 10c0 5.523-4.477 10-10 10s-10-4.477-10-10 4.477-10 10-10zM10 10c0-5.523 4.477-10 10-10s10 4.477 10 10-4.477 10-10 10c0 5.523-4.477 10-10 10S0 25.523 0 20s4.477-10 10-10zm10 8c4.418 0 8-3.582 8-8s-3.582-8-8-8-8 3.582-8 8 3.582 8 8 8zm40 40c4.418 0 8-3.582 8-8s-3.582-8-8-8-8 3.582-8 8 3.582 8 8 8z' /%3E%3C/g%3E%3C/svg%3E");
+`;
+
+const MessageBubble = styled.div`
+  max-width: 75%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  position: relative;
+  word-wrap: break-word;
+  line-height: 1.4;
+  font-size: 0.95rem;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
+  align-self: ${props => props.$direction === 'sent' ? 'flex-end' : 'flex-start'};
+  background-color: ${props => props.$direction === 'sent' ? '#055e54' : '#202c33'};
+  color: ${props => props.$direction === 'sent' ? '#e9e9e9' : '#e9e9e9'};
+  
+  &:before {
+    content: '';
+    position: absolute;
+    top: 0;
+    ${props => props.$direction === 'sent' ? 'right: -8px;' : 'left: -8px;'}
+    width: 0;
+    height: 0;
+    border-top: 8px solid ${props => props.$direction === 'sent' ? '#055e54' : '#202c33'};
+    border-right: ${props => props.$direction === 'sent' ? '8px solid transparent' : 'none'};
+    border-left: ${props => props.$direction !== 'sent' ? '8px solid transparent' : 'none'};
+  }
+`;
+
+const MessageTime = styled.div`
+  font-size: 0.65rem;
+  opacity: 0.7;
+  margin-top: 4px;
+  text-align: right;
+  padding-right: 4px;
+`;
+
+const EmptyChatState = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #777;
+  text-align: center;
+  padding: 20px;
+  
+  svg {
+    font-size: 3rem;
+    margin-bottom: 16px;
+    opacity: 0.5;
+  }
+  
+  h3 {
+    font-weight: normal;
+    margin-bottom: 8px;
+  }
+  
+  p {
+    font-size: 0.9rem;
+    max-width: 300px;
+  }
 `;
 
 // Modal styled components for delete confirmation
@@ -954,6 +1073,8 @@ const ContactCrmWorkflow = () => {
   const [whatsappChats, setWhatsappChats] = useState([]);
   const [emailThreads, setEmailThreads] = useState([]);
   const [selectedChat, setSelectedChat] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
   
   // State for delete modal (same as in ContactsInbox)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -1002,9 +1123,60 @@ const ContactCrmWorkflow = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   
   // Handle selecting a chat
-  const handleSelectChat = (chatId) => {
+  const handleSelectChat = async (chatId) => {
     setSelectedChat(chatId);
-    // You can add logic here to load chat messages or other related data
+    setLoadingMessages(true);
+    setChatMessages([]); // Clear previous messages
+    
+    try {
+      console.log('Loading messages for chat ID:', chatId);
+      
+      // Load interactions for this chat
+      const { data, error } = await supabase
+        .from('interactions')
+        .select(`
+          interaction_id,
+          contact_id,
+          interaction_type,
+          direction,
+          interaction_date,
+          chat_id,
+          summary,
+          created_at,
+          external_interaction_id,
+          special_case_tag
+        `)
+        .eq('chat_id', chatId)
+        .eq('interaction_type', 'whatsapp')
+        .order('interaction_date', { ascending: true });
+      
+      if (error) {
+        console.error('Error loading chat messages:', error);
+        return;
+      }
+      
+      console.log('Loaded chat messages:', data);
+      
+      if (data && data.length > 0) {
+        // Format the messages for display
+        const formattedMessages = data.map(message => ({
+          id: message.interaction_id,
+          content: message.summary || 'No content',
+          direction: message.direction === 'sent' ? 'sent' : 'received',
+          timestamp: message.interaction_date,
+          formattedTime: new Date(message.interaction_date).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+        }));
+        
+        setChatMessages(formattedMessages);
+      }
+    } catch (err) {
+      console.error('Error in handleSelectChat:', err);
+    } finally {
+      setLoadingMessages(false);
+    }
   };
 
   // Load WhatsApp chats for a contact based on interactions
@@ -3111,7 +3283,60 @@ const ContactCrmWorkflow = () => {
                 
                 {/* Interactions list */}
                 <InteractionsContainer>
-                  {/* No interactions to display */}
+                  {selectedChat ? (
+                    <WhatsAppContainer>
+                      <ChatHeader>
+                        <ChatAvatar>
+                          {(whatsappChats.find(chat => chat.chat_id === selectedChat)?.chat_name || '').charAt(0).toUpperCase()}
+                        </ChatAvatar>
+                        <ChatInfo>
+                          <ChatName>
+                            {whatsappChats.find(chat => chat.chat_id === selectedChat)?.chat_name || 'Chat'}
+                          </ChatName>
+                          <ChatStatus>
+                            {chatMessages.length} messages
+                          </ChatStatus>
+                        </ChatInfo>
+                      </ChatHeader>
+                      
+                      <MessagesContainer>
+                        {loadingMessages ? (
+                          <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>
+                            Loading messages...
+                          </div>
+                        ) : chatMessages.length === 0 ? (
+                          <EmptyChatState>
+                            <FiMessageSquare size={40} />
+                            <h3>No Messages</h3>
+                            <p>There are no messages in this conversation yet.</p>
+                          </EmptyChatState>
+                        ) : (
+                          chatMessages.map((message) => (
+                            <MessageBubble
+                              key={message.id}
+                              $direction={message.direction}
+                            >
+                              {message.content}
+                              <MessageTime>{message.formattedTime}</MessageTime>
+                            </MessageBubble>
+                          ))
+                        )}
+                      </MessagesContainer>
+                    </WhatsAppContainer>
+                  ) : (
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center', 
+                      height: '100%', 
+                      color: '#666',
+                      flexDirection: 'column',
+                      gap: '15px'
+                    }}>
+                      <FiMessageSquare size={40} color="#333" />
+                      <div>Select a conversation to view messages</div>
+                    </div>
+                  )}
                 </InteractionsContainer>
               </InteractionsLayout>
             )}
