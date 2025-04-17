@@ -582,7 +582,8 @@ const ContactsInbox = () => {
     deleteMeetings: true,
     deleteInvestments: true,
     deleteKit: true,
-    addToSpam: true
+    addToSpam: true,
+    addMobileToSpam: true
   });
   const [isDeleting, setIsDeleting] = useState(false);
   
@@ -832,6 +833,22 @@ const ContactsInbox = () => {
         
         if (spamError) {
           console.error('Error adding to spam list:', spamError);
+        }
+      }
+      
+      // Add mobile to whatsapp_spam table if selected and mobile exists
+      if (selectedItems.addMobileToSpam && contactToDelete.mobile) {
+        const { error: whatsappSpamError } = await supabase
+          .from('whatsapp_spam')
+          .insert([{ 
+            mobile_number: contactToDelete.mobile,
+            counter: 1,
+            created_at: new Date().toISOString(),
+            last_modified_at: new Date().toISOString()
+          }]);
+        
+        if (whatsappSpamError) {
+          console.error('Error adding to WhatsApp spam list:', whatsappSpamError);
         }
       }
       
@@ -2045,6 +2062,20 @@ const ContactsInbox = () => {
                       disabled={isDeleting}
                     />
                     <label htmlFor="addToSpam">Add email to spam list</label>
+                  </CheckboxItem>
+                )}
+                
+                {contactToDelete.mobile && (
+                  <CheckboxItem>
+                    <Checkbox 
+                      type="checkbox" 
+                      id="addMobileToSpam" 
+                      name="addMobileToSpam"
+                      checked={selectedItems.addMobileToSpam}
+                      onChange={handleCheckboxChange}
+                      disabled={isDeleting}
+                    />
+                    <label htmlFor="addMobileToSpam">Add mobile to WhatsApp spam list</label>
                   </CheckboxItem>
                 )}
               </CheckboxGroup>
