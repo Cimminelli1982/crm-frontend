@@ -4805,10 +4805,13 @@ const handleSelectEmailThread = async (threadId) => {
               {/* Left column */}
               <div>
                 {/* Personal Information Section */}
-                <SectionDivider>
-                  <SectionIcon><FiUser /></SectionIcon>
-                  <SectionLabel>Personal Information</SectionLabel>
-                </SectionDivider>
+                <div style={{ display: 'flex', flexDirection: 'column', marginBottom: '15px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <SectionIcon><FiUser /></SectionIcon>
+                    <SectionLabel>Personal Information</SectionLabel>
+                  </div>
+                  <div style={{ borderBottom: '1px solid #333', marginTop: '10px' }}></div>
+                </div>
                 
                 <FormGroup>
                   <FormFieldLabel>Name</FormFieldLabel>
@@ -5159,25 +5162,28 @@ const handleSelectEmailThread = async (threadId) => {
               {/* Right column */}
               <div>
                 {/* Classification Section */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                  <SectionDivider style={{ margin: 0, flex: 1 }}>
-                    <SectionIcon><FiTag /></SectionIcon>
-                    <SectionLabel>Classification</SectionLabel>
-                  </SectionDivider>
-                  
-                  <ActionButton 
-                    variant="success" 
-                    onClick={async () => {
-                      const success = await saveContactEnrichment();
-                      if (success) {
-                        // After successful save, move forward
-                        goToStep(4);
-                      }
-                    }} 
-                    disabled={loading}
-                  >
-                    <FiCheck /> Save
-                  </ActionButton>
+                <div style={{ display: 'flex', flexDirection: 'column', marginBottom: '15px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <SectionIcon><FiTag /></SectionIcon>
+                      <SectionLabel>Classification</SectionLabel>
+                    </div>
+                    
+                    <ActionButton 
+                      variant="success" 
+                      onClick={async () => {
+                        const success = await saveContactEnrichment();
+                        if (success) {
+                          // After successful save, move forward
+                          goToStep(4);
+                        }
+                      }} 
+                      disabled={loading}
+                    >
+                      <FiCheck /> Save
+                    </ActionButton>
+                  </div>
+                  <div style={{ borderBottom: '1px solid #333', marginTop: '8px' }}></div>
                 </div>
                 
                 <FormGroup>
@@ -5235,13 +5241,13 @@ const handleSelectEmailThread = async (threadId) => {
                   </div>
                 </FormGroup>
                 
-                <FormGroup style={{ marginTop: '1px' }}>
+                <FormGroup style={{ marginTop: '-12px' }}>
                   <FormFieldLabel>Tags</FormFieldLabel>
                   
                   <div style={{ 
                     border: '1px solid #333', 
                     borderRadius: '4px', 
-                    padding: '12px', 
+                    padding: '16px', 
                     marginBottom: '15px',
                     background: '#1e1e1e'
                   }}>
@@ -5358,26 +5364,6 @@ const handleSelectEmailThread = async (threadId) => {
                       )}
                     </div>
                     
-                    {/* Actions for clearing tag input */}
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
-                      <button 
-                        onClick={() => {
-                          handleInputChange('newCustomTag', '');
-                          handleInputChange('tagSuggestions', []);
-                        }}
-                        style={{
-                          background: 'transparent',
-                          border: '1px solid #555',
-                          borderRadius: '4px',
-                          padding: '8px 15px',
-                          color: '#999',
-                          cursor: 'pointer',
-                          fontSize: '0.85rem'
-                        }}
-                      >
-                        Clear
-                      </button>
-                    </div>
                   </div>
                   
                 </FormGroup>
