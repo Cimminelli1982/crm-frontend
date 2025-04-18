@@ -1183,11 +1183,14 @@ const ContactsInbox = () => {
       return;
     }
     
-    console.log('Row clicked, navigating to integrity page', params.data);
+    console.log('Row clicked, navigating to workflow page', params.data);
     
-    // Navigate to integrity page for this contact
+    // Navigate to the workflow page for this contact
     if (params.data && params.data.contact_id) {
-      navigate(`/contacts/integrity/${params.data.contact_id}`);
+      // Use the same approach as the Add to CRM button
+      navigate(`/inbox?source=category`);
+      // Store the contact_id to process in session storage
+      sessionStorage.setItem('workflow_contact_id', params.data.contact_id);
     }
   }, [navigate]);
 
