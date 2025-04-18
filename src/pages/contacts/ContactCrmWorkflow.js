@@ -26,7 +26,8 @@ import {
   FiSearch,
   FiUser,
   FiEdit,
-  FiUsers
+  FiUsers,
+  FiFile
 } from 'react-icons/fi';
 
 // Configure Modal for React
@@ -345,6 +346,126 @@ const WhatsAppBubbleContainer = styled.div`
   width: 100%;
   padding: 4px 0;
   justify-content: ${props => props.direction === 'Outbound' ? 'flex-end' : 'flex-start'};
+`;
+
+// Email Thread UI Components
+const EmailThreadContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: #1e1e1e;
+  position: relative;
+  border-radius: 4px;
+  overflow: hidden;
+`;
+
+const EmailHeader = styled.div`
+  background-color: #2a2a2a;
+  color: white;
+  padding: 16px;
+  border-bottom: 1px solid #444;
+`;
+
+const EmailSubject = styled.div`
+  font-size: 1.2rem;
+  font-weight: bold;
+  margin-bottom: 8px;
+  color: #e0e0e0;
+`;
+
+const EmailCount = styled.div`
+  font-size: 0.8rem;
+  color: #aaa;
+`;
+
+const EmailList = styled.div`
+  flex: 1;
+  overflow-y: auto;
+  max-height: calc(100vh - 280px);
+`;
+
+const EmailItem = styled.div`
+  border-bottom: 1px solid #333;
+  padding: 0;
+  background-color: #1a1a1a;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: #222;
+  }
+  
+  ${props => props.$expanded && `
+    background-color: #222;
+  `}
+`;
+
+const EmailHeader2 = styled.div`
+  padding: 16px;
+  cursor: pointer;
+`;
+
+const EmailMeta = styled.div`
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+`;
+
+const EmailSender = styled.div`
+  font-weight: bold;
+  color: #e0e0e0;
+`;
+
+const EmailDate = styled.div`
+  color: #999;
+  font-size: 0.8rem;
+`;
+
+const EmailPreview = styled.div`
+  color: #aaa;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.9rem;
+`;
+
+const EmailBody = styled.div`
+  padding: 0 16px 16px 16px;
+  color: #e0e0e0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  
+  p {
+    margin-bottom: 8px;
+  }
+  
+  a {
+    color: #4a9eff;
+    text-decoration: none;
+    
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+`;
+
+const EmailAttachments = styled.div`
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #333;
+`;
+
+const AttachmentItem = styled.div`
+  display: flex;
+  align-items: center;
+  padding: 8px;
+  background-color: #252525;
+  border-radius: 4px;
+  margin-top: 8px;
+  
+  svg {
+    margin-right: 8px;
+    color: #999;
+  }
 `;
 
 // New WhatsApp chat UI components
@@ -1076,6 +1197,12 @@ const ContactCrmWorkflow = () => {
   const [chatMessages, setChatMessages] = useState([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   
+  // State for email threads
+  const [selectedEmailThread, setSelectedEmailThread] = useState(null);
+  const [emailMessages, setEmailMessages] = useState([]);
+  const [loadingEmails, setLoadingEmails] = useState(false);
+  const [expandedEmails, setExpandedEmails] = useState({});
+  
   // State for delete modal (same as in ContactsInbox)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [contactToDelete, setContactToDelete] = useState(null);
@@ -1125,6 +1252,7 @@ const ContactCrmWorkflow = () => {
   // Handle selecting a chat
   const handleSelectChat = async (chatId) => {
     setSelectedChat(chatId);
+    setSelectedEmailThread(null); // Clear selected email thread
     setLoadingMessages(true);
     setChatMessages([]); // Clear previous messages
     
@@ -1148,7 +1276,7 @@ const ContactCrmWorkflow = () => {
         `)
         .eq('chat_id', chatId)
         .eq('interaction_type', 'whatsapp')
-        .order('interaction_date', { ascending: true });
+        .order('interaction_date', { ascending: false });
       
       if (error) {
         console.error('Error loading chat messages:', error);
@@ -1177,6 +1305,284 @@ const ContactCrmWorkflow = () => {
     } finally {
       setLoadingMessages(false);
     }
+  };
+  
+  // Handle selecting an email thread
+const handleSelectEmailThread = async (threadId) => {
+  setSelectedEmailThread(threadId);
+  setSelectedChat(null); // Clear selected chat
+  setLoadingEmails(true);
+  setEmailMessages([]); // Clear previous emails
+  setExpandedEmails({}); // Reset expanded state
+  
+  try {
+    console.log('Loading emails for thread ID:', threadId);
+    
+    // APPROACH 1: Primary approach - Get emails with complete participant information
+    const { data: emailsWithParticipants, error: participantsError } = await supabase
+      .from('emails')
+      .select(`
+        email_id,
+        thread_id,
+        email_thread_id,
+        subject,
+        body_plain,
+        body_html,
+        message_timestamp,
+        is_read,
+        direction,
+        has_attachments,
+        attachment_count,
+        email_participants!inner (
+          participant_id,
+          participant_type,
+          contacts:contact_id (
+            contact_id,
+            first_name,
+            last_name,
+            contact_emails (
+              email
+            )
+          )
+        )
+      `)
+      .eq('email_thread_id', threadId)
+      .order('message_timestamp', { ascending: false });
+    
+    if (participantsError) {
+      console.error('Error loading emails with participants:', participantsError);
+    } else if (emailsWithParticipants && emailsWithParticipants.length > 0) {
+      console.log('Found emails with participants:', emailsWithParticipants);
+      
+      // Format emails with organized participant information
+      const formattedEmails = emailsWithParticipants.map(email => {
+        // Organize participants by type
+        const sender = email.email_participants.find(p => p.participant_type === 'sender');
+        const toRecipients = email.email_participants.filter(p => p.participant_type === 'to');
+        const ccRecipients = email.email_participants.filter(p => p.participant_type === 'cc');
+        const bccRecipients = email.email_participants.filter(p => p.participant_type === 'bcc');
+        
+        return {
+          email_id: email.email_id,
+          thread_id: email.thread_id,
+          email_thread_id: email.email_thread_id,
+          subject: email.subject,
+          body_plain: email.body_plain,
+          body_html: email.body_html,
+          message_timestamp: email.message_timestamp,
+          is_read: email.is_read,
+          direction: email.direction,
+          has_attachments: email.has_attachments,
+          attachment_count: email.attachment_count,
+          sender: sender ? {
+            contact_id: sender.contacts.contact_id,
+            name: `${sender.contacts.first_name} ${sender.contacts.last_name}`.trim(),
+            email: sender.contacts.contact_emails?.[0]?.email || ''
+          } : null,
+          to: toRecipients.map(p => ({
+            contact_id: p.contacts.contact_id,
+            name: `${p.contacts.first_name} ${p.contacts.last_name}`.trim(),
+            email: p.contacts.contact_emails?.[0]?.email || ''
+          })),
+          cc: ccRecipients.map(p => ({
+            contact_id: p.contacts.contact_id,
+            name: `${p.contacts.first_name} ${p.contacts.last_name}`.trim(),
+            email: p.contacts.contact_emails?.[0]?.email || ''
+          })),
+          bcc: bccRecipients.map(p => ({
+            contact_id: p.contacts.contact_id,
+            name: `${p.contacts.first_name} ${p.contacts.last_name}`.trim(),
+            email: p.contacts.contact_emails?.[0]?.email || ''
+          }))
+        };
+      });
+      
+      setEmailMessages(formattedEmails);
+      
+      // Auto-expand the first email
+      if (formattedEmails.length > 0) {
+        setExpandedEmails({ [formattedEmails[0].email_id]: true });
+      }
+      
+      setLoadingEmails(false);
+      return;
+    } else {
+      console.log('No emails with participants found for thread ID:', threadId);
+    }
+    
+    // APPROACH 2: Fallback - Get emails by email_thread_id without participants
+    const { data: basicEmails, error: basicError } = await supabase
+      .from('emails')
+      .select(`
+        email_id,
+        thread_id,
+        email_thread_id,
+        sender_contact_id,
+        subject,
+        body_plain,
+        body_html,
+        message_timestamp,
+        is_read,
+        direction,
+        has_attachments,
+        attachment_count,
+        contacts:sender_contact_id (
+          contact_id,
+          first_name,
+          last_name,
+          contact_emails (
+            email
+          )
+        )
+      `)
+      .eq('email_thread_id', threadId)
+      .order('message_timestamp', { ascending: false });
+    
+    if (basicError) {
+      console.error('Error loading basic emails:', basicError);
+    } else if (basicEmails && basicEmails.length > 0) {
+      console.log('Found basic emails:', basicEmails);
+      
+      // Format emails with basic sender information
+      const formattedEmails = basicEmails.map(email => {
+        return {
+          email_id: email.email_id,
+          thread_id: email.thread_id,
+          email_thread_id: email.email_thread_id,
+          subject: email.subject,
+          body_plain: email.body_plain,
+          body_html: email.body_html,
+          message_timestamp: email.message_timestamp,
+          is_read: email.is_read,
+          direction: email.direction,
+          has_attachments: email.has_attachments,
+          attachment_count: email.attachment_count,
+          sender: email.contacts ? {
+            contact_id: email.contacts.contact_id,
+            name: `${email.contacts.first_name} ${email.contacts.last_name}`.trim(),
+            email: email.contacts.contact_emails?.[0]?.email || ''
+          } : null,
+          to: [],
+          cc: [],
+          bcc: []
+        };
+      });
+      
+      setEmailMessages(formattedEmails);
+      
+      // Auto-expand the first email
+      if (formattedEmails.length > 0) {
+        setExpandedEmails({ [formattedEmails[0].email_id]: true });
+      }
+      
+      setLoadingEmails(false);
+      return;
+    } else {
+      console.log('No basic emails found for thread ID:', threadId);
+    }
+    
+    // APPROACH 3: Try a subject-based search
+    // First, get the thread details to find the subject
+    const { data: threadDetails, error: threadError } = await supabase
+      .from('email_threads')
+      .select('subject')
+      .eq('email_thread_id', threadId)
+      .single();
+    
+    if (threadError) {
+      console.error('Error getting thread details:', threadError);
+    } else if (threadDetails && threadDetails.subject) {
+      const threadSubject = threadDetails.subject;
+      console.log('Trying to find emails by subject:', threadSubject);
+      
+      // Search by subject
+      const { data: subjectEmails, error: subjectError } = await supabase
+        .from('emails')
+        .select(`
+          email_id,
+          thread_id,
+          email_thread_id,
+          sender_contact_id,
+          subject,
+          body_plain,
+          body_html,
+          message_timestamp,
+          is_read,
+          direction,
+          has_attachments,
+          attachment_count,
+          contacts:sender_contact_id (
+            contact_id,
+            first_name,
+            last_name,
+            contact_emails (
+              email
+            )
+          )
+        `)
+        .or(`subject.eq.${threadSubject},subject.ilike.%${threadSubject}%,subject.ilike.%Re: ${threadSubject}%`)
+        .order('message_timestamp', { ascending: false });
+      
+      if (subjectError) {
+        console.error('Error in subject search:', subjectError);
+      } else if (subjectEmails && subjectEmails.length > 0) {
+        console.log('Found emails by subject:', subjectEmails);
+        
+        // Format emails with basic sender information
+        const formattedEmails = subjectEmails.map(email => {
+          return {
+            email_id: email.email_id,
+            thread_id: email.thread_id,
+            email_thread_id: email.email_thread_id,
+            subject: email.subject,
+            body_plain: email.body_plain,
+            body_html: email.body_html,
+            message_timestamp: email.message_timestamp,
+            is_read: email.is_read,
+            direction: email.direction,
+            has_attachments: email.has_attachments,
+            attachment_count: email.attachment_count,
+            sender: email.contacts ? {
+              contact_id: email.contacts.contact_id,
+              name: `${email.contacts.first_name} ${email.contacts.last_name}`.trim(),
+              email: email.contacts.contact_emails?.[0]?.email || ''
+            } : null,
+            to: [],
+            cc: [],
+            bcc: []
+          };
+        });
+        
+        setEmailMessages(formattedEmails);
+        
+        // Auto-expand the first email
+        if (formattedEmails.length > 0) {
+          setExpandedEmails({ [formattedEmails[0].email_id]: true });
+        }
+        
+        setLoadingEmails(false);
+        return;
+      } else {
+        console.log('No emails found with subject:', threadSubject);
+      }
+    }
+    
+    // If all approaches failed, let the user know
+    console.log('No emails found for this thread with any method');
+    
+  } catch (err) {
+    console.error('Error in handleSelectEmailThread:', err);
+  } finally {
+    setLoadingEmails(false);
+  }
+};
+  
+  // Toggle email expanded state
+  const toggleEmailExpanded = (emailId) => {
+    setExpandedEmails(prev => ({
+      ...prev,
+      [emailId]: !prev[emailId]
+    }));
   };
 
   // Load WhatsApp chats for a contact based on interactions
@@ -1262,7 +1668,8 @@ const ContactCrmWorkflow = () => {
           email_thread_id,
           email_threads:email_thread_id (
             email_thread_id, 
-            subject, 
+            subject,
+            thread_id,
             last_message_timestamp,
             updated_at
           )
@@ -1290,13 +1697,69 @@ const ContactCrmWorkflow = () => {
           thread_id: item.email_thread_id,
           title: item.email_threads.subject || 'No Subject',
           date: item.email_threads.last_message_timestamp,
-          updated_at: item.email_threads.updated_at
+          updated_at: item.email_threads.updated_at,
+          gmail_thread_id: item.email_threads.thread_id // Include this for email fetching
         }))
         // Sort by date (newest first)
         .sort((a, b) => new Date(b.date || b.updated_at) - new Date(a.date || a.updated_at));
       
       console.log('Setting email threads:', formattedThreads);
       setEmailThreads(formattedThreads);
+      
+      // Alternate method - get all threads that the contact participates in
+      if (formattedThreads.length === 0) {
+        console.log('Trying alternate method to find email threads...');
+        
+        // First get all interactions with type 'email' for this contact
+        const { data: interactionData, error: interactionError } = await supabase
+          .from('interactions')
+          .select(`
+            interaction_id,
+            email_thread_id,
+            summary
+          `)
+          .eq('contact_id', contactId)
+          .eq('interaction_type', 'email')
+          .order('interaction_date', { ascending: false });
+        
+        if (interactionError) {
+          console.error('Error loading email interactions:', interactionError);
+          return;
+        }
+        
+        if (interactionData && interactionData.length > 0) {
+          console.log('Found email interactions:', interactionData);
+          
+          // Extract unique email_thread_ids
+          const threadIds = [...new Set(interactionData.map(item => item.email_thread_id))].filter(Boolean);
+          
+          if (threadIds.length > 0) {
+            // Get thread details
+            const { data: threadsData, error: threadsError } = await supabase
+              .from('email_threads')
+              .select('*')
+              .in('email_thread_id', threadIds);
+            
+            if (threadsError) {
+              console.error('Error loading email threads details:', threadsError);
+              return;
+            }
+            
+            if (threadsData && threadsData.length > 0) {
+              const alternateThreads = threadsData.map(thread => ({
+                thread_id: thread.email_thread_id,
+                title: thread.subject || 'No Subject',
+                date: thread.last_message_timestamp,
+                updated_at: thread.updated_at,
+                gmail_thread_id: thread.thread_id
+              }));
+              
+              console.log('Setting alternate email threads:', alternateThreads);
+              setEmailThreads(alternateThreads);
+            }
+          }
+        }
+      }
     } catch (err) {
       console.error('Error loading email threads:', err);
     }
@@ -3265,9 +3728,10 @@ const ContactCrmWorkflow = () => {
                         borderBottom: '1px solid #222',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '8px'
+                        gap: '8px',
+                        backgroundColor: selectedEmailThread === thread.thread_id ? '#2a2a2a' : 'transparent'
                       }}
-                      onClick={() => console.log("Email thread clicked:", thread.thread_id)}
+                      onClick={() => handleSelectEmailThread(thread.thread_id)}
                     >
                       <FiMail size={16} color="#4a9eff" />
                       <span style={{ color: '#4a9eff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -3323,6 +3787,107 @@ const ContactCrmWorkflow = () => {
                         )}
                       </MessagesContainer>
                     </WhatsAppContainer>
+                  ) : selectedEmailThread ? (
+                    <EmailThreadContainer>
+                      <EmailHeader>
+                        <EmailSubject>
+                          {emailThreads.find(thread => thread.thread_id === selectedEmailThread)?.title || 'No Subject'}
+                        </EmailSubject>
+                        <EmailCount>
+                          {emailMessages.length} emails in conversation
+                        </EmailCount>
+                      </EmailHeader>
+                      
+                      <EmailList>
+                        {loadingEmails ? (
+                          <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>
+                            Loading emails...
+                          </div>
+                        ) : emailMessages.length === 0 ? (
+                          <EmptyChatState>
+                            <FiMail size={40} />
+                            <h3>No Emails</h3>
+                            <p>There are no emails in this thread.</p>
+                          </EmptyChatState>
+                        ) : (
+                          emailMessages.map((email) => (
+                            <EmailItem key={email.email_id} $expanded={expandedEmails[email.email_id]}>
+                              <EmailHeader2 onClick={() => toggleEmailExpanded(email.email_id)}>
+                                <EmailMeta>
+                                  <EmailSender>
+                                    {email.sender ? email.sender.name : (email.contacts?.first_name && email.contacts?.last_name ? `${email.contacts.first_name} ${email.contacts.last_name}` : 'Unknown Sender')}
+                                  </EmailSender>
+                                  <EmailDate>
+                                    {new Date(email.message_timestamp).toLocaleString()}
+                                  </EmailDate>
+                                </EmailMeta>
+                                <EmailPreview>
+                                  {email.body_plain ? email.body_plain.substring(0, 100) : 'No content'}
+                                </EmailPreview>
+                              </EmailHeader2>
+                              
+                              {expandedEmails[email.email_id] && (
+                                <EmailBody>
+                                  <div style={{ marginBottom: '15px', paddingBottom: '15px', borderBottom: '1px solid #333' }}>
+                                    <div style={{ display: 'flex', marginBottom: '6px' }}>
+                                      <strong style={{ minWidth: '60px', color: '#999' }}>From:</strong> 
+                                      <span style={{ color: '#ccc' }}>
+                                        {email.sender ? `${email.sender.name} ${email.sender.email ? `<${email.sender.email}>` : ''}` : 'Unknown Sender'}
+                                      </span>
+                                    </div>
+                                    
+                                    {email.to && email.to.length > 0 && (
+                                      <div style={{ display: 'flex', marginBottom: '6px' }}>
+                                        <strong style={{ minWidth: '60px', color: '#999' }}>To:</strong> 
+                                        <span style={{ color: '#ccc' }}>
+                                          {email.to.map(recipient => `${recipient.name}${recipient.email ? ` <${recipient.email}>` : ''}`).join(', ')}
+                                        </span>
+                                      </div>
+                                    )}
+                                    
+                                    {email.cc && email.cc.length > 0 && (
+                                      <div style={{ display: 'flex', marginBottom: '6px' }}>
+                                        <strong style={{ minWidth: '60px', color: '#999' }}>CC:</strong> 
+                                        <span style={{ color: '#ccc' }}>
+                                          {email.cc.map(recipient => `${recipient.name}${recipient.email ? ` <${recipient.email}>` : ''}`).join(', ')}
+                                        </span>
+                                      </div>
+                                    )}
+                                    
+                                    <div style={{ display: 'flex', marginBottom: '6px' }}>
+                                      <strong style={{ minWidth: '60px', color: '#999' }}>Subject:</strong> 
+                                      <span style={{ color: '#ccc' }}>{email.subject || 'No Subject'}</span>
+                                    </div>
+                                  </div>
+
+                                  <div style={{ marginBottom: '15px', color: '#ddd' }}>
+                                    {email.body_html ? (
+                                      <div dangerouslySetInnerHTML={{ __html: email.body_html }} />
+                                    ) : (
+                                      email.body_plain.split('\n').map((line, i) => (
+                                        <p key={i}>{line}</p>
+                                      ))
+                                    )}
+                                  </div>
+                                  
+                                  {email.has_attachments && email.attachment_count > 0 && (
+                                    <EmailAttachments>
+                                      <div style={{ fontSize: '0.8rem', color: '#aaa', marginBottom: '8px' }}>
+                                        {email.attachment_count} attachment{email.attachment_count !== 1 ? 's' : ''}
+                                      </div>
+                                      <AttachmentItem>
+                                        <FiFile size={20} />
+                                        <span>Attachment</span>
+                                      </AttachmentItem>
+                                    </EmailAttachments>
+                                  )}
+                                </EmailBody>
+                              )}
+                            </EmailItem>
+                          ))
+                        )}
+                      </EmailList>
+                    </EmailThreadContainer>
                   ) : (
                     <div style={{ 
                       display: 'flex', 
