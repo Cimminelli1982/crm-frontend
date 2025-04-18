@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
+import { getRecordById } from '../../lib/airtableClient';
 import toast from 'react-hot-toast';
 import Modal from 'react-modal';
 import { 
@@ -1846,7 +1847,8 @@ const handleSelectEmailThread = async (threadId) => {
           score,
           last_interaction_at,
           linkedin,
-          keep_in_touch_frequency
+          keep_in_touch_frequency,
+          airtable_id
         `)
         .eq('contact_id', contactId)
         .single();
@@ -1882,7 +1884,7 @@ const handleSelectEmailThread = async (threadId) => {
         loadInteractions(contactData.contact_id),
         loadContactDetails(contactData.contact_id),
         loadEmailAndMobile(contactData.contact_id),
-        mockExternalData(contactData)
+        fetchExternalData(contactData)
       ]);
       
       // After loading email and mobile, search for duplicates
@@ -2159,40 +2161,167 @@ const handleSelectEmailThread = async (threadId) => {
     }
   };
   
-  // Mock external data sources (in a real app, these would be API calls)
-  const mockExternalData = async (contactData) => {
-    // Simulate latency
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    setExternalSources({
-      hubspot: {
-        email: contactData.email || 'hubspot_email@example.com',
-        mobile: contactData.mobile || '+1234567890',
-        company: { id: 'hs1', name: 'HubSpot Company', website: 'https://example.com' },
-        tags: ['HubSpot Tag 1', 'HubSpot Tag 2'],
-        notes: 'Notes from HubSpot: This contact was last active 3 months ago.',
-        keepInTouch: 'monthly',
-        category: 'Client'
-      },
-      supabase: {
-        email: contactData.email || 'supabase_email@example.com',
-        mobile: contactData.mobile ? contactData.mobile.replace('123', '456') : '+9876543210',
-        company: null,
-        tags: ['Supabase Tag 1'],
-        notes: 'Notes from old Supabase: Contact has been in database since 2021.',
-        keepInTouch: 'quarterly',
-        category: 'Lead'
-      },
-      airtable: {
-        email: '',
-        mobile: contactData.mobile ? contactData.mobile.replace('123', '789') : '+1122334455',
-        company: { id: 'at1', name: 'Airtable Company', website: 'https://airtable-example.com' },
-        tags: ['Airtable Tag 1', 'Airtable Tag 2', 'Airtable Tag 3'],
-        notes: 'Notes from Airtable: Contact requested follow-up.',
+  // Fetch data from external sources
+  const fetchExternalData = async (contactData) => {
+    try {
+      console.log('Contact data in fetchExternalData:', contactData);
+      
+      // Initialize with empty data
+      const externalData = {
+        hubspot: {
+          email: '',
+          mobile: '',
+          company: null,
+          tags: [],
+          notes: '',
+          keepInTouch: null,
+          category: null
+        },
+        supabase: {
+          email: contactData.email || '',
+          mobile: contactData.mobile || '',
+          company: null,
+          tags: [],
+          notes: '',
+          keepInTouch: contactData.keep_in_touch_frequency || null,
+          category: contactData.category || null
+        },
+        airtable: {
+          email: '',
+          mobile: '',
+          company: null,
+          tags: [],
+          notes: '',
+          keepInTouch: null,
+          category: null,
+          firstName: '',
+          lastName: ''
+        }
+      };
+      
+      // Add mock data temporarily for testing
+      externalData.airtable = {
+        email: 'test@airtable.com',
+        mobile: '+1234567890',
+        company: { id: 'at1', name: 'Test Airtable Company' },
+        tags: ['Tag1', 'Tag2'],
+        notes: 'Test notes from Airtable',
         keepInTouch: 'weekly',
-        category: 'Investor'
+        category: 'VIP',
+        firstName: 'Test',
+        lastName: 'User'
+      };
+      
+      // Fetch Airtable data if we have an airtable_id
+      if (contactData.airtable_id) {
+        try {
+          console.log('Fetching Airtable data for record:', contactData.airtable_id);
+          
+          // Try with different potential table names
+          let airtableData = null;
+          
+          try {
+            // First try 'People' table
+            airtableData = await getRecordById('People', contactData.airtable_id);
+            console.log('Successfully fetched from "People" table');
+          } catch (err) {
+            console.log('Failed to fetch from "People" table:', err.message);
+            
+            try {
+              // Try 'Contacts' table
+              airtableData = await getRecordById('Contacts', contactData.airtable_id);
+              console.log('Successfully fetched from "Contacts" table');
+            } catch (err) {
+              console.log('Failed to fetch from "Contacts" table:', err.message);
+              
+              // Try with 'Networkers' table
+              try {
+                airtableData = await getRecordById('Networkers', contactData.airtable_id);
+                console.log('Successfully fetched from "Networkers" table');
+              } catch (err) {
+                console.log('Failed to fetch from "Networkers" table:', err.message);
+                
+                // Just for completeness, try with explicit tblMrYDZktKkkWyzf table id
+                try {
+                  airtableData = await getRecordById('tblMrYDZktKkkWyzf', contactData.airtable_id);
+                  console.log('Successfully fetched from table ID');
+                } catch (err) {
+                  console.log('Failed to fetch from table ID:', err.message);
+                }
+              }
+            }
+          }
+          
+          console.log('Raw Airtable data fetched:', airtableData);
+          
+          if (airtableData) {
+            // Map Airtable fields to our app's format with alternate field names
+            const getField = (data, possibleNames, defaultValue = '') => {
+              for (const name of possibleNames) {
+                if (data[name] !== undefined) {
+                  return data[name];
+                }
+              }
+              return defaultValue;
+            };
+            
+            // Use the exact field names you've confirmed exist in Airtable
+            const firstName = getField(airtableData, ['Name']);
+            const lastName = getField(airtableData, ['Surname']);
+            const email = getField(airtableData, ['Primary email']);
+            const mobile = getField(airtableData, ['Mobile phone number', 'Mobile', 'Phone', 'phone', 'mobile', 'Mobile Number']);
+            const category = getField(airtableData, ['Main Category', 'Category', 'category']);
+            const tags = getField(airtableData, ['Keywords', 'Tags', 'tags']);
+            const companyData = getField(airtableData, ['Company', 'company']);
+            const companyName = getField(airtableData, ['Company Name', 'company_name']);
+            const notes = getField(airtableData, ['Notes', 'notes', 'Notes (from Formula)', 'Description']);
+            const keepInTouch = getField(airtableData, ['Keep in touch frequency', 'Keep in touch', 'keep_in_touch_frequency']);
+            
+            // Log what fields we found
+            console.log('Extracted fields:', {
+              firstName, lastName, email, mobile, category, 
+              tags, companyData, companyName, notes, keepInTouch
+            });
+            
+            externalData.airtable = {
+              firstName,
+              lastName,
+              email,
+              mobile,
+              category,
+              tags: tags ? (typeof tags === 'string' ? tags.split(',').map(tag => tag.trim()) : tags) : [],
+              company: companyData ? {
+                id: Array.isArray(companyData) ? companyData[0] : companyData,
+                name: companyName || 'Unknown Company'
+              } : null,
+              notes,
+              keepInTouch
+            };
+            
+            console.log('Mapped Airtable data:', externalData.airtable);
+          }
+        } catch (error) {
+          console.error('Error fetching Airtable data:', error);
+        }
+      } else {
+        console.log('No airtable_id found in contact data');
       }
-    });
+      
+      // TODO: Add HubSpot data fetching if needed
+      
+      // Update the external sources state
+      setExternalSources(externalData);
+      
+      // Force show Airtable source for debugging
+      setShowSources(prev => ({
+        ...prev,
+        airtable: true
+      }));
+      
+      console.log('Updated externalSources with:', externalData);
+    } catch (error) {
+      console.error('Error in fetchExternalData:', error);
+    }
   };
   
   // Toggle showing external source data
@@ -4630,24 +4759,31 @@ const handleSelectEmailThread = async (threadId) => {
       {currentStep === 3 && (
         <>
           <Card>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-              <SectionTitle style={{ margin: 0 }}>
-                <FiInfo /> Contact Enrichment
-              </SectionTitle>
-              
-              <ActionButton 
-                variant="success" 
-                onClick={async () => {
-                  const success = await saveContactEnrichment();
-                  if (success) {
-                    // After successful save, move forward
-                    goToStep(4);
-                  }
-                }} 
-                disabled={loading}
-              >
-                <FiCheck /> Save
-              </ActionButton>
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <SectionTitle style={{ margin: 0, borderBottom: 'none', paddingBottom: '0' }}>
+                  <FiInfo /> Contact Enrichment
+                </SectionTitle>
+                
+                <ActionButton 
+                  variant="success" 
+                  onClick={async () => {
+                    const success = await saveContactEnrichment();
+                    if (success) {
+                      // After successful save, move forward
+                      goToStep(4);
+                    }
+                  }} 
+                  disabled={loading}
+                >
+                  <FiCheck /> Save
+                </ActionButton>
+              </div>
+              <div style={{ 
+                borderBottom: '1px solid #333', 
+                paddingBottom: '10px', 
+                marginBottom: '15px' 
+              }}></div>
             </div>
             
             <SourceToggles>
@@ -4924,6 +5060,13 @@ const handleSelectEmailThread = async (threadId) => {
                     <ExternalSourceInfo color="#3ecf8e">
                       <div className="source-label">Old Supabase</div>
                       <div className="source-value">{externalSources.supabase.email}</div>
+                    </ExternalSourceInfo>
+                  )}
+                  
+                  {showSources.airtable && externalSources.airtable.email && (
+                    <ExternalSourceInfo color="#2d7ff9">
+                      <div className="source-label">Airtable</div>
+                      <div className="source-value">{externalSources.airtable.email}</div>
                     </ExternalSourceInfo>
                   )}
                 </FormGroup>
@@ -5252,6 +5395,13 @@ const handleSelectEmailThread = async (threadId) => {
                       <div className="source-value">{externalSources.supabase.mobile}</div>
                     </ExternalSourceInfo>
                   )}
+                  
+                  {showSources.airtable && externalSources.airtable.mobile && (
+                    <ExternalSourceInfo color="#2d7ff9">
+                      <div className="source-label">Airtable</div>
+                      <div className="source-value">{externalSources.airtable.mobile}</div>
+                    </ExternalSourceInfo>
+                  )}
                 </FormGroup>
               </div>
             </FormGrid>
@@ -5269,6 +5419,106 @@ const handleSelectEmailThread = async (threadId) => {
               Skip to Next <FiArrowRight />
             </ActionButton>
           </ButtonGroup>
+          
+          {/* Debug section */}
+          <Card style={{ marginTop: '20px', background: '#222', padding: '15px' }}>
+            <div style={{ fontSize: '0.9rem' }}>
+              <h4>Debug Info:</h4>
+              <div>
+                <strong>Contact Airtable ID:</strong> {contact?.airtable_id || 'Not set'}
+              </div>
+              <div style={{ marginTop: '10px' }}>
+                <strong>Contact Full Details:</strong>
+                <pre style={{ background: '#333', padding: '10px', overflowX: 'auto', maxHeight: '150px' }}>
+                  {JSON.stringify(contact, null, 2)}
+                </pre>
+              </div>
+              <div style={{ marginTop: '10px' }}>
+                <strong>Airtable Toggle State:</strong> {showSources.airtable ? 'On' : 'Off'}
+              </div>
+              <div style={{ marginTop: '10px' }}>
+                <strong>Field Display Status:</strong>
+                <div>Email shown: {showSources.airtable && externalSources.airtable.email ? 'Yes' : 'No'}</div>
+                <div>Mobile shown: {showSources.airtable && externalSources.airtable.mobile ? 'Yes' : 'No'}</div>
+                <div>Tags shown: {showSources.airtable && externalSources.airtable.tags?.length > 0 ? 'Yes' : 'No'}</div>
+              </div>
+              <div style={{ marginTop: '10px' }}>
+                <strong>Airtable Data:</strong>
+                <pre style={{ background: '#333', padding: '10px', overflowX: 'auto' }}>
+                  {JSON.stringify(externalSources.airtable, null, 2)}
+                </pre>
+              </div>
+              <button 
+                onClick={() => {
+                  console.log('External sources state:', externalSources);
+                  console.log('Show sources state:', showSources);
+                  console.log('Contact data:', contact);
+                  
+                  // Force show Airtable source and run a test retrieval
+                  setShowSources(prev => ({ ...prev, airtable: true }));
+                  
+                  // Show sample data first
+                  setExternalSources(prev => ({
+                    ...prev,
+                    airtable: {
+                      ...prev.airtable,
+                      email: 'debug@airtable.com',
+                      mobile: '+1-999-DEBUG',
+                      tags: ['Debug', 'Test', 'Airtable'],
+                      category: 'Debug',
+                      firstName: 'Debug',
+                      lastName: 'User',
+                      notes: 'Notes added from debug button'
+                    }
+                  }));
+                  
+                  // Attempt a direct Airtable fetch with the record ID from the debug interface
+                  if (contact?.airtable_id) {
+                    toast.success('Attempting to fetch Airtable data directly...');
+                    // Try fetching with VERY explicit logging
+                    try {
+                      setTimeout(async () => {
+                        try {
+                          console.log('Directly fetching Airtable with ID:', contact.airtable_id);
+                          const testData = await getRecordById('Networkers', contact.airtable_id);
+                          console.log('DIRECT TEST - Raw data:', testData);
+                          console.log('DIRECT TEST - Field Name exists?:', !!testData['Name']);
+                          console.log('DIRECT TEST - Field Surname exists?:', !!testData['Surname']);
+                          console.log('DIRECT TEST - Field Primary email exists?:', !!testData['Primary email']);
+                          
+                          if (testData) {
+                            toast.success('Found Airtable data! Check console.');
+                            // Update UI with the directly fetched data
+                            setExternalSources(prev => ({
+                              ...prev,
+                              airtable: {
+                                ...prev.airtable,
+                                email: testData['Primary email'] || 'No email found',
+                                firstName: testData['Name'] || 'No name found',
+                                lastName: testData['Surname'] || 'No surname found',
+                              }
+                            }));
+                          } else {
+                            toast.error('No data returned from Airtable');
+                          }
+                        } catch (err) {
+                          toast.error(`Airtable fetch error: ${err.message}`);
+                          console.error('Direct test error:', err);
+                        }
+                      }, 1000);
+                    } catch (err) {
+                      console.error('Outer error in direct test:', err);
+                    }
+                  } else {
+                    toast.error('No airtable_id present on this contact');
+                  }
+                }}
+                style={{ marginTop: '10px', padding: '8px 15px', background: '#444', border: 'none', borderRadius: '4px', color: 'white', cursor: 'pointer' }}
+              >
+                Force Update Airtable Data
+              </button>
+            </div>
+          </Card>
         </>
       )}
       
