@@ -843,6 +843,40 @@ const FormGrid = styled.div`
   }
 `;
 
+// New styling components for improved form organization
+const SectionDivider = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #333;
+  color: #00ff00;
+`;
+
+const SectionIcon = styled.span`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: rgba(0, 255, 0, 0.1);
+  border-radius: 50%;
+  padding: 5px;
+`;
+
+const SectionLabel = styled.span`
+  font-size: 1rem;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+`;
+
+const FormFieldLabel = styled.div`
+  color: #999;
+  font-size: 0.8rem;
+  margin-bottom: 5px;
+`;
+
 const FormGroup = styled.div`
   margin-bottom: 20px;
   
@@ -1777,6 +1811,13 @@ const handleSelectEmailThread = async (threadId) => {
       loadContactData();
       loadWhatsappChats(contactId);
       loadEmailThreads(contactId);
+      
+      // Enable all legacy data sources by default
+      setShowSources({
+        hubspot: true,
+        supabase: true,
+        airtable: true
+      });
     }
   }, [contactId]);
   
@@ -4759,60 +4800,26 @@ const handleSelectEmailThread = async (threadId) => {
       {currentStep === 3 && (
         <>
           <Card>
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <SectionTitle style={{ margin: 0, borderBottom: 'none', paddingBottom: '0' }}>
-                  <FiInfo /> Contact Enrichment
-                </SectionTitle>
-                
-                <ActionButton 
-                  variant="success" 
-                  onClick={async () => {
-                    const success = await saveContactEnrichment();
-                    if (success) {
-                      // After successful save, move forward
-                      goToStep(4);
-                    }
-                  }} 
-                  disabled={loading}
-                >
-                  <FiCheck /> Save
-                </ActionButton>
-              </div>
-              <div style={{ 
-                borderBottom: '1px solid #333', 
-                paddingBottom: '10px', 
-                marginBottom: '15px' 
-              }}></div>
-            </div>
-            
-            <SourceToggles>
-              <SourceToggle 
-                active={showSources.hubspot} 
-                onClick={() => toggleSource('hubspot')}
-              >
-                HubSpot
-              </SourceToggle>
-              <SourceToggle 
-                active={showSources.supabase} 
-                onClick={() => toggleSource('supabase')}
-              >
-                Old Supabase
-              </SourceToggle>
-              <SourceToggle 
-                active={showSources.airtable} 
-                onClick={() => toggleSource('airtable')}
-              >
-                Airtable
-              </SourceToggle>
-            </SourceToggles>
             
             <FormGrid>
               {/* Left column */}
               <div>
+                {/* Personal Information Section */}
+                <SectionDivider>
+                  <SectionIcon><FiUser /></SectionIcon>
+                  <SectionLabel>Personal Information</SectionLabel>
+                </SectionDivider>
+                
                 <FormGroup>
-                  <InputLabel>Name</InputLabel>
-                  <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+                  <FormFieldLabel>Name</FormFieldLabel>
+                  <div style={{ 
+                    display: 'flex', 
+                    gap: '10px', 
+                    marginBottom: '15px',
+                    background: '#222',
+                    padding: '12px',
+                    borderRadius: '4px'
+                  }}>
                     <Input 
                       type="text"
                       value={formData.firstName || contact?.first_name || ''}
@@ -4831,83 +4838,14 @@ const handleSelectEmailThread = async (threadId) => {
                 </FormGroup>
 
                 <FormGroup>
-                  <InputLabel>Keep in Touch Frequency</InputLabel>
-                  <Select 
-                    value={formData.keepInTouch || ''}
-                    onChange={(e) => handleInputChange('keepInTouch', e.target.value === '' ? null : e.target.value)}
-                  >
-                    <option value="Not Set">Not Set</option>
-                    <option value="Monthly">Monthly</option>
-                    <option value="Quarterly">Quarterly</option>
-                    <option value="Twice per Year">Twice per Year</option>
-                    <option value="Once per Year">Once per Year</option>
-                    <option value="Weekly">Weekly</option>
-                    <option value="Do not keep in touch">Do not keep in touch</option>
-                  </Select>
-                  
-                  {showSources.hubspot && externalSources.hubspot.keepInTouch && (
-                    <ExternalSourceInfo color="#ff7a59">
-                      <div className="source-label">HubSpot</div>
-                      <div className="source-value">{externalSources.hubspot.keepInTouch}</div>
-                    </ExternalSourceInfo>
-                  )}
-                  
-                  {showSources.airtable && externalSources.airtable.keepInTouch && (
-                    <ExternalSourceInfo color="#2d7ff9">
-                      <div className="source-label">Airtable</div>
-                      <div className="source-value">{externalSources.airtable.keepInTouch}</div>
-                    </ExternalSourceInfo>
-                  )}
-                </FormGroup>
-                
-                <FormGroup>
-                  <InputLabel>Category</InputLabel>
-                  <Select 
-                    value={formData.category || ''}
-                    onChange={(e) => handleInputChange('category', e.target.value === '' ? null : e.target.value)}
-                  >
-                    <option value="">Not Set</option>
-                    <option value="Inbox">Inbox</option>
-                    <option value="Skip">Skip</option>
-                    <option value="Professional Investor">Professional Investor</option>
-                    <option value="Team">Team</option>
-                    <option value="Advisor">Advisor</option>
-                    <option value="WhatsApp Group Contact">WhatsApp Group Contact</option>
-                    <option value="Supplier">Supplier</option>
-                    <option value="Founder">Founder</option>
-                    <option value="Manager">Manager</option>
-                    <option value="Friend and Family">Friend and Family</option>
-                    <option value="Other">Other</option>
-                    <option value="Student">Student</option>
-                    <option value="Media">Media</option>
-                    <option value="Institution">Institution</option>
-                    <option value="SUBSCRIBER NEWSLETTER">Subscriber Newsletter</option>
-                    <option value="System">System</option>
-                  </Select>
-                  
-                  {showSources.hubspot && externalSources.hubspot.category && (
-                    <ExternalSourceInfo color="#ff7a59">
-                      <div className="source-label">HubSpot</div>
-                      <div className="source-value">{externalSources.hubspot.category}</div>
-                    </ExternalSourceInfo>
-                  )}
-                  
-                  {showSources.supabase && externalSources.supabase.category && (
-                    <ExternalSourceInfo color="#3ecf8e">
-                      <div className="source-label">Old Supabase</div>
-                      <div className="source-value">{externalSources.supabase.category}</div>
-                    </ExternalSourceInfo>
-                  )}
-                </FormGroup>
-                
-                <FormGroup>
-                  <InputLabel>Email Addresses</InputLabel>
+                  <FormFieldLabel>Email Addresses</FormFieldLabel>
                   
                   <div style={{ 
                     border: '1px solid #333', 
                     borderRadius: '4px', 
                     padding: '12px', 
-                    marginBottom: '15px' 
+                    marginBottom: '15px',
+                    background: '#1e1e1e'
                   }}>
                     {/* Existing emails list */}
                     {formData.emails && formData.emails.length > 0 ? (
@@ -5004,7 +4942,14 @@ const handleSelectEmailThread = async (threadId) => {
                   </div>
                   
                   {/* Add new email form */}
-                  <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    gap: '10px', 
+                    marginBottom: '10px',
+                    background: '#222',
+                    padding: '10px',
+                    borderRadius: '4px'
+                  }}>
                     <Input 
                       type="email"
                       placeholder="Add new email address"
@@ -5049,198 +4994,17 @@ const handleSelectEmailThread = async (threadId) => {
                     </button>
                   </div>
                   
-                  {showSources.hubspot && externalSources.hubspot.email && (
-                    <ExternalSourceInfo color="#ff7a59">
-                      <div className="source-label">HubSpot</div>
-                      <div className="source-value">{externalSources.hubspot.email}</div>
-                    </ExternalSourceInfo>
-                  )}
-                  
-                  {showSources.supabase && externalSources.supabase.email && (
-                    <ExternalSourceInfo color="#3ecf8e">
-                      <div className="source-label">Old Supabase</div>
-                      <div className="source-value">{externalSources.supabase.email}</div>
-                    </ExternalSourceInfo>
-                  )}
-                  
-                  {showSources.airtable && externalSources.airtable.email && (
-                    <ExternalSourceInfo color="#2d7ff9">
-                      <div className="source-label">Airtable</div>
-                      <div className="source-value">{externalSources.airtable.email}</div>
-                    </ExternalSourceInfo>
-                  )}
-                </FormGroup>
-              </div>
-              
-              {/* Right column */}
-              <div>
-                <FormGroup>
-                  <InputLabel>Tags</InputLabel>
-                  
-                  <div style={{ 
-                    border: '1px solid #333', 
-                    borderRadius: '4px', 
-                    padding: '15px', 
-                    marginBottom: '15px',
-                    background: '#222'
-                  }}>
-                    <TagsContainer style={{ marginBottom: formData.tags && formData.tags.length > 0 ? '15px' : '0' }}>
-                      {formData.tags && formData.tags.length > 0 ? formData.tags.map(tag => (
-                        <Tag key={tag.tag_id || tag.entry_id}>
-                          {tag.name}
-                          <FiX 
-                            className="remove" 
-                            size={14} 
-                            onClick={() => handleInputChange('tags', formData.tags.filter(t => (t.tag_id || t.entry_id) !== (tag.tag_id || tag.entry_id)))}
-                          />
-                        </Tag>
-                      )) : (
-                        <div style={{ color: '#999', textAlign: 'center', padding: '10px 0' }}>
-                          No tags added
-                        </div>
-                      )}
-                    </TagsContainer>
-                  </div>
-                  
-                  {/* Add new tag with autocomplete */}
-                  <div style={{ marginBottom: '15px' }}>
-                    <div style={{ position: 'relative', width: '96%' }}>
-                      <Input 
-                        type="text"
-                        placeholder="Type to search or add tags (min 2 characters)"
-                        value={formData.newCustomTag || ''}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          handleInputChange('newCustomTag', value);
-                          
-                          // Search for tag suggestions if at least 2 characters
-                          if (value && value.length >= 2) {
-                            // We'll add a debounced search function below
-                            searchTagSuggestions(value);
-                          } else {
-                            // Clear suggestions if input is too short
-                            handleInputChange('tagSuggestions', []);
-                          }
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && formData.newCustomTag?.trim()) {
-                            // Add tag
-                            const newTag = { 
-                              tag_id: `temp-${Date.now()}`, 
-                              name: formData.newCustomTag.trim() 
-                            };
-                            handleInputChange('tags', [...(formData.tags || []), newTag]);
-                            handleInputChange('newCustomTag', '');
-                            handleInputChange('tagSuggestions', []);
-                          } else if (e.key === 'Escape') {
-                            // Clear input and suggestions on ESC
-                            handleInputChange('newCustomTag', '');
-                            handleInputChange('tagSuggestions', []);
-                          }
-                        }}
-                        style={{ 
-                          marginBottom: '5px',
-                          fontSize: '0.9rem', // 10% smaller text
-                          height: '28px', // Reduced height to match other inputs
-                          minHeight: '28px',
-                          padding: '4px 10px'
-                        }}
-                      />
-                      
-                      {/* Tag suggestions dropdown */}
-                      {formData.tagSuggestions && formData.tagSuggestions.length > 0 && (
-                        <div style={{
-                          position: 'absolute',
-                          top: '100%',
-                          left: 0,
-                          right: 0,
-                          zIndex: 10,
-                          background: '#333',
-                          border: '1px solid #444',
-                          borderRadius: '4px',
-                          maxHeight: '200px',
-                          overflowY: 'auto'
-                        }}>
-                          {formData.tagSuggestions.map((suggestion) => (
-                            <div 
-                              key={suggestion.tag_id}
-                              onClick={() => {
-                                // Only add if not already exists
-                                if (!formData.tags?.some(t => 
-                                  t.tag_id === suggestion.tag_id || 
-                                  t.name.toLowerCase() === suggestion.name.toLowerCase()
-                                )) {
-                                  handleInputChange('tags', [...(formData.tags || []), suggestion]);
-                                  handleInputChange('newCustomTag', '');
-                                  handleInputChange('tagSuggestions', []);
-                                }
-                              }}
-                              style={{
-                                padding: '8px 12px',
-                                cursor: 'pointer',
-                                borderBottom: '1px solid #444',
-                                hoverBackground: '#444'
-                              }}
-                              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#444'}
-                              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                            >
-                              {suggestion.name}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Actions for clearing tag input */}
-                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                      <button 
-                        onClick={() => {
-                          handleInputChange('newCustomTag', '');
-                          handleInputChange('tagSuggestions', []);
-                        }}
-                        style={{
-                          background: 'transparent',
-                          border: '1px solid #555',
-                          borderRadius: '4px',
-                          padding: '8px 15px',
-                          color: '#999',
-                          cursor: 'pointer',
-                          fontSize: '0.85rem'
-                        }}
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  </div>
-                  
-                  
-                  {showSources.hubspot && externalSources.hubspot.tags?.length > 0 && (
-                    <ExternalSourceInfo color="#ff7a59">
-                      <div className="source-label">HubSpot Tags</div>
-                      <div className="source-value">
-                        {externalSources.hubspot.tags.join(', ')}
-                      </div>
-                    </ExternalSourceInfo>
-                  )}
-                  
-                  {showSources.airtable && externalSources.airtable.tags?.length > 0 && (
-                    <ExternalSourceInfo color="#2d7ff9">
-                      <div className="source-label">Airtable Tags</div>
-                      <div className="source-value">
-                        {externalSources.airtable.tags.join(', ')}
-                      </div>
-                    </ExternalSourceInfo>
-                  )}
                 </FormGroup>
                 
-                <FormGroup style={{ marginTop: '55px' }}>
-                  <InputLabel>Mobile Numbers</InputLabel>
+                <FormGroup>
+                  <FormFieldLabel>Mobile Numbers</FormFieldLabel>
                   
                   <div style={{ 
                     border: '1px solid #333', 
                     borderRadius: '4px', 
                     padding: '12px', 
-                    marginBottom: '15px' 
+                    marginBottom: '15px',
+                    background: '#1e1e1e'
                   }}>
                     {/* Existing mobiles list */}
                     {formData.mobiles && formData.mobiles.length > 0 ? (
@@ -5337,7 +5101,14 @@ const handleSelectEmailThread = async (threadId) => {
                   </div>
                   
                   {/* Add new mobile form */}
-                  <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    gap: '10px', 
+                    marginBottom: '10px',
+                    background: '#222',
+                    padding: '10px',
+                    borderRadius: '4px'
+                  }}>
                     <Input 
                       type="text"
                       placeholder="Add new mobile number"
@@ -5382,26 +5153,233 @@ const handleSelectEmailThread = async (threadId) => {
                     </button>
                   </div>
                   
-                  {showSources.hubspot && externalSources.hubspot.mobile && (
-                    <ExternalSourceInfo color="#ff7a59">
-                      <div className="source-label">HubSpot</div>
-                      <div className="source-value">{externalSources.hubspot.mobile}</div>
-                    </ExternalSourceInfo>
-                  )}
+                </FormGroup>
+              </div>
+              
+              {/* Right column */}
+              <div>
+                {/* Classification Section */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                  <SectionDivider style={{ margin: 0, flex: 1 }}>
+                    <SectionIcon><FiTag /></SectionIcon>
+                    <SectionLabel>Classification</SectionLabel>
+                  </SectionDivider>
                   
-                  {showSources.supabase && externalSources.supabase.mobile && (
-                    <ExternalSourceInfo color="#3ecf8e">
-                      <div className="source-label">Old Supabase</div>
-                      <div className="source-value">{externalSources.supabase.mobile}</div>
-                    </ExternalSourceInfo>
-                  )}
+                  <ActionButton 
+                    variant="success" 
+                    onClick={async () => {
+                      const success = await saveContactEnrichment();
+                      if (success) {
+                        // After successful save, move forward
+                        goToStep(4);
+                      }
+                    }} 
+                    disabled={loading}
+                  >
+                    <FiCheck /> Save
+                  </ActionButton>
+                </div>
+                
+                <FormGroup>
+                  <div style={{ display: 'flex', gap: '15px' }}>
+                    <div style={{ flex: 1 }}>
+                      <FormFieldLabel>Keep in Touch Frequency</FormFieldLabel>
+                      <div style={{ 
+                        background: '#222', 
+                        padding: '12px', 
+                        borderRadius: '4px',
+                        marginBottom: '10px'
+                      }}>
+                        <Select 
+                          value={formData.keepInTouch || ''}
+                          onChange={(e) => handleInputChange('keepInTouch', e.target.value === '' ? null : e.target.value)}
+                        >
+                          <option value="Not Set">Not Set</option>
+                          <option value="Monthly">Monthly</option>
+                          <option value="Quarterly">Quarterly</option>
+                          <option value="Twice per Year">Twice per Year</option>
+                          <option value="Once per Year">Once per Year</option>
+                          <option value="Weekly">Weekly</option>
+                          <option value="Do not keep in touch">Do not keep in touch</option>
+                        </Select>
+                      </div>
+                    </div>
+                    
+                    <div style={{ flex: 1 }}>
+                      <FormFieldLabel>Category</FormFieldLabel>
+                      <div style={{ 
+                        background: '#222', 
+                        padding: '12px', 
+                        borderRadius: '4px',
+                        marginBottom: '10px'
+                      }}>
+                        <Select 
+                          value={formData.category || ''}
+                          onChange={(e) => handleInputChange('category', e.target.value === '' ? null : e.target.value)}
+                        >
+                          <option value="Inbox">Inbox</option>
+                          <option value="Professional Investor">Professional Investor</option>
+                          <option value="Team">Team</option>
+                          <option value="Advisor">Advisor</option>
+                          <option value="Supplier">Supplier</option>
+                          <option value="Founder">Founder</option>
+                          <option value="Manager">Manager</option>
+                          <option value="Friend and Family">Friend and Family</option>
+                          <option value="Other">Other</option>
+                          <option value="Student">Student</option>
+                          <option value="Media">Media</option>
+                          <option value="Institution">Institution</option>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+                </FormGroup>
+                
+                <FormGroup style={{ marginTop: '1px' }}>
+                  <FormFieldLabel>Tags</FormFieldLabel>
                   
-                  {showSources.airtable && externalSources.airtable.mobile && (
-                    <ExternalSourceInfo color="#2d7ff9">
-                      <div className="source-label">Airtable</div>
-                      <div className="source-value">{externalSources.airtable.mobile}</div>
-                    </ExternalSourceInfo>
-                  )}
+                  <div style={{ 
+                    border: '1px solid #333', 
+                    borderRadius: '4px', 
+                    padding: '12px', 
+                    marginBottom: '15px',
+                    background: '#1e1e1e'
+                  }}>
+                    <TagsContainer style={{ marginBottom: formData.tags && formData.tags.length > 0 ? '8px' : '0' }}>
+                      {formData.tags && formData.tags.length > 0 ? formData.tags.map(tag => (
+                        <Tag key={tag.tag_id || tag.entry_id}>
+                          {tag.name}
+                          <FiX 
+                            className="remove" 
+                            size={14} 
+                            onClick={() => handleInputChange('tags', formData.tags.filter(t => (t.tag_id || t.entry_id) !== (tag.tag_id || tag.entry_id)))}
+                          />
+                        </Tag>
+                      )) : (
+                        <div style={{ color: '#999', textAlign: 'center', padding: '10px 0' }}>
+                          No tags added
+                        </div>
+                      )}
+                    </TagsContainer>
+                  </div>
+                  
+                  {/* Add new tag with autocomplete */}
+                  <div style={{ 
+                    marginBottom: '15px',
+                    background: '#222',
+                    padding: '12px',
+                    borderRadius: '4px'
+                  }}>
+                    <div style={{ position: 'relative', width: '100%' }}>
+                      <Input 
+                        type="text"
+                        placeholder="Type to search or add tags (min 2 characters)"
+                        value={formData.newCustomTag || ''}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          handleInputChange('newCustomTag', value);
+                          
+                          // Search for tag suggestions if at least 2 characters
+                          if (value && value.length >= 2) {
+                            // We'll add a debounced search function below
+                            searchTagSuggestions(value);
+                          } else {
+                            // Clear suggestions if input is too short
+                            handleInputChange('tagSuggestions', []);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && formData.newCustomTag?.trim()) {
+                            // Add tag
+                            const newTag = { 
+                              tag_id: `temp-${Date.now()}`, 
+                              name: formData.newCustomTag.trim() 
+                            };
+                            handleInputChange('tags', [...(formData.tags || []), newTag]);
+                            handleInputChange('newCustomTag', '');
+                            handleInputChange('tagSuggestions', []);
+                          } else if (e.key === 'Escape') {
+                            // Clear input and suggestions on ESC
+                            handleInputChange('newCustomTag', '');
+                            handleInputChange('tagSuggestions', []);
+                          }
+                        }}
+                        style={{ 
+                          marginBottom: '5px',
+                          fontSize: '0.9rem',
+                          height: '28px',
+                          minHeight: '28px',
+                          padding: '4px 10px',
+                          width: 'calc(100% - 20px)' // Adjust width to account for padding
+                        }}
+                      />
+                      
+                      {/* Tag suggestions dropdown */}
+                      {formData.tagSuggestions && formData.tagSuggestions.length > 0 && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          right: 0,
+                          zIndex: 10,
+                          background: '#333',
+                          border: '1px solid #444',
+                          borderRadius: '4px',
+                          maxHeight: '200px',
+                          overflowY: 'auto'
+                        }}>
+                          {formData.tagSuggestions.map((suggestion) => (
+                            <div 
+                              key={suggestion.tag_id}
+                              onClick={() => {
+                                // Only add if not already exists
+                                if (!formData.tags?.some(t => 
+                                  t.tag_id === suggestion.tag_id || 
+                                  t.name.toLowerCase() === suggestion.name.toLowerCase()
+                                )) {
+                                  handleInputChange('tags', [...(formData.tags || []), suggestion]);
+                                  handleInputChange('newCustomTag', '');
+                                  handleInputChange('tagSuggestions', []);
+                                }
+                              }}
+                              style={{
+                                padding: '8px 12px',
+                                cursor: 'pointer',
+                                borderBottom: '1px solid #444',
+                                hoverBackground: '#444'
+                              }}
+                              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#444'}
+                              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                            >
+                              {suggestion.name}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Actions for clearing tag input */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+                      <button 
+                        onClick={() => {
+                          handleInputChange('newCustomTag', '');
+                          handleInputChange('tagSuggestions', []);
+                        }}
+                        style={{
+                          background: 'transparent',
+                          border: '1px solid #555',
+                          borderRadius: '4px',
+                          padding: '8px 15px',
+                          color: '#999',
+                          cursor: 'pointer',
+                          fontSize: '0.85rem'
+                        }}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                  
                 </FormGroup>
               </div>
             </FormGrid>
@@ -5420,105 +5398,107 @@ const handleSelectEmailThread = async (threadId) => {
             </ActionButton>
           </ButtonGroup>
           
-          {/* Debug section */}
-          <Card style={{ marginTop: '20px', background: '#222', padding: '15px' }}>
-            <div style={{ fontSize: '0.9rem' }}>
-              <h4>Debug Info:</h4>
-              <div>
-                <strong>Contact Airtable ID:</strong> {contact?.airtable_id || 'Not set'}
-              </div>
-              <div style={{ marginTop: '10px' }}>
-                <strong>Contact Full Details:</strong>
-                <pre style={{ background: '#333', padding: '10px', overflowX: 'auto', maxHeight: '150px' }}>
-                  {JSON.stringify(contact, null, 2)}
-                </pre>
-              </div>
-              <div style={{ marginTop: '10px' }}>
-                <strong>Airtable Toggle State:</strong> {showSources.airtable ? 'On' : 'Off'}
-              </div>
-              <div style={{ marginTop: '10px' }}>
-                <strong>Field Display Status:</strong>
-                <div>Email shown: {showSources.airtable && externalSources.airtable.email ? 'Yes' : 'No'}</div>
-                <div>Mobile shown: {showSources.airtable && externalSources.airtable.mobile ? 'Yes' : 'No'}</div>
-                <div>Tags shown: {showSources.airtable && externalSources.airtable.tags?.length > 0 ? 'Yes' : 'No'}</div>
-              </div>
-              <div style={{ marginTop: '10px' }}>
-                <strong>Airtable Data:</strong>
-                <pre style={{ background: '#333', padding: '10px', overflowX: 'auto' }}>
-                  {JSON.stringify(externalSources.airtable, null, 2)}
-                </pre>
-              </div>
-              <button 
-                onClick={() => {
-                  console.log('External sources state:', externalSources);
-                  console.log('Show sources state:', showSources);
-                  console.log('Contact data:', contact);
-                  
-                  // Force show Airtable source and run a test retrieval
-                  setShowSources(prev => ({ ...prev, airtable: true }));
-                  
-                  // Show sample data first
-                  setExternalSources(prev => ({
-                    ...prev,
-                    airtable: {
-                      ...prev.airtable,
-                      email: 'debug@airtable.com',
-                      mobile: '+1-999-DEBUG',
-                      tags: ['Debug', 'Test', 'Airtable'],
-                      category: 'Debug',
-                      firstName: 'Debug',
-                      lastName: 'User',
-                      notes: 'Notes added from debug button'
-                    }
-                  }));
-                  
-                  // Attempt a direct Airtable fetch with the record ID from the debug interface
-                  if (contact?.airtable_id) {
-                    toast.success('Attempting to fetch Airtable data directly...');
-                    // Try fetching with VERY explicit logging
-                    try {
-                      setTimeout(async () => {
-                        try {
-                          console.log('Directly fetching Airtable with ID:', contact.airtable_id);
-                          const testData = await getRecordById('Networkers', contact.airtable_id);
-                          console.log('DIRECT TEST - Raw data:', testData);
-                          console.log('DIRECT TEST - Field Name exists?:', !!testData['Name']);
-                          console.log('DIRECT TEST - Field Surname exists?:', !!testData['Surname']);
-                          console.log('DIRECT TEST - Field Primary email exists?:', !!testData['Primary email']);
-                          
-                          if (testData) {
-                            toast.success('Found Airtable data! Check console.');
-                            // Update UI with the directly fetched data
-                            setExternalSources(prev => ({
-                              ...prev,
-                              airtable: {
-                                ...prev.airtable,
-                                email: testData['Primary email'] || 'No email found',
-                                firstName: testData['Name'] || 'No name found',
-                                lastName: testData['Surname'] || 'No surname found',
-                              }
-                            }));
-                          } else {
-                            toast.error('No data returned from Airtable');
+          {/* Debug section - Hidden in production */}
+          {false && (
+            <Card style={{ marginTop: '20px', background: '#222', padding: '15px' }}>
+              <div style={{ fontSize: '0.9rem' }}>
+                <h4>Debug Info:</h4>
+                <div>
+                  <strong>Contact Airtable ID:</strong> {contact?.airtable_id || 'Not set'}
+                </div>
+                <div style={{ marginTop: '10px' }}>
+                  <strong>Contact Full Details:</strong>
+                  <pre style={{ background: '#333', padding: '10px', overflowX: 'auto', maxHeight: '150px' }}>
+                    {JSON.stringify(contact, null, 2)}
+                  </pre>
+                </div>
+                <div style={{ marginTop: '10px' }}>
+                  <strong>Airtable Toggle State:</strong> {showSources.airtable ? 'On' : 'Off'}
+                </div>
+                <div style={{ marginTop: '10px' }}>
+                  <strong>Field Display Status:</strong>
+                  <div>Email shown: {showSources.airtable && externalSources.airtable.email ? 'Yes' : 'No'}</div>
+                  <div>Mobile shown: {showSources.airtable && externalSources.airtable.mobile ? 'Yes' : 'No'}</div>
+                  <div>Tags shown: {showSources.airtable && externalSources.airtable.tags?.length > 0 ? 'Yes' : 'No'}</div>
+                </div>
+                <div style={{ marginTop: '10px' }}>
+                  <strong>Airtable Data:</strong>
+                  <pre style={{ background: '#333', padding: '10px', overflowX: 'auto' }}>
+                    {JSON.stringify(externalSources.airtable, null, 2)}
+                  </pre>
+                </div>
+                <button 
+                  onClick={() => {
+                    console.log('External sources state:', externalSources);
+                    console.log('Show sources state:', showSources);
+                    console.log('Contact data:', contact);
+                    
+                    // Force show Airtable source and run a test retrieval
+                    setShowSources(prev => ({ ...prev, airtable: true }));
+                    
+                    // Show sample data first
+                    setExternalSources(prev => ({
+                      ...prev,
+                      airtable: {
+                        ...prev.airtable,
+                        email: 'debug@airtable.com',
+                        mobile: '+1-999-DEBUG',
+                        tags: ['Debug', 'Test', 'Airtable'],
+                        category: 'Debug',
+                        firstName: 'Debug',
+                        lastName: 'User',
+                        notes: 'Notes added from debug button'
+                      }
+                    }));
+                    
+                    // Attempt a direct Airtable fetch with the record ID from the debug interface
+                    if (contact?.airtable_id) {
+                      toast.success('Attempting to fetch Airtable data directly...');
+                      // Try fetching with VERY explicit logging
+                      try {
+                        setTimeout(async () => {
+                          try {
+                            console.log('Directly fetching Airtable with ID:', contact.airtable_id);
+                            const testData = await getRecordById('Networkers', contact.airtable_id);
+                            console.log('DIRECT TEST - Raw data:', testData);
+                            console.log('DIRECT TEST - Field Name exists?:', !!testData['Name']);
+                            console.log('DIRECT TEST - Field Surname exists?:', !!testData['Surname']);
+                            console.log('DIRECT TEST - Field Primary email exists?:', !!testData['Primary email']);
+                            
+                            if (testData) {
+                              toast.success('Found Airtable data! Check console.');
+                              // Update UI with the directly fetched data
+                              setExternalSources(prev => ({
+                                ...prev,
+                                airtable: {
+                                  ...prev.airtable,
+                                  email: testData['Primary email'] || 'No email found',
+                                  firstName: testData['Name'] || 'No name found',
+                                  lastName: testData['Surname'] || 'No surname found',
+                                }
+                              }));
+                            } else {
+                              toast.error('No data returned from Airtable');
+                            }
+                          } catch (err) {
+                            toast.error(`Airtable fetch error: ${err.message}`);
+                            console.error('Direct test error:', err);
                           }
-                        } catch (err) {
-                          toast.error(`Airtable fetch error: ${err.message}`);
-                          console.error('Direct test error:', err);
-                        }
-                      }, 1000);
-                    } catch (err) {
-                      console.error('Outer error in direct test:', err);
+                        }, 1000);
+                      } catch (err) {
+                        console.error('Outer error in direct test:', err);
+                      }
+                    } else {
+                      toast.error('No airtable_id present on this contact');
                     }
-                  } else {
-                    toast.error('No airtable_id present on this contact');
-                  }
-                }}
-                style={{ marginTop: '10px', padding: '8px 15px', background: '#444', border: 'none', borderRadius: '4px', color: 'white', cursor: 'pointer' }}
-              >
-                Force Update Airtable Data
-              </button>
-            </div>
-          </Card>
+                  }}
+                  style={{ marginTop: '10px', padding: '8px 15px', background: '#444', border: 'none', borderRadius: '4px', color: 'white', cursor: 'pointer' }}
+                >
+                  Force Update Airtable Data
+                </button>
+              </div>
+            </Card>
+          )}
         </>
       )}
       
