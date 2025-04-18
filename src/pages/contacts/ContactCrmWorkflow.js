@@ -27,7 +27,8 @@ import {
   FiUser,
   FiEdit,
   FiUsers,
-  FiFile
+  FiFile,
+  FiPlus
 } from 'react-icons/fi';
 
 // Configure Modal for React
@@ -1146,11 +1147,14 @@ const ContactCrmWorkflow = () => {
     notes: '',
     city: null,
     tags: [],
-    mobile: '',
-    email: '',
+    mobiles: [], // Array of mobile objects with mobile_id, mobile, type, is_primary
+    emails: [], // Array of email objects with email_id, email, type, is_primary
     linkedIn: '',
     company: null,
-    dealInfo: ''
+    dealInfo: '',
+    selectedTag: '', // For tag selection dropdown
+    newCustomTag: '', // For tag input field
+    tagSuggestions: [] // For autocomplete suggestions
   });
   
   // Mock data for external source information
@@ -1852,18 +1856,25 @@ const handleSelectEmailThread = async (threadId) => {
       
       setContact(contactData);
       
-      // Initialize form data with empty email/mobile (will be loaded below)
+      // Initialize form data with existing contact data and empty collections
       setFormData({
+        firstName: contactData.first_name,
+        lastName: contactData.last_name,
         keepInTouch: contactData.keep_in_touch_frequency,
         category: contactData.category,
         notes: '',
         city: null,
         tags: [],
-        mobile: '',
-        email: '',
+        mobiles: [], // Will be populated by loadEmailAndMobile
+        emails: [], // Will be populated by loadEmailAndMobile
         linkedIn: contactData.linkedin || '',
         company: null,
-        dealInfo: ''
+        dealInfo: '',
+        newEmail: '',
+        newEmailType: 'personal',
+        newMobile: '',
+        newMobileType: 'personal',
+        newCustomTag: ''
       });
       
       // Load related data in parallel
@@ -2003,46 +2014,70 @@ const handleSelectEmailThread = async (threadId) => {
   // Load email and mobile data for the contact
   const loadEmailAndMobile = async (contactId) => {
     try {
-      // Load primary email
-      const { data: emailData, error: emailError } = await supabase
+      // Load all emails for this contact
+      const { data: emailsData, error: emailsError } = await supabase
         .from('contact_emails')
-        .select('email_id, email, is_primary')
+        .select('email_id, email, type, is_primary')
         .eq('contact_id', contactId)
-        .order('is_primary', { ascending: false })
-        .limit(1);
+        .order('is_primary', { ascending: false });
       
-      if (!emailError && emailData && emailData.length > 0) {
+      if (!emailsError && emailsData) {
+        // Update formData with all emails
         setFormData(prev => ({
           ...prev,
-          email: emailData[0].email
+          emails: emailsData.map(item => ({
+            email_id: item.email_id,
+            email: item.email,
+            type: item.type || 'personal',
+            is_primary: item.is_primary
+          })),
+          // Keep the old email field for backward compatibility
+          email: emailsData.length > 0 ? emailsData[0].email : ''
         }));
         
-        // Update contact object to include email for display
-        setContact(prev => ({
-          ...prev,
-          email: emailData[0].email
-        }));
+        // Update contact object to include primary email for display
+        const primaryEmail = emailsData.find(e => e.is_primary) || emailsData[0];
+        if (primaryEmail) {
+          setContact(prev => ({
+            ...prev,
+            email: primaryEmail.email
+          }));
+        }
+      } else if (emailsError) {
+        console.error('Error loading emails:', emailsError);
       }
       
-      // Load primary mobile
-      const { data: mobileData, error: mobileError } = await supabase
+      // Load all mobiles for this contact
+      const { data: mobilesData, error: mobilesError } = await supabase
         .from('contact_mobiles')
-        .select('mobile_id, mobile, is_primary')
+        .select('mobile_id, mobile, type, is_primary')
         .eq('contact_id', contactId)
-        .order('is_primary', { ascending: false })
-        .limit(1);
+        .order('is_primary', { ascending: false });
       
-      if (!mobileError && mobileData && mobileData.length > 0) {
+      if (!mobilesError && mobilesData) {
+        // Update formData with all mobiles
         setFormData(prev => ({
           ...prev,
-          mobile: mobileData[0].mobile
+          mobiles: mobilesData.map(item => ({
+            mobile_id: item.mobile_id,
+            mobile: item.mobile,
+            type: item.type || 'personal',
+            is_primary: item.is_primary
+          })),
+          // Keep the old mobile field for backward compatibility
+          mobile: mobilesData.length > 0 ? mobilesData[0].mobile : ''
         }));
         
-        // Update contact object to include mobile for display
-        setContact(prev => ({
-          ...prev,
-          mobile: mobileData[0].mobile
-        }));
+        // Update contact object to include primary mobile for display
+        const primaryMobile = mobilesData.find(m => m.is_primary) || mobilesData[0];
+        if (primaryMobile) {
+          setContact(prev => ({
+            ...prev,
+            mobile: primaryMobile.mobile
+          }));
+        }
+      } else if (mobilesError) {
+        console.error('Error loading mobiles:', mobilesError);
       }
     } catch (err) {
       console.error('Error loading email and mobile data:', err);
@@ -2064,9 +2099,10 @@ const handleSelectEmailThread = async (threadId) => {
       
       if (!tagsError && tagsData) {
         const tags = tagsData.map(t => ({
-          id: t.tags.tag_id,
-          name: t.tags.name
-        })).filter(t => t.id && t.name);
+          tag_id: t.tags.tag_id,
+          name: t.tags.name,
+          entry_id: t.entry_id
+        })).filter(t => t.tag_id && t.name);
         
         setFormData(prev => ({
           ...prev,
@@ -2186,6 +2222,242 @@ const handleSelectEmailThread = async (threadId) => {
       ...prev,
       [field]: value
     }));
+  };
+  
+  // Search for tag suggestions from the tags table
+  const searchTagSuggestions = async (query) => {
+    if (!query || query.length < 2) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('tags')
+        .select('tag_id, name')
+        .ilike('name', `%${query}%`)
+        .order('name')
+        .limit(10);
+        
+      if (error) {
+        console.error('Error searching for tag suggestions:', error);
+        return;
+      }
+      
+      // Filter out tags that are already selected
+      const filteredSuggestions = data.filter(tag => 
+        !formData.tags?.some(t => t.tag_id === tag.tag_id)
+      );
+      
+      handleInputChange('tagSuggestions', filteredSuggestions);
+    } catch (err) {
+      console.error('Error in searchTagSuggestions:', err);
+    }
+  };
+  
+  // Save contact enrichment changes
+  const saveContactEnrichment = async () => {
+    try {
+      setLoading(true);
+      
+      // 1. Update base contact information
+      const { error: contactError } = await supabase
+        .from('contacts')
+        .update({
+          first_name: formData.firstName,
+          last_name: formData.lastName,
+          keep_in_touch_frequency: formData.keepInTouch,
+          category: formData.category,
+          linkedin: formData.linkedIn,
+          last_modified_at: new Date()
+        })
+        .eq('contact_id', contactId);
+      
+      if (contactError) throw contactError;
+      
+      // 2. Handle email addresses - update, add, delete as needed
+      // First get existing emails to compare
+      const { data: existingEmails, error: emailsError } = await supabase
+        .from('contact_emails')
+        .select('*')
+        .eq('contact_id', contactId);
+      
+      if (emailsError) throw emailsError;
+      
+      // Create tracking sets for operations
+      const emailsToCreate = formData.emails.filter(e => e.email_id?.toString().startsWith('temp-'));
+      const emailsToUpdate = formData.emails.filter(e => !e.email_id?.toString().startsWith('temp-'));
+      const emailIdsToKeep = emailsToUpdate.map(e => e.email_id);
+      const emailsToDelete = existingEmails?.filter(e => !emailIdsToKeep.includes(e.email_id)) || [];
+      
+      // Process each operation type
+      for (const email of emailsToCreate) {
+        await supabase
+          .from('contact_emails')
+          .insert({
+            contact_id: contactId,
+            email: email.email,
+            type: email.type,
+            is_primary: email.is_primary
+          });
+      }
+      
+      for (const email of emailsToUpdate) {
+        await supabase
+          .from('contact_emails')
+          .update({
+            email: email.email,
+            type: email.type,
+            is_primary: email.is_primary
+          })
+          .eq('email_id', email.email_id);
+      }
+      
+      for (const email of emailsToDelete) {
+        await supabase
+          .from('contact_emails')
+          .delete()
+          .eq('email_id', email.email_id);
+      }
+      
+      // 3. Handle mobile numbers - update, add, delete as needed
+      // First get existing mobiles to compare
+      const { data: existingMobiles, error: mobilesError } = await supabase
+        .from('contact_mobiles')
+        .select('*')
+        .eq('contact_id', contactId);
+      
+      if (mobilesError) throw mobilesError;
+      
+      // Create tracking sets for operations
+      const mobilesToCreate = formData.mobiles.filter(m => m.mobile_id?.toString().startsWith('temp-'));
+      const mobilesToUpdate = formData.mobiles.filter(m => !m.mobile_id?.toString().startsWith('temp-'));
+      const mobileIdsToKeep = mobilesToUpdate.map(m => m.mobile_id);
+      const mobilesToDelete = existingMobiles?.filter(m => !mobileIdsToKeep.includes(m.mobile_id)) || [];
+      
+      // Process each operation type
+      for (const mobile of mobilesToCreate) {
+        await supabase
+          .from('contact_mobiles')
+          .insert({
+            contact_id: contactId,
+            mobile: mobile.mobile,
+            type: mobile.type,
+            is_primary: mobile.is_primary
+          });
+      }
+      
+      for (const mobile of mobilesToUpdate) {
+        await supabase
+          .from('contact_mobiles')
+          .update({
+            mobile: mobile.mobile,
+            type: mobile.type,
+            is_primary: mobile.is_primary
+          })
+          .eq('mobile_id', mobile.mobile_id);
+      }
+      
+      for (const mobile of mobilesToDelete) {
+        await supabase
+          .from('contact_mobiles')
+          .delete()
+          .eq('mobile_id', mobile.mobile_id);
+      }
+      
+      // 4. Handle tags - we need to first get existing tags
+      const { data: existingContactTags, error: tagsError } = await supabase
+        .from('contact_tags')
+        .select('entry_id, tag_id')
+        .eq('contact_id', contactId);
+      
+      if (tagsError) throw tagsError;
+      
+      // Find which tags are new (need to be added)
+      const existingTagIds = existingContactTags?.map(t => t.tag_id) || [];
+      const newTags = formData.tags.filter(t => 
+        !existingTagIds.includes(t.tag_id) && !t.tag_id?.toString().startsWith('temp-')
+      );
+      
+      // Find which tags need to be created in the tags table and then linked
+      const tagsToCreate = formData.tags.filter(t => t.tag_id?.toString().startsWith('temp-'));
+      
+      // Find which existing tags need to be removed
+      const tagsToKeep = formData.tags
+        .filter(t => !t.tag_id?.toString().startsWith('temp-'))
+        .map(t => t.tag_id);
+      const tagsToRemove = existingContactTags?.filter(t => !tagsToKeep.includes(t.tag_id)) || [];
+      
+      // Process tag operations
+      // First create any new tags
+      for (const tag of tagsToCreate) {
+        // First create the tag if it doesn't exist
+        const { data: newTag, error: newTagError } = await supabase
+          .from('tags')
+          .select('tag_id')
+          .eq('name', tag.name)
+          .maybeSingle();
+        
+        let tagId;
+        
+        if (newTagError) throw newTagError;
+        
+        // If tag doesn't exist, create it
+        if (!newTag) {
+          const { data: insertedTag, error: insertTagError } = await supabase
+            .from('tags')
+            .insert({ name: tag.name })
+            .select('tag_id')
+            .single();
+          
+          if (insertTagError) throw insertTagError;
+          tagId = insertedTag.tag_id;
+        } else {
+          tagId = newTag.tag_id;
+        }
+        
+        // Now link it to the contact
+        const { error: linkError } = await supabase
+          .from('contact_tags')
+          .insert({
+            contact_id: contactId,
+            tag_id: tagId
+          });
+        
+        if (linkError) throw linkError;
+      }
+      
+      // Add new existing tags
+      for (const tag of newTags) {
+        const { error: linkError } = await supabase
+          .from('contact_tags')
+          .insert({
+            contact_id: contactId,
+            tag_id: tag.tag_id
+          });
+        
+        if (linkError) throw linkError;
+      }
+      
+      // Remove tags that are no longer associated
+      for (const tag of tagsToRemove) {
+        const { error: removeError } = await supabase
+          .from('contact_tags')
+          .delete()
+          .eq('entry_id', tag.entry_id);
+        
+        if (removeError) throw removeError;
+      }
+      
+      // 5. Reload contact data
+      await loadContactData();
+      toast.success('Contact information saved successfully');
+      setLoading(false);
+      
+      return true;
+    } catch (err) {
+      console.error('Error saving contact enrichment:', err);
+      toast.error('Failed to save contact information');
+      setLoading(false);
+      return false;
+    }
   };
   
   // Calculate string similarity between two strings (from ContactIntegrity)
@@ -4387,19 +4659,38 @@ const handleSelectEmailThread = async (threadId) => {
               {/* Left column */}
               <div>
                 <FormGroup>
+                  <InputLabel>Name</InputLabel>
+                  <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+                    <Input 
+                      type="text"
+                      value={formData.firstName || contact?.first_name || ''}
+                      onChange={(e) => handleInputChange('firstName', e.target.value)}
+                      placeholder="First Name"
+                      style={{ flex: 1 }}
+                    />
+                    <Input 
+                      type="text"
+                      value={formData.lastName || contact?.last_name || ''}
+                      onChange={(e) => handleInputChange('lastName', e.target.value)}
+                      placeholder="Last Name"
+                      style={{ flex: 1 }}
+                    />
+                  </div>
+                </FormGroup>
+
+                <FormGroup>
                   <InputLabel>Keep in Touch Frequency</InputLabel>
                   <Select 
                     value={formData.keepInTouch || ''}
                     onChange={(e) => handleInputChange('keepInTouch', e.target.value === '' ? null : e.target.value)}
                   >
-                    <option value="">None</option>
-                    <option value="daily">Daily</option>
-                    <option value="weekly">Weekly</option>
-                    <option value="biweekly">Bi-Weekly</option>
-                    <option value="monthly">Monthly</option>
-                    <option value="quarterly">Quarterly</option>
-                    <option value="biannually">Bi-Annually</option>
-                    <option value="annually">Annually</option>
+                    <option value="Not Set">Not Set</option>
+                    <option value="Monthly">Monthly</option>
+                    <option value="Quarterly">Quarterly</option>
+                    <option value="Twice per Year">Twice per Year</option>
+                    <option value="Once per Year">Once per Year</option>
+                    <option value="Weekly">Weekly</option>
+                    <option value="Do not keep in touch">Do not keep in touch</option>
                   </Select>
                   
                   {showSources.hubspot && externalSources.hubspot.keepInTouch && (
@@ -4423,15 +4714,23 @@ const handleSelectEmailThread = async (threadId) => {
                     value={formData.category || ''}
                     onChange={(e) => handleInputChange('category', e.target.value === '' ? null : e.target.value)}
                   >
-                    <option value="">None</option>
-                    <option value="Friend">Friend</option>
-                    <option value="Family">Family</option>
-                    <option value="Work">Work</option>
-                    <option value="Business">Business</option>
-                    <option value="Client">Client</option>
+                    <option value="">Not Set</option>
+                    <option value="Inbox">Inbox</option>
+                    <option value="Skip">Skip</option>
+                    <option value="Professional Investor">Professional Investor</option>
+                    <option value="Team">Team</option>
+                    <option value="Advisor">Advisor</option>
+                    <option value="WhatsApp Group Contact">WhatsApp Group Contact</option>
+                    <option value="Supplier">Supplier</option>
                     <option value="Founder">Founder</option>
-                    <option value="Investor">Investor</option>
-                    <option value="Portfolio">Portfolio</option>
+                    <option value="Manager">Manager</option>
+                    <option value="Friend and Family">Friend and Family</option>
+                    <option value="Other">Other</option>
+                    <option value="Student">Student</option>
+                    <option value="Media">Media</option>
+                    <option value="Institution">Institution</option>
+                    <option value="SUBSCRIBER NEWSLETTER">Subscriber Newsletter</option>
+                    <option value="System">System</option>
                   </Select>
                   
                   {showSources.hubspot && externalSources.hubspot.category && (
@@ -4450,47 +4749,153 @@ const handleSelectEmailThread = async (threadId) => {
                 </FormGroup>
                 
                 <FormGroup>
-                  <InputLabel>Mobile Number</InputLabel>
-                  <Input 
-                    type="text"
-                    value={formData.mobile || ''}
-                    onChange={(e) => handleInputChange('mobile', e.target.value)}
-                    placeholder="Enter mobile number"
-                  />
+                  <InputLabel>Email Addresses</InputLabel>
                   
-                  {showSources.hubspot && externalSources.hubspot.mobile && (
-                    <ExternalSourceInfo color="#ff7a59">
-                      <div className="source-label">HubSpot</div>
-                      <div className="source-value">{externalSources.hubspot.mobile}</div>
-                    </ExternalSourceInfo>
-                  )}
+                  <div style={{ 
+                    border: '1px solid #333', 
+                    borderRadius: '4px', 
+                    padding: '12px', 
+                    marginBottom: '15px' 
+                  }}>
+                    {/* Existing emails list */}
+                    {formData.emails && formData.emails.length > 0 ? (
+                      formData.emails.map((emailItem, index) => (
+                        <div key={emailItem.email_id || index} style={{ 
+                          display: 'flex', 
+                          gap: '10px', 
+                          marginBottom: index < formData.emails.length - 1 ? '15px' : '0',
+                          alignItems: 'center',
+                          padding: '8px',
+                          background: '#222',
+                          borderRadius: '4px'
+                        }}>
+                          <div style={{ flex: 2 }}>
+                            <Input 
+                              type="email"
+                              value={emailItem.email || ''}
+                              onChange={(e) => {
+                                const updatedEmails = [...formData.emails];
+                                updatedEmails[index].email = e.target.value;
+                                handleInputChange('emails', updatedEmails);
+                              }}
+                              placeholder="Email address"
+                            />
+                          </div>
+                          
+                          <div style={{ flex: 1 }}>
+                            <Select
+                              value={emailItem.type || 'personal'}
+                              onChange={(e) => {
+                                const updatedEmails = [...formData.emails];
+                                updatedEmails[index].type = e.target.value;
+                                handleInputChange('emails', updatedEmails);
+                              }}
+                            >
+                              <option value="personal">Personal</option>
+                              <option value="work">Work</option>
+                              <option value="other">Other</option>
+                            </Select>
+                          </div>
+                          
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            fontSize: '0.85rem',
+                            padding: '0 5px',
+                            borderRadius: '4px',
+                            background: emailItem.is_primary ? '#2c4c7c' : 'transparent',
+                            cursor: 'pointer'
+                          }}
+                          onClick={() => {
+                            const updatedEmails = formData.emails.map((item, i) => ({
+                              ...item,
+                              is_primary: i === index // Make this one primary, all others not primary
+                            }));
+                            handleInputChange('emails', updatedEmails);
+                          }}
+                          >
+                            {emailItem.is_primary ? (
+                              <><FiCheck size={14} /> Primary</>
+                            ) : (
+                              'Set Primary'
+                            )}
+                          </div>
+                          
+                          <button 
+                            onClick={() => {
+                              // If deleting primary, make the first remaining email primary
+                              let updatedEmails = formData.emails.filter((_, i) => i !== index);
+                              if (emailItem.is_primary && updatedEmails.length > 0) {
+                                updatedEmails[0].is_primary = true;
+                              }
+                              handleInputChange('emails', updatedEmails);
+                            }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: '#ff6b6b',
+                              cursor: 'pointer',
+                              padding: '5px'
+                            }}
+                            title="Remove email"
+                          >
+                            <FiTrash2 size={16} />
+                          </button>
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{ color: '#999', textAlign: 'center', padding: '10px 0' }}>
+                        No email addresses added
+                      </div>
+                    )}
+                  </div>
                   
-                  {showSources.supabase && externalSources.supabase.mobile && (
-                    <ExternalSourceInfo color="#3ecf8e">
-                      <div className="source-label">Old Supabase</div>
-                      <div className="source-value">{externalSources.supabase.mobile}</div>
-                    </ExternalSourceInfo>
-                  )}
-                  
-                  {showSources.airtable && externalSources.airtable.mobile && (
-                    <ExternalSourceInfo color="#2d7ff9">
-                      <div className="source-label">Airtable</div>
-                      <div className="source-value">{externalSources.airtable.mobile}</div>
-                    </ExternalSourceInfo>
-                  )}
-                </FormGroup>
-              </div>
-              
-              {/* Right column */}
-              <div>
-                <FormGroup>
-                  <InputLabel>Email Address</InputLabel>
-                  <Input 
-                    type="email"
-                    value={formData.email || ''}
-                    onChange={(e) => handleInputChange('email', e.target.value)}
-                    placeholder="Enter email address"
-                  />
+                  {/* Add new email form */}
+                  <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                    <Input 
+                      type="email"
+                      placeholder="Add new email address"
+                      value={formData.newEmail || ''}
+                      onChange={(e) => handleInputChange('newEmail', e.target.value)}
+                      style={{ flex: 2 }}
+                    />
+                    <Select
+                      value={formData.newEmailType || 'personal'}
+                      onChange={(e) => handleInputChange('newEmailType', e.target.value)}
+                      style={{ flex: 1 }}
+                    >
+                      <option value="personal">Personal</option>
+                      <option value="work">Work</option>
+                      <option value="other">Other</option>
+                    </Select>
+                    <button 
+                      onClick={() => {
+                        if (!formData.newEmail) return;
+                        
+                        const newEmail = { 
+                          email_id: `temp-${Date.now()}`, // Temporary ID until saved
+                          email: formData.newEmail,
+                          type: formData.newEmailType || 'personal',
+                          is_primary: formData.emails.length === 0 // First one is primary by default
+                        };
+                        
+                        handleInputChange('emails', [...(formData.emails || []), newEmail]);
+                        handleInputChange('newEmail', ''); // Clear the input
+                      }}
+                      disabled={!formData.newEmail}
+                      style={{
+                        background: formData.newEmail ? '#4a9eff' : '#333',
+                        border: 'none',
+                        borderRadius: '4px',
+                        padding: '0 15px',
+                        color: 'white',
+                        cursor: formData.newEmail ? 'pointer' : 'not-allowed'
+                      }}
+                    >
+                      Add
+                    </button>
+                  </div>
                   
                   {showSources.hubspot && externalSources.hubspot.email && (
                     <ExternalSourceInfo color="#ff7a59">
@@ -4506,55 +4911,362 @@ const handleSelectEmailThread = async (threadId) => {
                     </ExternalSourceInfo>
                   )}
                 </FormGroup>
-                
+              </div>
+              
+              {/* Right column */}
+              <div>
                 <FormGroup>
-                  <InputLabel>City</InputLabel>
-                  <Select 
-                    value={formData.city?.id || ''}
-                    onChange={(e) => {
-                      const cityId = e.target.value;
-                      // This would typically fetch the city details from a list of cities
-                      // Here we're just using a placeholder
-                      handleInputChange('city', cityId ? { id: cityId, name: e.target.options[e.target.selectedIndex].text } : null);
-                    }}
-                  >
-                    <option value="">Select a city</option>
-                    <option value="1">New York</option>
-                    <option value="2">San Francisco</option>
-                    <option value="3">London</option>
-                    <option value="4">Berlin</option>
-                    <option value="5">Paris</option>
-                    <option value="6">Tokyo</option>
-                  </Select>
+                  <InputLabel>Mobile Numbers</InputLabel>
+                  
+                  <div style={{ 
+                    border: '1px solid #333', 
+                    borderRadius: '4px', 
+                    padding: '12px', 
+                    marginBottom: '15px' 
+                  }}>
+                    {/* Existing mobiles list */}
+                    {formData.mobiles && formData.mobiles.length > 0 ? (
+                      formData.mobiles.map((mobileItem, index) => (
+                        <div key={mobileItem.mobile_id || index} style={{ 
+                          display: 'flex', 
+                          gap: '10px', 
+                          marginBottom: index < formData.mobiles.length - 1 ? '15px' : '0',
+                          alignItems: 'center',
+                          padding: '8px',
+                          background: '#222',
+                          borderRadius: '4px'
+                        }}>
+                          <div style={{ flex: 2 }}>
+                            <Input 
+                              type="text"
+                              value={mobileItem.mobile || ''}
+                              onChange={(e) => {
+                                const updatedMobiles = [...formData.mobiles];
+                                updatedMobiles[index].mobile = e.target.value;
+                                handleInputChange('mobiles', updatedMobiles);
+                              }}
+                              placeholder="Phone number"
+                            />
+                          </div>
+                          
+                          <div style={{ flex: 1 }}>
+                            <Select
+                              value={mobileItem.type || 'personal'}
+                              onChange={(e) => {
+                                const updatedMobiles = [...formData.mobiles];
+                                updatedMobiles[index].type = e.target.value;
+                                handleInputChange('mobiles', updatedMobiles);
+                              }}
+                            >
+                              <option value="personal">Personal</option>
+                              <option value="work">Work</option>
+                              <option value="other">Other</option>
+                            </Select>
+                          </div>
+                          
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            fontSize: '0.85rem',
+                            padding: '0 5px',
+                            borderRadius: '4px',
+                            background: mobileItem.is_primary ? '#2c4c7c' : 'transparent',
+                            cursor: 'pointer'
+                          }}
+                          onClick={() => {
+                            const updatedMobiles = formData.mobiles.map((item, i) => ({
+                              ...item,
+                              is_primary: i === index // Make this one primary, all others not primary
+                            }));
+                            handleInputChange('mobiles', updatedMobiles);
+                          }}
+                          >
+                            {mobileItem.is_primary ? (
+                              <><FiCheck size={14} /> Primary</>
+                            ) : (
+                              'Set Primary'
+                            )}
+                          </div>
+                          
+                          <button 
+                            onClick={() => {
+                              // If deleting primary, make the first remaining mobile primary
+                              let updatedMobiles = formData.mobiles.filter((_, i) => i !== index);
+                              if (mobileItem.is_primary && updatedMobiles.length > 0) {
+                                updatedMobiles[0].is_primary = true;
+                              }
+                              handleInputChange('mobiles', updatedMobiles);
+                            }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: '#ff6b6b',
+                              cursor: 'pointer',
+                              padding: '5px'
+                            }}
+                            title="Remove mobile"
+                          >
+                            <FiTrash2 size={16} />
+                          </button>
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{ color: '#999', textAlign: 'center', padding: '10px 0' }}>
+                        No mobile numbers added
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Add new mobile form */}
+                  <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                    <Input 
+                      type="text"
+                      placeholder="Add new mobile number"
+                      value={formData.newMobile || ''}
+                      onChange={(e) => handleInputChange('newMobile', e.target.value)}
+                      style={{ flex: 2 }}
+                    />
+                    <Select
+                      value={formData.newMobileType || 'personal'}
+                      onChange={(e) => handleInputChange('newMobileType', e.target.value)}
+                      style={{ flex: 1 }}
+                    >
+                      <option value="personal">Personal</option>
+                      <option value="work">Work</option>
+                      <option value="other">Other</option>
+                    </Select>
+                    <button 
+                      onClick={() => {
+                        if (!formData.newMobile) return;
+                        
+                        const newMobile = { 
+                          mobile_id: `temp-${Date.now()}`, // Temporary ID until saved
+                          mobile: formData.newMobile,
+                          type: formData.newMobileType || 'personal',
+                          is_primary: formData.mobiles.length === 0 // First one is primary by default
+                        };
+                        
+                        handleInputChange('mobiles', [...(formData.mobiles || []), newMobile]);
+                        handleInputChange('newMobile', ''); // Clear the input
+                      }}
+                      disabled={!formData.newMobile}
+                      style={{
+                        background: formData.newMobile ? '#4a9eff' : '#333',
+                        border: 'none',
+                        borderRadius: '4px',
+                        padding: '0 15px',
+                        color: 'white',
+                        cursor: formData.newMobile ? 'pointer' : 'not-allowed'
+                      }}
+                    >
+                      Add
+                    </button>
+                  </div>
+                  
+                  {showSources.hubspot && externalSources.hubspot.mobile && (
+                    <ExternalSourceInfo color="#ff7a59">
+                      <div className="source-label">HubSpot</div>
+                      <div className="source-value">{externalSources.hubspot.mobile}</div>
+                    </ExternalSourceInfo>
+                  )}
+                  
+                  {showSources.supabase && externalSources.supabase.mobile && (
+                    <ExternalSourceInfo color="#3ecf8e">
+                      <div className="source-label">Old Supabase</div>
+                      <div className="source-value">{externalSources.supabase.mobile}</div>
+                    </ExternalSourceInfo>
+                  )}
                 </FormGroup>
                 
                 <FormGroup>
                   <InputLabel>Tags</InputLabel>
-                  <Input 
-                    type="text"
-                    placeholder="Type a tag and press Enter"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && e.target.value.trim()) {
-                        // Add tag
-                        const newTag = { id: Date.now().toString(), name: e.target.value.trim() };
-                        handleInputChange('tags', [...formData.tags, newTag]);
-                        e.target.value = '';
-                      }
-                    }}
-                  />
                   
-                  <TagsContainer>
-                    {formData.tags.map(tag => (
-                      <Tag key={tag.id}>
-                        {tag.name}
-                        <FiX 
-                          className="remove" 
-                          size={14} 
-                          onClick={() => handleInputChange('tags', formData.tags.filter(t => t.id !== tag.id))}
-                        />
-                      </Tag>
-                    ))}
-                  </TagsContainer>
+                  <div style={{ 
+                    border: '1px solid #333', 
+                    borderRadius: '4px', 
+                    padding: '15px', 
+                    marginBottom: '15px',
+                    background: '#222'
+                  }}>
+                    <TagsContainer style={{ marginBottom: formData.tags && formData.tags.length > 0 ? '15px' : '0' }}>
+                      {formData.tags && formData.tags.length > 0 ? formData.tags.map(tag => (
+                        <Tag key={tag.tag_id || tag.entry_id}>
+                          {tag.name}
+                          <FiX 
+                            className="remove" 
+                            size={14} 
+                            onClick={() => handleInputChange('tags', formData.tags.filter(t => (t.tag_id || t.entry_id) !== (tag.tag_id || tag.entry_id)))}
+                          />
+                        </Tag>
+                      )) : (
+                        <div style={{ color: '#999', textAlign: 'center', padding: '10px 0' }}>
+                          No tags added
+                        </div>
+                      )}
+                    </TagsContainer>
+                  </div>
+                  
+                  {/* Add new tag with autocomplete */}
+                  <div style={{ marginBottom: '15px' }}>
+                    <div style={{ position: 'relative' }}>
+                      <Input 
+                        type="text"
+                        placeholder="Type to search or add tags (min 2 characters)"
+                        value={formData.newCustomTag || ''}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          handleInputChange('newCustomTag', value);
+                          
+                          // Search for tag suggestions if at least 2 characters
+                          if (value && value.length >= 2) {
+                            // We'll add a debounced search function below
+                            searchTagSuggestions(value);
+                          } else {
+                            // Clear suggestions if input is too short
+                            handleInputChange('tagSuggestions', []);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && formData.newCustomTag?.trim()) {
+                            // Add tag
+                            const newTag = { 
+                              tag_id: `temp-${Date.now()}`, 
+                              name: formData.newCustomTag.trim() 
+                            };
+                            handleInputChange('tags', [...(formData.tags || []), newTag]);
+                            handleInputChange('newCustomTag', '');
+                            handleInputChange('tagSuggestions', []);
+                          }
+                        }}
+                        style={{ marginBottom: '5px' }}
+                      />
+                      
+                      {/* Tag suggestions dropdown */}
+                      {formData.tagSuggestions && formData.tagSuggestions.length > 0 && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          right: 0,
+                          zIndex: 10,
+                          background: '#333',
+                          border: '1px solid #444',
+                          borderRadius: '4px',
+                          maxHeight: '200px',
+                          overflowY: 'auto'
+                        }}>
+                          {formData.tagSuggestions.map((suggestion) => (
+                            <div 
+                              key={suggestion.tag_id}
+                              onClick={() => {
+                                // Only add if not already exists
+                                if (!formData.tags?.some(t => 
+                                  t.tag_id === suggestion.tag_id || 
+                                  t.name.toLowerCase() === suggestion.name.toLowerCase()
+                                )) {
+                                  handleInputChange('tags', [...(formData.tags || []), suggestion]);
+                                  handleInputChange('newCustomTag', '');
+                                  handleInputChange('tagSuggestions', []);
+                                }
+                              }}
+                              style={{
+                                padding: '8px 12px',
+                                cursor: 'pointer',
+                                borderBottom: '1px solid #444',
+                                hoverBackground: '#444'
+                              }}
+                              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#444'}
+                              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                            >
+                              {suggestion.name}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Actions for adding tags */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <button 
+                        onClick={() => {
+                          if (formData.newCustomTag?.trim()) {
+                            const newTag = { 
+                              tag_id: `temp-${Date.now()}`, 
+                              name: formData.newCustomTag.trim() 
+                            };
+                            handleInputChange('tags', [...(formData.tags || []), newTag]);
+                            handleInputChange('newCustomTag', '');
+                            handleInputChange('tagSuggestions', []);
+                          }
+                        }}
+                        disabled={!formData.newCustomTag?.trim()}
+                        style={{
+                          background: formData.newCustomTag?.trim() ? '#4a9eff' : '#333',
+                          border: 'none',
+                          borderRadius: '4px',
+                          padding: '8px 15px',
+                          color: 'white',
+                          cursor: formData.newCustomTag?.trim() ? 'pointer' : 'not-allowed',
+                          fontSize: '0.85rem'
+                        }}
+                      >
+                        Add Custom Tag
+                      </button>
+                      
+                      <button 
+                        onClick={() => {
+                          handleInputChange('newCustomTag', '');
+                          handleInputChange('tagSuggestions', []);
+                        }}
+                        style={{
+                          background: 'transparent',
+                          border: '1px solid #555',
+                          borderRadius: '4px',
+                          padding: '8px 15px',
+                          color: '#999',
+                          cursor: 'pointer',
+                          fontSize: '0.85rem'
+                        }}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div style={{ marginBottom: '15px' }}>
+                    <InputLabel style={{ fontSize: '0.8rem', marginBottom: '5px', color: '#aaa' }}>Common Tags</InputLabel>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {['Investor', 'Founder', 'Tech', 'Finance', 'Startup', 'VIP', 'Follow-up', 'Networking'].map(tagName => (
+                        <div 
+                          key={tagName}
+                          onClick={() => {
+                            // Only add if not already exists
+                            if (!formData.tags?.some(t => t.name.toLowerCase() === tagName.toLowerCase())) {
+                              const newTag = { 
+                                tag_id: `temp-${Date.now()}`, 
+                                name: tagName 
+                              };
+                              handleInputChange('tags', [...(formData.tags || []), newTag]);
+                            }
+                          }}
+                          style={{
+                            padding: '5px 10px',
+                            borderRadius: '4px',
+                            background: '#333',
+                            fontSize: '0.85rem',
+                            cursor: 'pointer',
+                            transition: 'background-color 0.2s',
+                            border: formData.tags?.some(t => t.name.toLowerCase() === tagName.toLowerCase()) 
+                              ? '1px solid #4a9eff' 
+                              : '1px solid transparent'
+                          }}
+                        >
+                          {tagName}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                   
                   {showSources.hubspot && externalSources.hubspot.tags?.length > 0 && (
                     <ExternalSourceInfo color="#ff7a59">
@@ -4579,15 +5291,31 @@ const handleSelectEmailThread = async (threadId) => {
           </Card>
           
           <ButtonGroup>
-            <ActionButton onClick={() => goToStep(2)} disabled={loading}>
-              <FiArrowLeft /> Back
-            </ActionButton>
+            <div>
+              <ActionButton onClick={() => goToStep(2)} disabled={loading}>
+                <FiArrowLeft /> Back
+              </ActionButton>
+              <ActionButton 
+                variant="success" 
+                onClick={async () => {
+                  const success = await saveContactEnrichment();
+                  if (success) {
+                    // After successful save, move forward
+                    goToStep(4);
+                  }
+                }} 
+                disabled={loading}
+                style={{ marginLeft: '10px' }}
+              >
+                <FiCheck /> Save Changes
+              </ActionButton>
+            </div>
             <ActionButton 
               variant="primary" 
               onClick={() => goToStep(4)} 
               disabled={loading}
             >
-              Next <FiArrowRight />
+              Skip to Next <FiArrowRight />
             </ActionButton>
           </ButtonGroup>
         </>
