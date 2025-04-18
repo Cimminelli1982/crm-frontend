@@ -4630,9 +4630,25 @@ const handleSelectEmailThread = async (threadId) => {
       {currentStep === 3 && (
         <>
           <Card>
-            <SectionTitle>
-              <FiInfo /> Contact Enrichment
-            </SectionTitle>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+              <SectionTitle style={{ margin: 0 }}>
+                <FiInfo /> Contact Enrichment
+              </SectionTitle>
+              
+              <ActionButton 
+                variant="success" 
+                onClick={async () => {
+                  const success = await saveContactEnrichment();
+                  if (success) {
+                    // After successful save, move forward
+                    goToStep(4);
+                  }
+                }} 
+                disabled={loading}
+              >
+                <FiCheck /> Save
+              </ActionButton>
+            </div>
             
             <SourceToggles>
               <SourceToggle 
@@ -4804,7 +4820,7 @@ const handleSelectEmailThread = async (threadId) => {
                             fontSize: '0.85rem',
                             padding: '0 5px',
                             borderRadius: '4px',
-                            background: emailItem.is_primary ? '#2c4c7c' : 'transparent',
+                            background: emailItem.is_primary ? '#444444' : 'transparent',
                             cursor: 'pointer'
                           }}
                           onClick={() => {
@@ -4916,6 +4932,165 @@ const handleSelectEmailThread = async (threadId) => {
               {/* Right column */}
               <div>
                 <FormGroup>
+                  <InputLabel>Tags</InputLabel>
+                  
+                  <div style={{ 
+                    border: '1px solid #333', 
+                    borderRadius: '4px', 
+                    padding: '15px', 
+                    marginBottom: '15px',
+                    background: '#222'
+                  }}>
+                    <TagsContainer style={{ marginBottom: formData.tags && formData.tags.length > 0 ? '15px' : '0' }}>
+                      {formData.tags && formData.tags.length > 0 ? formData.tags.map(tag => (
+                        <Tag key={tag.tag_id || tag.entry_id}>
+                          {tag.name}
+                          <FiX 
+                            className="remove" 
+                            size={14} 
+                            onClick={() => handleInputChange('tags', formData.tags.filter(t => (t.tag_id || t.entry_id) !== (tag.tag_id || tag.entry_id)))}
+                          />
+                        </Tag>
+                      )) : (
+                        <div style={{ color: '#999', textAlign: 'center', padding: '10px 0' }}>
+                          No tags added
+                        </div>
+                      )}
+                    </TagsContainer>
+                  </div>
+                  
+                  {/* Add new tag with autocomplete */}
+                  <div style={{ marginBottom: '15px' }}>
+                    <div style={{ position: 'relative', width: '96%' }}>
+                      <Input 
+                        type="text"
+                        placeholder="Type to search or add tags (min 2 characters)"
+                        value={formData.newCustomTag || ''}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          handleInputChange('newCustomTag', value);
+                          
+                          // Search for tag suggestions if at least 2 characters
+                          if (value && value.length >= 2) {
+                            // We'll add a debounced search function below
+                            searchTagSuggestions(value);
+                          } else {
+                            // Clear suggestions if input is too short
+                            handleInputChange('tagSuggestions', []);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && formData.newCustomTag?.trim()) {
+                            // Add tag
+                            const newTag = { 
+                              tag_id: `temp-${Date.now()}`, 
+                              name: formData.newCustomTag.trim() 
+                            };
+                            handleInputChange('tags', [...(formData.tags || []), newTag]);
+                            handleInputChange('newCustomTag', '');
+                            handleInputChange('tagSuggestions', []);
+                          } else if (e.key === 'Escape') {
+                            // Clear input and suggestions on ESC
+                            handleInputChange('newCustomTag', '');
+                            handleInputChange('tagSuggestions', []);
+                          }
+                        }}
+                        style={{ 
+                          marginBottom: '5px',
+                          fontSize: '0.9rem', // 10% smaller text
+                          height: '28px', // Reduced height to match other inputs
+                          minHeight: '28px',
+                          padding: '4px 10px'
+                        }}
+                      />
+                      
+                      {/* Tag suggestions dropdown */}
+                      {formData.tagSuggestions && formData.tagSuggestions.length > 0 && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          right: 0,
+                          zIndex: 10,
+                          background: '#333',
+                          border: '1px solid #444',
+                          borderRadius: '4px',
+                          maxHeight: '200px',
+                          overflowY: 'auto'
+                        }}>
+                          {formData.tagSuggestions.map((suggestion) => (
+                            <div 
+                              key={suggestion.tag_id}
+                              onClick={() => {
+                                // Only add if not already exists
+                                if (!formData.tags?.some(t => 
+                                  t.tag_id === suggestion.tag_id || 
+                                  t.name.toLowerCase() === suggestion.name.toLowerCase()
+                                )) {
+                                  handleInputChange('tags', [...(formData.tags || []), suggestion]);
+                                  handleInputChange('newCustomTag', '');
+                                  handleInputChange('tagSuggestions', []);
+                                }
+                              }}
+                              style={{
+                                padding: '8px 12px',
+                                cursor: 'pointer',
+                                borderBottom: '1px solid #444',
+                                hoverBackground: '#444'
+                              }}
+                              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#444'}
+                              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                            >
+                              {suggestion.name}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Actions for clearing tag input */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <button 
+                        onClick={() => {
+                          handleInputChange('newCustomTag', '');
+                          handleInputChange('tagSuggestions', []);
+                        }}
+                        style={{
+                          background: 'transparent',
+                          border: '1px solid #555',
+                          borderRadius: '4px',
+                          padding: '8px 15px',
+                          color: '#999',
+                          cursor: 'pointer',
+                          fontSize: '0.85rem'
+                        }}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                  
+                  
+                  {showSources.hubspot && externalSources.hubspot.tags?.length > 0 && (
+                    <ExternalSourceInfo color="#ff7a59">
+                      <div className="source-label">HubSpot Tags</div>
+                      <div className="source-value">
+                        {externalSources.hubspot.tags.join(', ')}
+                      </div>
+                    </ExternalSourceInfo>
+                  )}
+                  
+                  {showSources.airtable && externalSources.airtable.tags?.length > 0 && (
+                    <ExternalSourceInfo color="#2d7ff9">
+                      <div className="source-label">Airtable Tags</div>
+                      <div className="source-value">
+                        {externalSources.airtable.tags.join(', ')}
+                      </div>
+                    </ExternalSourceInfo>
+                  )}
+                </FormGroup>
+                
+                <FormGroup style={{ marginTop: '55px' }}>
                   <InputLabel>Mobile Numbers</InputLabel>
                   
                   <div style={{ 
@@ -4971,7 +5146,7 @@ const handleSelectEmailThread = async (threadId) => {
                             fontSize: '0.85rem',
                             padding: '0 5px',
                             borderRadius: '4px',
-                            background: mobileItem.is_primary ? '#2c4c7c' : 'transparent',
+                            background: mobileItem.is_primary ? '#444444' : 'transparent',
                             cursor: 'pointer'
                           }}
                           onClick={() => {
@@ -5078,238 +5253,14 @@ const handleSelectEmailThread = async (threadId) => {
                     </ExternalSourceInfo>
                   )}
                 </FormGroup>
-                
-                <FormGroup>
-                  <InputLabel>Tags</InputLabel>
-                  
-                  <div style={{ 
-                    border: '1px solid #333', 
-                    borderRadius: '4px', 
-                    padding: '15px', 
-                    marginBottom: '15px',
-                    background: '#222'
-                  }}>
-                    <TagsContainer style={{ marginBottom: formData.tags && formData.tags.length > 0 ? '15px' : '0' }}>
-                      {formData.tags && formData.tags.length > 0 ? formData.tags.map(tag => (
-                        <Tag key={tag.tag_id || tag.entry_id}>
-                          {tag.name}
-                          <FiX 
-                            className="remove" 
-                            size={14} 
-                            onClick={() => handleInputChange('tags', formData.tags.filter(t => (t.tag_id || t.entry_id) !== (tag.tag_id || tag.entry_id)))}
-                          />
-                        </Tag>
-                      )) : (
-                        <div style={{ color: '#999', textAlign: 'center', padding: '10px 0' }}>
-                          No tags added
-                        </div>
-                      )}
-                    </TagsContainer>
-                  </div>
-                  
-                  {/* Add new tag with autocomplete */}
-                  <div style={{ marginBottom: '15px' }}>
-                    <div style={{ position: 'relative' }}>
-                      <Input 
-                        type="text"
-                        placeholder="Type to search or add tags (min 2 characters)"
-                        value={formData.newCustomTag || ''}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          handleInputChange('newCustomTag', value);
-                          
-                          // Search for tag suggestions if at least 2 characters
-                          if (value && value.length >= 2) {
-                            // We'll add a debounced search function below
-                            searchTagSuggestions(value);
-                          } else {
-                            // Clear suggestions if input is too short
-                            handleInputChange('tagSuggestions', []);
-                          }
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && formData.newCustomTag?.trim()) {
-                            // Add tag
-                            const newTag = { 
-                              tag_id: `temp-${Date.now()}`, 
-                              name: formData.newCustomTag.trim() 
-                            };
-                            handleInputChange('tags', [...(formData.tags || []), newTag]);
-                            handleInputChange('newCustomTag', '');
-                            handleInputChange('tagSuggestions', []);
-                          }
-                        }}
-                        style={{ marginBottom: '5px' }}
-                      />
-                      
-                      {/* Tag suggestions dropdown */}
-                      {formData.tagSuggestions && formData.tagSuggestions.length > 0 && (
-                        <div style={{
-                          position: 'absolute',
-                          top: '100%',
-                          left: 0,
-                          right: 0,
-                          zIndex: 10,
-                          background: '#333',
-                          border: '1px solid #444',
-                          borderRadius: '4px',
-                          maxHeight: '200px',
-                          overflowY: 'auto'
-                        }}>
-                          {formData.tagSuggestions.map((suggestion) => (
-                            <div 
-                              key={suggestion.tag_id}
-                              onClick={() => {
-                                // Only add if not already exists
-                                if (!formData.tags?.some(t => 
-                                  t.tag_id === suggestion.tag_id || 
-                                  t.name.toLowerCase() === suggestion.name.toLowerCase()
-                                )) {
-                                  handleInputChange('tags', [...(formData.tags || []), suggestion]);
-                                  handleInputChange('newCustomTag', '');
-                                  handleInputChange('tagSuggestions', []);
-                                }
-                              }}
-                              style={{
-                                padding: '8px 12px',
-                                cursor: 'pointer',
-                                borderBottom: '1px solid #444',
-                                hoverBackground: '#444'
-                              }}
-                              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#444'}
-                              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                            >
-                              {suggestion.name}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Actions for adding tags */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <button 
-                        onClick={() => {
-                          if (formData.newCustomTag?.trim()) {
-                            const newTag = { 
-                              tag_id: `temp-${Date.now()}`, 
-                              name: formData.newCustomTag.trim() 
-                            };
-                            handleInputChange('tags', [...(formData.tags || []), newTag]);
-                            handleInputChange('newCustomTag', '');
-                            handleInputChange('tagSuggestions', []);
-                          }
-                        }}
-                        disabled={!formData.newCustomTag?.trim()}
-                        style={{
-                          background: formData.newCustomTag?.trim() ? '#4a9eff' : '#333',
-                          border: 'none',
-                          borderRadius: '4px',
-                          padding: '8px 15px',
-                          color: 'white',
-                          cursor: formData.newCustomTag?.trim() ? 'pointer' : 'not-allowed',
-                          fontSize: '0.85rem'
-                        }}
-                      >
-                        Add Custom Tag
-                      </button>
-                      
-                      <button 
-                        onClick={() => {
-                          handleInputChange('newCustomTag', '');
-                          handleInputChange('tagSuggestions', []);
-                        }}
-                        style={{
-                          background: 'transparent',
-                          border: '1px solid #555',
-                          borderRadius: '4px',
-                          padding: '8px 15px',
-                          color: '#999',
-                          cursor: 'pointer',
-                          fontSize: '0.85rem'
-                        }}
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  </div>
-                  
-                  <div style={{ marginBottom: '15px' }}>
-                    <InputLabel style={{ fontSize: '0.8rem', marginBottom: '5px', color: '#aaa' }}>Common Tags</InputLabel>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                      {['Investor', 'Founder', 'Tech', 'Finance', 'Startup', 'VIP', 'Follow-up', 'Networking'].map(tagName => (
-                        <div 
-                          key={tagName}
-                          onClick={() => {
-                            // Only add if not already exists
-                            if (!formData.tags?.some(t => t.name.toLowerCase() === tagName.toLowerCase())) {
-                              const newTag = { 
-                                tag_id: `temp-${Date.now()}`, 
-                                name: tagName 
-                              };
-                              handleInputChange('tags', [...(formData.tags || []), newTag]);
-                            }
-                          }}
-                          style={{
-                            padding: '5px 10px',
-                            borderRadius: '4px',
-                            background: '#333',
-                            fontSize: '0.85rem',
-                            cursor: 'pointer',
-                            transition: 'background-color 0.2s',
-                            border: formData.tags?.some(t => t.name.toLowerCase() === tagName.toLowerCase()) 
-                              ? '1px solid #4a9eff' 
-                              : '1px solid transparent'
-                          }}
-                        >
-                          {tagName}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  {showSources.hubspot && externalSources.hubspot.tags?.length > 0 && (
-                    <ExternalSourceInfo color="#ff7a59">
-                      <div className="source-label">HubSpot Tags</div>
-                      <div className="source-value">
-                        {externalSources.hubspot.tags.join(', ')}
-                      </div>
-                    </ExternalSourceInfo>
-                  )}
-                  
-                  {showSources.airtable && externalSources.airtable.tags?.length > 0 && (
-                    <ExternalSourceInfo color="#2d7ff9">
-                      <div className="source-label">Airtable Tags</div>
-                      <div className="source-value">
-                        {externalSources.airtable.tags.join(', ')}
-                      </div>
-                    </ExternalSourceInfo>
-                  )}
-                </FormGroup>
               </div>
             </FormGrid>
           </Card>
           
           <ButtonGroup>
-            <div>
-              <ActionButton onClick={() => goToStep(2)} disabled={loading}>
-                <FiArrowLeft /> Back
-              </ActionButton>
-              <ActionButton 
-                variant="success" 
-                onClick={async () => {
-                  const success = await saveContactEnrichment();
-                  if (success) {
-                    // After successful save, move forward
-                    goToStep(4);
-                  }
-                }} 
-                disabled={loading}
-                style={{ marginLeft: '10px' }}
-              >
-                <FiCheck /> Save Changes
-              </ActionButton>
-            </div>
+            <ActionButton onClick={() => goToStep(2)} disabled={loading}>
+              <FiArrowLeft /> Back
+            </ActionButton>
             <ActionButton 
               variant="primary" 
               onClick={() => goToStep(4)} 
