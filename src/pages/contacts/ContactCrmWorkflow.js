@@ -6077,7 +6077,7 @@ const handleSelectEmailThread = async (threadId) => {
                       disabled={loading}
                       style={{ marginRight: '10px' }}
                     >
-                      Skip <FiArrowRight />
+                      Recap <FiArrowRight />
                     </ActionButton>
                   
                     <ActionButton 
@@ -6085,8 +6085,16 @@ const handleSelectEmailThread = async (threadId) => {
                       onClick={async () => {
                         const success = await saveContactEnrichment();
                         if (success) {
-                          // After successful save, move forward
-                          goToStep(4);
+                          // Move to the next section vertically based on active section
+                          const sections = ["basics", "tags", "notes", "companies", "deals", "airtable"];
+                          const currentIndex = sections.indexOf(activeEnrichmentSection);
+                          if (currentIndex < sections.length - 1) {
+                            // Move to next section
+                            setActiveEnrichmentSection(sections[currentIndex + 1]);
+                          } else {
+                            // After going through all sections, move to recap
+                            goToStep(4);
+                          }
                         }
                       }} 
                       disabled={loading}
