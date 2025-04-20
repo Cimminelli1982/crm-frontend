@@ -212,7 +212,7 @@ const InteractionsLayout = styled.div`
 `;
 
 const ChannelsMenu = styled.div`
-  flex: 0 0 20%;
+  flex: 0 0 15%;
   border-right: 1px solid #333;
   background-color: #111;
   overflow-y: auto;
@@ -259,7 +259,7 @@ const ChannelItem = styled.div`
 
 const InteractionsContainer = styled.div`
   flex: 0 0 80%;
-  padding: 0;
+  padding: 0 0 0 0;
   overflow-y: auto;
   background-color: #1a1a1a;
 `;
@@ -4818,9 +4818,9 @@ const handleSelectEmailThread = async (threadId) => {
               <FiInfo /> Contact Enrichment
             </SectionTitle>
             
-            <InteractionsLayout>
+            <InteractionsLayout style={{ paddingRight: 0 }}>
               {/* Left navigation menu */}
-              <ChannelsMenu>
+              <ChannelsMenu style={{ flex: '0 0 17%' }}>
                 <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold' }}>
                   INFORMATION
                 </div>
@@ -4901,8 +4901,8 @@ const handleSelectEmailThread = async (threadId) => {
               </ChannelsMenu>
               
               {/* Main content area */}
-              <InteractionsContainer>
-                <div style={{ width: '100%' }}>
+              <InteractionsContainer style={{ flex: '0 0 83%' }}>
+                <div style={{ padding: '20px 15px 0 20px' }}>
                   <SectionHeader>
                     <FiUser size={16} />
                     <span>Basics</span>
@@ -5608,7 +5608,7 @@ const handleSelectEmailThread = async (threadId) => {
                   </FormGroup>
                 </div>
                 
-                <ButtonGroup style={{ marginTop: '20px', justifyContent: 'space-between' }}>
+                <ButtonGroup style={{ marginTop: '20px', marginBottom: '20px', width: 'calc(100% - 40px)', padding: '0 0 0 20px', justifyContent: 'space-between' }}>
                   <ActionButton onClick={() => goToStep(2)} disabled={loading}>
                     <FiArrowLeft /> Back
                   </ActionButton>
