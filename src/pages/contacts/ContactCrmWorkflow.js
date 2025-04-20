@@ -29,7 +29,9 @@ import {
   FiEdit,
   FiUsers,
   FiFile,
-  FiPlus
+  FiPlus,
+  FiDatabase,
+  FiDollarSign
 } from 'react-icons/fi';
 
 // Configure Modal for React
@@ -1101,6 +1103,18 @@ const ErrorMessage = styled.div`
   display: flex;
   align-items: center;
   gap: 10px;
+`;
+
+const SectionHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  margin-bottom: 15px;
+  color: #eee;
+  border-bottom: 1px solid #333;
+  padding-bottom: 10px;
 `;
 
 // Helper function for string similarity
@@ -4800,486 +4814,722 @@ const handleSelectEmailThread = async (threadId) => {
       {currentStep === 3 && (
         <>
           <Card>
+            <SectionTitle>
+              <FiInfo /> Contact Enrichment
+            </SectionTitle>
             
-            <FormGrid>
-              {/* Left column */}
-              <div>
-                {/* Personal Information Section */}
-                <div style={{ display: 'flex', flexDirection: 'column', marginBottom: '15px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <SectionIcon><FiUser /></SectionIcon>
-                    <SectionLabel>Personal Information</SectionLabel>
-                  </div>
-                  <div style={{ borderBottom: '1px solid #333', marginTop: '10px' }}></div>
+            <InteractionsLayout>
+              {/* Left navigation menu */}
+              <ChannelsMenu>
+                <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold' }}>
+                  INFORMATION
+                </div>
+                <div 
+                  style={{ 
+                    padding: '12px 15px', 
+                    cursor: 'pointer', 
+                    borderBottom: '1px solid #222',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    background: '#222'
+                  }}
+                >
+                  <FiUser size={16} />
+                  <span>Basics</span>
+                </div>
+                <div 
+                  style={{ 
+                    padding: '12px 15px', 
+                    cursor: 'pointer', 
+                    borderBottom: '1px solid #222',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  <FiCalendar size={16} />
+                  <span>Keep in Touch</span>
                 </div>
                 
-                <FormGroup>
-                  <FormFieldLabel>Name</FormFieldLabel>
-                  <div style={{ 
-                    display: 'flex', 
-                    gap: '10px', 
-                    marginBottom: '15px',
-                    background: '#222',
-                    padding: '12px',
-                    borderRadius: '4px'
-                  }}>
-                    <Input 
-                      type="text"
-                      value={formData.firstName || contact?.first_name || ''}
-                      onChange={(e) => handleInputChange('firstName', e.target.value)}
-                      placeholder="First Name"
-                      style={{ flex: 1 }}
-                    />
-                    <Input 
-                      type="text"
-                      value={formData.lastName || contact?.last_name || ''}
-                      onChange={(e) => handleInputChange('lastName', e.target.value)}
-                      placeholder="Last Name"
-                      style={{ flex: 1 }}
-                    />
-                  </div>
-                </FormGroup>
-
-                <FormGroup>
-                  <FormFieldLabel>Email Addresses</FormFieldLabel>
-                  
-                  <div style={{ 
-                    border: '1px solid #333', 
-                    borderRadius: '4px', 
-                    padding: '12px', 
-                    marginBottom: '15px',
-                    background: '#1e1e1e'
-                  }}>
-                    {/* Existing emails list */}
-                    {formData.emails && formData.emails.length > 0 ? (
-                      formData.emails.map((emailItem, index) => (
-                        <div key={emailItem.email_id || index} style={{ 
-                          display: 'flex', 
-                          gap: '10px', 
-                          marginBottom: index < formData.emails.length - 1 ? '15px' : '0',
-                          alignItems: 'center',
-                          padding: '8px',
-                          background: '#222',
-                          borderRadius: '4px'
-                        }}>
-                          <div style={{ flex: 2 }}>
-                            <Input 
-                              type="email"
-                              value={emailItem.email || ''}
-                              onChange={(e) => {
-                                const updatedEmails = [...formData.emails];
-                                updatedEmails[index].email = e.target.value;
-                                handleInputChange('emails', updatedEmails);
-                              }}
-                              placeholder="Email address"
-                            />
-                          </div>
-                          
-                          <div style={{ flex: 1 }}>
-                            <Select
-                              value={emailItem.type || 'personal'}
-                              onChange={(e) => {
-                                const updatedEmails = [...formData.emails];
-                                updatedEmails[index].type = e.target.value;
-                                handleInputChange('emails', updatedEmails);
-                              }}
-                            >
-                              <option value="personal">Personal</option>
-                              <option value="work">Work</option>
-                              <option value="other">Other</option>
-                            </Select>
-                          </div>
-                          
-                          <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '5px',
-                            fontSize: '0.85rem',
-                            padding: '0 5px',
-                            borderRadius: '4px',
-                            background: emailItem.is_primary ? '#444444' : 'transparent',
-                            cursor: 'pointer'
-                          }}
-                          onClick={() => {
-                            const updatedEmails = formData.emails.map((item, i) => ({
-                              ...item,
-                              is_primary: i === index // Make this one primary, all others not primary
-                            }));
-                            handleInputChange('emails', updatedEmails);
-                          }}
-                          >
-                            {emailItem.is_primary ? (
-                              <><FiCheck size={14} /> Primary</>
-                            ) : (
-                              'Set Primary'
-                            )}
-                          </div>
-                          
-                          <button 
-                            onClick={() => {
-                              // If deleting primary, make the first remaining email primary
-                              let updatedEmails = formData.emails.filter((_, i) => i !== index);
-                              if (emailItem.is_primary && updatedEmails.length > 0) {
-                                updatedEmails[0].is_primary = true;
-                              }
-                              handleInputChange('emails', updatedEmails);
-                            }}
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              color: '#ff6b6b',
-                              cursor: 'pointer',
-                              padding: '5px'
-                            }}
-                            title="Remove email"
-                          >
-                            <FiTrash2 size={16} />
-                          </button>
-                        </div>
-                      ))
-                    ) : (
-                      <div style={{ color: '#999', textAlign: 'center', padding: '10px 0' }}>
-                        No email addresses added
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Add new email form */}
-                  <div style={{ 
-                    display: 'flex', 
-                    gap: '10px', 
-                    marginBottom: '10px',
-                    background: '#222',
-                    padding: '10px',
-                    borderRadius: '4px'
-                  }}>
-                    <Input 
-                      type="email"
-                      placeholder="Add new email address"
-                      value={formData.newEmail || ''}
-                      onChange={(e) => handleInputChange('newEmail', e.target.value)}
-                      style={{ flex: 2 }}
-                    />
-                    <Select
-                      value={formData.newEmailType || 'personal'}
-                      onChange={(e) => handleInputChange('newEmailType', e.target.value)}
-                      style={{ flex: 1 }}
-                    >
-                      <option value="personal">Personal</option>
-                      <option value="work">Work</option>
-                      <option value="other">Other</option>
-                    </Select>
-                    <button 
-                      onClick={() => {
-                        if (!formData.newEmail) return;
-                        
-                        const newEmail = { 
-                          email_id: `temp-${Date.now()}`, // Temporary ID until saved
-                          email: formData.newEmail,
-                          type: formData.newEmailType || 'personal',
-                          is_primary: formData.emails.length === 0 // First one is primary by default
-                        };
-                        
-                        handleInputChange('emails', [...(formData.emails || []), newEmail]);
-                        handleInputChange('newEmail', ''); // Clear the input
-                      }}
-                      disabled={!formData.newEmail}
-                      style={{
-                        background: formData.newEmail ? '#4a9eff' : '#333',
-                        border: 'none',
-                        borderRadius: '4px',
-                        padding: '0 15px',
-                        color: 'white',
-                        cursor: formData.newEmail ? 'pointer' : 'not-allowed'
-                      }}
-                    >
-                      Add
-                    </button>
-                  </div>
-                  
-                </FormGroup>
+                <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold', marginTop: '10px' }}>
+                  RELATIONS
+                </div>
+                <div 
+                  style={{ 
+                    padding: '12px 15px', 
+                    cursor: 'pointer', 
+                    borderBottom: '1px solid #222',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  <FiBriefcase size={16} />
+                  <span>Companies</span>
+                </div>
+                <div 
+                  style={{ 
+                    padding: '12px 15px', 
+                    cursor: 'pointer', 
+                    borderBottom: '1px solid #222',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  <FiDollarSign size={16} />
+                  <span>Deals</span>
+                </div>
                 
-                <FormGroup>
-                  <FormFieldLabel>Mobile Numbers</FormFieldLabel>
-                  
-                  <div style={{ 
-                    border: '1px solid #333', 
-                    borderRadius: '4px', 
-                    padding: '12px', 
-                    marginBottom: '15px',
-                    background: '#1e1e1e'
-                  }}>
-                    {/* Existing mobiles list */}
-                    {formData.mobiles && formData.mobiles.length > 0 ? (
-                      formData.mobiles.map((mobileItem, index) => (
-                        <div key={mobileItem.mobile_id || index} style={{ 
-                          display: 'flex', 
-                          gap: '10px', 
-                          marginBottom: index < formData.mobiles.length - 1 ? '15px' : '0',
-                          alignItems: 'center',
-                          padding: '8px',
-                          background: '#222',
-                          borderRadius: '4px'
-                        }}>
-                          <div style={{ flex: 2 }}>
-                            <Input 
-                              type="text"
-                              value={mobileItem.mobile || ''}
-                              onChange={(e) => {
-                                const updatedMobiles = [...formData.mobiles];
-                                updatedMobiles[index].mobile = e.target.value;
-                                handleInputChange('mobiles', updatedMobiles);
-                              }}
-                              placeholder="Phone number"
-                            />
-                          </div>
-                          
-                          <div style={{ flex: 1 }}>
-                            <Select
-                              value={mobileItem.type || 'personal'}
-                              onChange={(e) => {
-                                const updatedMobiles = [...formData.mobiles];
-                                updatedMobiles[index].type = e.target.value;
-                                handleInputChange('mobiles', updatedMobiles);
-                              }}
-                            >
-                              <option value="personal">Personal</option>
-                              <option value="work">Work</option>
-                              <option value="other">Other</option>
-                            </Select>
-                          </div>
-                          
-                          <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '5px',
-                            fontSize: '0.85rem',
-                            padding: '0 5px',
-                            borderRadius: '4px',
-                            background: mobileItem.is_primary ? '#444444' : 'transparent',
-                            cursor: 'pointer'
-                          }}
-                          onClick={() => {
-                            const updatedMobiles = formData.mobiles.map((item, i) => ({
-                              ...item,
-                              is_primary: i === index // Make this one primary, all others not primary
-                            }));
-                            handleInputChange('mobiles', updatedMobiles);
-                          }}
-                          >
-                            {mobileItem.is_primary ? (
-                              <><FiCheck size={14} /> Primary</>
-                            ) : (
-                              'Set Primary'
-                            )}
-                          </div>
-                          
-                          <button 
-                            onClick={() => {
-                              // If deleting primary, make the first remaining mobile primary
-                              let updatedMobiles = formData.mobiles.filter((_, i) => i !== index);
-                              if (mobileItem.is_primary && updatedMobiles.length > 0) {
-                                updatedMobiles[0].is_primary = true;
-                              }
-                              handleInputChange('mobiles', updatedMobiles);
-                            }}
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              color: '#ff6b6b',
-                              cursor: 'pointer',
-                              padding: '5px'
-                            }}
-                            title="Remove mobile"
-                          >
-                            <FiTrash2 size={16} />
-                          </button>
-                        </div>
-                      ))
-                    ) : (
-                      <div style={{ color: '#999', textAlign: 'center', padding: '10px 0' }}>
-                        No mobile numbers added
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Add new mobile form */}
-                  <div style={{ 
-                    display: 'flex', 
-                    gap: '10px', 
-                    marginBottom: '10px',
-                    background: '#222',
-                    padding: '10px',
-                    borderRadius: '4px'
-                  }}>
-                    <Input 
-                      type="text"
-                      placeholder="Add new mobile number"
-                      value={formData.newMobile || ''}
-                      onChange={(e) => handleInputChange('newMobile', e.target.value)}
-                      style={{ flex: 2 }}
-                    />
-                    <Select
-                      value={formData.newMobileType || 'personal'}
-                      onChange={(e) => handleInputChange('newMobileType', e.target.value)}
-                      style={{ flex: 1 }}
-                    >
-                      <option value="personal">Personal</option>
-                      <option value="work">Work</option>
-                      <option value="other">Other</option>
-                    </Select>
-                    <button 
-                      onClick={() => {
-                        if (!formData.newMobile) return;
-                        
-                        const newMobile = { 
-                          mobile_id: `temp-${Date.now()}`, // Temporary ID until saved
-                          mobile: formData.newMobile,
-                          type: formData.newMobileType || 'personal',
-                          is_primary: formData.mobiles.length === 0 // First one is primary by default
-                        };
-                        
-                        handleInputChange('mobiles', [...(formData.mobiles || []), newMobile]);
-                        handleInputChange('newMobile', ''); // Clear the input
-                      }}
-                      disabled={!formData.newMobile}
-                      style={{
-                        background: formData.newMobile ? '#4a9eff' : '#333',
-                        border: 'none',
-                        borderRadius: '4px',
-                        padding: '0 15px',
-                        color: 'white',
-                        cursor: formData.newMobile ? 'pointer' : 'not-allowed'
-                      }}
-                    >
-                      Add
-                    </button>
-                  </div>
-                  
-                </FormGroup>
-              </div>
+                <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold', marginTop: '10px' }}>
+                  LEGACY CRM
+                </div>
+                <div 
+                  style={{ 
+                    padding: '12px 15px', 
+                    cursor: 'pointer', 
+                    borderBottom: '1px solid #222',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  <FiDatabase size={16} />
+                  <span>Airtable</span>
+                </div>
+              </ChannelsMenu>
               
-              {/* Right column */}
-              <div>
-                {/* Classification Section */}
-                <div style={{ display: 'flex', flexDirection: 'column', marginBottom: '15px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <SectionIcon><FiTag /></SectionIcon>
-                      <SectionLabel>Classification</SectionLabel>
-                    </div>
-                    
-                    <ActionButton 
-                      variant="success" 
-                      onClick={async () => {
-                        const success = await saveContactEnrichment();
-                        if (success) {
-                          // After successful save, move forward
-                          goToStep(4);
-                        }
-                      }} 
-                      disabled={loading}
-                    >
-                      <FiCheck /> Save
-                    </ActionButton>
-                  </div>
-                  <div style={{ borderBottom: '1px solid #333', marginTop: '8px' }}></div>
-                </div>
-                
-                <FormGroup>
-                  <div style={{ display: 'flex', gap: '15px' }}>
-                    <div style={{ flex: 1 }}>
-                      <FormFieldLabel>Keep in Touch Frequency</FormFieldLabel>
-                      <div style={{ 
-                        background: '#222', 
-                        padding: '12px', 
-                        borderRadius: '4px',
-                        marginBottom: '10px'
-                      }}>
-                        <Select 
-                          value={formData.keepInTouch || ''}
-                          onChange={(e) => handleInputChange('keepInTouch', e.target.value === '' ? null : e.target.value)}
-                        >
-                          <option value="Not Set">Not Set</option>
-                          <option value="Monthly">Monthly</option>
-                          <option value="Quarterly">Quarterly</option>
-                          <option value="Twice per Year">Twice per Year</option>
-                          <option value="Once per Year">Once per Year</option>
-                          <option value="Weekly">Weekly</option>
-                          <option value="Do not keep in touch">Do not keep in touch</option>
-                        </Select>
-                      </div>
-                    </div>
-                    
-                    <div style={{ flex: 1 }}>
-                      <FormFieldLabel>Category</FormFieldLabel>
-                      <div style={{ 
-                        background: '#222', 
-                        padding: '12px', 
-                        borderRadius: '4px',
-                        marginBottom: '10px'
-                      }}>
-                        <Select 
-                          value={formData.category || ''}
-                          onChange={(e) => handleInputChange('category', e.target.value === '' ? null : e.target.value)}
-                        >
-                          <option value="Inbox">Inbox</option>
-                          <option value="Professional Investor">Professional Investor</option>
-                          <option value="Team">Team</option>
-                          <option value="Advisor">Advisor</option>
-                          <option value="Supplier">Supplier</option>
-                          <option value="Founder">Founder</option>
-                          <option value="Manager">Manager</option>
-                          <option value="Friend and Family">Friend and Family</option>
-                          <option value="Other">Other</option>
-                          <option value="Student">Student</option>
-                          <option value="Media">Media</option>
-                          <option value="Institution">Institution</option>
-                        </Select>
-                      </div>
-                    </div>
-                  </div>
-                </FormGroup>
-                
-                <FormGroup style={{ marginTop: '-12px' }}>
-                  <FormFieldLabel>Tags</FormFieldLabel>
+              {/* Main content area */}
+              <InteractionsContainer>
+                <div style={{ width: '100%' }}>
+                  <SectionHeader>
+                    <FiUser size={16} />
+                    <span>Basics</span>
+                  </SectionHeader>
                   
-                  <div style={{ 
-                    border: '1px solid #333', 
-                    borderRadius: '4px', 
-                    padding: '16px', 
-                    marginBottom: '15px',
-                    background: '#1e1e1e'
-                  }}>
-                    <TagsContainer style={{ marginBottom: formData.tags && formData.tags.length > 0 ? '8px' : '0' }}>
-                      {formData.tags && formData.tags.length > 0 ? formData.tags.map(tag => (
-                        <Tag key={tag.tag_id || tag.entry_id}>
-                          {tag.name}
-                          <FiX 
-                            className="remove" 
-                            size={14} 
-                            onClick={() => handleInputChange('tags', formData.tags.filter(t => (t.tag_id || t.entry_id) !== (tag.tag_id || tag.entry_id)))}
-                          />
-                        </Tag>
-                      )) : (
-                        <div style={{ color: '#999', textAlign: 'center', padding: '10px 0' }}>
-                          No tags added
-                        </div>
-                      )}
-                    </TagsContainer>
-                  </div>
-                  
-                  {/* Add new tag with autocomplete */}
-                  <div style={{ 
-                    marginBottom: '15px',
-                    background: '#222',
-                    padding: '12px',
-                    borderRadius: '4px'
-                  }}>
-                    <div style={{ position: 'relative', width: '100%' }}>
+                  <FormGroup>
+                    <FormFieldLabel>Name</FormFieldLabel>
+                    <div style={{ 
+                      display: 'flex', 
+                      gap: '10px', 
+                      marginBottom: '15px',
+                      background: '#222',
+                      padding: '12px',
+                      borderRadius: '4px'
+                    }}>
                       <Input 
                         type="text"
-                        placeholder="Type to search or add tags (min 2 characters)"
+                        value={formData.firstName || contact?.first_name || ''}
+                        onChange={(e) => handleInputChange('firstName', e.target.value)}
+                        placeholder="First Name"
+                        style={{ flex: 1 }}
+                      />
+                      <Input 
+                        type="text"
+                        value={formData.lastName || contact?.last_name || ''}
+                        onChange={(e) => handleInputChange('lastName', e.target.value)}
+                        placeholder="Last Name"
+                        style={{ flex: 1 }}
+                      />
+                    </div>
+                  </FormGroup>
+                  
+                  <FormGroup>
+                    <FormFieldLabel>Email Addresses</FormFieldLabel>
+                    
+                    <div style={{ 
+                      border: '1px solid #333', 
+                      borderRadius: '4px', 
+                      padding: '12px', 
+                      marginBottom: '15px',
+                      background: '#1e1e1e'
+                    }}>
+                      {/* Existing emails list */}
+                      {formData.emails && formData.emails.length > 0 ? (
+                        formData.emails.map((emailItem, index) => (
+                          <div key={emailItem.email_id || index} style={{ 
+                            display: 'flex', 
+                            gap: '10px', 
+                            marginBottom: index < formData.emails.length - 1 ? '15px' : '0',
+                            alignItems: 'center',
+                            padding: '8px',
+                            background: '#222',
+                            borderRadius: '4px'
+                          }}>
+                            <div style={{ flex: 2 }}>
+                              <Input 
+                                type="email"
+                                value={emailItem.email || ''}
+                                onChange={(e) => {
+                                  const updatedEmails = [...formData.emails];
+                                  updatedEmails[index].email = e.target.value;
+                                  handleInputChange('emails', updatedEmails);
+                                }}
+                                placeholder="Email address"
+                              />
+                            </div>
+                            
+                            <div style={{ flex: 1 }}>
+                              <Select
+                                value={emailItem.type || 'personal'}
+                                onChange={(e) => {
+                                  const updatedEmails = [...formData.emails];
+                                  updatedEmails[index].type = e.target.value;
+                                  handleInputChange('emails', updatedEmails);
+                                }}
+                              >
+                                <option value="personal">Personal</option>
+                                <option value="work">Work</option>
+                                <option value="other">Other</option>
+                              </Select>
+                            </div>
+                            
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              fontSize: '0.85rem',
+                              padding: '0 5px',
+                              borderRadius: '4px',
+                              background: emailItem.is_primary ? '#444444' : 'transparent',
+                              cursor: 'pointer'
+                            }}
+                            onClick={() => {
+                              const updatedEmails = formData.emails.map((item, i) => ({
+                                ...item,
+                                is_primary: i === index // Make this one primary, all others not primary
+                              }));
+                              handleInputChange('emails', updatedEmails);
+                            }}
+                            >
+                              {emailItem.is_primary ? (
+                                <><FiCheck size={14} /> Primary</>
+                              ) : (
+                                'Set Primary'
+                              )}
+                            </div>
+                            
+                            <button 
+                              onClick={() => {
+                                // If deleting primary, make the first remaining email primary
+                                let updatedEmails = formData.emails.filter((_, i) => i !== index);
+                                if (emailItem.is_primary && updatedEmails.length > 0) {
+                                  updatedEmails[0].is_primary = true;
+                                }
+                                handleInputChange('emails', updatedEmails);
+                              }}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#ff6b6b',
+                                cursor: 'pointer',
+                                padding: '5px'
+                              }}
+                              title="Remove email"
+                            >
+                              <FiTrash2 size={16} />
+                            </button>
+                          </div>
+                        ))
+                      ) : (
+                        <div style={{ color: '#999', textAlign: 'center', padding: '10px 0' }}>
+                          No email addresses added
+                        </div>
+                      )}
+                      
+                      {/* Add new email form */}
+                      <div style={{ 
+                        display: 'flex', 
+                        gap: '10px', 
+                        marginTop: '15px'
+                      }}>
+                        <Input 
+                          type="email"
+                          placeholder="Add new email address"
+                          value={formData.newEmail || ''}
+                          onChange={(e) => handleInputChange('newEmail', e.target.value)}
+                          style={{ flex: 2 }}
+                        />
+                        <Select
+                          value={formData.newEmailType || 'personal'}
+                          onChange={(e) => handleInputChange('newEmailType', e.target.value)}
+                          style={{ flex: 1 }}
+                        >
+                          <option value="personal">Personal</option>
+                          <option value="work">Work</option>
+                          <option value="other">Other</option>
+                        </Select>
+                        <button 
+                          onClick={() => {
+                            if (!formData.newEmail) return;
+                            
+                            const newEmail = { 
+                              email_id: `temp-${Date.now()}`, // Temporary ID until saved
+                              email: formData.newEmail,
+                              type: formData.newEmailType || 'personal',
+                              is_primary: formData.emails.length === 0 // First one is primary by default
+                            };
+                            
+                            handleInputChange('emails', [...(formData.emails || []), newEmail]);
+                            handleInputChange('newEmail', ''); // Clear the input
+                          }}
+                          disabled={!formData.newEmail}
+                          style={{
+                            background: formData.newEmail ? '#00ff00' : '#444',
+                            border: 'none',
+                            borderRadius: '4px',
+                            padding: '0 15px',
+                            minWidth: '60px',
+                            color: formData.newEmail ? 'black' : '#999',
+                            cursor: formData.newEmail ? 'pointer' : 'not-allowed'
+                          }}
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                  </FormGroup>
+                  
+                  <FormGroup>
+                    <FormFieldLabel>Mobile Numbers</FormFieldLabel>
+                    
+                    <div style={{ 
+                      border: '1px solid #333', 
+                      borderRadius: '4px', 
+                      padding: '12px', 
+                      marginBottom: '15px',
+                      background: '#1e1e1e'
+                    }}>
+                      {/* Existing mobiles list */}
+                      {formData.mobiles && formData.mobiles.length > 0 ? (
+                        formData.mobiles.map((mobileItem, index) => (
+                          <div key={mobileItem.mobile_id || index} style={{ 
+                            display: 'flex', 
+                            gap: '10px', 
+                            marginBottom: index < formData.mobiles.length - 1 ? '15px' : '0',
+                            alignItems: 'center',
+                            padding: '8px',
+                            background: '#222',
+                            borderRadius: '4px'
+                          }}>
+                            <div style={{ flex: 2 }}>
+                              <Input 
+                                type="text"
+                                value={mobileItem.mobile || ''}
+                                onChange={(e) => {
+                                  const updatedMobiles = [...formData.mobiles];
+                                  updatedMobiles[index].mobile = e.target.value;
+                                  handleInputChange('mobiles', updatedMobiles);
+                                }}
+                                placeholder="Phone number"
+                              />
+                            </div>
+                            
+                            <div style={{ flex: 1 }}>
+                              <Select
+                                value={mobileItem.type || 'personal'}
+                                onChange={(e) => {
+                                  const updatedMobiles = [...formData.mobiles];
+                                  updatedMobiles[index].type = e.target.value;
+                                  handleInputChange('mobiles', updatedMobiles);
+                                }}
+                              >
+                                <option value="personal">Personal</option>
+                                <option value="work">Work</option>
+                                <option value="other">Other</option>
+                              </Select>
+                            </div>
+                            
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              fontSize: '0.85rem',
+                              padding: '0 5px',
+                              borderRadius: '4px',
+                              background: mobileItem.is_primary ? '#444444' : 'transparent',
+                              cursor: 'pointer'
+                            }}
+                            onClick={() => {
+                              const updatedMobiles = formData.mobiles.map((item, i) => ({
+                                ...item,
+                                is_primary: i === index // Make this one primary, all others not primary
+                              }));
+                              handleInputChange('mobiles', updatedMobiles);
+                            }}
+                            >
+                              {mobileItem.is_primary ? (
+                                <><FiCheck size={14} /> Primary</>
+                              ) : (
+                                'Set Primary'
+                              )}
+                            </div>
+                            
+                            <button 
+                              onClick={() => {
+                                // If deleting primary, make the first remaining mobile primary
+                                let updatedMobiles = formData.mobiles.filter((_, i) => i !== index);
+                                if (mobileItem.is_primary && updatedMobiles.length > 0) {
+                                  updatedMobiles[0].is_primary = true;
+                                }
+                                handleInputChange('mobiles', updatedMobiles);
+                              }}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#ff6b6b',
+                                cursor: 'pointer',
+                                padding: '5px'
+                              }}
+                              title="Remove mobile"
+                            >
+                              <FiTrash2 size={16} />
+                            </button>
+                          </div>
+                        ))
+                      ) : (
+                        <div style={{ color: '#999', textAlign: 'center', padding: '10px 0' }}>
+                          No mobile numbers added
+                        </div>
+                      )}
+                      
+                      {/* Add new mobile form */}
+                      <div style={{ 
+                        display: 'flex', 
+                        gap: '10px', 
+                        marginTop: '15px'
+                      }}>
+                        <Input 
+                          type="text"
+                          placeholder="Add new mobile number"
+                          value={formData.newMobile || ''}
+                          onChange={(e) => handleInputChange('newMobile', e.target.value)}
+                          style={{ flex: 2 }}
+                        />
+                        <Select
+                          value={formData.newMobileType || 'personal'}
+                          onChange={(e) => handleInputChange('newMobileType', e.target.value)}
+                          style={{ flex: 1 }}
+                        >
+                          <option value="personal">Personal</option>
+                          <option value="work">Work</option>
+                          <option value="other">Other</option>
+                        </Select>
+                        <button 
+                          onClick={() => {
+                            if (!formData.newMobile) return;
+                            
+                            const newMobile = { 
+                              mobile_id: `temp-${Date.now()}`, // Temporary ID until saved
+                              mobile: formData.newMobile,
+                              type: formData.newMobileType || 'personal',
+                              is_primary: formData.mobiles.length === 0 // First one is primary by default
+                            };
+                            
+                            handleInputChange('mobiles', [...(formData.mobiles || []), newMobile]);
+                            handleInputChange('newMobile', ''); // Clear the input
+                          }}
+                          disabled={!formData.newMobile}
+                          style={{
+                            background: formData.newMobile ? '#00ff00' : '#444',
+                            border: 'none',
+                            borderRadius: '4px',
+                            padding: '0 15px',
+                            minWidth: '60px',
+                            color: formData.newMobile ? 'black' : '#999',
+                            cursor: formData.newMobile ? 'pointer' : 'not-allowed'
+                          }}
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                  </FormGroup>
+                  
+                  <SectionHeader>
+                    <FiCalendar size={16} />
+                    <span>Keep in Touch</span>
+                  </SectionHeader>
+                  
+                  <FormGroup>
+                    <FormFieldLabel>Frequency</FormFieldLabel>
+                    <div style={{ 
+                      background: '#222', 
+                      padding: '12px', 
+                      borderRadius: '4px',
+                      marginBottom: '15px'
+                    }}>
+                      <Select 
+                        value={formData.keepInTouch || ''}
+                        onChange={(e) => handleInputChange('keepInTouch', e.target.value === '' ? null : e.target.value)}
+                      >
+                        <option value="Not Set">Not Set</option>
+                        <option value="Monthly">Monthly</option>
+                        <option value="Quarterly">Quarterly</option>
+                        <option value="Twice per Year">Twice per Year</option>
+                        <option value="Once per Year">Once per Year</option>
+                        <option value="Weekly">Weekly</option>
+                        <option value="Do not keep in touch">Do not keep in touch</option>
+                      </Select>
+                    </div>
+                  </FormGroup>
+                  
+                  <SectionHeader>
+                    <FiDatabase size={16} />
+                    <span>Airtable Integration</span>
+                  </SectionHeader>
+                  
+                  <FormGroup>
+                    <div style={{ 
+                      background: '#222', 
+                      padding: '15px', 
+                      borderRadius: '4px',
+                      marginBottom: '15px'
+                    }}>
+                      {contact?.airtable_id ? (
+                        <>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+                            <div style={{ fontSize: '13px', color: '#ccc' }}>Airtable Record ID:</div>
+                            <div style={{ fontSize: '13px', color: '#4a9eff' }}>{contact.airtable_id}</div>
+                          </div>
+                          
+                          {externalSources?.airtable && (
+                            <>
+                              {externalSources.airtable.firstName && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                  <div style={{ fontSize: '13px', color: '#ccc' }}>Name:</div>
+                                  <div style={{ fontSize: '13px', color: '#fff' }}>
+                                    {externalSources.airtable.firstName} {externalSources.airtable.lastName}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {externalSources.airtable.email && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                  <div style={{ fontSize: '13px', color: '#ccc' }}>Email:</div>
+                                  <div style={{ fontSize: '13px', color: '#fff' }}>{externalSources.airtable.email}</div>
+                                </div>
+                              )}
+                              
+                              {externalSources.airtable.category && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                  <div style={{ fontSize: '13px', color: '#ccc' }}>Category:</div>
+                                  <div style={{ fontSize: '13px', color: '#fff' }}>{externalSources.airtable.category}</div>
+                                </div>
+                              )}
+                              
+                              {externalSources.airtable.supabaseMainCategory && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                  <div style={{ fontSize: '13px', color: '#ccc' }}>Supabase Category:</div>
+                                  <div style={{ fontSize: '13px', color: '#fff' }}>{externalSources.airtable.supabaseMainCategory}</div>
+                                </div>
+                              )}
+                              
+                              {externalSources.airtable.tags && externalSources.airtable.tags.length > 0 && (
+                                <div style={{ marginBottom: '8px' }}>
+                                  <div style={{ fontSize: '13px', color: '#ccc', marginBottom: '4px' }}>Tags:</div>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                    {externalSources.airtable.tags.map((tag, idx) => (
+                                      <span 
+                                        key={idx} 
+                                        style={{ 
+                                          backgroundColor: '#333', 
+                                          padding: '3px 6px', 
+                                          borderRadius: '3px', 
+                                          fontSize: '12px',
+                                          color: '#fff'
+                                        }}
+                                      >
+                                        {tag.name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {externalSources.airtable.cities && externalSources.airtable.cities.length > 0 && (
+                                <div style={{ marginBottom: '8px' }}>
+                                  <div style={{ fontSize: '13px', color: '#ccc', marginBottom: '4px' }}>Cities:</div>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                    {externalSources.airtable.cities.map((city, idx) => (
+                                      <span 
+                                        key={idx} 
+                                        style={{ 
+                                          backgroundColor: '#333', 
+                                          padding: '3px 6px', 
+                                          borderRadius: '3px', 
+                                          fontSize: '12px',
+                                          color: '#fff'
+                                        }}
+                                      >
+                                        {city.name}{city.country ? `, ${city.country}` : ''}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </>
+                          )}
+                          
+                          <button 
+                            onClick={async () => {
+                              if (contact?.airtable_id) {
+                                try {
+                                  setTimeout(async () => {
+                                    try {
+                                      const airtableBaseId = 'appTMYAU4N43eJdxG';
+                                      const contactsTableId = 'tblUx9VGA0rxLmidU';
+                                      
+                                      console.log('Direct testing Airtable request...');
+                                      const airtableHeaders = {
+                                        'Authorization': 'Bearer patsAqQtI4eM71EIp.e42097d6cd529026d446be3da1b627c423ed3a5a7b59b0b38a9d77585e0909ea',
+                                        'Content-Type': 'application/json'
+                                      };
+                                      
+                                      // Try direct Airtable
+                                      const airtableResponse = await fetch(
+                                        `https://api.airtable.com/v0/${airtableBaseId}/${contactsTableId}/${contact.airtable_id}`,
+                                        { 
+                                          method: 'GET',
+                                          headers: airtableHeaders
+                                        }
+                                      );
+                                      
+                                      if (!airtableResponse.ok) {
+                                        console.error('Airtable API error:', await airtableResponse.text());
+                                        throw new Error(`Airtable API error: ${airtableResponse.status}`);
+                                      }
+                                      
+                                      const testData = (await airtableResponse.json())?.fields;
+                                      
+                                      // Show debug data
+                                      console.log('DIRECT TEST - Airtable complete response:', testData);
+                                      console.log('DIRECT TEST - Field Name exists?:', !!testData['Name']);
+                                      console.log('DIRECT TEST - Field Surname exists?:', !!testData['Surname']);
+                                      console.log('DIRECT TEST - Field Primary email exists?:', !!testData['Primary email']);
+                                      
+                                      if (testData) {
+                                        toast.success('Found Airtable data! Check console.');
+                                        // Update UI with the directly fetched data
+                                        setExternalSources(prev => ({
+                                          ...prev,
+                                          airtable: {
+                                            ...prev.airtable,
+                                            email: testData['Primary email'] || 'No email found',
+                                            firstName: testData['Name'] || 'No name found',
+                                            lastName: testData['Surname'] || 'No surname found',
+                                          }
+                                        }));
+                                      } else {
+                                        toast.error('No data returned from Airtable');
+                                      }
+                                    } catch (err) {
+                                      toast.error(`Airtable fetch error: ${err.message}`);
+                                      console.error('Direct test error:', err);
+                                    }
+                                  }, 1000);
+                                } catch (err) {
+                                  console.error('Outer error in direct test:', err);
+                                }
+                              } else {
+                                toast.error('No airtable_id present on this contact');
+                              }
+                            }}
+                            style={{ 
+                              marginTop: '10px', 
+                              padding: '8px 15px', 
+                              background: '#444', 
+                              border: 'none', 
+                              borderRadius: '4px', 
+                              color: 'white', 
+                              cursor: 'pointer',
+                              width: '100%'
+                            }}
+                          >
+                            Refresh Airtable Data
+                          </button>
+                        </>
+                      ) : (
+                        <div style={{ color: '#999', textAlign: 'center', padding: '10px 0' }}>
+                          No Airtable record associated with this contact
+                        </div>
+                      )}
+                    </div>
+                  </FormGroup>
+                  
+                  <SectionHeader>
+                    <FiBriefcase size={16} />
+                    <span>Companies</span>
+                  </SectionHeader>
+                  
+                  <FormGroup>
+                    <FormFieldLabel>Category</FormFieldLabel>
+                    <div style={{ 
+                      background: '#222', 
+                      padding: '12px', 
+                      borderRadius: '4px',
+                      marginBottom: '15px'
+                    }}>
+                      <Select 
+                        value={formData.category || ''}
+                        onChange={(e) => handleInputChange('category', e.target.value === '' ? null : e.target.value)}
+                      >
+                        <option value="Inbox">Inbox</option>
+                        <option value="Professional Investor">Professional Investor</option>
+                        <option value="Team">Team</option>
+                        <option value="Advisor">Advisor</option>
+                        <option value="Supplier">Supplier</option>
+                        <option value="Founder">Founder</option>
+                        <option value="Manager">Manager</option>
+                        <option value="Friend and Family">Friend and Family</option>
+                        <option value="Other">Other</option>
+                        <option value="Student">Student</option>
+                        <option value="Media">Media</option>
+                        <option value="Institution">Institution</option>
+                      </Select>
+                    </div>
+                  </FormGroup>
+                  
+                  <FormGroup>
+                    <FormFieldLabel>Tags</FormFieldLabel>
+                    <div style={{ 
+                      border: '1px solid #333', 
+                      borderRadius: '4px', 
+                      padding: '16px', 
+                      marginBottom: '15px',
+                      background: '#1e1e1e'
+                    }}>
+                      <TagsContainer style={{ marginBottom: formData.tags && formData.tags.length > 0 ? '8px' : '0' }}>
+                        {formData.tags && formData.tags.length > 0 ? formData.tags.map(tag => (
+                          <Tag key={tag.tag_id || tag.entry_id}>
+                            {tag.name}
+                            <FiX 
+                              className="remove" 
+                              size={14} 
+                              onClick={() => handleInputChange('tags', formData.tags.filter(t => (t.tag_id || t.entry_id) !== (tag.tag_id || tag.entry_id)))}
+                            />
+                          </Tag>
+                        )) : (
+                          <div style={{ 
+                            color: '#999', 
+                            textAlign: 'center',
+                            padding: '8px 0'
+                          }}>
+                            No tags added
+                          </div>
+                        )}
+                      </TagsContainer>
+                    </div>
+                    
+                    {/* Add new tag form */}
+                    <div style={{ 
+                      position: 'relative',
+                      marginBottom: '15px'
+                    }}>
+                      <Input 
+                        type="text"
+                        placeholder="Type to add a new tag (min 2 characters)"
                         value={formData.newCustomTag || ''}
                         onChange={(e) => {
                           const value = e.target.value;
@@ -5287,7 +5537,7 @@ const handleSelectEmailThread = async (threadId) => {
                           
                           // Search for tag suggestions if at least 2 characters
                           if (value && value.length >= 2) {
-                            // We'll add a debounced search function below
+                            // Search function
                             searchTagSuggestions(value);
                           } else {
                             // Clear suggestions if input is too short
@@ -5310,14 +5560,6 @@ const handleSelectEmailThread = async (threadId) => {
                             handleInputChange('tagSuggestions', []);
                           }
                         }}
-                        style={{ 
-                          marginBottom: '5px',
-                          fontSize: '0.9rem',
-                          height: '28px',
-                          minHeight: '28px',
-                          padding: '4px 10px',
-                          width: 'calc(100% - 20px)' // Adjust width to account for padding
-                        }}
                       />
                       
                       {/* Tag suggestions dropdown */}
@@ -5326,9 +5568,10 @@ const handleSelectEmailThread = async (threadId) => {
                           position: 'absolute',
                           top: '100%',
                           left: 0,
-                          right: 0,
+                          width: '100%',
                           zIndex: 10,
-                          background: '#333',
+                          background: '#222',
+                          boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
                           border: '1px solid #444',
                           borderRadius: '4px',
                           maxHeight: '200px',
@@ -5351,11 +5594,10 @@ const handleSelectEmailThread = async (threadId) => {
                               style={{
                                 padding: '8px 12px',
                                 cursor: 'pointer',
-                                borderBottom: '1px solid #444',
-                                hoverBackground: '#444'
+                                borderBottom: '1px solid #444'
                               }}
-                              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#444'}
-                              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#444'}
+                              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                             >
                               {suggestion.name}
                             </div>
@@ -5363,132 +5605,43 @@ const handleSelectEmailThread = async (threadId) => {
                         </div>
                       )}
                     </div>
-                    
-                  </div>
+                  </FormGroup>
+                </div>
+                
+                <ButtonGroup style={{ marginTop: '20px', justifyContent: 'space-between' }}>
+                  <ActionButton onClick={() => goToStep(2)} disabled={loading}>
+                    <FiArrowLeft /> Back
+                  </ActionButton>
                   
-                </FormGroup>
-              </div>
-            </FormGrid>
+                  <div>
+                    <ActionButton 
+                      onClick={() => goToStep(4)} 
+                      disabled={loading}
+                      style={{ marginRight: '10px' }}
+                    >
+                      Skip <FiArrowRight />
+                    </ActionButton>
+                  
+                    <ActionButton 
+                      variant="success" 
+                      onClick={async () => {
+                        const success = await saveContactEnrichment();
+                        if (success) {
+                          // After successful save, move forward
+                          goToStep(4);
+                        }
+                      }} 
+                      disabled={loading}
+                    >
+                      <FiCheck /> Save & Continue
+                    </ActionButton>
+                  </div>
+                </ButtonGroup>
+              </InteractionsContainer>
+            </InteractionsLayout>
           </Card>
-          
-          <ButtonGroup>
-            <ActionButton onClick={() => goToStep(2)} disabled={loading}>
-              <FiArrowLeft /> Back
-            </ActionButton>
-            <ActionButton 
-              variant="primary" 
-              onClick={() => goToStep(4)} 
-              disabled={loading}
-            >
-              Skip to Next <FiArrowRight />
-            </ActionButton>
-          </ButtonGroup>
-          
-          {/* Debug section - Hidden in production */}
-          {false && (
-            <Card style={{ marginTop: '20px', background: '#222', padding: '15px' }}>
-              <div style={{ fontSize: '0.9rem' }}>
-                <h4>Debug Info:</h4>
-                <div>
-                  <strong>Contact Airtable ID:</strong> {contact?.airtable_id || 'Not set'}
-                </div>
-                <div style={{ marginTop: '10px' }}>
-                  <strong>Contact Full Details:</strong>
-                  <pre style={{ background: '#333', padding: '10px', overflowX: 'auto', maxHeight: '150px' }}>
-                    {JSON.stringify(contact, null, 2)}
-                  </pre>
-                </div>
-                <div style={{ marginTop: '10px' }}>
-                  <strong>Airtable Toggle State:</strong> {showSources.airtable ? 'On' : 'Off'}
-                </div>
-                <div style={{ marginTop: '10px' }}>
-                  <strong>Field Display Status:</strong>
-                  <div>Email shown: {showSources.airtable && externalSources.airtable.email ? 'Yes' : 'No'}</div>
-                  <div>Mobile shown: {showSources.airtable && externalSources.airtable.mobile ? 'Yes' : 'No'}</div>
-                  <div>Tags shown: {showSources.airtable && externalSources.airtable.tags?.length > 0 ? 'Yes' : 'No'}</div>
-                </div>
-                <div style={{ marginTop: '10px' }}>
-                  <strong>Airtable Data:</strong>
-                  <pre style={{ background: '#333', padding: '10px', overflowX: 'auto' }}>
-                    {JSON.stringify(externalSources.airtable, null, 2)}
-                  </pre>
-                </div>
-                <button 
-                  onClick={() => {
-                    console.log('External sources state:', externalSources);
-                    console.log('Show sources state:', showSources);
-                    console.log('Contact data:', contact);
-                    
-                    // Force show Airtable source and run a test retrieval
-                    setShowSources(prev => ({ ...prev, airtable: true }));
-                    
-                    // Show sample data first
-                    setExternalSources(prev => ({
-                      ...prev,
-                      airtable: {
-                        ...prev.airtable,
-                        email: 'debug@airtable.com',
-                        mobile: '+1-999-DEBUG',
-                        tags: ['Debug', 'Test', 'Airtable'],
-                        category: 'Debug',
-                        firstName: 'Debug',
-                        lastName: 'User',
-                        notes: 'Notes added from debug button'
-                      }
-                    }));
-                    
-                    // Attempt a direct Airtable fetch with the record ID from the debug interface
-                    if (contact?.airtable_id) {
-                      toast.success('Attempting to fetch Airtable data directly...');
-                      // Try fetching with VERY explicit logging
-                      try {
-                        setTimeout(async () => {
-                          try {
-                            console.log('Directly fetching Airtable with ID:', contact.airtable_id);
-                            const testData = await getRecordById('Networkers', contact.airtable_id);
-                            console.log('DIRECT TEST - Raw data:', testData);
-                            console.log('DIRECT TEST - Field Name exists?:', !!testData['Name']);
-                            console.log('DIRECT TEST - Field Surname exists?:', !!testData['Surname']);
-                            console.log('DIRECT TEST - Field Primary email exists?:', !!testData['Primary email']);
-                            
-                            if (testData) {
-                              toast.success('Found Airtable data! Check console.');
-                              // Update UI with the directly fetched data
-                              setExternalSources(prev => ({
-                                ...prev,
-                                airtable: {
-                                  ...prev.airtable,
-                                  email: testData['Primary email'] || 'No email found',
-                                  firstName: testData['Name'] || 'No name found',
-                                  lastName: testData['Surname'] || 'No surname found',
-                                }
-                              }));
-                            } else {
-                              toast.error('No data returned from Airtable');
-                            }
-                          } catch (err) {
-                            toast.error(`Airtable fetch error: ${err.message}`);
-                            console.error('Direct test error:', err);
-                          }
-                        }, 1000);
-                      } catch (err) {
-                        console.error('Outer error in direct test:', err);
-                      }
-                    } else {
-                      toast.error('No airtable_id present on this contact');
-                    }
-                  }}
-                  style={{ marginTop: '10px', padding: '8px 15px', background: '#444', border: 'none', borderRadius: '4px', color: 'white', cursor: 'pointer' }}
-                >
-                  Force Update Airtable Data
-                </button>
-              </div>
-            </Card>
-          )}
         </>
-      )}
-      
-      {/* Step 4: Professional Information */}
+      )}      {/* Step 4: Professional Information */}
       {currentStep === 4 && (
         <>
           <Card>
