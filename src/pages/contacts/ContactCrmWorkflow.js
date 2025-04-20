@@ -1903,6 +1903,8 @@ const handleSelectEmailThread = async (threadId) => {
           last_name,
           category,
           score,
+          description,
+          birthday,
           last_interaction_at,
           linkedin,
           keep_in_touch_frequency,
@@ -1922,6 +1924,10 @@ const handleSelectEmailThread = async (threadId) => {
         lastName: contactData.last_name,
         keepInTouch: contactData.keep_in_touch_frequency,
         category: contactData.category,
+        score: contactData.score,
+        description: contactData.description || '',
+        editingDescription: false, // For description edit toggle
+        birthday: contactData.birthday || '',
         notes: '',
         city: null,
         tags: [],
@@ -2492,6 +2498,9 @@ const handleSelectEmailThread = async (threadId) => {
           keep_in_touch_frequency: formData.keepInTouch,
           category: formData.category,
           linkedin: formData.linkedIn,
+          description: formData.description || null,
+          score: formData.score || null,
+          birthday: formData.birthday || null,
           last_modified_at: new Date()
         })
         .eq('contact_id', contactId);
@@ -4997,6 +5006,22 @@ const handleSelectEmailThread = async (threadId) => {
                   <span>Tags</span>
                 </div>
                 
+                <div 
+                  onClick={() => setActiveEnrichmentSection("notes")}
+                  style={{ 
+                    padding: '12px 15px', 
+                    cursor: 'pointer', 
+                    borderBottom: '1px solid #222',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    background: activeEnrichmentSection === "notes" ? '#222' : 'transparent'
+                  }}
+                >
+                  <FiMessageSquare size={16} />
+                  <span>Notes</span>
+                </div>
+                
                 <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold', marginTop: '10px' }}>
                   RELATIONS
                 </div>
@@ -5057,11 +5082,6 @@ const handleSelectEmailThread = async (threadId) => {
                   {/* BASICS SECTION */}
                   {activeEnrichmentSection === "basics" && (
                     <>
-                      <SectionHeader>
-                        <FiUser size={16} />
-                        <span>Basics</span>
-                      </SectionHeader>
-                      
                       <FormGroup>
                         <FormFieldLabel>Name</FormFieldLabel>
                         <div style={{ 
@@ -5406,19 +5426,16 @@ const handleSelectEmailThread = async (threadId) => {
                   {/* TAGS SECTION */}
                   {activeEnrichmentSection === "tags" && (
                     <>
-                      <SectionHeader>
-                        <FiTag size={16} />
-                        <span>Tags & Categories</span>
-                      </SectionHeader>
-                      
-                      <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
-                        <FormGroup style={{ flex: 1 }}>
-                          <FormFieldLabel>Keep in Touch</FormFieldLabel>
-                          <div style={{ 
-                            background: '#222', 
-                            padding: '12px', 
-                            borderRadius: '4px'
-                          }}>
+                      <FormGroup style={{ marginBottom: '15px' }}>
+                        <FormFieldLabel>Keep in Touch & Category</FormFieldLabel>
+                        <div style={{ 
+                          display: 'flex', 
+                          gap: '15px',
+                          background: '#222', 
+                          padding: '12px', 
+                          borderRadius: '4px'
+                        }}>
+                          <div style={{ flex: 1 }}>
                             <Select 
                               value={formData.keepInTouch || ''}
                               onChange={(e) => handleInputChange('keepInTouch', e.target.value === '' ? null : e.target.value)}
@@ -5432,15 +5449,8 @@ const handleSelectEmailThread = async (threadId) => {
                               <option value="Do not keep in touch">Do not keep in touch</option>
                             </Select>
                           </div>
-                        </FormGroup>
-                        
-                        <FormGroup style={{ flex: 1 }}>
-                          <FormFieldLabel>Category</FormFieldLabel>
-                          <div style={{ 
-                            background: '#222', 
-                            padding: '12px', 
-                            borderRadius: '4px'
-                          }}>
+                          
+                          <div style={{ flex: 1 }}>
                             <Select 
                               value={formData.category || ''}
                               onChange={(e) => handleInputChange('category', e.target.value === '' ? null : e.target.value)}
@@ -5459,8 +5469,8 @@ const handleSelectEmailThread = async (threadId) => {
                               <option value="Institution">Institution</option>
                             </Select>
                           </div>
-                        </FormGroup>
-                      </div>
+                        </div>
+                      </FormGroup>
                       
                       <FormGroup>
                         <FormFieldLabel>Cities</FormFieldLabel>
@@ -5698,11 +5708,6 @@ const handleSelectEmailThread = async (threadId) => {
                   {/* COMPANIES SECTION */}
                   {activeEnrichmentSection === "companies" && (
                     <>
-                      <SectionHeader>
-                        <FiBriefcase size={16} />
-                        <span>Companies</span>
-                      </SectionHeader>
-                      
                       <div style={{ color: '#999', textAlign: 'center', padding: '30px 0' }}>
                         Company management will appear here
                       </div>
@@ -5712,25 +5717,174 @@ const handleSelectEmailThread = async (threadId) => {
                   {/* DEALS SECTION */}
                   {activeEnrichmentSection === "deals" && (
                     <>
-                      <SectionHeader>
-                        <FiDollarSign size={16} />
-                        <span>Deals</span>
-                      </SectionHeader>
-                      
                       <div style={{ color: '#999', textAlign: 'center', padding: '30px 0' }}>
                         Deal management will appear here
                       </div>
                     </>
                   )}
                   
+                  {/* NOTES SECTION */}
+                  {activeEnrichmentSection === "notes" && (
+                    <>
+                      <FormGroup>
+                        <FormFieldLabel>Rating</FormFieldLabel>
+                        <div style={{ 
+                          background: '#222', 
+                          padding: '12px', 
+                          borderRadius: '4px',
+                          marginBottom: '20px'
+                        }}>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <div 
+                                key={star}
+                                onClick={() => handleInputChange('score', star === formData.score ? null : star)}
+                                style={{ 
+                                  cursor: 'pointer',
+                                  color: formData.score >= star ? '#ffbb00' : '#555',
+                                  fontSize: '24px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  width: '30px',
+                                  height: '30px'
+                                }}
+                              >
+                                ★
+                              </div>
+                            ))}
+                            <div style={{ marginLeft: '10px', color: '#999', fontSize: '14px', alignSelf: 'center' }}>
+                              {formData.score ? `${formData.score} of 5` : 'Not rated'} 
+                              {formData.score && <span style={{ marginLeft: '5px', cursor: 'pointer', color: '#777' }} onClick={() => handleInputChange('score', null)}>(clear)</span>}
+                            </div>
+                          </div>
+                        </div>
+                      </FormGroup>
+                      
+                      <FormGroup>
+                        <FormFieldLabel>Description</FormFieldLabel>
+                        <div style={{ 
+                          background: '#222', 
+                          padding: '12px', 
+                          borderRadius: '4px',
+                          marginBottom: '20px'
+                        }}>
+                          {/* Description content display with edit toggle */}
+                          {formData.description && !formData.editingDescription ? (
+                            <>
+                              <div 
+                                style={{ 
+                                  whiteSpace: 'pre-wrap',
+                                  marginBottom: '10px',
+                                  minHeight: '50px'
+                                }}
+                              >
+                                {formData.description}
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                                <div 
+                                  onClick={() => handleInputChange('editingDescription', true)}
+                                  style={{ cursor: 'pointer', color: '#00ff00', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                >
+                                  <FiEdit size={14} /> Edit
+                                </div>
+                                <div 
+                                  onClick={() => handleInputChange('description', '')}
+                                  style={{ cursor: 'pointer', color: '#777', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                >
+                                  <FiX size={14} /> Clear
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <TextArea 
+                                value={formData.description || ''}
+                                onChange={(e) => handleInputChange('description', e.target.value)}
+                                placeholder="Add notes or description about this contact..."
+                                style={{ minHeight: '120px' }}
+                              />
+                              <div style={{ 
+                                fontSize: '12px', 
+                                color: '#999', 
+                                marginTop: '8px',
+                                display: 'flex',
+                                justifyContent: 'space-between'
+                              }}>
+                                <div>
+                                  {formData.description ? 
+                                    `${formData.description.length} characters` : 
+                                    'No description added'}
+                                </div>
+                                {formData.description && formData.editingDescription && (
+                                  <div 
+                                    onClick={() => handleInputChange('editingDescription', false)}
+                                    style={{ cursor: 'pointer', color: '#00ff00' }}
+                                  >
+                                    Done editing
+                                  </div>
+                                )}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </FormGroup>
+                      
+                      <FormGroup>
+                        <FormFieldLabel>Birthday</FormFieldLabel>
+                        <div style={{ 
+                          background: '#222', 
+                          padding: '12px', 
+                          borderRadius: '4px',
+                          marginBottom: '20px'
+                        }}>
+                          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                            <Input 
+                              type="date"
+                              value={formData.birthday || ''}
+                              onChange={(e) => handleInputChange('birthday', e.target.value)}
+                              style={{ flex: 1 }}
+                            />
+                            {formData.birthday && (
+                              <div 
+                                onClick={() => handleInputChange('birthday', null)}
+                                style={{ cursor: 'pointer', color: '#777', fontSize: '14px' }}
+                              >
+                                Clear
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ 
+                            fontSize: '12px', 
+                            color: '#999', 
+                            marginTop: '8px',
+                            display: 'flex',
+                            justifyContent: 'space-between'
+                          }}>
+                            <div>
+                              {formData.birthday 
+                                ? `Birthday: ${new Date(formData.birthday).toLocaleDateString()}` 
+                                : 'No birthday set'}
+                            </div>
+                            {formData.birthday && (
+                              <div>
+                                {(() => {
+                                  const today = new Date();
+                                  const birthDate = new Date(formData.birthday);
+                                  const age = today.getFullYear() - birthDate.getFullYear();
+                                  return `Age: ~${age} years`;
+                                })()}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </FormGroup>
+                    </>
+                  )}
+                  
                   {/* AIRTABLE SECTION */}
                   {activeEnrichmentSection === "airtable" && (
                     <>
-                      <SectionHeader>
-                        <FiDatabase size={16} />
-                        <span>Airtable Integration</span>
-                      </SectionHeader>
-                      
                       <FormGroup>
                         <div style={{ 
                           background: '#222', 
