@@ -5475,11 +5475,10 @@ const handleSelectEmailThread = async (threadId) => {
                       <FormGroup>
                         <FormFieldLabel>Cities</FormFieldLabel>
                         <div style={{ 
-                          border: '1px solid #333', 
+                          background: '#222', 
+                          padding: '12px', 
                           borderRadius: '4px', 
-                          padding: '16px', 
-                          marginBottom: '15px',
-                          background: '#1e1e1e'
+                          marginBottom: '15px'
                         }}>
                           <TagsContainer style={{ marginBottom: formData.cities && formData.cities.length > 0 ? '8px' : '0' }}>
                             {formData.cities && formData.cities.length > 0 ? formData.cities.map(city => (
@@ -5508,39 +5507,46 @@ const handleSelectEmailThread = async (threadId) => {
                           position: 'relative',
                           marginBottom: '15px'
                         }}>
-                          <Input 
-                            type="text"
-                            placeholder="Type to add a new city (min 2 characters)"
-                            value={formData.newCity || ''}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              handleInputChange('newCity', value);
-                              
-                              // Search for city suggestions if at least 2 characters
-                              if (value && value.length >= 2) {
-                                searchCities(value);
-                              } else {
-                                // Clear suggestions if input is too short
-                                handleInputChange('citySuggestions', []);
-                              }
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && formData.newCity?.trim()) {
-                                // Add city
-                                const newCity = { 
-                                  city_id: `temp-${Date.now()}`, 
-                                  name: formData.newCity.trim() 
-                                };
-                                handleInputChange('cities', [...(formData.cities || []), newCity]);
-                                handleInputChange('newCity', '');
-                                handleInputChange('citySuggestions', []);
-                              } else if (e.key === 'Escape') {
-                                // Clear input and suggestions on ESC
-                                handleInputChange('newCity', '');
-                                handleInputChange('citySuggestions', []);
-                              }
-                            }}
-                          />
+                          <div style={{ 
+                            background: '#222', 
+                            padding: '12px', 
+                            borderRadius: '4px' 
+                          }}>
+                            <Input 
+                              type="text"
+                              placeholder="Type to add a new city (min 2 characters)"
+                              value={formData.newCity || ''}
+                              style={{ width: '100%', borderWidth: 0 }}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                handleInputChange('newCity', value);
+                                
+                                // Search for city suggestions if at least 2 characters
+                                if (value && value.length >= 2) {
+                                  searchCities(value);
+                                } else {
+                                  // Clear suggestions if input is too short
+                                  handleInputChange('citySuggestions', []);
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && formData.newCity?.trim()) {
+                                  // Add city
+                                  const newCity = { 
+                                    city_id: `temp-${Date.now()}`, 
+                                    name: formData.newCity.trim() 
+                                  };
+                                  handleInputChange('cities', [...(formData.cities || []), newCity]);
+                                  handleInputChange('newCity', '');
+                                  handleInputChange('citySuggestions', []);
+                                } else if (e.key === 'Escape') {
+                                  // Clear input and suggestions on ESC
+                                  handleInputChange('newCity', '');
+                                  handleInputChange('citySuggestions', []);
+                                }
+                              }}
+                            />
+                          </div>
                           
                           {/* City suggestions dropdown */}
                           {formData.citySuggestions && formData.citySuggestions.length > 0 && (
@@ -5590,11 +5596,10 @@ const handleSelectEmailThread = async (threadId) => {
                       <FormGroup>
                         <FormFieldLabel>Tags</FormFieldLabel>
                         <div style={{ 
-                          border: '1px solid #333', 
+                          background: '#222', 
+                          padding: '12px', 
                           borderRadius: '4px', 
-                          padding: '16px', 
-                          marginBottom: '15px',
-                          background: '#1e1e1e'
+                          marginBottom: '15px'
                         }}>
                           <TagsContainer style={{ marginBottom: formData.tags && formData.tags.length > 0 ? '8px' : '0' }}>
                             {formData.tags && formData.tags.length > 0 ? formData.tags.map(tag => (
@@ -5623,40 +5628,47 @@ const handleSelectEmailThread = async (threadId) => {
                           position: 'relative',
                           marginBottom: '15px'
                         }}>
-                          <Input 
-                            type="text"
-                            placeholder="Type to add a new tag (min 2 characters)"
-                            value={formData.newCustomTag || ''}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              handleInputChange('newCustomTag', value);
-                              
-                              // Search for tag suggestions if at least 2 characters
-                              if (value && value.length >= 2) {
-                                // Search function
-                                searchTagSuggestions(value);
-                              } else {
-                                // Clear suggestions if input is too short
-                                handleInputChange('tagSuggestions', []);
-                              }
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && formData.newCustomTag?.trim()) {
-                                // Add tag
-                                const newTag = { 
-                                  tag_id: `temp-${Date.now()}`, 
-                                  name: formData.newCustomTag.trim() 
-                                };
-                                handleInputChange('tags', [...(formData.tags || []), newTag]);
-                                handleInputChange('newCustomTag', '');
-                                handleInputChange('tagSuggestions', []);
-                              } else if (e.key === 'Escape') {
-                                // Clear input and suggestions on ESC
-                                handleInputChange('newCustomTag', '');
-                                handleInputChange('tagSuggestions', []);
-                              }
-                            }}
-                          />
+                          <div style={{ 
+                            background: '#222', 
+                            padding: '12px', 
+                            borderRadius: '4px' 
+                          }}>
+                            <Input 
+                              type="text"
+                              placeholder="Type to add a new tag (min 2 characters)"
+                              value={formData.newCustomTag || ''}
+                              style={{ width: '100%', borderWidth: 0 }}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                handleInputChange('newCustomTag', value);
+                                
+                                // Search for tag suggestions if at least 2 characters
+                                if (value && value.length >= 2) {
+                                  // Search function
+                                  searchTagSuggestions(value);
+                                } else {
+                                  // Clear suggestions if input is too short
+                                  handleInputChange('tagSuggestions', []);
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && formData.newCustomTag?.trim()) {
+                                  // Add tag
+                                  const newTag = { 
+                                    tag_id: `temp-${Date.now()}`, 
+                                    name: formData.newCustomTag.trim() 
+                                  };
+                                  handleInputChange('tags', [...(formData.tags || []), newTag]);
+                                  handleInputChange('newCustomTag', '');
+                                  handleInputChange('tagSuggestions', []);
+                                } else if (e.key === 'Escape') {
+                                  // Clear input and suggestions on ESC
+                                  handleInputChange('newCustomTag', '');
+                                  handleInputChange('tagSuggestions', []);
+                                }
+                              }}
+                            />
+                          </div>
                           
                           {/* Tag suggestions dropdown */}
                           {formData.tagSuggestions && formData.tagSuggestions.length > 0 && (
