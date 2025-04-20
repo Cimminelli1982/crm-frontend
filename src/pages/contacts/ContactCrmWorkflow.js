@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
-import { getRecordById } from '../../lib/airtableClient';
+// Airtable integration will be implemented later
 import toast from 'react-hot-toast';
 import Modal from 'react-modal';
 import { 
@@ -31,7 +31,8 @@ import {
   FiFile,
   FiPlus,
   FiDatabase,
-  FiDollarSign
+  FiDollarSign,
+  FiAward
 } from 'react-icons/fi';
 
 // Configure Modal for React
@@ -1951,6 +1952,9 @@ const handleSelectEmailThread = async (threadId) => {
         fetchExternalData(contactData)
       ]);
       
+      // Look for companies matching the contact's email domains
+      await findCompaniesByEmailDomains();
+      
       // After loading email and mobile, search for duplicates
       if (currentStep === 2 || !currentStep) {
         console.log("Automatically searching for duplicates");
@@ -2215,11 +2219,34 @@ const handleSelectEmailThread = async (threadId) => {
         .select(`
           contact_companies_id,
           company_id,
-          companies:company_id(company_id, name, website)
+          relationship,
+          is_primary,
+          companies:company_id(
+            company_id,
+            name,
+            website,
+            category,
+            description,
+            linkedin
+          )
         `)
         .eq('contact_id', contactId);
       
       if (!companiesError && companiesData && companiesData.length > 0) {
+        // Format all associated companies with their relationship information
+        const associatedCompanies = companiesData.map(cc => ({
+          contact_companies_id: cc.contact_companies_id,
+          company_id: cc.company_id,
+          relationship: cc.relationship,
+          is_primary: cc.is_primary,
+          name: cc.companies.name,
+          website: cc.companies.website,
+          category: cc.companies.category,
+          description: cc.companies.description,
+          linkedin: cc.companies.linkedin
+        })).filter(c => c.company_id); // Filter out any without valid company_id
+        
+        // Set the first company as the primary company for compatibility
         const company = {
           id: companiesData[0].companies.company_id,
           name: companiesData[0].companies.name,
@@ -2228,7 +2255,14 @@ const handleSelectEmailThread = async (threadId) => {
         
         setFormData(prev => ({
           ...prev,
-          company
+          company,
+          associatedCompanies  // Add all associated companies data
+        }));
+      } else {
+        // Ensure we have an empty array for associatedCompanies
+        setFormData(prev => ({
+          ...prev,
+          associatedCompanies: []
         }));
       }
     } catch (err) {
@@ -2287,100 +2321,7 @@ const handleSelectEmailThread = async (threadId) => {
         lastName: 'User'
       };
       
-      // Fetch Airtable data if we have an airtable_id
-      if (contactData.airtable_id) {
-        try {
-          console.log('Fetching Airtable data for record:', contactData.airtable_id);
-          
-          // Try with different potential table names
-          let airtableData = null;
-          
-          try {
-            // First try 'People' table
-            airtableData = await getRecordById('People', contactData.airtable_id);
-            console.log('Successfully fetched from "People" table');
-          } catch (err) {
-            console.log('Failed to fetch from "People" table:', err.message);
-            
-            try {
-              // Try 'Contacts' table
-              airtableData = await getRecordById('Contacts', contactData.airtable_id);
-              console.log('Successfully fetched from "Contacts" table');
-            } catch (err) {
-              console.log('Failed to fetch from "Contacts" table:', err.message);
-              
-              // Try with 'Networkers' table
-              try {
-                airtableData = await getRecordById('Networkers', contactData.airtable_id);
-                console.log('Successfully fetched from "Networkers" table');
-              } catch (err) {
-                console.log('Failed to fetch from "Networkers" table:', err.message);
-                
-                // Just for completeness, try with explicit tblMrYDZktKkkWyzf table id
-                try {
-                  airtableData = await getRecordById('tblMrYDZktKkkWyzf', contactData.airtable_id);
-                  console.log('Successfully fetched from table ID');
-                } catch (err) {
-                  console.log('Failed to fetch from table ID:', err.message);
-                }
-              }
-            }
-          }
-          
-          console.log('Raw Airtable data fetched:', airtableData);
-          
-          if (airtableData) {
-            // Map Airtable fields to our app's format with alternate field names
-            const getField = (data, possibleNames, defaultValue = '') => {
-              for (const name of possibleNames) {
-                if (data[name] !== undefined) {
-                  return data[name];
-                }
-              }
-              return defaultValue;
-            };
-            
-            // Use the exact field names you've confirmed exist in Airtable
-            const firstName = getField(airtableData, ['Name']);
-            const lastName = getField(airtableData, ['Surname']);
-            const email = getField(airtableData, ['Primary email']);
-            const mobile = getField(airtableData, ['Mobile phone number', 'Mobile', 'Phone', 'phone', 'mobile', 'Mobile Number']);
-            const category = getField(airtableData, ['Main Category', 'Category', 'category']);
-            const tags = getField(airtableData, ['Keywords', 'Tags', 'tags']);
-            const companyData = getField(airtableData, ['Company', 'company']);
-            const companyName = getField(airtableData, ['Company Name', 'company_name']);
-            const notes = getField(airtableData, ['Notes', 'notes', 'Notes (from Formula)', 'Description']);
-            const keepInTouch = getField(airtableData, ['Keep in touch frequency', 'Keep in touch', 'keep_in_touch_frequency']);
-            
-            // Log what fields we found
-            console.log('Extracted fields:', {
-              firstName, lastName, email, mobile, category, 
-              tags, companyData, companyName, notes, keepInTouch
-            });
-            
-            externalData.airtable = {
-              firstName,
-              lastName,
-              email,
-              mobile,
-              category,
-              tags: tags ? (typeof tags === 'string' ? tags.split(',').map(tag => tag.trim()) : tags) : [],
-              company: companyData ? {
-                id: Array.isArray(companyData) ? companyData[0] : companyData,
-                name: companyName || 'Unknown Company'
-              } : null,
-              notes,
-              keepInTouch
-            };
-            
-            console.log('Mapped Airtable data:', externalData.airtable);
-          }
-        } catch (error) {
-          console.error('Error fetching Airtable data:', error);
-        }
-      } else {
-        console.log('No airtable_id found in contact data');
-      }
+      // We'll implement proper Airtable data fetching later
       
       // TODO: Add HubSpot data fetching if needed
       
@@ -2481,6 +2422,119 @@ const handleSelectEmailThread = async (threadId) => {
       handleInputChange('citySuggestions', filteredSuggestions);
     } catch (err) {
       console.error('Error in searchCities:', err);
+    }
+  };
+  
+  // Search for company suggestions from the companies table
+  const searchCompanies = async (query) => {
+    if (!query || query.length < 2) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('companies')
+        .select('company_id, name, website, category')
+        .ilike('name', `%${query}%`)
+        .order('name')
+        .limit(10);
+        
+      if (error) {
+        console.error('Error searching for company suggestions:', error);
+        return;
+      }
+      
+      // Filter out companies that are already associated with this contact
+      const filteredSuggestions = data.filter(company => 
+        !formData.associatedCompanies?.some(c => c.company_id === company.company_id)
+      );
+      
+      handleInputChange('companySuggestions', filteredSuggestions);
+    } catch (err) {
+      console.error('Error in searchCompanies:', err);
+    }
+  };
+  
+  // Find companies that match the contact's email domains
+  const findCompaniesByEmailDomains = async () => {
+    try {
+      // Only proceed if we have emails in formData
+      if (!formData.emails || formData.emails.length === 0) return;
+      
+      // Extract domains from the contact's email addresses
+      const emailDomains = formData.emails
+        .map(emailItem => {
+          const email = emailItem.email || '';
+          const match = email.match(/@([^@]+)$/);
+          return match ? match[1] : null;
+        })
+        .filter(domain => domain)
+        .filter((domain, index, self) => self.indexOf(domain) === index); // Remove duplicates
+      
+      if (emailDomains.length === 0) return;
+      
+      // Look for companies with matching website domains
+      const { data, error } = await supabase
+        .from('companies')
+        .select('company_id, name, website, category')
+        .order('name');
+        
+      if (error) {
+        console.error('Error searching for companies by domain:', error);
+        return;
+      }
+      
+      // Filter companies that match the email domains
+      // and are not already associated with this contact
+      const domainMatchedCompanies = data.filter(company => {
+        if (!company.website) return false;
+        
+        // Clean up website URL to extract domain
+        let websiteDomain = company.website;
+        websiteDomain = websiteDomain.replace(/^https?:\/\//, '');
+        websiteDomain = websiteDomain.replace(/^www\./, '');
+        websiteDomain = websiteDomain.split('/')[0];
+        
+        return emailDomains.some(emailDomain => 
+          websiteDomain.includes(emailDomain) || 
+          emailDomain.includes(websiteDomain)
+        ) && !formData.associatedCompanies?.some(c => 
+          c.company_id === company.company_id
+        );
+      });
+      
+      // For email domains that don't have matching companies, suggest creating new ones
+      const domainsWithNoMatch = emailDomains.filter(emailDomain => {
+        // If no company website contains this email domain
+        return !data.some(company => {
+          if (!company.website) return false;
+          
+          let websiteDomain = company.website;
+          websiteDomain = websiteDomain.replace(/^https?:\/\//, '');
+          websiteDomain = websiteDomain.replace(/^www\./, '');
+          websiteDomain = websiteDomain.split('/')[0];
+          
+          return websiteDomain.includes(emailDomain) || emailDomain.includes(websiteDomain);
+        });
+      });
+      
+      // Filter out common email providers where we wouldn't create a company
+      const commonEmailProviders = [
+        'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com',
+        'aol.com', 'protonmail.com', 'mail.com', 'zoho.com', 'yandex.com',
+        'gmx.com', 'live.com', 'me.com', 'inbox.com', 'fastmail.com'
+      ];
+      
+      const newCompanySuggestions = domainsWithNoMatch
+        .filter(domain => !commonEmailProviders.includes(domain))
+        .map(domain => ({
+          domain,
+          suggestedName: domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1),
+          suggestedWebsite: `https://www.${domain}`
+        }));
+      
+      handleInputChange('domainMatchedCompanies', domainMatchedCompanies);
+      handleInputChange('newCompanySuggestions', newCompanySuggestions);
+    } catch (err) {
+      console.error('Error finding companies by email domains:', err);
     }
   };
   
@@ -2776,6 +2830,101 @@ const handleSelectEmailThread = async (threadId) => {
             .from('contact_cities')
             .delete()
             .eq('entry_id', city.entry_id);
+            
+          if (removeError) throw removeError;
+        }
+      }
+      
+      // 5.5 Handle company associations - similar to tags and cities
+      // First get existing company relations
+      const { data: existingContactCompanies, error: companiesError } = await supabase
+        .from('contact_companies')
+        .select('contact_companies_id, company_id, relationship, is_primary')
+        .eq('contact_id', contactId);
+      
+      if (companiesError) throw companiesError;
+      
+      if (formData.associatedCompanies && formData.associatedCompanies.length > 0) {
+        // Find which company associations are new (need to be added)
+        const existingCompanyIds = existingContactCompanies?.map(c => c.company_id) || [];
+        const newCompanies = formData.associatedCompanies.filter(c => 
+          !existingCompanyIds.includes(c.company_id) && c.company_id
+        );
+        
+        // Find which existing company associations need to be updated (relationship or is_primary changed)
+        const companiesToUpdate = formData.associatedCompanies.filter(c => 
+          existingCompanyIds.includes(c.company_id) &&
+          existingContactCompanies.some(ec => 
+            ec.company_id === c.company_id && 
+            (ec.relationship !== c.relationship || ec.is_primary !== c.is_primary)
+          )
+        );
+        
+        // Find which existing company associations need to be removed
+        const companyIdsToKeep = formData.associatedCompanies
+          .filter(c => c.company_id)
+          .map(c => c.company_id);
+        const companiesToRemove = existingContactCompanies?.filter(c => !companyIdsToKeep.includes(c.company_id)) || [];
+        
+        // Process company operations
+        // Add new company associations
+        for (const company of newCompanies) {
+          // Ensure relationship is one of the valid enum values
+          const validRelationships = ['employee', 'founder', 'advisor', 'manager', 'investor', 'other', 'not_set'];
+          const relationship = validRelationships.includes(company.relationship) 
+            ? company.relationship 
+            : 'not_set';
+            
+          const { error: linkError } = await supabase
+            .from('contact_companies')
+            .insert({
+              contact_id: contactId,
+              company_id: company.company_id,
+              relationship: relationship,
+              is_primary: company.is_primary || false
+            });
+          
+          if (linkError) throw linkError;
+        }
+        
+        // Update existing company associations
+        for (const company of companiesToUpdate) {
+          const existingCompany = existingContactCompanies.find(ec => ec.company_id === company.company_id);
+          if (existingCompany) {
+            // Ensure relationship is one of the valid enum values
+            const validRelationships = ['employee', 'founder', 'advisor', 'manager', 'investor', 'other', 'not_set'];
+            const relationship = validRelationships.includes(company.relationship) 
+              ? company.relationship 
+              : 'not_set';
+              
+            const { error: updateError } = await supabase
+              .from('contact_companies')
+              .update({
+                relationship: relationship,
+                is_primary: company.is_primary || false
+              })
+              .eq('contact_companies_id', existingCompany.contact_companies_id);
+            
+            if (updateError) throw updateError;
+          }
+        }
+        
+        // Remove company associations that are no longer needed
+        for (const company of companiesToRemove) {
+          const { error: removeError } = await supabase
+            .from('contact_companies')
+            .delete()
+            .eq('contact_companies_id', company.contact_companies_id);
+          
+          if (removeError) throw removeError;
+        }
+      } else {
+        // If no companies in formData, remove all existing company associations
+        for (const company of existingContactCompanies || []) {
+          const { error: removeError } = await supabase
+            .from('contact_companies')
+            .delete()
+            .eq('contact_companies_id', company.contact_companies_id);
             
           if (removeError) throw removeError;
         }
@@ -5516,7 +5665,7 @@ const handleSelectEmailThread = async (threadId) => {
                               type="text"
                               placeholder="Type to add a new city (min 2 characters)"
                               value={formData.newCity || ''}
-                              style={{ width: '100%', borderWidth: 0 }}
+                              style={{ boxSizing: 'border-box', width: '100%' }}
                               onChange={(e) => {
                                 const value = e.target.value;
                                 handleInputChange('newCity', value);
@@ -5637,7 +5786,7 @@ const handleSelectEmailThread = async (threadId) => {
                               type="text"
                               placeholder="Type to add a new tag (min 2 characters)"
                               value={formData.newCustomTag || ''}
-                              style={{ width: '100%', borderWidth: 0 }}
+                              style={{ boxSizing: 'border-box', width: '100%' }}
                               onChange={(e) => {
                                 const value = e.target.value;
                                 handleInputChange('newCustomTag', value);
@@ -5720,9 +5869,535 @@ const handleSelectEmailThread = async (threadId) => {
                   {/* COMPANIES SECTION */}
                   {activeEnrichmentSection === "companies" && (
                     <>
-                      <div style={{ color: '#999', textAlign: 'center', padding: '30px 0' }}>
-                        Company management will appear here
-                      </div>
+                      <FormGroup>
+                        <FormFieldLabel>LinkedIn Profile</FormFieldLabel>
+                        <div style={{ 
+                          background: '#222', 
+                          padding: '12px', 
+                          borderRadius: '4px',
+                          marginBottom: '20px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px'
+                        }}>
+                          <Input 
+                            type="text"
+                            value={formData.linkedin || ''}
+                            onChange={(e) => handleInputChange('linkedin', e.target.value)}
+                            placeholder="LinkedIn URL"
+                            style={{ flex: 1 }}
+                          />
+                          
+                          {/* Button to open LinkedIn search if no LinkedIn provided */}
+                          {!formData.linkedin && (
+                            <button
+                              onClick={() => {
+                                const searchUrl = `https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(`${formData.firstName || ''} ${formData.lastName || ''}`.trim())}`;
+                                window.open(searchUrl, '_blank');
+                              }}
+                              style={{
+                                background: '#0077b5',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: '4px',
+                                padding: '8px 12px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '5px'
+                              }}
+                            >
+                              <FiSearch size={14} /> Search
+                            </button>
+                          )}
+                          
+                          {/* Button to visit LinkedIn profile if LinkedIn provided */}
+                          {formData.linkedin && (
+                            <button
+                              onClick={() => {
+                                // Make sure the URL starts with https://
+                                let url = formData.linkedin;
+                                if (!url.startsWith('http')) {
+                                  url = 'https://' + url;
+                                }
+                                window.open(url, '_blank');
+                              }}
+                              style={{
+                                background: '#0077b5',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: '4px',
+                                padding: '8px 12px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '5px'
+                              }}
+                            >
+                              <FiLink size={14} /> Open
+                            </button>
+                          )}
+                        </div>
+                      </FormGroup>
+                      
+                      <FormGroup>
+                        <FormFieldLabel>Associated Companies</FormFieldLabel>
+                        <div style={{ 
+                          background: '#222', 
+                          padding: '15px', 
+                          borderRadius: '4px',
+                          marginBottom: '20px'
+                        }}>
+                          {formData.associatedCompanies && formData.associatedCompanies.length > 0 ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                              {formData.associatedCompanies.map((company, index) => (
+                                <div 
+                                  key={company.contact_companies_id || index} 
+                                  style={{ 
+                                    background: '#333', 
+                                    padding: '10px', 
+                                    borderRadius: '4px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '5px'
+                                  }}
+                                >
+                                  <div style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between', 
+                                    alignItems: 'center',
+                                    borderBottom: '1px solid #444',
+                                    paddingBottom: '8px',
+                                    marginBottom: '5px'
+                                  }}>
+                                    <div style={{ fontWeight: 'bold', fontSize: '16px' }}>
+                                      {company.name}
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '5px' }}>
+                                      <button
+                                        onClick={() => {
+                                          // Edit company functionality will be added later
+                                          toast.info('Edit company functionality coming soon');
+                                        }}
+                                        style={{
+                                          background: 'none',
+                                          border: 'none',
+                                          color: '#4a9eff',
+                                          cursor: 'pointer',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          padding: '4px'
+                                        }}
+                                        title="Edit company"
+                                      >
+                                        <FiEdit size={16} />
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          // Remove association
+                                          const updatedCompanies = formData.associatedCompanies.filter((_, i) => i !== index);
+                                          handleInputChange('associatedCompanies', updatedCompanies);
+                                        }}
+                                        style={{
+                                          background: 'none',
+                                          border: 'none',
+                                          color: '#ff6b6b',
+                                          cursor: 'pointer',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          padding: '4px'
+                                        }}
+                                        title="Remove association"
+                                      >
+                                        <FiX size={16} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                  
+                                  <div style={{ display: 'flex', gap: '15px', fontSize: '14px' }}>
+                                    <div style={{ color: '#ccc' }}>
+                                      <span style={{ color: '#999', marginRight: '5px' }}>Category:</span>
+                                      {company.category || 'Not set'}
+                                    </div>
+                                    
+                                    {company.website && (
+                                      <div style={{ color: '#4a9eff' }}>
+                                        <a 
+                                          href={company.website.startsWith('http') ? company.website : `https://${company.website}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          style={{ color: 'inherit', textDecoration: 'none' }}
+                                        >
+                                          {company.website}
+                                        </a>
+                                      </div>
+                                    )}
+                                  </div>
+                                  
+                                  <div style={{ 
+                                    fontSize: '13px', 
+                                    color: '#999',
+                                    marginTop: '10px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px'
+                                  }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      <span>Relationship:</span>
+                                      <Select
+                                        value={company.relationship || 'not_set'}
+                                        onChange={(e) => {
+                                          const updatedCompanies = [...formData.associatedCompanies];
+                                          updatedCompanies[index].relationship = e.target.value;
+                                          handleInputChange('associatedCompanies', updatedCompanies);
+                                        }}
+                                        style={{ 
+                                          padding: '4px 8px',
+                                          fontSize: '13px',
+                                          backgroundColor: '#333',
+                                          borderColor: '#444',
+                                          color: '#eee'
+                                        }}
+                                      >
+                                        <option value="not_set">Not Set</option>
+                                        <option value="employee">Employee</option>
+                                        <option value="founder">Founder</option>
+                                        <option value="advisor">Advisor</option>
+                                        <option value="manager">Manager</option>
+                                        <option value="investor">Investor</option>
+                                        <option value="other">Other</option>
+                                      </Select>
+                                    </div>
+                                    
+                                    <div style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '5px',
+                                      fontSize: '0.85rem',
+                                      padding: '0 5px',
+                                      borderRadius: '4px',
+                                      background: company.is_primary ? '#444444' : 'transparent',
+                                      cursor: 'pointer'
+                                    }}
+                                    onClick={() => {
+                                      const updatedCompanies = formData.associatedCompanies.map((item, i) => ({
+                                        ...item,
+                                        is_primary: i === index // Make this one primary, all others not primary
+                                      }));
+                                      handleInputChange('associatedCompanies', updatedCompanies);
+                                    }}
+                                    >
+                                      {company.is_primary ? (
+                                        <><FiCheck size={14} /> Primary</>
+                                      ) : (
+                                        'Set Primary'
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div style={{ color: '#999', textAlign: 'center', padding: '10px 0' }}>
+                              No companies associated with this contact
+                            </div>
+                          )}
+                          
+                          {/* Add company form */}
+                          <div style={{
+                            marginTop: '15px',
+                            padding: '10px',
+                            background: '#333',
+                            borderRadius: '4px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '10px'
+                          }}>
+                            <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#ccc' }}>
+                              Add Company
+                            </div>
+                            
+                            <div style={{ 
+                              display: 'flex', 
+                              gap: '10px',
+                              position: 'relative' 
+                            }}>
+                              <Input 
+                                type="text"
+                                placeholder="Search for company..."
+                                value={formData.companySearch || ''}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  handleInputChange('companySearch', value);
+                                  
+                                  // Search for companies if at least 2 characters
+                                  if (value && value.length >= 2) {
+                                    searchCompanies(value);
+                                  } else {
+                                    // Clear suggestions if input is too short
+                                    handleInputChange('companySuggestions', []);
+                                  }
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Escape') {
+                                    // Clear input and suggestions on ESC
+                                    handleInputChange('companySearch', '');
+                                    handleInputChange('companySuggestions', []);
+                                  }
+                                }}
+                                style={{ flex: 1 }}
+                              />
+                              
+                              <button
+                                onClick={() => {
+                                  // Create new company functionality will be added later
+                                  toast.info('Create new company functionality coming soon');
+                                }}
+                                style={{
+                                  background: '#00ff00',
+                                  color: '#000',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  padding: '0 15px',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '5px'
+                                }}
+                              >
+                                <FiPlus size={14} /> New
+                              </button>
+                              
+                              {/* Email domain based existing company suggestions */}
+                              {formData.domainMatchedCompanies && formData.domainMatchedCompanies.length > 0 && (
+                                <div style={{
+                                  marginTop: '15px',
+                                  width: '100%'
+                                }}>
+                                  <div style={{ 
+                                    fontSize: '13px', 
+                                    fontWeight: 'bold', 
+                                    color: '#ccc',
+                                    marginBottom: '8px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                  }}>
+                                    <FiAward size={14} style={{ color: '#00ff00' }} /> 
+                                    Suggested existing companies based on email domains:
+                                  </div>
+                                  
+                                  <div style={{
+                                    display: 'flex',
+                                    flexWrap: 'wrap',
+                                    gap: '8px'
+                                  }}>
+                                    {formData.domainMatchedCompanies.map(company => (
+                                      <div
+                                        key={company.company_id}
+                                        onClick={() => {
+                                          // Add the company to associated companies
+                                          const newCompanyAssociation = {
+                                            company_id: company.company_id,
+                                            name: company.name,
+                                            website: company.website,
+                                            category: company.category,
+                                            relationship: 'not_set',
+                                            is_primary: formData.associatedCompanies?.length === 0 // First one is primary by default
+                                          };
+                                          
+                                          handleInputChange('associatedCompanies', [
+                                            ...(formData.associatedCompanies || []), 
+                                            newCompanyAssociation
+                                          ]);
+                                          
+                                          // Remove this suggestion to avoid showing already added companies
+                                          const updatedSuggestions = formData.domainMatchedCompanies.filter(
+                                            c => c.company_id !== company.company_id
+                                          );
+                                          handleInputChange('domainMatchedCompanies', updatedSuggestions);
+                                        }}
+                                        style={{
+                                          padding: '6px 10px',
+                                          background: '#444',
+                                          borderRadius: '4px',
+                                          cursor: 'pointer',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '6px',
+                                          transition: 'all 0.2s ease'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          e.currentTarget.style.background = '#555';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.currentTarget.style.background = '#444';
+                                        }}
+                                      >
+                                        <FiPlus size={12} style={{ color: '#00ff00' }} />
+                                        <span>{company.name}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {/* Suggestions to create new companies based on email domains */}
+                              {formData.newCompanySuggestions && formData.newCompanySuggestions.length > 0 && (
+                                <div style={{
+                                  marginTop: '15px',
+                                  width: '100%'
+                                }}>
+                                  <div style={{ 
+                                    fontSize: '13px', 
+                                    fontWeight: 'bold', 
+                                    color: '#ccc',
+                                    marginBottom: '8px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                  }}>
+                                    <FiPlus size={14} style={{ color: '#00ff00' }} /> 
+                                    Create new companies based on email domains:
+                                  </div>
+                                  
+                                  <div style={{
+                                    display: 'flex',
+                                    flexWrap: 'wrap',
+                                    gap: '8px'
+                                  }}>
+                                    {formData.newCompanySuggestions.map((suggestion, index) => (
+                                      <div
+                                        key={`new-company-${index}`}
+                                        onClick={async () => {
+                                          try {
+                                            // Create a new company in the database
+                                            const { data: newCompany, error } = await supabase
+                                              .from('companies')
+                                              .insert({
+                                                name: suggestion.suggestedName,
+                                                website: suggestion.suggestedWebsite,
+                                                category: 'Inbox'
+                                              })
+                                              .select('*')
+                                              .single();
+                                              
+                                            if (error) {
+                                              console.error('Error creating new company:', error);
+                                              toast.error(`Failed to create ${suggestion.suggestedName}`);
+                                              return;
+                                            }
+                                            
+                                            // Add the newly created company to associated companies
+                                            const newCompanyAssociation = {
+                                              company_id: newCompany.company_id,
+                                              name: newCompany.name,
+                                              website: newCompany.website,
+                                              category: newCompany.category,
+                                              relationship: 'not_set',
+                                              is_primary: formData.associatedCompanies?.length === 0 // First one is primary by default
+                                            };
+                                            
+                                            handleInputChange('associatedCompanies', [
+                                              ...(formData.associatedCompanies || []), 
+                                              newCompanyAssociation
+                                            ]);
+                                            
+                                            // Remove this suggestion to avoid showing already added companies
+                                            const updatedSuggestions = formData.newCompanySuggestions.filter(
+                                              (_, i) => i !== index
+                                            );
+                                            handleInputChange('newCompanySuggestions', updatedSuggestions);
+                                            
+                                            toast.success(`Created and added ${newCompany.name}`);
+                                          } catch (err) {
+                                            console.error('Error in creating company:', err);
+                                            toast.error('Failed to create company');
+                                          }
+                                        }}
+                                        style={{
+                                          padding: '6px 10px',
+                                          background: '#2a582a',
+                                          borderRadius: '4px',
+                                          cursor: 'pointer',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '6px',
+                                          transition: 'all 0.2s ease'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          e.currentTarget.style.background = '#306830';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.currentTarget.style.background = '#2a582a';
+                                        }}
+                                      >
+                                        <FiPlus size={12} style={{ color: '#ffffff' }} />
+                                        <span>Create {suggestion.suggestedName}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {/* Company suggestions dropdown */}
+                              {formData.companySuggestions && formData.companySuggestions.length > 0 && (
+                                <div style={{
+                                  position: 'absolute',
+                                  top: '100%',
+                                  left: 0,
+                                  width: '100%',
+                                  zIndex: 10,
+                                  background: '#222',
+                                  boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+                                  border: '1px solid #444',
+                                  borderRadius: '4px',
+                                  maxHeight: '200px',
+                                  overflowY: 'auto'
+                                }}>
+                                  {formData.companySuggestions.map((company) => (
+                                    <div 
+                                      key={company.company_id}
+                                      onClick={() => {
+                                        // Add the company to associated companies
+                                        const newCompanyAssociation = {
+                                          company_id: company.company_id,
+                                          name: company.name,
+                                          website: company.website,
+                                          category: company.category,
+                                          relationship: 'not_set',
+                                          is_primary: formData.associatedCompanies?.length === 0 // First one is primary by default
+                                        };
+                                        
+                                        handleInputChange('associatedCompanies', [
+                                          ...(formData.associatedCompanies || []), 
+                                          newCompanyAssociation
+                                        ]);
+                                        
+                                        handleInputChange('companySearch', '');
+                                        handleInputChange('companySuggestions', []);
+                                      }}
+                                      style={{
+                                        padding: '8px 12px',
+                                        cursor: 'pointer',
+                                        borderBottom: '1px solid #444'
+                                      }}
+                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#444'}
+                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                    >
+                                      <div style={{ fontWeight: 'bold' }}>{company.name}</div>
+                                      <div style={{ fontSize: '12px', color: '#999' }}>
+                                        {company.category || 'No category'} 
+                                        {company.website && ` • ${company.website}`}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </FormGroup>
                     </>
                   )}
                   
@@ -5814,7 +6489,7 @@ const handleSelectEmailThread = async (threadId) => {
                                 value={formData.description || ''}
                                 onChange={(e) => handleInputChange('description', e.target.value)}
                                 placeholder="Add notes or description about this contact..."
-                                style={{ minHeight: '120px' }}
+                                style={{ minHeight: '120px', boxSizing: 'border-box', width: '100%' }}
                               />
                               <div style={{ 
                                 fontSize: '12px', 
@@ -5910,162 +6585,9 @@ const handleSelectEmailThread = async (threadId) => {
                                 <div style={{ fontSize: '13px', color: '#ccc' }}>Airtable Record ID:</div>
                                 <div style={{ fontSize: '13px', color: '#4a9eff' }}>{contact.airtable_id}</div>
                               </div>
-                              
-                              {externalSources?.airtable && (
-                                <>
-                                  {externalSources.airtable.firstName && (
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                      <div style={{ fontSize: '13px', color: '#ccc' }}>Name:</div>
-                                      <div style={{ fontSize: '13px', color: '#fff' }}>
-                                        {externalSources.airtable.firstName} {externalSources.airtable.lastName}
-                                      </div>
-                                    </div>
-                                  )}
-                                  
-                                  {externalSources.airtable.email && (
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                      <div style={{ fontSize: '13px', color: '#ccc' }}>Email:</div>
-                                      <div style={{ fontSize: '13px', color: '#fff' }}>{externalSources.airtable.email}</div>
-                                    </div>
-                                  )}
-                                  
-                                  {externalSources.airtable.category && (
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                      <div style={{ fontSize: '13px', color: '#ccc' }}>Category:</div>
-                                      <div style={{ fontSize: '13px', color: '#fff' }}>{externalSources.airtable.category}</div>
-                                    </div>
-                                  )}
-                                  
-                                  {externalSources.airtable.supabaseMainCategory && (
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                      <div style={{ fontSize: '13px', color: '#ccc' }}>Supabase Category:</div>
-                                      <div style={{ fontSize: '13px', color: '#fff' }}>{externalSources.airtable.supabaseMainCategory}</div>
-                                    </div>
-                                  )}
-                                  
-                                  {externalSources.airtable.tags && externalSources.airtable.tags.length > 0 && (
-                                    <div style={{ marginBottom: '8px' }}>
-                                      <div style={{ fontSize: '13px', color: '#ccc', marginBottom: '4px' }}>Tags:</div>
-                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                                        {externalSources.airtable.tags.map((tag, idx) => (
-                                          <span 
-                                            key={idx} 
-                                            style={{ 
-                                              backgroundColor: '#333', 
-                                              padding: '3px 6px', 
-                                              borderRadius: '3px', 
-                                              fontSize: '12px',
-                                              color: '#fff'
-                                            }}
-                                          >
-                                            {tag.name}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
-                                  
-                                  {externalSources.airtable.cities && externalSources.airtable.cities.length > 0 && (
-                                    <div style={{ marginBottom: '8px' }}>
-                                      <div style={{ fontSize: '13px', color: '#ccc', marginBottom: '4px' }}>Cities:</div>
-                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                                        {externalSources.airtable.cities.map((city, idx) => (
-                                          <span 
-                                            key={idx} 
-                                            style={{ 
-                                              backgroundColor: '#333', 
-                                              padding: '3px 6px', 
-                                              borderRadius: '3px', 
-                                              fontSize: '12px',
-                                              color: '#fff'
-                                            }}
-                                          >
-                                            {city.name}{city.country ? `, ${city.country}` : ''}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
-                                </>
-                              )}
-                              
-                              <button 
-                                onClick={async () => {
-                                  if (contact?.airtable_id) {
-                                    try {
-                                      setTimeout(async () => {
-                                        try {
-                                          const airtableBaseId = 'appTMYAU4N43eJdxG';
-                                          const contactsTableId = 'tblUx9VGA0rxLmidU';
-                                          
-                                          console.log('Direct testing Airtable request...');
-                                          const airtableHeaders = {
-                                            'Authorization': 'Bearer patsAqQtI4eM71EIp.e42097d6cd529026d446be3da1b627c423ed3a5a7b59b0b38a9d77585e0909ea',
-                                            'Content-Type': 'application/json'
-                                          };
-                                          
-                                          // Try direct Airtable
-                                          const airtableResponse = await fetch(
-                                            `https://api.airtable.com/v0/${airtableBaseId}/${contactsTableId}/${contact.airtable_id}`,
-                                            { 
-                                              method: 'GET',
-                                              headers: airtableHeaders
-                                            }
-                                          );
-                                          
-                                          if (!airtableResponse.ok) {
-                                            console.error('Airtable API error:', await airtableResponse.text());
-                                            throw new Error(`Airtable API error: ${airtableResponse.status}`);
-                                          }
-                                          
-                                          const testData = (await airtableResponse.json())?.fields;
-                                          
-                                          // Show debug data
-                                          console.log('DIRECT TEST - Airtable complete response:', testData);
-                                          console.log('DIRECT TEST - Field Name exists?:', !!testData['Name']);
-                                          console.log('DIRECT TEST - Field Surname exists?:', !!testData['Surname']);
-                                          console.log('DIRECT TEST - Field Primary email exists?:', !!testData['Primary email']);
-                                          
-                                          if (testData) {
-                                            toast.success('Found Airtable data! Check console.');
-                                            // Update UI with the directly fetched data
-                                            setExternalSources(prev => ({
-                                              ...prev,
-                                              airtable: {
-                                                ...prev.airtable,
-                                                email: testData['Primary email'] || 'No email found',
-                                                firstName: testData['Name'] || 'No name found',
-                                                lastName: testData['Surname'] || 'No surname found',
-                                              }
-                                            }));
-                                          } else {
-                                            toast.error('No data returned from Airtable');
-                                          }
-                                        } catch (err) {
-                                          toast.error(`Airtable fetch error: ${err.message}`);
-                                          console.error('Direct test error:', err);
-                                        }
-                                      }, 1000);
-                                    } catch (err) {
-                                      console.error('Outer error in direct test:', err);
-                                    }
-                                  } else {
-                                    toast.error('No airtable_id present on this contact');
-                                  }
-                                }}
-                                style={{ 
-                                  marginTop: '10px', 
-                                  padding: '8px 15px', 
-                                  background: '#444', 
-                                  border: 'none', 
-                                  borderRadius: '4px', 
-                                  color: 'white', 
-                                  cursor: 'pointer',
-                                  width: '100%'
-                                }}
-                              >
-                                Refresh Airtable Data
-                              </button>
+                              <div style={{ textAlign: 'center', color: '#999', marginTop: '10px' }}>
+                                Airtable data will be displayed here
+                              </div>
                             </>
                           ) : (
                             <div style={{ color: '#999', textAlign: 'center', padding: '10px 0' }}>
