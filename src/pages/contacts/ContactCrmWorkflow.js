@@ -5882,14 +5882,54 @@ const handleSelectEmailThread = async (threadId) => {
                         }}>
                           <Input 
                             type="text"
-                            value={formData.linkedin || ''}
-                            onChange={(e) => handleInputChange('linkedin', e.target.value)}
+                            value={formData.linkedIn || ''}
+                            onChange={(e) => handleInputChange('linkedIn', e.target.value)}
                             placeholder="LinkedIn URL"
                             style={{ flex: 1 }}
                           />
                           
+                          {/* Save LinkedIn URL button */}
+                          <button
+                            onClick={async () => {
+                              try {
+                                setLoading(true);
+                                
+                                // Update LinkedIn field in contacts table
+                                const { error } = await supabase
+                                  .from('contacts')
+                                  .update({
+                                    linkedin: formData.linkedIn, // Database column is 'linkedin', form field is 'linkedIn'
+                                    last_modified_at: new Date()
+                                  })
+                                  .eq('contact_id', contactId);
+                                
+                                if (error) throw error;
+                                
+                                toast.success('LinkedIn profile saved');
+                                setLoading(false);
+                              } catch (err) {
+                                console.error('Error saving LinkedIn:', err);
+                                toast.error('Failed to save LinkedIn profile');
+                                setLoading(false);
+                              }
+                            }}
+                            style={{
+                              background: '#00ff00',
+                              color: '#000',
+                              border: 'none',
+                              borderRadius: '4px',
+                              padding: '8px 12px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '5px'
+                            }}
+                          >
+                            <FiCheck size={14} /> Save
+                          </button>
+                          
                           {/* Button to open LinkedIn search if no LinkedIn provided */}
-                          {!formData.linkedin && (
+                          {!formData.linkedIn && (
                             <button
                               onClick={() => {
                                 const searchUrl = `https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(`${formData.firstName || ''} ${formData.lastName || ''}`.trim())}`;
@@ -5912,11 +5952,11 @@ const handleSelectEmailThread = async (threadId) => {
                           )}
                           
                           {/* Button to visit LinkedIn profile if LinkedIn provided */}
-                          {formData.linkedin && (
+                          {formData.linkedIn && (
                             <button
                               onClick={() => {
                                 // Make sure the URL starts with https://
-                                let url = formData.linkedin;
+                                let url = formData.linkedIn;
                                 if (!url.startsWith('http')) {
                                   url = 'https://' + url;
                                 }
