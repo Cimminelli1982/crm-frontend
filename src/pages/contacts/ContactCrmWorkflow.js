@@ -259,7 +259,7 @@ const ChannelItem = styled.div`
 `;
 
 const InteractionsContainer = styled.div`
-  flex: 0 0 80%;
+  flex: 0 0 90%;
   padding: 0 0 0 0;
   overflow-y: auto;
   background-color: #1a1a1a;
@@ -391,7 +391,7 @@ const EmailList = styled.div`
 
 const EmailItem = styled.div`
   border-bottom: 1px solid #333;
-  padding: 0;
+  padding: 6px 64px 16px 0px;
   background-color: #1a1a1a;
   transition: background-color 0.2s;
 
@@ -434,7 +434,7 @@ const EmailPreview = styled.div`
 `;
 
 const EmailBody = styled.div`
-  padding: 0 16px 16px 16px;
+  padding: 0 0 16px 16px;
   color: #e0e0e0;
   font-size: 0.9rem;
   line-height: 1.5;
@@ -522,16 +522,18 @@ const ChatStatus = styled.div`
 const MessagesContainer = styled.div`
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  // Try generous right padding, e.g., 32px or more
+  padding: 16px 64px 16px 16px; // (top, right, bottom, left)
+  box-sizing: border-box; // Explicitly add this just in case
   display: flex;
   flex-direction: column;
   gap: 12px;
   max-height: calc(100vh - 280px);
-  background-image: url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23103030' fill-opacity='0.4' fill-rule='evenodd'%3E%3Cpath d='M50 50c0-5.523 4.477-10 10-10s10 4.477 10 10-4.477 10-10 10c0 5.523-4.477 10-10 10s-10-4.477-10-10 4.477-10 10-10zM10 10c0-5.523 4.477-10 10-10s10 4.477 10 10-4.477 10-10 10c0 5.523-4.477 10-10 10S0 25.523 0 20s4.477-10 10-10zm10 8c4.418 0 8-3.582 8-8s-3.582-8-8-8-8 3.582-8 8 3.582 8 8 8zm40 40c4.418 0 8-3.582 8-8s-3.582-8-8-8-8 3.582-8 8 3.582 8 8 8z' /%3E%3C/g%3E%3C/svg%3E");
+  background-image: url("..."); // Keep background
 `;
 
 const MessageBubble = styled.div`
-  max-width: 75%;
+  max-width: 50%;
   padding: 10px 14px;
   border-radius: 12px;
   position: relative;
@@ -1166,7 +1168,7 @@ const ContactCrmWorkflow = () => {
   const [editLastName, setEditLastName] = useState('');
   const [error, setError] = useState(null);
   
-  // Step 1: Relevance confirmation
+  // Step 1: Interactions confirmation
   const [interactions, setInteractions] = useState({
     whatsapp: [],
     email: [],
@@ -2353,7 +2355,7 @@ const handleSelectEmailThread = async (threadId) => {
     if (step < currentStep || step === currentStep) {
       setCurrentStep(step);
     } else if (step === 2 && currentStep === 1) {
-      // Going from relevance to duplicates
+      // Going from Interactions to duplicates
       setCurrentStep(2);
       searchForDuplicates();
     } else if (step <= currentStep + 1) {
@@ -4286,7 +4288,7 @@ const handleSelectEmailThread = async (threadId) => {
         </Crumb>
         <Crumb active>
           <a>
-            Add to CRM: {contact?.first_name} {contact?.last_name}
+            Edit: {contact?.first_name} {contact?.last_name}
           </a>
         </Crumb>
       </Breadcrumbs>
@@ -4369,7 +4371,7 @@ const handleSelectEmailThread = async (threadId) => {
           onClick={() => goToStep(1)}
         >
           <div className="step-number">1</div>
-          <div className="step-label">Relevance</div>
+          <div className="step-label">Interactions</div>
         </Step>
         <Step 
           $active={currentStep === 2} 
@@ -4396,7 +4398,7 @@ const handleSelectEmailThread = async (threadId) => {
           onClick={() => currentStep >= 4 || currentStep === 3 ? goToStep(4) : null}
         >
           <div className="step-number">4</div>
-          <div className="step-label">Professional</div>
+          <div className="step-label">Recap</div>
         </Step>
       </StepIndicator>
       
@@ -4414,7 +4416,7 @@ const handleSelectEmailThread = async (threadId) => {
         </ErrorMessage>
       )}
       
-      {/* Step 1: Relevance Confirmation */}
+      {/* Step 1: Interactions Confirmation */}
       {currentStep === 1 && (
         <>
           <Card>
@@ -5063,6 +5065,7 @@ const handleSelectEmailThread = async (threadId) => {
                         <ActionButton 
                           variant="primary"
                           onClick={() => handleMergeWithDuplicate()}
+                          style={{ marginRight: '32px' }}
                           disabled={loading}
                         >
                           <FiGitMerge /> Merge Contacts
@@ -5076,7 +5079,7 @@ const handleSelectEmailThread = async (threadId) => {
                       alignItems: 'center', 
                       justifyContent: 'center',
                       height: '100%',
-                      padding: '40px 20px',
+                      padding: '40px 0',
                       textAlign: 'center',
                       color: '#666'
                     }}>
@@ -6681,7 +6684,7 @@ const handleSelectEmailThread = async (threadId) => {
             </InteractionsLayout>
           </Card>
         </>
-      )}      {/* Step 4: Professional Information */}
+      )}      {/* Step 4: Recap */}
       {currentStep === 4 && (
         <>
           <Card>
