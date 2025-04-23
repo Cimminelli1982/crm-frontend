@@ -2554,6 +2554,7 @@ const handleSelectEmailThread = async (threadId) => {
           keep_in_touch_frequency: formData.keepInTouch,
           category: formData.category,
           linkedin: formData.linkedIn,
+          job_role: formData.jobRole || null,
           description: formData.description || null,
           score: formData.score || null,
           birthday: formData.birthday || null,
@@ -5980,6 +5981,67 @@ const handleSelectEmailThread = async (threadId) => {
                               <FiLink size={14} /> Open
                             </button>
                           )}
+                        </div>
+                      </FormGroup>
+                      
+                      <FormGroup>
+                        <FormFieldLabel>Job Role</FormFieldLabel>
+                        <div style={{ 
+                          background: '#222', 
+                          padding: '15px', 
+                          borderRadius: '4px',
+                          marginBottom: '20px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px'
+                        }}>
+                          <Input 
+                            type="text"
+                            value={formData.jobRole || ''}
+                            onChange={(e) => handleInputChange('jobRole', e.target.value)}
+                            placeholder="Job Role"
+                            style={{ flex: 1 }}
+                          />
+                          
+                          {/* Save Job Role button */}
+                          <button
+                            onClick={async () => {
+                              try {
+                                setLoading(true);
+                                
+                                // Update job_role field in contacts table
+                                const { error } = await supabase
+                                  .from('contacts')
+                                  .update({
+                                    job_role: formData.jobRole,
+                                    last_modified_at: new Date()
+                                  })
+                                  .eq('contact_id', contactId);
+                                
+                                if (error) throw error;
+                                
+                                toast.success('Job role saved');
+                                setLoading(false);
+                              } catch (err) {
+                                console.error('Error saving job role:', err);
+                                toast.error('Failed to save job role');
+                                setLoading(false);
+                              }
+                            }}
+                            style={{
+                              background: '#00ff00',
+                              color: '#000',
+                              border: 'none',
+                              borderRadius: '4px',
+                              padding: '8px 12px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '5px'
+                            }}
+                          >
+                            <FiCheck size={14} /> Save
+                          </button>
                         </div>
                       </FormGroup>
                       
