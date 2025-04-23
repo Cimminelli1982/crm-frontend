@@ -6474,33 +6474,40 @@ const handleSelectEmailThread = async (threadId) => {
                             <div style={{ 
                               display: 'flex', 
                               gap: '10px',
-                              position: 'relative' 
+                              position: 'relative',
+                              marginBottom: '15px' 
                             }}>
-                              <Input 
-                                type="text"
-                                placeholder="Search for company..."
-                                value={formData.companySearch || ''}
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  handleInputChange('companySearch', value);
-                                  
-                                  // Search for companies if at least 2 characters
-                                  if (value && value.length >= 2) {
-                                    searchCompanies(value);
-                                  } else {
-                                    // Clear suggestions if input is too short
-                                    handleInputChange('companySuggestions', []);
-                                  }
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Escape') {
-                                    // Clear input and suggestions on ESC
-                                    handleInputChange('companySearch', '');
-                                    handleInputChange('companySuggestions', []);
-                                  }
-                                }}
-                                style={{ flex: 1 }}
-                              />
+                              <div style={{ width: '50%' }}>
+                                <Input 
+                                  type="text"
+                                  placeholder="Search for company..."
+                                  value={formData.companySearch || ''}
+                                  onChange={(e) => {
+                                    const value = e.target.value;
+                                    handleInputChange('companySearch', value);
+                                    
+                                    // Search for companies if at least 2 characters
+                                    if (value && value.length >= 2) {
+                                      searchCompanies(value);
+                                    } else {
+                                      // Clear suggestions if input is too short
+                                      handleInputChange('companySuggestions', []);
+                                    }
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Escape') {
+                                      // Clear input and suggestions on ESC
+                                      handleInputChange('companySearch', '');
+                                      handleInputChange('companySuggestions', []);
+                                    }
+                                  }}
+                                  style={{ 
+                                    width: '100%',
+                                    height: '40px',
+                                    fontSize: '16px'
+                                  }}
+                                />
+                              </div>
                               
                               <button
                                 onClick={() => {
@@ -6512,14 +6519,19 @@ const handleSelectEmailThread = async (threadId) => {
                                   color: '#000',
                                   border: 'none',
                                   borderRadius: '4px',
-                                  padding: '0 15px',
+                                  padding: '0 8px',
                                   cursor: 'pointer',
                                   display: 'flex',
                                   alignItems: 'center',
-                                  gap: '5px'
+                                  gap: '3px',
+                                  height: '30px',
+                                  fontSize: '12px',
+                                  width: '60px',
+                                  marginLeft: '20px',
+                                  marginTop: '15px'
                                 }}
                               >
-                                <FiPlus size={14} /> New
+                                <FiPlus size={12} /> New
                               </button>
                               
                               {/* Email domain based existing company suggestions */}
@@ -6544,7 +6556,8 @@ const handleSelectEmailThread = async (threadId) => {
                                   <div style={{
                                     display: 'flex',
                                     flexWrap: 'wrap',
-                                    gap: '8px'
+                                    gap: '8px',
+                                    marginTop: '-5px'
                                   }}>
                                     {formData.domainMatchedCompanies.map(company => (
                                       <div
@@ -6599,7 +6612,7 @@ const handleSelectEmailThread = async (threadId) => {
                               {/* Suggestions to create new companies based on email domains */}
                               {formData.newCompanySuggestions && formData.newCompanySuggestions.length > 0 && (
                                 <div style={{
-                                  marginTop: '15px',
+                                  marginTop: '9px',
                                   width: '100%'
                                 }}>
                                   <div style={{ 
@@ -6611,14 +6624,14 @@ const handleSelectEmailThread = async (threadId) => {
                                     alignItems: 'center',
                                     gap: '6px'
                                   }}>
-                                    <FiPlus size={14} style={{ color: '#00ff00' }} /> 
-                                    Create new companies based on email domains:
+                                    Suggested new companies:
                                   </div>
                                   
                                   <div style={{
                                     display: 'flex',
                                     flexWrap: 'wrap',
-                                    gap: '8px'
+                                    gap: '8px',
+                                    marginTop: '-5px'
                                   }}>
                                     {formData.newCompanySuggestions.map((suggestion, index) => (
                                       <div
@@ -6670,7 +6683,7 @@ const handleSelectEmailThread = async (threadId) => {
                                           }
                                         }}
                                         style={{
-                                          padding: '6px 10px',
+                                          padding: '8px 14px',
                                           background: '#2a582a',
                                           borderRadius: '4px',
                                           cursor: 'pointer',
