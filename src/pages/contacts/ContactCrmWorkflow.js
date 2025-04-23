@@ -1166,6 +1166,8 @@ const ContactCrmWorkflow = () => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editFirstName, setEditFirstName] = useState('');
   const [editLastName, setEditLastName] = useState('');
+  const [editingCompanyIndex, setEditingCompanyIndex] = useState(null);
+  const [editingCompanyData, setEditingCompanyData] = useState(null);
   const [error, setError] = useState(null);
   
   // Step 1: Interactions confirmation
@@ -6067,138 +6069,385 @@ const handleSelectEmailThread = async (threadId) => {
                                     gap: '5px'
                                   }}
                                 >
-                                  <div style={{ 
-                                    display: 'flex', 
-                                    justifyContent: 'space-between', 
-                                    alignItems: 'center',
-                                    borderBottom: '1px solid #444',
-                                    paddingBottom: '8px',
-                                    marginBottom: '5px'
-                                  }}>
-                                    <div style={{ fontWeight: 'bold', fontSize: '16px' }}>
-                                      {company.name}
-                                    </div>
-                                    <div style={{ display: 'flex', gap: '5px' }}>
-                                      <button
-                                        onClick={() => {
-                                          // Edit company functionality will be added later
-                                          toast.info('Edit company functionality coming soon');
-                                        }}
-                                        style={{
-                                          background: 'none',
-                                          border: 'none',
-                                          color: '#4a9eff',
-                                          cursor: 'pointer',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          padding: '4px'
-                                        }}
-                                        title="Edit company"
-                                      >
-                                        <FiEdit size={16} />
-                                      </button>
-                                      <button
-                                        onClick={() => {
-                                          // Remove association
-                                          const updatedCompanies = formData.associatedCompanies.filter((_, i) => i !== index);
-                                          handleInputChange('associatedCompanies', updatedCompanies);
-                                        }}
-                                        style={{
-                                          background: 'none',
-                                          border: 'none',
-                                          color: '#ff6b6b',
-                                          cursor: 'pointer',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          padding: '4px'
-                                        }}
-                                        title="Remove association"
-                                      >
-                                        <FiX size={16} />
-                                      </button>
-                                    </div>
-                                  </div>
-                                  
-                                  <div style={{ display: 'flex', gap: '15px', fontSize: '14px' }}>
-                                    <div style={{ color: '#ccc' }}>
-                                      <span style={{ color: '#999', marginRight: '5px' }}>Category:</span>
-                                      {company.category || 'Not set'}
-                                    </div>
-                                    
-                                    {company.website && (
-                                      <div style={{ color: '#4a9eff' }}>
-                                        <a 
-                                          href={company.website.startsWith('http') ? company.website : `https://${company.website}`}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          style={{ color: 'inherit', textDecoration: 'none' }}
-                                        >
-                                          {company.website}
-                                        </a>
+                                  {editingCompanyIndex === index ? (
+                                    // Editing mode
+                                    <>
+                                      <div style={{ marginBottom: '15px' }}>
+                                        <div style={{ fontWeight: 'bold', marginBottom: '8px', color: '#00ff00' }}>Edit Company Details</div>
+                                        
+                                        <div style={{ display: 'flex', gap: '15px', marginBottom: '10px' }}>
+                                          <div style={{ flex: '1' }}>
+                                            <div style={{ color: '#999', fontSize: '12px', marginBottom: '4px' }}>Name</div>
+                                            <Input 
+                                              type="text"
+                                              value={editingCompanyData.name || ''}
+                                              onChange={(e) => setEditingCompanyData({
+                                                ...editingCompanyData,
+                                                name: e.target.value
+                                              })}
+                                              style={{ width: '85%' }}
+                                            />
+                                          </div>
+                                          
+                                          <div style={{ flex: '1' }}>
+                                            <div style={{ color: '#999', fontSize: '12px', marginBottom: '4px' }}>Category</div>
+                                            <Select
+                                              value={editingCompanyData.category || ''}
+                                              onChange={(e) => setEditingCompanyData({
+                                                ...editingCompanyData,
+                                                category: e.target.value
+                                              })}
+                                              style={{ 
+                                                width: '92%',
+                                                padding: '8px',
+                                                backgroundColor: '#222',
+                                                borderColor: '#444',
+                                                color: '#eee'
+                                              }}
+                                            >
+                                              <option value="">Select a category</option>
+                                              <option value="Advisory">Advisory</option>
+                                              <option value="Corporation">Corporation</option>
+                                              <option value="Institution">Institution</option>
+                                              <option value="Media">Media</option>
+                                              <option value="Professional Investor">Professional Investor</option>
+                                              <option value="Skip">Skip</option>
+                                              <option value="SME">SME</option>
+                                              <option value="Startup">Startup</option>
+                                            </Select>
+                                          </div>
+                                        </div>
+                                        
+                                        <div style={{ display: 'flex', gap: '15px', marginBottom: '10px' }}>
+                                          <div style={{ flex: '1' }}>
+                                            <div style={{ color: '#999', fontSize: '12px', marginBottom: '4px' }}>Website</div>
+                                            <Input 
+                                              type="text"
+                                              value={editingCompanyData.website || ''}
+                                              onChange={(e) => setEditingCompanyData({
+                                                ...editingCompanyData,
+                                                website: e.target.value
+                                              })}
+                                              style={{ width: '85%' }}
+                                            />
+                                          </div>
+                                          
+                                          <div style={{ flex: '1' }}>
+                                            <div style={{ color: '#999', fontSize: '12px', marginBottom: '4px' }}>LinkedIn</div>
+                                            <Input 
+                                              type="text"
+                                              value={editingCompanyData.linkedin || ''}
+                                              onChange={(e) => setEditingCompanyData({
+                                                ...editingCompanyData,
+                                                linkedin: e.target.value
+                                              })}
+                                              style={{ width: '85%' }}
+                                            />
+                                          </div>
+                                        </div>
+                                        
+                                        <div style={{ marginBottom: '10px' }}>
+                                          <div style={{ color: '#999', fontSize: '12px', marginBottom: '4px' }}>Description</div>
+                                          <TextArea 
+                                            value={editingCompanyData.description || ''}
+                                            onChange={(e) => setEditingCompanyData({
+                                              ...editingCompanyData,
+                                              description: e.target.value
+                                            })}
+                                            style={{ width: '93%', minHeight: '80px' }}
+                                          />
+                                        </div>
+                                        
+                                        <div style={{ marginBottom: '10px' }}>
+                                          <div style={{ color: '#999', fontSize: '12px', marginBottom: '4px' }}>Relationship</div>
+                                          <Select
+                                            value={editingCompanyData.relationship || 'not_set'}
+                                            onChange={(e) => setEditingCompanyData({
+                                              ...editingCompanyData,
+                                              relationship: e.target.value
+                                            })}
+                                            style={{ 
+                                              width: '100%',
+                                              padding: '8px',
+                                              backgroundColor: '#222',
+                                              borderColor: '#444',
+                                              color: '#eee'
+                                            }}
+                                          >
+                                            <option value="not_set">Not Set</option>
+                                            <option value="employee">Employee</option>
+                                            <option value="founder">Founder</option>
+                                            <option value="advisor">Advisor</option>
+                                            <option value="manager">Manager</option>
+                                            <option value="investor">Investor</option>
+                                            <option value="other">Other</option>
+                                          </Select>
+                                        </div>
+                                        
+                                        <div style={{ 
+                                          display: 'flex', 
+                                          justifyContent: 'space-between', 
+                                          marginTop: '15px' 
+                                        }}>
+                                          <button
+                                            onClick={() => {
+                                              // Cancel editing
+                                              setEditingCompanyIndex(null);
+                                              setEditingCompanyData(null);
+                                            }}
+                                            style={{
+                                              background: '#333',
+                                              color: '#ccc',
+                                              border: '1px solid #555',
+                                              borderRadius: '4px',
+                                              padding: '8px 12px',
+                                              cursor: 'pointer'
+                                            }}
+                                          >
+                                            Cancel
+                                          </button>
+                                          
+                                          <button
+                                            onClick={async () => {
+                                              try {
+                                                setLoading(true);
+                                                
+                                                // Update the company in the database
+                                                const { error } = await supabase
+                                                  .from('companies')
+                                                  .update({
+                                                    name: editingCompanyData.name,
+                                                    website: editingCompanyData.website,
+                                                    category: editingCompanyData.category,
+                                                    description: editingCompanyData.description,
+                                                    linkedin: editingCompanyData.linkedin,
+                                                    last_modified_at: new Date()
+                                                  })
+                                                  .eq('company_id', editingCompanyData.company_id);
+                                                
+                                                if (error) throw error;
+                                                
+                                                // Update the relationship in contact_companies if changed
+                                                if (editingCompanyData.relationship !== company.relationship) {
+                                                  const { error: relError } = await supabase
+                                                    .from('contact_companies')
+                                                    .update({
+                                                      relationship: editingCompanyData.relationship
+                                                    })
+                                                    .eq('contact_companies_id', company.contact_companies_id);
+                                                  
+                                                  if (relError) throw relError;
+                                                }
+                                                
+                                                // Update local state
+                                                const updatedCompanies = [...formData.associatedCompanies];
+                                                updatedCompanies[index] = {
+                                                  ...updatedCompanies[index],
+                                                  name: editingCompanyData.name,
+                                                  website: editingCompanyData.website,
+                                                  category: editingCompanyData.category,
+                                                  description: editingCompanyData.description,
+                                                  linkedin: editingCompanyData.linkedin,
+                                                  relationship: editingCompanyData.relationship
+                                                };
+                                                handleInputChange('associatedCompanies', updatedCompanies);
+                                                
+                                                // Reset editing state
+                                                setEditingCompanyIndex(null);
+                                                setEditingCompanyData(null);
+                                                
+                                                toast.success('Company updated successfully');
+                                                setLoading(false);
+                                              } catch (err) {
+                                                console.error('Error updating company:', err);
+                                                toast.error('Failed to update company');
+                                                setLoading(false);
+                                              }
+                                            }}
+                                            style={{
+                                              background: '#00ff00',
+                                              color: '#000',
+                                              border: 'none',
+                                              borderRadius: '4px',
+                                              padding: '8px 12px',
+                                              cursor: 'pointer',
+                                              fontWeight: 'bold'
+                                            }}
+                                          >
+                                            Save Changes
+                                          </button>
+                                        </div>
                                       </div>
-                                    )}
-                                  </div>
-                                  
-                                  <div style={{ 
-                                    fontSize: '13px', 
-                                    color: '#999',
-                                    marginTop: '10px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '10px'
-                                  }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                      <span>Relationship:</span>
-                                      <Select
-                                        value={company.relationship || 'not_set'}
-                                        onChange={(e) => {
-                                          const updatedCompanies = [...formData.associatedCompanies];
-                                          updatedCompanies[index].relationship = e.target.value;
+                                    </>
+                                  ) : (
+                                    // Display mode
+                                    <>
+                                      <div style={{ 
+                                        display: 'flex', 
+                                        justifyContent: 'space-between', 
+                                        alignItems: 'center',
+                                        borderBottom: '1px solid #444',
+                                        paddingBottom: '8px',
+                                        marginBottom: '5px'
+                                      }}>
+                                        <div style={{ fontWeight: 'bold', fontSize: '16px' }}>
+                                          {company.name}
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '5px' }}>
+                                          <button
+                                            onClick={() => {
+                                              // Start editing this company
+                                              setEditingCompanyIndex(index);
+                                              setEditingCompanyData({
+                                                ...company,
+                                                // Ensure all fields exist even if they're null in the original data
+                                                name: company.name || '',
+                                                website: company.website || '',
+                                                category: company.category || '',
+                                                description: company.description || '',
+                                                linkedin: company.linkedin || '',
+                                                relationship: company.relationship || 'not_set'
+                                              });
+                                            }}
+                                            style={{
+                                              background: 'none',
+                                              border: 'none',
+                                              color: '#4a9eff',
+                                              cursor: 'pointer',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              padding: '4px'
+                                            }}
+                                            title="Edit company"
+                                          >
+                                            <FiEdit size={16} />
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              // Remove association
+                                              const updatedCompanies = formData.associatedCompanies.filter((_, i) => i !== index);
+                                              handleInputChange('associatedCompanies', updatedCompanies);
+                                            }}
+                                            style={{
+                                              background: 'none',
+                                              border: 'none',
+                                              color: '#ff6b6b',
+                                              cursor: 'pointer',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              padding: '4px'
+                                            }}
+                                            title="Remove association"
+                                          >
+                                            <FiX size={16} />
+                                          </button>
+                                        </div>
+                                      </div>
+                                      
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '14px' }}>
+                                        <div style={{ color: '#ccc' }}>
+                                          <span style={{ color: '#999', marginRight: '5px' }}>Category:</span>
+                                          {company.category || 'Not set'}
+                                        </div>
+                                        
+                                        {company.website && (
+                                          <div style={{ color: '#4a9eff' }}>
+                                            <span style={{ color: '#999', marginRight: '5px' }}>Website:</span>
+                                            <a 
+                                              href={company.website.startsWith('http') ? company.website : `https://${company.website}`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              style={{ color: 'inherit', textDecoration: 'none' }}
+                                            >
+                                              {company.website}
+                                            </a>
+                                          </div>
+                                        )}
+                                        
+                                        {company.linkedin && (
+                                          <div style={{ color: '#0077b5' }}>
+                                            <span style={{ color: '#999', marginRight: '5px' }}>LinkedIn:</span>
+                                            <a 
+                                              href={company.linkedin.startsWith('http') ? company.linkedin : `https://${company.linkedin}`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              style={{ color: 'inherit', textDecoration: 'none' }}
+                                            >
+                                              {company.linkedin}
+                                            </a>
+                                          </div>
+                                        )}
+                                        
+                                        {company.description && (
+                                          <div style={{ color: '#ddd' }}>
+                                            <span style={{ color: '#999', marginRight: '5px' }}>Description:</span>
+                                            <span style={{ fontStyle: 'italic' }}>{company.description}</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                      
+                                      <div style={{ 
+                                        fontSize: '13px', 
+                                        color: '#999',
+                                        marginTop: '10px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '10px'
+                                      }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                          <span>Relationship:</span>
+                                          <Select
+                                            value={company.relationship || 'not_set'}
+                                            onChange={(e) => {
+                                              const updatedCompanies = [...formData.associatedCompanies];
+                                              updatedCompanies[index].relationship = e.target.value;
+                                              handleInputChange('associatedCompanies', updatedCompanies);
+                                            }}
+                                            style={{ 
+                                              padding: '4px 8px',
+                                              fontSize: '13px',
+                                              backgroundColor: '#333',
+                                              borderColor: '#444',
+                                              color: '#eee'
+                                            }}
+                                          >
+                                            <option value="not_set">Not Set</option>
+                                            <option value="employee">Employee</option>
+                                            <option value="founder">Founder</option>
+                                            <option value="advisor">Advisor</option>
+                                            <option value="manager">Manager</option>
+                                            <option value="investor">Investor</option>
+                                            <option value="other">Other</option>
+                                          </Select>
+                                        </div>
+                                        
+                                        <div style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '5px',
+                                          fontSize: '0.85rem',
+                                          padding: '0 5px',
+                                          borderRadius: '4px',
+                                          background: company.is_primary ? '#444444' : 'transparent',
+                                          cursor: 'pointer'
+                                        }}
+                                        onClick={() => {
+                                          const updatedCompanies = formData.associatedCompanies.map((item, i) => ({
+                                            ...item,
+                                            is_primary: i === index // Make this one primary, all others not primary
+                                          }));
                                           handleInputChange('associatedCompanies', updatedCompanies);
                                         }}
-                                        style={{ 
-                                          padding: '4px 8px',
-                                          fontSize: '13px',
-                                          backgroundColor: '#333',
-                                          borderColor: '#444',
-                                          color: '#eee'
-                                        }}
-                                      >
-                                        <option value="not_set">Not Set</option>
-                                        <option value="employee">Employee</option>
-                                        <option value="founder">Founder</option>
-                                        <option value="advisor">Advisor</option>
-                                        <option value="manager">Manager</option>
-                                        <option value="investor">Investor</option>
-                                        <option value="other">Other</option>
-                                      </Select>
-                                    </div>
-                                    
-                                    <div style={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '5px',
-                                      fontSize: '0.85rem',
-                                      padding: '0 5px',
-                                      borderRadius: '4px',
-                                      background: company.is_primary ? '#444444' : 'transparent',
-                                      cursor: 'pointer'
-                                    }}
-                                    onClick={() => {
-                                      const updatedCompanies = formData.associatedCompanies.map((item, i) => ({
-                                        ...item,
-                                        is_primary: i === index // Make this one primary, all others not primary
-                                      }));
-                                      handleInputChange('associatedCompanies', updatedCompanies);
-                                    }}
-                                    >
-                                      {company.is_primary ? (
-                                        <><FiCheck size={14} /> Primary</>
-                                      ) : (
-                                        'Set Primary'
-                                      )}
-                                    </div>
-                                  </div>
+                                        >
+                                          {company.is_primary ? (
+                                            <><FiCheck size={14} /> Primary</>
+                                          ) : (
+                                            'Set Primary'
+                                          )}
+                                        </div>
+                                      </div>
+                                    </>
+                                  )}
                                 </div>
                               ))}
                             </div>
