@@ -18,7 +18,8 @@ import {
   FiTag, 
   FiMapPin, 
   FiBriefcase, 
-  FiLink, 
+  FiLink,
+  FiLink2,
   FiCalendar,
   FiGitMerge,
   FiInfo,
@@ -903,7 +904,8 @@ const Input = styled.input`
   border-radius: 4px;
   color: #eee;
   padding: 10px 12px;
-  width: 100%;
+  width: calc(100% - 30px);
+  height: calc(100% + 2px);
   font-size: 0.9rem;
   
   &:focus {
@@ -1159,6 +1161,9 @@ const ContactCrmWorkflow = () => {
   
   // State
   const [contact, setContact] = useState(null);
+  const [airtableContact, setAirtableContact] = useState(null);
+  const [airtableSearchInput, setAirtableSearchInput] = useState('');
+  const [airtableSearchResults, setAirtableSearchResults] = useState([]);
   const [currentStep, setCurrentStep] = useState(parseInt(stepParam) || 1);
   const [loading, setLoading] = useState(true);
   
@@ -1174,7 +1179,8 @@ const ContactCrmWorkflow = () => {
     category: '',
     website: '',
     description: '',
-    linkedin: ''
+    linkedin: '',
+    tags: []
   });
   const [error, setError] = useState(null);
   
@@ -1931,6 +1937,11 @@ const handleSelectEmailThread = async (threadId) => {
       
       setContact(contactData);
       
+      // Load corresponding Airtable contact data if airtable_id exists
+      if (contactData.airtable_id) {
+        loadAirtableContact(contactData.airtable_id);
+      }
+      
       // Initialize form data with existing contact data and empty collections
       setFormData({
         firstName: contactData.first_name,
@@ -2166,6 +2177,125 @@ const handleSelectEmailThread = async (threadId) => {
     }
   };
   
+  // Search for Airtable contacts
+  const searchAirtableContacts = async (searchTerm) => {
+    if (!searchTerm || searchTerm.trim().length < 2) {
+      setAirtableSearchResults([]);
+      return;
+    }
+    
+    try {
+      const { data, error } = await supabase
+        .from('airtable_contacts')
+        .select('*')
+        .or(`full_name.ilike.%${searchTerm}%,primary_email.ilike.%${searchTerm}%,phone_number_1.ilike.%${searchTerm}%`)
+        .limit(10);
+      
+      if (error) {
+        console.error('Error searching Airtable contacts:', error);
+        return;
+      }
+      
+      // Filter out the currently associated contact if exists
+      const filteredResults = data.filter(item => item.airtable_id !== contact?.airtable_id);
+      setAirtableSearchResults(filteredResults);
+    } catch (err) {
+      console.error('Error in searchAirtableContacts:', err);
+    }
+  };
+  
+  // Associate an Airtable contact with the current contact
+  const associateAirtableContact = async (airtableId) => {
+    if (!contact) return;
+    
+    try {
+      // Update the contact's airtable_id
+      const { error } = await supabase
+        .from('contacts')
+        .update({ airtable_id: airtableId })
+        .eq('contact_id', contact.contact_id);
+      
+      if (error) {
+        console.error('Error associating Airtable contact:', error);
+        return false;
+      }
+      
+      // Update contact in state
+      setContact(prev => ({
+        ...prev,
+        airtable_id: airtableId
+      }));
+      
+      // Load the new Airtable contact data
+      loadAirtableContact(airtableId);
+      
+      // Clear search results
+      setAirtableSearchInput('');
+      setAirtableSearchResults([]);
+      
+      return true;
+    } catch (err) {
+      console.error('Error in associateAirtableContact:', err);
+      return false;
+    }
+  };
+  
+  // Disassociate the Airtable contact from the current contact
+  const disassociateAirtableContact = async () => {
+    if (!contact || !contact.airtable_id) return;
+    
+    try {
+      // Remove the airtable_id from contact
+      const { error } = await supabase
+        .from('contacts')
+        .update({ airtable_id: null })
+        .eq('contact_id', contact.contact_id);
+      
+      if (error) {
+        console.error('Error disassociating Airtable contact:', error);
+        return false;
+      }
+      
+      // Update contact in state
+      setContact(prev => ({
+        ...prev,
+        airtable_id: null
+      }));
+      
+      // Clear the airtable contact data
+      setAirtableContact(null);
+      
+      return true;
+    } catch (err) {
+      console.error('Error in disassociateAirtableContact:', err);
+      return false;
+    }
+  };
+  
+  // Load Airtable contact data based on airtable_id
+  const loadAirtableContact = async (airtableId) => {
+    if (!airtableId) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('airtable_contacts')
+        .select('*')
+        .eq('airtable_id', airtableId)
+        .single();
+      
+      if (error) {
+        console.error('Error loading Airtable contact:', error);
+        return;
+      }
+      
+      if (data) {
+        setAirtableContact(data);
+      }
+    } catch (err) {
+      console.error('Error in loadAirtableContact:', err);
+    }
+  };
+
   // Load contact details (tags, companies, cities)
   const loadContactDetails = async (contactId) => {
     try {
@@ -2255,7 +2385,10 @@ const handleSelectEmailThread = async (threadId) => {
           website: cc.companies.website,
           category: cc.companies.category,
           description: cc.companies.description,
-          linkedin: cc.companies.linkedin
+          linkedin: cc.companies.linkedin,
+          tags: [], // Initialize empty tags array for each company
+          newTag: '', // Field for adding new tags
+          tagSuggestions: [] // Field for tag suggestions
         })).filter(c => c.company_id); // Filter out any without valid company_id
         
         // Set the first company as the primary company for compatibility
@@ -2270,6 +2403,39 @@ const handleSelectEmailThread = async (threadId) => {
           company,
           associatedCompanies  // Add all associated companies data
         }));
+        
+        // Fetch tags for each company and update formData
+        const fetchTagsForCompanies = async () => {
+          try {
+            const updatedCompanies = [...associatedCompanies];
+            
+            // Fetch tags for each company in parallel
+            const tagsPromises = updatedCompanies.map(async (company, index) => {
+              if (company.company_id) {
+                const companyTags = await fetchCompanyTags(company.company_id);
+                return { index, tags: companyTags };
+              }
+              return { index, tags: [] };
+            });
+            
+            const tagsResults = await Promise.all(tagsPromises);
+            
+            // Update each company with its tags
+            tagsResults.forEach(result => {
+              updatedCompanies[result.index].tags = result.tags;
+            });
+            
+            // Update formData with companies that now have tags
+            setFormData(prev => ({
+              ...prev,
+              associatedCompanies: updatedCompanies
+            }));
+          } catch (err) {
+            console.error('Error fetching company tags:', err);
+          }
+        };
+        
+        fetchTagsForCompanies();
       } else {
         // Ensure we have an empty array for associatedCompanies
         setFormData(prev => ({
@@ -2406,6 +2572,148 @@ const handleSelectEmailThread = async (threadId) => {
       handleInputChange('tagSuggestions', filteredSuggestions);
     } catch (err) {
       console.error('Error in searchTagSuggestions:', err);
+    }
+  };
+  
+  // Search for tag suggestions for a company
+  const searchCompanyTagSuggestions = async (query, companyId, existingTags = []) => {
+    if (!query || query.length < 2) return [];
+    
+    try {
+      const { data, error } = await supabase
+        .from('tags')
+        .select('tag_id, name')
+        .ilike('name', `%${query}%`)
+        .order('name')
+        .limit(10);
+        
+      if (error) {
+        console.error('Error searching for company tag suggestions:', error);
+        return [];
+      }
+      
+      // Filter out tags that are already selected for this company
+      const filteredSuggestions = data.filter(tag => 
+        !existingTags.some(t => t.tag_id === tag.tag_id)
+      );
+      
+      return filteredSuggestions;
+    } catch (err) {
+      console.error('Error in searchCompanyTagSuggestions:', err);
+      return [];
+    }
+  };
+  
+  // Fetch tags for a company
+  const fetchCompanyTags = async (companyId) => {
+    if (!companyId) return [];
+    
+    try {
+      const { data, error } = await supabase
+        .from('company_tags')
+        .select(`
+          entry_id,
+          tag_id,
+          tags (
+            tag_id,
+            name
+          )
+        `)
+        .eq('company_id', companyId);
+        
+      if (error) {
+        console.error('Error fetching company tags:', error);
+        return [];
+      }
+      
+      // Format the data to be more usable
+      return (data || []).map(item => ({
+        entry_id: item.entry_id,
+        tag_id: item.tag_id,
+        name: item.tags?.name || 'Unknown'
+      }));
+    } catch (err) {
+      console.error('Error in fetchCompanyTags:', err);
+      return [];
+    }
+  };
+  
+  // Add tag to a company
+  const addTagToCompany = async (companyId, tagData) => {
+    try {
+      // Check if tag exists or needs to be created
+      let tagId = tagData.tag_id;
+      
+      if (tagData.tag_id?.toString().startsWith('temp-')) {
+        // First check if tag with this name already exists
+        const { data: existingTag, error: existingError } = await supabase
+          .from('tags')
+          .select('tag_id')
+          .eq('name', tagData.name)
+          .maybeSingle();
+          
+        if (existingError) throw existingError;
+        
+        if (existingTag) {
+          // Use existing tag
+          tagId = existingTag.tag_id;
+        } else {
+          // Create new tag
+          const { data: newTag, error: createError } = await supabase
+            .from('tags')
+            .insert({ name: tagData.name })
+            .select('tag_id')
+            .single();
+            
+          if (createError) throw createError;
+          tagId = newTag.tag_id;
+        }
+      }
+      
+      // Check if association already exists
+      const { data: existingAssociation, error: checkError } = await supabase
+        .from('company_tags')
+        .select('entry_id')
+        .eq('company_id', companyId)
+        .eq('tag_id', tagId)
+        .maybeSingle();
+        
+      if (checkError) throw checkError;
+      
+      // Only create if it doesn't already exist
+      if (!existingAssociation) {
+        // Create association between company and tag
+        const { error: linkError } = await supabase
+          .from('company_tags')
+          .insert({
+            company_id: companyId,
+            tag_id: tagId
+          });
+          
+        if (linkError) throw linkError;
+      }
+      
+      return true;
+    } catch (err) {
+      console.error('Error adding tag to company:', err);
+      return false;
+    }
+  };
+  
+  // Remove tag from a company
+  const removeTagFromCompany = async (entryId) => {
+    try {
+      const { error } = await supabase
+        .from('company_tags')
+        .delete()
+        .eq('entry_id', entryId);
+        
+      if (error) throw error;
+      
+      return true;
+    } catch (err) {
+      console.error('Error removing tag from company:', err);
+      return false;
     }
   };
   
@@ -5252,7 +5560,7 @@ const handleSelectEmailThread = async (threadId) => {
                   {activeEnrichmentSection === "basics" && (
                     <>
                       <FormGroup>
-                        <FormFieldLabel>Name</FormFieldLabel>
+                        <FormFieldLabel>Name {airtableContact && `- Airtable: ${airtableContact.full_name}`}</FormFieldLabel>
                         <div style={{ 
                           display: 'flex', 
                           gap: '10px', 
@@ -5279,7 +5587,7 @@ const handleSelectEmailThread = async (threadId) => {
                       </FormGroup>
                       
                       <FormGroup>
-                        <FormFieldLabel>Email Addresses</FormFieldLabel>
+                        <FormFieldLabel>Email Addresses {airtableContact && airtableContact.primary_email && `- Airtable: ${airtableContact.primary_email}`}</FormFieldLabel>
                         
                         <div style={{ 
                           border: '1px solid #333', 
@@ -5435,7 +5743,7 @@ const handleSelectEmailThread = async (threadId) => {
                       </FormGroup>
                       
                       <FormGroup>
-                        <FormFieldLabel>Mobile Numbers</FormFieldLabel>
+                        <FormFieldLabel>Mobile Numbers {airtableContact && `- Airtable: ${airtableContact.phone_number_1 || ''}${airtableContact.phone_number_1 && airtableContact.phone_number_2 ? ' - ' : ''}${airtableContact.phone_number_2 || ''}`}</FormFieldLabel>
                         
                         <div style={{ 
                           border: '1px solid #333', 
@@ -6398,6 +6706,193 @@ const handleSelectEmailThread = async (threadId) => {
                                             <span style={{ fontStyle: 'italic' }}>{company.description}</span>
                                           </div>
                                         )}
+                                        
+                                        {/* Company Tags */}
+                                        <div style={{ marginTop: '5px' }}>
+                                          <span style={{ color: '#999', marginRight: '5px' }}>Tags:</span>
+                                          {company.tags && company.tags.length > 0 ? (
+                                            <TagsContainer style={{ display: 'inline-flex', marginLeft: '5px' }}>
+                                              {company.tags.map(tag => (
+                                                <Tag key={tag.entry_id || tag.tag_id} style={{ fontSize: '11px', padding: '2px 6px' }}>
+                                                  {tag.name}
+                                                  <FiX 
+                                                    className="remove" 
+                                                    size={12} 
+                                                    onClick={async (e) => {
+                                                      e.stopPropagation();
+                                                      // Remove tag from company
+                                                      const success = await removeTagFromCompany(tag.entry_id);
+                                                      if (success) {
+                                                        // Update UI by removing tag from company
+                                                        const updatedCompanies = [...formData.associatedCompanies];
+                                                        const updatedTags = company.tags.filter(t => t.entry_id !== tag.entry_id);
+                                                        updatedCompanies[index].tags = updatedTags;
+                                                        handleInputChange('associatedCompanies', updatedCompanies);
+                                                      }
+                                                    }}
+                                                  />
+                                                </Tag>
+                                              ))}
+                                            </TagsContainer>
+                                          ) : (
+                                            <span style={{ color: '#666', fontStyle: 'italic', fontSize: '12px' }}>No tags</span>
+                                          )}
+                                        </div>
+                                        
+                                        {/* Add tag to company UI */}
+                                        <div style={{ marginTop: '5px', position: 'relative' }}>
+                                          <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                                            <Input 
+                                              type="text"
+                                              placeholder="Add tag to company..."
+                                              value={company.newTag || ''}
+                                              onChange={async (e) => {
+                                                const value = e.target.value;
+                                                // Update local state
+                                                const updatedCompanies = [...formData.associatedCompanies];
+                                                updatedCompanies[index].newTag = value;
+                                                handleInputChange('associatedCompanies', updatedCompanies);
+                                                
+                                                // Search for tag suggestions
+                                                if (value && value.length >= 2) {
+                                                  const suggestions = await searchCompanyTagSuggestions(value, company.company_id, company.tags || []);
+                                                  // Update suggestions in state
+                                                  const updatedCompaniesWithSuggestions = [...formData.associatedCompanies];
+                                                  updatedCompaniesWithSuggestions[index].tagSuggestions = suggestions;
+                                                  handleInputChange('associatedCompanies', updatedCompaniesWithSuggestions);
+                                                } else {
+                                                  // Clear suggestions
+                                                  const updatedCompaniesWithSuggestions = [...formData.associatedCompanies];
+                                                  updatedCompaniesWithSuggestions[index].tagSuggestions = [];
+                                                  handleInputChange('associatedCompanies', updatedCompaniesWithSuggestions);
+                                                }
+                                              }}
+                                              onKeyDown={async (e) => {
+                                                if (e.key === 'Enter' && company.newTag?.trim()) {
+                                                  // Add tag to company
+                                                  const newTag = { 
+                                                    tag_id: `temp-${Date.now()}`, 
+                                                    name: company.newTag.trim() 
+                                                  };
+                                                  
+                                                  // Save to database
+                                                  const success = await addTagToCompany(company.company_id, newTag);
+                                                  
+                                                  if (success) {
+                                                    // Fetch updated tags for this company
+                                                    const updatedTags = await fetchCompanyTags(company.company_id);
+                                                    
+                                                    // Update UI
+                                                    const updatedCompanies = [...formData.associatedCompanies];
+                                                    updatedCompanies[index].tags = updatedTags;
+                                                    updatedCompanies[index].newTag = '';
+                                                    updatedCompanies[index].tagSuggestions = [];
+                                                    handleInputChange('associatedCompanies', updatedCompanies);
+                                                  }
+                                                } else if (e.key === 'Escape') {
+                                                  // Clear input and suggestions
+                                                  const updatedCompanies = [...formData.associatedCompanies];
+                                                  updatedCompanies[index].newTag = '';
+                                                  updatedCompanies[index].tagSuggestions = [];
+                                                  handleInputChange('associatedCompanies', updatedCompanies);
+                                                }
+                                              }}
+                                              style={{ 
+                                                flex: 1, 
+                                                fontSize: '12px', 
+                                                padding: '5px 8px',
+                                                height: '30px'
+                                              }}
+                                            />
+                                            <button 
+                                              onClick={async () => {
+                                                if (!company.newTag?.trim()) return;
+                                                
+                                                // Add tag to company
+                                                const newTag = { 
+                                                  tag_id: `temp-${Date.now()}`, 
+                                                  name: company.newTag.trim() 
+                                                };
+                                                
+                                                // Save to database
+                                                const success = await addTagToCompany(company.company_id, newTag);
+                                                
+                                                if (success) {
+                                                  // Fetch updated tags for this company
+                                                  const updatedTags = await fetchCompanyTags(company.company_id);
+                                                  
+                                                  // Update UI
+                                                  const updatedCompanies = [...formData.associatedCompanies];
+                                                  updatedCompanies[index].tags = updatedTags;
+                                                  updatedCompanies[index].newTag = '';
+                                                  updatedCompanies[index].tagSuggestions = [];
+                                                  handleInputChange('associatedCompanies', updatedCompanies);
+                                                }
+                                              }}
+                                              style={{
+                                                background: '#00ff00',
+                                                color: 'black',
+                                                border: 'none',
+                                                borderRadius: '4px',
+                                                padding: '4px 8px',
+                                                fontSize: '11px',
+                                                height: '24px',
+                                                marginTop: '3px'
+                                              }}
+                                            >
+                                              Add
+                                            </button>
+                                          </div>
+                                          
+                                          {/* Tag suggestions dropdown */}
+                                          {company.tagSuggestions && company.tagSuggestions.length > 0 && (
+                                            <div style={{
+                                              position: 'absolute',
+                                              top: '100%',
+                                              left: 0,
+                                              width: '100%',
+                                              zIndex: 10,
+                                              background: '#222',
+                                              boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+                                              border: '1px solid #444',
+                                              borderRadius: '4px',
+                                              maxHeight: '150px',
+                                              overflowY: 'auto'
+                                            }}>
+                                              {company.tagSuggestions.map((suggestion) => (
+                                                <div 
+                                                  key={suggestion.tag_id}
+                                                  onClick={async () => {
+                                                    // Add tag to company
+                                                    const success = await addTagToCompany(company.company_id, suggestion);
+                                                    
+                                                    if (success) {
+                                                      // Fetch updated tags for this company
+                                                      const updatedTags = await fetchCompanyTags(company.company_id);
+                                                      
+                                                      // Update UI
+                                                      const updatedCompanies = [...formData.associatedCompanies];
+                                                      updatedCompanies[index].tags = updatedTags;
+                                                      updatedCompanies[index].newTag = '';
+                                                      updatedCompanies[index].tagSuggestions = [];
+                                                      handleInputChange('associatedCompanies', updatedCompanies);
+                                                    }
+                                                  }}
+                                                  style={{
+                                                    padding: '6px 10px',
+                                                    cursor: 'pointer',
+                                                    borderBottom: '1px solid #444',
+                                                    fontSize: '12px'
+                                                  }}
+                                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#444'}
+                                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                                >
+                                                  {suggestion.name}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
                                       </div>
                                       
                                       <div style={{ 
@@ -6953,7 +7448,94 @@ const handleSelectEmailThread = async (threadId) => {
                   {/* AIRTABLE SECTION */}
                   {activeEnrichmentSection === "airtable" && (
                     <>
+                      <h3 style={{ fontSize: '16px', marginBottom: '15px' }}>Airtable Integration</h3>
                       <FormGroup>
+                        <FormFieldLabel>Search & Link Airtable Contact</FormFieldLabel>
+                        <div style={{ position: 'relative', marginBottom: '15px' }}>
+                          <div style={{ 
+                            display: 'flex',
+                            gap: '8px',
+                            marginBottom: '10px'
+                          }}>
+                            <Input
+                              type="text"
+                              value={airtableSearchInput}
+                              onChange={(e) => {
+                                setAirtableSearchInput(e.target.value);
+                                if (e.target.value.trim().length >= 2) {
+                                  searchAirtableContacts(e.target.value);
+                                } else {
+                                  setAirtableSearchResults([]);
+                                }
+                              }}
+                              placeholder="Search by name, email or phone number..."
+                              style={{ flex: 1 }}
+                            />
+                            <button
+                              onClick={() => searchAirtableContacts(airtableSearchInput)}
+                              disabled={airtableSearchInput.trim().length < 2}
+                              style={{
+                                background: airtableSearchInput.trim().length >= 2 ? '#00ff00' : '#444',
+                                border: 'none',
+                                borderRadius: '4px',
+                                padding: '0 15px',
+                                color: airtableSearchInput.trim().length >= 2 ? 'black' : '#999',
+                                cursor: airtableSearchInput.trim().length >= 2 ? 'pointer' : 'not-allowed'
+                              }}
+                            >
+                              Search
+                            </button>
+                          </div>
+                          
+                          {/* Search results */}
+                          {airtableSearchResults.length > 0 && (
+                            <div style={{ 
+                              position: 'absolute', 
+                              zIndex: 10, 
+                              background: '#333', 
+                              width: '100%', 
+                              maxHeight: '250px', 
+                              overflowY: 'auto',
+                              borderRadius: '4px',
+                              boxShadow: '0 4px 8px rgba(0,0,0,0.3)'
+                            }}>
+                              {airtableSearchResults.map((result) => (
+                                <div 
+                                  key={result.airtable_id}
+                                  onClick={() => associateAirtableContact(result.airtable_id)}
+                                  style={{ 
+                                    padding: '10px 15px',
+                                    borderBottom: '1px solid #444',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '3px'
+                                  }}
+                                  onMouseOver={(e) => e.currentTarget.style.background = '#444'}
+                                  onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                                >
+                                  <div style={{ fontSize: '14px', fontWeight: 'bold' }}>{result.full_name}</div>
+                                  <div style={{ fontSize: '12px', color: '#ccc' }}>
+                                    {result.primary_email && (
+                                      <div style={{ marginBottom: '3px' }}>
+                                        <FiMail size={12} style={{ marginRight: '5px' }} />
+                                        {result.primary_email}
+                                      </div>
+                                    )}
+                                    {result.phone_number_1 && (
+                                      <div>
+                                        <FiPhone size={12} style={{ marginRight: '5px' }} />
+                                        {result.phone_number_1}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Current Airtable association */}
                         <div style={{ 
                           background: '#222', 
                           padding: '15px', 
@@ -6962,17 +7544,112 @@ const handleSelectEmailThread = async (threadId) => {
                         }}>
                           {contact?.airtable_id ? (
                             <>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                                <div style={{ fontSize: '13px', color: '#ccc' }}>Airtable Record ID:</div>
-                                <div style={{ fontSize: '13px', color: '#4a9eff' }}>{contact.airtable_id}</div>
+                              <div style={{ 
+                                display: 'flex', 
+                                justifyContent: 'space-between', 
+                                marginBottom: '15px',
+                                alignItems: 'center'
+                              }}>
+                                <div style={{ fontSize: '16px', fontWeight: 'bold' }}>
+                                  Linked Airtable Contact
+                                </div>
+                                <button
+                                  onClick={disassociateAirtableContact}
+                                  style={{
+                                    background: '#ff4444',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '5px 10px',
+                                    fontSize: '12px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '5px'
+                                  }}
+                                >
+                                  <FiLink2 size={14} /> Unlink
+                                </button>
                               </div>
-                              <div style={{ textAlign: 'center', color: '#999', marginTop: '10px' }}>
-                                Airtable data will be displayed here
-                              </div>
+                              
+                              {airtableContact ? (
+                                <div style={{ 
+                                  background: '#333', 
+                                  padding: '12px', 
+                                  borderRadius: '4px',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '10px'
+                                }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <div style={{ color: '#999' }}>Airtable ID:</div>
+                                    <div style={{ color: '#4a9eff', fontWeight: 'bold' }}>{contact.airtable_id}</div>
+                                  </div>
+                                  
+                                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <div style={{ color: '#999' }}>Name:</div>
+                                    <div>{airtableContact.full_name}</div>
+                                  </div>
+                                  
+                                  {airtableContact.primary_email && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                      <div style={{ color: '#999' }}>Email:</div>
+                                      <div>{airtableContact.primary_email}</div>
+                                    </div>
+                                  )}
+                                  
+                                  {airtableContact.phone_number_1 && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                      <div style={{ color: '#999' }}>Phone 1:</div>
+                                      <div>{airtableContact.phone_number_1}</div>
+                                    </div>
+                                  )}
+                                  
+                                  {airtableContact.phone_number_2 && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                      <div style={{ color: '#999' }}>Phone 2:</div>
+                                      <div>{airtableContact.phone_number_2}</div>
+                                    </div>
+                                  )}
+                                  
+                                  {airtableContact.company && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                      <div style={{ color: '#999' }}>Company:</div>
+                                      <div>{airtableContact.company}</div>
+                                    </div>
+                                  )}
+                                  
+                                  {airtableContact.linkedin && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                      <div style={{ color: '#999' }}>LinkedIn:</div>
+                                      <div>
+                                        <a 
+                                          href={airtableContact.linkedin} 
+                                          target="_blank" 
+                                          rel="noopener noreferrer"
+                                          style={{ color: '#4a9eff' }}
+                                        >
+                                          {airtableContact.linkedin}
+                                        </a>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div style={{ 
+                                  textAlign: 'center', 
+                                  color: '#999', 
+                                  padding: '10px',
+                                  background: '#333',
+                                  borderRadius: '4px' 
+                                }}>
+                                  Loading Airtable data...
+                                </div>
+                              )}
                             </>
                           ) : (
-                            <div style={{ color: '#999', textAlign: 'center', padding: '10px 0' }}>
-                              No Airtable record associated with this contact
+                            <div style={{ color: '#999', textAlign: 'center', padding: '15px 0' }}>
+                              No Airtable record associated with this contact. Use the search above to link one.
                             </div>
                           )}
                         </div>
