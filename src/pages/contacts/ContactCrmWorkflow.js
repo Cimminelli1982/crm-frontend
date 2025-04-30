@@ -5904,7 +5904,15 @@ const handleSelectEmailThread = async (threadId) => {
                   {activeEnrichmentSection === "tags" && (
                     <>
                       <FormGroup style={{ marginBottom: '15px' }}>
-                        <FormFieldLabel>Keep in Touch & Category</FormFieldLabel>
+                        <FormFieldLabel>
+                          Keep in Touch & Category 
+                          {airtableContact && (
+                            <span>
+                              {airtableContact.keep_in_touch && ` - Airtable Keep in Touch: ${airtableContact.keep_in_touch}`}
+                              {airtableContact.category && ` - Airtable Category: ${airtableContact.category}`}
+                            </span>
+                          )}
+                        </FormFieldLabel>
                         <div style={{ 
                           display: 'flex', 
                           gap: '15px',
@@ -5950,7 +5958,10 @@ const handleSelectEmailThread = async (threadId) => {
                       </FormGroup>
                       
                       <FormGroup>
-                        <FormFieldLabel>Cities</FormFieldLabel>
+                        <FormFieldLabel>
+                          Cities
+                          {airtableContact && airtableContact.city && ` - Airtable: ${airtableContact.city}`}
+                        </FormFieldLabel>
                         <div style={{ 
                           background: '#222', 
                           padding: '12px', 
@@ -6071,7 +6082,10 @@ const handleSelectEmailThread = async (threadId) => {
                       </FormGroup>
                       
                       <FormGroup>
-                        <FormFieldLabel>Tags</FormFieldLabel>
+                        <FormFieldLabel>
+                          Tags
+                          {airtableContact && airtableContact.keywords && ` - Airtable Keywords: ${airtableContact.keywords}`}
+                        </FormFieldLabel>
                         <div style={{ 
                           background: '#222', 
                           padding: '12px', 
@@ -6198,7 +6212,10 @@ const handleSelectEmailThread = async (threadId) => {
                   {activeEnrichmentSection === "companies" && (
                     <>
                       <FormGroup>
-                        <FormFieldLabel>LinkedIn Profile</FormFieldLabel>
+                        <FormFieldLabel>
+                          LinkedIn Profile
+                          {airtableContact && airtableContact.linkedin_normalised && ` - Airtable: ${airtableContact.linkedin_normalised}`}
+                        </FormFieldLabel>
                         <div style={{ 
                           background: '#222', 
                           padding: '12px', 
@@ -6309,7 +6326,10 @@ const handleSelectEmailThread = async (threadId) => {
                       </FormGroup>
                       
                       <FormGroup>
-                        <FormFieldLabel>Job Role</FormFieldLabel>
+                        <FormFieldLabel>
+                          Job Role
+                          {airtableContact && airtableContact.job_title && ` - Airtable: ${airtableContact.job_title}`}
+                        </FormFieldLabel>
                         <div style={{ 
                           background: '#222', 
                           padding: '15px', 
@@ -6370,7 +6390,10 @@ const handleSelectEmailThread = async (threadId) => {
                       </FormGroup>
                       
                       <FormGroup>
-                        <FormFieldLabel>Associated Companies</FormFieldLabel>
+                        <FormFieldLabel>
+                          Associated Companies
+                          {airtableContact && airtableContact.company && ` - Airtable Company: ${airtableContact.company}`}
+                        </FormFieldLabel>
                         <div style={{ 
                           background: '#222', 
                           padding: '15px', 
@@ -7290,7 +7313,10 @@ const handleSelectEmailThread = async (threadId) => {
                   {activeEnrichmentSection === "notes" && (
                     <>
                       <FormGroup>
-                        <FormFieldLabel>Rating</FormFieldLabel>
+                        <FormFieldLabel>
+                          Rating
+                          {airtableContact && airtableContact.rating && ` - Airtable Rating: ${airtableContact.rating}`}
+                        </FormFieldLabel>
                         <div style={{ 
                           background: '#222', 
                           padding: '12px', 
@@ -7325,7 +7351,10 @@ const handleSelectEmailThread = async (threadId) => {
                       </FormGroup>
                       
                       <FormGroup>
-                        <FormFieldLabel>Description</FormFieldLabel>
+                        <FormFieldLabel>
+                          Description
+                          {airtableContact && airtableContact.description && ` - Airtable: ${airtableContact.description}`}
+                        </FormFieldLabel>
                         <div style={{ 
                           background: '#222', 
                           padding: '12px', 
@@ -7394,7 +7423,10 @@ const handleSelectEmailThread = async (threadId) => {
                       </FormGroup>
                       
                       <FormGroup>
-                        <FormFieldLabel>Birthday</FormFieldLabel>
+                        <FormFieldLabel>
+                          Birthday
+                          {airtableContact && airtableContact.next_birthday && ` - Airtable Next Birthday: ${airtableContact.next_birthday}`}
+                        </FormFieldLabel>
                         <div style={{ 
                           background: '#222', 
                           padding: '12px', 
