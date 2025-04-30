@@ -5125,11 +5125,245 @@ const handleSelectEmailThread = async (threadId) => {
                         ))}
                     </>
                   )}
+                  
+                  {/* LEGACY CRM Section */}
+                  <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold', marginTop: '10px' }}>
+                    LEGACY CRM
+                  </div>
+                  <div 
+                    onClick={() => setActiveEnrichmentSection("airtable")}
+                    style={{ 
+                      padding: '12px 15px', 
+                      cursor: 'pointer', 
+                      borderBottom: '1px solid #222',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      background: activeEnrichmentSection === "airtable" ? '#222' : 'transparent'
+                    }}
+                  >
+                    <FiDatabase size={16} />
+                    <span>Airtable</span>
+                  </div>
                 </ChannelsMenu>
                 
                 {/* Duplicate details - right side (2/3) */}
-                <InteractionsContainer>
-                  {selectedDuplicate ? (
+                <InteractionsContainer style={{ paddingRight: activeEnrichmentSection === "airtable" ? '20px' : '0' }}>
+                  {activeEnrichmentSection === "airtable" ? (
+                    <div style={{ padding: '20px 0 20px 20px', width: '90%' }}>
+                      <FormGroup>
+                        <h3 style={{ fontSize: '16px', marginBottom: '15px' }}>Airtable Integration</h3>
+                        <FormFieldLabel>Search & Link Airtable Contact</FormFieldLabel>
+                        <div style={{ position: 'relative', marginBottom: '15px' }}>
+                          <div style={{ 
+                            display: 'flex',
+                            gap: '8px',
+                            marginBottom: '10px'
+                          }}>
+                            <Input
+                              type="text"
+                              value={airtableSearchInput}
+                              onChange={(e) => {
+                                setAirtableSearchInput(e.target.value);
+                                if (e.target.value.trim().length >= 2) {
+                                  searchAirtableContacts(e.target.value);
+                                } else {
+                                  setAirtableSearchResults([]);
+                                }
+                              }}
+                              placeholder="Search by name, email or phone number..."
+                              style={{ flex: 1 }}
+                            />
+                            <button
+                              onClick={() => searchAirtableContacts(airtableSearchInput)}
+                              disabled={airtableSearchInput.trim().length < 2}
+                              style={{
+                                background: airtableSearchInput.trim().length >= 2 ? '#00ff00' : '#444',
+                                border: 'none',
+                                borderRadius: '4px',
+                                padding: '0 15px',
+                                color: airtableSearchInput.trim().length >= 2 ? 'black' : '#999',
+                                cursor: airtableSearchInput.trim().length >= 2 ? 'pointer' : 'not-allowed'
+                              }}
+                            >
+                              Search
+                            </button>
+                          </div>
+                          
+                          {/* Search results */}
+                          {airtableSearchResults.length > 0 && (
+                            <div style={{ 
+                              position: 'absolute', 
+                              zIndex: 10, 
+                              background: '#333', 
+                              width: '100%', 
+                              maxHeight: '250px', 
+                              overflowY: 'auto',
+                              borderRadius: '4px',
+                              boxShadow: '0 4px 8px rgba(0,0,0,0.3)'
+                            }}>
+                              {airtableSearchResults.map((result) => (
+                                <div 
+                                  key={result.airtable_id}
+                                  onClick={() => associateAirtableContact(result.airtable_id)}
+                                  style={{ 
+                                    padding: '10px 15px',
+                                    borderBottom: '1px solid #444',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '3px'
+                                  }}
+                                  onMouseOver={(e) => e.currentTarget.style.background = '#444'}
+                                  onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                                >
+                                  <div style={{ fontSize: '14px', fontWeight: 'bold' }}>{result.full_name}</div>
+                                  <div style={{ fontSize: '12px', color: '#ccc' }}>
+                                    {result.primary_email && (
+                                      <div style={{ marginBottom: '3px' }}>
+                                        <FiMail size={12} style={{ marginRight: '5px' }} />
+                                        {result.primary_email}
+                                      </div>
+                                    )}
+                                    {result.phone_number_1 && (
+                                      <div>
+                                        <FiPhone size={12} style={{ marginRight: '5px' }} />
+                                        {result.phone_number_1}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Current Airtable association */}
+                        <div style={{ 
+                          background: '#222', 
+                          padding: '15px', 
+                          borderRadius: '4px',
+                          marginBottom: '15px',
+                          maxWidth: '100%',
+                          boxSizing: 'border-box'
+                        }}>
+                          {contact?.airtable_id ? (
+                            <>
+                              <div style={{ 
+                                display: 'flex', 
+                                justifyContent: 'space-between', 
+                                marginBottom: '15px',
+                                alignItems: 'center'
+                              }}>
+                                <div style={{ fontSize: '16px', fontWeight: 'bold' }}>
+                                  Linked Airtable Contact
+                                </div>
+                                <button
+                                  onClick={disassociateAirtableContact}
+                                  style={{
+                                    background: '#ff4444',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '5px 10px',
+                                    fontSize: '12px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '5px'
+                                  }}
+                                >
+                                  <FiLink2 size={14} /> Unlink
+                                </button>
+                              </div>
+                              
+                              {airtableContact ? (
+                                <div style={{ 
+                                  background: '#333', 
+                                  padding: '12px', 
+                                  borderRadius: '4px',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '10px',
+                                  maxWidth: '100%',
+                                  boxSizing: 'border-box',
+                                  overflow: 'hidden'
+                                }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <div style={{ color: '#999' }}>Airtable ID:</div>
+                                    <div style={{ color: '#4a9eff', fontWeight: 'bold' }}>{contact.airtable_id}</div>
+                                  </div>
+                                  
+                                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <div style={{ color: '#999' }}>Name:</div>
+                                    <div>{airtableContact.full_name}</div>
+                                  </div>
+                                  
+                                  {airtableContact.primary_email && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                      <div style={{ color: '#999' }}>Email:</div>
+                                      <div>{airtableContact.primary_email}</div>
+                                    </div>
+                                  )}
+                                  
+                                  {airtableContact.phone_number_1 && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                      <div style={{ color: '#999' }}>Phone 1:</div>
+                                      <div>{airtableContact.phone_number_1}</div>
+                                    </div>
+                                  )}
+                                  
+                                  {airtableContact.phone_number_2 && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                      <div style={{ color: '#999' }}>Phone 2:</div>
+                                      <div>{airtableContact.phone_number_2}</div>
+                                    </div>
+                                  )}
+                                  
+                                  {airtableContact.company && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                      <div style={{ color: '#999' }}>Company:</div>
+                                      <div>{airtableContact.company}</div>
+                                    </div>
+                                  )}
+                                  
+                                  {airtableContact.linkedin && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                      <div style={{ color: '#999' }}>LinkedIn:</div>
+                                      <div>
+                                        <a 
+                                          href={airtableContact.linkedin} 
+                                          target="_blank" 
+                                          rel="noopener noreferrer"
+                                          style={{ color: '#4a9eff' }}
+                                        >
+                                          {airtableContact.linkedin}
+                                        </a>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div style={{ 
+                                  textAlign: 'center', 
+                                  color: '#999', 
+                                  padding: '10px',
+                                  background: '#333',
+                                  borderRadius: '4px' 
+                                }}>
+                                  Loading Airtable data...
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <div style={{ color: '#999', textAlign: 'center', padding: '15px 0' }}>
+                              No Airtable record associated with this contact. Use the search above to link one.
+                            </div>
+                          )}
+                        </div>
+                      </FormGroup>
+                    </div>
+                  ) : selectedDuplicate ? (
                     <div style={{ padding: '0 20px 20px 20px', height: '100%', overflowY: 'auto' }}>
 
                       <ComparisonTable>
@@ -5533,24 +5767,6 @@ const handleSelectEmailThread = async (threadId) => {
                   <span>Deals</span>
                 </div>
                 
-                <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold', marginTop: '10px' }}>
-                  LEGACY CRM
-                </div>
-                <div 
-                  onClick={() => setActiveEnrichmentSection("airtable")}
-                  style={{ 
-                    padding: '12px 15px', 
-                    cursor: 'pointer', 
-                    borderBottom: '1px solid #222',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    background: activeEnrichmentSection === "airtable" ? '#222' : 'transparent'
-                  }}
-                >
-                  <FiDatabase size={16} />
-                  <span>Airtable</span>
-                </div>
               </ChannelsMenu>
               
               {/* Main content area */}
@@ -7477,217 +7693,6 @@ const handleSelectEmailThread = async (threadId) => {
                     </>
                   )}
                   
-                  {/* AIRTABLE SECTION */}
-                  {activeEnrichmentSection === "airtable" && (
-                    <>
-                      <h3 style={{ fontSize: '16px', marginBottom: '15px' }}>Airtable Integration</h3>
-                      <FormGroup>
-                        <FormFieldLabel>Search & Link Airtable Contact</FormFieldLabel>
-                        <div style={{ position: 'relative', marginBottom: '15px' }}>
-                          <div style={{ 
-                            display: 'flex',
-                            gap: '8px',
-                            marginBottom: '10px'
-                          }}>
-                            <Input
-                              type="text"
-                              value={airtableSearchInput}
-                              onChange={(e) => {
-                                setAirtableSearchInput(e.target.value);
-                                if (e.target.value.trim().length >= 2) {
-                                  searchAirtableContacts(e.target.value);
-                                } else {
-                                  setAirtableSearchResults([]);
-                                }
-                              }}
-                              placeholder="Search by name, email or phone number..."
-                              style={{ flex: 1 }}
-                            />
-                            <button
-                              onClick={() => searchAirtableContacts(airtableSearchInput)}
-                              disabled={airtableSearchInput.trim().length < 2}
-                              style={{
-                                background: airtableSearchInput.trim().length >= 2 ? '#00ff00' : '#444',
-                                border: 'none',
-                                borderRadius: '4px',
-                                padding: '0 15px',
-                                color: airtableSearchInput.trim().length >= 2 ? 'black' : '#999',
-                                cursor: airtableSearchInput.trim().length >= 2 ? 'pointer' : 'not-allowed'
-                              }}
-                            >
-                              Search
-                            </button>
-                          </div>
-                          
-                          {/* Search results */}
-                          {airtableSearchResults.length > 0 && (
-                            <div style={{ 
-                              position: 'absolute', 
-                              zIndex: 10, 
-                              background: '#333', 
-                              width: '100%', 
-                              maxHeight: '250px', 
-                              overflowY: 'auto',
-                              borderRadius: '4px',
-                              boxShadow: '0 4px 8px rgba(0,0,0,0.3)'
-                            }}>
-                              {airtableSearchResults.map((result) => (
-                                <div 
-                                  key={result.airtable_id}
-                                  onClick={() => associateAirtableContact(result.airtable_id)}
-                                  style={{ 
-                                    padding: '10px 15px',
-                                    borderBottom: '1px solid #444',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '3px'
-                                  }}
-                                  onMouseOver={(e) => e.currentTarget.style.background = '#444'}
-                                  onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
-                                >
-                                  <div style={{ fontSize: '14px', fontWeight: 'bold' }}>{result.full_name}</div>
-                                  <div style={{ fontSize: '12px', color: '#ccc' }}>
-                                    {result.primary_email && (
-                                      <div style={{ marginBottom: '3px' }}>
-                                        <FiMail size={12} style={{ marginRight: '5px' }} />
-                                        {result.primary_email}
-                                      </div>
-                                    )}
-                                    {result.phone_number_1 && (
-                                      <div>
-                                        <FiPhone size={12} style={{ marginRight: '5px' }} />
-                                        {result.phone_number_1}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        
-                        {/* Current Airtable association */}
-                        <div style={{ 
-                          background: '#222', 
-                          padding: '15px', 
-                          borderRadius: '4px',
-                          marginBottom: '15px'
-                        }}>
-                          {contact?.airtable_id ? (
-                            <>
-                              <div style={{ 
-                                display: 'flex', 
-                                justifyContent: 'space-between', 
-                                marginBottom: '15px',
-                                alignItems: 'center'
-                              }}>
-                                <div style={{ fontSize: '16px', fontWeight: 'bold' }}>
-                                  Linked Airtable Contact
-                                </div>
-                                <button
-                                  onClick={disassociateAirtableContact}
-                                  style={{
-                                    background: '#ff4444',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    padding: '5px 10px',
-                                    fontSize: '12px',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '5px'
-                                  }}
-                                >
-                                  <FiLink2 size={14} /> Unlink
-                                </button>
-                              </div>
-                              
-                              {airtableContact ? (
-                                <div style={{ 
-                                  background: '#333', 
-                                  padding: '12px', 
-                                  borderRadius: '4px',
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  gap: '10px'
-                                }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <div style={{ color: '#999' }}>Airtable ID:</div>
-                                    <div style={{ color: '#4a9eff', fontWeight: 'bold' }}>{contact.airtable_id}</div>
-                                  </div>
-                                  
-                                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <div style={{ color: '#999' }}>Name:</div>
-                                    <div>{airtableContact.full_name}</div>
-                                  </div>
-                                  
-                                  {airtableContact.primary_email && (
-                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                      <div style={{ color: '#999' }}>Email:</div>
-                                      <div>{airtableContact.primary_email}</div>
-                                    </div>
-                                  )}
-                                  
-                                  {airtableContact.phone_number_1 && (
-                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                      <div style={{ color: '#999' }}>Phone 1:</div>
-                                      <div>{airtableContact.phone_number_1}</div>
-                                    </div>
-                                  )}
-                                  
-                                  {airtableContact.phone_number_2 && (
-                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                      <div style={{ color: '#999' }}>Phone 2:</div>
-                                      <div>{airtableContact.phone_number_2}</div>
-                                    </div>
-                                  )}
-                                  
-                                  {airtableContact.company && (
-                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                      <div style={{ color: '#999' }}>Company:</div>
-                                      <div>{airtableContact.company}</div>
-                                    </div>
-                                  )}
-                                  
-                                  {airtableContact.linkedin && (
-                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                      <div style={{ color: '#999' }}>LinkedIn:</div>
-                                      <div>
-                                        <a 
-                                          href={airtableContact.linkedin} 
-                                          target="_blank" 
-                                          rel="noopener noreferrer"
-                                          style={{ color: '#4a9eff' }}
-                                        >
-                                          {airtableContact.linkedin}
-                                        </a>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              ) : (
-                                <div style={{ 
-                                  textAlign: 'center', 
-                                  color: '#999', 
-                                  padding: '10px',
-                                  background: '#333',
-                                  borderRadius: '4px' 
-                                }}>
-                                  Loading Airtable data...
-                                </div>
-                              )}
-                            </>
-                          ) : (
-                            <div style={{ color: '#999', textAlign: 'center', padding: '15px 0' }}>
-                              No Airtable record associated with this contact. Use the search above to link one.
-                            </div>
-                          )}
-                        </div>
-                      </FormGroup>
-                    </>
-                  )}
                 </div>
                 
                 <ButtonGroup style={{ marginTop: '20px', marginBottom: '20px', width: 'calc(100% - 40px)', padding: '0 0 0 20px', justifyContent: 'space-between' }}>
