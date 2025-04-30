@@ -3707,6 +3707,10 @@ const handleSelectEmailThread = async (threadId) => {
   
   // Handle selecting a duplicate contact
   const handleSelectDuplicate = (duplicate) => {
+    // Clear any active enrichment section when selecting a duplicate
+    if (activeEnrichmentSection === "airtable" || activeEnrichmentSection === "airtable_combining") {
+      setActiveEnrichmentSection(null);
+    }
     setSelectedDuplicate(selectedDuplicate?.contact_id === duplicate.contact_id ? null : duplicate);
   };
   
@@ -5126,12 +5130,15 @@ const handleSelectEmailThread = async (threadId) => {
                     </>
                   )}
                   
-                  {/* LEGACY CRM Section */}
+                  {/* Airtable Section */}
                   <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold', marginTop: '10px' }}>
-                    LEGACY CRM
+                    AIRTABLE
                   </div>
                   <div 
-                    onClick={() => setActiveEnrichmentSection("airtable")}
+                    onClick={() => {
+                      setActiveEnrichmentSection("airtable");
+                      setSelectedDuplicate(null); // Clear selected duplicate
+                    }}
                     style={{ 
                       padding: '12px 15px', 
                       cursor: 'pointer', 
@@ -5143,12 +5150,30 @@ const handleSelectEmailThread = async (threadId) => {
                     }}
                   >
                     <FiDatabase size={16} />
-                    <span>Airtable</span>
+                    <span>Matching</span>
+                  </div>
+                  <div 
+                    onClick={() => {
+                      setActiveEnrichmentSection("airtable_combining");
+                      setSelectedDuplicate(null); // Clear selected duplicate
+                    }}
+                    style={{ 
+                      padding: '12px 15px', 
+                      cursor: 'pointer', 
+                      borderBottom: '1px solid #222',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      background: activeEnrichmentSection === "airtable_combining" ? '#222' : 'transparent'
+                    }}
+                  >
+                    <FiGitMerge size={16} />
+                    <span>Combining</span>
                   </div>
                 </ChannelsMenu>
                 
                 {/* Duplicate details - right side (2/3) */}
-                <InteractionsContainer style={{ paddingRight: activeEnrichmentSection === "airtable" ? '20px' : '0' }}>
+                <InteractionsContainer style={{ paddingRight: activeEnrichmentSection === "airtable" || activeEnrichmentSection === "airtable_combining" ? '20px' : '0' }}>
                   {activeEnrichmentSection === "airtable" ? (
                     <div style={{ padding: '20px 0 20px 20px', width: '90%' }}>
                       <FormGroup>
@@ -5362,6 +5387,21 @@ const handleSelectEmailThread = async (threadId) => {
                           )}
                         </div>
                       </FormGroup>
+                      
+                      {/* Save and Continue Button */}
+                      <ButtonGroup style={{ 
+                        marginTop: '30px', 
+                        marginBottom: '20px', 
+                        width: 'calc(100% - 20px)', 
+                        justifyContent: 'flex-end' 
+                      }}>
+                        <ActionButton 
+                          variant="success" 
+                          onClick={() => setActiveEnrichmentSection("airtable_combining")}
+                        >
+                          <FiCheck /> Save & Continue
+                        </ActionButton>
+                      </ButtonGroup>
                     </div>
                   ) : selectedDuplicate ? (
                     <div style={{ padding: '0 20px 20px 20px', height: '100%', overflowY: 'auto' }}>
