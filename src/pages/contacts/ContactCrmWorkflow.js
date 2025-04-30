@@ -5170,7 +5170,13 @@ const handleSelectEmailThread = async (threadId) => {
                 </div>
                 
                 <div 
-                  onClick={() => setActiveEnrichmentSection("notes")}
+                  onClick={() => {
+                    setActiveEnrichmentSection("notes");
+                    // Initialize editingDescription to true when there's no description
+                    if (!formData.description) {
+                      handleInputChange('editingDescription', true);
+                    }
+                  }}
                   style={{ 
                     padding: '12px 15px', 
                     cursor: 'pointer', 
@@ -6832,7 +6838,7 @@ const handleSelectEmailThread = async (threadId) => {
                           marginBottom: '20px'
                         }}>
                           {/* Description content display with edit toggle */}
-                          {formData.description && !formData.editingDescription ? (
+                          {formData.description && formData.editingDescription === false ? (
                             <>
                               <div 
                                 style={{ 
@@ -6878,7 +6884,7 @@ const handleSelectEmailThread = async (threadId) => {
                                     `${formData.description.length} characters` : 
                                     'No description added'}
                                 </div>
-                                {formData.description && formData.editingDescription && (
+                                {formData.editingDescription && (
                                   <div 
                                     onClick={() => handleInputChange('editingDescription', false)}
                                     style={{ cursor: 'pointer', color: '#00ff00' }}
