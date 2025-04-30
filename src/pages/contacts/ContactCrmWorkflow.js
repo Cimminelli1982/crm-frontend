@@ -1168,6 +1168,14 @@ const ContactCrmWorkflow = () => {
   const [editLastName, setEditLastName] = useState('');
   const [editingCompanyIndex, setEditingCompanyIndex] = useState(null);
   const [editingCompanyData, setEditingCompanyData] = useState(null);
+  const [showNewCompanyModal, setShowNewCompanyModal] = useState(false);
+  const [newCompanyData, setNewCompanyData] = useState({
+    name: '',
+    category: '',
+    website: '',
+    description: '',
+    linkedin: ''
+  });
   const [error, setError] = useState(null);
   
   // Step 1: Interactions confirmation
@@ -6511,8 +6519,8 @@ const handleSelectEmailThread = async (threadId) => {
                               
                               <button
                                 onClick={() => {
-                                  // Create new company functionality will be added later
-                                  toast.info('Create new company functionality coming soon');
+                                  // Toggle new company modal
+                                  setShowNewCompanyModal(true);
                                 }}
                                 style={{
                                   background: '#00ff00',
@@ -7474,6 +7482,233 @@ const handleSelectEmailThread = async (threadId) => {
             </ButtonGroup>
           </>
         )}
+      </Modal>
+
+      {/* New Company Modal */}
+      <Modal
+        isOpen={showNewCompanyModal}
+        onRequestClose={() => {
+          setShowNewCompanyModal(false);
+          setNewCompanyData({
+            name: '',
+            category: '',
+            website: '',
+            description: '',
+            linkedin: ''
+          });
+        }}
+        style={{
+          content: {
+            top: '50%',
+            left: '50%',
+            right: 'auto',
+            bottom: 'auto',
+            marginRight: '-50%',
+            transform: 'translate(-50%, -50%)',
+            padding: '25px',
+            maxWidth: '500px',
+            width: '90%',
+            backgroundColor: '#121212',
+            border: '1px solid #333',
+            borderRadius: '8px',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.6)',
+            color: '#e0e0e0',
+            zIndex: 1001
+          },
+          overlay: {
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            zIndex: 1000
+          }
+        }}
+      >
+        <ModalHeader>
+          <h2>Add New Company</h2>
+          <CloseButton 
+            onClick={() => {
+              setShowNewCompanyModal(false);
+              setNewCompanyData({
+                name: '',
+                category: '',
+                website: '',
+                description: '',
+                linkedin: ''
+              });
+            }}
+          >
+            <FiX />
+          </CloseButton>
+        </ModalHeader>
+
+        <div style={{ marginBottom: '20px' }}>
+          <FormGroup>
+            <FormFieldLabel>Company Name*</FormFieldLabel>
+            <Input 
+              type="text"
+              value={newCompanyData.name}
+              onChange={(e) => setNewCompanyData({...newCompanyData, name: e.target.value})}
+              placeholder="Enter company name"
+              style={{ width: '100%' }}
+            />
+          </FormGroup>
+
+          <FormGroup>
+            <FormFieldLabel>Category*</FormFieldLabel>
+            <Select
+              value={newCompanyData.category}
+              onChange={(e) => setNewCompanyData({...newCompanyData, category: e.target.value})}
+              style={{ 
+                width: '100%',
+                padding: '10px',
+                backgroundColor: '#222',
+                borderColor: '#444',
+                color: '#eee'
+              }}
+            >
+              <option value="">Select a category</option>
+              <option value="Advisory">Advisory</option>
+              <option value="Corporation">Corporation</option>
+              <option value="Institution">Institution</option>
+              <option value="Media">Media</option>
+              <option value="Professional Investor">Professional Investor</option>
+              <option value="Skip">Skip</option>
+              <option value="SME">SME</option>
+              <option value="Startup">Startup</option>
+            </Select>
+          </FormGroup>
+
+          <FormGroup>
+            <FormFieldLabel>Website</FormFieldLabel>
+            <Input 
+              type="text"
+              value={newCompanyData.website}
+              onChange={(e) => setNewCompanyData({...newCompanyData, website: e.target.value})}
+              placeholder="Enter company website"
+              style={{ width: '100%' }}
+            />
+          </FormGroup>
+
+          <FormGroup>
+            <FormFieldLabel>LinkedIn</FormFieldLabel>
+            <Input 
+              type="text"
+              value={newCompanyData.linkedin}
+              onChange={(e) => setNewCompanyData({...newCompanyData, linkedin: e.target.value})}
+              placeholder="Enter company LinkedIn URL"
+              style={{ width: '100%' }}
+            />
+          </FormGroup>
+
+          <FormGroup>
+            <FormFieldLabel>Description</FormFieldLabel>
+            <TextArea 
+              value={newCompanyData.description}
+              onChange={(e) => setNewCompanyData({...newCompanyData, description: e.target.value})}
+              placeholder="Enter company description"
+              style={{ width: '100%', minHeight: '100px' }}
+            />
+          </FormGroup>
+        </div>
+
+        <ButtonGroup style={{ justifyContent: 'flex-end', marginTop: '20px' }}>
+          <ActionButton 
+            variant="secondary" 
+            onClick={() => {
+              setShowNewCompanyModal(false);
+              setNewCompanyData({
+                name: '',
+                category: '',
+                website: '',
+                description: '',
+                linkedin: ''
+              });
+            }}
+            style={{ marginRight: '10px' }}
+          >
+            Cancel
+          </ActionButton>
+          <ActionButton 
+            variant="success" 
+            onClick={async () => {
+              // Validate
+              if (!newCompanyData.name) {
+                toast.error('Company name is required');
+                return;
+              }
+              if (!newCompanyData.category) {
+                toast.error('Category is required');
+                return;
+              }
+              
+              try {
+                setLoading(true);
+                
+                // Create the new company
+                const { data: newCompany, error } = await supabase
+                  .from('companies')
+                  .insert({
+                    name: newCompanyData.name,
+                    category: newCompanyData.category,
+                    website: newCompanyData.website || null,
+                    linkedin: newCompanyData.linkedin || null,
+                    description: newCompanyData.description || null
+                  })
+                  .select('*')
+                  .single();
+                
+                if (error) throw error;
+                
+                // Associate the new company with the contact
+                const { error: associationError } = await supabase
+                  .from('contact_companies')
+                  .insert({
+                    contact_id: contactId,
+                    company_id: newCompany.company_id,
+                    relationship: 'not_set',
+                    is_primary: formData.associatedCompanies?.length === 0
+                  });
+                
+                if (associationError) throw associationError;
+                
+                // Update the local state
+                const newCompanyAssociation = {
+                  company_id: newCompany.company_id,
+                  name: newCompany.name,
+                  website: newCompany.website,
+                  category: newCompany.category,
+                  description: newCompany.description,
+                  linkedin: newCompany.linkedin,
+                  relationship: 'not_set',
+                  is_primary: formData.associatedCompanies?.length === 0
+                };
+                
+                handleInputChange('associatedCompanies', [
+                  ...(formData.associatedCompanies || []), 
+                  newCompanyAssociation
+                ]);
+                
+                // Reset and close modal
+                setNewCompanyData({
+                  name: '',
+                  category: '',
+                  website: '',
+                  description: '',
+                  linkedin: ''
+                });
+                setShowNewCompanyModal(false);
+                
+                toast.success(`Company ${newCompany.name} created and added`);
+                setLoading(false);
+              } catch (err) {
+                console.error('Error creating company:', err);
+                toast.error('Failed to create company');
+                setLoading(false);
+              }
+            }}
+            disabled={loading}
+          >
+            {loading ? 'Creating...' : 'Create Company'}
+          </ActionButton>
+        </ButtonGroup>
       </Modal>
     </Container>
   );
