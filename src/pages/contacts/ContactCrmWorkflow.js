@@ -12,6 +12,7 @@ import {
   FiArrowRight,
   FiArrowLeft, 
   FiAlertTriangle, 
+  FiAlertCircle,
   FiMessageSquare, 
   FiMail, 
   FiPhone, 
@@ -253,6 +254,7 @@ const ChannelItem = styled.div`
     font-size: 0.7rem;
     margin-left: auto;
   }
+  
   
   &:hover {
     background-color: #1e1e1e;
@@ -1193,6 +1195,7 @@ const ContactCrmWorkflow = () => {
   // Step 2: Duplicate check
   const [duplicates, setDuplicates] = useState([]);
   const [selectedDuplicate, setSelectedDuplicate] = useState(null);
+  const [deletingContact, setDeletingContact] = useState(false);
   const [mergeSelections, setMergeSelections] = useState({
     first_name: 'current',
     last_name: 'current',
@@ -3714,6 +3717,63 @@ const handleSelectEmailThread = async (threadId) => {
     setSelectedDuplicate(selectedDuplicate?.contact_id === duplicate.contact_id ? null : duplicate);
   };
   
+  // Handle deleting a duplicate contact
+  const handleDeleteDuplicate = async (duplicateId, event) => {
+    event.stopPropagation(); // Prevent triggering the parent click event
+    
+    if (!duplicateId) return;
+    
+    setDeletingContact(true);
+    try {
+      // Show a confirmation dialog using toast
+      if (!window.confirm(`Are you sure you want to completely delete this contact? This action cannot be undone.`)) {
+        setDeletingContact(false);
+        return;
+      }
+      
+      // Delete all related records in junction tables first
+      const junctionTables = [
+        'contact_emails', 
+        'contact_mobiles', 
+        'contact_tags', 
+        'contact_cities',
+        'contact_companies',
+        'notes_contacts'
+      ];
+      
+      // Delete from all junction tables first
+      for (const table of junctionTables) {
+        await supabase
+          .from(table)
+          .delete()
+          .eq('contact_id', duplicateId);
+      }
+      
+      // Delete the actual contact
+      const { error } = await supabase
+        .from('contacts')
+        .delete()
+        .eq('contact_id', duplicateId);
+      
+      if (error) throw error;
+      
+      // Remove the contact from the duplicates list
+      setDuplicates(prev => prev.filter(d => d.contact_id !== duplicateId));
+      
+      // If the deleted contact was selected, clear the selection
+      if (selectedDuplicate?.contact_id === duplicateId) {
+        setSelectedDuplicate(null);
+      }
+      
+      toast.success('Contact deleted successfully');
+    } catch (err) {
+      console.error('Error deleting contact:', err);
+      toast.error(`Failed to delete contact: ${err.message || 'Unknown error'}`);
+    } finally {
+      setDeletingContact(false);
+    }
+  };
+  
   // Handle merge selection changes
   const handleMergeSelectionChange = (field, value) => {
     setMergeSelections(prev => ({
@@ -5029,108 +5089,115 @@ const handleSelectEmailThread = async (threadId) => {
               <LoadingContainer style={{ minHeight: '200px' }}>
                 Searching for duplicates...
               </LoadingContainer>
-            ) : duplicates.length === 0 ? (
-              <NoDataMessage>
-                No potential duplicates found for this contact
-              </NoDataMessage>
             ) : (
               <InteractionsLayout>
                 {/* Duplicates menu - left side (1/3) */}
                 <ChannelsMenu>
-                  {/* Group by match type */}
-                  {/* Matches by Name */}
-                  {duplicates.some(d => d.matched_on && d.matched_on.includes('Name')) && (
+                  {/* Group by match type - Only show when duplicates exist */}
+                  {duplicates.length > 0 && (
                     <>
-                      <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold' }}>
-                        MATCHES BY NAME
-                      </div>
-                      {duplicates
-                        .filter(d => d.matched_on && d.matched_on.includes('Name'))
-                        .map(duplicate => (
-                          <ChannelItem 
-                            key={duplicate.contact_id}
-                            active={selectedDuplicate?.contact_id === duplicate.contact_id}
-                            onClick={() => handleSelectDuplicate(duplicate)}
-                          >
-                            <FiUser size={16} />
-                            <span className="channel-name">
-                              {duplicate.first_name} {duplicate.last_name}
-                            </span>
-                          </ChannelItem>
-                        ))}
+                      {/* Matches by Name */}
+                      {duplicates.some(d => d.matched_on && d.matched_on.includes('Name')) && (
+                        <>
+                          <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold' }}>
+                            MATCHES BY NAME
+                          </div>
+                          {duplicates
+                            .filter(d => d.matched_on && d.matched_on.includes('Name'))
+                            .map(duplicate => (
+                              <ChannelItem 
+                                key={duplicate.contact_id}
+                                active={selectedDuplicate?.contact_id === duplicate.contact_id}
+                                onClick={() => handleSelectDuplicate(duplicate)}
+                              >
+                                <FiUser size={16} />
+                                <span className="channel-name">
+                                  {duplicate.first_name} {duplicate.last_name}
+                                </span>
+                              </ChannelItem>
+                            ))}
+                        </>
+                      )}
+                      
+                      {/* Matches by Email */}
+                      {duplicates.some(d => d.matched_on && d.matched_on.includes('Email')) && (
+                        <>
+                          <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold' }}>
+                            MATCHES BY EMAIL
+                          </div>
+                          {duplicates
+                            .filter(d => d.matched_on && d.matched_on.includes('Email'))
+                            .map(duplicate => (
+                              <ChannelItem 
+                                key={duplicate.contact_id}
+                                active={selectedDuplicate?.contact_id === duplicate.contact_id}
+                                onClick={() => handleSelectDuplicate(duplicate)}
+                              >
+                                <FiUser size={16} />
+                                <span className="channel-name">
+                                  {duplicate.first_name} {duplicate.last_name}
+                                </span>
+                              </ChannelItem>
+                            ))}
+                        </>
+                      )}
+                      
+                      {/* Matches by Mobile */}
+                      {duplicates.some(d => d.matched_on && d.matched_on.includes('Mobile')) && (
+                        <>
+                          <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold' }}>
+                            MATCHES BY MOBILE
+                          </div>
+                          {duplicates
+                            .filter(d => d.matched_on && d.matched_on.includes('Mobile'))
+                            .map(duplicate => (
+                              <ChannelItem 
+                                key={duplicate.contact_id}
+                                active={selectedDuplicate?.contact_id === duplicate.contact_id}
+                                onClick={() => handleSelectDuplicate(duplicate)}
+                              >
+                                <FiUser size={16} />
+                                <span className="channel-name">
+                                  {duplicate.first_name} {duplicate.last_name}
+                                </span>
+                              </ChannelItem>
+                            ))}
+                        </>
+                      )}
+                      
+                      {/* Fallback for duplicates without a specified match type */}
+                      {duplicates.some(d => !d.matched_on) && (
+                        <>
+                          <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold' }}>
+                            OTHER MATCHES
+                          </div>
+                          {duplicates
+                            .filter(d => !d.matched_on)
+                            .map(duplicate => (
+                              <ChannelItem 
+                                key={duplicate.contact_id}
+                                active={selectedDuplicate?.contact_id === duplicate.contact_id}
+                                onClick={() => handleSelectDuplicate(duplicate)}
+                              >
+                                <FiUser size={16} />
+                                <span className="channel-name">
+                                  {duplicate.first_name} {duplicate.last_name}
+                                </span>
+                              </ChannelItem>
+                            ))}
+                        </>
+                      )}
                     </>
                   )}
                   
-                  {/* Matches by Email */}
-                  {duplicates.some(d => d.matched_on && d.matched_on.includes('Email')) && (
-                    <>
-                      <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold' }}>
-                        MATCHES BY EMAIL
-                      </div>
-                      {duplicates
-                        .filter(d => d.matched_on && d.matched_on.includes('Email'))
-                        .map(duplicate => (
-                          <ChannelItem 
-                            key={duplicate.contact_id}
-                            active={selectedDuplicate?.contact_id === duplicate.contact_id}
-                            onClick={() => handleSelectDuplicate(duplicate)}
-                          >
-                            <FiUser size={16} />
-                            <span className="channel-name">
-                              {duplicate.first_name} {duplicate.last_name}
-                            </span>
-                          </ChannelItem>
-                        ))}
-                    </>
+                  {/* Show message when no duplicates found */}
+                  {duplicates.length === 0 && (
+                    <div style={{ padding: '15px', color: '#999', fontSize: '0.9rem', borderBottom: '1px solid #333' }}>
+                      No potential duplicates found
+                    </div>
                   )}
                   
-                  {/* Matches by Mobile */}
-                  {duplicates.some(d => d.matched_on && d.matched_on.includes('Mobile')) && (
-                    <>
-                      <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold' }}>
-                        MATCHES BY MOBILE
-                      </div>
-                      {duplicates
-                        .filter(d => d.matched_on && d.matched_on.includes('Mobile'))
-                        .map(duplicate => (
-                          <ChannelItem 
-                            key={duplicate.contact_id}
-                            active={selectedDuplicate?.contact_id === duplicate.contact_id}
-                            onClick={() => handleSelectDuplicate(duplicate)}
-                          >
-                            <FiUser size={16} />
-                            <span className="channel-name">
-                              {duplicate.first_name} {duplicate.last_name}
-                            </span>
-                          </ChannelItem>
-                        ))}
-                    </>
-                  )}
-                  
-                  {/* Fallback for duplicates without a specified match type */}
-                  {duplicates.some(d => !d.matched_on) && (
-                    <>
-                      <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold' }}>
-                        OTHER MATCHES
-                      </div>
-                      {duplicates
-                        .filter(d => !d.matched_on)
-                        .map(duplicate => (
-                          <ChannelItem 
-                            key={duplicate.contact_id}
-                            active={selectedDuplicate?.contact_id === duplicate.contact_id}
-                            onClick={() => handleSelectDuplicate(duplicate)}
-                          >
-                            <FiUser size={16} />
-                            <span className="channel-name">
-                              {duplicate.first_name} {duplicate.last_name}
-                            </span>
-                          </ChannelItem>
-                        ))}
-                    </>
-                  )}
-                  
-                  {/* Airtable Section */}
+                  {/* Airtable Section - Always show regardless of duplicates */}
                   <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold', marginTop: '10px' }}>
                     AIRTABLE
                   </div>
@@ -5196,7 +5263,13 @@ const handleSelectEmailThread = async (threadId) => {
                                   setAirtableSearchResults([]);
                                 }
                               }}
-                              placeholder="Search by name, email or phone number..."
+                              onKeyDown={(e) => {
+                                if (e.key === 'Escape') {
+                                  setAirtableSearchInput('');
+                                  setAirtableSearchResults([]);
+                                }
+                              }}
+                              placeholder="Search by name, email or phone number... (ESC to clear)"
                               style={{ flex: 1 }}
                             />
                             <button
@@ -5402,6 +5475,1053 @@ const handleSelectEmailThread = async (threadId) => {
                           <FiCheck /> Save & Continue
                         </ActionButton>
                       </ButtonGroup>
+                    </div>
+                  ) : activeEnrichmentSection === "airtable_combining" ? (
+                    <div style={{ padding: '0', width: '95%' }}>
+                      {!contact?.airtable_id || !airtableContact ? (
+                        <div style={{ 
+                          color: '#999', 
+                          textAlign: 'center', 
+                          padding: '20px',
+                          background: '#222',
+                          borderRadius: '4px',
+                          marginBottom: '20px' 
+                        }}>
+                          <FiAlertCircle size={24} style={{ marginBottom: '10px' }} />
+                          <div>{!contact?.airtable_id ? 
+                            'No Airtable record linked to this contact. Please go to the Matching tab first to link an Airtable contact.' : 
+                            'Loading Airtable data...'}
+                          </div>
+                        </div>
+                      ) : (
+                        <FormGroup style={{ width: '100%', padding: 0, margin: 0 }}>
+                          <div style={{ width: '100%' }}>
+                          <table style={{ 
+                            width: '100%', 
+                            borderCollapse: 'collapse',
+                            overflow: 'hidden',
+                            marginTop: 0
+                          }}>
+                            <thead>
+                                <tr style={{ background: '#333' }}>
+                                  <th style={{ padding: '10px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '15%' }}>
+                                    Field Name
+                                  </th>
+                                  <th style={{ padding: '10px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '28%' }}>
+                                    Supabase Now
+                                  </th>
+                                  <th style={{ padding: '10px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '25%' }}>
+                                    Airtable
+                                  </th>
+                                  <th style={{ padding: '10px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '32%' }}>
+                                    Supabase Final
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {/* First Name Row */}
+                                <tr style={{ borderBottom: '1px solid #333' }}>
+                                  <td style={{ padding: '12px 15px', color: '#999' }}>Name</td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    {contact.isEditingFirstName ? (
+                                      <Input 
+                                        type="text"
+                                        value={contact.first_name || ''}
+                                        onChange={(e) => {
+                                          // Update the contact display value
+                                          const updatedContact = {...contact, first_name: e.target.value};
+                                          setContact(updatedContact);
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            // Confirm edit on Enter
+                                            const updatedContact = {...contact, isEditingFirstName: false};
+                                            setContact(updatedContact);
+                                          }
+                                        }}
+                                        onBlur={() => {
+                                          // Confirm edit on blur
+                                          const updatedContact = {...contact, isEditingFirstName: false};
+                                          setContact(updatedContact);
+                                        }}
+                                        autoFocus
+                                        style={{ 
+                                          width: '100%',
+                                          background: 'transparent',
+                                          border: 'none',
+                                          padding: '8px 12px',
+                                          color: '#fff'
+                                        }}
+                                      />
+                                    ) : (
+                                      <div 
+                                        onClick={(e) => {
+                                          // If they click the arrow, set the value in Supabase Final
+                                          if (e.target.tagName === 'SPAN' && e.target.dataset.action === 'transfer') {
+                                            handleInputChange('firstName', contact.first_name || '');
+                                          } else {
+                                            // Otherwise, start editing
+                                            const updatedContact = {...contact, isEditingFirstName: true};
+                                            setContact(updatedContact);
+                                          }
+                                        }}
+                                        style={{ 
+                                          cursor: 'pointer',
+                                          padding: '8px 12px',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'space-between'
+                                        }}
+                                      >
+                                        <span>{contact.first_name || '-'}</span>
+                                        <span 
+                                          data-action="transfer"
+                                          style={{ 
+                                            color: '#00ff00', 
+                                            fontSize: '12px', 
+                                            marginLeft: '10px',
+                                            cursor: 'pointer'
+                                          }}
+                                          title="Transfer to Supabase Final"
+                                        >
+                                          → 
+                                        </span>
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div 
+                                      onClick={() => {
+                                        if (airtableContact && airtableContact.full_name) {
+                                          const nameParts = airtableContact.full_name.split(' ');
+                                          const firstName = nameParts[0] || '';
+                                          // Update formData with the Airtable first name
+                                          handleInputChange('firstName', firstName);
+                                        }
+                                      }}
+                                      style={{ 
+                                        cursor: 'pointer',
+                                        padding: '8px 12px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between'
+                                      }}
+                                    >
+                                      <span>
+                                        {airtableContact && airtableContact.full_name ? 
+                                          airtableContact.full_name.split(' ')[0] || '-' : 
+                                          '-'}
+                                      </span>
+                                      <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '10px' }}>
+                                        → 
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    {formData.isEditingFirstName ? (
+                                      <Input 
+                                        type="text"
+                                        value={formData.firstName !== undefined ? formData.firstName : (contact.first_name || '')}
+                                        onChange={(e) => handleInputChange('firstName', e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            // Confirm edit on Enter
+                                            const updatedFormData = {...formData, isEditingFirstName: false};
+                                            setFormData(updatedFormData);
+                                          }
+                                        }}
+                                        onBlur={() => {
+                                          // Confirm edit on blur
+                                          const updatedFormData = {...formData, isEditingFirstName: false};
+                                          setFormData(updatedFormData);
+                                        }}
+                                        autoFocus
+                                        style={{ 
+                                          width: '100%',
+                                          background: 'transparent',
+                                          border: 'none',
+                                          padding: '8px 12px',
+                                          color: '#fff'
+                                        }}
+                                      />
+                                    ) : (
+                                      <div 
+                                        onClick={() => {
+                                          const updatedFormData = {...formData, isEditingFirstName: true};
+                                          setFormData(updatedFormData);
+                                        }}
+                                        style={{ 
+                                          cursor: 'pointer',
+                                          padding: '8px 12px',
+                                          display: 'flex',
+                                          justifyContent: 'space-between',
+                                          alignItems: 'center'
+                                        }}
+                                      >
+                                        <span>{formData.firstName !== undefined ? formData.firstName : (contact.first_name || '-')}</span>
+                                        {formData.firstName === undefined && (
+                                          <span style={{ fontSize: '0.7rem', color: '#999', fontStyle: 'italic', marginLeft: 'auto' }}>
+                                            Same as Supabase Now
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+                                
+                                {/* Last Name Row */}
+                                <tr style={{ borderBottom: '1px solid #333' }}>
+                                  <td style={{ padding: '12px 15px', color: '#999' }}>Surname</td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    {contact.isEditingLastName ? (
+                                      <Input 
+                                        type="text"
+                                        value={contact.last_name || ''}
+                                        onChange={(e) => {
+                                          // Update the contact display value
+                                          const updatedContact = {...contact, last_name: e.target.value};
+                                          setContact(updatedContact);
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            // Confirm edit on Enter
+                                            const updatedContact = {...contact, isEditingLastName: false};
+                                            setContact(updatedContact);
+                                          }
+                                        }}
+                                        onBlur={() => {
+                                          // Confirm edit on blur
+                                          const updatedContact = {...contact, isEditingLastName: false};
+                                          setContact(updatedContact);
+                                        }}
+                                        autoFocus
+                                        style={{ 
+                                          width: '100%',
+                                          background: 'transparent',
+                                          border: 'none',
+                                          padding: '8px 12px',
+                                          color: '#fff'
+                                        }}
+                                      />
+                                    ) : (
+                                      <div 
+                                        onClick={(e) => {
+                                          // If they click the arrow, set the value in Supabase Final
+                                          if (e.target.tagName === 'SPAN' && e.target.dataset.action === 'transfer') {
+                                            handleInputChange('lastName', contact.last_name || '');
+                                          } else {
+                                            // Otherwise, start editing
+                                            const updatedContact = {...contact, isEditingLastName: true};
+                                            setContact(updatedContact);
+                                          }
+                                        }}
+                                        style={{ 
+                                          cursor: 'pointer',
+                                          padding: '8px 12px',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'space-between'
+                                        }}
+                                      >
+                                        <span>{contact.last_name || '-'}</span>
+                                        <span 
+                                          data-action="transfer"
+                                          style={{ 
+                                            color: '#00ff00', 
+                                            fontSize: '12px', 
+                                            marginLeft: '10px',
+                                            cursor: 'pointer'
+                                          }}
+                                          title="Transfer to Supabase Final"
+                                        >
+                                          → 
+                                        </span>
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div 
+                                      onClick={() => {
+                                        if (airtableContact && airtableContact.full_name) {
+                                          const nameParts = airtableContact.full_name.split(' ');
+                                          const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+                                          // Update formData with the Airtable last name
+                                          handleInputChange('lastName', lastName);
+                                        }
+                                      }}
+                                      style={{ 
+                                        cursor: 'pointer',
+                                        padding: '8px 12px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between'
+                                      }}
+                                    >
+                                      <span>
+                                        {airtableContact && airtableContact.full_name && airtableContact.full_name.split(' ').length > 1 ? 
+                                          airtableContact.full_name.split(' ').slice(1).join(' ') || '-' : 
+                                          '-'}
+                                      </span>
+                                      <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '10px' }}>
+                                        → 
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    {formData.isEditingLastName ? (
+                                      <Input 
+                                        type="text"
+                                        value={formData.lastName !== undefined ? formData.lastName : (contact.last_name || '')}
+                                        onChange={(e) => handleInputChange('lastName', e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            // Confirm edit on Enter
+                                            const updatedFormData = {...formData, isEditingLastName: false};
+                                            setFormData(updatedFormData);
+                                          }
+                                        }}
+                                        onBlur={() => {
+                                          // Confirm edit on blur
+                                          const updatedFormData = {...formData, isEditingLastName: false};
+                                          setFormData(updatedFormData);
+                                        }}
+                                        autoFocus
+                                        style={{ 
+                                          width: '100%',
+                                          background: 'transparent',
+                                          border: 'none',
+                                          padding: '8px 12px',
+                                          color: '#fff'
+                                        }}
+                                      />
+                                    ) : (
+                                      <div 
+                                        onClick={() => {
+                                          const updatedFormData = {...formData, isEditingLastName: true};
+                                          setFormData(updatedFormData);
+                                        }}
+                                        style={{ 
+                                          cursor: 'pointer',
+                                          padding: '8px 12px',
+                                          display: 'flex',
+                                          justifyContent: 'space-between',
+                                          alignItems: 'center'
+                                        }}
+                                      >
+                                        <span>{formData.lastName !== undefined ? formData.lastName : (contact.last_name || '-')}</span>
+                                        {formData.lastName === undefined && (
+                                          <span style={{ fontSize: '0.7rem', color: '#999', fontStyle: 'italic', marginLeft: 'auto' }}>
+                                            Same as Supabase Now
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+
+                                {/* Email Addresses Row */}
+                                <tr style={{ borderBottom: '1px solid #333' }}>
+                                  <td style={{ padding: '12px 15px', color: '#999' }}>
+                                    <a 
+                                      href={`https://mail.superhuman.com/search/${contact.first_name || ''}%20${contact.last_name || ''}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      style={{ color: '#999', textDecoration: 'none', display: 'flex', alignItems: 'center' }}
+                                    >
+                                      <span>Email</span>
+                                      <span style={{ marginLeft: '5px', fontSize: '10px' }}>↗</span>
+                                    </a>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
+                                      {contact.email || '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div 
+                                      onClick={() => {
+                                        if (airtableContact && airtableContact.primary_email) {
+                                          handleInputChange('primaryEmail', airtableContact.primary_email);
+                                        }
+                                      }}
+                                      style={{ 
+                                        cursor: airtableContact?.primary_email ? 'pointer' : 'default',
+                                        padding: '8px 12px',
+                                        background: '#2a2a2a',
+                                        borderRadius: '4px',
+                                        borderLeft: airtableContact?.primary_email ? '3px solid #00ff00' : '3px solid transparent'
+                                      }}
+                                    >
+                                      {airtableContact?.primary_email || '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
+                                      {formData.primaryEmail || contact.email || '-'}
+                                    </div>
+                                  </td>
+                                </tr>
+
+                                {/* Mobile Numbers Row */}
+                                <tr style={{ borderBottom: '1px solid #333' }}>
+                                  <td style={{ padding: '12px 15px', color: '#999' }}>
+                                    <a 
+                                      href={`https://app.timelines.ai/?q=${contact.last_name || ''}%20${contact.first_name || ''}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      style={{ color: '#999', textDecoration: 'none', display: 'flex', alignItems: 'center' }}
+                                    >
+                                      <span>Mobiles</span>
+                                      <span style={{ marginLeft: '5px', fontSize: '10px' }}>↗</span>
+                                    </a>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
+                                      {contact.mobile || '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div 
+                                      onClick={() => {
+                                        if (airtableContact && airtableContact.phone_number_1) {
+                                          handleInputChange('primaryPhone', airtableContact.phone_number_1);
+                                        }
+                                      }}
+                                      style={{ 
+                                        cursor: airtableContact?.phone_number_1 ? 'pointer' : 'default',
+                                        padding: '8px 12px',
+                                        background: '#2a2a2a',
+                                        borderRadius: '4px',
+                                        borderLeft: airtableContact?.phone_number_1 ? '3px solid #00ff00' : '3px solid transparent'
+                                      }}
+                                    >
+                                      {airtableContact?.phone_number_1 || '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
+                                      {formData.primaryPhone || contact.mobile || '-'}
+                                    </div>
+                                  </td>
+                                </tr>
+
+                                {/* Keep in Touch Row */}
+                                <tr style={{ borderBottom: '1px solid #333' }}>
+                                  <td style={{ padding: '12px 15px', color: '#999' }}>Keep in Touch</td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
+                                      {contact.keep_in_touch_frequency || '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div 
+                                      onClick={() => {
+                                        if (airtableContact && airtableContact.keep_in_touch) {
+                                          handleInputChange('keepInTouch', airtableContact.keep_in_touch);
+                                        }
+                                      }}
+                                      style={{ 
+                                        cursor: airtableContact?.keep_in_touch ? 'pointer' : 'default',
+                                        padding: '8px 12px',
+                                        background: '#2a2a2a',
+                                        borderRadius: '4px',
+                                        borderLeft: airtableContact?.keep_in_touch ? '3px solid #00ff00' : '3px solid transparent'
+                                      }}
+                                    >
+                                      {airtableContact?.keep_in_touch || '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
+                                      {formData.keepInTouch || contact.keep_in_touch_frequency || '-'}
+                                    </div>
+                                  </td>
+                                </tr>
+
+                                {/* Category Row */}
+                                <tr style={{ borderBottom: '1px solid #333' }}>
+                                  <td style={{ padding: '12px 15px', color: '#999' }}>Category</td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
+                                      {contact.category || '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div 
+                                      onClick={() => {
+                                        if (airtableContact && airtableContact.category) {
+                                          handleInputChange('category', airtableContact.category);
+                                        }
+                                      }}
+                                      style={{ 
+                                        cursor: airtableContact?.category ? 'pointer' : 'default',
+                                        padding: '8px 12px',
+                                        background: '#2a2a2a',
+                                        borderRadius: '4px',
+                                        borderLeft: airtableContact?.category ? '3px solid #00ff00' : '3px solid transparent'
+                                      }}
+                                    >
+                                      {airtableContact?.category || '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
+                                      {formData.category || contact.category || '-'}
+                                    </div>
+                                  </td>
+                                </tr>
+
+                                {/* LinkedIn Profile Row */}
+                                <tr style={{ borderBottom: '1px solid #333' }}>
+                                  <td style={{ padding: '12px 15px', color: '#999' }}>LinkedIn</td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
+                                      {contact.linkedin || '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div 
+                                      onClick={() => {
+                                        if (airtableContact && airtableContact.linkedin) {
+                                          handleInputChange('linkedin', airtableContact.linkedin);
+                                        }
+                                      }}
+                                      style={{ 
+                                        cursor: airtableContact?.linkedin ? 'pointer' : 'default',
+                                        padding: '8px 12px',
+                                        background: '#2a2a2a',
+                                        borderRadius: '4px',
+                                        borderLeft: airtableContact?.linkedin ? '3px solid #00ff00' : '3px solid transparent'
+                                      }}
+                                    >
+                                      {airtableContact?.linkedin || '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
+                                      {formData.linkedin || contact.linkedin || '-'}
+                                    </div>
+                                  </td>
+                                </tr>
+
+                                {/* Job Role Row */}
+                                <tr style={{ borderBottom: '1px solid #333' }}>
+                                  <td style={{ padding: '12px 15px', color: '#999' }}>Job Role</td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    {contact.isEditingJobRole ? (
+                                      <Input 
+                                        type="text"
+                                        value={contact.job_role || ''}
+                                        onChange={(e) => {
+                                          // Update the contact display value
+                                          const updatedContact = {...contact, job_role: e.target.value};
+                                          setContact(updatedContact);
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            // Confirm edit on Enter
+                                            const updatedContact = {...contact, isEditingJobRole: false};
+                                            setContact(updatedContact);
+                                          }
+                                        }}
+                                        onBlur={() => {
+                                          // Confirm edit on blur
+                                          const updatedContact = {...contact, isEditingJobRole: false};
+                                          setContact(updatedContact);
+                                        }}
+                                        autoFocus
+                                        style={{ 
+                                          width: '100%',
+                                          background: 'transparent',
+                                          border: 'none',
+                                          padding: '8px 12px',
+                                          color: '#fff'
+                                        }}
+                                      />
+                                    ) : (
+                                      <div 
+                                        onClick={(e) => {
+                                          // If they click the arrow, set the value in Supabase Final
+                                          if (e.target.tagName === 'SPAN' && e.target.dataset.action === 'transfer') {
+                                            handleInputChange('jobRole', contact.job_role || '');
+                                          } else {
+                                            // Otherwise, start editing
+                                            const updatedContact = {...contact, isEditingJobRole: true};
+                                            setContact(updatedContact);
+                                          }
+                                        }}
+                                        style={{ 
+                                          cursor: 'pointer',
+                                          padding: '8px 12px',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'space-between'
+                                        }}
+                                      >
+                                        <span>{contact.job_role || '-'}</span>
+                                        <span 
+                                          data-action="transfer"
+                                          style={{ 
+                                            color: '#00ff00', 
+                                            fontSize: '12px', 
+                                            marginLeft: '10px',
+                                            cursor: 'pointer'
+                                          }}
+                                          title="Transfer to Supabase Final"
+                                        >
+                                          → 
+                                        </span>
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div 
+                                      onClick={() => {
+                                        if (airtableContact && airtableContact.job_role) {
+                                          handleInputChange('jobRole', airtableContact.job_role);
+                                        }
+                                      }}
+                                      style={{ 
+                                        cursor: 'pointer',
+                                        padding: '8px 12px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between'
+                                      }}
+                                    >
+                                      <span>
+                                        {airtableContact?.job_role || '-'}
+                                      </span>
+                                      <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '10px' }}>
+                                        → 
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    {formData.isEditingJobRole ? (
+                                      <Input 
+                                        type="text"
+                                        value={formData.jobRole !== undefined ? formData.jobRole : (contact.job_role || '')}
+                                        onChange={(e) => handleInputChange('jobRole', e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            // Confirm edit on Enter
+                                            const updatedFormData = {...formData, isEditingJobRole: false};
+                                            setFormData(updatedFormData);
+                                          }
+                                        }}
+                                        onBlur={() => {
+                                          // Confirm edit on blur
+                                          const updatedFormData = {...formData, isEditingJobRole: false};
+                                          setFormData(updatedFormData);
+                                        }}
+                                        autoFocus
+                                        style={{ 
+                                          width: '100%',
+                                          background: 'transparent',
+                                          border: 'none',
+                                          padding: '8px 12px',
+                                          color: '#fff'
+                                        }}
+                                      />
+                                    ) : (
+                                      <div 
+                                        onClick={() => {
+                                          const updatedFormData = {...formData, isEditingJobRole: true};
+                                          setFormData(updatedFormData);
+                                        }}
+                                        style={{ 
+                                          cursor: 'pointer',
+                                          padding: '8px 12px',
+                                          display: 'flex',
+                                          justifyContent: 'space-between',
+                                          alignItems: 'center'
+                                        }}
+                                      >
+                                        <span>{formData.jobRole !== undefined ? formData.jobRole : (contact.job_role || '-')}</span>
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+
+                                {/* Rating Row */}
+                                <tr style={{ borderBottom: '1px solid #333' }}>
+                                  <td style={{ padding: '12px 15px', color: '#999' }}>Rating</td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
+                                      {contact.score ? `${contact.score} ★` : '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ 
+                                      padding: '8px 12px',
+                                      background: '#2a2a2a',
+                                      borderRadius: '4px'
+                                    }}>
+                                      {airtableContact?.rating ? `${airtableContact.rating} ★` : '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
+                                      {formData.score || (contact.score ? `${contact.score} ★` : '-')}
+                                    </div>
+                                  </td>
+                                </tr>
+
+                                {/* Description Row */}
+                                <tr style={{ borderBottom: '1px solid #333' }}>
+                                  <td style={{ padding: '12px 15px', color: '#999' }}>Description</td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    {contact.isEditingDescription ? (
+                                      <textarea 
+                                        value={contact.description || ''}
+                                        onChange={(e) => {
+                                          // Update the contact display value
+                                          const updatedContact = {...contact, description: e.target.value};
+                                          setContact(updatedContact);
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter' && e.ctrlKey) {
+                                            // Confirm edit on Ctrl+Enter
+                                            const updatedContact = {...contact, isEditingDescription: false};
+                                            setContact(updatedContact);
+                                          }
+                                        }}
+                                        onBlur={() => {
+                                          // Confirm edit on blur
+                                          const updatedContact = {...contact, isEditingDescription: false};
+                                          setContact(updatedContact);
+                                        }}
+                                        autoFocus
+                                        style={{ 
+                                          width: '100%',
+                                          background: 'transparent',
+                                          border: 'none',
+                                          padding: '8px 12px',
+                                          color: '#fff',
+                                          minHeight: '80px',
+                                          resize: 'vertical'
+                                        }}
+                                      />
+                                    ) : (
+                                      <div 
+                                        onClick={(e) => {
+                                          // If they click the arrow, set the value in Supabase Final
+                                          if (e.target.tagName === 'SPAN' && e.target.dataset.action === 'transfer') {
+                                            handleInputChange('description', contact.description || '');
+                                          } else {
+                                            // Otherwise, start editing
+                                            const updatedContact = {...contact, isEditingDescription: true};
+                                            setContact(updatedContact);
+                                          }
+                                        }}
+                                        style={{ 
+                                          cursor: 'pointer',
+                                          padding: '8px 12px',
+                                          display: 'flex',
+                                          alignItems: 'flex-start',
+                                          justifyContent: 'space-between'
+                                        }}
+                                      >
+                                        <div>
+                                          {contact.description ? 
+                                            (contact.isDescriptionExpanded ? 
+                                              contact.description : 
+                                              `${contact.description.substring(0, 50)}${contact.description.length > 50 ? '...' : ''}`) 
+                                            : '-'}
+                                        </div>
+                                        <span 
+                                          data-action="transfer"
+                                          style={{ 
+                                            color: '#00ff00', 
+                                            fontSize: '12px', 
+                                            marginLeft: '10px',
+                                            cursor: 'pointer'
+                                          }}
+                                          title="Transfer to Supabase Final"
+                                        >
+                                          → 
+                                        </span>
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div 
+                                      onClick={() => {
+                                        if (airtableContact && airtableContact.description) {
+                                          handleInputChange('description', airtableContact.description);
+                                        }
+                                      }}
+                                      style={{ 
+                                        cursor: 'pointer',
+                                        padding: '8px 12px',
+                                        display: 'flex',
+                                        alignItems: 'flex-start',
+                                        justifyContent: 'space-between'
+                                      }}
+                                    >
+                                      <div>
+                                        {airtableContact?.description ? 
+                                          (airtableContact.isDescriptionExpanded ? 
+                                            airtableContact.description : 
+                                            `${airtableContact.description.substring(0, 50)}${airtableContact.description.length > 50 ? '...' : ''}`) 
+                                          : '-'}
+                                      </div>
+                                      <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '10px' }}>
+                                        → 
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    {formData.isEditingDescription ? (
+                                      <textarea 
+                                        value={formData.description !== undefined ? formData.description : (contact.description || '')}
+                                        onChange={(e) => handleInputChange('description', e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter' && e.ctrlKey) {
+                                            // Confirm edit on Ctrl+Enter
+                                            const updatedFormData = {...formData, isEditingDescription: false};
+                                            setFormData(updatedFormData);
+                                          }
+                                        }}
+                                        onBlur={() => {
+                                          // Confirm edit on blur
+                                          const updatedFormData = {...formData, isEditingDescription: false};
+                                          setFormData(updatedFormData);
+                                        }}
+                                        autoFocus
+                                        style={{ 
+                                          width: '100%',
+                                          background: 'transparent',
+                                          border: 'none',
+                                          padding: '8px 12px',
+                                          color: '#fff',
+                                          minHeight: '80px',
+                                          resize: 'vertical'
+                                        }}
+                                      />
+                                    ) : (
+                                      <div 
+                                        onClick={() => {
+                                          const updatedFormData = {...formData, isEditingDescription: true};
+                                          setFormData(updatedFormData);
+                                        }}
+                                        style={{ 
+                                          cursor: 'pointer',
+                                          padding: '8px 12px',
+                                          display: 'flex',
+                                          justifyContent: 'space-between',
+                                          alignItems: 'flex-start'
+                                        }}
+                                      >
+                                        <div>
+                                          {formData.description !== undefined || contact.description ? 
+                                            (formData.isDescriptionExpanded ? 
+                                              (formData.description || contact.description) : 
+                                              `${(formData.description || contact.description || '').substring(0, 50)}${(formData.description || contact.description || '').length > 50 ? '...' : ''}`) 
+                                            : '-'}
+                                        </div>
+                                        {formData.description === undefined && (
+                                          <span style={{ fontSize: '0.7rem', color: '#999', fontStyle: 'italic', marginLeft: 'auto' }}>
+                                            Same as Supabase Now
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+
+                                {/* Birthday Row */}
+                                <tr style={{ borderBottom: '1px solid #333' }}>
+                                  <td style={{ padding: '12px 15px', color: '#999' }}>Birthday</td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
+                                      {contact.birthday || '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div 
+                                      onClick={() => {
+                                        if (airtableContact && airtableContact.birthday) {
+                                          handleInputChange('birthday', airtableContact.birthday);
+                                        }
+                                      }}
+                                      style={{ 
+                                        cursor: airtableContact?.birthday ? 'pointer' : 'default',
+                                        padding: '8px 12px',
+                                        background: '#2a2a2a',
+                                        borderRadius: '4px',
+                                        borderLeft: airtableContact?.birthday ? '3px solid #00ff00' : '3px solid transparent'
+                                      }}
+                                    >
+                                      {airtableContact?.birthday || '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
+                                      {formData.birthday || contact.birthday || '-'}
+                                    </div>
+                                  </td>
+                                </tr>
+
+                                {/* Cities Row */}
+                                <tr style={{ borderBottom: '1px solid #333' }}>
+                                  <td style={{ padding: '12px 15px', color: '#999' }}>Cities</td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
+                                      {contact.cities?.map(city => city.name).join(', ') || '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ 
+                                      padding: '8px 12px',
+                                      background: '#2a2a2a',
+                                      borderRadius: '4px'
+                                    }}>
+                                      {airtableContact?.city || '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
+                                      {formData.cities?.join(', ') || contact.cities?.map(city => city.name).join(', ') || '-'}
+                                    </div>
+                                  </td>
+                                </tr>
+
+                                {/* Tags Row */}
+                                <tr style={{ borderBottom: '1px solid #333' }}>
+                                  <td style={{ padding: '12px 15px', color: '#999' }}>Tags</td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
+                                      {contact.tags?.map(tag => tag.name).join(', ') || '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ 
+                                      padding: '8px 12px',
+                                      background: '#2a2a2a',
+                                      borderRadius: '4px'
+                                    }}>
+                                      {airtableContact?.tags?.join(', ') || '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
+                                      {formData.tags?.map(tag => tag.name).join(', ') || contact.tags?.map(tag => tag.name).join(', ') || '-'}
+                                    </div>
+                                  </td>
+                                </tr>
+
+                                {/* Companies Row */}
+                                <tr style={{ borderBottom: '1px solid #333' }}>
+                                  <td style={{ padding: '12px 15px', color: '#999' }}>Companies</td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
+                                      {contact.companies?.map(comp => comp.name).join(', ') || '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div 
+                                      onClick={() => {
+                                        if (airtableContact && airtableContact.company) {
+                                          handleInputChange('company', airtableContact.company);
+                                        }
+                                      }}
+                                      style={{ 
+                                        cursor: airtableContact?.company ? 'pointer' : 'default',
+                                        padding: '8px 12px',
+                                        background: '#2a2a2a',
+                                        borderRadius: '4px',
+                                        borderLeft: airtableContact?.company ? '3px solid #00ff00' : '3px solid transparent'
+                                      }}
+                                    >
+                                      {airtableContact?.company || '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
+                                      {(formData.company ? [formData.company] : contact.companies?.map(comp => comp.name) || []).join(', ') || '-'}
+                                    </div>
+                                  </td>
+                                </tr>
+
+                                {/* Deals Row */}
+                                <tr style={{ borderBottom: '1px solid #333' }}>
+                                  <td style={{ padding: '12px 15px', color: '#999' }}>Deals</td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
+                                      {contact.deals?.length ? `${contact.deals.length} deals` : '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ 
+                                      padding: '8px 12px',
+                                      background: '#2a2a2a',
+                                      borderRadius: '4px'
+                                    }}>
+                                      {airtableContact?.deals ? `${airtableContact.deals.length} deals` : '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
+                                      {contact.deals?.length ? `${contact.deals.length} deals` : '-'}
+                                    </div>
+                                  </td>
+                                </tr>
+
+                                {/* Introductions Row */}
+                                <tr style={{ borderBottom: '1px solid #333' }}>
+                                  <td style={{ padding: '12px 15px', color: '#999' }}>Introductions</td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
+                                      {contact.introductions?.length ? `${contact.introductions.length} introductions` : '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ 
+                                      padding: '8px 12px',
+                                      background: '#2a2a2a',
+                                      borderRadius: '4px'
+                                    }}>
+                                      {airtableContact?.introductions ? `${airtableContact.introductions.length} introductions` : '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
+                                      {contact.introductions?.length ? `${contact.introductions.length} introductions` : '-'}
+                                    </div>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+
+                          {/* Navigation Buttons */}
+                          <ButtonGroup style={{ 
+                            marginTop: '30px', 
+                            marginBottom: '20px', 
+                            width: 'calc(100% - 20px)', 
+                            justifyContent: 'flex-end' 
+                          }}>
+                            <ActionButton
+                              onClick={() => setActiveEnrichmentSection("airtable")}
+                              style={{ marginRight: '10px' }}
+                            >
+                              <FiArrowLeft /> Back to Matching
+                            </ActionButton>
+                            
+                            <ActionButton
+                              variant="primary"
+                              onClick={() => {
+                                // Save combined data
+                                goToStep(3);
+                              }}
+                            >
+                              Save & Continue <FiCheck />
+                            </ActionButton>
+                          </ButtonGroup>
+                        </FormGroup>
+                      )}
                     </div>
                   ) : selectedDuplicate ? (
                     <div style={{ padding: '0 20px 20px 20px', height: '100%', overflowY: 'auto' }}>
