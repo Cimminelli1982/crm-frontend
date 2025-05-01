@@ -5833,27 +5833,67 @@ const handleSelectEmailThread = async (threadId) => {
                                     </a>
                                   </td>
                                   <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
-                                      {contact.email || '-'}
-                                    </div>
+                                    <TagsContainer>
+                                      {contact.emails && contact.emails.length > 0 ? (
+                                        contact.emails.map((emailObj, idx) => (
+                                          <Tag 
+                                            key={emailObj.email_id || idx}
+                                            style={{ 
+                                              cursor: 'default', 
+                                              background: 'transparent'
+                                            }}
+                                          >
+                                            <span>{emailObj.email}</span>
+                                            {emailObj.is_primary && (
+                                              <span title="Primary Email" style={{ fontSize: '10px', marginLeft: '3px' }}>★</span>
+                                            )}
+                                            {emailObj.type && (
+                                              <span style={{ fontSize: '0.8em', opacity: 0.8, marginLeft: '3px' }}>
+                                                ({emailObj.type})
+                                              </span>
+                                            )}
+                                          </Tag>
+                                        ))
+                                      ) : contact.email ? (
+                                        <Tag style={{ background: 'transparent', cursor: 'default' }}>
+                                          {contact.email}
+                                        </Tag>
+                                      ) : (
+                                        '-'
+                                      )}
+                                    </TagsContainer>
                                   </td>
                                   <td style={{ padding: '12px 15px' }}>
-                                    <div 
-                                      onClick={() => {
-                                        if (airtableContact && airtableContact.primary_email) {
-                                          handleInputChange('primaryEmail', airtableContact.primary_email);
-                                        }
-                                      }}
-                                      style={{ 
-                                        cursor: airtableContact?.primary_email ? 'pointer' : 'default',
-                                        padding: '8px 12px',
-                                        background: '#2a2a2a',
-                                        borderRadius: '4px',
-                                        borderLeft: airtableContact?.primary_email ? '3px solid #00ff00' : '3px solid transparent'
-                                      }}
-                                    >
-                                      {airtableContact?.primary_email || '-'}
-                                    </div>
+                                    <TagsContainer>
+                                      {airtableContact?.emails && airtableContact.emails.length > 0 ? (
+                                        airtableContact.emails.map((emailObj, idx) => (
+                                          <Tag 
+                                            key={idx}
+                                            style={{ 
+                                              cursor: 'pointer',
+                                              background: 'transparent'
+                                            }}
+                                            onClick={() => handleInputChange('primaryEmail', emailObj.email || emailObj)}
+                                          >
+                                            <span>{emailObj.email || emailObj}</span>
+                                            {emailObj.is_primary && (
+                                              <span title="Primary Email" style={{ fontSize: '10px', marginLeft: '3px' }}>★</span>
+                                            )}
+                                            <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '5px' }}>→</span>
+                                          </Tag>
+                                        ))
+                                      ) : airtableContact?.primary_email ? (
+                                        <Tag 
+                                          style={{ background: 'transparent', cursor: 'pointer' }}
+                                          onClick={() => handleInputChange('primaryEmail', airtableContact.primary_email)}
+                                        >
+                                          {airtableContact.primary_email}
+                                          <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '5px' }}>→</span>
+                                        </Tag>
+                                      ) : (
+                                        '-'
+                                      )}
+                                    </TagsContainer>
                                   </td>
                                   <td style={{ padding: '12px 15px' }}>
                                     <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
@@ -5876,27 +5916,67 @@ const handleSelectEmailThread = async (threadId) => {
                                     </a>
                                   </td>
                                   <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
-                                      {contact.mobile || '-'}
-                                    </div>
+                                    <TagsContainer>
+                                      {contact.mobiles && contact.mobiles.length > 0 ? (
+                                        contact.mobiles.map((mobileObj, idx) => (
+                                          <Tag 
+                                            key={mobileObj.mobile_id || idx}
+                                            style={{ 
+                                              cursor: 'default',
+                                              background: 'transparent'
+                                            }}
+                                          >
+                                            <span>{mobileObj.mobile}</span>
+                                            {mobileObj.is_primary && (
+                                              <span title="Primary Mobile" style={{ fontSize: '10px', marginLeft: '3px' }}>★</span>
+                                            )}
+                                            {mobileObj.type && (
+                                              <span style={{ fontSize: '0.8em', opacity: 0.8, marginLeft: '3px' }}>
+                                                ({mobileObj.type})
+                                              </span>
+                                            )}
+                                          </Tag>
+                                        ))
+                                      ) : contact.mobile ? (
+                                        <Tag style={{ background: 'transparent', cursor: 'default' }}>
+                                          {contact.mobile}
+                                        </Tag>
+                                      ) : (
+                                        '-'
+                                      )}
+                                    </TagsContainer>
                                   </td>
                                   <td style={{ padding: '12px 15px' }}>
-                                    <div 
-                                      onClick={() => {
-                                        if (airtableContact && airtableContact.phone_number_1) {
-                                          handleInputChange('primaryPhone', airtableContact.phone_number_1);
-                                        }
-                                      }}
-                                      style={{ 
-                                        cursor: airtableContact?.phone_number_1 ? 'pointer' : 'default',
-                                        padding: '8px 12px',
-                                        background: '#2a2a2a',
-                                        borderRadius: '4px',
-                                        borderLeft: airtableContact?.phone_number_1 ? '3px solid #00ff00' : '3px solid transparent'
-                                      }}
-                                    >
-                                      {airtableContact?.phone_number_1 || '-'}
-                                    </div>
+                                    <TagsContainer>
+                                      {airtableContact?.phone_numbers && airtableContact.phone_numbers.length > 0 ? (
+                                        airtableContact.phone_numbers.map((phoneObj, idx) => (
+                                          <Tag 
+                                            key={idx}
+                                            style={{ 
+                                              cursor: 'pointer',
+                                              background: 'transparent'
+                                            }}
+                                            onClick={() => handleInputChange('primaryPhone', phoneObj.number || phoneObj)}
+                                          >
+                                            <span>{phoneObj.number || phoneObj}</span>
+                                            {phoneObj.is_primary && (
+                                              <span title="Primary Phone" style={{ fontSize: '10px', marginLeft: '3px' }}>★</span>
+                                            )}
+                                            <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '5px' }}>→</span>
+                                          </Tag>
+                                        ))
+                                      ) : airtableContact?.phone_number_1 ? (
+                                        <Tag 
+                                          style={{ background: 'transparent', cursor: 'pointer' }}
+                                          onClick={() => handleInputChange('primaryPhone', airtableContact.phone_number_1)}
+                                        >
+                                          {airtableContact.phone_number_1}
+                                          <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '5px' }}>→</span>
+                                        </Tag>
+                                      ) : (
+                                        '-'
+                                      )}
+                                    </TagsContainer>
                                   </td>
                                   <td style={{ padding: '12px 15px' }}>
                                     <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
@@ -5909,7 +5989,10 @@ const handleSelectEmailThread = async (threadId) => {
                                 <tr style={{ borderBottom: '1px solid #333' }}>
                                   <td style={{ padding: '12px 15px', color: '#999' }}>Keep in Touch</td>
                                   <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
+                                    <div style={{ 
+                                      cursor: 'default',
+                                      padding: '8px 12px'
+                                    }}>
                                       {contact.keep_in_touch_frequency || '-'}
                                     </div>
                                   </td>
@@ -5921,14 +6004,17 @@ const handleSelectEmailThread = async (threadId) => {
                                         }
                                       }}
                                       style={{ 
-                                        cursor: airtableContact?.keep_in_touch ? 'pointer' : 'default',
+                                        cursor: 'pointer',
                                         padding: '8px 12px',
-                                        background: '#2a2a2a',
-                                        borderRadius: '4px',
-                                        borderLeft: airtableContact?.keep_in_touch ? '3px solid #00ff00' : '3px solid transparent'
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between'
                                       }}
                                     >
-                                      {airtableContact?.keep_in_touch || '-'}
+                                      <span>{airtableContact?.keep_in_touch || '-'}</span>
+                                      <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '10px' }}>
+                                        → 
+                                      </span>
                                     </div>
                                   </td>
                                   <td style={{ padding: '12px 15px' }}>
@@ -5942,7 +6028,10 @@ const handleSelectEmailThread = async (threadId) => {
                                 <tr style={{ borderBottom: '1px solid #333' }}>
                                   <td style={{ padding: '12px 15px', color: '#999' }}>Category</td>
                                   <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
+                                    <div style={{ 
+                                      cursor: 'default',
+                                      padding: '8px 12px'
+                                    }}>
                                       {contact.category || '-'}
                                     </div>
                                   </td>
@@ -5954,14 +6043,17 @@ const handleSelectEmailThread = async (threadId) => {
                                         }
                                       }}
                                       style={{ 
-                                        cursor: airtableContact?.category ? 'pointer' : 'default',
+                                        cursor: 'pointer',
                                         padding: '8px 12px',
-                                        background: '#2a2a2a',
-                                        borderRadius: '4px',
-                                        borderLeft: airtableContact?.category ? '3px solid #00ff00' : '3px solid transparent'
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between'
                                       }}
                                     >
-                                      {airtableContact?.category || '-'}
+                                      <span>{airtableContact?.category || '-'}</span>
+                                      <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '10px' }}>
+                                        → 
+                                      </span>
                                     </div>
                                   </td>
                                   <td style={{ padding: '12px 15px' }}>
@@ -6148,22 +6240,82 @@ const handleSelectEmailThread = async (threadId) => {
                                 <tr style={{ borderBottom: '1px solid #333' }}>
                                   <td style={{ padding: '12px 15px', color: '#999' }}>Rating</td>
                                   <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
-                                      {contact.score ? `${contact.score} ★` : '-'}
+                                    <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center' }}>
+                                      {[1, 2, 3, 4, 5].map((star) => (
+                                        <span 
+                                          key={star}
+                                          style={{ 
+                                            color: (contact.score || 0) >= star ? '#FFD700' : '#555',
+                                            fontSize: '16px',
+                                            marginRight: '3px',
+                                            cursor: 'default'
+                                          }}
+                                        >
+                                          ★
+                                        </span>
+                                      ))}
                                     </div>
                                   </td>
                                   <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ 
-                                      padding: '8px 12px',
-                                      background: '#2a2a2a',
-                                      borderRadius: '4px'
-                                    }}>
-                                      {airtableContact?.rating ? `${airtableContact.rating} ★` : '-'}
+                                    <div 
+                                      onClick={() => {
+                                        if (airtableContact && airtableContact.rating) {
+                                          handleInputChange('score', airtableContact.rating);
+                                        }
+                                      }}
+                                      style={{ 
+                                        cursor: 'pointer',
+                                        padding: '8px 12px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between'
+                                      }}
+                                    >
+                                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                                        {[1, 2, 3, 4, 5].map((star) => (
+                                          <span 
+                                            key={star}
+                                            style={{ 
+                                              color: (airtableContact?.rating || 0) >= star ? '#FFD700' : '#555',
+                                              fontSize: '16px',
+                                              marginRight: '3px'
+                                            }}
+                                          >
+                                            ★
+                                          </span>
+                                        ))}
+                                      </div>
+                                      {airtableContact?.rating && (
+                                        <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '10px' }}>
+                                          → 
+                                        </span>
+                                      )}
                                     </div>
                                   </td>
                                   <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
-                                      {formData.score || (contact.score ? `${contact.score} ★` : '-')}
+                                    <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center' }}>
+                                      {[1, 2, 3, 4, 5].map((star) => (
+                                        <span 
+                                          key={star}
+                                          onClick={() => {
+                                            // If clicking on the current star value, clear it
+                                            if (star === (formData.score || contact.score)) {
+                                              handleInputChange('score', null);
+                                            } else {
+                                              // Otherwise set to the clicked star value
+                                              handleInputChange('score', star);
+                                            }
+                                          }}
+                                          style={{ 
+                                            color: (formData.score !== undefined ? formData.score : contact.score || 0) >= star ? '#FFD700' : '#555',
+                                            fontSize: '16px',
+                                            marginRight: '3px',
+                                            cursor: 'pointer'
+                                          }}
+                                        >
+                                          ★
+                                        </span>
+                                      ))}
                                     </div>
                                   </td>
                                 </tr>
