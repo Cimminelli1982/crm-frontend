@@ -1279,7 +1279,18 @@ const ContactCrmWorkflow = () => {
   const [expandedEmails, setExpandedEmails] = useState({});
   
   // State for tracking selected enrichment section
-  const [activeEnrichmentSection, setActiveEnrichmentSection] = useState("basics");
+  const [activeEnrichmentSection, setActiveEnrichmentSection] = useState(() => {
+    // Try to get the saved section from sessionStorage
+    const savedSection = sessionStorage.getItem(`enrichment_section_${contactId}`);
+    return savedSection || "basics";
+  });
+
+  // Save activeEnrichmentSection to sessionStorage when it changes
+  useEffect(() => {
+    if (activeEnrichmentSection) {
+      sessionStorage.setItem(`enrichment_section_${contactId}`, activeEnrichmentSection);
+    }
+  }, [activeEnrichmentSection, contactId]);
   
   // State for delete modal (same as in ContactsInbox)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -2531,6 +2542,12 @@ const handleSelectEmailThread = async (threadId) => {
   
   // Handle navigating to a specific step
   const goToStep = (step) => {
+    // When leaving the enrichment step (3), clear the saved section state
+    if (currentStep === 3 && step !== 3) {
+      sessionStorage.removeItem(`enrichment_section_${contactId}`);
+      setActiveEnrichmentSection("basics"); // Reset to basics tab for next time
+    }
+    
     if (step < currentStep || step === currentStep) {
       setCurrentStep(step);
     } else if (step === 2 && currentStep === 1) {
@@ -3713,6 +3730,8 @@ const handleSelectEmailThread = async (threadId) => {
     // Clear any active enrichment section when selecting a duplicate
     if (activeEnrichmentSection === "airtable" || activeEnrichmentSection === "airtable_combining") {
       setActiveEnrichmentSection(null);
+      // Also remove from sessionStorage to avoid persisting null value
+      sessionStorage.removeItem(`enrichment_section_${contactId}`);
     }
     setSelectedDuplicate(selectedDuplicate?.contact_id === duplicate.contact_id ? null : duplicate);
   };
@@ -6018,8 +6037,28 @@ const handleSelectEmailThread = async (threadId) => {
                                     </div>
                                   </td>
                                   <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
-                                      {formData.keepInTouch || contact.keep_in_touch_frequency || '-'}
+                                    <div style={{ padding: '8px 12px' }}>
+                                      <Select 
+                                        value={formData.keepInTouch || contact.keep_in_touch_frequency || 'Not Set'}
+                                        onChange={(e) => handleInputChange('keepInTouch', e.target.value === 'Not Set' ? null : e.target.value)}
+                                        style={{ 
+                                          background: 'transparent',
+                                          border: 'none',
+                                          color: '#fff',
+                                          cursor: 'pointer',
+                                          width: '100%',
+                                          padding: '0',
+                                          fontSize: '14px'
+                                        }}
+                                      >
+                                        <option value="Not Set">Not Set</option>
+                                        <option value="Monthly">Monthly</option>
+                                        <option value="Quarterly">Quarterly</option>
+                                        <option value="Twice per Year">Twice per Year</option>
+                                        <option value="Once per Year">Once per Year</option>
+                                        <option value="Weekly">Weekly</option>
+                                        <option value="Do not keep in touch">Do not keep in touch</option>
+                                      </Select>
                                     </div>
                                   </td>
                                 </tr>
@@ -6057,42 +6096,188 @@ const handleSelectEmailThread = async (threadId) => {
                                     </div>
                                   </td>
                                   <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
-                                      {formData.category || contact.category || '-'}
+                                    <div style={{ padding: '8px 12px' }}>
+                                      <Select 
+                                        value={formData.category || contact.category || ''}
+                                        onChange={(e) => handleInputChange('category', e.target.value === '' ? null : e.target.value)}
+                                        style={{ 
+                                          background: 'transparent',
+                                          border: 'none',
+                                          color: '#fff',
+                                          cursor: 'pointer',
+                                          width: '100%',
+                                          padding: '0',
+                                          fontSize: '14px'
+                                        }}
+                                      >
+                                        <option value="Inbox">Inbox</option>
+                                        <option value="Professional Investor">Professional Investor</option>
+                                        <option value="Team">Team</option>
+                                        <option value="Advisor">Advisor</option>
+                                        <option value="Supplier">Supplier</option>
+                                        <option value="System">System</option>
+                                        <option value="Founder">Founder</option>
+                                        <option value="Manager">Manager</option>
+                                        <option value="Friend and Family">Friend and Family</option>
+                                        <option value="Other">Other</option>
+                                        <option value="Student">Student</option>
+                                        <option value="Media">Media</option>
+                                        <option value="Institution">Institution</option>
+                                      </Select>
                                     </div>
                                   </td>
                                 </tr>
 
                                 {/* LinkedIn Profile Row */}
                                 <tr style={{ borderBottom: '1px solid #333' }}>
-                                  <td style={{ padding: '12px 15px', color: '#999' }}>LinkedIn</td>
+                                  <td style={{ padding: '12px 15px', color: '#999' }}>
+                                    <a 
+                                      href={`https://www.linkedin.com/search/results/people/?keywords=${contact.first_name || ''}%20${contact.last_name || ''}&sid=Avh`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      style={{ color: '#999', textDecoration: 'none', display: 'flex', alignItems: 'center' }}
+                                    >
+                                      <span>LinkedIn</span>
+                                      <span style={{ marginLeft: '5px', fontSize: '10px' }}>↗</span>
+                                    </a>
+                                  </td>
                                   <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
-                                      {contact.linkedin || '-'}
+                                    <div style={{ padding: '8px 12px' }}>
+                                      {contact.linkedin ? (
+                                        <a 
+                                          href={contact.linkedin}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          style={{ 
+                                            color: '#00a3ff', 
+                                            textDecoration: 'none',
+                                            display: 'flex',
+                                            alignItems: 'center'
+                                          }}
+                                        >
+                                          {contact.linkedin}
+                                          <span style={{ marginLeft: '5px', fontSize: '10px' }}>↗</span>
+                                        </a>
+                                      ) : (
+                                        '-'
+                                      )}
                                     </div>
                                   </td>
                                   <td style={{ padding: '12px 15px' }}>
                                     <div 
-                                      onClick={() => {
-                                        if (airtableContact && airtableContact.linkedin) {
-                                          handleInputChange('linkedin', airtableContact.linkedin);
-                                        }
-                                      }}
                                       style={{ 
-                                        cursor: airtableContact?.linkedin ? 'pointer' : 'default',
+                                        cursor: 'pointer',
                                         padding: '8px 12px',
-                                        background: '#2a2a2a',
-                                        borderRadius: '4px',
-                                        borderLeft: airtableContact?.linkedin ? '3px solid #00ff00' : '3px solid transparent'
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between'
                                       }}
                                     >
-                                      {airtableContact?.linkedin || '-'}
+                                      {airtableContact?.linkedin ? (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                                          <a 
+                                            href={airtableContact.linkedin}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{ 
+                                              color: '#00a3ff', 
+                                              textDecoration: 'none',
+                                              display: 'flex',
+                                              alignItems: 'center'
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            {airtableContact.linkedin}
+                                            <span style={{ marginLeft: '5px', fontSize: '10px' }}>↗</span>
+                                          </a>
+                                          <span 
+                                            style={{ color: '#00ff00', fontSize: '12px', marginLeft: '10px', cursor: 'pointer' }}
+                                            onClick={() => handleInputChange('linkedin', airtableContact.linkedin)}
+                                          >
+                                            → 
+                                          </span>
+                                        </div>
+                                      ) : (
+                                        '-'
+                                      )}
                                     </div>
                                   </td>
                                   <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
-                                      {formData.linkedin || contact.linkedin || '-'}
-                                    </div>
+                                    {formData.isEditingLinkedin ? (
+                                      <div style={{ padding: '8px 12px' }}>
+                                        <Input 
+                                          type="text"
+                                          value={formData.linkedin !== undefined ? formData.linkedin : (contact.linkedin || '')}
+                                          onChange={(e) => handleInputChange('linkedin', e.target.value)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                              const updatedFormData = {...formData, isEditingLinkedin: false};
+                                              setFormData(updatedFormData);
+                                            }
+                                          }}
+                                          onBlur={() => {
+                                            const updatedFormData = {...formData, isEditingLinkedin: false};
+                                            setFormData(updatedFormData);
+                                          }}
+                                          autoFocus
+                                          style={{ 
+                                            width: '100%',
+                                            background: 'transparent',
+                                            border: 'none',
+                                            color: '#fff',
+                                            padding: '0'
+                                          }}
+                                          placeholder="Enter LinkedIn URL"
+                                        />
+                                      </div>
+                                    ) : (
+                                      <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        {(formData.linkedin || contact.linkedin) ? (
+                                          <>
+                                            <a 
+                                              href={formData.linkedin || contact.linkedin}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              style={{ 
+                                                color: '#00a3ff', 
+                                                textDecoration: 'none',
+                                                display: 'flex',
+                                                alignItems: 'center'
+                                              }}
+                                              onClick={(e) => e.stopPropagation()}
+                                            >
+                                              {formData.linkedin || contact.linkedin}
+                                              <span style={{ marginLeft: '5px', fontSize: '10px' }}>↗</span>
+                                            </a>
+                                            <span 
+                                              style={{ 
+                                                cursor: 'pointer',
+                                                fontSize: '14px',
+                                                color: '#999',
+                                                marginLeft: '10px'
+                                              }}
+                                              onClick={() => {
+                                                const updatedFormData = {...formData, isEditingLinkedin: true};
+                                                setFormData(updatedFormData);
+                                              }}
+                                              title="Edit"
+                                            >
+                                              ✎
+                                            </span>
+                                          </>
+                                        ) : (
+                                          <span 
+                                            style={{ cursor: 'pointer', color: '#999' }}
+                                            onClick={() => {
+                                              const updatedFormData = {...formData, isEditingLinkedin: true};
+                                              setFormData(updatedFormData);
+                                            }}
+                                          >
+                                            Click to add LinkedIn URL
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
                                   </td>
                                 </tr>
 
@@ -7115,7 +7300,18 @@ const handleSelectEmailThread = async (threadId) => {
                       </FormGroup>
                       
                       <FormGroup>
-                        <FormFieldLabel>Email Addresses {airtableContact && airtableContact.primary_email && `- Airtable: ${airtableContact.primary_email}`}</FormFieldLabel>
+                        <FormFieldLabel>
+                          <a 
+                            href={`https://mail.superhuman.com/search/${contact.first_name || ''}%20${contact.last_name || ''}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: '#fff', textDecoration: 'none', display: 'flex', alignItems: 'center' }}
+                          >
+                            <span>Email Addresses</span>
+                            <span style={{ marginLeft: '5px', fontSize: '10px' }}>↗</span>
+                          </a>
+                          {airtableContact && airtableContact.primary_email && `- Airtable: ${airtableContact.primary_email}`}
+                        </FormFieldLabel>
                         
                         <div style={{ 
                           border: '1px solid #333', 
@@ -7271,7 +7467,18 @@ const handleSelectEmailThread = async (threadId) => {
                       </FormGroup>
                       
                       <FormGroup>
-                        <FormFieldLabel>Mobile Numbers {airtableContact && `- Airtable: ${airtableContact.phone_number_1 || ''}${airtableContact.phone_number_1 && airtableContact.phone_number_2 ? ' - ' : ''}${airtableContact.phone_number_2 || ''}`}</FormFieldLabel>
+                        <FormFieldLabel>
+                          <a 
+                            href={`https://app.timelines.ai/search/?s=${contact.first_name || ''}%20${contact.last_name || ''}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: '#fff', textDecoration: 'none', display: 'flex', alignItems: 'center' }}
+                          >
+                            <span>Mobile Numbers</span>
+                            <span style={{ marginLeft: '5px', fontSize: '10px' }}>↗</span>
+                          </a>
+                          {airtableContact && `- Airtable: ${airtableContact.phone_number_1 || ''}${airtableContact.phone_number_1 && airtableContact.phone_number_2 ? ' - ' : ''}${airtableContact.phone_number_2 || ''}`}
+                        </FormFieldLabel>
                         
                         <div style={{ 
                           border: '1px solid #333', 
@@ -7741,7 +7948,15 @@ const handleSelectEmailThread = async (threadId) => {
                     <>
                       <FormGroup>
                         <FormFieldLabel>
-                          LinkedIn Profile
+                          <a 
+                            href={`https://www.linkedin.com/search/results/people/?keywords=${contact.first_name || ''}%20${contact.last_name || ''}&sid=Avh`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: '#fff', textDecoration: 'none', display: 'flex', alignItems: 'center' }}
+                          >
+                            <span>LinkedIn Profile</span>
+                            <span style={{ marginLeft: '5px', fontSize: '10px' }}>↗</span>
+                          </a>
                           {airtableContact && airtableContact.linkedin_normalised && ` - Airtable: ${airtableContact.linkedin_normalised}`}
                         </FormFieldLabel>
                         <div style={{ 
@@ -7820,7 +8035,7 @@ const handleSelectEmailThread = async (threadId) => {
                                 gap: '5px'
                               }}
                             >
-                              <FiSearch size={14} /> Search
+                              <FiSearch size={14} /> Preview
                             </button>
                           )}
                           
