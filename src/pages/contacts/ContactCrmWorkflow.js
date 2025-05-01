@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabaseClient';
 // Airtable integration will be implemented later
 import toast from 'react-hot-toast';
 import Modal from 'react-modal';
+import LinkedInBadgeModal from '../../components/modals/LinkedInBadgeModal';
 import { 
   FiX, 
   FiCheck, 
@@ -1176,6 +1177,7 @@ const ContactCrmWorkflow = () => {
   const [editingCompanyIndex, setEditingCompanyIndex] = useState(null);
   const [editingCompanyData, setEditingCompanyData] = useState(null);
   const [showNewCompanyModal, setShowNewCompanyModal] = useState(false);
+  const [showLinkedInBadgeModal, setShowLinkedInBadgeModal] = useState(false);
   const [newCompanyData, setNewCompanyData] = useState({
     name: '',
     category: '',
@@ -6155,7 +6157,7 @@ const handleSelectEmailThread = async (threadId) => {
                                             alignItems: 'center'
                                           }}
                                         >
-                                          {contact.linkedin}
+                                          Link
                                           <span style={{ marginLeft: '5px', fontSize: '10px' }}>↗</span>
                                         </a>
                                       ) : (
@@ -6187,7 +6189,7 @@ const handleSelectEmailThread = async (threadId) => {
                                             }}
                                             onClick={(e) => e.stopPropagation()}
                                           >
-                                            {airtableContact.linkedin}
+                                            Link
                                             <span style={{ marginLeft: '5px', fontSize: '10px' }}>↗</span>
                                           </a>
                                           <span 
@@ -6246,7 +6248,7 @@ const handleSelectEmailThread = async (threadId) => {
                                               }}
                                               onClick={(e) => e.stopPropagation()}
                                             >
-                                              {formData.linkedin || contact.linkedin}
+                                              Link
                                               <span style={{ marginLeft: '5px', fontSize: '10px' }}>↗</span>
                                             </a>
                                             <span 
@@ -8039,17 +8041,10 @@ const handleSelectEmailThread = async (threadId) => {
                             </button>
                           )}
                           
-                          {/* Button to visit LinkedIn profile if LinkedIn provided */}
+                          {/* Button to view LinkedIn badge modal if LinkedIn provided */}
                           {formData.linkedIn && (
                             <button
-                              onClick={() => {
-                                // Make sure the URL starts with https://
-                                let url = formData.linkedIn;
-                                if (!url.startsWith('http')) {
-                                  url = 'https://' + url;
-                                }
-                                window.open(url, '_blank');
-                              }}
+                              onClick={() => setShowLinkedInBadgeModal(true)}
                               style={{
                                 background: '#0077b5',
                                 color: '#fff',
@@ -9957,6 +9952,14 @@ const handleSelectEmailThread = async (threadId) => {
           </ActionButton>
         </ButtonGroup>
       </Modal>
+
+      {/* LinkedIn Badge Modal */}
+      <LinkedInBadgeModal
+        isOpen={showLinkedInBadgeModal}
+        onClose={() => setShowLinkedInBadgeModal(false)}
+        linkedInUrl={formData.linkedIn || contact?.linkedin}
+        contactName={`${contact?.first_name || ''} ${contact?.last_name || ''}`.trim()}
+      />
     </Container>
   );
 };
