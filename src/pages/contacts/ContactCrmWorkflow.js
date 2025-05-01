@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabaseClient';
 // Airtable integration will be implemented later
 import toast from 'react-hot-toast';
 import Modal from 'react-modal';
-import LinkedInBadgeModal from '../../components/modals/LinkedInBadgeModal';
+import LinkedInPreviewModal from '../../components/modals/LinkedInPreviewModal';
 import { 
   FiX, 
   FiCheck, 
@@ -520,15 +520,84 @@ const ChatName = styled.div`
 
 const ChatStatus = styled.div`
   font-size: 0.75rem;
+`;
+
+const ArrowButton = styled.button`
+  background: none;
+  border: none;
+  color: white;
+  opacity: 0.8;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  margin-left: 8px;
+  
+  &:hover {
+    opacity: 1;
+  }
+`;
+
+const ChatNameContainer = styled.div`
+  display: flex;
+  align-items: center;
+`;
+
+const InlineEditContainer = styled.div`
+  display: flex;
+  align-items: center;
+  width: 100%;
+`;
+
+const InlineEditInput = styled.input`
+  background-color: #128c7e;
+  border: none;
+  border-bottom: 1px solid #fff;
+  color: white;
+  font-size: 1rem;
+  font-weight: bold;
+  padding: 4px;
+  outline: none;
+  flex: 1;
+`;
+
+const InlineEditButtons = styled.div`
+  display: flex;
+  align-items: center;
+`;
+
+const SaveButton = styled.button`
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  padding: 4px;
+  
+  &:hover {
+    color: #4CAF50;
+  }
+`;
+
+const CancelButton = styled.button`
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  padding: 4px;
+  
+  &:hover {
+    color: #F44336;
+  }
   opacity: 0.8;
 `;
 
 const MessagesContainer = styled.div`
   flex: 1;
   overflow-y: auto;
-  // Try generous right padding, e.g., 32px or more
-  padding: 16px 64px 16px 16px; // (top, right, bottom, left)
-  box-sizing: border-box; // Explicitly add this just in case
+  /* Try generous right padding, e.g., 32px or more */
+  padding: 16px 64px 16px 16px; /* (top, right, bottom, left) */
+  box-sizing: border-box; /* Explicitly add this just in case */
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -737,7 +806,7 @@ const ConfirmButton = styled.button`
   }
 `;
 
-const CancelButton = styled.button`
+const CancelModalButton = styled.button`
   background-color: transparent;
   color: #cccccc;
   border: 1px solid #555;
@@ -1044,7 +1113,7 @@ const Badge = styled.span`
   font-size: 12px;
 `;
 
-const InlineEditInput = styled.input`
+const InlineEditInputField = styled.input`
   background-color: transparent;
   border: none;
   border-bottom: 1px dashed #00ff00;
@@ -1177,7 +1246,7 @@ const ContactCrmWorkflow = () => {
   const [editingCompanyIndex, setEditingCompanyIndex] = useState(null);
   const [editingCompanyData, setEditingCompanyData] = useState(null);
   const [showNewCompanyModal, setShowNewCompanyModal] = useState(false);
-  const [showLinkedInBadgeModal, setShowLinkedInBadgeModal] = useState(false);
+  const [showLinkedInPreviewModal, setShowLinkedInPreviewModal] = useState(false);
   const [newCompanyData, setNewCompanyData] = useState({
     name: '',
     category: '',
@@ -4916,9 +4985,48 @@ const handleSelectEmailThread = async (threadId) => {
                           {(whatsappChats.find(chat => chat.chat_id === selectedChat)?.chat_name || '').charAt(0).toUpperCase()}
                         </ChatAvatar>
                         <ChatInfo>
-                          <ChatName>
-                            {whatsappChats.find(chat => chat.chat_id === selectedChat)?.chat_name || 'Chat'}
-                          </ChatName>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <ChatName>
+                              {whatsappChats.find(chat => chat.chat_id === selectedChat)?.chat_name || 'Chat'}
+                            </ChatName>
+                            <div 
+                              style={{ 
+                                cursor: 'pointer', 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                color: '#00ff00',
+                                opacity: '0.7',
+                                marginLeft: '5px'
+                              }}
+                              onClick={() => {
+                                if (contact) {
+                                  const chatName = whatsappChats.find(chat => chat.chat_id === selectedChat)?.chat_name || '';
+                                  const nameParts = chatName.split(' ');
+                                  const firstName = nameParts[0] || '';
+                                  const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+                                  
+                                  // Update contact with new name parts
+                                  const updatedContact = {
+                                    ...contact,
+                                    first_name: firstName,
+                                    last_name: lastName
+                                  };
+                                  setContact(updatedContact);
+                                  
+                                  // Save changes to database
+                                  saveContactBasicInfo({
+                                    ...contact,
+                                    first_name: firstName,
+                                    last_name: lastName
+                                  });
+                                  
+                                  toast.success('Contact name updated from chat');
+                                }
+                              }}
+                            >
+                              <FiArrowRight size={16} />
+                            </div>
+                          </div>
                           <ChatStatus>
                             {chatMessages.length} messages
                           </ChatStatus>
@@ -6175,26 +6283,36 @@ const handleSelectEmailThread = async (threadId) => {
                                         justifyContent: 'space-between'
                                       }}
                                     >
-                                      {airtableContact?.linkedin ? (
+                                      {airtableContact?.linkedin || airtableContact?.linkedin_normalised ? (
                                         <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
-                                          <a 
-                                            href={airtableContact.linkedin}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            style={{ 
-                                              color: '#00a3ff', 
-                                              textDecoration: 'none',
-                                              display: 'flex',
-                                              alignItems: 'center'
-                                            }}
-                                            onClick={(e) => e.stopPropagation()}
-                                          >
-                                            Link
-                                            <span style={{ marginLeft: '5px', fontSize: '10px' }}>↗</span>
-                                          </a>
+                                          <div>
+                                            {airtableContact?.linkedin ? (
+                                              <a 
+                                                href={airtableContact.linkedin}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                style={{ 
+                                                  color: '#00a3ff', 
+                                                  textDecoration: 'none',
+                                                  display: 'flex',
+                                                  alignItems: 'center'
+                                                }}
+                                                onClick={(e) => e.stopPropagation()}
+                                              >
+                                                Link
+                                                <span style={{ marginLeft: '5px', fontSize: '10px' }}>↗</span>
+                                              </a>
+                                            ) : '-'}
+                                            
+                                            {airtableContact?.linkedin_normalised && (
+                                              <div style={{ color: '#777', fontSize: '11px', marginTop: '4px' }}>
+                                                Normalized: {airtableContact.linkedin_normalised}
+                                              </div>
+                                            )}
+                                          </div>
                                           <span 
                                             style={{ color: '#00ff00', fontSize: '12px', marginLeft: '10px', cursor: 'pointer' }}
-                                            onClick={() => handleInputChange('linkedin', airtableContact.linkedin)}
+                                            onClick={() => handleInputChange('linkedin', airtableContact.linkedin || airtableContact.linkedin_normalised || '')}
                                           >
                                             → 
                                           </span>
@@ -8044,7 +8162,7 @@ const handleSelectEmailThread = async (threadId) => {
                           {/* Button to view LinkedIn badge modal if LinkedIn provided */}
                           {formData.linkedIn && (
                             <button
-                              onClick={() => setShowLinkedInBadgeModal(true)}
+                              onClick={() => setShowLinkedInPreviewModal(true)}
                               style={{
                                 background: '#0077b5',
                                 color: '#fff',
@@ -9953,12 +10071,28 @@ const handleSelectEmailThread = async (threadId) => {
         </ButtonGroup>
       </Modal>
 
-      {/* LinkedIn Badge Modal */}
-      <LinkedInBadgeModal
-        isOpen={showLinkedInBadgeModal}
-        onClose={() => setShowLinkedInBadgeModal(false)}
+      {/* LinkedIn Preview Modal */}
+      <LinkedInPreviewModal
+        isOpen={showLinkedInPreviewModal}
+        onClose={() => setShowLinkedInPreviewModal(false)}
         linkedInUrl={formData.linkedIn || contact?.linkedin}
         contactName={`${contact?.first_name || ''} ${contact?.last_name || ''}`.trim()}
+        firstName={contact?.first_name}
+        lastName={contact?.last_name}
+        email={contact?.email}
+        jobRole={formData.jobRole || contact?.job_role}
+        onSaveData={(data) => {
+          // Update job role if provided
+          if (data.jobRole) {
+            handleInputChange('jobRole', data.jobRole);
+          }
+          
+          // If company is provided, we would typically handle adding it
+          if (data.company) {
+            toast.success(`Job information extracted: ${data.jobRole} at ${data.company}`);
+            // You could also add code here to create/associate the company
+          }
+        }}
       />
     </Container>
   );
