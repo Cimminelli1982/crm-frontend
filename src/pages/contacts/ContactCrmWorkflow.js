@@ -8,6 +8,8 @@ import Modal from 'react-modal';
 import LinkedInPreviewModal from '../../components/modals/LinkedInPreviewModal';
 import CompanyTagsModal from '../../components/modals/CompanyTagsModal';
 import NewEditCompanyModal from '../../components/modals/NewEditCompanyModal';
+import AssociateCompanyModal from '../../components/modals/AssociateCompanyModal';
+import CreateCompanyModal from '../../components/modals/CreateCompanyModal';
 import { 
   FiX, 
   FiCheck, 
@@ -1297,6 +1299,13 @@ const ContactCrmWorkflow = () => {
   const [showLinkedInPreviewModal, setShowLinkedInPreviewModal] = useState(false);
   const [showEditCompanyModal, setShowEditCompanyModal] = useState(false);
   const [selectedCompanyForEdit, setSelectedCompanyForEdit] = useState(null);
+  
+  // State for associate company modal
+  const [showAssociateCompanyModal, setShowAssociateCompanyModal] = useState(false);
+  
+  // State for create company modal
+  const [showCreateCompanyModal, setShowCreateCompanyModal] = useState(false);
+  const [newCompanyInitialName, setNewCompanyInitialName] = useState('');
   const [newCompanyData, setNewCompanyData] = useState({
     name: '',
     category: '',
@@ -8895,7 +8904,7 @@ const handleInputChange = (field, value) => {
                             <FiRefreshCw size={14} />
                           </button>
                           <button 
-                            onClick={() => setShowAddCompanyModal(true)}
+                            onClick={() => setShowAssociateCompanyModal(true)}
                             style={{
                               background: 'transparent',
                               color: '#00ff00',
@@ -8909,7 +8918,7 @@ const handleInputChange = (field, value) => {
                               marginLeft: '10px',
                               height: '20px'
                             }}
-                            title="Add Company"
+                            title="Associate Company"
                           >
                             <FiPlus size={10} />
                           </button>
@@ -9158,7 +9167,17 @@ const handleInputChange = (field, value) => {
                                 ) : (
                                   <tr>
                                     <td colSpan="5" style={{ padding: '20px', textAlign: 'center', color: '#999', height: '80px' }}>
-                                      No companies associated with this contact
+                                      No companies associated with this contact.{' '}
+                                      <span 
+                                        onClick={() => setShowAssociateCompanyModal(true)}
+                                        style={{ 
+                                          color: '#00ff00', 
+                                          cursor: 'pointer', 
+                                          textDecoration: 'underline'
+                                        }}
+                                      >
+                                        Associate a company
+                                      </span>
                                     </td>
                                   </tr>
                                 )}
@@ -10133,6 +10152,40 @@ const handleInputChange = (field, value) => {
         contactId={contactId}
         onCompanyUpdated={() => {
           // Refresh data
+          loadContactCompanies();
+          loadCompanyTags();
+        }}
+      />
+      
+      {/* Associate Company Modal */}
+      <AssociateCompanyModal
+        isOpen={showAssociateCompanyModal}
+        onRequestClose={() => setShowAssociateCompanyModal(false)}
+        contactId={contactId}
+        onCompanyAssociated={(result) => {
+          if (result.action === 'create_new') {
+            // Open create company modal with the name
+            setNewCompanyInitialName(result.name);
+            setShowCreateCompanyModal(true);
+          } else if (result.action === 'associated') {
+            // Refresh company data
+            loadContactCompanies();
+            loadCompanyTags();
+          }
+        }}
+      />
+      
+      {/* Create Company Modal */}
+      <CreateCompanyModal
+        isOpen={showCreateCompanyModal}
+        onRequestClose={() => {
+          setShowCreateCompanyModal(false);
+          setNewCompanyInitialName('');
+        }}
+        initialName={newCompanyInitialName}
+        contactId={contactId}
+        onCompanyCreated={() => {
+          // Refresh company data
           loadContactCompanies();
           loadCompanyTags();
         }}
