@@ -10,7 +10,8 @@ import {
   FiUsers,
   FiCopy,
   FiSave,
-  FiExternalLink
+  FiExternalLink,
+  FiGitMerge
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -435,55 +436,234 @@ const NewEditCompanyModal = ({
   
   // Check for possible duplicate companies
   const checkForDuplicates = async () => {
-    if (!company?.company_id || !companyData.name) return;
+    if (!company?.company_id) return;
     
     setLoadingDuplicates(true);
     
     try {
-      // First try exact name match
-      const { data, error } = await supabase
-        .from('companies')
-        .select('*')
-        .neq('company_id', company.company_id) // Exclude this company
-        .ilike('name', companyData.name);
-        
-      if (error) throw error;
+      let duplicates = [];
+      let seenIds = new Set();
       
-      // Then try similar names
-      const words = companyData.name.split(' ').filter(w => w.length > 3);
-      
-      let moreDuplicates = [];
-      
-      if (words.length > 0) {
-        const searchPromises = words.map(word => 
-          supabase
-            .from('companies')
-            .select('*')
-            .neq('company_id', company.company_id)
-            .ilike('name', `%${word}%`)
-            .limit(5)
-        );
+      // 1. Try exact name match if name exists
+      if (companyData.name) {
+        const { data: nameMatches, error: nameError } = await supabase
+          .from('companies')
+          .select('*')
+          .neq('company_id', company.company_id) // Exclude this company
+          .ilike('name', companyData.name);
+          
+        if (nameError) throw nameError;
         
-        const results = await Promise.all(searchPromises);
+        // Add to results and tracking set
+        if (nameMatches && nameMatches.length > 0) {
+          duplicates.push(...nameMatches);
+          nameMatches.forEach(match => seenIds.add(match.company_id));
+        }
         
-        // Combine and deduplicate results
-        const allMatches = results.flatMap(result => result.data || []);
+        // Try similar names
+        const words = companyData.name.split(' ').filter(w => w.length > 3);
         
-        // Deduplicate
-        const seenIds = new Set(data.map(c => c.company_id));
-        
-        moreDuplicates = allMatches.filter(c => !seenIds.has(c.company_id));
-        
-        // Limit to 10 more
-        moreDuplicates = moreDuplicates.slice(0, 10);
+        if (words.length > 0) {
+          const searchPromises = words.map(word => 
+            supabase
+              .from('companies')
+              .select('*')
+              .neq('company_id', company.company_id)
+              .ilike('name', `%${word}%`)
+              .limit(5)
+          );
+          
+          const results = await Promise.all(searchPromises);
+          
+          // Combine results
+          const nameWordMatches = results.flatMap(result => result.data || []);
+          
+          // Add non-duplicates to our list
+          for (const match of nameWordMatches) {
+            if (!seenIds.has(match.company_id)) {
+              duplicates.push(match);
+              seenIds.add(match.company_id);
+            }
+          }
+        }
       }
       
-      setPossibleDuplicates([...data, ...moreDuplicates]);
+      // 2. Try domain matching if website exists
+      if (companyData.website) {
+        // Get base domain without www, http, etc
+        const normalizedDomain = companyData.website
+          .replace(/^https?:\/\//, '')
+          .replace(/^www\./, '')
+          .split('/')[0]
+          .toLowerCase();
+        
+        if (normalizedDomain && normalizedDomain.length > 3) {
+          // Search for exact domain
+          const { data: exactDomainMatches, error: domainError1 } = await supabase
+            .from('companies')
+            .select('*')
+            .neq('company_id', company.company_id);
+            
+          if (domainError1) throw domainError1;
+          
+          // Filter domain matches manually to handle different variations
+          const domainMatches = exactDomainMatches.filter(c => {
+            if (!c.website) return false;
+            
+            const companyDomain = c.website
+              .replace(/^https?:\/\//, '')
+              .replace(/^www\./, '')
+              .split('/')[0]
+              .toLowerCase();
+              
+            return companyDomain === normalizedDomain || 
+                   companyDomain.includes(normalizedDomain) || 
+                   normalizedDomain.includes(companyDomain);
+          });
+          
+          // Add non-duplicates to our list
+          for (const match of domainMatches) {
+            if (!seenIds.has(match.company_id)) {
+              duplicates.push(match);
+              seenIds.add(match.company_id);
+            }
+          }
+        }
+      }
+      
+      // Limit to 20 total results
+      duplicates = duplicates.slice(0, 20);
+      
+      setPossibleDuplicates(duplicates);
     } catch (error) {
       console.error('Error checking for duplicates:', error);
       toast.error('Failed to check for duplicates');
     } finally {
       setLoadingDuplicates(false);
+    }
+  };
+  
+  // Handle merging companies
+  const handleMergeCompany = async (duplicateId) => {
+    // Use toast.confirm instead of the global confirm
+    const confirmed = window.confirm('Are you sure you want to merge these companies? This action cannot be undone.');
+    if (!confirmed) {
+      return;
+    }
+    
+    try {
+      toast.loading('Merging companies...');
+      
+      // 1. Get tags from both companies and combine them
+      const [tagsResult, contactsResult] = await Promise.all([
+        // Get tags from duplicate company
+        supabase
+          .from('company_tags')
+          .select(`
+            tag_id,
+            tags (name)
+          `)
+          .eq('company_id', duplicateId),
+          
+        // Get contacts associated with duplicate company  
+        supabase
+          .from('contact_companies')
+          .select(`
+            contact_id,
+            relationship
+          `)
+          .eq('company_id', duplicateId)
+      ]);
+      
+      if (tagsResult.error) throw tagsResult.error;
+      if (contactsResult.error) throw contactsResult.error;
+      
+      // 2. Add tags from duplicate to main company if they don't exist
+      if (tagsResult.data && tagsResult.data.length > 0) {
+        // Get existing tags on main company
+        const { data: existingTags, error: existingTagsError } = await supabase
+          .from('company_tags')
+          .select('tag_id')
+          .eq('company_id', company.company_id);
+          
+        if (existingTagsError) throw existingTagsError;
+        
+        const existingTagIds = new Set(existingTags.map(t => t.tag_id));
+        
+        // Filter out tags that already exist
+        const tagsToAdd = tagsResult.data.filter(t => !existingTagIds.has(t.tag_id));
+        
+        // Add new tags
+        if (tagsToAdd.length > 0) {
+          const tagsToInsert = tagsToAdd.map(t => ({
+            company_id: company.company_id,
+            tag_id: t.tag_id
+          }));
+          
+          const { error: addTagsError } = await supabase
+            .from('company_tags')
+            .insert(tagsToInsert);
+            
+          if (addTagsError) throw addTagsError;
+        }
+      }
+      
+      // 3. Transfer contacts from duplicate to main company
+      if (contactsResult.data && contactsResult.data.length > 0) {
+        // Get existing contact associations on main company
+        const { data: existingContacts, error: existingContactsError } = await supabase
+          .from('contact_companies')
+          .select('contact_id')
+          .eq('company_id', company.company_id);
+          
+        if (existingContactsError) throw existingContactsError;
+        
+        const existingContactIds = new Set(existingContacts.map(c => c.contact_id));
+        
+        // For duplicate contacts, update to point to main company
+        const contactsToUpdate = contactsResult.data.filter(c => !existingContactIds.has(c.contact_id));
+        
+        if (contactsToUpdate.length > 0) {
+          // Update contact associations to point to the main company
+          for (const contact of contactsToUpdate) {
+            const { error: updateContactError } = await supabase
+              .from('contact_companies')
+              .update({ company_id: company.company_id })
+              .eq('contact_id', contact.contact_id)
+              .eq('company_id', duplicateId);
+              
+            if (updateContactError) throw updateContactError;
+          }
+        }
+      }
+      
+      // 4. Mark the duplicate company as deleted (or delete if preferred)
+      const { error: deleteError } = await supabase
+        .from('companies')
+        .update({ 
+          name: `[MERGED] ${companyData.name}`,
+          last_modified_at: new Date(),
+          last_modified_by: 'User'
+        })
+        .eq('company_id', duplicateId);
+        
+      if (deleteError) throw deleteError;
+      
+      // Refresh data
+      toast.dismiss();
+      toast.success('Companies merged successfully');
+      
+      // Reload duplicates list
+      checkForDuplicates();
+      
+      // Refresh company data
+      loadCompanyData();
+      loadCompanyTags();
+      
+    } catch (error) {
+      console.error('Error merging companies:', error);
+      toast.dismiss();
+      toast.error('Failed to merge companies');
     }
   };
   
@@ -963,6 +1143,18 @@ const NewEditCompanyModal = ({
                               title="View Company"
                             >
                               <FiExternalLink size={16} />
+                            </button>
+                            <button
+                              onClick={() => handleMergeCompany(duplicate.company_id)}
+                              style={{ 
+                                background: 'transparent', 
+                                border: 'none', 
+                                color: '#00ff00', 
+                                cursor: 'pointer' 
+                              }}
+                              title="Merge this company into current company"
+                            >
+                              <FiGitMerge size={16} />
                             </button>
                           </div>
                         </td>
