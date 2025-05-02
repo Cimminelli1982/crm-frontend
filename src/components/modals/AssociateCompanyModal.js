@@ -354,12 +354,33 @@ const AssociateCompanyModal = ({
   
   // Handle associating the company
   const handleAssociateCompany = async () => {
-    if (!selectedCompany || !contactId) {
+    if (!selectedCompany) {
       toast.error('Please select a company to associate');
       return;
     }
     
+    if (!contactId) {
+      console.error('Missing contact ID when trying to associate company', { 
+        contactId, 
+        companyId: selectedCompany?.company_id 
+      });
+      toast.error('Cannot associate company: Missing contact ID');
+      return;
+    }
+    
     try {
+      // Show loading state
+      toast.loading('Associating company...', { id: 'associate-company' });
+      
+      console.log('Associating company to contact', { 
+        contactId: contactId,
+        contactIdType: typeof contactId,
+        companyId: selectedCompany.company_id,
+        companyName: selectedCompany.name,
+        relationship: relationship,
+        isPrimary: isPrimary
+      });
+      
       // Associate the company with the contact
       const { data, error } = await supabase
         .from('contact_companies')
@@ -371,8 +392,15 @@ const AssociateCompanyModal = ({
         })
         .select();
         
-      if (error) throw error;
+      if (error) {
+        console.error('Database error when associating company:', error);
+        throw error;
+      }
       
+      console.log('Company association successful:', data);
+      
+      // Dismiss loading toast and show success
+      toast.dismiss('associate-company');
       toast.success(`${selectedCompany.name} associated successfully`);
       
       // Call the callback
@@ -387,7 +415,8 @@ const AssociateCompanyModal = ({
       onRequestClose();
     } catch (error) {
       console.error('Error associating company:', error);
-      toast.error('Failed to associate company');
+      toast.dismiss('associate-company');
+      toast.error(`Failed to associate company: ${error.message || 'Unknown error'}`);
     }
   };
   

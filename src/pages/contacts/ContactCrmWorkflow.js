@@ -1420,7 +1420,17 @@ const ContactCrmWorkflow = () => {
   // Handler functions for the companies table
   const loadContactCompanies = async () => {
     try {
-      console.log('Loading contact companies for contact ID:', contactId);
+      console.log('Loading contact companies for contact ID:', contactId, 'Type:', typeof contactId);
+      
+      if (!contactId) {
+        console.warn('Cannot load companies: Missing contact ID');
+        setContactCompanies([]);
+        setCompaniesLoaded(true);
+        return;
+      }
+      
+      // Show loading toast for better user feedback
+      toast.loading('Loading companies...', { id: 'load-companies' });
       
       const { data, error } = await supabase
         .from('contact_companies')
@@ -1441,11 +1451,15 @@ const ContactCrmWorkflow = () => {
         .eq('contact_id', contactId);
       
       if (error) {
-        console.error('Error loading contact companies:', error);
+        console.error('Supabase error when loading companies:', error);
+        toast.dismiss('load-companies');
+        toast.error(`Failed to load companies: ${error.message}`);
+        setContactCompanies([]);
+        setCompaniesLoaded(true);
         return;
       }
       
-      console.log('Contact companies data:', data);
+      console.log('Contact companies data from Supabase:', data);
       
       if (data && data.length > 0) {
         const formattedCompanies = data.map(cc => ({
@@ -1467,16 +1481,20 @@ const ContactCrmWorkflow = () => {
         
         // After setting companies, load their tags
         setTimeout(() => loadCompanyTags(), 100);
+        toast.dismiss('load-companies');
       } else {
         console.log('No companies found for this contact');
         setContactCompanies([]);
         setCompaniesLoaded(true); // Still mark as loaded even if empty
+        toast.dismiss('load-companies');
       }
     } catch (err) {
       console.error('Error in loadContactCompanies:', err);
       // Set empty array to ensure UI renders properly even in case of error
       setContactCompanies([]);
       setCompaniesLoaded(true); // Mark as loaded even on error
+      toast.dismiss('load-companies');
+      toast.error('Failed to load companies due to an error');
     }
   };
   
