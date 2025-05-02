@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import Modal from 'react-modal';
 import LinkedInPreviewModal from '../../components/modals/LinkedInPreviewModal';
 import CompanyTagsModal from '../../components/modals/CompanyTagsModal';
+import NewEditCompanyModal from '../../components/modals/NewEditCompanyModal';
 import { 
   FiX, 
   FiCheck, 
@@ -1294,6 +1295,8 @@ const ContactCrmWorkflow = () => {
   const [editingCompanyData, setEditingCompanyData] = useState(null);
   const [showNewCompanyModal, setShowNewCompanyModal] = useState(false);
   const [showLinkedInPreviewModal, setShowLinkedInPreviewModal] = useState(false);
+  const [showEditCompanyModal, setShowEditCompanyModal] = useState(false);
+  const [selectedCompanyForEdit, setSelectedCompanyForEdit] = useState(null);
   const [newCompanyData, setNewCompanyData] = useState({
     name: '',
     category: '',
@@ -1471,6 +1474,8 @@ const ContactCrmWorkflow = () => {
   // Handle changes to company fields in the table
   const handleCompanyChange = async (contactCompaniesId, field, value) => {
     try {
+      console.log(`Handling change for ${field}:`, { contactCompaniesId, value });
+      
       // Update the state first for a responsive UI
       setContactCompanies(prevCompanies => 
         prevCompanies.map(company => 
@@ -1482,13 +1487,21 @@ const ContactCrmWorkflow = () => {
       
       // Determine which table needs to be updated
       if (['relationship', 'is_primary'].includes(field)) {
-        // Update the contact_companies table
-        const { error } = await supabase
+        console.log(`Updating ${field} in contact_companies table to:`, value);
+        
+        // Update the contact_companies table - remove last_modified_at as it doesn't exist in this table
+        const { data, error } = await supabase
           .from('contact_companies')
-          .update({ [field]: value, last_modified_at: new Date() })
-          .eq('contact_companies_id', contactCompaniesId);
+          .update({ [field]: value })
+          .eq('contact_companies_id', contactCompaniesId)
+          .select();
           
-        if (error) throw error;
+        if (error) {
+          console.error('Error updating contact_companies:', error);
+          throw error;
+        }
+        
+        console.log('Update successful:', data);
       } else {
         // For other fields, we need to find the company_id first
         const company = contactCompanies.find(c => c.contact_companies_id === contactCompaniesId);
@@ -1496,13 +1509,25 @@ const ContactCrmWorkflow = () => {
           throw new Error('Company ID not found');
         }
         
+        console.log(`Updating ${field} in companies table for company_id:`, company.company_id);
+        
         // Update the companies table
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('companies')
-          .update({ [field]: value, last_modified_at: new Date() })
-          .eq('company_id', company.company_id);
+          .update({ 
+            [field]: value, 
+            last_modified_at: new Date(),
+            last_modified_by: 'User'
+          })
+          .eq('company_id', company.company_id)
+          .select();
           
-        if (error) throw error;
+        if (error) {
+          console.error('Error updating companies:', error);
+          throw error;
+        }
+        
+        console.log('Update successful:', data);
       }
       
       toast.success(`Company ${field} updated successfully`);
@@ -1612,6 +1637,12 @@ const ContactCrmWorkflow = () => {
   const startEditingCompany = (company) => {
     setEditingCompanyId(company.contact_companies_id);
     setEditCompanyName(company.name || '');
+  };
+  
+  // Open the new edit company modal
+  const openEditCompanyModal = (company) => {
+    setSelectedCompanyForEdit(company);
+    setShowEditCompanyModal(true);
   };
   
   // Save company name changes
@@ -8688,13 +8719,16 @@ const handleInputChange = (field, value) => {
                       <FormGroup>
                         <FormFieldLabel>
                           <a 
-                            href={`https://www.linkedin.com/search/results/people/?keywords=${contact.first_name || ''}%20${contact.last_name || ''}&sid=Avh`}
+                            href={
+                              formData.linkedIn ? 
+                              (formData.linkedIn.startsWith('http') ? formData.linkedIn : `https://${formData.linkedIn}`) : 
+                              `https://www.linkedin.com/search/results/people/?keywords=${contact.first_name || ''}%20${contact.last_name || ''}&sid=Avh`
+                            }
                             target="_blank"
                             rel="noopener noreferrer"
                             style={{ color: '#fff', textDecoration: 'none', display: 'flex', alignItems: 'center' }}
                           >
                             <span>LinkedIn Profile</span>
-                            <span style={{ marginLeft: '5px', fontSize: '10px' }}>↗</span>
                           </a>
                           {airtableContact && airtableContact.linkedin_normalised && ` - Airtable: ${airtableContact.linkedin_normalised}`}
                         </FormFieldLabel>
@@ -8715,56 +8749,35 @@ const handleInputChange = (field, value) => {
                             style={{ flex: 1 }}
                           />
                           
-                          {/* Save LinkedIn URL button */}
-                          <button
-                            onClick={async () => {
-                              try {
-                                setLoading(true);
-                                
-                                // Update LinkedIn field in contacts table
-                                const { error } = await supabase
-                                  .from('contacts')
-                                  .update({
-                                    linkedin: formData.linkedIn, // Database column is 'linkedin', form field is 'linkedIn'
-                                    last_modified_at: new Date()
-                                  })
-                                  .eq('contact_id', contactId);
-                                
-                                if (error) throw error;
-                                
-                                toast.success('LinkedIn profile saved');
-                                setLoading(false);
-                              } catch (err) {
-                                console.error('Error saving LinkedIn:', err);
-                                toast.error('Failed to save LinkedIn profile');
-                                setLoading(false);
-                              }
-                            }}
-                            style={{
-                              background: '#00ff00',
-                              color: '#000',
-                              border: 'none',
-                              borderRadius: '4px',
-                              padding: '8px 12px',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '5px'
-                            }}
-                          >
-                            <FiCheck size={14} /> Save
-                          </button>
-                          
-                          {/* Button to open LinkedIn search if no LinkedIn provided */}
-                          {!formData.linkedIn && (
+                          {/* Save LinkedIn URL button - hidden if LinkedIn profile already exists */}
+                          {!contact.linkedin && (
                             <button
-                              onClick={() => {
-                                const searchUrl = `https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(`${formData.firstName || ''} ${formData.lastName || ''}`.trim())}`;
-                                window.open(searchUrl, '_blank');
+                              onClick={async () => {
+                                try {
+                                  setLoading(true);
+                                  
+                                  // Update LinkedIn field in contacts table
+                                  const { error } = await supabase
+                                    .from('contacts')
+                                    .update({
+                                      linkedin: formData.linkedIn, // Database column is 'linkedin', form field is 'linkedIn'
+                                      last_modified_at: new Date()
+                                    })
+                                    .eq('contact_id', contactId);
+                                  
+                                  if (error) throw error;
+                                  
+                                  toast.success('LinkedIn profile saved');
+                                  setLoading(false);
+                                } catch (err) {
+                                  console.error('Error saving LinkedIn:', err);
+                                  toast.error('Failed to save LinkedIn profile');
+                                  setLoading(false);
+                                }
                               }}
                               style={{
-                                background: '#0077b5',
-                                color: '#fff',
+                                background: '#00ff00',
+                                color: '#000',
                                 border: 'none',
                                 borderRadius: '4px',
                                 padding: '8px 12px',
@@ -8774,29 +8787,24 @@ const handleInputChange = (field, value) => {
                                 gap: '5px'
                               }}
                             >
-                              <FiSearch size={14} /> Preview
+                              <FiCheck size={14} /> Save
                             </button>
                           )}
                           
-                          {/* Button to view LinkedIn badge modal if LinkedIn provided */}
-                          {formData.linkedIn && (
-                            <button
+                          {/* LinkedIn preview button */}
+                          <button
                               onClick={() => setShowLinkedInPreviewModal(true)}
                               style={{
-                                background: '#0077b5',
-                                color: '#fff',
+                                background: '#00ff00',
+                                color: '#000',
                                 border: 'none',
                                 borderRadius: '4px',
                                 padding: '8px 12px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '5px'
+                                cursor: 'pointer'
                               }}
                             >
-                              <FiLink size={14} /> Open
+                              Preview
                             </button>
-                          )}
                         </div>
                       </FormGroup>
                       
@@ -9100,17 +9108,16 @@ const handleInputChange = (field, value) => {
                                           <option value="employee">Employee</option>
                                           <option value="founder">Founder</option>
                                           <option value="advisor">Advisor</option>
+                                          <option value="manager">Manager</option>
                                           <option value="investor">Investor</option>
-                                          <option value="board_member">Board Member</option>
-                                          <option value="customer">Customer</option>
-                                          <option value="partner">Partner</option>
+                                          <option value="other">Other</option>
                                         </select>
                                       </td>
                                       <td style={{ padding: '12px 15px', textAlign: 'center' }}>
                                         <div style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
                                           <button
-                                            onClick={() => startEditingCompany(company)}
-                                            title="Edit company name"
+                                            onClick={() => openEditCompanyModal(company)}
+                                            title="Edit company"
                                             style={{
                                               background: 'transparent',
                                               color: '#00ff00',
@@ -10112,6 +10119,23 @@ const handleInputChange = (field, value) => {
           setTimeout(() => loadCompanyTags(), 500);
         }}
         company={{ id: selectedCompanyForTags }}
+      />
+      
+      <NewEditCompanyModal
+        isOpen={showEditCompanyModal}
+        onRequestClose={() => {
+          setShowEditCompanyModal(false);
+          // Refresh company data after closing
+          loadContactCompanies();
+          loadCompanyTags();
+        }}
+        company={selectedCompanyForEdit}
+        contactId={contactId}
+        onCompanyUpdated={() => {
+          // Refresh data
+          loadContactCompanies();
+          loadCompanyTags();
+        }}
       />
     </Container>
   );
