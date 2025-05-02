@@ -1410,6 +1410,11 @@ const ContactCrmWorkflow = () => {
   
   // State for companies
   const [contactCompanies, setContactCompanies] = useState([]); // Initialize with empty array for consistent rendering
+  
+  // For debugging - add this effect to track company state changes
+  useEffect(() => {
+    console.log('contactCompanies state changed:', contactCompanies);
+  }, [contactCompanies]);
   const [showAddCompanyModal, setShowAddCompanyModal] = useState(false); // Will be used with a dedicated modal later
   const [selectedCompanyForTags, setSelectedCompanyForTags] = useState(null);
   const [showAddTagModal, setShowAddTagModal] = useState(false);
@@ -1420,7 +1425,7 @@ const ContactCrmWorkflow = () => {
   // Handler functions for the companies table
   const loadContactCompanies = async () => {
     try {
-      console.log('Loading contact companies for contact ID:', contactId, 'Type:', typeof contactId);
+      console.log('Loading contact companies for contact ID:', contactId, 'Type:', typeof contactId, 'Stack trace:', new Error().stack);
       
       if (!contactId) {
         console.warn('Cannot load companies: Missing contact ID');
@@ -2378,7 +2383,10 @@ const handleSelectEmailThread = async (threadId) => {
       
       // Only load companies if not already loaded
       if (!companiesLoaded) {
+        console.log('Loading contact companies (in useEffect)');
         loadContactCompanies();
+      } else {
+        console.log('Companies already loaded, skipping load in useEffect');
       }
       
       // Enable all legacy data sources by default
@@ -2503,11 +2511,13 @@ const handleSelectEmailThread = async (threadId) => {
       });
       
       // Load related data in parallel
+      // Note: We skip loadContactCompanies here to avoid race conditions
+      // with the conditional loading in the useEffect
       await Promise.all([
         loadInteractions(contactData.contact_id),
         loadContactDetails(contactData.contact_id),
         loadEmailAndMobile(contactData.contact_id),
-        loadContactCompanies(),
+        // loadContactCompanies() - Removed to avoid race condition
         fetchExternalData(contactData)
       ]);
       
