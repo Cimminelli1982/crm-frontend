@@ -1224,6 +1224,51 @@ const stringSimilarity = (str1, str2) => {
   return 1.0 - (distance / len);
 };
 
+// Function to save basic contact information
+const saveContactBasicInfo = async (contactId, basicInfo) => {
+  try {
+    const { first_name, last_name, email, mobile, linkedin, notes } = basicInfo;
+    
+    // Validate required fields
+    if (!contactId) {
+      throw new Error('Contact ID is required');
+    }
+    
+    // Prepare update data object with only provided fields
+    const updateData = {};
+    if (first_name !== undefined) updateData.first_name = first_name;
+    if (last_name !== undefined) updateData.last_name = last_name;
+    if (email !== undefined) updateData.email = email;
+    if (mobile !== undefined) updateData.mobile = mobile;
+    if (linkedin !== undefined) updateData.linkedin = linkedin;
+    if (notes !== undefined) updateData.notes = notes;
+    
+    // Skip update if no fields to update
+    if (Object.keys(updateData).length === 0) {
+      return { success: true, message: 'No changes to update' };
+    }
+    
+    // Update the contact in Supabase
+    const { data, error } = await supabase
+      .from('contacts')
+      .update(updateData)
+      .eq('id', contactId);
+      
+    if (error) {
+      console.error('Error updating contact basic info:', error);
+      throw new Error(`Failed to update contact information: ${error.message}`);
+    }
+    
+    // Success response
+    toast.success('Contact information updated successfully');
+    return { success: true, data };
+  } catch (error) {
+    console.error('Exception updating contact basic info:', error);
+    toast.error(error.message || 'Failed to update contact information');
+    return { success: false, error };
+  }
+};
+
 const ContactCrmWorkflow = () => {
   const { id: contactId } = useParams();
   const navigate = useNavigate();
@@ -2631,7 +2676,61 @@ const handleSelectEmailThread = async (threadId) => {
   };
   
   // Handle form input changes
-  const handleInputChange = (field, value) => {
+  // Function to save basic contact information
+const saveContactBasicInfo = async (contactId, basicInfo) => {
+  if (!contactId) {
+    console.error('No contact ID provided');
+    toast.error('Cannot update contact: Missing ID');
+    return { success: false, error: 'No contact ID provided' };
+  }
+
+  // Extract fields from basicInfo object
+  const { 
+    first_name, 
+    last_name, 
+    email, 
+    mobile, 
+    linkedin, 
+    notes 
+  } = basicInfo || {};
+
+  // Create update object with only provided fields
+  const updateData = {};
+  if (first_name !== undefined) updateData.first_name = first_name;
+  if (last_name !== undefined) updateData.last_name = last_name;
+  if (email !== undefined) updateData.email = email;
+  if (mobile !== undefined) updateData.mobile = mobile;
+  if (linkedin !== undefined) updateData.linkedin = linkedin;
+  if (notes !== undefined) updateData.notes = notes;
+
+  // Skip update if no fields provided
+  if (Object.keys(updateData).length === 0) {
+    console.warn('No fields to update');
+    return { success: true, data: null };
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('contacts')
+      .update(updateData)
+      .eq('contact_id', contactId);
+
+    if (error) {
+      console.error('Error updating contact:', error);
+      toast.error('Failed to update contact information');
+      return { success: false, error };
+    }
+
+    toast.success('Contact information updated');
+    return { success: true, data };
+  } catch (err) {
+    console.error('Error in saveContactBasicInfo:', err);
+    toast.error('An unexpected error occurred');
+    return { success: false, error: err };
+  }
+};
+
+const handleInputChange = (field, value) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -5005,22 +5104,38 @@ const handleSelectEmailThread = async (threadId) => {
                                   const firstName = nameParts[0] || '';
                                   const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
                                   
-                                  // Update contact with new name parts
-                                  const updatedContact = {
-                                    ...contact,
-                                    first_name: firstName,
-                                    last_name: lastName
-                                  };
-                                  setContact(updatedContact);
+                                  // Set the editing values
+                                  setEditFirstName(firstName);
+                                  setEditLastName(lastName);
                                   
-                                  // Save changes to database
-                                  saveContactBasicInfo({
-                                    ...contact,
-                                    first_name: firstName,
-                                    last_name: lastName
-                                  });
-                                  
-                                  toast.success('Contact name updated from chat');
+                                  // Update contact with new name parts via Supabase
+                                  try {
+                                    // Save directly to the database
+                                    supabase
+                                      .from('contacts')
+                                      .update({
+                                        first_name: firstName,
+                                        last_name: lastName
+                                      })
+                                      .eq('contact_id', contactId)
+                                      .then(({ error }) => {
+                                        if (error) {
+                                          console.error('Error updating name:', error);
+                                          toast.error('Failed to update name');
+                                        } else {
+                                          // Update local state
+                                          setContact({
+                                            ...contact,
+                                            first_name: firstName,
+                                            last_name: lastName
+                                          });
+                                          toast.success('Contact name updated from chat');
+                                        }
+                                      });
+                                  } catch (err) {
+                                    console.error('Error updating name:', err);
+                                    toast.error('Failed to update name');
+                                  }
                                 }
                               }}
                             >
