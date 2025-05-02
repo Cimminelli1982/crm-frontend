@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import Modal from 'react-modal';
 import LinkedInPreviewModal from '../../components/modals/LinkedInPreviewModal';
+import CompanyTagsModal from '../../components/modals/CompanyTagsModal';
 import { 
   FiX, 
   FiCheck, 
@@ -1394,6 +1395,279 @@ const ContactCrmWorkflow = () => {
   const [loadingEmails, setLoadingEmails] = useState(false);
   const [expandedEmails, setExpandedEmails] = useState({});
   
+  // State for companies
+  const [contactCompanies, setContactCompanies] = useState([]); // Initialize with empty array for consistent rendering
+  const [showAddCompanyModal, setShowAddCompanyModal] = useState(false); // Will be used with a dedicated modal later
+  const [selectedCompanyForTags, setSelectedCompanyForTags] = useState(null);
+  const [showAddTagModal, setShowAddTagModal] = useState(false);
+  const [companiesLoaded, setCompaniesLoaded] = useState(false); // Track if companies were loaded successfully
+  
+  // Handler functions for the companies table
+  const loadContactCompanies = async () => {
+    try {
+      console.log('Loading contact companies for contact ID:', contactId);
+      
+      const { data, error } = await supabase
+        .from('contact_companies')
+        .select(`
+          contact_companies_id,
+          company_id,
+          relationship,
+          is_primary,
+          companies:company_id(
+            company_id,
+            name,
+            website,
+            category,
+            description,
+            linkedin
+          )
+        `)
+        .eq('contact_id', contactId);
+      
+      if (error) {
+        console.error('Error loading contact companies:', error);
+        return;
+      }
+      
+      console.log('Contact companies data:', data);
+      
+      if (data && data.length > 0) {
+        const formattedCompanies = data.map(cc => ({
+          contact_companies_id: cc.contact_companies_id,
+          company_id: cc.company_id,
+          relationship: cc.relationship,
+          is_primary: cc.is_primary,
+          name: cc.companies?.name || 'Unknown Company',
+          website: cc.companies?.website || '',
+          category: cc.companies?.category || 'Inbox',
+          description: cc.companies?.description || '',
+          linkedin: cc.companies?.linkedin || '',
+          tags: [] // Initialize with empty tags array
+        }));
+        
+        console.log('Formatted companies:', formattedCompanies);
+        setContactCompanies(formattedCompanies);
+        setCompaniesLoaded(true); // Mark that companies were successfully loaded
+        
+        // After setting companies, load their tags
+        setTimeout(() => loadCompanyTags(), 100);
+      } else {
+        console.log('No companies found for this contact');
+        setContactCompanies([]);
+        setCompaniesLoaded(true); // Still mark as loaded even if empty
+      }
+    } catch (err) {
+      console.error('Error in loadContactCompanies:', err);
+      // Set empty array to ensure UI renders properly even in case of error
+      setContactCompanies([]);
+      setCompaniesLoaded(true); // Mark as loaded even on error
+    }
+  };
+  
+  // Handle changes to company fields in the table
+  const handleCompanyChange = async (contactCompaniesId, field, value) => {
+    try {
+      // Update the state first for a responsive UI
+      setContactCompanies(prevCompanies => 
+        prevCompanies.map(company => 
+          company.contact_companies_id === contactCompaniesId 
+            ? { ...company, [field]: value } 
+            : company
+        )
+      );
+      
+      // Determine which table needs to be updated
+      if (['relationship', 'is_primary'].includes(field)) {
+        // Update the contact_companies table
+        const { error } = await supabase
+          .from('contact_companies')
+          .update({ [field]: value, last_modified_at: new Date() })
+          .eq('contact_companies_id', contactCompaniesId);
+          
+        if (error) throw error;
+      } else {
+        // For other fields, we need to find the company_id first
+        const company = contactCompanies.find(c => c.contact_companies_id === contactCompaniesId);
+        if (!company || !company.company_id) {
+          throw new Error('Company ID not found');
+        }
+        
+        // Update the companies table
+        const { error } = await supabase
+          .from('companies')
+          .update({ [field]: value, last_modified_at: new Date() })
+          .eq('company_id', company.company_id);
+          
+        if (error) throw error;
+      }
+      
+      toast.success(`Company ${field} updated successfully`);
+    } catch (err) {
+      console.error(`Error updating company ${field}:`, err);
+      toast.error(`Failed to update company ${field}`);
+      
+      // Revert state change on error
+      loadContactCompanies();
+    }
+  };
+  
+  // Handle removing a company association
+  const handleRemoveCompanyAssociation = async (contactCompaniesId) => {
+    try {
+      if (!contactCompaniesId) {
+        throw new Error('Contact company ID is required');
+      }
+      
+      const { error } = await supabase
+        .from('contact_companies')
+        .delete()
+        .eq('contact_companies_id', contactCompaniesId);
+        
+      if (error) throw error;
+      
+      // Update the state by removing the deleted association
+      setContactCompanies(prevCompanies => 
+        prevCompanies.filter(company => company.contact_companies_id !== contactCompaniesId)
+      );
+      
+      toast.success('Company association removed');
+    } catch (err) {
+      console.error('Error removing company association:', err);
+      toast.error('Failed to remove company association');
+    }
+  };
+  
+  // Handle enriching a company with Apollo data
+  const handleEnrichCompany = async (companyId) => {
+    try {
+      if (!companyId) {
+        throw new Error('Company ID is required');
+      }
+      
+      toast.loading('Enriching company data with Apollo...', { id: 'apollo-enrich' });
+      
+      // Get the company's website
+      const { data: companyData, error: companyError } = await supabase
+        .from('companies')
+        .select('website')
+        .eq('company_id', companyId)
+        .single();
+        
+      if (companyError) throw companyError;
+      
+      if (!companyData.website) {
+        toast.error('Company has no website to enrich', { id: 'apollo-enrich' });
+        return;
+      }
+      
+      // Call the Apollo enrich function
+      const response = await fetch('/.netlify/functions/apollo-enrich', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ domain: companyData.website }),
+      });
+      
+      const enrichData = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(enrichData.message || 'Failed to enrich company data');
+      }
+      
+      // Update the company with the enriched data
+      const { error: updateError } = await supabase
+        .from('companies')
+        .update({
+          description: enrichData.description || '',
+          linkedin: enrichData.linkedin || '',
+          last_modified_at: new Date(),
+          last_modified_by: 'Apollo'
+        })
+        .eq('company_id', companyId);
+        
+      if (updateError) throw updateError;
+      
+      toast.success('Company data enriched successfully', { id: 'apollo-enrich' });
+      
+      // Reload the companies data
+      loadContactCompanies();
+    } catch (err) {
+      console.error('Error enriching company:', err);
+      toast.error('Failed to enrich company data', { id: 'apollo-enrich' });
+    }
+  };
+  
+  // Handle navigating to a company page
+  const navigateToCompany = (companyId) => {
+    if (!companyId) return;
+    navigate(`/companies/${companyId}`);
+  };
+  
+  
+  // Function to load tags for all companies
+  const loadCompanyTags = async () => {
+    try {
+      // Load tags for each company in parallel
+      const updatedCompanies = [...contactCompanies];
+      
+      await Promise.all(
+        updatedCompanies.map(async (company, index) => {
+          if (company.company_id) {
+            const tags = await fetchCompanyTags(company.company_id);
+            updatedCompanies[index].tags = tags;
+          }
+        })
+      );
+      
+      // Update state with companies that now have tags
+      setContactCompanies(updatedCompanies);
+    } catch (err) {
+      console.error('Error loading company tags:', err);
+    }
+  };
+  
+  // Show add tag modal for a company
+  const handleShowAddTagModal = (companyId) => {
+    setSelectedCompanyForTags(companyId);
+    setShowAddTagModal(true);
+  };
+  
+  // Remove tag from company
+  const handleRemoveCompanyTag = async (companyId, tagId) => {
+    try {
+      if (!companyId || !tagId) return;
+      
+      // Delete the tag association
+      const { error } = await supabase
+        .from('company_tags')
+        .delete()
+        .eq('company_id', companyId)
+        .eq('tag_id', tagId);
+        
+      if (error) throw error;
+      
+      // Update the UI by removing the tag from the company
+      setContactCompanies(prevCompanies => 
+        prevCompanies.map(company => {
+          if (company.company_id === companyId) {
+            return {
+              ...company,
+              tags: company.tags?.filter(tag => tag.tag_id !== tagId) || []
+            };
+          }
+          return company;
+        })
+      );
+      
+      toast.success('Tag removed');
+    } catch (err) {
+      console.error('Error removing company tag:', err);
+      toast.error('Failed to remove tag');
+    }
+  };
+  
   // State for tracking selected enrichment section
   const [activeEnrichmentSection, setActiveEnrichmentSection] = useState(() => {
     // Try to get the saved section from sessionStorage
@@ -1978,6 +2252,11 @@ const handleSelectEmailThread = async (threadId) => {
       loadWhatsappChats(contactId);
       loadEmailThreads(contactId);
       
+      // Only load companies if not already loaded
+      if (!companiesLoaded) {
+        loadContactCompanies();
+      }
+      
       // Enable all legacy data sources by default
       setShowSources({
         hubspot: true,
@@ -1985,7 +2264,7 @@ const handleSelectEmailThread = async (threadId) => {
         airtable: true
       });
     }
-  }, [contactId]);
+  }, [contactId, companiesLoaded]);
   
   // Start editing name
   const startEditingName = () => {
@@ -2104,6 +2383,7 @@ const handleSelectEmailThread = async (threadId) => {
         loadInteractions(contactData.contact_id),
         loadContactDetails(contactData.contact_id),
         loadEmailAndMobile(contactData.contact_id),
+        loadContactCompanies(),
         fetchExternalData(contactData)
       ]);
       
@@ -2824,6 +3104,8 @@ const handleInputChange = (field, value) => {
         tag_id: item.tag_id,
         name: item.tags?.name || 'Unknown'
       }));
+      
+      console.log('Fetched company tags:', data);
     } catch (err) {
       console.error('Error in fetchCompanyTags:', err);
       return [];
@@ -8524,915 +8806,262 @@ const handleInputChange = (field, value) => {
                           </button>
                         </div>
                       </FormGroup>
-                      
-                      <FormGroup>
-                        <FormFieldLabel>
-                          Associated Companies
-                          {airtableContact && airtableContact.company && ` - Airtable Company: ${airtableContact.company}`}
-                        </FormFieldLabel>
+
+                      <div style={{ marginTop: '20px', paddingRight: '20px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
+                          <FormFieldLabel>Associated Companies</FormFieldLabel>
+                          <button 
+                            onClick={() => setShowAddCompanyModal(true)}
+                            style={{
+                              background: 'transparent',
+                              color: '#00ff00',
+                              border: '1px solid #00ff00',
+                              borderRadius: '4px',
+                              padding: '2px 6px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              fontSize: '0.7rem',
+                              marginLeft: '10px',
+                              height: '20px'
+                            }}
+                            title="Add Company"
+                          >
+                            <FiPlus size={10} />
+                          </button>
+                        </div>
                         <div style={{ 
                           background: '#222', 
-                          padding: '15px', 
+                          padding: '12px', 
                           borderRadius: '4px',
-                          marginBottom: '20px'
+                          minHeight: '100px',
+                          width: '100%'
                         }}>
-                          {formData.associatedCompanies && formData.associatedCompanies.length > 0 ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                              {formData.associatedCompanies.map((company, index) => (
-                                <div 
-                                  key={company.contact_companies_id || index} 
-                                  style={{ 
-                                    background: '#333', 
-                                    padding: '10px', 
-                                    borderRadius: '4px',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '5px'
-                                  }}
-                                >
-                                  {editingCompanyIndex === index ? (
-                                    // Editing mode
-                                    <>
-                                      <div style={{ marginBottom: '15px' }}>
-                                        <div style={{ fontWeight: 'bold', marginBottom: '8px', color: '#00ff00' }}>Edit Company Details</div>
-                                        
-                                        <div style={{ display: 'flex', gap: '15px', marginBottom: '10px' }}>
-                                          <div style={{ flex: '1' }}>
-                                            <div style={{ color: '#999', fontSize: '12px', marginBottom: '4px' }}>Name</div>
-                                            <Input 
-                                              type="text"
-                                              value={editingCompanyData.name || ''}
-                                              onChange={(e) => setEditingCompanyData({
-                                                ...editingCompanyData,
-                                                name: e.target.value
-                                              })}
-                                              style={{ width: '85%' }}
-                                            />
-                                          </div>
-                                          
-                                          <div style={{ flex: '1' }}>
-                                            <div style={{ color: '#999', fontSize: '12px', marginBottom: '4px' }}>Category</div>
-                                            <Select
-                                              value={editingCompanyData.category || ''}
-                                              onChange={(e) => setEditingCompanyData({
-                                                ...editingCompanyData,
-                                                category: e.target.value
-                                              })}
-                                              style={{ 
-                                                width: '92%',
-                                                padding: '8px',
-                                                backgroundColor: '#222',
-                                                borderColor: '#444',
-                                                color: '#eee'
-                                              }}
-                                            >
-                                              <option value="">Select a category</option>
-                                              <option value="Advisory">Advisory</option>
-                                              <option value="Corporation">Corporation</option>
-                                              <option value="Institution">Institution</option>
-                                              <option value="Media">Media</option>
-                                              <option value="Professional Investor">Professional Investor</option>
-                                              <option value="Skip">Skip</option>
-                                              <option value="SME">SME</option>
-                                              <option value="Startup">Startup</option>
-                                            </Select>
-                                          </div>
-                                        </div>
-                                        
-                                        <div style={{ display: 'flex', gap: '15px', marginBottom: '10px' }}>
-                                          <div style={{ flex: '1' }}>
-                                            <div style={{ color: '#999', fontSize: '12px', marginBottom: '4px' }}>Website</div>
-                                            <Input 
-                                              type="text"
-                                              value={editingCompanyData.website || ''}
-                                              onChange={(e) => setEditingCompanyData({
-                                                ...editingCompanyData,
-                                                website: e.target.value
-                                              })}
-                                              style={{ width: '85%' }}
-                                            />
-                                          </div>
-                                          
-                                          <div style={{ flex: '1' }}>
-                                            <div style={{ color: '#999', fontSize: '12px', marginBottom: '4px' }}>LinkedIn</div>
-                                            <Input 
-                                              type="text"
-                                              value={editingCompanyData.linkedin || ''}
-                                              onChange={(e) => setEditingCompanyData({
-                                                ...editingCompanyData,
-                                                linkedin: e.target.value
-                                              })}
-                                              style={{ width: '85%' }}
-                                            />
-                                          </div>
-                                        </div>
-                                        
-                                        <div style={{ marginBottom: '10px' }}>
-                                          <div style={{ color: '#999', fontSize: '12px', marginBottom: '4px' }}>Description</div>
-                                          <TextArea 
-                                            value={editingCompanyData.description || ''}
-                                            onChange={(e) => setEditingCompanyData({
-                                              ...editingCompanyData,
-                                              description: e.target.value
-                                            })}
-                                            style={{ width: '93%', minHeight: '80px' }}
+                          <div style={{ width: '100%' }}>
+                            {console.log('Current enrichment section:', activeEnrichmentSection)}
+                            <table style={{ 
+                              width: '100%', 
+                              borderCollapse: 'collapse',
+                              overflow: 'hidden',
+                              marginTop: 0
+                            }}>
+                              <thead>
+                                <tr style={{ background: '#333' }}>
+                                  <th style={{ padding: '10px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '15%' }}>Company</th>
+                                  <th style={{ padding: '10px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '25%' }}>Tags</th>
+                                  <th style={{ padding: '10px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '10%' }}>Category</th>
+                                  <th style={{ padding: '10px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '25%' }}>Description</th>
+                                  <th style={{ padding: '10px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '15%' }}>Relationship</th>
+                                  <th style={{ padding: '10px 15px', textAlign: 'center', borderBottom: '1px solid #444', width: '10%' }}>Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {console.log('Rendering companies table. contactCompanies:', contactCompanies, 'Loaded:', companiesLoaded)}
+                                {companiesLoaded && contactCompanies && contactCompanies.length > 0 ? (
+                                  contactCompanies.map((company) => (
+                                    <tr key={company.contact_companies_id} style={{ borderBottom: '1px solid #333' }}>
+                                      <td style={{ padding: '12px 15px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                                          <input
+                                            type="text"
+                                            value={company.name || ''}
+                                            onChange={(e) => handleCompanyChange(company.contact_companies_id, 'name', e.target.value)}
+                                            style={{
+                                              background: 'transparent',
+                                              border: 'none',
+                                              borderBottom: '1px dashed #444',
+                                              color: '#fff',
+                                              width: '100%',
+                                              padding: '8px 0'
+                                            }}
                                           />
                                         </div>
-                                        
-                                        <div style={{ marginBottom: '10px' }}>
-                                          <div style={{ color: '#999', fontSize: '12px', marginBottom: '4px' }}>Relationship</div>
-                                          <Select
-                                            value={editingCompanyData.relationship || 'not_set'}
-                                            onChange={(e) => setEditingCompanyData({
-                                              ...editingCompanyData,
-                                              relationship: e.target.value
-                                            })}
-                                            style={{ 
-                                              width: '100%',
-                                              padding: '8px',
-                                              backgroundColor: '#222',
-                                              borderColor: '#444',
-                                              color: '#eee'
-                                            }}
-                                          >
-                                            <option value="not_set">Not Set</option>
-                                            <option value="employee">Employee</option>
-                                            <option value="founder">Founder</option>
-                                            <option value="advisor">Advisor</option>
-                                            <option value="manager">Manager</option>
-                                            <option value="investor">Investor</option>
-                                            <option value="other">Other</option>
-                                          </Select>
-                                        </div>
-                                        
+                                      </td>
+                                      <td style={{ padding: '12px 15px' }}>
                                         <div style={{ 
                                           display: 'flex', 
-                                          justifyContent: 'space-between', 
-                                          marginTop: '15px' 
+                                          flexWrap: 'wrap', 
+                                          gap: '5px',
+                                          minHeight: '32px'
                                         }}>
+                                          {company.tags && company.tags.length > 0 ? (
+                                            company.tags.map(tag => (
+                                              <div 
+                                                key={tag.tag_id || tag.entry_id} 
+                                                style={{
+                                                  background: '#333',
+                                                  color: '#00ff00',
+                                                  border: '1px solid #00ff00',
+                                                  borderRadius: '3px',
+                                                  padding: '2px 5px',
+                                                  fontSize: '0.7rem',
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  gap: '3px'
+                                                }}
+                                              >
+                                                {tag.name}
+                                                <span 
+                                                  onClick={() => handleRemoveCompanyTag(company.company_id, tag.tag_id)}
+                                                  style={{ 
+                                                    cursor: 'pointer',
+                                                    display: 'flex',
+                                                    alignItems: 'center'
+                                                  }}
+                                                >
+                                                  <FiX size={10} />
+                                                </span>
+                                              </div>
+                                            ))
+                                          ) : (
+                                            <div style={{ color: '#999', fontSize: '0.9rem', alignSelf: 'center' }}>
+                                              No tags
+                                            </div>
+                                          )}
                                           <button
-                                            onClick={() => {
-                                              // Cancel editing
-                                              setEditingCompanyIndex(null);
-                                              setEditingCompanyData(null);
+                                            onClick={() => handleShowAddTagModal(company.company_id)}
+                                            style={{
+                                              background: 'transparent',
+                                              color: '#00ff00',
+                                              border: '1px dashed #00ff00',
+                                              borderRadius: '3px',
+                                              padding: '2px 4px',
+                                              fontSize: '0.7rem',
+                                              cursor: 'pointer',
+                                              display: 'flex',
+                                              alignItems: 'center'
                                             }}
+                                          >
+                                            <FiPlus size={10} />
+                                          </button>
+                                        </div>
+                                      </td>
+                                      <td style={{ padding: '12px 15px' }}>
+                                        <select
+                                          value={company.category || ''}
+                                          onChange={(e) => handleCompanyChange(company.contact_companies_id, 'category', e.target.value)}
+                                          style={{
+                                            background: '#333',
+                                            border: 'none',
+                                            color: '#fff',
+                                            padding: '8px 12px',
+                                            borderRadius: '4px',
+                                            width: '100%'
+                                          }}
+                                        >
+                                          <option value="Inbox">Inbox</option>
+                                          <option value="Startup">Startup</option>
+                                          <option value="Investor">Investor</option>
+                                          <option value="Corporate">Corporate</option>
+                                          <option value="Service Provider">Service Provider</option>
+                                          <option value="Other">Other</option>
+                                        </select>
+                                      </td>
+                                      <td style={{ padding: '12px 15px' }}>
+                                        <input
+                                          type="text"
+                                          value={company.description || ''}
+                                          onChange={(e) => handleCompanyChange(company.contact_companies_id, 'description', e.target.value)}
+                                          style={{
+                                            background: 'transparent',
+                                            border: 'none',
+                                            borderBottom: '1px dashed #444',
+                                            color: '#fff',
+                                            width: '100%',
+                                            padding: '8px 0'
+                                          }}
+                                        />
+                                      </td>
+                                      <td style={{ padding: '12px 15px' }}>
+                                        <select
+                                          value={company.relationship || 'not_set'}
+                                          onChange={(e) => handleCompanyChange(company.contact_companies_id, 'relationship', e.target.value)}
+                                          style={{
+                                            background: '#333',
+                                            border: 'none',
+                                            color: '#fff',
+                                            padding: '8px 12px',
+                                            borderRadius: '4px',
+                                            width: '100%'
+                                          }}
+                                        >
+                                          <option value="not_set">Not Set</option>
+                                          <option value="employee">Employee</option>
+                                          <option value="founder">Founder</option>
+                                          <option value="advisor">Advisor</option>
+                                          <option value="investor">Investor</option>
+                                          <option value="board_member">Board Member</option>
+                                          <option value="customer">Customer</option>
+                                          <option value="partner">Partner</option>
+                                        </select>
+                                      </td>
+                                      <td style={{ padding: '12px 15px', textAlign: 'center' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
+                                          <button
+                                            onClick={() => handleEnrichCompany(company.company_id)}
+                                            title="Enrich with Apollo"
                                             style={{
                                               background: '#333',
-                                              color: '#ccc',
-                                              border: '1px solid #555',
+                                              color: '#00ff00',
+                                              border: '1px solid #00ff00',
                                               borderRadius: '4px',
-                                              padding: '8px 12px',
+                                              padding: '6px',
                                               cursor: 'pointer'
                                             }}
                                           >
-                                            Cancel
-                                          </button>
-                                          
-                                          <button
-                                            onClick={async () => {
-                                              try {
-                                                setLoading(true);
-                                                
-                                                // Update the company in the database
-                                                const { error } = await supabase
-                                                  .from('companies')
-                                                  .update({
-                                                    name: editingCompanyData.name,
-                                                    website: editingCompanyData.website,
-                                                    category: editingCompanyData.category,
-                                                    description: editingCompanyData.description,
-                                                    linkedin: editingCompanyData.linkedin,
-                                                    last_modified_at: new Date()
-                                                  })
-                                                  .eq('company_id', editingCompanyData.company_id);
-                                                
-                                                if (error) throw error;
-                                                
-                                                // Update the relationship in contact_companies if changed
-                                                if (editingCompanyData.relationship !== company.relationship) {
-                                                  const { error: relError } = await supabase
-                                                    .from('contact_companies')
-                                                    .update({
-                                                      relationship: editingCompanyData.relationship
-                                                    })
-                                                    .eq('contact_companies_id', company.contact_companies_id);
-                                                  
-                                                  if (relError) throw relError;
-                                                }
-                                                
-                                                // Update local state
-                                                const updatedCompanies = [...formData.associatedCompanies];
-                                                updatedCompanies[index] = {
-                                                  ...updatedCompanies[index],
-                                                  name: editingCompanyData.name,
-                                                  website: editingCompanyData.website,
-                                                  category: editingCompanyData.category,
-                                                  description: editingCompanyData.description,
-                                                  linkedin: editingCompanyData.linkedin,
-                                                  relationship: editingCompanyData.relationship
-                                                };
-                                                handleInputChange('associatedCompanies', updatedCompanies);
-                                                
-                                                // Reset editing state
-                                                setEditingCompanyIndex(null);
-                                                setEditingCompanyData(null);
-                                                
-                                                toast.success('Company updated successfully');
-                                                setLoading(false);
-                                              } catch (err) {
-                                                console.error('Error updating company:', err);
-                                                toast.error('Failed to update company');
-                                                setLoading(false);
-                                              }
-                                            }}
-                                            style={{
-                                              background: '#00ff00',
-                                              color: '#000',
-                                              border: 'none',
-                                              borderRadius: '4px',
-                                              padding: '8px 12px',
-                                              cursor: 'pointer',
-                                              fontWeight: 'bold'
-                                            }}
-                                          >
-                                            Save Changes
-                                          </button>
-                                        </div>
-                                      </div>
-                                    </>
-                                  ) : (
-                                    // Display mode
-                                    <>
-                                      <div style={{ 
-                                        display: 'flex', 
-                                        justifyContent: 'space-between', 
-                                        alignItems: 'center',
-                                        borderBottom: '1px solid #444',
-                                        paddingBottom: '8px',
-                                        marginBottom: '5px'
-                                      }}>
-                                        <div style={{ fontWeight: 'bold', fontSize: '16px' }}>
-                                          {company.name}
-                                        </div>
-                                        <div style={{ display: 'flex', gap: '5px' }}>
-                                          <button
-                                            onClick={() => {
-                                              // Start editing this company
-                                              setEditingCompanyIndex(index);
-                                              setEditingCompanyData({
-                                                ...company,
-                                                // Ensure all fields exist even if they're null in the original data
-                                                name: company.name || '',
-                                                website: company.website || '',
-                                                category: company.category || '',
-                                                description: company.description || '',
-                                                linkedin: company.linkedin || '',
-                                                relationship: company.relationship || 'not_set'
-                                              });
-                                            }}
-                                            style={{
-                                              background: 'none',
-                                              border: 'none',
-                                              color: '#4a9eff',
-                                              cursor: 'pointer',
-                                              display: 'flex',
-                                              alignItems: 'center',
-                                              padding: '4px'
-                                            }}
-                                            title="Edit company"
-                                          >
-                                            <FiEdit size={16} />
+                                            <FiDatabase size={16} />
                                           </button>
                                           <button
-                                            onClick={() => {
-                                              // Remove association
-                                              const updatedCompanies = formData.associatedCompanies.filter((_, i) => i !== index);
-                                              handleInputChange('associatedCompanies', updatedCompanies);
-                                            }}
-                                            style={{
-                                              background: 'none',
-                                              border: 'none',
-                                              color: '#ff6b6b',
-                                              cursor: 'pointer',
-                                              display: 'flex',
-                                              alignItems: 'center',
-                                              padding: '4px'
-                                            }}
+                                            onClick={() => handleRemoveCompanyAssociation(company.contact_companies_id)}
                                             title="Remove association"
+                                            style={{
+                                              background: '#333',
+                                              color: '#ff5555',
+                                              border: '1px solid #ff5555',
+                                              borderRadius: '4px',
+                                              padding: '6px',
+                                              cursor: 'pointer'
+                                            }}
                                           >
                                             <FiX size={16} />
                                           </button>
-                                        </div>
-                                      </div>
-                                      
-                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '14px' }}>
-                                        <div style={{ color: '#ccc' }}>
-                                          <span style={{ color: '#999', marginRight: '5px' }}>Category:</span>
-                                          {company.category || 'Not set'}
-                                        </div>
-                                        
-                                        {company.website && (
-                                          <div style={{ color: '#4a9eff' }}>
-                                            <span style={{ color: '#999', marginRight: '5px' }}>Website:</span>
-                                            <a 
-                                              href={company.website.startsWith('http') ? company.website : `https://${company.website}`}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              style={{ color: 'inherit', textDecoration: 'none' }}
-                                            >
-                                              {company.website}
-                                            </a>
-                                          </div>
-                                        )}
-                                        
-                                        {company.linkedin && (
-                                          <div style={{ color: '#0077b5' }}>
-                                            <span style={{ color: '#999', marginRight: '5px' }}>LinkedIn:</span>
-                                            <a 
-                                              href={company.linkedin.startsWith('http') ? company.linkedin : `https://${company.linkedin}`}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              style={{ color: 'inherit', textDecoration: 'none' }}
-                                            >
-                                              {company.linkedin}
-                                            </a>
-                                          </div>
-                                        )}
-                                        
-                                        {company.description && (
-                                          <div style={{ color: '#ddd' }}>
-                                            <span style={{ color: '#999', marginRight: '5px' }}>Description:</span>
-                                            <span style={{ fontStyle: 'italic' }}>{company.description}</span>
-                                          </div>
-                                        )}
-                                        
-                                        {/* Company Tags */}
-                                        <div style={{ marginTop: '5px' }}>
-                                          <span style={{ color: '#999', marginRight: '5px' }}>Tags:</span>
-                                          {company.tags && company.tags.length > 0 ? (
-                                            <TagsContainer style={{ display: 'inline-flex', marginLeft: '5px' }}>
-                                              {company.tags.map(tag => (
-                                                <Tag key={tag.entry_id || tag.tag_id} style={{ fontSize: '11px', padding: '2px 6px' }}>
-                                                  {tag.name}
-                                                  <FiX 
-                                                    className="remove" 
-                                                    size={12} 
-                                                    onClick={async (e) => {
-                                                      e.stopPropagation();
-                                                      // Remove tag from company
-                                                      const success = await removeTagFromCompany(tag.entry_id);
-                                                      if (success) {
-                                                        // Update UI by removing tag from company
-                                                        const updatedCompanies = [...formData.associatedCompanies];
-                                                        const updatedTags = company.tags.filter(t => t.entry_id !== tag.entry_id);
-                                                        updatedCompanies[index].tags = updatedTags;
-                                                        handleInputChange('associatedCompanies', updatedCompanies);
-                                                      }
-                                                    }}
-                                                  />
-                                                </Tag>
-                                              ))}
-                                            </TagsContainer>
-                                          ) : (
-                                            <span style={{ color: '#666', fontStyle: 'italic', fontSize: '12px' }}>No tags</span>
-                                          )}
-                                        </div>
-                                        
-                                        {/* Add tag to company UI */}
-                                        <div style={{ marginTop: '5px', position: 'relative' }}>
-                                          <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
-                                            <Input 
-                                              type="text"
-                                              placeholder="Add tag to company..."
-                                              value={company.newTag || ''}
-                                              onChange={async (e) => {
-                                                const value = e.target.value;
-                                                // Update local state
-                                                const updatedCompanies = [...formData.associatedCompanies];
-                                                updatedCompanies[index].newTag = value;
-                                                handleInputChange('associatedCompanies', updatedCompanies);
-                                                
-                                                // Search for tag suggestions
-                                                if (value && value.length >= 2) {
-                                                  const suggestions = await searchCompanyTagSuggestions(value, company.company_id, company.tags || []);
-                                                  // Update suggestions in state
-                                                  const updatedCompaniesWithSuggestions = [...formData.associatedCompanies];
-                                                  updatedCompaniesWithSuggestions[index].tagSuggestions = suggestions;
-                                                  handleInputChange('associatedCompanies', updatedCompaniesWithSuggestions);
-                                                } else {
-                                                  // Clear suggestions
-                                                  const updatedCompaniesWithSuggestions = [...formData.associatedCompanies];
-                                                  updatedCompaniesWithSuggestions[index].tagSuggestions = [];
-                                                  handleInputChange('associatedCompanies', updatedCompaniesWithSuggestions);
-                                                }
-                                              }}
-                                              onKeyDown={async (e) => {
-                                                if (e.key === 'Enter' && company.newTag?.trim()) {
-                                                  // Add tag to company
-                                                  const newTag = { 
-                                                    tag_id: `temp-${Date.now()}`, 
-                                                    name: company.newTag.trim() 
-                                                  };
-                                                  
-                                                  // Save to database
-                                                  const success = await addTagToCompany(company.company_id, newTag);
-                                                  
-                                                  if (success) {
-                                                    // Fetch updated tags for this company
-                                                    const updatedTags = await fetchCompanyTags(company.company_id);
-                                                    
-                                                    // Update UI
-                                                    const updatedCompanies = [...formData.associatedCompanies];
-                                                    updatedCompanies[index].tags = updatedTags;
-                                                    updatedCompanies[index].newTag = '';
-                                                    updatedCompanies[index].tagSuggestions = [];
-                                                    handleInputChange('associatedCompanies', updatedCompanies);
-                                                  }
-                                                } else if (e.key === 'Escape') {
-                                                  // Clear input and suggestions
-                                                  const updatedCompanies = [...formData.associatedCompanies];
-                                                  updatedCompanies[index].newTag = '';
-                                                  updatedCompanies[index].tagSuggestions = [];
-                                                  handleInputChange('associatedCompanies', updatedCompanies);
-                                                }
-                                              }}
-                                              style={{ 
-                                                flex: 1, 
-                                                fontSize: '12px', 
-                                                padding: '5px 8px',
-                                                height: '30px'
-                                              }}
-                                            />
-                                            <button 
-                                              onClick={async () => {
-                                                if (!company.newTag?.trim()) return;
-                                                
-                                                // Add tag to company
-                                                const newTag = { 
-                                                  tag_id: `temp-${Date.now()}`, 
-                                                  name: company.newTag.trim() 
-                                                };
-                                                
-                                                // Save to database
-                                                const success = await addTagToCompany(company.company_id, newTag);
-                                                
-                                                if (success) {
-                                                  // Fetch updated tags for this company
-                                                  const updatedTags = await fetchCompanyTags(company.company_id);
-                                                  
-                                                  // Update UI
-                                                  const updatedCompanies = [...formData.associatedCompanies];
-                                                  updatedCompanies[index].tags = updatedTags;
-                                                  updatedCompanies[index].newTag = '';
-                                                  updatedCompanies[index].tagSuggestions = [];
-                                                  handleInputChange('associatedCompanies', updatedCompanies);
-                                                }
-                                              }}
-                                              style={{
-                                                background: '#00ff00',
-                                                color: 'black',
-                                                border: 'none',
-                                                borderRadius: '4px',
-                                                padding: '4px 8px',
-                                                fontSize: '11px',
-                                                height: '24px',
-                                                marginTop: '3px'
-                                              }}
-                                            >
-                                              Add
-                                            </button>
-                                          </div>
-                                          
-                                          {/* Tag suggestions dropdown */}
-                                          {company.tagSuggestions && company.tagSuggestions.length > 0 && (
-                                            <div style={{
-                                              position: 'absolute',
-                                              top: '100%',
-                                              left: 0,
-                                              width: '100%',
-                                              zIndex: 10,
-                                              background: '#222',
-                                              boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
-                                              border: '1px solid #444',
+                                          <button
+                                            onClick={() => navigateToCompany(company.company_id)}
+                                            title="Visit company page"
+                                            style={{
+                                              background: '#333',
+                                              color: '#4a9eff',
+                                              border: '1px solid #4a9eff',
                                               borderRadius: '4px',
-                                              maxHeight: '150px',
-                                              overflowY: 'auto'
-                                            }}>
-                                              {company.tagSuggestions.map((suggestion) => (
-                                                <div 
-                                                  key={suggestion.tag_id}
-                                                  onClick={async () => {
-                                                    // Add tag to company
-                                                    const success = await addTagToCompany(company.company_id, suggestion);
-                                                    
-                                                    if (success) {
-                                                      // Fetch updated tags for this company
-                                                      const updatedTags = await fetchCompanyTags(company.company_id);
-                                                      
-                                                      // Update UI
-                                                      const updatedCompanies = [...formData.associatedCompanies];
-                                                      updatedCompanies[index].tags = updatedTags;
-                                                      updatedCompanies[index].newTag = '';
-                                                      updatedCompanies[index].tagSuggestions = [];
-                                                      handleInputChange('associatedCompanies', updatedCompanies);
-                                                    }
-                                                  }}
-                                                  style={{
-                                                    padding: '6px 10px',
-                                                    cursor: 'pointer',
-                                                    borderBottom: '1px solid #444',
-                                                    fontSize: '12px'
-                                                  }}
-                                                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#444'}
-                                                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                                                >
-                                                  {suggestion.name}
-                                                </div>
-                                              ))}
-                                            </div>
-                                          )}
-                                        </div>
-                                      </div>
-                                      
-                                      <div style={{ 
-                                        fontSize: '13px', 
-                                        color: '#999',
-                                        marginTop: '10px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '10px'
-                                      }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                          <span>Relationship:</span>
-                                          <Select
-                                            value={company.relationship || 'not_set'}
-                                            onChange={(e) => {
-                                              const updatedCompanies = [...formData.associatedCompanies];
-                                              updatedCompanies[index].relationship = e.target.value;
-                                              handleInputChange('associatedCompanies', updatedCompanies);
-                                            }}
-                                            style={{ 
-                                              padding: '4px 8px',
-                                              fontSize: '13px',
-                                              backgroundColor: '#333',
-                                              borderColor: '#444',
-                                              color: '#eee'
+                                              padding: '6px',
+                                              cursor: 'pointer'
                                             }}
                                           >
-                                            <option value="not_set">Not Set</option>
-                                            <option value="employee">Employee</option>
-                                            <option value="founder">Founder</option>
-                                            <option value="advisor">Advisor</option>
-                                            <option value="manager">Manager</option>
-                                            <option value="investor">Investor</option>
-                                            <option value="other">Other</option>
-                                          </Select>
+                                            <FiLink size={16} />
+                                          </button>
                                         </div>
-                                        
-                                        <div style={{
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: '5px',
-                                          fontSize: '0.85rem',
-                                          padding: '0 5px',
-                                          borderRadius: '4px',
-                                          background: company.is_primary ? '#444444' : 'transparent',
-                                          cursor: 'pointer'
-                                        }}
-                                        onClick={() => {
-                                          const updatedCompanies = formData.associatedCompanies.map((item, i) => ({
-                                            ...item,
-                                            is_primary: i === index // Make this one primary, all others not primary
-                                          }));
-                                          handleInputChange('associatedCompanies', updatedCompanies);
-                                        }}
-                                        >
-                                          {company.is_primary ? (
-                                            <><FiCheck size={14} /> Primary</>
-                                          ) : (
-                                            'Set Primary'
-                                          )}
-                                        </div>
-                                      </div>
-                                    </>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div style={{ color: '#999', textAlign: 'center', padding: '10px 0' }}>
-                              No companies associated with this contact
-                            </div>
-                          )}
-                          
-                          {/* Add company form */}
-                          <div style={{
-                            marginTop: '15px',
-                            padding: '10px',
-                            background: '#333',
-                            borderRadius: '4px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '10px'
-                          }}>
-                            <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#ccc' }}>
-                              Add Company
-                            </div>
-                            
-                            <div style={{ 
-                              display: 'flex', 
-                              gap: '10px',
-                              position: 'relative',
-                              marginBottom: '15px' 
-                            }}>
-                              <div style={{ width: '50%' }}>
-                                <Input 
-                                  type="text"
-                                  placeholder="Search for company..."
-                                  value={formData.companySearch || ''}
-                                  onChange={(e) => {
-                                    const value = e.target.value;
-                                    handleInputChange('companySearch', value);
-                                    
-                                    // Search for companies if at least 2 characters
-                                    if (value && value.length >= 2) {
-                                      searchCompanies(value);
-                                    } else {
-                                      // Clear suggestions if input is too short
-                                      handleInputChange('companySuggestions', []);
-                                    }
-                                  }}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Escape') {
-                                      // Clear input and suggestions on ESC
-                                      handleInputChange('companySearch', '');
-                                      handleInputChange('companySuggestions', []);
-                                    }
-                                  }}
-                                  style={{ 
-                                    width: '100%',
-                                    height: '40px',
-                                    fontSize: '16px'
-                                  }}
-                                />
-                              </div>
-                              
-                              <button
-                                onClick={() => {
-                                  // Toggle new company modal
-                                  setShowNewCompanyModal(true);
-                                }}
-                                style={{
-                                  background: '#00ff00',
-                                  color: '#000',
-                                  border: 'none',
-                                  borderRadius: '4px',
-                                  padding: '0 8px',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '3px',
-                                  height: '30px',
-                                  fontSize: '12px',
-                                  width: '60px',
-                                  marginLeft: '20px',
-                                  marginTop: '15px'
-                                }}
-                              >
-                                <FiPlus size={12} /> New
-                              </button>
-                              
-                              {/* Email domain based existing company suggestions */}
-                              {formData.domainMatchedCompanies && formData.domainMatchedCompanies.length > 0 && (
-                                <div style={{
-                                  marginTop: '15px',
-                                  width: '100%'
-                                }}>
-                                  <div style={{ 
-                                    fontSize: '13px', 
-                                    fontWeight: 'bold', 
-                                    color: '#ccc',
-                                    marginBottom: '8px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px'
-                                  }}>
-                                    <FiAward size={14} style={{ color: '#00ff00' }} /> 
-                                    Suggested existing companies based on email domains:
-                                  </div>
-                                  
-                                  <div style={{
-                                    display: 'flex',
-                                    flexWrap: 'wrap',
-                                    gap: '8px',
-                                    marginTop: '-5px'
-                                  }}>
-                                    {formData.domainMatchedCompanies.map(company => (
-                                      <div
-                                        key={company.company_id}
-                                        onClick={() => {
-                                          // Add the company to associated companies
-                                          const newCompanyAssociation = {
-                                            company_id: company.company_id,
-                                            name: company.name,
-                                            website: company.website,
-                                            category: company.category,
-                                            relationship: 'not_set',
-                                            is_primary: formData.associatedCompanies?.length === 0 // First one is primary by default
-                                          };
-                                          
-                                          handleInputChange('associatedCompanies', [
-                                            ...(formData.associatedCompanies || []), 
-                                            newCompanyAssociation
-                                          ]);
-                                          
-                                          // Remove this suggestion to avoid showing already added companies
-                                          const updatedSuggestions = formData.domainMatchedCompanies.filter(
-                                            c => c.company_id !== company.company_id
-                                          );
-                                          handleInputChange('domainMatchedCompanies', updatedSuggestions);
-                                        }}
-                                        style={{
-                                          padding: '6px 10px',
-                                          background: '#444',
-                                          borderRadius: '4px',
-                                          cursor: 'pointer',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: '6px',
-                                          transition: 'all 0.2s ease'
-                                        }}
-                                        onMouseEnter={(e) => {
-                                          e.currentTarget.style.background = '#555';
-                                        }}
-                                        onMouseLeave={(e) => {
-                                          e.currentTarget.style.background = '#444';
-                                        }}
-                                      >
-                                        <FiPlus size={12} style={{ color: '#00ff00' }} />
-                                        <span>{company.name}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                              
-                              {/* Suggestions to create new companies based on email domains */}
-                              {formData.newCompanySuggestions && formData.newCompanySuggestions.length > 0 && (
-                                <div style={{
-                                  marginTop: '9px',
-                                  width: '100%'
-                                }}>
-                                  <div style={{ 
-                                    fontSize: '13px', 
-                                    fontWeight: 'bold', 
-                                    color: '#ccc',
-                                    marginBottom: '8px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px'
-                                  }}>
-                                    Suggested new companies:
-                                  </div>
-                                  
-                                  <div style={{
-                                    display: 'flex',
-                                    flexWrap: 'wrap',
-                                    gap: '8px',
-                                    marginTop: '-5px'
-                                  }}>
-                                    {formData.newCompanySuggestions.map((suggestion, index) => (
-                                      <div
-                                        key={`new-company-${index}`}
-                                        onClick={async () => {
-                                          try {
-                                            // Create a new company in the database
-                                            const { data: newCompany, error } = await supabase
-                                              .from('companies')
-                                              .insert({
-                                                name: suggestion.suggestedName,
-                                                website: suggestion.suggestedWebsite,
-                                                category: 'Inbox'
-                                              })
-                                              .select('*')
-                                              .single();
-                                              
-                                            if (error) {
-                                              console.error('Error creating new company:', error);
-                                              toast.error(`Failed to create ${suggestion.suggestedName}`);
-                                              return;
-                                            }
-                                            
-                                            // Add the newly created company to associated companies
-                                            const newCompanyAssociation = {
-                                              company_id: newCompany.company_id,
-                                              name: newCompany.name,
-                                              website: newCompany.website,
-                                              category: newCompany.category,
-                                              relationship: 'not_set',
-                                              is_primary: formData.associatedCompanies?.length === 0 // First one is primary by default
-                                            };
-                                            
-                                            handleInputChange('associatedCompanies', [
-                                              ...(formData.associatedCompanies || []), 
-                                              newCompanyAssociation
-                                            ]);
-                                            
-                                            // Remove this suggestion to avoid showing already added companies
-                                            const updatedSuggestions = formData.newCompanySuggestions.filter(
-                                              (_, i) => i !== index
-                                            );
-                                            handleInputChange('newCompanySuggestions', updatedSuggestions);
-                                            
-                                            toast.success(`Created and added ${newCompany.name}`);
-                                          } catch (err) {
-                                            console.error('Error in creating company:', err);
-                                            toast.error('Failed to create company');
-                                          }
-                                        }}
-                                        style={{
-                                          padding: '8px 14px',
-                                          background: '#2a582a',
-                                          borderRadius: '4px',
-                                          cursor: 'pointer',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: '6px',
-                                          transition: 'all 0.2s ease'
-                                        }}
-                                        onMouseEnter={(e) => {
-                                          e.currentTarget.style.background = '#306830';
-                                        }}
-                                        onMouseLeave={(e) => {
-                                          e.currentTarget.style.background = '#2a582a';
-                                        }}
-                                      >
-                                        <FiPlus size={12} style={{ color: '#ffffff' }} />
-                                        <span>Create {suggestion.suggestedName}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                              
-                              {/* Company suggestions dropdown */}
-                              {formData.companySuggestions && formData.companySuggestions.length > 0 && (
-                                <div style={{
-                                  position: 'absolute',
-                                  top: '100%',
-                                  left: 0,
-                                  width: '100%',
-                                  zIndex: 10,
-                                  background: '#222',
-                                  boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
-                                  border: '1px solid #444',
-                                  borderRadius: '4px',
-                                  maxHeight: '200px',
-                                  overflowY: 'auto'
-                                }}>
-                                  {formData.companySuggestions.map((company) => (
-                                    <div 
-                                      key={company.company_id}
-                                      onClick={() => {
-                                        // Add the company to associated companies
-                                        const newCompanyAssociation = {
-                                          company_id: company.company_id,
-                                          name: company.name,
-                                          website: company.website,
-                                          category: company.category,
-                                          relationship: 'not_set',
-                                          is_primary: formData.associatedCompanies?.length === 0 // First one is primary by default
-                                        };
-                                        
-                                        handleInputChange('associatedCompanies', [
-                                          ...(formData.associatedCompanies || []), 
-                                          newCompanyAssociation
-                                        ]);
-                                        
-                                        handleInputChange('companySearch', '');
-                                        handleInputChange('companySuggestions', []);
-                                      }}
-                                      style={{
-                                        padding: '8px 12px',
-                                        cursor: 'pointer',
-                                        borderBottom: '1px solid #444'
-                                      }}
-                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#444'}
-                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                                    >
-                                      <div style={{ fontWeight: 'bold' }}>{company.name}</div>
-                                      <div style={{ fontSize: '12px', color: '#999' }}>
-                                        {company.category || 'No category'} 
-                                        {company.website && ` • ${company.website}`}
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
+                                      </td>
+                                    </tr>
+                                  ))
+                                ) : !companiesLoaded ? (
+                                  <tr>
+                                    <td colSpan="6" style={{ padding: '20px', textAlign: 'center', color: '#999', height: '80px' }}>
+                                      Loading companies...
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  <tr>
+                                    <td colSpan="6" style={{ padding: '20px', textAlign: 'center', color: '#999', height: '80px' }}>
+                                      No companies associated with this contact
+                                    </td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
                           </div>
                         </div>
-                      </FormGroup>
+                      </div>
+                      
                     </>
                   )}
                   
@@ -10373,6 +10002,13 @@ const handleInputChange = (field, value) => {
             // You could also add code here to create/associate the company
           }
         }}
+      />
+
+      {/* Company Tags Modal */}
+      <CompanyTagsModal
+        isOpen={showAddTagModal}
+        onRequestClose={() => setShowAddTagModal(false)}
+        company={{ id: selectedCompanyForTags }}
       />
     </Container>
   );

@@ -279,8 +279,8 @@ const CompanyTagsModal = ({ isOpen, onRequestClose, company }) => {
     try {
       console.log(`Fetching tags for company with ID: ${entityId}`);
       
-      // Different table and field for companies
-      const tableName = 'companies_tags';
+      // Use correct table name from schema
+      const tableName = 'company_tags';
       const idField = 'company_id';
       
       console.log(`Querying table: ${tableName}, idField: ${idField}, id: ${entityId}`);
@@ -307,8 +307,8 @@ const CompanyTagsModal = ({ isOpen, onRequestClose, company }) => {
         // Fetch tag details
         const { data: tagsData, error: tagsError } = await supabase
           .from('tags')
-          .select('id, name, tag_name')
-          .in('id', tagIds);
+          .select('tag_id, name')
+          .in('tag_id', tagIds);
         
         if (tagsError) {
           console.error('Error fetching tag details:', tagsError);
@@ -319,11 +319,11 @@ const CompanyTagsModal = ({ isOpen, onRequestClose, company }) => {
         
         // Combine the data
         const combinedData = data.map(item => {
-          const tagInfo = tagsData.find(tag => tag.id === item.tag_id);
+          const tagInfo = tagsData.find(tag => tag.tag_id === item.tag_id);
           return {
-            id: item.id,           // connection ID
+            id: item.entry_id,     // connection ID
             tag_id: item.tag_id,   // tag ID 
-            name: tagInfo?.tag_name || tagInfo?.name || 'Unknown tag'
+            name: tagInfo?.name || 'Unknown tag'
           };
         });
         
@@ -342,7 +342,7 @@ const CompanyTagsModal = ({ isOpen, onRequestClose, company }) => {
   // Fetch tag suggestions based on search term
   const fetchTagSuggestions = async (search) => {
     try {
-      let query = supabase.from('tags').select('*');
+      let query = supabase.from('tags').select('tag_id, name');
       
       if (search) {
         query = query.ilike('name', `%${search}%`);
@@ -354,7 +354,7 @@ const CompanyTagsModal = ({ isOpen, onRequestClose, company }) => {
 
       // Filter out tags that are already assigned
       const filteredSuggestions = data.filter(tag => 
-        !currentTags.some(currentTag => currentTag.tag_id === tag.id)
+        !currentTags.some(currentTag => currentTag.tag_id === tag.tag_id)
       );
 
       setSuggestions(filteredSuggestions);
@@ -384,8 +384,8 @@ const CompanyTagsModal = ({ isOpen, onRequestClose, company }) => {
       setLoading(true);
       console.log(`Removing tag ID ${tagToRemove.tag_id} from company ${entityId}`);
       
-      // Use companies_tags table
-      const tableName = 'companies_tags';
+      // Use correct company_tags table
+      const tableName = 'company_tags';
       const idField = 'company_id';
       
       // Use the combination of entity_id and tag_id to identify the record to delete
@@ -414,32 +414,32 @@ const CompanyTagsModal = ({ isOpen, onRequestClose, company }) => {
   const handleAddTag = async (tagToAdd) => {
     try {
       setLoading(true);
-      console.log(`Adding tag ${tagToAdd.id} to company ${entityId}`);
+      console.log(`Adding tag ${tagToAdd.tag_id} to company ${entityId}`);
       
       if (!entityId) {
         console.error('Missing company ID. Cannot add tag.');
         throw new Error('Missing company ID');
       }
       
-      // Use companies_tags table
-      const tableName = 'companies_tags';
+      // Use company_tags table
+      const tableName = 'company_tags';
       const idFieldName = 'company_id';
       
       // Create insertion object
       const insertData = {
-        tag_id: tagToAdd.id
+        tag_id: tagToAdd.tag_id,
+        company_id: entityId
       };
-      insertData[idFieldName] = entityId;
       
       console.log('Inserting data:', insertData, 'into table:', tableName);
       
       // Verify the tag isn't already associated
-      console.log(`Checking if tag ${tagToAdd.id} is already associated with ${idFieldName}=${entityId}`);
+      console.log(`Checking if tag ${tagToAdd.tag_id} is already associated with ${idFieldName}=${entityId}`);
       const { data: existingTag, error: checkError } = await supabase
         .from(tableName)
         .select('*')
         .eq(idFieldName, entityId)
-        .eq('tag_id', tagToAdd.id);
+        .eq('tag_id', tagToAdd.tag_id);
       
       if (checkError) {
         console.error('Error checking existing tag:', checkError);
@@ -466,11 +466,11 @@ const CompanyTagsModal = ({ isOpen, onRequestClose, company }) => {
         tableName,
         idFieldName,
         entityId,
-        tagId: tagToAdd.id,
+        tagId: tagToAdd.tag_id,
         fullInsertData: insertData
       });
       
-      // Add connection in the companies_tags table
+      // Add connection in the company_tags table
       const { data: insertedData, error } = await supabase
         .from(tableName)
         .insert(insertData)
@@ -513,7 +513,7 @@ const CompanyTagsModal = ({ isOpen, onRequestClose, company }) => {
       // Check if tag with this name already exists
       const { data: existingTagsByName, error: searchError } = await supabase
         .from('tags')
-        .select('*')
+        .select('tag_id, name')
         .ilike('name', searchTerm.trim());
         
       if (searchError) {
@@ -532,8 +532,7 @@ const CompanyTagsModal = ({ isOpen, onRequestClose, company }) => {
         const { data: newTag, error: createError } = await supabase
           .from('tags')
           .insert({ 
-            name: searchTerm.trim(),
-            tag_name: searchTerm.trim() // Use both fields for compatibility
+            name: searchTerm.trim()
           })
           .select()
           .single();
@@ -547,8 +546,8 @@ const CompanyTagsModal = ({ isOpen, onRequestClose, company }) => {
         tagToUse = newTag;
       }
 
-      // Use companies_tags table
-      const tableName = 'companies_tags';
+      // Use company_tags table
+      const tableName = 'company_tags';
       const idFieldName = 'company_id';
       
       // Check if this tag is already associated with the company
@@ -556,7 +555,7 @@ const CompanyTagsModal = ({ isOpen, onRequestClose, company }) => {
         .from(tableName)
         .select('*')
         .eq(idFieldName, entityId)
-        .eq('tag_id', tagToUse.id);
+        .eq('tag_id', tagToUse.tag_id);
         
       if (checkError) {
         console.error('Error checking existing connection:', checkError);
@@ -575,9 +574,9 @@ const CompanyTagsModal = ({ isOpen, onRequestClose, company }) => {
       
       // Create insertion object
       const insertData = {
-        tag_id: tagToUse.id
+        tag_id: tagToUse.tag_id,
+        company_id: entityId
       };
-      insertData[idFieldName] = entityId;
       
       console.log('Connecting tag:', insertData);
       
