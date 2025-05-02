@@ -11,12 +11,12 @@ const ModalHeader = styled.div`
   align-items: center;
   margin-bottom: 15px;
   padding-bottom: 15px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #333;
 
   h2 {
     margin: 0;
     font-size: 1.25rem;
-    color: #111827;
+    color: #fff;
     font-weight: 600;
   }
 
@@ -24,13 +24,13 @@ const ModalHeader = styled.div`
     background: none;
     border: none;
     cursor: pointer;
-    color: #6b7280;
+    color: #00ff00;
     padding: 4px;
     border-radius: 4px;
     
     &:hover {
-      color: #1f2937;
-      background-color: #f3f4f6;
+      color: #33ff33;
+      background-color: #333;
     }
   }
 `;
@@ -40,34 +40,37 @@ const Section = styled.div`
 `;
 
 const SectionTitle = styled.h3`
-  font-size: 16px;
+  font-size: 14px;
   font-weight: bold;
-  color: #374151;
+  color: #00ff00;
   margin-bottom: 12px;
 `;
 
 const TagsList = styled.div`
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 5px;
   margin-bottom: 16px;
   padding: 5px 0;
   min-height: 32px;
+  background: #222;
+  border-radius: 4px;
+  padding: 10px;
 `;
 
 const Tag = styled.div`
   display: inline-flex;
   align-items: center;
-  padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
-  border-radius: 1rem;
-  background-color: ${props => props.color || '#f3f4f6'};
-  color: ${props => props.textColor || '#4b5563'};
+  padding: 2px 5px;
+  font-size: 0.7rem;
+  border-radius: 3px;
+  background-color: #333;
+  color: #00ff00;
   font-weight: 500;
   margin-right: 0.25rem;
   margin-bottom: 0.25rem;
-  border: 1px solid black;
-  gap: 6px;
+  border: 1px solid #00ff00;
+  gap: 3px;
   max-width: 200px;
 
   span {
@@ -85,11 +88,11 @@ const Tag = styled.div`
     align-items: center;
     justify-content: center;
     margin-left: 0.25rem;
-    color: #6b7280;
+    color: #00ff00;
     cursor: pointer;
     
     &:hover { 
-      color: #ef4444; 
+      color: #ff3333; 
     }
   }
 `;
@@ -104,21 +107,21 @@ const SearchInput = styled.input`
   width: 100%;
   padding: 10px;
   padding-left: 36px;
-  border: 1px solid #ced4da;
-  border-radius: 8px;
-  font-size: 14px;
-  color: #111827;
-  background-color: white;
+  border: 1px solid #444;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #fff;
+  background-color: #222;
   transition: all 0.2s;
 
   &:focus {
     outline: none;
-    border-color: #000000;
-    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
+    border-color: #00ff00;
+    box-shadow: 0 0 0 2px rgba(0, 255, 0, 0.1);
   }
 
   &:hover {
-    background-color: #f3f4f6;
+    background-color: #333;
   }
 `;
 
@@ -127,15 +130,16 @@ const SearchIcon = styled.div`
   left: 12px;
   top: 50%;
   transform: translateY(-50%);
-  color: #9ca3af;
+  color: #00ff00;
 `;
 
 const SuggestionsContainer = styled.div`
   margin-top: 8px;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
+  border: 1px solid #444;
+  border-radius: 4px;
   max-height: 200px;
   overflow-y: auto;
+  background-color: #222;
 `;
 
 const SuggestionItem = styled.button`
@@ -144,10 +148,10 @@ const SuggestionItem = styled.button`
   padding: 8px 12px;
   background: none;
   border: none;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #333;
   cursor: pointer;
-  font-size: 0.875rem;
-  color: #374151;
+  font-size: 0.8rem;
+  color: #fff;
   transition: background-color 0.2s;
   white-space: nowrap;
   overflow: hidden;
@@ -158,7 +162,8 @@ const SuggestionItem = styled.button`
   }
 
   &:hover {
-    background-color: #f3f4f6;
+    background-color: #333;
+    color: #00ff00;
   }
 `;
 
@@ -166,40 +171,41 @@ const NewTagButton = styled.button`
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 16px;
-  background-color: #000000;
-  color: white;
-  border: none;
+  padding: 6px 12px;
+  background-color: #333;
+  color: #00ff00;
+  border: 1px solid #00ff00;
   border-radius: 4px;
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   cursor: pointer;
   transition: all 0.2s;
 
   &:hover {
-    background-color: #333333;
+    background-color: #444;
   }
 
   &:disabled {
-    background-color: #E9ECEF;
-    color: #6c757d;
+    background-color: #222;
+    color: #666;
+    border-color: #666;
     cursor: not-allowed;
   }
 `;
 
 const Message = styled.div`
   padding: 8px 12px;
-  border-radius: 6px;
+  border-radius: 4px;
   font-size: 12px;
   margin-top: 12px;
   
   &.success {
-    background-color: #f3f4f6;
-    color: #4b5563;
+    background-color: #223322;
+    color: #00ff00;
   }
   
   &.error {
-    background-color: #fef2f2;
-    color: #dc2626;
+    background-color: #332222;
+    color: #ff5555;
   }
 `;
 
@@ -211,57 +217,45 @@ const ButtonGroup = styled.div`
 `;
 
 const Button = styled.button`
-  padding: 8px 16px;
+  padding: 6px 14px;
   border-radius: 4px;
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
   
   &.primary {
-    background-color: #000000;
-    color: white;
-    border: none;
+    background-color: #333;
+    color: #00ff00;
+    border: 1px solid #00ff00;
     
     &:hover {
-      background-color: #333333;
+      background-color: #444;
     }
 
     &:disabled {
-      background-color: #E9ECEF;
-      color: #6c757d;
+      background-color: #222;
+      color: #666;
+      border-color: #666;
       cursor: not-allowed;
     }
   }
   
   &.secondary {
-    background-color: #6C757D;
-    color: white;
-    border: none;
+    background-color: #333;
+    color: #999;
+    border: 1px solid #666;
     
     &:hover {
-      background-color: #5A6268;
+      background-color: #444;
     }
   }
 `;
 
-// Helper function to get tag colors
+// Helper function to get tag colors - not used anymore since we're using a consistent green style
 const getTagColor = (tagName) => {
-  const colors = [
-    { bg: '#fee2e2', text: '#b91c1c' }, // Red
-    { bg: '#fef3c7', text: '#92400e' }, // Amber
-    { bg: '#ecfccb', text: '#3f6212' }, // Lime
-    { bg: '#d1fae5', text: '#065f46' }, // Emerald
-    { bg: '#e0f2fe', text: '#0369a1' }, // Sky
-    { bg: '#ede9fe', text: '#5b21b6' }, // Violet
-    { bg: '#fae8ff', text: '#86198f' }, // Fuchsia
-    { bg: '#fce7f3', text: '#9d174d' }  // Pink
-  ];
-  
-  const sum = tagName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const index = sum % colors.length;
-  
-  return colors[index];
+  // Return consistent green color to match table styling
+  return { bg: '#333', text: '#00ff00' };
 };
 
 const CompanyTagsModal = ({ isOpen, onRequestClose, company }) => {
@@ -617,15 +611,17 @@ const CompanyTagsModal = ({ isOpen, onRequestClose, company }) => {
           marginRight: '-50%',
           transform: 'translate(-50%, -50%)',
           padding: '20px',
-          border: 'none',
-          borderRadius: '16px',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+          border: '1px solid #444',
+          borderRadius: '8px',
+          backgroundColor: '#111',
+          color: '#fff',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)',
           maxWidth: '500px',
           width: '90%',
           minHeight: '360px'
         },
         overlay: {
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
           zIndex: 1000
         }
       }}
@@ -693,13 +689,15 @@ const CompanyTagsModal = ({ isOpen, onRequestClose, company }) => {
                 </SuggestionItem>
               ))}
               {searchTerm.trim() && !suggestions.find(s => s.name.toLowerCase() === searchTerm.toLowerCase()) && (
-                <NewTagButton
-                  onClick={handleCreateTag}
-                  disabled={loading}
-                >
-                  <FiPlus size={14} />
-                  Create "{searchTerm}"
-                </NewTagButton>
+                <div style={{ padding: '8px 12px' }}>
+                  <NewTagButton
+                    onClick={handleCreateTag}
+                    disabled={loading}
+                  >
+                    <FiPlus size={12} />
+                    Create "{searchTerm}"
+                  </NewTagButton>
+                </div>
               )}
             </SuggestionsContainer>
           )}

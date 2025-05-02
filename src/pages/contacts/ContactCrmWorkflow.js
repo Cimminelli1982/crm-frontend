@@ -36,7 +36,8 @@ import {
   FiPlus,
   FiDatabase,
   FiDollarSign,
-  FiAward
+  FiAward,
+  FiRefreshCw
 } from 'react-icons/fi';
 
 // Configure Modal for React
@@ -1401,6 +1402,8 @@ const ContactCrmWorkflow = () => {
   const [selectedCompanyForTags, setSelectedCompanyForTags] = useState(null);
   const [showAddTagModal, setShowAddTagModal] = useState(false);
   const [companiesLoaded, setCompaniesLoaded] = useState(false); // Track if companies were loaded successfully
+  const [editingCompanyId, setEditingCompanyId] = useState(null); // Track which company name is being edited
+  const [editCompanyName, setEditCompanyName] = useState(''); // Store the company name being edited
   
   // Handler functions for the companies table
   const loadContactCompanies = async () => {
@@ -1605,6 +1608,48 @@ const ContactCrmWorkflow = () => {
     navigate(`/companies/${companyId}`);
   };
   
+  // Start editing company name
+  const startEditingCompany = (company) => {
+    setEditingCompanyId(company.contact_companies_id);
+    setEditCompanyName(company.name || '');
+  };
+  
+  // Save company name changes
+  const saveCompanyName = async () => {
+    if (!editingCompanyId) return;
+    
+    try {
+      const company = contactCompanies.find(c => c.contact_companies_id === editingCompanyId);
+      if (!company) return;
+      
+      await handleCompanyChange(editingCompanyId, 'name', editCompanyName);
+      
+      // Reset editing state
+      setEditingCompanyId(null);
+      setEditCompanyName('');
+    } catch (err) {
+      console.error('Error saving company name:', err);
+      toast.error('Failed to save company name');
+    }
+  };
+  
+  // Cancel editing company name
+  const cancelEditingCompany = () => {
+    setEditingCompanyId(null);
+    setEditCompanyName('');
+  };
+  
+  // Handle key presses when editing company name
+  const handleCompanyNameKeyDown = (e, company) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      saveCompanyName();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelEditingCompany();
+    }
+  };
+  
   
   // Function to load tags for all companies
   const loadCompanyTags = async () => {
@@ -1625,6 +1670,18 @@ const ContactCrmWorkflow = () => {
       setContactCompanies(updatedCompanies);
     } catch (err) {
       console.error('Error loading company tags:', err);
+    }
+  };
+  
+  // Refresh company data and tags
+  const refreshCompanyData = async () => {
+    try {
+      toast.loading('Refreshing company data...', { id: 'refresh-companies' });
+      await loadContactCompanies();
+      toast.success('Company data refreshed', { id: 'refresh-companies' });
+    } catch (err) {
+      console.error('Error refreshing company data:', err);
+      toast.error('Failed to refresh company data', { id: 'refresh-companies' });
     }
   };
   
@@ -8811,6 +8868,25 @@ const handleInputChange = (field, value) => {
                         <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
                           <FormFieldLabel>Associated Companies</FormFieldLabel>
                           <button 
+                            onClick={refreshCompanyData}
+                            style={{
+                              background: 'transparent',
+                              color: '#00ff00',
+                              border: 'none',
+                              borderRadius: '4px',
+                              padding: '2px 6px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              fontSize: '0.7rem',
+                              marginLeft: '10px',
+                              height: '20px'
+                            }}
+                            title="Refresh Company Data"
+                          >
+                            <FiRefreshCw size={14} />
+                          </button>
+                          <button 
                             onClick={() => setShowAddCompanyModal(true)}
                             style={{
                               background: 'transparent',
@@ -8847,10 +8923,9 @@ const handleInputChange = (field, value) => {
                             }}>
                               <thead>
                                 <tr style={{ background: '#333' }}>
-                                  <th style={{ padding: '10px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '15%' }}>Company</th>
-                                  <th style={{ padding: '10px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '25%' }}>Tags</th>
-                                  <th style={{ padding: '10px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '10%' }}>Category</th>
-                                  <th style={{ padding: '10px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '25%' }}>Description</th>
+                                  <th style={{ padding: '10px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '20%' }}>Company</th>
+                                  <th style={{ padding: '10px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '30%' }}>Tags</th>
+                                  <th style={{ padding: '10px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '25%' }}>Category</th>
                                   <th style={{ padding: '10px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '15%' }}>Relationship</th>
                                   <th style={{ padding: '10px 15px', textAlign: 'center', borderBottom: '1px solid #444', width: '10%' }}>Actions</th>
                                 </tr>
@@ -8862,19 +8937,37 @@ const handleInputChange = (field, value) => {
                                     <tr key={company.contact_companies_id} style={{ borderBottom: '1px solid #333' }}>
                                       <td style={{ padding: '12px 15px' }}>
                                         <div style={{ display: 'flex', alignItems: 'center' }}>
-                                          <input
-                                            type="text"
-                                            value={company.name || ''}
-                                            onChange={(e) => handleCompanyChange(company.contact_companies_id, 'name', e.target.value)}
-                                            style={{
-                                              background: 'transparent',
-                                              border: 'none',
-                                              borderBottom: '1px dashed #444',
-                                              color: '#fff',
-                                              width: '100%',
-                                              padding: '8px 0'
-                                            }}
-                                          />
+                                          {editingCompanyId === company.contact_companies_id ? (
+                                            <input
+                                              type="text"
+                                              value={editCompanyName}
+                                              onChange={(e) => setEditCompanyName(e.target.value)}
+                                              onKeyDown={(e) => handleCompanyNameKeyDown(e, company)}
+                                              onBlur={saveCompanyName}
+                                              autoFocus
+                                              style={{
+                                                background: 'transparent',
+                                                border: 'none',
+                                                borderBottom: '1px solid #00ff00',
+                                                color: '#fff',
+                                                width: '100%',
+                                                padding: '8px 0',
+                                                outline: 'none'
+                                              }}
+                                            />
+                                          ) : (
+                                            <div 
+                                              onClick={() => startEditingCompany(company)}
+                                              style={{
+                                                width: '100%',
+                                                padding: '8px 0',
+                                                cursor: 'pointer',
+                                                color: '#fff',
+                                              }}
+                                            >
+                                              {company.name || 'Unnamed Company'}
+                                            </div>
+                                          )}
                                         </div>
                                       </td>
                                       <td style={{ padding: '12px 15px' }}>
@@ -8885,55 +8978,71 @@ const handleInputChange = (field, value) => {
                                           minHeight: '32px'
                                         }}>
                                           {company.tags && company.tags.length > 0 ? (
-                                            company.tags.map(tag => (
-                                              <div 
-                                                key={tag.tag_id || tag.entry_id} 
-                                                style={{
-                                                  background: '#333',
-                                                  color: '#00ff00',
-                                                  border: '1px solid #00ff00',
-                                                  borderRadius: '3px',
-                                                  padding: '2px 5px',
-                                                  fontSize: '0.7rem',
-                                                  display: 'flex',
-                                                  alignItems: 'center',
-                                                  gap: '3px'
-                                                }}
-                                              >
-                                                {tag.name}
-                                                <span 
-                                                  onClick={() => handleRemoveCompanyTag(company.company_id, tag.tag_id)}
-                                                  style={{ 
-                                                    cursor: 'pointer',
+                                            <>
+                                              {company.tags.map(tag => (
+                                                <div 
+                                                  key={tag.tag_id || tag.entry_id} 
+                                                  style={{
+                                                    background: '#333',
+                                                    color: '#00ff00',
+                                                    border: '1px solid #00ff00',
+                                                    borderRadius: '3px',
+                                                    padding: '2px 5px',
+                                                    fontSize: '0.7rem',
                                                     display: 'flex',
-                                                    alignItems: 'center'
+                                                    alignItems: 'center',
+                                                    gap: '3px'
                                                   }}
                                                 >
-                                                  <FiX size={10} />
-                                                </span>
-                                              </div>
-                                            ))
+                                                  {tag.name}
+                                                  <span 
+                                                    onClick={() => handleRemoveCompanyTag(company.company_id, tag.tag_id)}
+                                                    style={{ 
+                                                      cursor: 'pointer',
+                                                      display: 'flex',
+                                                      alignItems: 'center'
+                                                    }}
+                                                  >
+                                                    <FiX size={10} />
+                                                  </span>
+                                                </div>
+                                              ))}
+                                              <button
+                                                onClick={() => handleShowAddTagModal(company.company_id)}
+                                                style={{
+                                                  background: 'transparent',
+                                                  color: '#00ff00',
+                                                  border: 'none',
+                                                  borderRadius: '3px',
+                                                  padding: '2px 4px',
+                                                  fontSize: '0.7rem',
+                                                  cursor: 'pointer',
+                                                  display: 'flex',
+                                                  alignItems: 'center'
+                                                }}
+                                              >
+                                                <FiPlus size={10} />
+                                              </button>
+                                            </>
                                           ) : (
-                                            <div style={{ color: '#999', fontSize: '0.9rem', alignSelf: 'center' }}>
-                                              No tags
-                                            </div>
+                                            <button
+                                              onClick={() => handleShowAddTagModal(company.company_id)}
+                                              style={{
+                                                background: '#333',
+                                                color: '#00ff00',
+                                                border: '1px solid #00ff00',
+                                                borderRadius: '3px',
+                                                padding: '0px 5px',
+                                                fontSize: '0.7rem',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '3px'
+                                              }}
+                                            >
+                                              <FiPlus size={10} /> Add
+                                            </button>
                                           )}
-                                          <button
-                                            onClick={() => handleShowAddTagModal(company.company_id)}
-                                            style={{
-                                              background: 'transparent',
-                                              color: '#00ff00',
-                                              border: '1px dashed #00ff00',
-                                              borderRadius: '3px',
-                                              padding: '2px 4px',
-                                              fontSize: '0.7rem',
-                                              cursor: 'pointer',
-                                              display: 'flex',
-                                              alignItems: 'center'
-                                            }}
-                                          >
-                                            <FiPlus size={10} />
-                                          </button>
                                         </div>
                                       </td>
                                       <td style={{ padding: '12px 15px' }}>
@@ -8941,48 +9050,50 @@ const handleInputChange = (field, value) => {
                                           value={company.category || ''}
                                           onChange={(e) => handleCompanyChange(company.contact_companies_id, 'category', e.target.value)}
                                           style={{
-                                            background: '#333',
-                                            border: 'none',
-                                            color: '#fff',
-                                            padding: '8px 12px',
-                                            borderRadius: '4px',
-                                            width: '100%'
-                                          }}
-                                        >
-                                          <option value="Inbox">Inbox</option>
-                                          <option value="Startup">Startup</option>
-                                          <option value="Investor">Investor</option>
-                                          <option value="Corporate">Corporate</option>
-                                          <option value="Service Provider">Service Provider</option>
-                                          <option value="Other">Other</option>
-                                        </select>
-                                      </td>
-                                      <td style={{ padding: '12px 15px' }}>
-                                        <input
-                                          type="text"
-                                          value={company.description || ''}
-                                          onChange={(e) => handleCompanyChange(company.contact_companies_id, 'description', e.target.value)}
-                                          style={{
                                             background: 'transparent',
                                             border: 'none',
-                                            borderBottom: '1px dashed #444',
                                             color: '#fff',
+                                            padding: '8px 0',
                                             width: '100%',
-                                            padding: '8px 0'
+                                            WebkitAppearance: 'none',
+                                            MozAppearance: 'none',
+                                            appearance: 'none',
+                                            backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\' fill=\'none\' stroke=\'%23aaa\' stroke-width=\'1.5\' viewBox=\'0 0 10 6\'><polyline points=\'1,1 5,5 9,1\'/></svg>")',
+                                            backgroundRepeat: 'no-repeat',
+                                            backgroundPosition: 'right center',
+                                            paddingRight: '20px'
                                           }}
-                                        />
+                                        >
+                                          <option value="Not Set">Not Set</option>
+                                          <option value="Inbox">Inbox</option>
+                                          <option value="Professional Investor">Professional Investor</option>
+                                          <option value="Startup">Startup</option>
+                                          <option value="Corporate">Corporate</option>
+                                          <option value="Corporation">Corporation</option>
+                                          <option value="Advisory">Advisory</option>
+                                          <option value="SME">SME</option>
+                                          <option value="Institution">Institution</option>
+                                          <option value="Media">Media</option>
+                                          <option value="Skip">Skip</option>
+                                        </select>
                                       </td>
                                       <td style={{ padding: '12px 15px' }}>
                                         <select
                                           value={company.relationship || 'not_set'}
                                           onChange={(e) => handleCompanyChange(company.contact_companies_id, 'relationship', e.target.value)}
                                           style={{
-                                            background: '#333',
+                                            background: 'transparent',
                                             border: 'none',
                                             color: '#fff',
-                                            padding: '8px 12px',
-                                            borderRadius: '4px',
-                                            width: '100%'
+                                            padding: '8px 0',
+                                            width: '100%',
+                                            WebkitAppearance: 'none',
+                                            MozAppearance: 'none',
+                                            appearance: 'none',
+                                            backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\' fill=\'none\' stroke=\'%23aaa\' stroke-width=\'1.5\' viewBox=\'0 0 10 6\'><polyline points=\'1,1 5,5 9,1\'/></svg>")',
+                                            backgroundRepeat: 'no-repeat',
+                                            backgroundPosition: 'right center',
+                                            paddingRight: '20px'
                                           }}
                                         >
                                           <option value="not_set">Not Set</option>
@@ -8998,46 +9109,34 @@ const handleInputChange = (field, value) => {
                                       <td style={{ padding: '12px 15px', textAlign: 'center' }}>
                                         <div style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
                                           <button
-                                            onClick={() => handleEnrichCompany(company.company_id)}
-                                            title="Enrich with Apollo"
+                                            onClick={() => startEditingCompany(company)}
+                                            title="Edit company name"
                                             style={{
-                                              background: '#333',
+                                              background: 'transparent',
                                               color: '#00ff00',
-                                              border: '1px solid #00ff00',
-                                              borderRadius: '4px',
-                                              padding: '6px',
-                                              cursor: 'pointer'
+                                              border: 'none',
+                                              padding: '4px',
+                                              cursor: 'pointer',
+                                              display: 'flex',
+                                              alignItems: 'center'
                                             }}
                                           >
-                                            <FiDatabase size={16} />
+                                            <FiEdit size={16} />
                                           </button>
                                           <button
                                             onClick={() => handleRemoveCompanyAssociation(company.contact_companies_id)}
                                             title="Remove association"
                                             style={{
-                                              background: '#333',
-                                              color: '#ff5555',
-                                              border: '1px solid #ff5555',
-                                              borderRadius: '4px',
-                                              padding: '6px',
-                                              cursor: 'pointer'
+                                              background: 'transparent',
+                                              color: '#00ff00',
+                                              border: 'none',
+                                              padding: '4px',
+                                              cursor: 'pointer',
+                                              display: 'flex',
+                                              alignItems: 'center'
                                             }}
                                           >
                                             <FiX size={16} />
-                                          </button>
-                                          <button
-                                            onClick={() => navigateToCompany(company.company_id)}
-                                            title="Visit company page"
-                                            style={{
-                                              background: '#333',
-                                              color: '#4a9eff',
-                                              border: '1px solid #4a9eff',
-                                              borderRadius: '4px',
-                                              padding: '6px',
-                                              cursor: 'pointer'
-                                            }}
-                                          >
-                                            <FiLink size={16} />
                                           </button>
                                         </div>
                                       </td>
@@ -9045,13 +9144,13 @@ const handleInputChange = (field, value) => {
                                   ))
                                 ) : !companiesLoaded ? (
                                   <tr>
-                                    <td colSpan="6" style={{ padding: '20px', textAlign: 'center', color: '#999', height: '80px' }}>
+                                    <td colSpan="5" style={{ padding: '20px', textAlign: 'center', color: '#999', height: '80px' }}>
                                       Loading companies...
                                     </td>
                                   </tr>
                                 ) : (
                                   <tr>
-                                    <td colSpan="6" style={{ padding: '20px', textAlign: 'center', color: '#999', height: '80px' }}>
+                                    <td colSpan="5" style={{ padding: '20px', textAlign: 'center', color: '#999', height: '80px' }}>
                                       No companies associated with this contact
                                     </td>
                                   </tr>
@@ -10007,7 +10106,11 @@ const handleInputChange = (field, value) => {
       {/* Company Tags Modal */}
       <CompanyTagsModal
         isOpen={showAddTagModal}
-        onRequestClose={() => setShowAddTagModal(false)}
+        onRequestClose={() => {
+          setShowAddTagModal(false);
+          // Refresh company data after closing the modal to show new tags
+          setTimeout(() => loadCompanyTags(), 500);
+        }}
         company={{ id: selectedCompanyForTags }}
       />
     </Container>
