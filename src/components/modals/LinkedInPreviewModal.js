@@ -252,7 +252,31 @@ const LinkedInPreviewModal = ({
     setError(null);
     
     try {
-      const response = await fetch('/.netlify/functions/linkedin-job-extract', {
+      // Determine if we're in development or production
+      const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const functionUrl = isDevelopment 
+        ? 'https://your-netlify-site.netlify.app/.netlify/functions/linkedin-job-extract' // Replace with your actual Netlify site URL
+        : '/.netlify/functions/linkedin-job-extract';
+      
+      // Skip actual API call in development if needed
+      if (isDevelopment) {
+        console.log('Development mode detected - using mock data instead of API call');
+        // Simulate API delay
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Use job role from props if available, or mock data
+        const mockJobTitle = jobRole || 'Software Engineer';
+        const mockCompany = 'Tech Company Inc.';
+        
+        setExtractedJobRole(mockJobTitle);
+        setExtractedCompany(mockCompany);
+        
+        setLoading(false);
+        setExtractionAttempted(true);
+        return;
+      }
+      
+      const response = await fetch(functionUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
