@@ -2056,6 +2056,7 @@ const handleSelectEmailThread = async (threadId) => {
           birthday,
           last_interaction_at,
           linkedin,
+          job_role,
           keep_in_touch_frequency,
           airtable_id
         `)
@@ -2088,6 +2089,7 @@ const handleSelectEmailThread = async (threadId) => {
         mobiles: [], // Will be populated by loadEmailAndMobile
         emails: [], // Will be populated by loadEmailAndMobile
         linkedIn: contactData.linkedin || '',
+        jobRole: contactData.job_role || '',
         company: null,
         dealInfo: '',
         newEmail: '',
@@ -7203,40 +7205,203 @@ const handleInputChange = (field, value) => {
                           </tr>
                           <tr>
                             <td>Email</td>
-                            <td>{contact.email || '-'}</td>
+                            <td>
+                              {contact.email ? (
+                                <div style={{ 
+                                  display: 'inline-flex', 
+                                  alignItems: 'center', 
+                                  background: '#333', 
+                                  borderRadius: '4px', 
+                                  padding: '4px 8px', 
+                                  margin: '2px',
+                                  fontSize: '13px' 
+                                }}>
+                                  {contact.email}
+                                </div>
+                              ) : '-'}
+                            </td>
                             <td>{selectedDuplicate.email || '-'}</td>
                             <td>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                <MergeOption>
-                                  <MergeRadio
-                                    type="radio"
-                                    name="merge_emails"
-                                    value="current"
-                                    checked={mergeSelections.emails === 'current'}
-                                    onChange={() => handleMergeSelectionChange('emails', 'current')}
-                                  />
-                                  <span>Current</span>
-                                </MergeOption>
-                                <MergeOption>
-                                  <MergeRadio
-                                    type="radio"
-                                    name="merge_emails"
-                                    value="duplicate"
-                                    checked={mergeSelections.emails === 'duplicate'}
-                                    onChange={() => handleMergeSelectionChange('emails', 'duplicate')}
-                                  />
-                                  <span>Duplicate</span>
-                                </MergeOption>
-                                <MergeOption>
-                                  <MergeRadio
-                                    type="radio"
-                                    name="merge_emails"
-                                    value="combine"
-                                    checked={mergeSelections.emails === 'combine'}
-                                    onChange={() => handleMergeSelectionChange('emails', 'combine')}
-                                  />
-                                  <span>Combine</span>
-                                </MergeOption>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                                {mergeSelections.emails === 'current' && contact.email && (
+                                  <div style={{ 
+                                    display: 'inline-flex', 
+                                    alignItems: 'center', 
+                                    background: '#333', 
+                                    borderRadius: '4px', 
+                                    padding: '4px 8px', 
+                                    fontSize: '13px',
+                                    marginBottom: '5px' 
+                                  }}>
+                                    {contact.email}
+                                    <button style={{
+                                      background: 'none',
+                                      border: 'none',
+                                      color: '#ff5555',
+                                      cursor: 'pointer',
+                                      marginLeft: '5px',
+                                      padding: '0 5px',
+                                      fontSize: '14px'
+                                    }} 
+                                    onClick={() => {
+                                      // Handle removing email
+                                      console.log('Remove email:', contact.email);
+                                    }}
+                                    >
+                                      <FiX size={14} />
+                                    </button>
+                                  </div>
+                                )}
+                                
+                                {mergeSelections.emails === 'duplicate' && selectedDuplicate.email && (
+                                  <div style={{ 
+                                    display: 'inline-flex', 
+                                    alignItems: 'center', 
+                                    background: '#333', 
+                                    borderRadius: '4px', 
+                                    padding: '4px 8px', 
+                                    fontSize: '13px',
+                                    marginBottom: '5px' 
+                                  }}>
+                                    {selectedDuplicate.email}
+                                    <button style={{
+                                      background: 'none',
+                                      border: 'none',
+                                      color: '#ff5555',
+                                      cursor: 'pointer',
+                                      marginLeft: '5px',
+                                      padding: '0 5px',
+                                      fontSize: '14px'
+                                    }} 
+                                    onClick={() => {
+                                      // Handle removing email
+                                      console.log('Remove email:', selectedDuplicate.email);
+                                    }}
+                                    >
+                                      <FiX size={14} />
+                                    </button>
+                                  </div>
+                                )}
+                                
+                                {mergeSelections.emails === 'combine' && (
+                                  <>
+                                    {contact.email && (
+                                      <div style={{ 
+                                        display: 'inline-flex', 
+                                        alignItems: 'center', 
+                                        background: '#333', 
+                                        borderRadius: '4px', 
+                                        padding: '4px 8px', 
+                                        fontSize: '13px',
+                                        marginBottom: '5px' 
+                                      }}>
+                                        {contact.email}
+                                        <button style={{
+                                          background: 'none',
+                                          border: 'none',
+                                          color: '#ff5555',
+                                          cursor: 'pointer',
+                                          marginLeft: '5px',
+                                          padding: '0 5px',
+                                          fontSize: '14px'
+                                        }} 
+                                        onClick={() => {
+                                          // Handle removing email
+                                          console.log('Remove email:', contact.email);
+                                        }}
+                                        >
+                                          <FiX size={14} />
+                                        </button>
+                                      </div>
+                                    )}
+                                    
+                                    {selectedDuplicate.email && contact.email !== selectedDuplicate.email && (
+                                      <div style={{ 
+                                        display: 'inline-flex', 
+                                        alignItems: 'center', 
+                                        background: '#333', 
+                                        borderRadius: '4px', 
+                                        padding: '4px 8px', 
+                                        fontSize: '13px',
+                                        marginBottom: '5px' 
+                                      }}>
+                                        {selectedDuplicate.email}
+                                        <button style={{
+                                          background: 'none',
+                                          border: 'none',
+                                          color: '#ff5555',
+                                          cursor: 'pointer',
+                                          marginLeft: '5px',
+                                          padding: '0 5px',
+                                          fontSize: '14px'
+                                        }} 
+                                        onClick={() => {
+                                          // Handle removing email
+                                          console.log('Remove email:', selectedDuplicate.email);
+                                        }}
+                                        >
+                                          <FiX size={14} />
+                                        </button>
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+                                
+                                {/* Add New Email Button */}
+                                <button style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  background: '#222',
+                                  border: '1px dashed #555',
+                                  borderRadius: '4px',
+                                  color: '#00ff00',
+                                  cursor: 'pointer',
+                                  padding: '3px 8px',
+                                  fontSize: '13px'
+                                }} 
+                                onClick={() => {
+                                  // Handle adding new email
+                                  console.log('Add new email');
+                                }}
+                                >
+                                  <FiPlus size={14} style={{ marginRight: '5px' }} />
+                                  Add Email
+                                </button>
+                                
+                                {/* Radio buttons for selection */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '10px', width: '100%' }}>
+                                  <MergeOption>
+                                    <MergeRadio
+                                      type="radio"
+                                      name="merge_emails"
+                                      value="current"
+                                      checked={mergeSelections.emails === 'current'}
+                                      onChange={() => handleMergeSelectionChange('emails', 'current')}
+                                    />
+                                    <span>Current</span>
+                                  </MergeOption>
+                                  <MergeOption>
+                                    <MergeRadio
+                                      type="radio"
+                                      name="merge_emails"
+                                      value="duplicate"
+                                      checked={mergeSelections.emails === 'duplicate'}
+                                      onChange={() => handleMergeSelectionChange('emails', 'duplicate')}
+                                    />
+                                    <span>Duplicate</span>
+                                  </MergeOption>
+                                  <MergeOption>
+                                    <MergeRadio
+                                      type="radio"
+                                      name="merge_emails"
+                                      value="combine"
+                                      checked={mergeSelections.emails === 'combine'}
+                                      onChange={() => handleMergeSelectionChange('emails', 'combine')}
+                                    />
+                                    <span>Combine</span>
+                                  </MergeOption>
+                                </div>
                               </div>
                             </td>
                           </tr>
