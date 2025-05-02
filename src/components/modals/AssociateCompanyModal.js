@@ -403,12 +403,13 @@ const AssociateCompanyModal = ({
       toast.dismiss('associate-company');
       toast.success(`${selectedCompany.name} associated successfully`);
       
-      // Call the callback
+      // Call the callback with the response data
       onCompanyAssociated({ 
         action: 'associated',
         company: selectedCompany,
         relationship: relationship,
-        is_primary: isPrimary
+        is_primary: isPrimary,
+        data: data?.[0] // Include the response data for the contact_companies entry
       });
       
       // Close the modal

@@ -10195,9 +10195,29 @@ const handleInputChange = (field, value) => {
             setNewCompanyInitialName(result.name);
             setShowCreateCompanyModal(true);
           } else if (result.action === 'associated') {
-            // Refresh company data
-            loadContactCompanies();
-            loadCompanyTags();
+            // Directly add the company to the state instead of reloading
+            // This avoids potential race conditions with other data loading
+            const newCompany = {
+              contact_companies_id: result.data?.contact_companies_id,
+              company_id: result.company.company_id,
+              relationship: result.relationship,
+              is_primary: result.is_primary,
+              name: result.company.name || 'Unknown Company',
+              website: result.company.website || '',
+              category: result.company.category || 'Inbox',
+              description: result.company.description || '',
+              linkedin: result.company.linkedin || '',
+              tags: [] // Initialize with empty tags array
+            };
+            
+            console.log('Adding new company to state:', newCompany);
+            
+            // Add the new company to the state
+            setContactCompanies(prevCompanies => [...prevCompanies, newCompany]);
+            setCompaniesLoaded(true);
+            
+            // Load tags after a short delay
+            setTimeout(() => loadCompanyTags(), 300);
           }
         }}
       />
@@ -10211,10 +10231,29 @@ const handleInputChange = (field, value) => {
         }}
         initialName={newCompanyInitialName}
         contactId={contactId}
-        onCompanyCreated={() => {
-          // Refresh company data
-          loadContactCompanies();
-          loadCompanyTags();
+        onCompanyCreated={(result) => {
+          // Similar to onCompanyAssociated, add directly to state
+          const newCompany = {
+            contact_companies_id: result.data?.contact_companies_id,
+            company_id: result.company.company_id,
+            relationship: result.relationship || 'not_set',
+            is_primary: result.isPrimary || false,
+            name: result.company.name || 'Unknown Company',
+            website: result.company.website || '',
+            category: result.company.category || 'Inbox',
+            description: result.company.description || '',
+            linkedin: result.company.linkedin || '',
+            tags: result.tags || [] // Use provided tags or empty array
+          };
+          
+          console.log('Adding newly created company to state:', newCompany);
+          
+          // Add the new company to the state
+          setContactCompanies(prevCompanies => [...prevCompanies, newCompany]);
+          setCompaniesLoaded(true);
+          
+          // Load tags after a short delay
+          setTimeout(() => loadCompanyTags(), 300);
         }}
       />
     </Container>

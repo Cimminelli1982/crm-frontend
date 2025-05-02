@@ -470,27 +470,32 @@ const CreateCompanyModal = ({
       }
       
       // Associate with contact if contactId is provided
+      let associationData = null;
       if (contactId) {
-        const { error: associationError } = await supabase
+        associationData = await supabase
           .from('contact_companies')
           .insert({
             contact_id: contactId,
             company_id: company.company_id,
             relationship: relationship,
             is_primary: isPrimary
-          });
+          })
+          .select();
           
-        if (associationError) throw associationError;
+        if (associationData.error) throw associationData.error;
+        
+        console.log('Company association data:', associationData.data);
       }
       
       toast.success(`${company.name} created successfully`);
       
-      // Call the callback
+      // Call the callback with the association data
       onCompanyCreated({
         company,
         tags,
         relationship: contactId ? relationship : null,
-        isPrimary: contactId ? isPrimary : false
+        isPrimary: contactId ? isPrimary : false,
+        data: contactId ? associationData?.data?.[0] : null // Include the response data for contact_companies
       });
       
       // Close the modal
