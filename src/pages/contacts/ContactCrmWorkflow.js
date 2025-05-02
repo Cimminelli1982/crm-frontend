@@ -1425,7 +1425,7 @@ const ContactCrmWorkflow = () => {
   // Handler functions for the companies table
   const loadContactCompanies = async () => {
     try {
-      console.log('Loading contact companies for contact ID:', contactId, 'Type:', typeof contactId, 'Stack trace:', new Error().stack);
+      console.log('Loading contact companies for contact ID:', contactId, 'Type:', typeof contactId);
       
       if (!contactId) {
         console.warn('Cannot load companies: Missing contact ID');
@@ -1434,9 +1434,7 @@ const ContactCrmWorkflow = () => {
         return;
       }
       
-      // Show loading toast for better user feedback
-      toast.loading('Loading companies...', { id: 'load-companies' });
-      
+      // Make the query directly without any loading indicators to avoid UI flicker
       const { data, error } = await supabase
         .from('contact_companies')
         .select(`
@@ -1457,10 +1455,6 @@ const ContactCrmWorkflow = () => {
       
       if (error) {
         console.error('Supabase error when loading companies:', error);
-        toast.dismiss('load-companies');
-        toast.error(`Failed to load companies: ${error.message}`);
-        setContactCompanies([]);
-        setCompaniesLoaded(true);
         return;
       }
       
@@ -1481,25 +1475,20 @@ const ContactCrmWorkflow = () => {
         }));
         
         console.log('Formatted companies:', formattedCompanies);
-        setContactCompanies(formattedCompanies);
-        setCompaniesLoaded(true); // Mark that companies were successfully loaded
         
-        // After setting companies, load their tags
+        // Update state in one go
+        setContactCompanies(formattedCompanies);
+        setCompaniesLoaded(true);
+        
+        // Load tags after a delay
         setTimeout(() => loadCompanyTags(), 100);
-        toast.dismiss('load-companies');
       } else {
         console.log('No companies found for this contact');
         setContactCompanies([]);
-        setCompaniesLoaded(true); // Still mark as loaded even if empty
-        toast.dismiss('load-companies');
+        setCompaniesLoaded(true);
       }
     } catch (err) {
       console.error('Error in loadContactCompanies:', err);
-      // Set empty array to ensure UI renders properly even in case of error
-      setContactCompanies([]);
-      setCompaniesLoaded(true); // Mark as loaded even on error
-      toast.dismiss('load-companies');
-      toast.error('Failed to load companies due to an error');
     }
   };
   
@@ -1726,6 +1715,12 @@ const ContactCrmWorkflow = () => {
   // Function to load tags for all companies
   const loadCompanyTags = async () => {
     try {
+      // Make sure we still have companies before trying to load tags
+      if (!contactCompanies || contactCompanies.length === 0) {
+        console.warn('No companies available when trying to load company tags');
+        return;
+      }
+      
       // Load tags for each company in parallel
       const updatedCompanies = [...contactCompanies];
       
@@ -1738,22 +1733,87 @@ const ContactCrmWorkflow = () => {
         })
       );
       
-      // Update state with companies that now have tags
-      setContactCompanies(updatedCompanies);
+      // Check again to make sure companies weren't cleared during tags loading
+      if (contactCompanies && contactCompanies.length > 0) {
+        // Update state with companies that now have tags
+        setContactCompanies(updatedCompanies);
+      } else {
+        console.warn('Companies were cleared during tag loading - not updating tags');
+      }
     } catch (err) {
       console.error('Error loading company tags:', err);
     }
   };
   
-  // Refresh company data and tags
+  // Refresh company data and tags - implemented with direct query to bypass any state issues
   const refreshCompanyData = async () => {
     try {
       toast.loading('Refreshing company data...', { id: 'refresh-companies' });
-      await loadContactCompanies();
-      toast.success('Company data refreshed', { id: 'refresh-companies' });
+      
+      console.log('Directly querying company data for contact ID:', contactId);
+      
+      if (!contactId) {
+        console.warn('Cannot refresh companies: Missing contact ID');
+        toast.error('Cannot refresh: Missing contact ID', { id: 'refresh-companies' });
+        return;
+      }
+      
+      // Direct query - bypass all the complex loading logic that might be causing issues
+      const { data, error } = await supabase
+        .from('contact_companies')
+        .select(`
+          contact_companies_id,
+          company_id,
+          relationship,
+          is_primary,
+          companies:company_id(
+            company_id,
+            name,
+            website,
+            category,
+            description,
+            linkedin
+          )
+        `)
+        .eq('contact_id', contactId);
+      
+      if (error) {
+        console.error('Supabase error when refreshing companies:', error);
+        toast.error('Database error when refreshing', { id: 'refresh-companies' });
+        return;
+      }
+      
+      console.log('Refreshed contact companies data from Supabase:', data);
+      
+      if (data && data.length > 0) {
+        const formattedCompanies = data.map(cc => ({
+          contact_companies_id: cc.contact_companies_id,
+          company_id: cc.company_id,
+          relationship: cc.relationship,
+          is_primary: cc.is_primary,
+          name: cc.companies?.name || 'Unknown Company',
+          website: cc.companies?.website || '',
+          category: cc.companies?.category || 'Inbox',
+          description: cc.companies?.description || '',
+          linkedin: cc.companies?.linkedin || '',
+          tags: [] // Initialize with empty tags array
+        }));
+        
+        console.log('Formatted companies from refresh:', formattedCompanies);
+        
+        // Set the companies directly
+        setContactCompanies(formattedCompanies);
+        setCompaniesLoaded(true);
+        
+        // Don't load tags with a delay since that might be part of the issue
+        toast.success('Company data refreshed successfully', { id: 'refresh-companies' });
+      } else {
+        console.log('No companies found for this contact during refresh');
+        toast.success('No companies found for this contact', { id: 'refresh-companies' });
+      }
     } catch (err) {
       console.error('Error refreshing company data:', err);
-      toast.error('Failed to refresh company data', { id: 'refresh-companies' });
+      toast.error('Failed to refresh company data: ' + err.message, { id: 'refresh-companies' });
     }
   };
   
@@ -2377,26 +2437,33 @@ const handleSelectEmailThread = async (threadId) => {
   useEffect(() => {
     if (contactId) {
       console.log('Loading data for contact ID:', contactId);
-      loadContactData();
-      loadWhatsappChats(contactId);
-      loadEmailThreads(contactId);
       
-      // Only load companies if not already loaded
-      if (!companiesLoaded) {
-        console.log('Loading contact companies (in useEffect)');
-        loadContactCompanies();
-      } else {
-        console.log('Companies already loaded, skipping load in useEffect');
-      }
+      // Load companies first, then load other data
+      // This ensures the companies are loaded before other actions that might overwrite them
+      const loadAllData = async () => {
+        try {
+          console.log('Loading contact companies first to prevent race conditions');
+          await loadContactCompanies();
+          
+          // Load other data after companies
+          loadContactData();
+          loadWhatsappChats(contactId);
+          loadEmailThreads(contactId);
+          
+          // Enable all legacy data sources by default
+          setShowSources({
+            hubspot: true,
+            supabase: true,
+            airtable: true
+          });
+        } catch (err) {
+          console.error('Error in initial data loading:', err);
+        }
+      };
       
-      // Enable all legacy data sources by default
-      setShowSources({
-        hubspot: true,
-        supabase: true,
-        airtable: true
-      });
+      loadAllData();
     }
-  }, [contactId, companiesLoaded]);
+  }, [contactId]); // Only depend on contactId to prevent reloading cycle
   
   // Start editing name
   const startEditingName = () => {
@@ -2450,6 +2517,11 @@ const handleSelectEmailThread = async (threadId) => {
   
   // Load contact data
   const loadContactData = async () => {
+    // IMPORTANT: Never wipe out existing companies data - this was causing the bug
+    // where companies would disappear after being loaded
+    console.log('Loading contact data, preserving existing company data if available', 
+                contactCompanies.length > 0 ? `(${contactCompanies.length} companies)` : '');
+    
     setLoading(true);
     setError(null);
     
@@ -10205,29 +10277,13 @@ const handleInputChange = (field, value) => {
             setNewCompanyInitialName(result.name);
             setShowCreateCompanyModal(true);
           } else if (result.action === 'associated') {
-            // Directly add the company to the state instead of reloading
-            // This avoids potential race conditions with other data loading
-            const newCompany = {
-              contact_companies_id: result.data?.contact_companies_id,
-              company_id: result.company.company_id,
-              relationship: result.relationship,
-              is_primary: result.is_primary,
-              name: result.company.name || 'Unknown Company',
-              website: result.company.website || '',
-              category: result.company.category || 'Inbox',
-              description: result.company.description || '',
-              linkedin: result.company.linkedin || '',
-              tags: [] // Initialize with empty tags array
-            };
+            console.log('Company successfully associated, reloading data from Supabase');
             
-            console.log('Adding new company to state:', newCompany);
-            
-            // Add the new company to the state
-            setContactCompanies(prevCompanies => [...prevCompanies, newCompany]);
-            setCompaniesLoaded(true);
-            
-            // Load tags after a short delay
-            setTimeout(() => loadCompanyTags(), 300);
+            // Get the latest data from Supabase instead of managing it locally
+            // This ensures we always have the correct state
+            setTimeout(() => {
+              loadContactCompanies();
+            }, 500);
           }
         }}
       />
