@@ -1568,23 +1568,27 @@ const ContactCrmWorkflow = () => {
         throw new Error('Contact company ID is required');
       }
       
-      // First show loading toast
+      // Show loading toast
       toast.loading('Removing company association...', { id: 'remove-company' });
       
+      // Simply delete the association record from contact_companies
       const { error } = await supabase
         .from('contact_companies')
         .delete()
         .eq('contact_companies_id', contactCompaniesId);
         
-      if (error) throw error;
+      if (error) {
+        console.error('Error deleting company association:', error);
+        throw error;
+      }
       
-      // Immediately update the state for a responsive UI
+      // Update the UI immediately without waiting for the reload
       setContactCompanies(prevCompanies => 
         prevCompanies.filter(company => company.contact_companies_id !== contactCompaniesId)
       );
       
-      // Reload the data to ensure everything is in sync
-      await loadContactCompanies();
+      // No need to reload companies - we've already updated the UI
+      // This prevents any race conditions or flicker
       
       // Show success toast
       toast.dismiss('remove-company');
@@ -1593,6 +1597,9 @@ const ContactCrmWorkflow = () => {
       console.error('Error removing company association:', err);
       toast.dismiss('remove-company');
       toast.error('Failed to remove company association');
+      
+      // Reload data to ensure UI is in sync
+      loadContactCompanies();
     }
   };
   
