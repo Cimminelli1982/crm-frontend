@@ -6296,37 +6296,19 @@ const handleInputChange = (field, value) => {
                                       />
                                     ) : (
                                       <div 
-                                        onClick={(e) => {
-                                          // If they click the arrow, set the value in Supabase Final
-                                          if (e.target.tagName === 'SPAN' && e.target.dataset.action === 'transfer') {
-                                            handleInputChange('firstName', contact.first_name || '');
-                                          } else {
-                                            // Otherwise, start editing
-                                            const updatedContact = {...contact, isEditingFirstName: true};
-                                            setContact(updatedContact);
-                                          }
+                                        onClick={() => {
+                                          // Only start editing
+                                          const updatedContact = {...contact, isEditingFirstName: true};
+                                          setContact(updatedContact);
                                         }}
                                         style={{ 
                                           cursor: 'pointer',
                                           padding: '8px 12px',
                                           display: 'flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'space-between'
+                                          alignItems: 'center'
                                         }}
                                       >
                                         <span>{contact.first_name || '-'}</span>
-                                        <span 
-                                          data-action="transfer"
-                                          style={{ 
-                                            color: '#00ff00', 
-                                            fontSize: '12px', 
-                                            marginLeft: '10px',
-                                            cursor: 'pointer'
-                                          }}
-                                          title="Transfer to Supabase Final"
-                                        >
-                                          → 
-                                        </span>
                                       </div>
                                     )}
                                   </td>
@@ -6364,11 +6346,33 @@ const handleInputChange = (field, value) => {
                                         type="text"
                                         value={formData.firstName !== undefined ? formData.firstName : (contact.first_name || '')}
                                         onChange={(e) => handleInputChange('firstName', e.target.value)}
-                                        onKeyDown={(e) => {
+                                        onKeyDown={async (e) => {
                                           if (e.key === 'Enter') {
-                                            // Confirm edit on Enter
+                                            // Confirm edit on Enter and save to contact.first_name immediately
                                             const updatedFormData = {...formData, isEditingFirstName: false};
                                             setFormData(updatedFormData);
+                                            
+                                            const newFirstName = formData.firstName || contact.first_name || '';
+                                            
+                                            // Update the contact with the new first name
+                                            const updatedContact = {...contact, first_name: newFirstName};
+                                            setContact(updatedContact);
+                                            
+                                            // Save to database
+                                            try {
+                                              const { error } = await supabase
+                                                .from('contacts')
+                                                .update({ first_name: newFirstName })
+                                                .eq('contact_id', contact.contact_id);
+                                                
+                                              if (error) {
+                                                console.error('Error updating contact first name:', error);
+                                                toast.error('Failed to update first name');
+                                              }
+                                            } catch (err) {
+                                              console.error('Exception updating contact first name:', err);
+                                              toast.error('Failed to update first name');
+                                            }
                                           }
                                         }}
                                         onBlur={() => {
@@ -6446,37 +6450,19 @@ const handleInputChange = (field, value) => {
                                       />
                                     ) : (
                                       <div 
-                                        onClick={(e) => {
-                                          // If they click the arrow, set the value in Supabase Final
-                                          if (e.target.tagName === 'SPAN' && e.target.dataset.action === 'transfer') {
-                                            handleInputChange('lastName', contact.last_name || '');
-                                          } else {
-                                            // Otherwise, start editing
-                                            const updatedContact = {...contact, isEditingLastName: true};
-                                            setContact(updatedContact);
-                                          }
+                                        onClick={() => {
+                                          // Only start editing
+                                          const updatedContact = {...contact, isEditingLastName: true};
+                                          setContact(updatedContact);
                                         }}
                                         style={{ 
                                           cursor: 'pointer',
                                           padding: '8px 12px',
                                           display: 'flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'space-between'
+                                          alignItems: 'center'
                                         }}
                                       >
                                         <span>{contact.last_name || '-'}</span>
-                                        <span 
-                                          data-action="transfer"
-                                          style={{ 
-                                            color: '#00ff00', 
-                                            fontSize: '12px', 
-                                            marginLeft: '10px',
-                                            cursor: 'pointer'
-                                          }}
-                                          title="Transfer to Supabase Final"
-                                        >
-                                          → 
-                                        </span>
                                       </div>
                                     )}
                                   </td>
@@ -6514,11 +6500,33 @@ const handleInputChange = (field, value) => {
                                         type="text"
                                         value={formData.lastName !== undefined ? formData.lastName : (contact.last_name || '')}
                                         onChange={(e) => handleInputChange('lastName', e.target.value)}
-                                        onKeyDown={(e) => {
+                                        onKeyDown={async (e) => {
                                           if (e.key === 'Enter') {
-                                            // Confirm edit on Enter
+                                            // Confirm edit on Enter and save to contact.last_name immediately
                                             const updatedFormData = {...formData, isEditingLastName: false};
                                             setFormData(updatedFormData);
+                                            
+                                            const newLastName = formData.lastName || contact.last_name || '';
+                                            
+                                            // Update the contact with the new last name
+                                            const updatedContact = {...contact, last_name: newLastName};
+                                            setContact(updatedContact);
+                                            
+                                            // Save to database
+                                            try {
+                                              const { error } = await supabase
+                                                .from('contacts')
+                                                .update({ last_name: newLastName })
+                                                .eq('contact_id', contact.contact_id);
+                                                
+                                              if (error) {
+                                                console.error('Error updating contact last name:', error);
+                                                toast.error('Failed to update last name');
+                                              }
+                                            } catch (err) {
+                                              console.error('Exception updating contact last name:', err);
+                                              toast.error('Failed to update last name');
+                                            }
                                           }
                                         }}
                                         onBlur={() => {
@@ -6573,15 +6581,138 @@ const handleInputChange = (field, value) => {
                                       <span style={{ marginLeft: '5px', fontSize: '10px' }}>↗</span>
                                     </a>
                                   </td>
-                                  <td style={{ padding: '12px 15px' }}>
+                                  <td style={{ padding: '12px 15px', minHeight: '50px', verticalAlign: 'top' }}>
                                     <TagsContainer>
                                       {contact.emails && contact.emails.length > 0 ? (
                                         contact.emails.map((emailObj, idx) => (
                                           <Tag 
-                                            key={emailObj.email_id || idx}
+                                            key={idx}
                                             style={{ 
                                               cursor: 'default', 
-                                              background: 'transparent'
+                                              background: 'transparent',
+                                              display: 'block',
+                                              marginBottom: '8px'
+                                            }}
+                                          >
+                                            {emailObj.email && (
+                                              <>
+                                                <span>{emailObj.email}</span>
+                                                {emailObj.is_primary && (
+                                                  <span title="Primary Email" style={{ fontSize: '10px', marginLeft: '3px' }}>★</span>
+                                                )}
+                                                {emailObj.type && (
+                                                  <span style={{ fontSize: '0.8em', opacity: 0.8, marginLeft: '3px' }}>
+                                                    ({emailObj.type})
+                                                  </span>
+                                                )}
+                                              </>
+                                            )}
+                                          </Tag>
+                                        ))
+                                      ) : contact.email ? (
+                                        <Tag style={{ background: 'transparent', cursor: 'default' }}>
+                                          {contact.email}
+                                        </Tag>
+                                      ) : (
+                                        '-'
+                                      )}
+                                    </TagsContainer>
+                                  </td>
+                                  <td style={{ padding: '12px 15px', minHeight: '50px', verticalAlign: 'top' }}>
+                                    <TagsContainer>
+                                      {airtableContact?.emails && airtableContact.emails.length > 0 ? (
+                                        airtableContact.emails.map((emailObj, idx) => {
+                                          // Check if emailObj is not null and has email property
+                                          const emailStr = typeof emailObj === 'string' 
+                                            ? emailObj 
+                                            : (emailObj && typeof emailObj === 'object' && emailObj.email) 
+                                              ? emailObj.email 
+                                              : null;
+                                          
+                                          if (!emailStr) return null;
+                                          
+                                          return (
+                                            <Tag 
+                                              key={idx}
+                                              style={{ 
+                                                cursor: 'pointer',
+                                                background: 'transparent',
+                                                display: 'block',
+                                                marginBottom: '8px'
+                                              }}
+                                              onClick={() => {
+                                                // Add to contactEmails array instead of using primaryEmail
+                                                // Prepare the email object
+                                                const newEmail = {
+                                                  email: emailStr,
+                                                  is_primary: false,
+                                                  type: 'personal' // default type
+                                                };
+                                                
+                                                // Initialize or update the contactEmails array
+                                                if (!formData.contactEmails) {
+                                                  handleInputChange('contactEmails', [newEmail]);
+                                                } else {
+                                                  // Check if this email already exists
+                                                  const exists = formData.contactEmails.some(e => e.email === emailStr);
+                                                  if (!exists) {
+                                                    handleInputChange('contactEmails', [...formData.contactEmails, newEmail]);
+                                                  }
+                                                }
+                                              }}
+                                            >
+                                              <span>{emailStr}</span>
+                                              {emailObj && typeof emailObj === 'object' && emailObj.is_primary && (
+                                                <span title="Primary Email" style={{ fontSize: '10px', marginLeft: '3px' }}>★</span>
+                                              )}
+                                              <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '5px' }}>→</span>
+                                            </Tag>
+                                          );
+                                        })
+                                      ) : airtableContact?.primary_email ? (
+                                        <Tag 
+                                          style={{ background: 'transparent', cursor: 'pointer' }}
+                                          onClick={() => {
+                                            // Add to contactEmails array 
+                                            // Prepare the email object
+                                            const newEmail = {
+                                              email: airtableContact.primary_email,
+                                              is_primary: false,
+                                              type: 'personal' // default type
+                                            };
+                                            
+                                            // Initialize or update the contactEmails array
+                                            if (!formData.contactEmails) {
+                                              handleInputChange('contactEmails', [newEmail]);
+                                            } else {
+                                              // Check if this email already exists
+                                              const exists = formData.contactEmails.some(e => e.email === airtableContact.primary_email);
+                                              if (!exists) {
+                                                handleInputChange('contactEmails', [...formData.contactEmails, newEmail]);
+                                              }
+                                            }
+                                          }}
+                                        >
+                                          {airtableContact.primary_email}
+                                          <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '5px' }}>→</span>
+                                        </Tag>
+                                      ) : (
+                                        '-'
+                                      )}
+                                    </TagsContainer>
+                                  </td>
+                                  <td style={{ padding: '12px 15px', minHeight: '50px', verticalAlign: 'top' }}>
+                                    <TagsContainer>
+                                      {/* Show emails from contact.emails */}
+                                      {contact.emails && contact.emails.length > 0 ? (
+                                        contact.emails.map((emailObj, idx) => (
+                                          <Tag 
+                                            key={`contact-${idx}`}
+                                            style={{ 
+                                              background: 'transparent', 
+                                              cursor: 'default',
+                                              display: 'block',
+                                              marginBottom: '8px'
                                             }}
                                           >
                                             <span>{emailObj.email}</span>
@@ -6596,50 +6727,155 @@ const handleInputChange = (field, value) => {
                                           </Tag>
                                         ))
                                       ) : contact.email ? (
-                                        <Tag style={{ background: 'transparent', cursor: 'default' }}>
-                                          {contact.email}
+                                        <Tag style={{ 
+                                          background: 'transparent', 
+                                          cursor: 'default',
+                                          display: 'block',
+                                          marginBottom: '8px'
+                                        }}>
+                                          <span>{contact.email}</span>
+                                          <span title="Primary Email" style={{ fontSize: '10px', marginLeft: '3px' }}>★</span>
                                         </Tag>
-                                      ) : (
-                                        '-'
-                                      )}
-                                    </TagsContainer>
-                                  </td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <TagsContainer>
-                                      {airtableContact?.emails && airtableContact.emails.length > 0 ? (
-                                        airtableContact.emails.map((emailObj, idx) => (
-                                          <Tag 
-                                            key={idx}
+                                      ) : null}
+                                      
+                                      {/* Show new emails added from contactEmails */}
+                                      {formData.contactEmails && formData.contactEmails.length > 0 && 
+                                        formData.contactEmails.map((emailObj, idx) => {
+                                          // Check if this email already exists in contact.emails
+                                          const existsInContact = contact.emails?.some(e => e.email === emailObj.email);
+                                          
+                                          // Only show if it doesn't exist in contact.emails
+                                          if (!existsInContact) {
+                                            return (
+                                              <Tag 
+                                                key={`new-${idx}`}
+                                                style={{ 
+                                                  background: 'transparent', 
+                                                  cursor: 'default',
+                                                  display: 'block',
+                                                  marginBottom: '8px'
+                                                }}
+                                              >
+                                                <span>{emailObj.email}</span>
+                                                {emailObj.is_primary && (
+                                                  <span title="Primary Email" style={{ fontSize: '10px', marginLeft: '3px' }}>★</span>
+                                                )}
+                                                {emailObj.type && (
+                                                  <span style={{ fontSize: '0.8em', opacity: 0.8, marginLeft: '3px' }}>
+                                                    ({emailObj.type})
+                                                  </span>
+                                                )}
+                                                <span 
+                                                  onClick={() => {
+                                                    // Remove this email from contactEmails
+                                                    const updatedEmails = [...formData.contactEmails];
+                                                    updatedEmails.splice(idx, 1);
+                                                    handleInputChange('contactEmails', updatedEmails);
+                                                  }}
+                                                  title="Remove email" 
+                                                  style={{ 
+                                                    fontSize: '12px', 
+                                                    marginLeft: '5px', 
+                                                    color: '#00ff00',
+                                                    cursor: 'pointer'
+                                                  }}
+                                                >
+                                                  ✕
+                                                </span>
+                                              </Tag>
+                                            );
+                                          }
+                                          return null;
+                                        })
+                                      }
+                                      
+                                      {/* For backward compatibility */}
+                                      {!contact.emails && formData.primaryEmail && !contact.email && (
+                                        <Tag style={{ 
+                                          background: 'transparent', 
+                                          cursor: 'default',
+                                          display: 'block',
+                                          marginBottom: '8px' 
+                                        }}>
+                                          <span>{formData.primaryEmail}</span>
+                                          <span title="Primary Email" style={{ fontSize: '10px', marginLeft: '3px' }}>★</span>
+                                          <span 
+                                            onClick={() => handleInputChange('primaryEmail', null)}
+                                            title="Remove email" 
                                             style={{ 
-                                              cursor: 'pointer',
-                                              background: 'transparent'
+                                              fontSize: '12px', 
+                                              marginLeft: '5px', 
+                                              color: '#00ff00',
+                                              cursor: 'pointer'
                                             }}
-                                            onClick={() => handleInputChange('primaryEmail', emailObj.email || emailObj)}
                                           >
-                                            <span>{emailObj.email || emailObj}</span>
-                                            {emailObj.is_primary && (
-                                              <span title="Primary Email" style={{ fontSize: '10px', marginLeft: '3px' }}>★</span>
-                                            )}
-                                            <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '5px' }}>→</span>
+                                            ✕
+                                          </span>
+                                        </Tag>
+                                      )}
+
+                                      {/* For backward compatibility */}
+                                      {formData.additionalEmails && formData.additionalEmails.length > 0 && (
+                                        formData.additionalEmails.map((email, idx) => (
+                                          <Tag 
+                                            key={`additional-${idx}`}
+                                            style={{ 
+                                              background: 'transparent', 
+                                              cursor: 'default',
+                                              display: 'block',
+                                              marginBottom: '8px'
+                                            }}
+                                          >
+                                            <span>{email}</span>
+                                            <span 
+                                              onClick={() => {
+                                                // Remove this email from additionalEmails
+                                                const updatedEmails = [...formData.additionalEmails];
+                                                updatedEmails.splice(idx, 1);
+                                                handleInputChange('additionalEmails', updatedEmails);
+                                              }}
+                                              title="Remove email" 
+                                              style={{ 
+                                                fontSize: '12px', 
+                                                marginLeft: '5px', 
+                                                color: '#00ff00',
+                                                cursor: 'pointer'
+                                              }}
+                                            >
+                                              ✕
+                                            </span>
                                           </Tag>
                                         ))
-                                      ) : airtableContact?.primary_email ? (
-                                        <Tag 
-                                          style={{ background: 'transparent', cursor: 'pointer' }}
-                                          onClick={() => handleInputChange('primaryEmail', airtableContact.primary_email)}
-                                        >
-                                          {airtableContact.primary_email}
-                                          <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '5px' }}>→</span>
-                                        </Tag>
-                                      ) : (
-                                        '-'
                                       )}
+                                      <Tag 
+                                        onClick={() => {
+                                          const email = prompt("Enter new email:");
+                                          if (email && email.trim()) {
+                                            // Create a new email object with the correct structure
+                                            const newEmail = {
+                                              email: email.trim(),
+                                              is_primary: false,
+                                              type: 'personal'
+                                            };
+                                            
+                                            // Add to contactEmails array
+                                            if (!formData.contactEmails) {
+                                              handleInputChange('contactEmails', [newEmail]);
+                                            } else {
+                                              handleInputChange('contactEmails', [...formData.contactEmails, newEmail]);
+                                            }
+                                          }
+                                        }}
+                                        style={{ 
+                                          background: 'transparent', 
+                                          color: '#00ff00', 
+                                          cursor: 'pointer',
+                                          border: 'none'
+                                        }}
+                                      >
+                                        <span style={{ fontSize: '16px' }}>+</span>
+                                      </Tag>
                                     </TagsContainer>
-                                  </td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
-                                      {formData.primaryEmail || contact.email || '-'}
-                                    </div>
                                   </td>
                                 </tr>
 
@@ -6656,7 +6892,7 @@ const handleInputChange = (field, value) => {
                                       <span style={{ marginLeft: '5px', fontSize: '10px' }}>↗</span>
                                     </a>
                                   </td>
-                                  <td style={{ padding: '12px 15px' }}>
+                                  <td style={{ padding: '12px 15px', minHeight: '50px', verticalAlign: 'top' }}>
                                     <TagsContainer>
                                       {contact.mobiles && contact.mobiles.length > 0 ? (
                                         contact.mobiles.map((mobileObj, idx) => (
@@ -6664,7 +6900,9 @@ const handleInputChange = (field, value) => {
                                             key={mobileObj.mobile_id || idx}
                                             style={{ 
                                               cursor: 'default',
-                                              background: 'transparent'
+                                              background: 'transparent',
+                                              display: 'block',
+                                              marginBottom: '4px'
                                             }}
                                           >
                                             <span>{mobileObj.mobile}</span>
@@ -6679,7 +6917,7 @@ const handleInputChange = (field, value) => {
                                           </Tag>
                                         ))
                                       ) : contact.mobile ? (
-                                        <Tag style={{ background: 'transparent', cursor: 'default' }}>
+                                        <Tag style={{ background: 'transparent', cursor: 'default', display: 'block' }}>
                                           {contact.mobile}
                                         </Tag>
                                       ) : (
@@ -6687,31 +6925,85 @@ const handleInputChange = (field, value) => {
                                       )}
                                     </TagsContainer>
                                   </td>
-                                  <td style={{ padding: '12px 15px' }}>
+                                  <td style={{ padding: '12px 15px', minHeight: '50px', verticalAlign: 'top' }}>
                                     <TagsContainer>
                                       {airtableContact?.phone_numbers && airtableContact.phone_numbers.length > 0 ? (
-                                        airtableContact.phone_numbers.map((phoneObj, idx) => (
-                                          <Tag 
-                                            key={idx}
-                                            style={{ 
-                                              cursor: 'pointer',
-                                              background: 'transparent'
-                                            }}
-                                            onClick={() => handleInputChange('primaryPhone', phoneObj.number || phoneObj)}
-                                          >
-                                            <span>{phoneObj.number || phoneObj}</span>
-                                            {phoneObj.is_primary && (
-                                              <span title="Primary Phone" style={{ fontSize: '10px', marginLeft: '3px' }}>★</span>
-                                            )}
-                                            <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '5px' }}>→</span>
-                                          </Tag>
-                                        ))
+                                        airtableContact.phone_numbers.map((phoneObj, idx) => {
+                                          // Check if phoneObj is not null and has number property
+                                          const phoneStr = typeof phoneObj === 'string' 
+                                            ? phoneObj 
+                                            : (phoneObj && typeof phoneObj === 'object' && phoneObj.number) 
+                                              ? phoneObj.number 
+                                              : null;
+                                          
+                                          if (!phoneStr) return null;
+                                          
+                                          return (
+                                            <Tag 
+                                              key={idx}
+                                              style={{ 
+                                                cursor: 'pointer',
+                                                background: 'transparent',
+                                                display: 'block',
+                                                marginBottom: '4px'
+                                              }}
+                                              onClick={() => {
+                                                // Create a new mobile object with the correct structure
+                                                const newMobile = {
+                                                  mobile: phoneStr,
+                                                  is_primary: false,
+                                                  type: 'personal'
+                                                };
+                                                
+                                                // Add to contactMobiles array
+                                                if (!formData.contactMobiles) {
+                                                  handleInputChange('contactMobiles', [newMobile]);
+                                                } else {
+                                                  // Check if this mobile already exists
+                                                  const exists = formData.contactMobiles.some(m => m.mobile === phoneStr);
+                                                  if (!exists) {
+                                                    handleInputChange('contactMobiles', [...formData.contactMobiles, newMobile]);
+                                                  }
+                                                }
+                                              }}
+                                            >
+                                              <span>{phoneStr}</span>
+                                              {phoneObj && typeof phoneObj === 'object' && phoneObj.is_primary && (
+                                                <span title="Primary Phone" style={{ fontSize: '10px', marginLeft: '3px' }}>★</span>
+                                              )}
+                                              <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '5px' }}>→</span>
+                                            </Tag>
+                                          );
+                                        })
                                       ) : airtableContact?.phone_number_1 ? (
                                         <Tag 
-                                          style={{ background: 'transparent', cursor: 'pointer' }}
-                                          onClick={() => handleInputChange('primaryPhone', airtableContact.phone_number_1)}
+                                          style={{ 
+                                            background: 'transparent', 
+                                            cursor: 'pointer',
+                                            display: 'block',
+                                            marginBottom: '4px'
+                                          }}
+                                          onClick={() => {
+                                            // Create a new mobile object with the correct structure
+                                            const newMobile = {
+                                              mobile: airtableContact.phone_number_1,
+                                              is_primary: false,
+                                              type: 'personal'
+                                            };
+                                            
+                                            // Add to contactMobiles array
+                                            if (!formData.contactMobiles) {
+                                              handleInputChange('contactMobiles', [newMobile]);
+                                            } else {
+                                              // Check if this mobile already exists
+                                              const exists = formData.contactMobiles.some(m => m.mobile === airtableContact.phone_number_1);
+                                              if (!exists) {
+                                                handleInputChange('contactMobiles', [...formData.contactMobiles, newMobile]);
+                                              }
+                                            }
+                                          }}
                                         >
-                                          {airtableContact.phone_number_1}
+                                          <span>{airtableContact.phone_number_1}</span>
                                           <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '5px' }}>→</span>
                                         </Tag>
                                       ) : (
@@ -6719,10 +7011,144 @@ const handleInputChange = (field, value) => {
                                       )}
                                     </TagsContainer>
                                   </td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
-                                      {formData.primaryPhone || contact.mobile || '-'}
-                                    </div>
+                                  <td style={{ padding: '12px 15px', minHeight: '50px', verticalAlign: 'top' }}>
+                                    <TagsContainer>
+                                      {/* Show mobiles from contact.mobiles */}
+                                      {contact.mobiles && contact.mobiles.length > 0 ? (
+                                        contact.mobiles.map((mobileObj, idx) => (
+                                          <Tag 
+                                            key={`contact-${idx}`}
+                                            style={{ 
+                                              background: 'transparent', 
+                                              cursor: 'default',
+                                              display: 'block',
+                                              marginBottom: '4px'
+                                            }}
+                                          >
+                                            <span>{mobileObj.mobile}</span>
+                                            {mobileObj.is_primary && (
+                                              <span title="Primary Mobile" style={{ fontSize: '10px', marginLeft: '3px' }}>★</span>
+                                            )}
+                                            {mobileObj.type && (
+                                              <span style={{ fontSize: '0.8em', opacity: 0.8, marginLeft: '3px' }}>
+                                                ({mobileObj.type})
+                                              </span>
+                                            )}
+                                          </Tag>
+                                        ))
+                                      ) : contact.mobile ? (
+                                        <Tag style={{ background: 'transparent', cursor: 'default', display: 'block' }}>
+                                          <span>{contact.mobile}</span>
+                                          <span title="Primary Mobile" style={{ fontSize: '10px', marginLeft: '3px' }}>★</span>
+                                        </Tag>
+                                      ) : null}
+                                      
+                                      {/* Show new mobiles added from contactMobiles */}
+                                      {formData.contactMobiles && formData.contactMobiles.length > 0 && 
+                                        formData.contactMobiles.map((mobileObj, idx) => {
+                                          // Check if this mobile already exists in contact.mobiles
+                                          const existsInContact = contact.mobiles?.some(m => m.mobile === mobileObj.mobile);
+                                          
+                                          // Only show if it doesn't exist in contact.mobiles
+                                          if (!existsInContact) {
+                                            return (
+                                              <Tag 
+                                                key={`new-${idx}`}
+                                                style={{ 
+                                                  background: 'transparent', 
+                                                  cursor: 'default',
+                                                  display: 'block',
+                                                  marginBottom: '4px'
+                                                }}
+                                              >
+                                                <span>{mobileObj.mobile}</span>
+                                                {mobileObj.is_primary && (
+                                                  <span title="Primary Mobile" style={{ fontSize: '10px', marginLeft: '3px' }}>★</span>
+                                                )}
+                                                {mobileObj.type && (
+                                                  <span style={{ fontSize: '0.8em', opacity: 0.8, marginLeft: '3px' }}>
+                                                    ({mobileObj.type})
+                                                  </span>
+                                                )}
+                                                <span 
+                                                  onClick={() => {
+                                                    // Remove this mobile from contactMobiles
+                                                    const updatedMobiles = [...formData.contactMobiles];
+                                                    updatedMobiles.splice(idx, 1);
+                                                    handleInputChange('contactMobiles', updatedMobiles);
+                                                  }}
+                                                  title="Remove mobile" 
+                                                  style={{ 
+                                                    fontSize: '12px', 
+                                                    marginLeft: '5px', 
+                                                    color: '#00ff00',
+                                                    cursor: 'pointer'
+                                                  }}
+                                                >
+                                                  ✕
+                                                </span>
+                                              </Tag>
+                                            );
+                                          }
+                                          return null;
+                                        })
+                                      }
+                                      
+                                      {/* For backward compatibility */}
+                                      {!contact.mobiles && formData.primaryPhone && !contact.mobile && (
+                                        <Tag style={{ 
+                                          background: 'transparent', 
+                                          cursor: 'default',
+                                          display: 'block',
+                                          marginBottom: '4px'
+                                        }}>
+                                          <span>{formData.primaryPhone}</span>
+                                          <span title="Primary Mobile" style={{ fontSize: '10px', marginLeft: '3px' }}>★</span>
+                                          <span 
+                                            onClick={() => handleInputChange('primaryPhone', null)}
+                                            title="Remove mobile" 
+                                            style={{ 
+                                              fontSize: '12px', 
+                                              marginLeft: '5px', 
+                                              color: '#00ff00',
+                                              cursor: 'pointer'
+                                            }}
+                                          >
+                                            ✕
+                                          </span>
+                                        </Tag>
+                                      )}
+                                      
+                                      {/* Add new mobile button */}
+                                      <Tag 
+                                        onClick={() => {
+                                          const phone = prompt("Enter new mobile number:");
+                                          if (phone && phone.trim()) {
+                                            // Create a new mobile object with the correct structure
+                                            const newMobile = {
+                                              mobile: phone.trim(),
+                                              is_primary: false,
+                                              type: 'personal'
+                                            };
+                                            
+                                            // Add to contactMobiles array
+                                            if (!formData.contactMobiles) {
+                                              handleInputChange('contactMobiles', [newMobile]);
+                                            } else {
+                                              handleInputChange('contactMobiles', [...formData.contactMobiles, newMobile]);
+                                            }
+                                          }
+                                        }}
+                                        style={{ 
+                                          background: 'transparent', 
+                                          color: '#00ff00', 
+                                          cursor: 'pointer',
+                                          border: 'none'
+                                        }}
+                                      >
+                                        <span style={{ fontSize: '16px' }}>+</span>
+                                      </Tag>
+                                    </TagsContainer>
                                   </td>
                                 </tr>
 
@@ -6762,7 +7188,44 @@ const handleInputChange = (field, value) => {
                                     <div style={{ padding: '8px 12px' }}>
                                       <Select 
                                         value={formData.keepInTouch || contact.keep_in_touch_frequency || 'Not Set'}
-                                        onChange={(e) => handleInputChange('keepInTouch', e.target.value === 'Not Set' ? null : e.target.value)}
+                                        onChange={async (e) => {
+                                          const newValue = e.target.value === 'Not Set' ? null : e.target.value;
+                                          
+                                          // Update formData
+                                          handleInputChange('keepInTouch', newValue);
+                                          
+                                          // Update contact object
+                                          const updatedContact = {...contact, keep_in_touch_frequency: newValue};
+                                          setContact(updatedContact);
+                                          
+                                          // Save to database immediately
+                                          try {
+                                            console.log('Updating keep_in_touch_frequency to:', newValue);
+                                            
+                                            // Get current contact ID for debugging
+                                            console.log('Contact ID:', contact.contact_id);
+                                            
+                                            // Print all contact data for debugging
+                                            console.log('Current contact data:', contact);
+                                            
+                                            const { data, error } = await supabase
+                                              .from('contacts')
+                                              .update({ keep_in_touch_frequency: newValue })
+                                              .eq('contact_id', contact.contact_id)
+                                              .select();
+                                              
+                                            if (error) {
+                                              console.error('Error updating keep_in_touch_frequency:', error);
+                                              toast.error('Failed to update keep in touch frequency');
+                                            } else {
+                                              console.log('Successfully updated keep_in_touch_frequency, response:', data);
+                                              toast.success('Keep in touch frequency updated');
+                                            }
+                                          } catch (err) {
+                                            console.error('Exception updating keep_in_touch_frequency:', err);
+                                            toast.error('Failed to update keep in touch frequency');
+                                          }
+                                        }}
                                         style={{ 
                                           background: 'transparent',
                                           border: 'none',
@@ -6821,7 +7284,39 @@ const handleInputChange = (field, value) => {
                                     <div style={{ padding: '8px 12px' }}>
                                       <Select 
                                         value={formData.category || contact.category || ''}
-                                        onChange={(e) => handleInputChange('category', e.target.value === '' ? null : e.target.value)}
+                                        onChange={async (e) => {
+                                          const newValue = e.target.value === '' ? null : e.target.value;
+                                          
+                                          // Update formData
+                                          handleInputChange('category', newValue);
+                                          
+                                          // Update contact object
+                                          const updatedContact = {...contact, category: newValue};
+                                          setContact(updatedContact);
+                                          
+                                          // Save to database immediately
+                                          try {
+                                            console.log('Updating category to:', newValue);
+                                            console.log('Contact ID:', contact.contact_id);
+                                            
+                                            const { data, error } = await supabase
+                                              .from('contacts')
+                                              .update({ category: newValue })
+                                              .eq('contact_id', contact.contact_id)
+                                              .select();
+                                              
+                                            if (error) {
+                                              console.error('Error updating category:', error);
+                                              toast.error('Failed to update category');
+                                            } else {
+                                              console.log('Successfully updated category, response:', data);
+                                              toast.success('Category updated');
+                                            }
+                                          } catch (err) {
+                                            console.error('Exception updating category:', err);
+                                            toast.error('Failed to update category');
+                                          }
+                                        }}
                                         style={{ 
                                           background: 'transparent',
                                           border: 'none',
@@ -6849,6 +7344,1066 @@ const handleInputChange = (field, value) => {
                                     </div>
                                   </td>
                                 </tr>
+{/* ─────────── Cities Row (specular to Tags) ─────────── */}
+<tr style={{ borderBottom: '1px solid #333' }}>
+  <td style={{ padding: '12px 15px', color: '#999' }}>Cities</td>
+
+  {/* 1. Current Cities (formData first, then contact) */}
+  <td style={{ padding: '12px 15px' }}>
+    <TagsContainer>
+      {formData.cities && formData.cities.length > 0 ? (
+        formData.cities.map((city, idx) => (
+          <Tag
+            key={`formdata-city-${idx}`}
+            style={{
+              background: 'transparent',
+              border: '1px solid #00ff00',
+              borderRadius: '4px',
+              padding: '4px 8px',
+              margin: '2px',
+              display: 'inline-flex',
+              alignItems: 'center',
+            }}
+          >
+            <span>{city.name}</span>
+          </Tag>
+        ))
+      ) : contact.cities && contact.cities.length > 0 ? (
+        contact.cities.map((city, idx) => (
+          <Tag
+            key={`contact-city-${idx}`}
+            style={{
+              background: 'transparent',
+              border: '1px solid #00ff00',
+              borderRadius: '4px',
+              padding: '4px 8px',
+              margin: '2px',
+              display: 'inline-flex',
+              alignItems: 'center',
+            }}
+          >
+            <span>{city.name}</span>
+          </Tag>
+        ))
+      ) : (
+        '-'
+      )}
+    </TagsContainer>
+  </td>
+
+  {/* 2. Suggestions from Airtable */}
+  <td style={{ padding: '12px 15px' }}>
+    <TagsContainer>
+      {airtableContact?.city ? (
+        airtableContact.city.split(',').map((raw, idx) => {
+          const trimmedCity = raw.trim();
+          if (!trimmedCity) return null;
+
+          return (
+            <Tag
+              key={`airtable-city-${idx}`}
+              style={{
+                background: 'transparent',
+                border: '1px solid #00ff00',
+                borderRadius: '4px',
+                padding: '4px 8px',
+                margin: '2px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                cursor: 'pointer',
+              }}
+              onClick={async () => {
+                try {
+                  /* Check if city exists */
+                  const { data: existingCity, error: searchError } = await supabase
+                    .from('cities')
+                    .select('city_id')
+                    .ilike('name', trimmedCity)
+                    .maybeSingle();
+
+                  if (searchError) {
+                    console.error('Error searching for city:', searchError);
+                    toast.error('Failed to search for city');
+                    return;
+                  }
+
+                  let cityId;
+
+                  /* Create city if needed */
+                  if (!existingCity) {
+                    const { data: newCity, error: createError } = await supabase
+                      .from('cities')
+                      .insert({ name: trimmedCity })
+                      .select('city_id')
+                      .single();
+
+                    if (createError) {
+                      console.error('Error creating city:', createError);
+                      toast.error('Failed to create city');
+                      return;
+                    }
+
+                    cityId = newCity.city_id;
+                  } else {
+                    cityId = existingCity.city_id;
+                  }
+
+                  /* Link city to contact if not linked */
+                  const { data: existingContactCity, error: checkError } = await supabase
+                    .from('contact_cities')
+                    .select('entry_id')
+                    .eq('contact_id', contact.contact_id)
+                    .eq('city_id', cityId)
+                    .maybeSingle();
+
+                  if (checkError) {
+                    console.error('Error checking contact city:', checkError);
+                    toast.error('Failed to check city link');
+                    return;
+                  }
+
+                  if (!existingContactCity) {
+                    const { error: linkError } = await supabase
+                      .from('contact_cities')
+                      .insert({ contact_id: contact.contact_id, city_id: cityId });
+
+                    if (linkError) {
+                      console.error('Error linking city to contact:', linkError);
+                      toast.error('Failed to add city');
+                      return;
+                    }
+
+                    /* Update state */
+                    const updatedContact = { ...contact };
+                    if (!updatedContact.cities) updatedContact.cities = [];
+                    updatedContact.cities.push({ city_id: cityId, name: trimmedCity });
+                    setContact(updatedContact);
+
+                    if (formData.cities) {
+                      setFormData({
+                        ...formData,
+                        cities: [...formData.cities, { city_id: cityId, name: trimmedCity }],
+                      });
+                    }
+
+                    toast.success(`City "${trimmedCity}" added`);
+                  } else {
+                    toast.info(`City "${trimmedCity}" already exists on contact`);
+                  }
+                } catch (err) {
+                  console.error('Exception handling city:', err);
+                  toast.error('Failed to process city');
+                }
+              }}
+            >
+              <span>{trimmedCity}</span>
+              <span
+                style={{
+                  color: '#00ff00',
+                  fontSize: '12px',
+                  marginLeft: '5px',
+                }}
+              >
+                →
+              </span>
+            </Tag>
+          );
+        }).filter(Boolean)
+      ) : (
+        '-'
+      )}
+    </TagsContainer>
+  </td>
+
+  {/* 3. Editable list with remove + Add City */}
+  <td style={{ padding: '12px 15px' }}>
+    <TagsContainer>
+      {formData.cities && formData.cities.length > 0 ? (
+        formData.cities.map((city, idx) => (
+          <Tag
+            key={`formdata-city-edit-${idx}`}
+            style={{
+              background: 'transparent',
+              border: '1px solid #00ff00',
+              borderRadius: '4px',
+              padding: '4px 8px',
+              margin: '2px',
+              display: 'inline-flex',
+              alignItems: 'center',
+            }}
+          >
+            <span>{city.name}</span>
+            <span
+              onClick={async () => {
+                try {
+                  /* Remove from formData */
+                  const updatedCities = formData.cities.filter((_, i) => i !== idx);
+                  handleInputChange('cities', updatedCities);
+
+                  /* Remove link in DB */
+                  const { error } = await supabase
+                    .from('contact_cities')
+                    .delete()
+                    .eq('contact_id', contact.contact_id)
+                    .eq('city_id', city.city_id);
+
+                  if (error) {
+                    console.error('Error removing city from contact:', error);
+                    toast.error('Failed to remove city');
+                  } else {
+                    /* Update contact state */
+                    const updatedContact = { ...contact };
+                    if (updatedContact.cities) {
+                      updatedContact.cities = updatedContact.cities.filter(
+                        c => c.city_id !== city.city_id
+                      );
+                      setContact(updatedContact);
+                    }
+
+                    toast.success(`City "${city.name}" removed`);
+                  }
+                } catch (err) {
+                  console.error('Exception removing city:', err);
+                  toast.error('Failed to remove city');
+                }
+              }}
+              title="Remove city"
+              style={{
+                fontSize: '12px',
+                marginLeft: '5px',
+                color: '#00ff00',
+                cursor: 'pointer',
+              }}
+            >
+              ✕
+            </span>
+          </Tag>
+        ))
+      ) : contact.cities && contact.cities.length > 0 ? (
+        contact.cities.map((city, idx) => (
+          <Tag
+            key={`contact-city-edit-${idx}`}
+            style={{
+              background: 'transparent',
+              border: '1px solid #00ff00',
+              borderRadius: '4px',
+              padding: '4px 8px',
+              margin: '2px',
+              display: 'inline-flex',
+              alignItems: 'center',
+            }}
+          >
+            <span>{city.name}</span>
+            <span
+              onClick={async () => {
+                try {
+                  const { error } = await supabase
+                    .from('contact_cities')
+                    .delete()
+                    .eq('contact_id', contact.contact_id)
+                    .eq('city_id', city.city_id);
+
+                  if (error) {
+                    console.error('Error removing city from contact:', error);
+                    toast.error('Failed to remove city');
+                  } else {
+                    const updatedContact = { ...contact };
+                    updatedContact.cities = updatedContact.cities.filter(
+                      c => c.city_id !== city.city_id
+                    );
+                    setContact(updatedContact);
+                    toast.success(`City "${city.name}" removed`);
+                  }
+                } catch (err) {
+                  console.error('Exception removing city:', err);
+                  toast.error('Failed to remove city');
+                }
+              }}
+              title="Remove city"
+              style={{
+                fontSize: '12px',
+                marginLeft: '5px',
+                color: '#00ff00',
+                cursor: 'pointer',
+              }}
+            >
+              ✕
+            </span>
+          </Tag>
+        ))
+      ) : (
+        '-'
+      )}
+
+      {/* Add new city */}
+      <Tag
+        style={{
+          background: 'transparent',
+          color: '#00ff00',
+          cursor: 'pointer',
+          border: 'none',
+          padding: '4px 8px',
+        }}
+        onClick={async () => {
+          const cityName = prompt('Enter new city:');
+          if (!cityName || !cityName.trim()) return;
+
+          const trimmedCityName = cityName.trim();
+
+          try {
+            /* Check if city exists */
+            const { data: existingCity, error: searchError } = await supabase
+              .from('cities')
+              .select('city_id')
+              .ilike('name', trimmedCityName)
+              .maybeSingle();
+
+            if (searchError) {
+              console.error('Error searching for city:', searchError);
+              toast.error('Failed to search for city');
+              return;
+            }
+
+            let cityId;
+
+            if (!existingCity) {
+              const { data: newCity, error: createError } = await supabase
+                .from('cities')
+                .insert({ name: trimmedCityName })
+                .select('city_id')
+                .single();
+
+              if (createError) {
+                console.error('Error creating city:', createError);
+                toast.error('Failed to create city');
+                return;
+              }
+
+              cityId = newCity.city_id;
+            } else {
+              cityId = existingCity.city_id;
+            }
+
+            /* Link city */
+            const { data: existingContactCity, error: checkError } = await supabase
+              .from('contact_cities')
+              .select('entry_id')
+              .eq('contact_id', contact.contact_id)
+              .eq('city_id', cityId)
+              .maybeSingle();
+
+            if (checkError) {
+              console.error('Error checking contact city:', checkError);
+              toast.error('Failed to check city link');
+              return;
+            }
+
+            if (!existingContactCity) {
+              const { error: linkError } = await supabase
+                .from('contact_cities')
+                .insert({ contact_id: contact.contact_id, city_id: cityId });
+
+              if (linkError) {
+                console.error('Error linking city to contact:', linkError);
+                toast.error('Failed to add city');
+                return;
+              }
+
+              const updatedContact = { ...contact };
+              if (!updatedContact.cities) updatedContact.cities = [];
+              updatedContact.cities.push({ city_id: cityId, name: trimmedCityName });
+              setContact(updatedContact);
+
+              toast.success(`City "${trimmedCityName}" added`);
+            } else {
+              toast.info(`City "${trimmedCityName}" already exists on contact`);
+            }
+          } catch (err) {
+            console.error('Exception handling city:', err);
+            toast.error('Failed to process city');
+          }
+        }}
+      >
+        <span style={{ fontSize: '16px' }}>+</span> Add City
+      </Tag>
+    </TagsContainer>
+  </td>
+</tr>
+
+                                                                {/* Tags Row */}
+                                                                <tr style={{ borderBottom: '1px solid #333' }}>
+                                  {console.log('FULL CONTACT OBJECT:', contact)}
+                                  <td style={{ padding: '12px 15px', color: '#999' }}>Tags</td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <TagsContainer>
+                                      {formData.tags && formData.tags.length > 0 ? (
+                                        formData.tags.map((tag, idx) => (
+                                          <Tag 
+                                            key={`formdata-tag-${idx}`}
+                                            style={{ 
+                                              background: 'transparent', 
+                                              border: '1px solid #00ff00',
+                                              borderRadius: '4px',
+                                              padding: '4px 8px',
+                                              margin: '2px',
+                                              display: 'inline-flex',
+                                              alignItems: 'center'
+                                            }}
+                                          >
+                                            <span>{tag.name}</span>
+                                          </Tag>
+                                        ))
+                                      ) : contact.tags && contact.tags.length > 0 ? (
+                                        contact.tags.map((tag, idx) => (
+                                          <Tag 
+                                            key={`contact-tag-${idx}`}
+                                            style={{ 
+                                              background: 'transparent', 
+                                              border: '1px solid #00ff00',
+                                              borderRadius: '4px',
+                                              padding: '4px 8px',
+                                              margin: '2px',
+                                              display: 'inline-flex',
+                                              alignItems: 'center'
+                                            }}
+                                          >
+                                            <span>{tag.name}</span>
+                                          </Tag>
+                                        ))
+                                      ) : (
+                                        '-'
+                                      )}
+                                    </TagsContainer>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <TagsContainer>
+                                      {airtableContact?.keywords ? (
+                                        airtableContact.keywords.split(',').map((tag, idx) => {
+                                          const trimmedTag = tag.trim();
+                                          if (!trimmedTag) return null;
+                                          
+                                          return (
+                                            <Tag 
+                                              key={`airtable-tag-${idx}`}
+                                              style={{ 
+                                                background: 'transparent', 
+                                                border: '1px solid #00ff00',
+                                                borderRadius: '4px',
+                                                padding: '4px 8px',
+                                                margin: '2px',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                cursor: 'pointer'
+                                              }}
+                                              onClick={async () => {
+                                                try {
+                                                  // First check if tag already exists in tags table
+                                                  const { data: existingTag, error: searchError } = await supabase
+                                                    .from('tags')
+                                                    .select('tag_id')
+                                                    .eq('name', trimmedTag)
+                                                    .maybeSingle();
+                                                  
+                                                  if (searchError) {
+                                                    console.error('Error searching for tag:', searchError);
+                                                    toast.error('Failed to search for tag');
+                                                    return;
+                                                  }
+                                                  
+                                                  let tagId;
+                                                  
+                                                  // If tag doesn't exist, create it
+                                                  if (!existingTag) {
+                                                    const { data: newTag, error: createError } = await supabase
+                                                      .from('tags')
+                                                      .insert({ name: trimmedTag })
+                                                      .select('tag_id')
+                                                      .single();
+                                                    
+                                                    if (createError) {
+                                                      console.error('Error creating tag:', createError);
+                                                      toast.error('Failed to create tag');
+                                                      return;
+                                                    }
+                                                    
+                                                    tagId = newTag.tag_id;
+                                                  } else {
+                                                    tagId = existingTag.tag_id;
+                                                  }
+                                                  
+                                                  // Check if tag is already associated with contact
+                                                  const { data: existingContactTag, error: checkError } = await supabase
+                                                    .from('contact_tags')
+                                                    .select('entry_id')
+                                                    .eq('contact_id', contact.contact_id)
+                                                    .eq('tag_id', tagId)
+                                                    .maybeSingle();
+                                                  
+                                                  if (checkError) {
+                                                    console.error('Error checking contact tag:', checkError);
+                                                    toast.error('Failed to check if tag exists');
+                                                    return;
+                                                  }
+                                                  
+                                                  // If tag is not already associated, create the association
+                                                  if (!existingContactTag) {
+                                                    const { error: linkError } = await supabase
+                                                      .from('contact_tags')
+                                                      .insert({
+                                                        contact_id: contact.contact_id,
+                                                        tag_id: tagId
+                                                      });
+                                                    
+                                                    if (linkError) {
+                                                      console.error('Error linking tag to contact:', linkError);
+                                                      toast.error('Failed to add tag to contact');
+                                                      return;
+                                                    }
+                                                    
+                                                    // Add the tag to the contact's tags array in state
+                                                    const updatedContact = { ...contact };
+                                                    if (!updatedContact.tags) updatedContact.tags = [];
+                                                    
+                                                    // Add the new tag to the contact's tags array
+                                                    updatedContact.tags.push({ tag_id: tagId, name: trimmedTag });
+                                                    
+                                                    // Update the contact state to refresh the UI
+                                                    setContact(updatedContact);
+                                                    
+                                                    // Also update the formData if it has tags
+                                                    if (formData.tags) {
+                                                      const updatedFormData = { ...formData };
+                                                      updatedFormData.tags = [...formData.tags, { tag_id: tagId, name: trimmedTag }];
+                                                      setFormData(updatedFormData);
+                                                    }
+                                                    
+                                                    toast.success(`Tag "${trimmedTag}" added to contact`);
+                                                    
+                                                    // Refresh the tags display by triggering a re-render
+                                                    setTimeout(() => {
+                                                      const refreshedContact = { ...updatedContact };
+                                                      setContact(refreshedContact);
+                                                    }, 100);
+                                                  } else {
+                                                    toast.info(`Tag "${trimmedTag}" already exists on contact`);
+                                                  }
+                                                } catch (err) {
+                                                  console.error('Exception handling tag:', err);
+                                                  toast.error('Failed to process tag');
+                                                }
+                                              }}
+                                            >
+                                              <span>{trimmedTag}</span>
+                                              <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '5px' }}>→</span>
+                                            </Tag>
+                                          );
+                                        }).filter(Boolean)
+                                      ) : (
+                                        '-'
+                                      )}
+                                    </TagsContainer>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <TagsContainer>
+                                      {formData.tags && formData.tags.length > 0 ? (
+                                        formData.tags.map((tag, idx) => (
+                                          <Tag 
+                                            key={`formdata-tag-${idx}`}
+                                            style={{ 
+                                              background: 'transparent', 
+                                              border: '1px solid #00ff00',
+                                              borderRadius: '4px',
+                                              padding: '4px 8px',
+                                              margin: '2px',
+                                              display: 'inline-flex',
+                                              alignItems: 'center'
+                                            }}
+                                          >
+                                            <span>{tag.name}</span>
+                                            <span 
+                                              onClick={async () => {
+                                                try {
+                                                  // Remove from formData
+                                                  const updatedTags = formData.tags.filter((_, i) => i !== idx);
+                                                  handleInputChange('tags', updatedTags);
+                                                  
+                                                  // Remove from contact_tags in the database
+                                                  const { error } = await supabase
+                                                    .from('contact_tags')
+                                                    .delete()
+                                                    .eq('contact_id', contact.contact_id)
+                                                    .eq('tag_id', tag.tag_id);
+                                                  
+                                                  if (error) {
+                                                    console.error('Error removing tag from contact:', error);
+                                                    toast.error('Failed to remove tag');
+                                                  } else {
+                                                    // Update the contact's tags array in state
+                                                    const updatedContact = { ...contact };
+                                                    if (updatedContact.tags) {
+                                                      updatedContact.tags = updatedContact.tags.filter(t => t.tag_id !== tag.tag_id);
+                                                      setContact(updatedContact);
+                                                    }
+                                                    
+                                                    toast.success(`Tag "${tag.name}" removed`);
+                                                  }
+                                                } catch (err) {
+                                                  console.error('Exception removing tag:', err);
+                                                  toast.error('Failed to remove tag');
+                                                }
+                                              }}
+                                              title="Remove tag" 
+                                              style={{ 
+                                                fontSize: '12px', 
+                                                marginLeft: '5px', 
+                                                color: '#00ff00',
+                                                cursor: 'pointer'
+                                              }}
+                                            >
+                                              ✕
+                                            </span>
+                                          </Tag>
+                                        ))
+                                      ) : contact.tags && contact.tags.length > 0 ? (
+                                        contact.tags.map((tag, idx) => (
+                                          <Tag 
+                                            key={`contact-tag-${idx}`}
+                                            style={{ 
+                                              background: 'transparent', 
+                                              border: '1px solid #00ff00',
+                                              borderRadius: '4px',
+                                              padding: '4px 8px',
+                                              margin: '2px',
+                                              display: 'inline-flex',
+                                              alignItems: 'center'
+                                            }}
+                                          >
+                                            <span>{tag.name}</span>
+                                            <span 
+                                              onClick={async () => {
+                                                try {
+                                                  // Remove from contact_tags in the database
+                                                  const { error } = await supabase
+                                                    .from('contact_tags')
+                                                    .delete()
+                                                    .eq('contact_id', contact.contact_id)
+                                                    .eq('tag_id', tag.tag_id);
+                                                  
+                                                  if (error) {
+                                                    console.error('Error removing tag from contact:', error);
+                                                    toast.error('Failed to remove tag');
+                                                  } else {
+                                                    // Update the contact's tags array in state
+                                                    const updatedContact = { ...contact };
+                                                    updatedContact.tags = updatedContact.tags.filter(t => t.tag_id !== tag.tag_id);
+                                                    setContact(updatedContact);
+                                                    
+                                                    toast.success(`Tag "${tag.name}" removed`);
+                                                  }
+                                                } catch (err) {
+                                                  console.error('Exception removing tag:', err);
+                                                  toast.error('Failed to remove tag');
+                                                }
+                                              }}
+                                              title="Remove tag" 
+                                              style={{ 
+                                                fontSize: '12px', 
+                                                marginLeft: '5px', 
+                                                color: '#00ff00',
+                                                cursor: 'pointer'
+                                              }}
+                                            >
+                                              ✕
+                                            </span>
+                                          </Tag>
+                                        ))
+                                      ) : (
+                                        '-'
+                                      )}
+                                      {/* Add new tag button */}
+                                      <Tag 
+                                        style={{ 
+                                          background: 'transparent', 
+                                          color: '#00ff00', 
+                                          cursor: 'pointer',
+                                          border: 'none',
+                                          padding: '4px 8px'
+                                        }}
+                                        onClick={async () => {
+                                          const tagName = prompt('Enter new tag:');
+                                          if (!tagName || !tagName.trim()) return;
+                                          
+                                          const trimmedTagName = tagName.trim();
+                                          
+                                          try {
+                                            // First check if tag already exists in tags table
+                                            const { data: existingTag, error: searchError } = await supabase
+                                              .from('tags')
+                                              .select('tag_id')
+                                              .eq('name', trimmedTagName)
+                                              .maybeSingle();
+                                            
+                                            if (searchError) {
+                                              console.error('Error searching for tag:', searchError);
+                                              toast.error('Failed to search for tag');
+                                              return;
+                                            }
+                                            
+                                            let tagId;
+                                            
+                                            // If tag doesn't exist, create it
+                                            if (!existingTag) {
+                                              const { data: newTag, error: createError } = await supabase
+                                                .from('tags')
+                                                .insert({ name: trimmedTagName })
+                                                .select('tag_id')
+                                                .single();
+                                              
+                                              if (createError) {
+                                                console.error('Error creating tag:', createError);
+                                                toast.error('Failed to create tag');
+                                                return;
+                                              }
+                                              
+                                              tagId = newTag.tag_id;
+                                            } else {
+                                              tagId = existingTag.tag_id;
+                                            }
+                                            
+                                            // Check if tag is already associated with contact
+                                            const { data: existingContactTag, error: checkError } = await supabase
+                                              .from('contact_tags')
+                                              .select('entry_id')
+                                              .eq('contact_id', contact.contact_id)
+                                              .eq('tag_id', tagId)
+                                              .maybeSingle();
+                                            
+                                            if (checkError) {
+                                              console.error('Error checking contact tag:', checkError);
+                                              toast.error('Failed to check if tag exists');
+                                              return;
+                                            }
+                                            
+                                            // If tag is not already associated, create the association
+                                            if (!existingContactTag) {
+                                              const { error: linkError } = await supabase
+                                                .from('contact_tags')
+                                                .insert({
+                                                  contact_id: contact.contact_id,
+                                                  tag_id: tagId
+                                                });
+                                              
+                                              if (linkError) {
+                                                console.error('Error linking tag to contact:', linkError);
+                                                toast.error('Failed to add tag to contact');
+                                                return;
+                                              }
+                                              
+                                              // Add the tag to the contact's tags array in state
+                                              const updatedContact = { ...contact };
+                                              if (!updatedContact.tags) updatedContact.tags = [];
+                                              
+                                              updatedContact.tags.push({ tag_id: tagId, name: trimmedTagName });
+                                              setContact(updatedContact);
+                                              
+                                              toast.success(`Tag "${trimmedTagName}" added to contact`);
+                                            } else {
+                                              toast.info(`Tag "${trimmedTagName}" already exists on contact`);
+                                            }
+                                          } catch (err) {
+                                            console.error('Exception handling tag:', err);
+                                            toast.error('Failed to process tag');
+                                          }
+                                        }}
+                                      >
+                                        <span style={{ fontSize: '16px' }}>+</span> Add Tag
+                                      </Tag>
+                                    </TagsContainer>
+                                  </td>
+                                </tr>
+
+
+                                {/* Rating Row */}
+                                <tr style={{ borderBottom: '1px solid #333' }}>
+                                  <td style={{ padding: '12px 15px', color: '#999' }}>Rating</td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center' }}>
+                                      {[1, 2, 3, 4, 5].map((star) => (
+                                        <span 
+                                          key={star}
+                                          style={{ 
+                                            color: (contact.score || 0) >= star ? '#FFD700' : '#555',
+                                            fontSize: '16px',
+                                            marginRight: '3px',
+                                            cursor: 'default'
+                                          }}
+                                        >
+                                          ★
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div 
+                                      onClick={() => {
+                                        if (airtableContact && airtableContact.rating) {
+                                          handleInputChange('score', airtableContact.rating);
+                                        }
+                                      }}
+                                      style={{ 
+                                        cursor: 'pointer',
+                                        padding: '8px 12px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between'
+                                      }}
+                                    >
+                                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                                        {[1, 2, 3, 4, 5].map((star) => (
+                                          <span 
+                                            key={star}
+                                            style={{ 
+                                              color: (airtableContact?.rating || 0) >= star ? '#FFD700' : '#555',
+                                              fontSize: '16px',
+                                              marginRight: '3px'
+                                            }}
+                                          >
+                                            ★
+                                          </span>
+                                        ))}
+                                      </div>
+                                      {airtableContact?.rating && (
+                                        <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '10px' }}>
+                                          → 
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center' }}>
+                                      {[1, 2, 3, 4, 5].map((star) => (
+                                        <span 
+                                          key={star}
+                                          onClick={() => {
+                                            // If clicking on the current star value, clear it
+                                            if (star === (formData.score || contact.score)) {
+                                              handleInputChange('score', null);
+                                            } else {
+                                              // Otherwise set to the clicked star value
+                                              handleInputChange('score', star);
+                                            }
+                                          }}
+                                          style={{ 
+                                            color: (formData.score !== undefined ? formData.score : contact.score || 0) >= star ? '#FFD700' : '#555',
+                                            fontSize: '16px',
+                                            marginRight: '3px',
+                                            cursor: 'pointer'
+                                          }}
+                                        >
+                                          ★
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </td>
+                                </tr>
+
+                                {/* Description Row */}
+                                <tr style={{ borderBottom: '1px solid #333' }}>
+                                  <td style={{ padding: '12px 15px', color: '#999' }}>Description</td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    {contact.isEditingDescription ? (
+                                      <textarea 
+                                        value={contact.description || ''}
+                                        onChange={(e) => {
+                                          // Update the contact display value
+                                          const updatedContact = {...contact, description: e.target.value};
+                                          setContact(updatedContact);
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter' && e.ctrlKey) {
+                                            // Confirm edit on Ctrl+Enter
+                                            const updatedContact = {...contact, isEditingDescription: false};
+                                            setContact(updatedContact);
+                                          }
+                                        }}
+                                        onBlur={() => {
+                                          // Confirm edit on blur
+                                          const updatedContact = {...contact, isEditingDescription: false};
+                                          setContact(updatedContact);
+                                        }}
+                                        autoFocus
+                                        style={{ 
+                                          width: '100%',
+                                          background: 'transparent',
+                                          border: 'none',
+                                          padding: '8px 12px',
+                                          color: '#fff',
+                                          minHeight: '80px',
+                                          resize: 'vertical'
+                                        }}
+                                      />
+                                    ) : (
+                                      <div 
+                                        onClick={(e) => {
+                                          // If they click the arrow, set the value in Supabase Final
+                                          if (e.target.tagName === 'SPAN' && e.target.dataset.action === 'transfer') {
+                                            handleInputChange('description', contact.description || '');
+                                          } else {
+                                            // Otherwise, start editing
+                                            const updatedContact = {...contact, isEditingDescription: true};
+                                            setContact(updatedContact);
+                                          }
+                                        }}
+                                        style={{ 
+                                          cursor: 'pointer',
+                                          padding: '8px 12px',
+                                          display: 'flex',
+                                          alignItems: 'flex-start',
+                                          justifyContent: 'space-between'
+                                        }}
+                                      >
+                                        <div>
+                                          {contact.description ? 
+                                            (contact.isDescriptionExpanded ? 
+                                              contact.description : 
+                                              `${contact.description.substring(0, 50)}${contact.description.length > 50 ? '...' : ''}`) 
+                                            : '-'}
+                                        </div>
+                                        <span 
+                                          data-action="transfer"
+                                          style={{ 
+                                            color: '#00ff00', 
+                                            fontSize: '12px', 
+                                            marginLeft: '10px',
+                                            cursor: 'pointer'
+                                          }}
+                                          title="Transfer to Supabase Final"
+                                        >
+                                          → 
+                                        </span>
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div 
+                                      onClick={() => {
+                                        if (airtableContact && airtableContact.description) {
+                                          handleInputChange('description', airtableContact.description);
+                                        }
+                                      }}
+                                      style={{ 
+                                        cursor: 'pointer',
+                                        padding: '8px 12px',
+                                        display: 'flex',
+                                        alignItems: 'flex-start',
+                                        justifyContent: 'space-between'
+                                      }}
+                                    >
+                                      <div>
+                                        {airtableContact?.description ? 
+                                          (airtableContact.isDescriptionExpanded ? 
+                                            airtableContact.description : 
+                                            `${airtableContact.description.substring(0, 50)}${airtableContact.description.length > 50 ? '...' : ''}`) 
+                                          : '-'}
+                                      </div>
+                                      <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '10px' }}>
+                                        → 
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    {formData.isEditingDescription ? (
+                                      <textarea 
+                                        value={formData.description !== undefined ? formData.description : (contact.description || '')}
+                                        onChange={(e) => handleInputChange('description', e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter' && e.ctrlKey) {
+                                            // Confirm edit on Ctrl+Enter
+                                            const updatedFormData = {...formData, isEditingDescription: false};
+                                            setFormData(updatedFormData);
+                                          }
+                                        }}
+                                        onBlur={() => {
+                                          // Confirm edit on blur
+                                          const updatedFormData = {...formData, isEditingDescription: false};
+                                          setFormData(updatedFormData);
+                                        }}
+                                        autoFocus
+                                        style={{ 
+                                          width: '100%',
+                                          background: 'transparent',
+                                          border: 'none',
+                                          padding: '8px 12px',
+                                          color: '#fff',
+                                          minHeight: '80px',
+                                          resize: 'vertical'
+                                        }}
+                                      />
+                                    ) : (
+                                      <div 
+                                        onClick={() => {
+                                          const updatedFormData = {...formData, isEditingDescription: true};
+                                          setFormData(updatedFormData);
+                                        }}
+                                        style={{ 
+                                          cursor: 'pointer',
+                                          padding: '8px 12px',
+                                          display: 'flex',
+                                          justifyContent: 'space-between',
+                                          alignItems: 'flex-start'
+                                        }}
+                                      >
+                                        <div>
+                                          {formData.description !== undefined || contact.description ? 
+                                            (formData.isDescriptionExpanded ? 
+                                              (formData.description || contact.description) : 
+                                              `${(formData.description || contact.description || '').substring(0, 50)}${(formData.description || contact.description || '').length > 50 ? '...' : ''}`) 
+                                            : '-'}
+                                        </div>
+                                        {formData.description === undefined && (
+                                          <span style={{ fontSize: '0.7rem', color: '#999', fontStyle: 'italic', marginLeft: 'auto' }}>
+                                            Same as Supabase Now
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+
+
+                                {/* Birthday Row */}
+                                <tr style={{ borderBottom: '1px solid #333' }}>
+                                  <td style={{ padding: '12px 15px', color: '#999' }}>Birthday</td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
+                                      {contact.birthday || '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div 
+                                      onClick={() => {
+                                        if (airtableContact && airtableContact.birthday) {
+                                          handleInputChange('birthday', airtableContact.birthday);
+                                        }
+                                      }}
+                                      style={{ 
+                                        cursor: airtableContact?.birthday ? 'pointer' : 'default',
+                                        padding: '8px 12px',
+                                        background: '#2a2a2a',
+                                        borderRadius: '4px',
+                                        borderLeft: airtableContact?.birthday ? '3px solid #00ff00' : '3px solid transparent'
+                                      }}
+                                    >
+                                      {airtableContact?.birthday || '-'}
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '12px 15px' }}>
+                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
+                                      {formData.birthday || contact.birthday || '-'}
+                                    </div>
+                                  </td>
+                                </tr>
+
 
                                 {/* LinkedIn Profile Row */}
                                 <tr style={{ borderBottom: '1px solid #333' }}>
@@ -7153,414 +8708,395 @@ const handleInputChange = (field, value) => {
                                   </td>
                                 </tr>
 
-                                {/* Rating Row */}
-                                <tr style={{ borderBottom: '1px solid #333' }}>
-                                  <td style={{ padding: '12px 15px', color: '#999' }}>Rating</td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center' }}>
-                                      {[1, 2, 3, 4, 5].map((star) => (
-                                        <span 
-                                          key={star}
-                                          style={{ 
-                                            color: (contact.score || 0) >= star ? '#FFD700' : '#555',
-                                            fontSize: '16px',
-                                            marginRight: '3px',
-                                            cursor: 'default'
-                                          }}
-                                        >
-                                          ★
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <div 
-                                      onClick={() => {
-                                        if (airtableContact && airtableContact.rating) {
-                                          handleInputChange('score', airtableContact.rating);
-                                        }
-                                      }}
-                                      style={{ 
-                                        cursor: 'pointer',
-                                        padding: '8px 12px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between'
-                                      }}
-                                    >
-                                      <div style={{ display: 'flex', alignItems: 'center' }}>
-                                        {[1, 2, 3, 4, 5].map((star) => (
-                                          <span 
-                                            key={star}
-                                            style={{ 
-                                              color: (airtableContact?.rating || 0) >= star ? '#FFD700' : '#555',
-                                              fontSize: '16px',
-                                              marginRight: '3px'
-                                            }}
-                                          >
-                                            ★
-                                          </span>
-                                        ))}
-                                      </div>
-                                      {airtableContact?.rating && (
-                                        <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '10px' }}>
-                                          → 
-                                        </span>
-                                      )}
-                                    </div>
-                                  </td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center' }}>
-                                      {[1, 2, 3, 4, 5].map((star) => (
-                                        <span 
-                                          key={star}
-                                          onClick={() => {
-                                            // If clicking on the current star value, clear it
-                                            if (star === (formData.score || contact.score)) {
-                                              handleInputChange('score', null);
-                                            } else {
-                                              // Otherwise set to the clicked star value
-                                              handleInputChange('score', star);
-                                            }
-                                          }}
-                                          style={{ 
-                                            color: (formData.score !== undefined ? formData.score : contact.score || 0) >= star ? '#FFD700' : '#555',
-                                            fontSize: '16px',
-                                            marginRight: '3px',
-                                            cursor: 'pointer'
-                                          }}
-                                        >
-                                          ★
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </td>
-                                </tr>
 
-                                {/* Description Row */}
-                                <tr style={{ borderBottom: '1px solid #333' }}>
-                                  <td style={{ padding: '12px 15px', color: '#999' }}>Description</td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    {contact.isEditingDescription ? (
-                                      <textarea 
-                                        value={contact.description || ''}
-                                        onChange={(e) => {
-                                          // Update the contact display value
-                                          const updatedContact = {...contact, description: e.target.value};
-                                          setContact(updatedContact);
-                                        }}
-                                        onKeyDown={(e) => {
-                                          if (e.key === 'Enter' && e.ctrlKey) {
-                                            // Confirm edit on Ctrl+Enter
-                                            const updatedContact = {...contact, isEditingDescription: false};
-                                            setContact(updatedContact);
-                                          }
-                                        }}
-                                        onBlur={() => {
-                                          // Confirm edit on blur
-                                          const updatedContact = {...contact, isEditingDescription: false};
-                                          setContact(updatedContact);
-                                        }}
-                                        autoFocus
-                                        style={{ 
-                                          width: '100%',
-                                          background: 'transparent',
-                                          border: 'none',
-                                          padding: '8px 12px',
-                                          color: '#fff',
-                                          minHeight: '80px',
-                                          resize: 'vertical'
-                                        }}
-                                      />
-                                    ) : (
-                                      <div 
-                                        onClick={(e) => {
-                                          // If they click the arrow, set the value in Supabase Final
-                                          if (e.target.tagName === 'SPAN' && e.target.dataset.action === 'transfer') {
-                                            handleInputChange('description', contact.description || '');
-                                          } else {
-                                            // Otherwise, start editing
-                                            const updatedContact = {...contact, isEditingDescription: true};
-                                            setContact(updatedContact);
-                                          }
-                                        }}
-                                        style={{ 
-                                          cursor: 'pointer',
-                                          padding: '8px 12px',
-                                          display: 'flex',
-                                          alignItems: 'flex-start',
-                                          justifyContent: 'space-between'
-                                        }}
-                                      >
-                                        <div>
-                                          {contact.description ? 
-                                            (contact.isDescriptionExpanded ? 
-                                              contact.description : 
-                                              `${contact.description.substring(0, 50)}${contact.description.length > 50 ? '...' : ''}`) 
-                                            : '-'}
-                                        </div>
-                                        <span 
-                                          data-action="transfer"
-                                          style={{ 
-                                            color: '#00ff00', 
-                                            fontSize: '12px', 
-                                            marginLeft: '10px',
-                                            cursor: 'pointer'
-                                          }}
-                                          title="Transfer to Supabase Final"
-                                        >
-                                          → 
-                                        </span>
-                                      </div>
-                                    )}
-                                  </td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <div 
-                                      onClick={() => {
-                                        if (airtableContact && airtableContact.description) {
-                                          handleInputChange('description', airtableContact.description);
-                                        }
-                                      }}
-                                      style={{ 
-                                        cursor: 'pointer',
-                                        padding: '8px 12px',
-                                        display: 'flex',
-                                        alignItems: 'flex-start',
-                                        justifyContent: 'space-between'
-                                      }}
-                                    >
-                                      <div>
-                                        {airtableContact?.description ? 
-                                          (airtableContact.isDescriptionExpanded ? 
-                                            airtableContact.description : 
-                                            `${airtableContact.description.substring(0, 50)}${airtableContact.description.length > 50 ? '...' : ''}`) 
-                                          : '-'}
-                                      </div>
-                                      <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '10px' }}>
-                                        → 
-                                      </span>
-                                    </div>
-                                  </td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    {formData.isEditingDescription ? (
-                                      <textarea 
-                                        value={formData.description !== undefined ? formData.description : (contact.description || '')}
-                                        onChange={(e) => handleInputChange('description', e.target.value)}
-                                        onKeyDown={(e) => {
-                                          if (e.key === 'Enter' && e.ctrlKey) {
-                                            // Confirm edit on Ctrl+Enter
-                                            const updatedFormData = {...formData, isEditingDescription: false};
-                                            setFormData(updatedFormData);
-                                          }
-                                        }}
-                                        onBlur={() => {
-                                          // Confirm edit on blur
-                                          const updatedFormData = {...formData, isEditingDescription: false};
-                                          setFormData(updatedFormData);
-                                        }}
-                                        autoFocus
-                                        style={{ 
-                                          width: '100%',
-                                          background: 'transparent',
-                                          border: 'none',
-                                          padding: '8px 12px',
-                                          color: '#fff',
-                                          minHeight: '80px',
-                                          resize: 'vertical'
-                                        }}
-                                      />
-                                    ) : (
-                                      <div 
-                                        onClick={() => {
-                                          const updatedFormData = {...formData, isEditingDescription: true};
-                                          setFormData(updatedFormData);
-                                        }}
-                                        style={{ 
-                                          cursor: 'pointer',
-                                          padding: '8px 12px',
-                                          display: 'flex',
-                                          justifyContent: 'space-between',
-                                          alignItems: 'flex-start'
-                                        }}
-                                      >
-                                        <div>
-                                          {formData.description !== undefined || contact.description ? 
-                                            (formData.isDescriptionExpanded ? 
-                                              (formData.description || contact.description) : 
-                                              `${(formData.description || contact.description || '').substring(0, 50)}${(formData.description || contact.description || '').length > 50 ? '...' : ''}`) 
-                                            : '-'}
-                                        </div>
-                                        {formData.description === undefined && (
-                                          <span style={{ fontSize: '0.7rem', color: '#999', fontStyle: 'italic', marginLeft: 'auto' }}>
-                                            Same as Supabase Now
-                                          </span>
-                                        )}
-                                      </div>
-                                    )}
-                                  </td>
-                                </tr>
 
-                                {/* Birthday Row */}
-                                <tr style={{ borderBottom: '1px solid #333' }}>
-                                  <td style={{ padding: '12px 15px', color: '#999' }}>Birthday</td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
-                                      {contact.birthday || '-'}
-                                    </div>
-                                  </td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <div 
-                                      onClick={() => {
-                                        if (airtableContact && airtableContact.birthday) {
-                                          handleInputChange('birthday', airtableContact.birthday);
-                                        }
-                                      }}
-                                      style={{ 
-                                        cursor: airtableContact?.birthday ? 'pointer' : 'default',
-                                        padding: '8px 12px',
-                                        background: '#2a2a2a',
-                                        borderRadius: '4px',
-                                        borderLeft: airtableContact?.birthday ? '3px solid #00ff00' : '3px solid transparent'
-                                      }}
-                                    >
-                                      {airtableContact?.birthday || '-'}
-                                    </div>
-                                  </td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
-                                      {formData.birthday || contact.birthday || '-'}
-                                    </div>
-                                  </td>
-                                </tr>
 
-                                {/* Cities Row */}
-                                <tr style={{ borderBottom: '1px solid #333' }}>
-                                  <td style={{ padding: '12px 15px', color: '#999' }}>Cities</td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
-                                      {contact.cities?.map(city => city.name).join(', ') || '-'}
-                                    </div>
-                                  </td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ 
-                                      padding: '8px 12px',
-                                      background: '#2a2a2a',
-                                      borderRadius: '4px'
-                                    }}>
-                                      {airtableContact?.city || '-'}
-                                    </div>
-                                  </td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
-                                      {formData.cities?.join(', ') || contact.cities?.map(city => city.name).join(', ') || '-'}
-                                    </div>
-                                  </td>
-                                </tr>
+{/* ─────────── Companies Row (mirrors Tags) ─────────── */}
+<tr style={{ borderBottom: '1px solid #333' }}>
+  <td style={{ padding: '12px 15px', color: '#999' }}>Companies</td>
 
-                                {/* Tags Row */}
-                                <tr style={{ borderBottom: '1px solid #333' }}>
-                                  <td style={{ padding: '12px 15px', color: '#999' }}>Tags</td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
-                                      {contact.tags?.map(tag => tag.name).join(', ') || '-'}
-                                    </div>
-                                  </td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ 
-                                      padding: '8px 12px',
-                                      background: '#2a2a2a',
-                                      borderRadius: '4px'
-                                    }}>
-                                      {airtableContact?.tags?.join(', ') || '-'}
-                                    </div>
-                                  </td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
-                                      {formData.tags?.map(tag => tag.name).join(', ') || contact.tags?.map(tag => tag.name).join(', ') || '-'}
-                                    </div>
-                                  </td>
-                                </tr>
+  {/* 1. Current companies (formData first, then contact) */}
+  <td style={{ padding: '12px 15px' }}>
+    <TagsContainer>
+      {formData.companies && formData.companies.length > 0 ? (
+        formData.companies.map((comp, idx) => (
+          <Tag
+            key={`formdata-company-${idx}`}
+            style={{
+              background: 'transparent',
+              border: '1px solid #00ff00',
+              borderRadius: '4px',
+              padding: '4px 8px',
+              margin: '2px',
+              display: 'inline-flex',
+              alignItems: 'center',
+            }}
+          >
+            <span>{comp.name}</span>
+          </Tag>
+        ))
+      ) : contact.companies && contact.companies.length > 0 ? (
+        contact.companies.map((comp, idx) => (
+          <Tag
+            key={`contact-company-${idx}`}
+            style={{
+              background: 'transparent',
+              border: '1px solid #00ff00',
+              borderRadius: '4px',
+              padding: '4px 8px',
+              margin: '2px',
+              display: 'inline-flex',
+              alignItems: 'center',
+            }}
+          >
+            <span>{comp.name}</span>
+          </Tag>
+        ))
+      ) : (
+        '-'
+      )}
+    </TagsContainer>
+  </td>
 
-                                {/* Companies Row */}
-                                <tr style={{ borderBottom: '1px solid #333' }}>
-                                  <td style={{ padding: '12px 15px', color: '#999' }}>Companies</td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
-                                      {contact.companies?.map(comp => comp.name).join(', ') || '-'}
-                                    </div>
-                                  </td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <div 
-                                      onClick={() => {
-                                        if (airtableContact && airtableContact.company) {
-                                          handleInputChange('company', airtableContact.company);
-                                        }
-                                      }}
-                                      style={{ 
-                                        cursor: airtableContact?.company ? 'pointer' : 'default',
-                                        padding: '8px 12px',
-                                        background: '#2a2a2a',
-                                        borderRadius: '4px',
-                                        borderLeft: airtableContact?.company ? '3px solid #00ff00' : '3px solid transparent'
-                                      }}
-                                    >
-                                      {airtableContact?.company || '-'}
-                                    </div>
-                                  </td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
-                                      {(formData.company ? [formData.company] : contact.companies?.map(comp => comp.name) || []).join(', ') || '-'}
-                                    </div>
-                                  </td>
-                                </tr>
+  {/* 2. Suggestions from Airtable */}
+  <td style={{ padding: '12px 15px' }}>
+    <TagsContainer>
+      {airtableContact?.company ? (
+        airtableContact.company.split(',').map((raw, idx) => {
+          const trimmedCompany = raw.trim();
+          if (!trimmedCompany) return null;
 
-                                {/* Deals Row */}
-                                <tr style={{ borderBottom: '1px solid #333' }}>
-                                  <td style={{ padding: '12px 15px', color: '#999' }}>Deals</td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
-                                      {contact.deals?.length ? `${contact.deals.length} deals` : '-'}
-                                    </div>
-                                  </td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ 
-                                      padding: '8px 12px',
-                                      background: '#2a2a2a',
-                                      borderRadius: '4px'
-                                    }}>
-                                      {airtableContact?.deals ? `${airtableContact.deals.length} deals` : '-'}
-                                    </div>
-                                  </td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
-                                      {contact.deals?.length ? `${contact.deals.length} deals` : '-'}
-                                    </div>
-                                  </td>
-                                </tr>
+          return (
+            <Tag
+              key={`airtable-company-${idx}`}
+              style={{
+                background: 'transparent',
+                border: '1px solid #00ff00',
+                borderRadius: '4px',
+                padding: '4px 8px',
+                margin: '2px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                cursor: 'pointer',
+              }}
+              onClick={async () => {
+                try {
+                  /* Check if company exists */
+                  const { data: existingCompany, error: searchError } = await supabase
+                    .from('companies')
+                    .select('company_id')
+                    .ilike('name', trimmedCompany)
+                    .maybeSingle();
 
-                                {/* Introductions Row */}
-                                <tr style={{ borderBottom: '1px solid #333' }}>
-                                  <td style={{ padding: '12px 15px', color: '#999' }}>Introductions</td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
-                                      {contact.introductions?.length ? `${contact.introductions.length} introductions` : '-'}
-                                    </div>
-                                  </td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ 
-                                      padding: '8px 12px',
-                                      background: '#2a2a2a',
-                                      borderRadius: '4px'
-                                    }}>
-                                      {airtableContact?.introductions ? `${airtableContact.introductions.length} introductions` : '-'}
-                                    </div>
-                                  </td>
-                                  <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
-                                      {contact.introductions?.length ? `${contact.introductions.length} introductions` : '-'}
-                                    </div>
-                                  </td>
-                                </tr>
+                  if (searchError) {
+                    console.error('Error searching for company:', searchError);
+                    toast.error('Failed to search for company');
+                    return;
+                  }
+
+                  let companyId;
+
+                  /* Create company if needed */
+                  if (!existingCompany) {
+                    const { data: newCompany, error: createError } = await supabase
+                      .from('companies')
+                      .insert({ name: trimmedCompany })
+                      .select('company_id')
+                      .single();
+
+                    if (createError) {
+                      console.error('Error creating company:', createError);
+                      toast.error('Failed to create company');
+                      return;
+                    }
+
+                    companyId = newCompany.company_id;
+                  } else {
+                    companyId = existingCompany.company_id;
+                  }
+
+                  /* Link company to contact if not linked */
+                  const { data: existingContactCompany, error: checkError } = await supabase
+                    .from('contact_companies')
+                    .select('contact_companies_id')
+                    .eq('contact_id', contact.contact_id)
+                    .eq('company_id', companyId)
+                    .maybeSingle();
+
+                  if (checkError) {
+                    console.error('Error checking contact company:', checkError);
+                    toast.error('Failed to check company link');
+                    return;
+                  }
+
+                  if (!existingContactCompany) {
+                    const { error: linkError } = await supabase
+                      .from('contact_companies')
+                      .insert({ contact_id: contact.contact_id, company_id: companyId });
+
+                    if (linkError) {
+                      console.error('Error linking company to contact:', linkError);
+                      toast.error('Failed to add company');
+                      return;
+                    }
+
+                    /* Update state */
+                    const updatedContact = { ...contact };
+                    if (!updatedContact.companies) updatedContact.companies = [];
+                    updatedContact.companies.push({ company_id: companyId, name: trimmedCompany });
+                    setContact(updatedContact);
+
+                    if (formData.companies) {
+                      setFormData({
+                        ...formData,
+                        companies: [...formData.companies, { company_id: companyId, name: trimmedCompany }],
+                      });
+                    }
+
+                    toast.success(`Company "${trimmedCompany}" added`);
+                  } else {
+                    toast.info(`Company "${trimmedCompany}" already linked`);
+                  }
+                } catch (err) {
+                  console.error('Exception handling company:', err);
+                  toast.error('Failed to process company');
+                }
+              }}
+            >
+              <span>{trimmedCompany}</span>
+              <span
+                style={{
+                  color: '#00ff00',
+                  fontSize: '12px',
+                  marginLeft: '5px',
+                }}
+              >
+                →
+              </span>
+            </Tag>
+          );
+        }).filter(Boolean)
+      ) : (
+        '-'
+      )}
+    </TagsContainer>
+  </td>
+
+  {/* 3. Editable list with remove + Add Company */}
+  <td style={{ padding: '12px 15px' }}>
+    <TagsContainer>
+      {formData.companies && formData.companies.length > 0 ? (
+        formData.companies.map((comp, idx) => (
+          <Tag
+            key={`formdata-company-edit-${idx}`}
+            style={{
+              background: 'transparent',
+              border: '1px solid #00ff00',
+              borderRadius: '4px',
+              padding: '4px 8px',
+              margin: '2px',
+              display: 'inline-flex',
+              alignItems: 'center',
+            }}
+          >
+            <span>{comp.name}</span>
+            <span
+              onClick={async () => {
+                try {
+                  /* Remove from formData */
+                  const updatedCompanies = formData.companies.filter((_, i) => i !== idx);
+                  handleInputChange('companies', updatedCompanies);
+
+                  /* Remove link in DB */
+                  const { error } = await supabase
+                    .from('contact_companies')
+                    .delete()
+                    .eq('contact_id', contact.contact_id)
+                    .eq('company_id', comp.company_id);
+
+                  if (error) {
+                    console.error('Error removing company from contact:', error);
+                    toast.error('Failed to remove company');
+                  } else {
+                    /* Update contact state */
+                    const updatedContact = { ...contact };
+                    if (updatedContact.companies) {
+                      updatedContact.companies = updatedContact.companies.filter(
+                        c => c.company_id !== comp.company_id
+                      );
+                      setContact(updatedContact);
+                    }
+
+                    toast.success(`Company "${comp.name}" removed`);
+                  }
+                } catch (err) {
+                  console.error('Exception removing company:', err);
+                  toast.error('Failed to remove company');
+                }
+              }}
+              title="Remove company"
+              style={{
+                fontSize: '12px',
+                marginLeft: '5px',
+                color: '#00ff00',
+                cursor: 'pointer',
+              }}
+            >
+              ✕
+            </span>
+          </Tag>
+        ))
+      ) : contact.companies && contact.companies.length > 0 ? (
+        contact.companies.map((comp, idx) => (
+          <Tag
+            key={`contact-company-edit-${idx}`}
+            style={{
+              background: 'transparent',
+              border: '1px solid #00ff00',
+              borderRadius: '4px',
+              padding: '4px 8px',
+              margin: '2px',
+              display: 'inline-flex',
+              alignItems: 'center',
+            }}
+          >
+            <span>{comp.name}</span>
+            <span
+              onClick={async () => {
+                try {
+                  const { error } = await supabase
+                    .from('contact_companies')
+                    .delete()
+                    .eq('contact_id', contact.contact_id)
+                    .eq('company_id', comp.company_id);
+
+                  if (error) {
+                    console.error('Error removing company from contact:', error);
+                    toast.error('Failed to remove company');
+                  } else {
+                    const updatedContact = { ...contact };
+                    updatedContact.companies = updatedContact.companies.filter(
+                      c => c.company_id !== comp.company_id
+                    );
+                    setContact(updatedContact);
+                    toast.success(`Company "${comp.name}" removed`);
+                  }
+                } catch (err) {
+                  console.error('Exception removing company:', err);
+                  toast.error('Failed to remove company');
+                }
+              }}
+              title="Remove company"
+              style={{
+                fontSize: '12px',
+                marginLeft: '5px',
+                color: '#00ff00',
+                cursor: 'pointer',
+              }}
+            >
+              ✕
+            </span>
+          </Tag>
+        ))
+      ) : (
+        '-'
+      )}
+
+      {/* Add new company */}
+      <Tag
+        style={{
+          background: 'transparent',
+          color: '#00ff00',
+          cursor: 'pointer',
+          border: 'none',
+          padding: '4px 8px',
+        }}
+        onClick={async () => {
+          const companyName = prompt('Enter new company:');
+          if (!companyName || !companyName.trim()) return;
+
+          const trimmedCompanyName = companyName.trim();
+
+          try {
+            /* Check if company exists */
+            const { data: existingCompany, error: searchError } = await supabase
+              .from('companies')
+              .select('company_id')
+              .ilike('name', trimmedCompanyName)
+              .maybeSingle();
+
+            if (searchError) {
+              console.error('Error searching for company:', searchError);
+              toast.error('Failed to search for company');
+              return;
+            }
+
+            let companyId;
+
+            if (!existingCompany) {
+              const { data: newCompany, error: createError } = await supabase
+                .from('companies')
+                .insert({ name: trimmedCompanyName })
+                .select('company_id')
+                .single();
+
+              if (createError) {
+                console.error('Error creating company:', createError);
+                toast.error('Failed to create company');
+                return;
+              }
+
+              companyId = newCompany.company_id;
+            } else {
+              companyId = existingCompany.company_id;
+            }
+
+            /* Link company */
+            const { data: existingContactCompany, error: checkError } = await supabase
+              .from('contact_companies')
+              .select('contact_companies_id')
+              .eq('contact_id', contact.contact_id)
+              .eq('company_id', companyId)
+              .maybeSingle();
+
+            if (checkError) {
+              console.error('Error checking contact company:', checkError);
+              toast.error('Failed to check company link');
+              return;
+            }
+
+            if (!existingContactCompany) {
+              const { error: linkError } = await supabase
+                .from('contact_companies')
+                .insert({ contact_id: contact.contact_id, company_id: companyId });
+
+              if (linkError) {
+                console.error('Error linking company to contact:', linkError);
+                toast.error('Failed to add company');
+                return;
+              }
+
+              const updatedContact = { ...contact };
+              if (!updatedContact.companies) updatedContact.companies = [];
+              updatedContact.companies.push({ company_id: companyId, name: trimmedCompanyName });
+              setContact(updatedContact);
+
+              toast.success(`Company "${trimmedCompanyName}" added`);
+            } else {
+              toast.info(`Company "${trimmedCompanyName}" already linked`);
+            }
+          } catch (err) {
+            console.error('Exception handling company:', err);
+            toast.error('Failed to process company');
+          }
+        }}
+      >
+        <span style={{ fontSize: '16px' }}>+</span> Add Company
+      </Tag>
+    </TagsContainer>
+  </td>
+</tr>
+
                               </tbody>
                             </table>
                           </div>
