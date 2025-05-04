@@ -10,6 +10,11 @@ import CompanyTagsModal from '../../components/modals/CompanyTagsModal';
 import NewEditCompanyModal from '../../components/modals/NewEditCompanyModal';
 import AssociateCompanyModal from '../../components/modals/AssociateCompanyModal';
 import CreateCompanyModal from '../../components/modals/CreateCompanyModal';
+import ManageContactEmails from '../../components/modals/ManageContactEmails';
+import ManageContactMobiles from '../../components/modals/ManageContactMobiles';
+import CityModal from '../../components/modals/CityModal';
+import TagsModal from '../../components/modals/TagsModal';
+import CompanyContactsModal from '../../components/modals/CompanyContactsModal';
 import { 
   FiX, 
   FiCheck, 
@@ -1305,6 +1310,11 @@ const ContactCrmWorkflow = () => {
   
   // State for create company modal
   const [showCreateCompanyModal, setShowCreateCompanyModal] = useState(false);
+  const [showManageContactEmailsModal, setShowManageContactEmailsModal] = useState(false);
+  const [showManageContactMobilesModal, setShowManageContactMobilesModal] = useState(false);
+  const [showCityModal, setShowCityModal] = useState(false);
+  const [showTagsModal, setShowTagsModal] = useState(false);
+  const [showCompanyContactsModal, setShowCompanyContactsModal] = useState(false);
   const [newCompanyInitialName, setNewCompanyInitialName] = useState('');
   const [newCompanyData, setNewCompanyData] = useState({
     name: '',
@@ -6848,24 +6858,7 @@ const handleInputChange = (field, value) => {
                                         ))
                                       )}
                                       <Tag 
-                                        onClick={() => {
-                                          const email = prompt("Enter new email:");
-                                          if (email && email.trim()) {
-                                            // Create a new email object with the correct structure
-                                            const newEmail = {
-                                              email: email.trim(),
-                                              is_primary: false,
-                                              type: 'personal'
-                                            };
-                                            
-                                            // Add to contactEmails array
-                                            if (!formData.contactEmails) {
-                                              handleInputChange('contactEmails', [newEmail]);
-                                            } else {
-                                              handleInputChange('contactEmails', [...formData.contactEmails, newEmail]);
-                                            }
-                                          }
-                                        }}
+                                        onClick={() => setShowManageContactEmailsModal(true)}
                                         style={{ 
                                           background: 'transparent', 
                                           color: '#00ff00', 
@@ -6873,7 +6866,7 @@ const handleInputChange = (field, value) => {
                                           border: 'none'
                                         }}
                                       >
-                                        <span style={{ fontSize: '16px' }}>+</span>
+                                        <span style={{ fontSize: '16px' }}>+ Add Email</span>
                                       </Tag>
                                     </TagsContainer>
                                   </td>
@@ -7121,24 +7114,7 @@ const handleInputChange = (field, value) => {
                                       
                                       {/* Add new mobile button */}
                                       <Tag 
-                                        onClick={() => {
-                                          const phone = prompt("Enter new mobile number:");
-                                          if (phone && phone.trim()) {
-                                            // Create a new mobile object with the correct structure
-                                            const newMobile = {
-                                              mobile: phone.trim(),
-                                              is_primary: false,
-                                              type: 'personal'
-                                            };
-                                            
-                                            // Add to contactMobiles array
-                                            if (!formData.contactMobiles) {
-                                              handleInputChange('contactMobiles', [newMobile]);
-                                            } else {
-                                              handleInputChange('contactMobiles', [...formData.contactMobiles, newMobile]);
-                                            }
-                                          }
-                                        }}
+                                        onClick={() => setShowManageContactMobilesModal(true)}
                                         style={{ 
                                           background: 'transparent', 
                                           color: '#00ff00', 
@@ -7146,7 +7122,7 @@ const handleInputChange = (field, value) => {
                                           border: 'none'
                                         }}
                                       >
-                                        <span style={{ fontSize: '16px' }}>+</span>
+                                        <span style={{ fontSize: '16px' }}>+ Add Mobile</span>
                                       </Tag>
                                     </TagsContainer>
                                   </td>
@@ -7723,6 +7699,7 @@ const handleInputChange = (field, value) => {
             toast.error('Failed to process city');
           }
         }}
+        onClick={() => setShowCityModal(true)}
       >
         <span style={{ fontSize: '16px' }}>+</span> Add City
       </Tag>
@@ -8115,6 +8092,7 @@ const handleInputChange = (field, value) => {
                                             toast.error('Failed to process tag');
                                           }
                                         }}
+                                        onClick={() => setShowTagsModal(true)}
                                       >
                                         <span style={{ fontSize: '16px' }}>+</span> Add Tag
                                       </Tag>
@@ -9090,7 +9068,7 @@ const handleInputChange = (field, value) => {
             toast.error('Failed to process company');
           }
         }}
-      >
+      onClick={() => setShowCompanyContactsModal(true)}>
         <span style={{ fontSize: '16px' }}>+</span> Add Company
       </Tag>
     </TagsContainer>
@@ -11864,6 +11842,67 @@ const handleInputChange = (field, value) => {
           // Load tags after a short delay
           setTimeout(() => loadCompanyTags(), 300);
         }}
+      />
+      
+      {/* ManageContactEmails Modal */}
+      <ManageContactEmails
+        isOpen={showManageContactEmailsModal}
+        onRequestClose={() => setShowManageContactEmailsModal(false)}
+        contact={contact}
+        onUpdateEmails={(updatedEmails) => {
+          // Update emails in the contact object
+          const updatedContact = { ...contact, emails: updatedEmails };
+          setContact(updatedContact);
+          
+          // Update form data if needed
+          if (formData) {
+            setFormData(prev => ({ ...prev, emails: updatedEmails }));
+          }
+          
+          // You might want to add code here to save to Supabase
+          // This would depend on your backend structure
+        }}
+      />
+      
+      {/* ManageContactMobiles Modal */}
+      <ManageContactMobiles
+        isOpen={showManageContactMobilesModal}
+        onRequestClose={() => setShowManageContactMobilesModal(false)}
+        contact={contact}
+        onUpdateMobiles={(updatedMobiles) => {
+          // Update mobiles in the contact object
+          const updatedContact = { ...contact, mobiles: updatedMobiles };
+          setContact(updatedContact);
+          
+          // Update form data if needed
+          if (formData) {
+            setFormData(prev => ({ ...prev, mobiles: updatedMobiles }));
+          }
+          
+          // You might want to add code here to save to Supabase
+          // This would depend on your backend structure
+        }}
+      />
+      
+      {/* City Modal */}
+      <CityModal
+        isOpen={showCityModal}
+        onRequestClose={() => setShowCityModal(false)}
+        contact={contact}
+      />
+      
+      {/* Tags Modal */}
+      <TagsModal
+        isOpen={showTagsModal}
+        onRequestClose={() => setShowTagsModal(false)}
+        contact={contact}
+      />
+      
+      {/* Company Contacts Modal */}
+      <CompanyContactsModal
+        isOpen={showCompanyContactsModal}
+        onRequestClose={() => setShowCompanyContactsModal(false)}
+        contact={contact}
       />
     </Container>
   );
