@@ -8166,13 +8166,46 @@ const handleInputChange = (field, value) => {
                                       {[1, 2, 3, 4, 5].map((star) => (
                                         <span 
                                           key={star}
-                                          onClick={() => {
-                                            // If clicking on the current star value, clear it
+                                          onClick={async () => {
+                                            // Determine the new rating value
+                                            let newRating;
                                             if (star === (formData.score || contact.score)) {
-                                              handleInputChange('score', null);
+                                              // If clicking on the current star value, clear it
+                                              newRating = null;
                                             } else {
                                               // Otherwise set to the clicked star value
-                                              handleInputChange('score', star);
+                                              newRating = star;
+                                            }
+                                            
+                                            // Update local state first for immediate UI feedback
+                                            handleInputChange('score', newRating);
+                                            
+                                            // Save to Supabase immediately
+                                            try {
+                                              const { data, error } = await supabase
+                                                .from('contacts')
+                                                .update({ score: newRating })
+                                                .eq('contact_id', contact.contact_id);
+                                                
+                                              if (error) {
+                                                console.error('Error saving rating:', error);
+                                                toast.error('Failed to save rating');
+                                                // Revert to previous value on error
+                                                handleInputChange('score', contact.score);
+                                              } else {
+                                                // Update was successful
+                                                toast.success(`Rating ${newRating ? `set to ${newRating}` : 'cleared'}`);
+                                                // Update the contact object with new rating
+                                                setContact(prev => ({
+                                                  ...prev,
+                                                  score: newRating
+                                                }));
+                                              }
+                                            } catch (err) {
+                                              console.error('Exception saving rating:', err);
+                                              toast.error('Failed to save rating');
+                                              // Revert to previous value
+                                              handleInputChange('score', contact.score);
                                             }
                                           }}
                                           style={{ 
@@ -8201,17 +8234,53 @@ const handleInputChange = (field, value) => {
                                           const updatedContact = {...contact, description: e.target.value};
                                           setContact(updatedContact);
                                         }}
-                                        onKeyDown={(e) => {
+                                        onKeyDown={async (e) => {
                                           if (e.key === 'Enter' && e.ctrlKey) {
                                             // Confirm edit on Ctrl+Enter
                                             const updatedContact = {...contact, isEditingDescription: false};
                                             setContact(updatedContact);
+                                            
+                                            // Save to Supabase immediately
+                                            try {
+                                              const { data, error } = await supabase
+                                                .from('contacts')
+                                                .update({ description: contact.description })
+                                                .eq('contact_id', contact.contact_id);
+                                                
+                                              if (error) {
+                                                console.error('Error saving description:', error);
+                                                toast.error('Failed to save description');
+                                              } else {
+                                                toast.success('Description saved successfully');
+                                              }
+                                            } catch (err) {
+                                              console.error('Exception saving description:', err);
+                                              toast.error('Failed to save description');
+                                            }
                                           }
                                         }}
-                                        onBlur={() => {
+                                        onBlur={async () => {
                                           // Confirm edit on blur
                                           const updatedContact = {...contact, isEditingDescription: false};
                                           setContact(updatedContact);
+                                          
+                                          // Save to Supabase immediately
+                                          try {
+                                            const { data, error } = await supabase
+                                              .from('contacts')
+                                              .update({ description: contact.description })
+                                              .eq('contact_id', contact.contact_id);
+                                              
+                                            if (error) {
+                                              console.error('Error saving description:', error);
+                                              toast.error('Failed to save description');
+                                            } else {
+                                              toast.success('Description saved successfully');
+                                            }
+                                          } catch (err) {
+                                            console.error('Exception saving description:', err);
+                                            toast.error('Failed to save description');
+                                          }
                                         }}
                                         autoFocus
                                         style={{ 
@@ -8226,22 +8295,16 @@ const handleInputChange = (field, value) => {
                                       />
                                     ) : (
                                       <div 
-                                        onClick={(e) => {
-                                          // If they click the arrow, set the value in Supabase Final
-                                          if (e.target.tagName === 'SPAN' && e.target.dataset.action === 'transfer') {
-                                            handleInputChange('description', contact.description || '');
-                                          } else {
-                                            // Otherwise, start editing
-                                            const updatedContact = {...contact, isEditingDescription: true};
-                                            setContact(updatedContact);
-                                          }
+                                        onClick={() => {
+                                          // Start editing
+                                          const updatedContact = {...contact, isEditingDescription: true};
+                                          setContact(updatedContact);
                                         }}
                                         style={{ 
                                           cursor: 'pointer',
                                           padding: '8px 12px',
                                           display: 'flex',
-                                          alignItems: 'flex-start',
-                                          justifyContent: 'space-between'
+                                          alignItems: 'flex-start'
                                         }}
                                       >
                                         <div>
@@ -8251,18 +8314,6 @@ const handleInputChange = (field, value) => {
                                               `${contact.description.substring(0, 50)}${contact.description.length > 50 ? '...' : ''}`) 
                                             : '-'}
                                         </div>
-                                        <span 
-                                          data-action="transfer"
-                                          style={{ 
-                                            color: '#00ff00', 
-                                            fontSize: '12px', 
-                                            marginLeft: '10px',
-                                            cursor: 'pointer'
-                                          }}
-                                          title="Transfer to Supabase Final"
-                                        >
-                                          → 
-                                        </span>
                                       </div>
                                     )}
                                   </td>
@@ -8298,17 +8349,65 @@ const handleInputChange = (field, value) => {
                                       <textarea 
                                         value={formData.description !== undefined ? formData.description : (contact.description || '')}
                                         onChange={(e) => handleInputChange('description', e.target.value)}
-                                        onKeyDown={(e) => {
+                                        onKeyDown={async (e) => {
                                           if (e.key === 'Enter' && e.ctrlKey) {
                                             // Confirm edit on Ctrl+Enter
                                             const updatedFormData = {...formData, isEditingDescription: false};
                                             setFormData(updatedFormData);
+                                            
+                                            // Save to Supabase immediately
+                                            try {
+                                              const descriptionValue = formData.description !== undefined ? formData.description : (contact.description || '');
+                                              const { data, error } = await supabase
+                                                .from('contacts')
+                                                .update({ description: descriptionValue })
+                                                .eq('contact_id', contact.contact_id);
+                                                
+                                              if (error) {
+                                                console.error('Error saving description (final):', error);
+                                                toast.error('Failed to save description');
+                                              } else {
+                                                toast.success('Description saved successfully');
+                                                // Update the contact object as well
+                                                setContact(prev => ({
+                                                  ...prev,
+                                                  description: descriptionValue
+                                                }));
+                                              }
+                                            } catch (err) {
+                                              console.error('Exception saving description (final):', err);
+                                              toast.error('Failed to save description');
+                                            }
                                           }
                                         }}
-                                        onBlur={() => {
+                                        onBlur={async () => {
                                           // Confirm edit on blur
                                           const updatedFormData = {...formData, isEditingDescription: false};
                                           setFormData(updatedFormData);
+                                          
+                                          // Save to Supabase immediately
+                                          try {
+                                            const descriptionValue = formData.description !== undefined ? formData.description : (contact.description || '');
+                                            const { data, error } = await supabase
+                                              .from('contacts')
+                                              .update({ description: descriptionValue })
+                                              .eq('contact_id', contact.contact_id);
+                                              
+                                            if (error) {
+                                              console.error('Error saving description (final):', error);
+                                              toast.error('Failed to save description');
+                                            } else {
+                                              toast.success('Description saved successfully');
+                                              // Update the contact object as well
+                                              setContact(prev => ({
+                                                ...prev,
+                                                description: descriptionValue
+                                              }));
+                                            }
+                                          } catch (err) {
+                                            console.error('Exception saving description (final):', err);
+                                            toast.error('Failed to save description');
+                                          }
                                         }}
                                         autoFocus
                                         style={{ 
