@@ -237,7 +237,6 @@ const LinkedInPreviewModal = ({
 }) => {
   const [extractedJobRole, setExtractedJobRole] = useState(jobRole || '');
   const [extractedCompany, setExtractedCompany] = useState('');
-  const [extractedBio, setExtractedBio] = useState('');
   const [extractedCompanyWebsite, setExtractedCompanyWebsite] = useState('');
   const [extractedCompanyDescription, setExtractedCompanyDescription] = useState('');
   const [extractedKeywords, setExtractedKeywords] = useState([]);
@@ -277,7 +276,6 @@ const LinkedInPreviewModal = ({
         // Use job role from props if available, or mock data
         const mockJobTitle = jobRole || 'Software Engineer';
         const mockCompany = 'Tech Company Inc.';
-        const mockBio = 'Experienced professional with a passion for technology and innovation.';
         const mockCompanyWebsite = 'https://techcompany.com';
         const mockCompanyDescription = 'A leading technology company focused on creating innovative solutions.';
         const mockKeywords = ['technology', 'software', 'engineering', 'innovation'];
@@ -285,7 +283,6 @@ const LinkedInPreviewModal = ({
         
         setExtractedJobRole(mockJobTitle);
         setExtractedCompany(mockCompany);
-        setExtractedBio(mockBio);
         setExtractedCompanyWebsite(mockCompanyWebsite);
         setExtractedCompanyDescription(mockCompanyDescription);
         setExtractedKeywords(mockKeywords);
@@ -320,10 +317,7 @@ const LinkedInPreviewModal = ({
           setExtractedCompany(result.data.company);
         }
 
-        // Set additional fields
-        if (result.data.bio) {
-          setExtractedBio(result.data.bio);
-        }
+        // No bio field extraction as per API limitations
         
         if (result.data.companyWebsite) {
           setExtractedCompanyWebsite(result.data.companyWebsite);
@@ -365,7 +359,6 @@ const LinkedInPreviewModal = ({
       onSaveData({
         jobRole: extractedJobRole,
         company: extractedCompany,
-        bio: extractedBio,
         companyWebsite: extractedCompanyWebsite,
         companyDescription: extractedCompanyDescription,
         keywords: extractedKeywords,
@@ -510,27 +503,6 @@ const LinkedInPreviewModal = ({
             />
           </InputGroup>
           
-          <InputGroup>
-            <Label>About the Contact {loading && <small style={{ color: '#999', fontWeight: 'normal' }}>(extracting...)</small>}</Label>
-            <textarea
-              value={extractedBio}
-              onChange={(e) => setExtractedBio(e.target.value)}
-              placeholder="Enter information about the contact"
-              disabled={loading}
-              style={{
-                width: '100%',
-                minHeight: '80px',
-                padding: '10px',
-                background: '#1e1e1e',
-                border: '1px solid #444',
-                borderRadius: '4px',
-                color: 'white',
-                fontSize: '14px',
-                boxSizing: 'border-box',
-                resize: 'vertical'
-              }}
-            />
-          </InputGroup>
           
           <InputGroup>
             <Label>About the Company {loading && <small style={{ color: '#999', fontWeight: 'normal' }}>(extracting...)</small>}</Label>

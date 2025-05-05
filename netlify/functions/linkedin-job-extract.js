@@ -88,6 +88,7 @@ exports.handler = async (event, context) => {
     
     console.log('Apollo API response status:', apolloResponse.status);
     console.log('Found person data?', !!apolloData.person);
+    console.log('Apollo person data structure:', JSON.stringify(apolloData.person, null, 2));
     
     if (!apolloResponse.ok) {
       return {
@@ -116,7 +117,6 @@ exports.handler = async (event, context) => {
       linkedinUrl: apolloData.person.linkedin_url || linkedinUrl || null,
       city: apolloData.person.city || null,
       // Additional information
-      bio: apolloData.person.bio || null,
       companyWebsite: apolloData.person.organization?.website_url || null,
       companyDescription: apolloData.person.organization?.short_description || null,
       keywords: apolloData.person.keywords || []

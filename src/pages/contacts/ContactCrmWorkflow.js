@@ -12099,7 +12099,6 @@ const handleInputChange = (field, value) => {
             // Prepare the data to update in contacts table
             const updateData = {
               job_role: data.jobRole || null,
-              about_the_contact: data.bio || null,
               city: data.city || null
             };
             
@@ -12117,7 +12116,6 @@ const handleInputChange = (field, value) => {
               setContact(prev => ({
                 ...prev,
                 job_role: data.jobRole || prev.job_role,
-                about_the_contact: data.bio || prev.about_the_contact,
                 city: data.city || prev.city
               }));
               
