@@ -12088,16 +12088,66 @@ const handleInputChange = (field, value) => {
         lastName={contact?.last_name}
         email={contact?.email}
         jobRole={formData.jobRole || contact?.job_role}
-        onSaveData={(data) => {
-          // Update job role if provided
+        onSaveData={async (data) => {
+          // Update form data with all the extracted information
           if (data.jobRole) {
             handleInputChange('jobRole', data.jobRole);
           }
           
-          // If company is provided, we would typically handle adding it
-          if (data.company) {
-            toast.success(`Job information extracted: ${data.jobRole} at ${data.company}`);
-            // You could also add code here to create/associate the company
+          // Save to database all the extended information
+          try {
+            // Prepare the data to update in contacts table
+            const updateData = {
+              job_role: data.jobRole || null,
+              about_the_contact: data.bio || null,
+              city: data.city || null
+            };
+            
+            // Update the contact record
+            const { error } = await supabase
+              .from('contacts')
+              .update(updateData)
+              .eq('contact_id', contact.contact_id);
+              
+            if (error) {
+              console.error('Error updating contact data:', error);
+              toast.error('Failed to save job information');
+            } else {
+              // Update the local contact object
+              setContact(prev => ({
+                ...prev,
+                job_role: data.jobRole || prev.job_role,
+                about_the_contact: data.bio || prev.about_the_contact,
+                city: data.city || prev.city
+              }));
+              
+              // If company is provided, we would typically handle adding it
+              if (data.company) {
+                toast.success(`Job information extracted: ${data.jobRole} at ${data.company}`);
+                
+                // Here you could add code to create or associate the company
+                // The following would be pseudocode as the actual implementation depends on your app's logic:
+                /*
+                createOrUpdateCompany({
+                  name: data.company,
+                  website: data.companyWebsite,
+                  description: data.companyDescription
+                });
+                */
+              } else {
+                toast.success('Contact information updated');
+              }
+              
+              // Handle keywords/tags if your app supports them
+              if (data.keywords && data.keywords.length > 0) {
+                // Pseudocode for handling tags:
+                // addTagsToContact(contact.contact_id, data.keywords);
+                console.log('Tags available for adding:', data.keywords);
+              }
+            }
+          } catch (err) {
+            console.error('Exception saving LinkedIn data:', err);
+            toast.error('An error occurred while saving the data');
           }
         }}
       />

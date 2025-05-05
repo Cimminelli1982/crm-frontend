@@ -109,12 +109,17 @@ exports.handler = async (event, context) => {
       };
     }
     
-    // Extract the relevant information
+    // Extract the relevant information with additional fields
     const extractedData = {
       jobTitle: apolloData.person.title || null,
       company: apolloData.person.organization?.name || null,
       linkedinUrl: apolloData.person.linkedin_url || linkedinUrl || null,
-      city: apolloData.person.city || null
+      city: apolloData.person.city || null,
+      // Additional information
+      bio: apolloData.person.bio || null,
+      companyWebsite: apolloData.person.organization?.website_url || null,
+      companyDescription: apolloData.person.organization?.short_description || null,
+      keywords: apolloData.person.keywords || []
     };
     
     console.log('Successfully extracted job data:', extractedData);

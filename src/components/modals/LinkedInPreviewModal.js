@@ -32,6 +32,7 @@ const ModalContent = styled.div`
   padding: 20px;
   color: #eee;
   position: relative;
+  box-sizing: border-box;
 `;
 
 const ProfilePreview = styled.div`
@@ -112,6 +113,8 @@ const ExtractionSection = styled.div`
   margin-top: 20px;
   padding-top: 20px;
   border-top: 1px solid #444;
+  box-sizing: border-box;
+  width: 100%;
 `;
 
 const ExtractionTitle = styled.div`
@@ -123,6 +126,7 @@ const ExtractionTitle = styled.div`
 
 const InputGroup = styled.div`
   margin-bottom: 15px;
+  padding-right: 10px; /* Add consistent right padding */
 `;
 
 const Label = styled.label`
@@ -133,13 +137,14 @@ const Label = styled.label`
 `;
 
 const Input = styled.input`
-  width: 100%;
+  width: 100%; /* Full width */
   padding: 10px;
   background: #1e1e1e;
   border: 1px solid #444;
   border-radius: 4px;
   color: white;
   font-size: 14px;
+  box-sizing: border-box; /* Ensures padding doesn't add to width */
   
   &:focus {
     outline: none;
@@ -203,7 +208,7 @@ const modalStyles = {
     border: '1px solid #333',
     borderRadius: '5px',
     padding: '0',
-    width: '400px',
+    width: '550px',
     maxWidth: '90%',
     maxHeight: '90vh',
     overflow: 'auto'
@@ -232,6 +237,11 @@ const LinkedInPreviewModal = ({
 }) => {
   const [extractedJobRole, setExtractedJobRole] = useState(jobRole || '');
   const [extractedCompany, setExtractedCompany] = useState('');
+  const [extractedBio, setExtractedBio] = useState('');
+  const [extractedCompanyWebsite, setExtractedCompanyWebsite] = useState('');
+  const [extractedCompanyDescription, setExtractedCompanyDescription] = useState('');
+  const [extractedKeywords, setExtractedKeywords] = useState([]);
+  const [extractedCity, setExtractedCity] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [extractionAttempted, setExtractionAttempted] = useState(false);
@@ -267,9 +277,19 @@ const LinkedInPreviewModal = ({
         // Use job role from props if available, or mock data
         const mockJobTitle = jobRole || 'Software Engineer';
         const mockCompany = 'Tech Company Inc.';
+        const mockBio = 'Experienced professional with a passion for technology and innovation.';
+        const mockCompanyWebsite = 'https://techcompany.com';
+        const mockCompanyDescription = 'A leading technology company focused on creating innovative solutions.';
+        const mockKeywords = ['technology', 'software', 'engineering', 'innovation'];
+        const mockCity = 'San Francisco, CA';
         
         setExtractedJobRole(mockJobTitle);
         setExtractedCompany(mockCompany);
+        setExtractedBio(mockBio);
+        setExtractedCompanyWebsite(mockCompanyWebsite);
+        setExtractedCompanyDescription(mockCompanyDescription);
+        setExtractedKeywords(mockKeywords);
+        setExtractedCity(mockCity);
         
         setLoading(false);
         setExtractionAttempted(true);
@@ -299,6 +319,27 @@ const LinkedInPreviewModal = ({
         if (result.data.company) {
           setExtractedCompany(result.data.company);
         }
+
+        // Set additional fields
+        if (result.data.bio) {
+          setExtractedBio(result.data.bio);
+        }
+        
+        if (result.data.companyWebsite) {
+          setExtractedCompanyWebsite(result.data.companyWebsite);
+        }
+        
+        if (result.data.companyDescription) {
+          setExtractedCompanyDescription(result.data.companyDescription);
+        }
+        
+        if (result.data.keywords && result.data.keywords.length > 0) {
+          setExtractedKeywords(result.data.keywords);
+        }
+        
+        if (result.data.city) {
+          setExtractedCity(result.data.city);
+        }
       } else {
         setError(result.error || 'Unable to extract data from LinkedIn');
       }
@@ -323,7 +364,12 @@ const LinkedInPreviewModal = ({
     if (onSaveData) {
       onSaveData({
         jobRole: extractedJobRole,
-        company: extractedCompany
+        company: extractedCompany,
+        bio: extractedBio,
+        companyWebsite: extractedCompanyWebsite,
+        companyDescription: extractedCompanyDescription,
+        keywords: extractedKeywords,
+        city: extractedCity
       });
     }
     onClose();
@@ -441,6 +487,96 @@ const LinkedInPreviewModal = ({
               disabled={loading}
             />
           </InputGroup>
+          
+          <InputGroup>
+            <Label>Company Website {loading && <small style={{ color: '#999', fontWeight: 'normal' }}>(extracting...)</small>}</Label>
+            <Input 
+              type="text"
+              value={extractedCompanyWebsite}
+              onChange={(e) => setExtractedCompanyWebsite(e.target.value)}
+              placeholder="Enter company website (e.g. https://company.com)"
+              disabled={loading}
+            />
+          </InputGroup>
+          
+          <InputGroup>
+            <Label>City {loading && <small style={{ color: '#999', fontWeight: 'normal' }}>(extracting...)</small>}</Label>
+            <Input 
+              type="text"
+              value={extractedCity}
+              onChange={(e) => setExtractedCity(e.target.value)}
+              placeholder="Enter city (e.g. San Francisco, CA)"
+              disabled={loading}
+            />
+          </InputGroup>
+          
+          <InputGroup>
+            <Label>About the Contact {loading && <small style={{ color: '#999', fontWeight: 'normal' }}>(extracting...)</small>}</Label>
+            <textarea
+              value={extractedBio}
+              onChange={(e) => setExtractedBio(e.target.value)}
+              placeholder="Enter information about the contact"
+              disabled={loading}
+              style={{
+                width: '100%',
+                minHeight: '80px',
+                padding: '10px',
+                background: '#1e1e1e',
+                border: '1px solid #444',
+                borderRadius: '4px',
+                color: 'white',
+                fontSize: '14px',
+                boxSizing: 'border-box',
+                resize: 'vertical'
+              }}
+            />
+          </InputGroup>
+          
+          <InputGroup>
+            <Label>About the Company {loading && <small style={{ color: '#999', fontWeight: 'normal' }}>(extracting...)</small>}</Label>
+            <textarea
+              value={extractedCompanyDescription}
+              onChange={(e) => setExtractedCompanyDescription(e.target.value)}
+              placeholder="Enter information about the company"
+              disabled={loading}
+              style={{
+                width: '100%',
+                minHeight: '80px',
+                padding: '10px',
+                background: '#1e1e1e',
+                border: '1px solid #444',
+                borderRadius: '4px',
+                color: 'white',
+                fontSize: '14px',
+                boxSizing: 'border-box',
+                resize: 'vertical'
+              }}
+            />
+          </InputGroup>
+          
+          {extractedKeywords.length > 0 && (
+            <InputGroup>
+              <Label>Keywords/Tags</Label>
+              <div style={{ 
+                display: 'flex', 
+                flexWrap: 'wrap', 
+                gap: '5px', 
+                marginTop: '5px' 
+              }}>
+                {extractedKeywords.map((keyword, index) => (
+                  <div key={index} style={{ 
+                    background: '#333', 
+                    padding: '4px 8px', 
+                    borderRadius: '4px',
+                    fontSize: '12px',
+                    color: '#ddd'
+                  }}>
+                    {keyword}
+                  </div>
+                ))}
+              </div>
+            </InputGroup>
+          )}
           
           <ButtonRow>
             <CancelButton onClick={onClose} disabled={loading}>
