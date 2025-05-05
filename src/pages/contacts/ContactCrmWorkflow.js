@@ -6255,16 +6255,16 @@ const handleInputChange = (field, value) => {
                           }}>
                             <thead>
                                 <tr style={{ background: '#333' }}>
-                                  <th style={{ padding: '7px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '15%' }}>
+                                  <th style={{ padding: '9px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '15%' }}>
                                     Field Name
                                   </th>
-                                  <th style={{ padding: '7px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '28%' }}>
+                                  <th style={{ padding: '9px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '28%' }}>
                                     Supabase Now
                                   </th>
-                                  <th style={{ padding: '7px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '25%' }}>
+                                  <th style={{ padding: '9px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '25%' }}>
                                     Airtable
                                   </th>
-                                  <th style={{ padding: '7px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '32%' }}>
+                                  <th style={{ padding: '9px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '32%' }}>
                                     Supabase Final
                                   </th>
                                 </tr>
@@ -6324,12 +6324,32 @@ const handleInputChange = (field, value) => {
                                   </td>
                                   <td style={{ padding: '12px 15px' }}>
                                     <div 
-                                      onClick={() => {
+                                      onClick={async () => {
                                         if (airtableContact && airtableContact.full_name) {
                                           const nameParts = airtableContact.full_name.split(' ');
                                           const firstName = nameParts[0] || '';
                                           // Update formData with the Airtable first name
                                           handleInputChange('firstName', firstName);
+                                          
+                                          // Save to database
+                                          try {
+                                            const { error } = await supabase
+                                              .from('contacts')
+                                              .update({ first_name: firstName })
+                                              .eq('contact_id', contact.contact_id);
+                                              
+                                            if (error) {
+                                              console.error('Error updating contact first name:', error);
+                                              toast.error('Failed to update first name');
+                                            } else {
+                                              toast.success('First name updated');
+                                              // Update the contact with the new first name
+                                              setContact({...contact, first_name: firstName});
+                                            }
+                                          } catch (err) {
+                                            console.error('Exception updating contact first name:', err);
+                                            toast.error('Failed to update first name');
+                                          }
                                         }
                                       }}
                                       style={{ 
@@ -6480,12 +6500,32 @@ const handleInputChange = (field, value) => {
                                   </td>
                                   <td style={{ padding: '12px 15px' }}>
                                     <div 
-                                      onClick={() => {
+                                      onClick={async () => {
                                         if (airtableContact && airtableContact.full_name) {
                                           const nameParts = airtableContact.full_name.split(' ');
                                           const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
                                           // Update formData with the Airtable last name
                                           handleInputChange('lastName', lastName);
+                                          
+                                          // Save to database
+                                          try {
+                                            const { error } = await supabase
+                                              .from('contacts')
+                                              .update({ last_name: lastName })
+                                              .eq('contact_id', contact.contact_id);
+                                              
+                                            if (error) {
+                                              console.error('Error updating contact last name:', error);
+                                              toast.error('Failed to update last name');
+                                            } else {
+                                              toast.success('Last name updated');
+                                              // Update the contact with the new last name
+                                              setContact({...contact, last_name: lastName});
+                                            }
+                                          } catch (err) {
+                                            console.error('Exception updating contact last name:', err);
+                                            toast.error('Failed to update last name');
+                                          }
                                         }
                                       }}
                                       style={{ 
@@ -6649,66 +6689,26 @@ const handleInputChange = (field, value) => {
                                             <Tag 
                                               key={idx}
                                               style={{ 
-                                                cursor: 'pointer',
+                                                cursor: 'default',
                                                 background: 'transparent',
                                                 display: 'block',
                                                 marginBottom: '8px'
                                               }}
-                                              onClick={() => {
-                                                // Add to contactEmails array instead of using primaryEmail
-                                                // Prepare the email object
-                                                const newEmail = {
-                                                  email: emailStr,
-                                                  is_primary: false,
-                                                  type: 'personal' // default type
-                                                };
-                                                
-                                                // Initialize or update the contactEmails array
-                                                if (!formData.contactEmails) {
-                                                  handleInputChange('contactEmails', [newEmail]);
-                                                } else {
-                                                  // Check if this email already exists
-                                                  const exists = formData.contactEmails.some(e => e.email === emailStr);
-                                                  if (!exists) {
-                                                    handleInputChange('contactEmails', [...formData.contactEmails, newEmail]);
-                                                  }
-                                                }
-                                              }}
+                                              // Click functionality disabled for future modal implementation
                                             >
                                               <span>{emailStr}</span>
                                               {emailObj && typeof emailObj === 'object' && emailObj.is_primary && (
                                                 <span title="Primary Email" style={{ fontSize: '10px', marginLeft: '3px' }}>★</span>
                                               )}
-                                              <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '5px' }}>→</span>
                                             </Tag>
                                           );
                                         })
                                       ) : airtableContact?.primary_email ? (
                                         <Tag 
-                                          style={{ background: 'transparent', cursor: 'pointer' }}
-                                          onClick={() => {
-                                            // Add to contactEmails array 
-                                            // Prepare the email object
-                                            const newEmail = {
-                                              email: airtableContact.primary_email,
-                                              is_primary: false,
-                                              type: 'personal' // default type
-                                            };
-                                            
-                                            // Initialize or update the contactEmails array
-                                            if (!formData.contactEmails) {
-                                              handleInputChange('contactEmails', [newEmail]);
-                                            } else {
-                                              // Check if this email already exists
-                                              const exists = formData.contactEmails.some(e => e.email === airtableContact.primary_email);
-                                              if (!exists) {
-                                                handleInputChange('contactEmails', [...formData.contactEmails, newEmail]);
-                                              }
-                                            }
-                                          }}
+                                          style={{ background: 'transparent', cursor: 'default' }}
+                                          // Click functionality disabled for future modal implementation
                                         >
                                           {airtableContact.primary_email}
-                                          <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '5px' }}>→</span>
                                         </Tag>
                                       ) : (
                                         '-'
@@ -6870,7 +6870,7 @@ const handleInputChange = (field, value) => {
                                           border: 'none'
                                         }}
                                       >
-                                        <span style={{ fontSize: '16px' }}>+ Add Email</span>
+                                        <span style={{ fontSize: '14px' }}>+ Add Email</span>
                                       </Tag>
                                     </TagsContainer>
                                   </td>
@@ -6939,36 +6939,17 @@ const handleInputChange = (field, value) => {
                                             <Tag 
                                               key={idx}
                                               style={{ 
-                                                cursor: 'pointer',
+                                                cursor: 'default',
                                                 background: 'transparent',
                                                 display: 'block',
                                                 marginBottom: '4px'
                                               }}
-                                              onClick={() => {
-                                                // Create a new mobile object with the correct structure
-                                                const newMobile = {
-                                                  mobile: phoneStr,
-                                                  is_primary: false,
-                                                  type: 'personal'
-                                                };
-                                                
-                                                // Add to contactMobiles array
-                                                if (!formData.contactMobiles) {
-                                                  handleInputChange('contactMobiles', [newMobile]);
-                                                } else {
-                                                  // Check if this mobile already exists
-                                                  const exists = formData.contactMobiles.some(m => m.mobile === phoneStr);
-                                                  if (!exists) {
-                                                    handleInputChange('contactMobiles', [...formData.contactMobiles, newMobile]);
-                                                  }
-                                                }
-                                              }}
+                                              // Click functionality disabled for future modal implementation
                                             >
                                               <span>{phoneStr}</span>
                                               {phoneObj && typeof phoneObj === 'object' && phoneObj.is_primary && (
                                                 <span title="Primary Phone" style={{ fontSize: '10px', marginLeft: '3px' }}>★</span>
                                               )}
-                                              <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '5px' }}>→</span>
                                             </Tag>
                                           );
                                         })
@@ -6976,32 +6957,13 @@ const handleInputChange = (field, value) => {
                                         <Tag 
                                           style={{ 
                                             background: 'transparent', 
-                                            cursor: 'pointer',
+                                            cursor: 'default',
                                             display: 'block',
                                             marginBottom: '4px'
                                           }}
-                                          onClick={() => {
-                                            // Create a new mobile object with the correct structure
-                                            const newMobile = {
-                                              mobile: airtableContact.phone_number_1,
-                                              is_primary: false,
-                                              type: 'personal'
-                                            };
-                                            
-                                            // Add to contactMobiles array
-                                            if (!formData.contactMobiles) {
-                                              handleInputChange('contactMobiles', [newMobile]);
-                                            } else {
-                                              // Check if this mobile already exists
-                                              const exists = formData.contactMobiles.some(m => m.mobile === airtableContact.phone_number_1);
-                                              if (!exists) {
-                                                handleInputChange('contactMobiles', [...formData.contactMobiles, newMobile]);
-                                              }
-                                            }
-                                          }}
+                                          // Click functionality disabled for future modal implementation
                                         >
                                           <span>{airtableContact.phone_number_1}</span>
-                                          <span style={{ color: '#00ff00', fontSize: '12px', marginLeft: '5px' }}>→</span>
                                         </Tag>
                                       ) : (
                                         '-'
@@ -7126,7 +7088,7 @@ const handleInputChange = (field, value) => {
                                           border: 'none'
                                         }}
                                       >
-                                        <span style={{ fontSize: '16px' }}>+ Add Mobile</span>
+                                        <span style={{ fontSize: '14px' }}>+ Add Mobile</span>
                                       </Tag>
                                     </TagsContainer>
                                   </td>
@@ -7145,9 +7107,34 @@ const handleInputChange = (field, value) => {
                                   </td>
                                   <td style={{ padding: '12px 15px' }}>
                                     <div 
-                                      onClick={() => {
+                                      onClick={async () => {
                                         if (airtableContact && airtableContact.keep_in_touch) {
-                                          handleInputChange('keepInTouch', airtableContact.keep_in_touch);
+                                          const newValue = airtableContact.keep_in_touch;
+                                          
+                                          // Update formData
+                                          handleInputChange('keepInTouch', newValue);
+                                          
+                                          // Update contact object
+                                          const updatedContact = {...contact, keep_in_touch_frequency: newValue};
+                                          setContact(updatedContact);
+                                          
+                                          // Save to database
+                                          try {
+                                            const { error } = await supabase
+                                              .from('contacts')
+                                              .update({ keep_in_touch_frequency: newValue })
+                                              .eq('contact_id', contact.contact_id);
+                                              
+                                            if (error) {
+                                              console.error('Error updating keep_in_touch_frequency:', error);
+                                              toast.error('Failed to update keep in touch frequency');
+                                            } else {
+                                              toast.success('Keep in touch frequency updated');
+                                            }
+                                          } catch (err) {
+                                            console.error('Exception updating keep_in_touch_frequency:', err);
+                                            toast.error('Failed to update keep in touch frequency');
+                                          }
                                         }
                                       }}
                                       style={{ 
@@ -7241,9 +7228,34 @@ const handleInputChange = (field, value) => {
                                   </td>
                                   <td style={{ padding: '12px 15px' }}>
                                     <div 
-                                      onClick={() => {
+                                      onClick={async () => {
                                         if (airtableContact && airtableContact.category) {
-                                          handleInputChange('category', airtableContact.category);
+                                          const newValue = airtableContact.category;
+                                          
+                                          // Update formData
+                                          handleInputChange('category', newValue);
+                                          
+                                          // Update contact object
+                                          const updatedContact = {...contact, category: newValue};
+                                          setContact(updatedContact);
+                                          
+                                          // Save to database
+                                          try {
+                                            const { error } = await supabase
+                                              .from('contacts')
+                                              .update({ category: newValue })
+                                              .eq('contact_id', contact.contact_id);
+                                              
+                                            if (error) {
+                                              console.error('Error updating category:', error);
+                                              toast.error('Failed to update category');
+                                            } else {
+                                              toast.success('Category updated');
+                                            }
+                                          } catch (err) {
+                                            console.error('Exception updating category:', err);
+                                            toast.error('Failed to update category');
+                                          }
                                         }
                                       }}
                                       style={{ 
@@ -8114,10 +8126,12 @@ const handleInputChange = (field, value) => {
                                         <span 
                                           key={star}
                                           style={{ 
-                                            color: (contact.score || 0) >= star ? '#FFD700' : '#555',
+                                            color: (contact.score || 0) >= star ? '#00ff00' : '#333',
                                             fontSize: '16px',
                                             marginRight: '3px',
-                                            cursor: 'default'
+                                            cursor: 'default',
+                                            WebkitTextStroke: (contact.score || 0) >= star ? 'none' : '1px #555',
+                                            textShadow: 'none'
                                           }}
                                         >
                                           ★
@@ -8127,9 +8141,32 @@ const handleInputChange = (field, value) => {
                                   </td>
                                   <td style={{ padding: '12px 15px' }}>
                                     <div 
-                                      onClick={() => {
+                                      onClick={async () => {
                                         if (airtableContact && airtableContact.rating) {
-                                          handleInputChange('score', airtableContact.rating);
+                                          const newRating = airtableContact.rating;
+                                          
+                                          // Update formData with the Airtable rating
+                                          handleInputChange('score', newRating);
+                                          
+                                          // Save to database
+                                          try {
+                                            const { error } = await supabase
+                                              .from('contacts')
+                                              .update({ score: newRating })
+                                              .eq('contact_id', contact.contact_id);
+                                              
+                                            if (error) {
+                                              console.error('Error updating rating:', error);
+                                              toast.error('Failed to update rating');
+                                            } else {
+                                              toast.success('Rating updated');
+                                              // Update the contact with the new rating
+                                              setContact({...contact, score: newRating});
+                                            }
+                                          } catch (err) {
+                                            console.error('Exception updating rating:', err);
+                                            toast.error('Failed to update rating');
+                                          }
                                         }
                                       }}
                                       style={{ 
@@ -8145,9 +8182,11 @@ const handleInputChange = (field, value) => {
                                           <span 
                                             key={star}
                                             style={{ 
-                                              color: (airtableContact?.rating || 0) >= star ? '#FFD700' : '#555',
+                                              color: (airtableContact?.rating || 0) >= star ? '#00ff00' : '#333',
                                               fontSize: '16px',
-                                              marginRight: '3px'
+                                              marginRight: '3px',
+                                              WebkitTextStroke: (airtableContact?.rating || 0) >= star ? 'none' : '1px #555',
+                                              textShadow: 'none'
                                             }}
                                           >
                                             ★
@@ -8209,10 +8248,12 @@ const handleInputChange = (field, value) => {
                                             }
                                           }}
                                           style={{ 
-                                            color: (formData.score !== undefined ? formData.score : contact.score || 0) >= star ? '#FFD700' : '#555',
+                                            color: (formData.score !== undefined ? formData.score : contact.score || 0) >= star ? '#00ff00' : '#333',
                                             fontSize: '16px',
                                             marginRight: '3px',
-                                            cursor: 'pointer'
+                                            cursor: 'pointer',
+                                            WebkitTextStroke: (formData.score !== undefined ? formData.score : contact.score || 0) >= star ? 'none' : '1px #555',
+                                            textShadow: 'none'
                                           }}
                                         >
                                           ★
@@ -8226,102 +8267,48 @@ const handleInputChange = (field, value) => {
                                 <tr style={{ borderBottom: '1px solid #333' }}>
                                   <td style={{ padding: '12px 15px', color: '#999' }}>Description</td>
                                   <td style={{ padding: '12px 15px' }}>
-                                    {contact.isEditingDescription ? (
-                                      <textarea 
-                                        value={contact.description || ''}
-                                        onChange={(e) => {
-                                          // Update the contact display value
-                                          const updatedContact = {...contact, description: e.target.value};
-                                          setContact(updatedContact);
-                                        }}
-                                        onKeyDown={async (e) => {
-                                          if (e.key === 'Enter' && e.ctrlKey) {
-                                            // Confirm edit on Ctrl+Enter
-                                            const updatedContact = {...contact, isEditingDescription: false};
-                                            setContact(updatedContact);
-                                            
-                                            // Save to Supabase immediately
-                                            try {
-                                              const { data, error } = await supabase
-                                                .from('contacts')
-                                                .update({ description: contact.description })
-                                                .eq('contact_id', contact.contact_id);
-                                                
-                                              if (error) {
-                                                console.error('Error saving description:', error);
-                                                toast.error('Failed to save description');
-                                              } else {
-                                                toast.success('Description saved successfully');
-                                              }
-                                            } catch (err) {
-                                              console.error('Exception saving description:', err);
-                                              toast.error('Failed to save description');
-                                            }
-                                          }
-                                        }}
-                                        onBlur={async () => {
-                                          // Confirm edit on blur
-                                          const updatedContact = {...contact, isEditingDescription: false};
-                                          setContact(updatedContact);
-                                          
-                                          // Save to Supabase immediately
-                                          try {
-                                            const { data, error } = await supabase
-                                              .from('contacts')
-                                              .update({ description: contact.description })
-                                              .eq('contact_id', contact.contact_id);
-                                              
-                                            if (error) {
-                                              console.error('Error saving description:', error);
-                                              toast.error('Failed to save description');
-                                            } else {
-                                              toast.success('Description saved successfully');
-                                            }
-                                          } catch (err) {
-                                            console.error('Exception saving description:', err);
-                                            toast.error('Failed to save description');
-                                          }
-                                        }}
-                                        autoFocus
-                                        style={{ 
-                                          width: '100%',
-                                          background: 'transparent',
-                                          border: 'none',
-                                          padding: '8px 12px',
-                                          color: '#fff',
-                                          minHeight: '80px',
-                                          resize: 'vertical'
-                                        }}
-                                      />
-                                    ) : (
-                                      <div 
-                                        onClick={() => {
-                                          // Start editing
-                                          const updatedContact = {...contact, isEditingDescription: true};
-                                          setContact(updatedContact);
-                                        }}
-                                        style={{ 
-                                          cursor: 'pointer',
-                                          padding: '8px 12px',
-                                          display: 'flex',
-                                          alignItems: 'flex-start'
-                                        }}
-                                      >
-                                        <div>
-                                          {contact.description ? 
-                                            (contact.isDescriptionExpanded ? 
-                                              contact.description : 
-                                              `${contact.description.substring(0, 50)}${contact.description.length > 50 ? '...' : ''}`) 
-                                            : '-'}
-                                        </div>
+                                    <div style={{ 
+                                      padding: '8px 12px',
+                                      display: 'flex',
+                                      alignItems: 'flex-start'
+                                    }}>
+                                      <div>
+                                        {contact.description ? 
+                                          (contact.isDescriptionExpanded ? 
+                                            contact.description : 
+                                            `${contact.description.substring(0, 50)}${contact.description.length > 50 ? '...' : ''}`) 
+                                          : '-'}
                                       </div>
-                                    )}
+                                    </div>
                                   </td>
                                   <td style={{ padding: '12px 15px' }}>
                                     <div 
-                                      onClick={() => {
+                                      onClick={async () => {
                                         if (airtableContact && airtableContact.description) {
-                                          handleInputChange('description', airtableContact.description);
+                                          const newDescription = airtableContact.description;
+                                          
+                                          // Update formData with the Airtable description
+                                          handleInputChange('description', newDescription);
+                                          
+                                          // Save to database
+                                          try {
+                                            const { error } = await supabase
+                                              .from('contacts')
+                                              .update({ description: newDescription })
+                                              .eq('contact_id', contact.contact_id);
+                                              
+                                            if (error) {
+                                              console.error('Error updating description:', error);
+                                              toast.error('Failed to update description');
+                                            } else {
+                                              toast.success('Description updated');
+                                              // Update the contact with the new description
+                                              setContact({...contact, description: newDescription});
+                                            }
+                                          } catch (err) {
+                                            console.error('Exception updating description:', err);
+                                            toast.error('Failed to update description');
+                                          }
                                         }
                                       }}
                                       style={{ 
@@ -8732,7 +8719,32 @@ const handleInputChange = (field, value) => {
                                           </div>
                                           <span 
                                             style={{ color: '#00ff00', fontSize: '12px', marginLeft: '10px', cursor: 'pointer' }}
-                                            onClick={() => handleInputChange('linkedin', airtableContact.linkedin || airtableContact.linkedin_normalised || '')}
+                                            onClick={async () => {
+                                              const newLinkedIn = airtableContact.linkedin || airtableContact.linkedin_normalised || '';
+                                              
+                                              // Update formData with the Airtable LinkedIn
+                                              handleInputChange('linkedin', newLinkedIn);
+                                              
+                                              // Save to database
+                                              try {
+                                                const { error } = await supabase
+                                                  .from('contacts')
+                                                  .update({ linkedin: newLinkedIn })
+                                                  .eq('contact_id', contact.contact_id);
+                                                  
+                                                if (error) {
+                                                  console.error('Error updating LinkedIn:', error);
+                                                  toast.error('Failed to update LinkedIn');
+                                                } else {
+                                                  toast.success('LinkedIn updated');
+                                                  // Update the contact with the new LinkedIn
+                                                  setContact({...contact, linkedin: newLinkedIn});
+                                                }
+                                              } catch (err) {
+                                                console.error('Exception updating LinkedIn:', err);
+                                                toast.error('Failed to update LinkedIn');
+                                              }
+                                            }}
                                           >
                                             → 
                                           </span>
@@ -8749,15 +8761,57 @@ const handleInputChange = (field, value) => {
                                           type="text"
                                           value={formData.linkedin !== undefined ? formData.linkedin : (contact.linkedin || '')}
                                           onChange={(e) => handleInputChange('linkedin', e.target.value)}
-                                          onKeyDown={(e) => {
+                                          onKeyDown={async (e) => {
                                             if (e.key === 'Enter') {
+                                              const newLinkedIn = formData.linkedin !== undefined ? formData.linkedin : contact.linkedin || '';
                                               const updatedFormData = {...formData, isEditingLinkedin: false};
                                               setFormData(updatedFormData);
+                                              
+                                              // Save to database
+                                              try {
+                                                const { error } = await supabase
+                                                  .from('contacts')
+                                                  .update({ linkedin: newLinkedIn })
+                                                  .eq('contact_id', contact.contact_id);
+                                                  
+                                                if (error) {
+                                                  console.error('Error updating LinkedIn:', error);
+                                                  toast.error('Failed to update LinkedIn');
+                                                } else {
+                                                  toast.success('LinkedIn updated');
+                                                  // Update the contact with the new LinkedIn
+                                                  setContact({...contact, linkedin: newLinkedIn});
+                                                }
+                                              } catch (err) {
+                                                console.error('Exception updating LinkedIn:', err);
+                                                toast.error('Failed to update LinkedIn');
+                                              }
                                             }
                                           }}
-                                          onBlur={() => {
+                                          onBlur={async () => {
+                                            const newLinkedIn = formData.linkedin !== undefined ? formData.linkedin : contact.linkedin || '';
                                             const updatedFormData = {...formData, isEditingLinkedin: false};
                                             setFormData(updatedFormData);
+                                            
+                                            // Save to database
+                                            try {
+                                              const { error } = await supabase
+                                                .from('contacts')
+                                                .update({ linkedin: newLinkedIn })
+                                                .eq('contact_id', contact.contact_id);
+                                                
+                                              if (error) {
+                                                console.error('Error updating LinkedIn:', error);
+                                                toast.error('Failed to update LinkedIn');
+                                              } else {
+                                                toast.success('LinkedIn updated');
+                                                // Update the contact with the new LinkedIn
+                                                setContact({...contact, linkedin: newLinkedIn});
+                                              }
+                                            } catch (err) {
+                                              console.error('Exception updating LinkedIn:', err);
+                                              toast.error('Failed to update LinkedIn');
+                                            }
                                           }}
                                           autoFocus
                                           style={{ 
