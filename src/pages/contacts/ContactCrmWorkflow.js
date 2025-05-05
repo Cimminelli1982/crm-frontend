@@ -8877,7 +8877,21 @@ const handleInputChange = (field, value) => {
 
                                 {/* Job Role Row */}
                                 <tr style={{ borderBottom: '1px solid #333' }}>
-                                  <td style={{ padding: '12px 15px', color: '#999' }}>Job Role</td>
+                                  <td style={{ padding: '12px 15px', color: '#999' }}>
+                                    <a 
+                                      onClick={() => setShowLinkedInPreviewModal(true)}
+                                      style={{ 
+                                        color: '#999', 
+                                        textDecoration: 'none', 
+                                        display: 'flex', 
+                                        alignItems: 'center',
+                                        cursor: 'pointer' 
+                                      }}
+                                    >
+                                      <span>Job Role</span>
+                                      <span style={{ marginLeft: '5px', fontSize: '10px' }}>↗</span>
+                                    </a>
+                                  </td>
                                   <td style={{ padding: '12px 15px' }}>
                                     {contact.isEditingJobRole ? (
                                       <Input 
