@@ -1490,12 +1490,34 @@ const ContactCrmWorkflow = () => {
         setContactCompanies(formattedCompanies);
         setCompaniesLoaded(true);
         
+        // Update contact and formData with the loaded companies
+        setContact(prevContact => ({
+          ...prevContact,
+          companies: formattedCompanies
+        }));
+        
+        setFormData(prevFormData => ({
+          ...prevFormData,
+          companies: formattedCompanies
+        }));
+        
         // Load tags after a delay
         setTimeout(() => loadCompanyTags(), 100);
       } else {
         console.log('No companies found for this contact');
         setContactCompanies([]);
         setCompaniesLoaded(true);
+        
+        // Clear companies in contact and formData
+        setContact(prevContact => ({
+          ...prevContact,
+          companies: []
+        }));
+        
+        setFormData(prevFormData => ({
+          ...prevFormData,
+          companies: []
+        }));
       }
     } catch (err) {
       console.error('Error in loadContactCompanies:', err);
@@ -8893,77 +8915,46 @@ const handleInputChange = (field, value) => {
                                     </a>
                                   </td>
                                   <td style={{ padding: '12px 15px' }}>
-                                    {contact.isEditingJobRole ? (
-                                      <Input 
-                                        type="text"
-                                        value={contact.job_role || ''}
-                                        onChange={(e) => {
-                                          // Update the contact display value
-                                          const updatedContact = {...contact, job_role: e.target.value};
-                                          setContact(updatedContact);
-                                        }}
-                                        onKeyDown={(e) => {
-                                          if (e.key === 'Enter') {
-                                            // Confirm edit on Enter
-                                            const updatedContact = {...contact, isEditingJobRole: false};
-                                            setContact(updatedContact);
-                                          }
-                                        }}
-                                        onBlur={() => {
-                                          // Confirm edit on blur
-                                          const updatedContact = {...contact, isEditingJobRole: false};
-                                          setContact(updatedContact);
-                                        }}
-                                        autoFocus
-                                        style={{ 
-                                          width: '100%',
-                                          background: 'transparent',
-                                          border: 'none',
-                                          padding: '8px 12px',
-                                          color: '#fff'
-                                        }}
-                                      />
-                                    ) : (
-                                      <div 
-                                        onClick={(e) => {
-                                          // If they click the arrow, set the value in Supabase Final
-                                          if (e.target.tagName === 'SPAN' && e.target.dataset.action === 'transfer') {
-                                            handleInputChange('jobRole', contact.job_role || '');
-                                          } else {
-                                            // Otherwise, start editing
-                                            const updatedContact = {...contact, isEditingJobRole: true};
-                                            setContact(updatedContact);
-                                          }
-                                        }}
-                                        style={{ 
-                                          cursor: 'pointer',
-                                          padding: '8px 12px',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'space-between'
-                                        }}
-                                      >
-                                        <span>{contact.job_role || '-'}</span>
-                                        <span 
-                                          data-action="transfer"
-                                          style={{ 
-                                            color: '#00ff00', 
-                                            fontSize: '12px', 
-                                            marginLeft: '10px',
-                                            cursor: 'pointer'
-                                          }}
-                                          title="Transfer to Supabase Final"
-                                        >
-                                          → 
-                                        </span>
-                                      </div>
-                                    )}
+                                    <div 
+                                      style={{ 
+                                        padding: '8px 12px',
+                                        display: 'flex',
+                                        alignItems: 'center'
+                                      }}
+                                    >
+                                      <span>{contact.job_role || '-'}</span>
+                                    </div>
                                   </td>
                                   <td style={{ padding: '12px 15px' }}>
                                     <div 
-                                      onClick={() => {
+                                      onClick={async () => {
                                         if (airtableContact && airtableContact.job_role) {
+                                          // Update the form data
                                           handleInputChange('jobRole', airtableContact.job_role);
+                                          
+                                          // Update directly in the database
+                                          try {
+                                            const { error } = await supabase
+                                              .from('contacts')
+                                              .update({ job_role: airtableContact.job_role })
+                                              .eq('contact_id', contact.contact_id);
+                                              
+                                            if (error) {
+                                              console.error('Error updating job role:', error);
+                                              toast.error('Failed to update job role');
+                                            } else {
+                                              toast.success('Job role updated from Airtable');
+                                              
+                                              // Update the local contact object
+                                              setContact(prev => ({
+                                                ...prev,
+                                                job_role: airtableContact.job_role
+                                              }));
+                                            }
+                                          } catch (err) {
+                                            console.error('Exception updating job role:', err);
+                                            toast.error('An error occurred while updating job role');
+                                          }
                                         }
                                       }}
                                       style={{ 
@@ -8988,15 +8979,63 @@ const handleInputChange = (field, value) => {
                                         type="text"
                                         value={formData.jobRole !== undefined ? formData.jobRole : (contact.job_role || '')}
                                         onChange={(e) => handleInputChange('jobRole', e.target.value)}
-                                        onKeyDown={(e) => {
+                                        onKeyDown={async (e) => {
                                           if (e.key === 'Enter') {
-                                            // Confirm edit on Enter
+                                            // Immediately save to database
+                                            try {
+                                              const { error } = await supabase
+                                                .from('contacts')
+                                                .update({ job_role: formData.jobRole })
+                                                .eq('contact_id', contact.contact_id);
+                                                
+                                              if (error) {
+                                                console.error('Error updating job role:', error);
+                                                toast.error('Failed to update job role');
+                                              } else {
+                                                toast.success('Job role updated successfully');
+                                                
+                                                // Update the local contact object
+                                                setContact(prev => ({
+                                                  ...prev,
+                                                  job_role: formData.jobRole
+                                                }));
+                                              }
+                                            } catch (err) {
+                                              console.error('Exception updating job role:', err);
+                                              toast.error('An error occurred while updating job role');
+                                            }
+                                            
+                                            // Exit edit mode
                                             const updatedFormData = {...formData, isEditingJobRole: false};
                                             setFormData(updatedFormData);
                                           }
                                         }}
-                                        onBlur={() => {
-                                          // Confirm edit on blur
+                                        onBlur={async () => {
+                                          // Immediately save to database on blur
+                                          try {
+                                            const { error } = await supabase
+                                              .from('contacts')
+                                              .update({ job_role: formData.jobRole })
+                                              .eq('contact_id', contact.contact_id);
+                                              
+                                            if (error) {
+                                              console.error('Error updating job role:', error);
+                                              toast.error('Failed to update job role');
+                                            } else {
+                                              toast.success('Job role updated successfully');
+                                              
+                                              // Update the local contact object
+                                              setContact(prev => ({
+                                                ...prev,
+                                                job_role: formData.jobRole
+                                              }));
+                                            }
+                                          } catch (err) {
+                                            console.error('Exception updating job role:', err);
+                                            toast.error('An error occurred while updating job role');
+                                          }
+                                          
+                                          // Exit edit mode
                                           const updatedFormData = {...formData, isEditingJobRole: false};
                                           setFormData(updatedFormData);
                                         }}
@@ -9036,28 +9075,11 @@ const handleInputChange = (field, value) => {
 <tr style={{ borderBottom: '1px solid #333' }}>
   <td style={{ padding: '12px 15px', color: '#999' }}>Companies</td>
 
-  {/* 1. Current companies (formData first, then contact) */}
+  {/* 1. Current companies from contactCompanies state */}
   <td style={{ padding: '12px 15px' }}>
     <TagsContainer>
-      {formData.companies && formData.companies.length > 0 ? (
-        formData.companies.map((comp, idx) => (
-          <Tag
-            key={`formdata-company-${idx}`}
-            style={{
-              background: 'transparent',
-              border: '1px solid #00ff00',
-              borderRadius: '4px',
-              padding: '4px 8px',
-              margin: '2px',
-              display: 'inline-flex',
-              alignItems: 'center',
-            }}
-          >
-            <span>{comp.name}</span>
-          </Tag>
-        ))
-      ) : contact.companies && contact.companies.length > 0 ? (
-        contact.companies.map((comp, idx) => (
+      {contactCompanies && contactCompanies.length > 0 ? (
+        contactCompanies.map((comp, idx) => (
           <Tag
             key={`contact-company-${idx}`}
             style={{
@@ -9121,7 +9143,11 @@ const handleInputChange = (field, value) => {
                   if (!existingCompany) {
                     const { data: newCompany, error: createError } = await supabase
                       .from('companies')
-                      .insert({ name: trimmedCompany })
+                      .insert({ 
+                        name: trimmedCompany,
+                        category: 'Inbox' // Using the default value from the schema
+                        // Note: created_by and last_modified_by have default values and will be set by the database
+                      })
                       .select('company_id')
                       .single();
 
@@ -9203,13 +9229,13 @@ const handleInputChange = (field, value) => {
     </TagsContainer>
   </td>
 
-  {/* 3. Editable list with remove + Add Company */}
+  {/* 3. Editable list with remove + Add Company - Using contactCompanies state */}
   <td style={{ padding: '12px 15px' }}>
     <TagsContainer>
-      {formData.companies && formData.companies.length > 0 ? (
-        formData.companies.map((comp, idx) => (
+      {contactCompanies && contactCompanies.length > 0 ? (
+        contactCompanies.map((comp, idx) => (
           <Tag
-            key={`formdata-company-edit-${idx}`}
+            key={`contact-company-edit-${idx}`}
             style={{
               background: 'transparent',
               border: '1px solid #00ff00',
@@ -9224,10 +9250,6 @@ const handleInputChange = (field, value) => {
             <span
               onClick={async () => {
                 try {
-                  /* Remove from formData */
-                  const updatedCompanies = formData.companies.filter((_, i) => i !== idx);
-                  handleInputChange('companies', updatedCompanies);
-
                   /* Remove link in DB */
                   const { error } = await supabase
                     .from('contact_companies')
@@ -9239,16 +9261,15 @@ const handleInputChange = (field, value) => {
                     console.error('Error removing company from contact:', error);
                     toast.error('Failed to remove company');
                   } else {
-                    /* Update contact state */
-                    const updatedContact = { ...contact };
-                    if (updatedContact.companies) {
-                      updatedContact.companies = updatedContact.companies.filter(
-                        c => c.company_id !== comp.company_id
-                      );
-                      setContact(updatedContact);
-                    }
-
+                    /* Update contactCompanies state */
+                    setContactCompanies(prevCompanies => 
+                      prevCompanies.filter(c => c.company_id !== comp.company_id)
+                    );
+                    
                     toast.success(`Company "${comp.name}" removed`);
+                    
+                    /* Refresh companies list */
+                    setTimeout(() => loadContactCompanies(), 300);
                   }
                 } catch (err) {
                   console.error('Exception removing company:', err);
