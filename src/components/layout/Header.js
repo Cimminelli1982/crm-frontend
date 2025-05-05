@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
+import logo from '../../logo.jpeg'; // Import the new logo
 
 const HeaderContainer = styled.header`
   background-color: #ffffff;
@@ -15,6 +16,14 @@ const HeaderContainer = styled.header`
 const Logo = styled.div`
   font-size: 1.5rem;
   font-weight: bold;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  
+  img {
+    height: 40px;
+    width: auto;
+  }
 `;
 
 const NavMenu = styled.nav`
@@ -38,8 +47,9 @@ const Header = () => {
   return (
     <HeaderContainer>
       <Logo>
-        <Link to="/" style={{ textDecoration: 'none', color: '#0070f3' }}>
-          Contact Dashboard
+        <Link to="/" style={{ textDecoration: 'none', color: '#0070f3', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <img src={logo} alt="Cimminnelli Holding" />
+          Cimminnelli Holding CRM
         </Link>
       </Logo>
       <NavMenu>
