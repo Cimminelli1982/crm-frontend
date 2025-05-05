@@ -11,12 +11,12 @@ const ModalHeader = styled.div`
   align-items: center;
   margin-bottom: 15px;
   padding-bottom: 15px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #333;
 
   h2 {
     margin: 0;
     font-size: 1.25rem;
-    color: #111827;
+    color: #00ff00;
     font-weight: 600;
   }
 
@@ -24,13 +24,12 @@ const ModalHeader = styled.div`
     background: none;
     border: none;
     cursor: pointer;
-    color: #6b7280;
+    color: #ffffff;
     padding: 4px;
     border-radius: 4px;
     
     &:hover {
-      color: #1f2937;
-      background-color: #f3f4f6;
+      color: #ff5555;
     }
   }
 `;
@@ -42,8 +41,11 @@ const Section = styled.div`
 const SectionTitle = styled.h3`
   font-size: 16px;
   font-weight: bold;
-  color: #374151;
+  color: #00ff00;
   margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 `;
 
 const CitiesList = styled.div`
@@ -59,9 +61,10 @@ const CityTag = styled.div`
   display: inline-flex;
   align-items: center;
   padding: 4px 8px;
-  background-color: ${props => props.color || '#e0f2fe'};
-  color: ${props => props.textColor || '#0369a1'};
-  border-radius: 16px;
+  background-color: #222;
+  color: #00ff00;
+  border: 1px solid #00ff00;
+  border-radius: 4px;
   font-size: 0.875rem;
   gap: 6px;
   max-width: 200px;
@@ -78,7 +81,7 @@ const CityTag = styled.div`
     border: none;
     padding: 2px;
     cursor: pointer;
-    color: inherit;
+    color: #00ff00;
     opacity: 0.7;
     display: flex;
     align-items: center;
@@ -87,6 +90,7 @@ const CityTag = styled.div`
 
     &:hover {
       opacity: 1;
+      color: #ff5555;
     }
   }
 `;
@@ -102,33 +106,34 @@ const SearchIcon = styled.div`
   left: 10px;
   top: 50%;
   transform: translateY(-50%);
-  color: #6b7280;
+  color: #999;
 `;
 
 const SearchInput = styled.input`
   width: 100%;
   padding: 10px 10px 10px 35px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
+  border: 1px solid #444;
+  background-color: #222;
+  color: #eee;
+  border-radius: 4px;
   font-size: 0.875rem;
   outline: none;
   transition: border-color 0.2s;
 
   &:focus {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: #00ff00;
   }
 `;
 
 const SuggestionsContainer = styled.div`
   position: relative;
   margin-top: 5px;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
+  border: 1px solid #444;
+  border-radius: 4px;
   max-height: 200px;
   overflow-y: auto;
-  background-color: white;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  background-color: #222;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
   z-index: 10;
 `;
 
@@ -140,18 +145,19 @@ const SuggestionItem = styled.button`
   background: none;
   cursor: pointer;
   font-size: 0.875rem;
-  color: #374151;
+  color: #eee;
   transition: background-color 0.2s;
   display: flex;
   align-items: center;
   justify-content: space-between;
 
   &:hover {
-    background-color: #f3f4f6;
+    background-color: #333;
+    color: #00ff00;
   }
 
   &:not(:last-child) {
-    border-bottom: 1px solid #f3f4f6;
+    border-bottom: 1px solid #333;
   }
 `;
 
@@ -160,17 +166,17 @@ const NewCityButton = styled.button`
   text-align: left;
   padding: 8px 12px;
   border: none;
-  background-color: #f3f4f6;
+  background-color: #333;
   cursor: pointer;
   font-size: 0.875rem;
-  color: #1f2937;
+  color: #00ff00;
   display: flex;
   align-items: center;
   gap: 5px;
   transition: background-color 0.2s;
 
   &:hover {
-    background-color: #e5e7eb;
+    background-color: #444;
   }
 `;
 
@@ -205,24 +211,27 @@ const Button = styled.button`
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 
   &.primary {
-    background-color: #3b82f6;
-    color: white;
+    background-color: #00ff00;
+    color: black;
     border: none;
 
     &:hover {
-      background-color: #2563eb;
+      background-color: #00dd00;
     }
   }
 
   &.secondary {
-    background-color: white;
-    color: #4b5563;
-    border: 1px solid #d1d5db;
+    background-color: transparent;
+    color: #ccc;
+    border: 1px solid #555;
 
     &:hover {
-      background-color: #f9fafb;
+      background-color: #333;
     }
   }
 
@@ -234,7 +243,7 @@ const Button = styled.button`
 
 // Helper function to get city colors
 const getCityColor = () => {
-  return { bg: '#e0f2fe', text: '#0369a1' }; // Sky blue
+  return { bg: '#222', text: '#00ff00', border: '#00ff00' }; // Black with fluorescent green
 };
 
 const CityModal = ({ isOpen, onRequestClose, contact, onCityAdded, onCityRemoved }) => {
@@ -525,15 +534,17 @@ const CityModal = ({ isOpen, onRequestClose, contact, onCityAdded, onCityRemoved
           marginRight: '-50%',
           transform: 'translate(-50%, -50%)',
           padding: '20px',
-          border: 'none',
-          borderRadius: '0.5rem',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+          border: '1px solid #333',
+          backgroundColor: '#121212',
+          color: '#e0e0e0',
+          borderRadius: '8px',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.6)',
           maxWidth: '500px',
           width: '90%',
           minHeight: '360px'
         },
         overlay: {
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          backgroundColor: 'rgba(0, 0, 0, 0.75)',
           zIndex: 1000
         }
       }}
