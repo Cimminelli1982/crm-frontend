@@ -12094,58 +12094,230 @@ const handleInputChange = (field, value) => {
             handleInputChange('jobRole', data.jobRole);
           }
           
-          // Save to database all the extended information
           try {
-            // Prepare the data to update in contacts table
-            const updateData = {
+            // Step 1: Update job title in contacts database
+            const contactUpdateData = {
               job_role: data.jobRole || null,
               city: data.city || null
             };
             
-            // Update the contact record
-            const { error } = await supabase
+            const { error: contactUpdateError } = await supabase
               .from('contacts')
-              .update(updateData)
+              .update(contactUpdateData)
               .eq('contact_id', contact.contact_id);
               
-            if (error) {
-              console.error('Error updating contact data:', error);
-              toast.error('Failed to save job information');
-            } else {
-              // Update the local contact object
-              setContact(prev => ({
-                ...prev,
-                job_role: data.jobRole || prev.job_role,
-                city: data.city || prev.city
-              }));
+            if (contactUpdateError) {
+              console.error('Error updating contact data:', contactUpdateError);
+              toast.error('Failed to update contact information');
+              return;
+            }
+            
+            // Update the local contact object
+            setContact(prev => ({
+              ...prev,
+              job_role: data.jobRole || prev.job_role,
+              city: data.city || prev.city
+            }));
+            
+            // Step 2: Create or update company if company data is provided
+            if (data.company) {
+              // Extract domain from website if available
+              let companyDomain = null;
+              if (data.companyWebsite) {
+                try {
+                  const url = new URL(data.companyWebsite);
+                  companyDomain = url.hostname.replace('www.', '');
+                } catch (e) {
+                  console.log('Invalid URL format, using raw website value');
+                  companyDomain = data.companyWebsite;
+                }
+              }
               
-              // If company is provided, we would typically handle adding it
-              if (data.company) {
-                toast.success(`Job information extracted: ${data.jobRole} at ${data.company}`);
+              // Search for existing company by domain if available, otherwise by name
+              const searchQuery = companyDomain 
+                ? supabase.from('companies').select('*').ilike('website', `%${companyDomain}%`)
+                : supabase.from('companies').select('*').ilike('name', data.company);
+              
+              const { data: existingCompanies, error: companySearchError } = await searchQuery;
+              
+              if (companySearchError) {
+                console.error('Error searching for company:', companySearchError);
+                toast.error('Error checking for existing company');
+                return;
+              }
+              
+              let companyId;
+              
+              // If company exists, update it
+              if (existingCompanies && existingCompanies.length > 0) {
+                const existingCompany = existingCompanies[0];
+                companyId = existingCompany.company_id;
                 
-                // Here you could add code to create or associate the company
-                // The following would be pseudocode as the actual implementation depends on your app's logic:
-                /*
-                createOrUpdateCompany({
+                // Only update if new data is provided
+                const companyUpdateData = {};
+                if (data.companyDescription && !existingCompany.description) {
+                  companyUpdateData.description = data.companyDescription;
+                }
+                
+                if (data.companyWebsite && !existingCompany.website) {
+                  companyUpdateData.website = data.companyWebsite;
+                }
+                
+                // Only update if we have new data
+                if (Object.keys(companyUpdateData).length > 0) {
+                  const { error: companyUpdateError } = await supabase
+                    .from('companies')
+                    .update(companyUpdateData)
+                    .eq('company_id', companyId);
+                    
+                  if (companyUpdateError) {
+                    console.error('Error updating company:', companyUpdateError);
+                    toast.error('Failed to update company information');
+                    return;
+                  }
+                }
+                
+                console.log('Updated existing company:', existingCompany.name);
+              } 
+              // Create new company if it doesn't exist
+              else {
+                const newCompany = {
                   name: data.company,
-                  website: data.companyWebsite,
-                  description: data.companyDescription
-                });
-                */
-              } else {
-                toast.success('Contact information updated');
+                  website: data.companyWebsite || null,
+                  description: data.companyDescription || null,
+                  created_by: 'API',
+                  last_modified_by: 'API'
+                };
+                
+                const { data: insertedCompany, error: companyInsertError } = await supabase
+                  .from('companies')
+                  .insert(newCompany)
+                  .select();
+                  
+                if (companyInsertError) {
+                  console.error('Error creating company:', companyInsertError);
+                  toast.error('Failed to create company');
+                  return;
+                }
+                
+                if (insertedCompany && insertedCompany.length > 0) {
+                  companyId = insertedCompany[0].company_id;
+                  console.log('Created new company:', data.company);
+                } else {
+                  console.error('Failed to get company ID after creation');
+                  return;
+                }
               }
               
-              // Handle keywords/tags if your app supports them
-              if (data.keywords && data.keywords.length > 0) {
-                // Pseudocode for handling tags:
-                // addTagsToContact(contact.contact_id, data.keywords);
-                console.log('Tags available for adding:', data.keywords);
+              // Step 3: Create city record if needed and link to company
+              if (data.city && companyId) {
+                // Check if city already exists
+                const { data: existingCities, error: citySearchError } = await supabase
+                  .from('cities')
+                  .select('*')
+                  .ilike('name', data.city);
+                  
+                if (citySearchError) {
+                  console.error('Error searching for city:', citySearchError);
+                  // Non-critical error, continue with the process
+                }
+                
+                let cityId;
+                
+                // Use existing city if available
+                if (existingCities && existingCities.length > 0) {
+                  cityId = existingCities[0].id;
+                } 
+                // Create new city if it doesn't exist
+                else {
+                  const { data: insertedCity, error: cityInsertError } = await supabase
+                    .from('cities')
+                    .insert({ name: data.city })
+                    .select();
+                    
+                  if (cityInsertError) {
+                    console.error('Error creating city:', cityInsertError);
+                    // Non-critical error, continue with the process
+                  } else if (insertedCity && insertedCity.length > 0) {
+                    cityId = insertedCity[0].id;
+                  }
+                }
+                
+                // Link company to city if both IDs are available
+                if (cityId && companyId) {
+                  // Check if the link already exists
+                  const { data: existingLinks, error: linkSearchError } = await supabase
+                    .from('company_cities')
+                    .select('*')
+                    .eq('company_id', companyId)
+                    .eq('city_id', cityId);
+                    
+                  if (linkSearchError) {
+                    console.error('Error checking company-city link:', linkSearchError);
+                  }
+                  
+                  // Create the link if it doesn't exist
+                  if (!existingLinks || existingLinks.length === 0) {
+                    const { error: linkInsertError } = await supabase
+                      .from('company_cities')
+                      .insert({
+                        company_id: companyId,
+                        city_id: cityId
+                      });
+                      
+                    if (linkInsertError) {
+                      console.error('Error linking company to city:', linkInsertError);
+                    }
+                  }
+                }
               }
+              
+              // Step 4: Create contact-company relationship if not exists
+              if (companyId) {
+                // Check if relationship already exists
+                const { data: existingRelationships, error: relationshipSearchError } = await supabase
+                  .from('contact_companies')
+                  .select('*')
+                  .eq('contact_id', contact.contact_id)
+                  .eq('company_id', companyId);
+                  
+                if (relationshipSearchError) {
+                  console.error('Error checking contact-company relationship:', relationshipSearchError);
+                }
+                
+                // Create the relationship if it doesn't exist
+                if (!existingRelationships || existingRelationships.length === 0) {
+                  const { error: relationshipInsertError } = await supabase
+                    .from('contact_companies')
+                    .insert({
+                      contact_id: contact.contact_id,
+                      company_id: companyId,
+                      relationship: 'not_set',
+                      is_primary: true
+                    });
+                    
+                  if (relationshipInsertError) {
+                    console.error('Error creating contact-company relationship:', relationshipInsertError);
+                    toast.error('Failed to link contact to company');
+                  } else {
+                    console.log('Successfully linked contact to company');
+                  }
+                }
+              }
+              
+              toast.success(`Job information updated: ${data.jobRole} at ${data.company}`);
+            } else {
+              toast.success('Contact information updated');
+            }
+            
+            // Handle keywords/tags if provided
+            if (data.keywords && data.keywords.length > 0) {
+              console.log('Tags available for adding:', data.keywords);
+              // Implementation for adding tags would go here
             }
           } catch (err) {
-            console.error('Exception saving LinkedIn data:', err);
-            toast.error('An error occurred while saving the data');
+            console.error('Exception processing LinkedIn data:', err);
+            toast.error('An error occurred while processing the data');
           }
         }}
       />
