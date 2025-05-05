@@ -11,12 +11,12 @@ const ModalHeader = styled.div`
   align-items: center;
   margin-bottom: 15px;
   padding-bottom: 15px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #333;
 
   h2 {
     margin: 0;
     font-size: 1.25rem;
-    color: #111827;
+    color: #00ff00;
     font-weight: 600;
   }
 
@@ -24,13 +24,12 @@ const ModalHeader = styled.div`
     background: none;
     border: none;
     cursor: pointer;
-    color: #6b7280;
+    color: #ffffff;
     padding: 4px;
     border-radius: 4px;
     
     &:hover {
-      color: #1f2937;
-      background-color: #f3f4f6;
+      color: #ff5555;
     }
   }
 `;
@@ -42,8 +41,11 @@ const Section = styled.div`
 const SectionTitle = styled.h3`
   font-size: 16px;
   font-weight: bold;
-  color: #374151;
+  color: #00ff00;
   margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 `;
 
 const TagsList = styled.div`
@@ -58,15 +60,15 @@ const TagsList = styled.div`
 const Tag = styled.div`
   display: inline-flex;
   align-items: center;
-  padding: 0.25rem 0.5rem;
+  padding: 4px 8px;
   font-size: 0.75rem;
-  border-radius: 1rem;
-  background-color: ${props => props.color || '#f3f4f6'};
-  color: ${props => props.textColor || '#4b5563'};
+  border-radius: 4px;
+  background-color: #222;
+  color: #00ff00;
   font-weight: 500;
   margin-right: 0.25rem;
   margin-bottom: 0.25rem;
-  border: 1px solid black;
+  border: 1px solid #00ff00;
   gap: 6px;
   max-width: 200px;
 
@@ -85,11 +87,11 @@ const Tag = styled.div`
     align-items: center;
     justify-content: center;
     margin-left: 0.25rem;
-    color: #6b7280;
+    color: #00ff00;
     cursor: pointer;
     
     &:hover { 
-      color: #ef4444; 
+      color: #ff5555; 
     }
   }
 `;
@@ -104,21 +106,20 @@ const SearchInput = styled.input`
   width: 100%;
   padding: 10px;
   padding-left: 36px;
-  border: 1px solid #ced4da;
-  border-radius: 8px;
+  border: 1px solid #444;
+  border-radius: 4px;
   font-size: 14px;
-  color: #111827;
-  background-color: white;
+  color: #eee;
+  background-color: #222;
   transition: all 0.2s;
 
   &:focus {
     outline: none;
-    border-color: #000000;
-    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
+    border-color: #00ff00;
   }
 
   &:hover {
-    background-color: #f3f4f6;
+    background-color: #333;
   }
 `;
 
@@ -127,15 +128,16 @@ const SearchIcon = styled.div`
   left: 12px;
   top: 50%;
   transform: translateY(-50%);
-  color: #9ca3af;
+  color: #999;
 `;
 
 const SuggestionsContainer = styled.div`
   margin-top: 8px;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
+  border: 1px solid #444;
+  border-radius: 4px;
   max-height: 200px;
   overflow-y: auto;
+  background-color: #222;
 `;
 
 const SuggestionItem = styled.button`
@@ -144,10 +146,10 @@ const SuggestionItem = styled.button`
   padding: 8px 12px;
   background: none;
   border: none;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #333;
   cursor: pointer;
   font-size: 0.875rem;
-  color: #374151;
+  color: #eee;
   transition: background-color 0.2s;
   white-space: nowrap;
   overflow: hidden;
@@ -158,7 +160,8 @@ const SuggestionItem = styled.button`
   }
 
   &:hover {
-    background-color: #f3f4f6;
+    background-color: #333;
+    color: #00ff00;
   }
 `;
 
@@ -167,39 +170,40 @@ const NewTagButton = styled.button`
   align-items: center;
   gap: 6px;
   padding: 8px 16px;
-  background-color: #000000;
-  color: white;
+  background-color: #333;
+  color: #00ff00;
   border: none;
   border-radius: 4px;
   font-size: 0.875rem;
   cursor: pointer;
   transition: all 0.2s;
+  width: 100%;
+  text-align: left;
 
   &:hover {
-    background-color: #333333;
+    background-color: #444;
   }
 
   &:disabled {
-    background-color: #E9ECEF;
-    color: #6c757d;
+    opacity: 0.5;
     cursor: not-allowed;
   }
 `;
 
 const Message = styled.div`
   padding: 8px 12px;
-  border-radius: 6px;
+  border-radius: 4px;
   font-size: 12px;
   margin-top: 12px;
   
   &.success {
-    background-color: #f3f4f6;
-    color: #4b5563;
+    background-color: rgba(0, 255, 0, 0.1);
+    color: #00ff00;
   }
   
   &.error {
-    background-color: #fef2f2;
-    color: #dc2626;
+    background-color: rgba(255, 70, 70, 0.2);
+    color: #ff9999;
   }
 `;
 
@@ -217,54 +221,42 @@ const Button = styled.button`
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   
   &.primary {
-    background-color: #000000;
-    color: white;
+    background-color: #00ff00;
+    color: black;
     border: none;
     
     &:hover {
-      background-color: #333333;
+      background-color: #00dd00;
     }
 
     &:disabled {
-      background-color: #E9ECEF;
-      color: #6c757d;
+      opacity: 0.5;
       cursor: not-allowed;
     }
   }
   
   &.secondary {
-    background-color: #6C757D;
-    color: white;
-    border: none;
+    background-color: transparent;
+    color: #ccc;
+    border: 1px solid #555;
     
     &:hover {
-      background-color: #5A6268;
+      background-color: #333;
     }
   }
 `;
 
-// Helper function to get tag colors
+// Helper function to get tag colors - always return black with green now
 const getTagColor = (tagName) => {
-  const colors = [
-    { bg: '#fee2e2', text: '#b91c1c' }, // Red
-    { bg: '#fef3c7', text: '#92400e' }, // Amber
-    { bg: '#ecfccb', text: '#3f6212' }, // Lime
-    { bg: '#d1fae5', text: '#065f46' }, // Emerald
-    { bg: '#e0f2fe', text: '#0369a1' }, // Sky
-    { bg: '#ede9fe', text: '#5b21b6' }, // Violet
-    { bg: '#fae8ff', text: '#86198f' }, // Fuchsia
-    { bg: '#fce7f3', text: '#9d174d' }  // Pink
-  ];
-  
-  const sum = tagName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const index = sum % colors.length;
-  
-  return colors[index];
+  return { bg: '#222', text: '#00ff00', border: '#00ff00' };
 };
 
-const TagsModal = ({ isOpen, onRequestClose, contact, meeting }) => {
+const TagsModal = ({ isOpen, onRequestClose, contact, meeting, onTagAdded, onTagRemoved }) => {
   const [currentTags, setCurrentTags] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState([]);
@@ -274,7 +266,7 @@ const TagsModal = ({ isOpen, onRequestClose, contact, meeting }) => {
   
   // Determine if we're in meeting or contact context
   const isMeetingContext = !!meeting;
-  const entityId = isMeetingContext ? meeting.id : contact?.id;
+  const entityId = isMeetingContext ? meeting.id : contact?.contact_id;
   
   // Debug context information
   console.log('TagsModal context:', { 
@@ -311,31 +303,57 @@ const TagsModal = ({ isOpen, onRequestClose, contact, meeting }) => {
       // Now get the actual tags
       if (data && data.length > 0) {
         // Get all tag ids
-        const tagIds = data.map(item => item.tag_id);
+        const tagIds = data.map(item => item.tag_id).filter(id => id);
         console.log('Found tag IDs:', tagIds);
         
+        if (tagIds.length === 0) {
+          console.log('No valid tag IDs found, clearing currentTags');
+          setCurrentTags([]);
+          return;
+        }
+        
         // Fetch tag details
-        const { data: tagsData, error: tagsError } = await supabase
+        let tagsData;
+        const { data: initialTagsData, error: tagsError } = await supabase
           .from('tags')
-          .select('id, name, tag_name')
-          .in('id', tagIds);
+          .select('*')  // Select all fields instead of just id, name, tag_name
+          .in('tag_id', tagIds);  // Use tag_id field instead of id
         
         if (tagsError) {
           console.error('Error fetching tag details:', tagsError);
-          throw tagsError;
+          // Try alternative approach using 'id' instead of 'tag_id'
+          const { data: altTagsData, error: altTagsError } = await supabase
+            .from('tags')
+            .select('*')
+            .in('id', tagIds);
+            
+          if (altTagsError) {
+            console.error('Alternative tag fetch also failed:', altTagsError);
+            throw tagsError;
+          }
+          
+          // If alternative approach worked
+          console.log('Alternative tag fetch succeeded:', altTagsData);
+          tagsData = altTagsData;
+        } else {
+          tagsData = initialTagsData;
         }
         
         console.log('Tags details:', tagsData);
         
         // Combine the data
         const combinedData = data.map(item => {
-          const tagInfo = tagsData.find(tag => tag.id === item.tag_id);
+          // Match based on either id or tag_id field
+          const tagInfo = tagsData?.find(tag => 
+            (tag.id === item.tag_id) || (tag.tag_id === item.tag_id)
+          );
+          
           return {
-            id: item.id,           // connection ID
-            tag_id: item.tag_id,   // tag ID 
-            name: tagInfo?.tag_name || tagInfo?.name || 'Unknown tag'
+            id: item.entry_id || item.id,  // connection ID
+            tag_id: item.tag_id,        // tag ID 
+            name: tagInfo?.name || tagInfo?.tag_name || 'Unknown tag'
           };
-        });
+        }).filter(tag => tag.name !== 'Unknown tag'); // Filter out tags without names
         
         console.log('Setting currentTags to:', combinedData);
         setCurrentTags(combinedData);
@@ -346,6 +364,8 @@ const TagsModal = ({ isOpen, onRequestClose, contact, meeting }) => {
     } catch (error) {
       console.error('Error fetching tags:', error);
       setMessage({ type: 'error', text: 'Failed to load tags' });
+      // Don't completely fail - at least show an empty list
+      setCurrentTags([]);
     }
   };
 
@@ -355,18 +375,31 @@ const TagsModal = ({ isOpen, onRequestClose, contact, meeting }) => {
       let query = supabase.from('tags').select('*');
       
       if (search) {
-        query = query.ilike('name', `%${search}%`);
+        // Try both name and tag_name fields
+        query = query.or(`name.ilike.%${search}%,tag_name.ilike.%${search}%`);
       }
 
       const { data, error } = await query.limit(10);
 
       if (error) throw error;
+      
+      console.log('Raw tag suggestions from DB:', data);
+      
+      // Make sure each tag has the tag_id property
+      const processedData = data.map(tag => ({
+        ...tag,
+        // Use tag_id if available, otherwise use id
+        tag_id: tag.tag_id || tag.id,
+        // Make sure the name is populated
+        name: tag.name || tag.tag_name || 'Unnamed Tag'
+      }));
 
       // Filter out tags that are already assigned
-      const filteredSuggestions = data.filter(tag => 
-        !currentTags.some(currentTag => currentTag.tag_id === tag.id)
+      const filteredSuggestions = processedData.filter(tag => 
+        !currentTags.some(currentTag => currentTag.tag_id === tag.tag_id)
       );
 
+      console.log('Filtered tag suggestions:', filteredSuggestions);
       setSuggestions(filteredSuggestions);
     } catch (error) {
       console.error('Error fetching suggestions:', error);
@@ -412,8 +445,12 @@ const TagsModal = ({ isOpen, onRequestClose, contact, meeting }) => {
 
       // Either fetch tags again to ensure UI is in sync with database
       await fetchCurrentTags();
-      // Or update state correctly (both approaches work)
-      // setCurrentTags(currentTags.filter(tag => tag.tag_id !== tagToRemove.tag_id));
+      
+      // Notify parent component if callback is provided
+      if (onTagRemoved && typeof onTagRemoved === 'function') {
+        onTagRemoved(tagToRemove);
+      }
+      
       setMessage({ type: 'success', text: 'Tag removed successfully' });
     } catch (error) {
       console.error('Error removing tag:', error);
@@ -426,11 +463,21 @@ const TagsModal = ({ isOpen, onRequestClose, contact, meeting }) => {
   const handleAddTag = async (tagToAdd) => {
     try {
       setLoading(true);
-      console.log(`Adding tag ${tagToAdd.id} to ${isMeetingContext ? 'meeting' : 'contact'} ${entityId}`);
+      console.log('Full tag object to add:', tagToAdd);
+      
+      // Get the correct tag ID - could be in either id or tag_id property
+      const tagId = tagToAdd.tag_id || tagToAdd.id;
+      
+      console.log(`Adding tag ${tagId} to ${isMeetingContext ? 'meeting' : 'contact'} ${entityId}`);
       
       if (!entityId) {
         console.error('Missing entity ID. Cannot add tag.');
         throw new Error('Missing entity ID');
+      }
+      
+      if (!tagId) {
+        console.error('Missing tag ID. Cannot add tag.');
+        throw new Error('Missing tag ID');
       }
       
       // Different table and fields based on context
@@ -439,7 +486,7 @@ const TagsModal = ({ isOpen, onRequestClose, contact, meeting }) => {
       
       // Create insertion object
       const insertData = {
-        tag_id: tagToAdd.id
+        tag_id: tagId
       };
       insertData[idFieldName] = entityId;
       
@@ -459,12 +506,12 @@ const TagsModal = ({ isOpen, onRequestClose, contact, meeting }) => {
       }
       
       // Verify the tag isn't already associated
-      console.log(`Checking if tag ${tagToAdd.id} is already associated with ${idFieldName}=${entityId}`);
+      console.log(`Checking if tag ${tagId} is already associated with ${idFieldName}=${entityId}`);
       const { data: existingTag, error: checkError } = await supabase
         .from(tableName)
         .select('*')
         .eq(idFieldName, entityId)
-        .eq('tag_id', tagToAdd.id);
+        .eq('tag_id', tagId);
       
       if (checkError) {
         console.error('Error checking existing tag:', checkError);
@@ -491,7 +538,7 @@ const TagsModal = ({ isOpen, onRequestClose, contact, meeting }) => {
         tableName,
         idFieldName,
         entityId,
-        tagId: tagToAdd.id,
+        tagId,
         fullInsertData: insertData
       });
       
@@ -510,6 +557,14 @@ const TagsModal = ({ isOpen, onRequestClose, contact, meeting }) => {
 
       // Refresh current tags
       await fetchCurrentTags();
+      
+      // Notify parent component if callback is provided
+      if (onTagAdded && typeof onTagAdded === 'function') {
+        onTagAdded({
+          tag_id: tagToAdd.tag_id || tagToAdd.id,
+          name: tagToAdd.name || tagToAdd.tag_name || 'Unnamed Tag'
+        });
+      }
       
       setSearchTerm('');
       setShowSuggestions(false);
@@ -551,7 +606,13 @@ const TagsModal = ({ isOpen, onRequestClose, contact, meeting }) => {
       // If tag already exists, use it instead of creating a new one
       if (existingTagsByName && existingTagsByName.length > 0) {
         console.log('Tag with this name already exists, using existing tag');
-        tagToUse = existingTagsByName[0];
+        const existingTag = existingTagsByName[0];
+        // Make sure it has tag_id
+        tagToUse = {
+          ...existingTag,
+          tag_id: existingTag.tag_id || existingTag.id
+        };
+        console.log('Using existing tag with ID:', tagToUse.tag_id);
       } else {
         // Create new tag if it doesn't exist
         const { data: newTag, error: createError } = await supabase
@@ -569,7 +630,12 @@ const TagsModal = ({ isOpen, onRequestClose, contact, meeting }) => {
         }
         
         console.log('New tag created:', newTag);
-        tagToUse = newTag;
+        // Make sure it has tag_id
+        tagToUse = {
+          ...newTag,
+          tag_id: newTag.tag_id || newTag.id
+        };
+        console.log('New tag has ID:', tagToUse.tag_id);
       }
 
       // Different table and field based on context
@@ -581,7 +647,7 @@ const TagsModal = ({ isOpen, onRequestClose, contact, meeting }) => {
         .from(tableName)
         .select('*')
         .eq(idFieldName, entityId)
-        .eq('tag_id', tagToUse.id);
+        .eq('tag_id', tagToUse.tag_id);
         
       if (checkError) {
         console.error('Error checking existing connection:', checkError);
@@ -600,7 +666,7 @@ const TagsModal = ({ isOpen, onRequestClose, contact, meeting }) => {
       
       // Create insertion object
       const insertData = {
-        tag_id: tagToUse.id
+        tag_id: tagToUse.tag_id
       };
       insertData[idFieldName] = entityId;
       
@@ -619,9 +685,17 @@ const TagsModal = ({ isOpen, onRequestClose, contact, meeting }) => {
       // Refresh current tags
       await fetchCurrentTags();
       
+      // Notify parent component if callback is provided
+      if (onTagAdded && typeof onTagAdded === 'function') {
+        onTagAdded({
+          tag_id: tagToUse.tag_id,
+          name: tagToUse.name || tagToUse.tag_name || searchTerm.trim()
+        });
+      }
+      
       setSearchTerm('');
       setShowSuggestions(false);
-      setMessage({ type: 'success', text: tagToUse === existingTagsByName ? 'Existing tag added successfully' : 'New tag created and added successfully' });
+      setMessage({ type: 'success', text: existingTagsByName && existingTagsByName.length > 0 ? 'Existing tag added successfully' : 'New tag created and added successfully' });
     } catch (error) {
       console.error('Error creating tag:', error);
       setMessage({ type: 'error', text: 'Failed to create tag' });
@@ -643,15 +717,17 @@ const TagsModal = ({ isOpen, onRequestClose, contact, meeting }) => {
           marginRight: '-50%',
           transform: 'translate(-50%, -50%)',
           padding: '20px',
-          border: 'none',
-          borderRadius: '16px',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+          border: '1px solid #333',
+          backgroundColor: '#121212',
+          color: '#e0e0e0',
+          borderRadius: '8px',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.6)',
           maxWidth: '500px',
           width: '90%',
           minHeight: '360px'
         },
         overlay: {
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          backgroundColor: 'rgba(0, 0, 0, 0.75)',
           zIndex: 1000
         }
       }}
@@ -711,11 +787,11 @@ const TagsModal = ({ isOpen, onRequestClose, contact, meeting }) => {
             <SuggestionsContainer>
               {suggestions.map(suggestion => (
                 <SuggestionItem
-                  key={suggestion.id}
+                  key={suggestion.tag_id || suggestion.id}
                   onClick={() => handleAddTag(suggestion)}
                   disabled={loading}
                 >
-                  {suggestion.name}
+                  {suggestion.name} {suggestion.tag_id || suggestion.id ? '' : '(Missing ID)'}
                 </SuggestionItem>
               ))}
               {searchTerm.trim() && !suggestions.find(s => s.name.toLowerCase() === searchTerm.toLowerCase()) && (
@@ -748,8 +824,8 @@ const TagsModal = ({ isOpen, onRequestClose, contact, meeting }) => {
             <div className="spinner" style={{ 
               width: '20px', 
               height: '20px', 
-              border: '3px solid #f3f3f3', 
-              borderTop: '3px solid #000000', 
+              border: '3px solid #222', 
+              borderTop: '3px solid #00ff00', 
               borderRadius: '50%', 
               animation: 'spin 1s linear infinite' 
             }}></div>

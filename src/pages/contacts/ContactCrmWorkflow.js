@@ -11952,6 +11952,66 @@ const handleInputChange = (field, value) => {
         isOpen={showTagsModal}
         onRequestClose={() => setShowTagsModal(false)}
         contact={contact}
+        onTagAdded={(newTag) => {
+          console.log('Tag added from modal:', newTag);
+          
+          // Update the formData with the new tag
+          const updatedFormData = { ...formData };
+          if (!updatedFormData.tags) {
+            updatedFormData.tags = [];
+          }
+          // Add the new tag only if it doesn't already exist
+          if (!updatedFormData.tags.some(tag => tag.tag_id === newTag.tag_id || tag.id === newTag.tag_id)) {
+            updatedFormData.tags.push({
+              id: newTag.tag_id,
+              tag_id: newTag.tag_id,
+              name: newTag.name
+            });
+            setFormData(updatedFormData);
+          }
+          
+          // Also update the contact object to ensure consistency
+          const updatedContact = { ...contact };
+          if (!updatedContact.tags) {
+            updatedContact.tags = [];
+          }
+          // Add to contact if it doesn't already exist
+          if (!updatedContact.tags.some(tag => tag.tag_id === newTag.tag_id || tag.id === newTag.tag_id)) {
+            updatedContact.tags.push({
+              id: newTag.tag_id,
+              tag_id: newTag.tag_id,
+              name: newTag.name
+            });
+            setContact(updatedContact);
+          }
+          
+          // Show success toast
+          toast.success(`Tag "${newTag.name}" added`);
+        }}
+        onTagRemoved={(removedTag) => {
+          console.log('Tag removed from modal:', removedTag);
+          
+          // Update formData by filtering out the removed tag
+          const updatedFormData = { ...formData };
+          if (updatedFormData.tags && updatedFormData.tags.length > 0) {
+            updatedFormData.tags = updatedFormData.tags.filter(tag => 
+              tag.tag_id !== removedTag.tag_id && tag.id !== removedTag.tag_id
+            );
+            setFormData(updatedFormData);
+          }
+          
+          // Also update the contact object to ensure consistency
+          const updatedContact = { ...contact };
+          if (updatedContact.tags && updatedContact.tags.length > 0) {
+            updatedContact.tags = updatedContact.tags.filter(tag => 
+              tag.tag_id !== removedTag.tag_id && tag.id !== removedTag.tag_id
+            );
+            setContact(updatedContact);
+          }
+          
+          // Show success toast
+          toast.success(`Tag "${removedTag.name}" removed`);
+        }}
       />
       
       {/* Company Contacts Modal */}
