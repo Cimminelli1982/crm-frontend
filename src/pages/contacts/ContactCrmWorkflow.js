@@ -6255,16 +6255,16 @@ const handleInputChange = (field, value) => {
                           }}>
                             <thead>
                                 <tr style={{ background: '#333' }}>
-                                  <th style={{ padding: '10px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '15%' }}>
+                                  <th style={{ padding: '7px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '15%' }}>
                                     Field Name
                                   </th>
-                                  <th style={{ padding: '10px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '28%' }}>
+                                  <th style={{ padding: '7px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '28%' }}>
                                     Supabase Now
                                   </th>
-                                  <th style={{ padding: '10px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '25%' }}>
+                                  <th style={{ padding: '7px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '25%' }}>
                                     Airtable
                                   </th>
-                                  <th style={{ padding: '10px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '32%' }}>
+                                  <th style={{ padding: '7px 15px', textAlign: 'left', borderBottom: '1px solid #444', width: '32%' }}>
                                     Supabase Final
                                   </th>
                                 </tr>
@@ -8456,31 +8456,203 @@ const handleInputChange = (field, value) => {
                                 <tr style={{ borderBottom: '1px solid #333' }}>
                                   <td style={{ padding: '12px 15px', color: '#999' }}>Birthday</td>
                                   <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#333', padding: '8px 12px', borderRadius: '4px' }}>
+                                    <div style={{ padding: '8px 12px' }}>
                                       {contact.birthday || '-'}
                                     </div>
                                   </td>
                                   <td style={{ padding: '12px 15px' }}>
                                     <div 
                                       onClick={() => {
-                                        if (airtableContact && airtableContact.birthday) {
-                                          handleInputChange('birthday', airtableContact.birthday);
+                                        if (airtableContact && airtableContact.next_birthday) {
+                                          handleInputChange('birthday', airtableContact.next_birthday);
                                         }
                                       }}
                                       style={{ 
-                                        cursor: airtableContact?.birthday ? 'pointer' : 'default',
+                                        cursor: airtableContact?.next_birthday ? 'pointer' : 'default',
                                         padding: '8px 12px',
-                                        background: '#2a2a2a',
-                                        borderRadius: '4px',
-                                        borderLeft: airtableContact?.birthday ? '3px solid #00ff00' : '3px solid transparent'
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between'
                                       }}
                                     >
-                                      {airtableContact?.birthday || '-'}
+                                      <div>{airtableContact?.next_birthday || '-'}</div>
+                                      {airtableContact?.next_birthday && (
+                                        <span 
+                                          style={{ color: '#00ff00', fontSize: '12px', marginLeft: '10px' }}
+                                          title="Transfer to Supabase Final"
+                                        >
+                                          → 
+                                        </span>
+                                      )}
                                     </div>
                                   </td>
                                   <td style={{ padding: '12px 15px' }}>
-                                    <div style={{ background: '#2a2a2a', padding: '8px 12px', borderRadius: '4px', color: '#ccc' }}>
-                                      {formData.birthday || contact.birthday || '-'}
+                                    <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                      {formData.isEditingBirthday ? (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                          <input 
+                                            type="date"
+                                            value={formData.birthday || ''}
+                                            onChange={async (e) => {
+                                              const newBirthday = e.target.value;
+                                              
+                                              // Update form data first for immediate UI feedback
+                                              handleInputChange('birthday', newBirthday);
+                                              
+                                              // Save to Supabase immediately
+                                              try {
+                                                const { data, error } = await supabase
+                                                  .from('contacts')
+                                                  .update({ birthday: newBirthday })
+                                                  .eq('contact_id', contact.contact_id);
+                                                  
+                                                if (error) {
+                                                  console.error('Error saving birthday:', error);
+                                                  toast.error('Failed to save birthday');
+                                                } else {
+                                                  toast.success('Birthday saved successfully');
+                                                  // Update the contact object with new birthday
+                                                  setContact(prev => ({
+                                                    ...prev,
+                                                    birthday: newBirthday
+                                                  }));
+                                                }
+                                              } catch (err) {
+                                                console.error('Exception saving birthday:', err);
+                                                toast.error('Failed to save birthday');
+                                              }
+                                            }}
+                                            style={{ 
+                                              padding: '4px 8px', 
+                                              background: '#222',
+                                              border: '1px solid #444',
+                                              borderRadius: '4px',
+                                              color: '#fff',
+                                              fontSize: '14px'
+                                            }}
+                                          />
+                                          
+                                          <div style={{ display: 'flex', gap: '8px' }}>
+                                            <button
+                                              onClick={() => {
+                                                setFormData(prev => ({...prev, isEditingBirthday: false}));
+                                              }}
+                                              style={{
+                                                padding: '4px 8px',
+                                                background: 'transparent',
+                                                border: '1px solid #444',
+                                                borderRadius: '4px',
+                                                color: '#ccc',
+                                                cursor: 'pointer',
+                                                fontSize: '12px'
+                                              }}
+                                            >
+                                              Done
+                                            </button>
+                                            
+                                            <button
+                                              onClick={async () => {
+                                                // Clear birthday value
+                                                handleInputChange('birthday', null);
+                                                
+                                                // Save to Supabase immediately
+                                                try {
+                                                  const { data, error } = await supabase
+                                                    .from('contacts')
+                                                    .update({ birthday: null })
+                                                    .eq('contact_id', contact.contact_id);
+                                                    
+                                                  if (error) {
+                                                    console.error('Error clearing birthday:', error);
+                                                    toast.error('Failed to clear birthday');
+                                                  } else {
+                                                    toast.success('Birthday cleared successfully');
+                                                    // Update the contact object
+                                                    setContact(prev => ({
+                                                      ...prev,
+                                                      birthday: null
+                                                    }));
+                                                    
+                                                    // Close the date editor
+                                                    setFormData(prev => ({...prev, isEditingBirthday: false}));
+                                                  }
+                                                } catch (err) {
+                                                  console.error('Exception clearing birthday:', err);
+                                                  toast.error('Failed to clear birthday');
+                                                }
+                                              }}
+                                              style={{
+                                                padding: '4px 8px',
+                                                background: 'rgba(255, 50, 50, 0.2)',
+                                                border: '1px solid #933',
+                                                borderRadius: '4px',
+                                                color: '#f99',
+                                                cursor: 'pointer',
+                                                fontSize: '12px'
+                                              }}
+                                            >
+                                              Clear
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <>
+                                          <div 
+                                            onClick={() => {
+                                              setFormData(prev => ({...prev, isEditingBirthday: true}));
+                                            }}
+                                            style={{ 
+                                              cursor: 'pointer',
+                                              flex: 1
+                                            }}
+                                          >
+                                            {formData.birthday || contact.birthday || '-'}
+                                          </div>
+                                          
+                                          {(formData.birthday || contact.birthday) && (
+                                            <button
+                                              onClick={async () => {
+                                                // Clear birthday value
+                                                handleInputChange('birthday', null);
+                                                
+                                                // Save to Supabase immediately
+                                                try {
+                                                  const { data, error } = await supabase
+                                                    .from('contacts')
+                                                    .update({ birthday: null })
+                                                    .eq('contact_id', contact.contact_id);
+                                                    
+                                                  if (error) {
+                                                    console.error('Error clearing birthday:', error);
+                                                    toast.error('Failed to clear birthday');
+                                                  } else {
+                                                    toast.success('Birthday cleared successfully');
+                                                    // Update the contact object
+                                                    setContact(prev => ({
+                                                      ...prev,
+                                                      birthday: null
+                                                    }));
+                                                  }
+                                                } catch (err) {
+                                                  console.error('Exception clearing birthday:', err);
+                                                  toast.error('Failed to clear birthday');
+                                                }
+                                              }}
+                                              style={{
+                                                background: 'transparent',
+                                                border: 'none',
+                                                color: '#f77',
+                                                cursor: 'pointer',
+                                                fontSize: '14px',
+                                                padding: '2px 6px'
+                                              }}
+                                              title="Clear birthday"
+                                            >
+                                              ×
+                                            </button>
+                                          )}
+                                        </>
+                                      )}
                                     </div>
                                   </td>
                                 </tr>
