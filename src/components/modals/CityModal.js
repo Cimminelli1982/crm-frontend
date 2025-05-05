@@ -237,7 +237,7 @@ const getCityColor = () => {
   return { bg: '#e0f2fe', text: '#0369a1' }; // Sky blue
 };
 
-const CityModal = ({ isOpen, onRequestClose, contact }) => {
+const CityModal = ({ isOpen, onRequestClose, contact, onCityAdded, onCityRemoved }) => {
   const [relatedCities, setRelatedCities] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState([]);
@@ -248,24 +248,58 @@ const CityModal = ({ isOpen, onRequestClose, contact }) => {
   // Fetch related cities for the contact
   const fetchRelatedCities = async () => {
     try {
-      console.log('Fetching related cities for contact ID:', contact.id);
+      console.log('Fetching related cities for contact ID:', contact.contact_id);
       
       const { data, error } = await supabase
         .from('contact_cities')
         .select(`
           city_id,
-          cities:city_id(id, name)
+          cities:city_id(city_id, name)
         `)
-        .eq('contact_id', contact.id);
+        .eq('contact_id', contact.contact_id);
 
       if (error) throw error;
+      
+      console.log('Raw city data from DB:', data);
 
       const cities = data.map(item => ({
         id: item.city_id,
-        name: item.cities.name
+        name: item.cities?.name || 'Unknown City'
       }));
+      
+      // Handle case where cities is empty or null
+      if (cities.length === 0 && data.length > 0) {
+        console.log('Cities data format mismatch, trying alternative format');
+        // Try alternative format in case the join didn't work
+        const altCities = await Promise.all(data.map(async (item) => {
+          try {
+            const { data: cityData } = await supabase
+              .from('cities')
+              .select('city_id, name')
+              .eq('city_id', item.city_id)
+              .single();
+              
+            return {
+              id: item.city_id,
+              name: cityData?.name || 'Unknown City'
+            };
+          } catch (err) {
+            console.error('Error fetching individual city:', err);
+            return {
+              id: item.city_id,
+              name: 'Failed to load'
+            };
+          }
+        }));
+        
+        if (altCities.length > 0) {
+          console.log('Using alternative cities format:', altCities);
+          setRelatedCities(altCities);
+          return; // Exit early after setting cities
+        }
+      }
 
-      console.log('Fetched cities:', cities);
+      console.log('Formatted cities:', cities);
       setRelatedCities(cities);
     } catch (error) {
       console.error('Error fetching related cities:', error);
@@ -288,11 +322,17 @@ const CityModal = ({ isOpen, onRequestClose, contact }) => {
         .limit(10);
 
       if (error) throw error;
+      
+      console.log('City suggestions from DB:', data);
 
       // Filter out cities that are already connected
-      const filteredSuggestions = data.filter(city => 
-        !relatedCities.some(related => related.city_id === city.id)
-      );
+      const filteredSuggestions = data.filter(city => {
+        console.log('Checking if city is already connected:', city);
+        return !relatedCities.some(related => {
+          console.log('  Comparing with related city:', related);
+          return related.id === city.city_id;
+        });
+      });
 
       setSuggestions(filteredSuggestions);
     } catch (error) {
@@ -323,12 +363,20 @@ const CityModal = ({ isOpen, onRequestClose, contact }) => {
       const { error } = await supabase
         .from('contact_cities')
         .delete()
-        .eq('contact_id', contact.id)
+        .eq('contact_id', contact.contact_id)
         .eq('city_id', cityToRemove.id);
 
       if (error) throw error;
       
+      // Update local state
       setRelatedCities(relatedCities.filter(city => city.id !== cityToRemove.id));
+      
+      // Notify parent component that city was removed
+      if (onCityRemoved && typeof onCityRemoved === 'function') {
+        console.log('Notifying parent about removed city:', cityToRemove);
+        onCityRemoved(cityToRemove);
+      }
+      
       setMessage({ type: 'success', text: 'City unlinked successfully' });
     } catch (error) {
       console.error('Error unlinking city:', error);
@@ -342,20 +390,31 @@ const CityModal = ({ isOpen, onRequestClose, contact }) => {
     try {
       setLoading(true);
       console.log('Adding city:', cityToAdd);
-      console.log('Contact:', contact);
+      console.log('Full Contact Object:', contact);
+      console.log('Contact ID:', contact?.contact_id);
+      console.log('Contact Keys:', Object.keys(contact || {}));
       
-      // Ensure contact.id is treated as an integer
-      const contactId = parseInt(contact.id, 10);
-      if (isNaN(contactId)) {
-        throw new Error('Invalid contact ID');
+      // Extract contact ID - for debugging let's try to find it in different formats
+      let contactId;
+      
+      if (contact.contact_id) {
+        contactId = contact.contact_id;
+      } else if (contact.id) {
+        contactId = contact.id;
+      } else {
+        console.error('Cannot find contact ID in contact object:', contact);
+        throw new Error('Invalid contact ID - missing from contact object');
       }
+      
+      console.log('Using contact ID:', contactId);
+      console.log('City to add:', cityToAdd);
       
       // Check if already associated
       const { data: existingCheck, error: checkError } = await supabase
         .from('contact_cities')
         .select('contact_id, city_id')
         .eq('contact_id', contactId)
-        .eq('city_id', cityToAdd.id);
+        .eq('city_id', cityToAdd.city_id || cityToAdd.id);
         
       if (checkError) {
         console.error('Error checking existing city:', checkError);
@@ -372,7 +431,7 @@ const CityModal = ({ isOpen, onRequestClose, contact }) => {
       
       const newAssociation = {
         contact_id: contactId,
-        city_id: cityToAdd.id,
+        city_id: cityToAdd.city_id || cityToAdd.id,
         created_at: new Date().toISOString()
       };
       console.log('Creating new association:', newAssociation);
@@ -388,6 +447,19 @@ const CityModal = ({ isOpen, onRequestClose, contact }) => {
       }
 
       console.log('Successfully added city:', data);
+      
+      // Notify parent component about the added city
+      if (onCityAdded && typeof onCityAdded === 'function') {
+        // Create a city object that matches the format expected by the table
+        const newCity = {
+          city_id: cityToAdd.city_id || cityToAdd.id,
+          name: cityToAdd.name,
+          entry_id: data[0]?.entry_id || `temp-${Date.now()}`
+        };
+        console.log('Notifying parent about new city:', newCity);
+        onCityAdded(newCity);
+      }
+      
       await fetchRelatedCities();
       setSearchTerm('');
       setShowSuggestions(false);
@@ -409,6 +481,7 @@ const CityModal = ({ isOpen, onRequestClose, contact }) => {
         .from('cities')
         .insert({ 
           name: searchTerm.trim(),
+          country: 'Unknown', // Adding required field from the schema
           created_at: new Date().toISOString()
         })
         .select();

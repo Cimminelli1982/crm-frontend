@@ -6378,6 +6378,8 @@ const handleInputChange = (field, value) => {
                                               if (error) {
                                                 console.error('Error updating contact first name:', error);
                                                 toast.error('Failed to update first name');
+                                              } else {
+                                                toast.success('First name updated');
                                               }
                                             } catch (err) {
                                               console.error('Exception updating contact first name:', err);
@@ -6532,6 +6534,8 @@ const handleInputChange = (field, value) => {
                                               if (error) {
                                                 console.error('Error updating contact last name:', error);
                                                 toast.error('Failed to update last name');
+                                              } else {
+                                                toast.success('Last name updated');
                                               }
                                             } catch (err) {
                                               console.error('Exception updating contact last name:', err);
@@ -11889,6 +11893,58 @@ const handleInputChange = (field, value) => {
         isOpen={showCityModal}
         onRequestClose={() => setShowCityModal(false)}
         contact={contact}
+        onCityAdded={(newCity) => {
+          console.log('City added from modal:', newCity);
+          
+          // Update the formData with the new city
+          const updatedFormData = { ...formData };
+          if (!updatedFormData.cities) {
+            updatedFormData.cities = [];
+          }
+          // Add the new city only if it doesn't already exist
+          if (!updatedFormData.cities.some(city => city.city_id === newCity.city_id)) {
+            updatedFormData.cities.push(newCity);
+            setFormData(updatedFormData);
+          }
+          
+          // Also update the contact object to ensure consistency
+          const updatedContact = { ...contact };
+          if (!updatedContact.cities) {
+            updatedContact.cities = [];
+          }
+          // Add to contact if it doesn't already exist
+          if (!updatedContact.cities.some(city => city.city_id === newCity.city_id)) {
+            updatedContact.cities.push(newCity);
+            setContact(updatedContact);
+          }
+          
+          // Show success toast
+          toast.success(`City "${newCity.name}" added`);
+        }}
+        onCityRemoved={(removedCity) => {
+          console.log('City removed from modal:', removedCity);
+          
+          // Update formData by filtering out the removed city
+          const updatedFormData = { ...formData };
+          if (updatedFormData.cities && updatedFormData.cities.length > 0) {
+            updatedFormData.cities = updatedFormData.cities.filter(city => 
+              city.city_id !== removedCity.id && city.id !== removedCity.id
+            );
+            setFormData(updatedFormData);
+          }
+          
+          // Also update the contact object to ensure consistency
+          const updatedContact = { ...contact };
+          if (updatedContact.cities && updatedContact.cities.length > 0) {
+            updatedContact.cities = updatedContact.cities.filter(city => 
+              city.city_id !== removedCity.id && city.id !== removedCity.id
+            );
+            setContact(updatedContact);
+          }
+          
+          // Show success toast
+          toast.success(`City "${removedCity.name}" removed`);
+        }}
       />
       
       {/* Tags Modal */}
