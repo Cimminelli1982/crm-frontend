@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
@@ -1295,6 +1295,27 @@ const ContactCrmWorkflow = () => {
   const [currentStep, setCurrentStep] = useState(parseInt(stepParam) || 1);
   const [loading, setLoading] = useState(true);
   
+  // Deals-related state
+  const [deals, setDeals] = useState([]);
+  const [dealsLoading, setDealsLoading] = useState(false); 
+  const [showCreateDealModal, setShowCreateDealModal] = useState(false);
+  const [showAssociateDealModal, setShowAssociateDealModal] = useState(false);
+  const [showEditDealModal, setShowEditDealModal] = useState(false);
+  const [selectedDeal, setSelectedDeal] = useState(null);
+  const [dealSearchQuery, setDealSearchQuery] = useState('');
+  const [dealStages] = useState([
+    'Lead', 'Prospect', 'Proposal', 'Negotiation', 'Closed Won', 'Closed Lost'
+  ]);
+  const [dealCategories] = useState([
+    'Inbox', 'Active', 'On Hold', 'Won', 'Lost', 'Archived'
+  ]);
+  const [dealSourceCategories] = useState([
+    'Not Set', 'Referral', 'Direct', 'Social Media', 'Event', 'Website', 'Cold Outreach', 'Other'
+  ]);
+  const [dealRelationships] = useState([
+    'Primary Contact', 'Decision Maker', 'Influencer', 'Introducer', 'Other'
+  ]);
+  
   // State for inline editing
   const [isEditingName, setIsEditingName] = useState(false);
   const [editFirstName, setEditFirstName] = useState('');
@@ -1965,6 +1986,503 @@ const ContactCrmWorkflow = () => {
   });
   const [isDeleting, setIsDeleting] = useState(false);
   
+  // Load deals for the current contact
+  const loadContactDeals = useCallback(async () => {
+    try {
+      setDealsLoading(true);
+      console.log('Loading deals for contact ID:', contactId);
+      
+      if (!contactId) {
+        console.warn('Cannot load deals: Missing contact ID');
+        setDeals([]);
+        setDealsLoading(false);
+        return;
+      }
+      
+      // Fetch deals associated with this contact through deals_contacts junction table
+      const { data, error } = await supabase
+        .from('deals_contacts')
+        .select(`
+          deals_contacts_id,
+          relationship,
+          deals:deal_id (
+            deal_id,
+            opportunity,
+            stage,
+            category,
+            source_category,
+            description,
+            total_investment,
+            created_at,
+            last_modified_at
+          )
+        `)
+        .eq('contact_id', contactId);
+      
+      if (error) {
+        console.error('Error loading deals:', error);
+        toast.error('Failed to load deals');
+        setDealsLoading(false);
+        return;
+      }
+      
+      console.log('Fetched deal relationships:', data);
+      
+      // Format deals with the relationship data
+      const formattedDeals = data.map(dealRelation => ({
+        deals_contacts_id: dealRelation.deals_contacts_id,
+        relationship: dealRelation.relationship || 'Not set',
+        ...dealRelation.deals
+      }));
+      
+      console.log('Formatted deals:', formattedDeals);
+      setDeals(formattedDeals);
+    } catch (err) {
+      console.error('Error in loadContactDeals:', err);
+      toast.error('Error loading deals');
+    } finally {
+      setDealsLoading(false);
+    }
+  }, [contactId, setDeals, setDealsLoading, supabase]); // Add dependencies for useCallback
+  
+  // Search for deals based on name
+  const searchDeals = useCallback(async (query) => {
+    try {
+      if (!query) {
+        // If query is empty, just reload all deals
+        return loadContactDeals();
+      }
+      
+      setDealsLoading(true);
+      console.log(`Searching for deals with query: "${query}"`);
+      
+      // Get ALL deals - we'll do a more flexible search on the client side
+      const { data: allDeals, error: searchError } = await supabase
+        .from('deals')
+        .select('*')
+        .limit(200);
+      
+      if (searchError) throw searchError;
+      
+      if (!allDeals || allDeals.length === 0) {
+        console.log('No deals found in database');
+        toast('No deals found in the database');
+        setDeals([]);
+        setDealsLoading(false);
+        return;
+      }
+      
+      console.log(`Found ${allDeals.length} total deals in database`);
+      
+      // Do a more flexible search (case insensitive, partial match)
+      const searchTerms = query.toLowerCase().split(' ');
+      const matchingDeals = allDeals.filter(deal => {
+        const dealName = (deal.opportunity || '').toLowerCase();
+        const dealDesc = (deal.description || '').toLowerCase();
+        
+        // Check if ANY search term is in the opportunity or description
+        return searchTerms.some(term => 
+          dealName.includes(term) || dealDesc.includes(term)
+        );
+      });
+      
+      console.log(`Found ${matchingDeals.length} deals matching search terms: "${searchTerms.join(', ')}"`);
+      
+      if (matchingDeals.length === 0) {
+        toast('No deals found matching your search');
+        setDeals([]);
+        setDealsLoading(false);
+        return;
+      }
+      
+      // Get the deal IDs that matched
+      const matchingDealIds = matchingDeals.map(deal => deal.deal_id);
+      console.log('Matching deal IDs:', matchingDealIds);
+      
+      // Check which of these deals are associated with this contact
+      const { data: contactDeals, error: contactDealsError } = await supabase
+        .from('deals_contacts')
+        .select(`
+          deals_contacts_id,
+          relationship,
+          deals:deal_id (*)
+        `)
+        .eq('contact_id', contactId)
+        .in('deal_id', matchingDealIds);
+      
+      if (contactDealsError) {
+        console.error('Error getting contact deals:', contactDealsError);
+        throw contactDealsError;
+      }
+      
+      console.log('Contact deals found:', contactDeals);
+      
+      // If no contact deals were found, show all matching deals
+      let formattedDeals;
+      
+      if (!contactDeals || contactDeals.length === 0) {
+        // Format the results directly from the matching deals
+        formattedDeals = matchingDeals.map(deal => ({
+          deal_id: deal.deal_id,
+          opportunity: deal.opportunity,
+          stage: deal.stage,
+          category: deal.category,
+          source_category: deal.source_category,
+          description: deal.description,
+          total_investment: deal.total_investment,
+          created_at: deal.created_at,
+          last_modified_at: deal.last_modified_at
+        }));
+      } else {
+        // Format deals with the relationship data
+        formattedDeals = contactDeals.map(dealRelation => ({
+          deals_contacts_id: dealRelation.deals_contacts_id,
+          relationship: dealRelation.relationship || 'Not set',
+          ...dealRelation.deals
+        }));
+      }
+      
+      console.log('Formatted deals to display:', formattedDeals);
+      setDeals(formattedDeals);
+      
+      if (formattedDeals.length === 0) {
+        toast(`No deals found matching "${query}"`);
+      } else {
+        toast.success(`Found ${formattedDeals.length} matching deals`);
+      }
+    } catch (err) {
+      console.error('Error searching deals:', err);
+      toast.error('Error searching deals');
+    } finally {
+      setDealsLoading(false);
+    }
+  }, [contactId, loadContactDeals, setDeals, setDealsLoading, supabase, toast]); // Add dependencies for useCallback
+  
+  // Handle creating a new deal and associating it with the contact
+  const handleCreateDeal = useCallback(async (dealData) => {
+    try {
+      console.log('Creating new deal with data:', dealData);
+      setDealsLoading(true);
+      
+      // Validate the required fields
+      if (!dealData || !dealData.name) {
+        console.error('Missing required deal data:', dealData);
+        toast.error('Deal name is required');
+        setDealsLoading(false);
+        return;
+      }
+      
+      // Step 1: Create the deal record
+      console.log('Inserting new deal into database...');
+      const insertData = {
+        opportunity: dealData.name, // Mapping name to opportunity
+        stage: dealData.stage || 'Lead',
+        total_investment: dealData.value, // Mapping value to total_investment
+        category: dealData.category || 'Active',
+        source_category: dealData.source || 'Not Set', // Mapping source to source_category
+        description: dealData.description || ''
+        // company_id and expected_close_date removed as they don't exist in the schema
+      };
+      
+      console.log('Deal data to insert:', insertData);
+      
+      const { data: newDeal, error: dealError } = await supabase
+        .from('deals')
+        .insert([insertData])
+        .select('deal_id')
+        .single();
+      
+      if (dealError) {
+        console.error('Error creating deal:', dealError);
+        throw dealError;
+      }
+      
+      if (!newDeal || !newDeal.deal_id) {
+        console.error('No deal ID returned from insert operation:', newDeal);
+        throw new Error('Failed to create deal: No deal ID returned');
+      }
+      
+      console.log('New deal created with ID:', newDeal.deal_id);
+      
+      // Step 2: Create the deal-contact association
+      console.log('Creating deal-contact association...');
+      const associationData = {
+        deal_id: newDeal.deal_id,
+        contact_id: contactId,
+        relationship: dealData.relationship || 'Primary Contact'
+      };
+      
+      console.log('Association data:', associationData);
+      
+      const { data: association, error: associationError } = await supabase
+        .from('deals_contacts')
+        .insert([associationData])
+        .select('*');
+      
+      if (associationError) {
+        console.error('Error creating deal-contact association:', associationError);
+        throw associationError;
+      }
+      
+      console.log('Deal-contact association created:', association);
+      toast.success('Deal created successfully');
+      setShowCreateDealModal(false);
+      
+      // Reload deals list
+      console.log('Reloading deals list...');
+      await loadContactDeals();
+      console.log('Deals list reloaded');
+    } catch (err) {
+      console.error('Error creating deal:', err);
+      toast.error('Failed to create deal: ' + (err.message || 'Unknown error'));
+    } finally {
+      setDealsLoading(false);
+    }
+  }, [contactId, loadContactDeals, setDealsLoading, setShowCreateDealModal, supabase, toast]); // Add dependencies for useCallback
+  
+  // Handle associating an existing deal with the contact
+  const handleAssociateDeal = useCallback(async (dealId, relationship) => {
+    try {
+      setDealsLoading(true);
+      
+      // Check if this association already exists
+      const { data: existingAssoc, error: checkError } = await supabase
+        .from('deals_contacts')
+        .select('deals_contacts_id')
+        .eq('deal_id', dealId)
+        .eq('contact_id', contactId);
+      
+      if (checkError) throw checkError;
+      
+      if (existingAssoc && existingAssoc.length > 0) {
+        toast.error('This deal is already associated with this contact');
+        setDealsLoading(false);
+        return;
+      }
+      
+      // Create the association
+      const { error: associationError } = await supabase
+        .from('deals_contacts')
+        .insert([{
+          deal_id: dealId,
+          contact_id: contactId,
+          relationship: relationship || 'Primary Contact'
+        }]);
+      
+      if (associationError) throw associationError;
+      
+      toast.success('Deal associated successfully');
+      setShowAssociateDealModal(false);
+      
+      // Reload deals list
+      loadContactDeals();
+    } catch (err) {
+      console.error('Error associating deal:', err);
+      toast.error('Failed to associate deal');
+    } finally {
+      setDealsLoading(false);
+    }
+  }, [contactId, loadContactDeals, setDealsLoading, setShowAssociateDealModal, supabase, toast]); // Add dependencies for useCallback
+  
+  // Handle updating an existing deal
+  const handleUpdateDeal = useCallback(async (dealId, updatedData) => {
+    try {
+      setDealsLoading(true);
+      
+      // Update the deal record
+      const { error: updateError } = await supabase
+        .from('deals')
+        .update({
+          opportunity: updatedData.name, // Mapping name to opportunity
+          stage: updatedData.stage,
+          total_investment: updatedData.value, // Mapping value to total_investment
+          category: updatedData.category,
+          source_category: updatedData.source, // Mapping source to source_category
+          description: updatedData.description,
+          // company_id and expected_close_date removed as they don't exist in the schema
+          last_modified_at: new Date().toISOString(),
+          last_modified_by: 'User'
+        })
+        .eq('deal_id', dealId);
+      
+      if (updateError) throw updateError;
+      
+      // Update the relationship if provided
+      if (updatedData.deals_contacts_id && updatedData.relationship) {
+        const { error: relationError } = await supabase
+          .from('deals_contacts')
+          .update({ relationship: updatedData.relationship })
+          .eq('deals_contacts_id', updatedData.deals_contacts_id);
+        
+        if (relationError) throw relationError;
+      }
+      
+      toast.success('Deal updated successfully');
+      setShowEditDealModal(false);
+      setSelectedDeal(null);
+      
+      // Reload deals list
+      loadContactDeals();
+    } catch (err) {
+      console.error('Error updating deal:', err);
+      toast.error('Failed to update deal');
+    } finally {
+      setDealsLoading(false);
+    }
+  }, [loadContactDeals, setDealsLoading, setSelectedDeal, setShowEditDealModal, supabase, toast]); // Add dependencies for useCallback
+  
+  // Handle removing a deal association
+  const handleRemoveDealAssociation = useCallback(async (dealsContactsId) => {
+    try {
+      if (!window.confirm('Are you sure you want to remove this deal association?')) {
+        return;
+      }
+      
+      setDealsLoading(true);
+      
+      // Delete the association record
+      const { error } = await supabase
+        .from('deals_contacts')
+        .delete()
+        .eq('deals_contacts_id', dealsContactsId);
+      
+      if (error) throw error;
+      
+      toast.success('Deal association removed');
+      
+      // Reload deals list
+      loadContactDeals();
+    } catch (err) {
+      console.error('Error removing deal association:', err);
+      toast.error('Failed to remove deal association');
+    } finally {
+      setDealsLoading(false);
+    }
+  }, [loadContactDeals, setDealsLoading, supabase, toast]); // Add dependencies for useCallback
+
+  // Load all potential duplicates for a contact from the contact_duplicates table
+  const loadSupabaseDuplicates = useCallback(async () => {
+    if (!contact || !contact.contact_id) return;
+    
+    setLoading(true);
+    setSupabaseDuplicates([]); // Clear existing list while loading
+    
+    try {
+      console.log("Loading duplicates for contact ID:", contact.contact_id);
+      
+      // Use a two-step process to avoid foreign key relationship issues
+      console.log("Loading non-false-positive duplicates for contact:", contact.contact_id);
+      
+      // Get all records first without filtering by false_positive
+      const { data: allDuplicateRecords, error: dupeError } = await supabase
+        .from('contact_duplicates')
+        .select('duplicate_id, primary_contact_id, duplicate_contact_id, status, false_positive, mobile_number, email')
+        .or(`primary_contact_id.eq.${contact.contact_id},duplicate_contact_id.eq.${contact.contact_id}`);
+      
+      // Then filter out the false positives in JavaScript
+      const duplicateRecords = allDuplicateRecords ? allDuplicateRecords.filter(record => {
+        const isFalsePositive = record.false_positive === true;
+        if (isFalsePositive) {
+          console.log("Filtering out false positive record:", record.duplicate_id);
+        }
+        return !isFalsePositive;
+      }) : [];
+      
+      if (dupeError) {
+        console.error('Error loading duplicate records:', dupeError);
+        setError('Failed to load duplicate contacts');
+        setLoading(false);
+        return;
+      }
+      
+      console.log(`Found ${duplicateRecords?.length || 0} potential duplicates`);
+      
+      if (!duplicateRecords || duplicateRecords.length === 0) {
+        setLoading(false);
+        return;
+      }
+      
+      // Step 2: For each duplicate, get the "other" contact details
+      const formattedDuplicates = [];
+      
+      for (const record of duplicateRecords) {
+        // Determine which contact ID is the "other" one
+        const otherContactId = record.primary_contact_id === contact.contact_id 
+          ? record.duplicate_contact_id 
+          : record.primary_contact_id;
+        
+        // Get the details of the other contact
+        const { data: contactDetails, error: contactError } = await supabase
+          .from('contacts')
+          .select('contact_id, first_name, last_name, email, mobile, linkedin, job_role, category')
+          .eq('contact_id', otherContactId)
+          .single();
+        
+        if (contactError) {
+          console.warn(`Error loading contact details for ID ${otherContactId}:`, contactError);
+          continue;
+        }
+        
+        if (contactDetails) {
+          // Add the duplicate record's metadata
+          const duplicateContact = {
+            ...contactDetails,
+            duplicate_id: record.duplicate_id,
+            matched_on: record.email ? 'Email match' : record.mobile_number ? 'Mobile match' : 'Name match'
+          };
+          
+          // If contact doesn't have an email but the duplicate record does, use that
+          if (!duplicateContact.email && record.email) {
+            duplicateContact.email = record.email;
+          }
+          
+          // If contact doesn't have a mobile but the duplicate record does, use that
+          if (!duplicateContact.mobile && record.mobile_number) {
+            duplicateContact.mobile = record.mobile_number;
+          }
+          
+          // Add email if not present 
+          if (!duplicateContact.email) {
+            const { data: emailData } = await supabase
+              .from('contact_emails')
+              .select('email')
+              .eq('contact_id', duplicateContact.contact_id)
+              .eq('is_primary', true)
+              .limit(1);
+              
+            if (emailData && emailData.length > 0) {
+              duplicateContact.email = emailData[0].email;
+            }
+          }
+          
+          // Add mobile if not present
+          if (!duplicateContact.mobile) {
+            const { data: mobileData } = await supabase
+              .from('contact_mobiles')
+              .select('mobile')
+              .eq('contact_id', duplicateContact.contact_id)
+              .eq('is_primary', true)
+              .limit(1);
+              
+            if (mobileData && mobileData.length > 0) {
+              duplicateContact.mobile = mobileData[0].mobile;
+            }
+          }
+          
+          formattedDuplicates.push(duplicateContact);
+        }
+      }
+      
+      setSupabaseDuplicates(formattedDuplicates);
+      console.log('Successfully loaded and formatted duplicates:', formattedDuplicates);
+    } catch (err) {
+      console.error('Error in loadSupabaseDuplicates:', err);
+      setError('Failed to load duplicate contacts');
+    } finally {
+      setLoading(false);
+    }
+  }, [contact, setError, setLoading, setSupabaseDuplicates, supabase]); // Add dependencies for useCallback
+
   // Handle selecting a chat
   const handleSelectChat = async (chatId) => {
     setSelectedChat(chatId);
@@ -2497,6 +3015,7 @@ const handleSelectEmailThread = async (threadId) => {
           loadContactData();
           loadWhatsappChats(contactId);
           loadEmailThreads(contactId);
+          loadContactDeals(); // Load deals associated with this contact
           
           // Also load duplicates if we're on step 2
           if (currentStep === 2) {
@@ -2523,7 +3042,12 @@ const handleSelectEmailThread = async (threadId) => {
     if (contactId && activeEnrichmentSection === 'supabase_duplicates') {
       loadSupabaseDuplicates();
     }
-  }, [contactId, activeEnrichmentSection]);
+    
+    // Reload deals when deals section is selected
+    if (contactId && activeEnrichmentSection === 'deals') {
+      loadContactDeals();
+    }
+  }, [contactId, activeEnrichmentSection, loadSupabaseDuplicates, loadContactDeals]);
   
   // Start editing name
   const startEditingName = () => {
@@ -4471,129 +4995,6 @@ const handleInputChange = (field, value) => {
     } catch (err) {
       console.error('Error searching for duplicates:', err);
       setError('Failed to search for duplicates. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  // Load all potential duplicates for a contact from the contact_duplicates table
-  const loadSupabaseDuplicates = async () => {
-    if (!contact || !contact.contact_id) return;
-    
-    setLoading(true);
-    setSupabaseDuplicates([]); // Clear existing list while loading
-    
-    try {
-      console.log("Loading duplicates for contact ID:", contact.contact_id);
-      
-      // Use a two-step process to avoid foreign key relationship issues
-      console.log("Loading non-false-positive duplicates for contact:", contact.contact_id);
-      
-      // Get all records first without filtering by false_positive
-      const { data: allDuplicateRecords, error: dupeError } = await supabase
-        .from('contact_duplicates')
-        .select('duplicate_id, primary_contact_id, duplicate_contact_id, status, false_positive, mobile_number, email')
-        .or(`primary_contact_id.eq.${contact.contact_id},duplicate_contact_id.eq.${contact.contact_id}`);
-      
-      // Then filter out the false positives in JavaScript
-      const duplicateRecords = allDuplicateRecords ? allDuplicateRecords.filter(record => {
-        const isFalsePositive = record.false_positive === true;
-        if (isFalsePositive) {
-          console.log("Filtering out false positive record:", record.duplicate_id);
-        }
-        return !isFalsePositive;
-      }) : [];
-      
-      if (dupeError) {
-        console.error('Error loading duplicate records:', dupeError);
-        setError('Failed to load duplicate contacts');
-        setLoading(false);
-        return;
-      }
-      
-      console.log(`Found ${duplicateRecords?.length || 0} potential duplicates`);
-      
-      if (!duplicateRecords || duplicateRecords.length === 0) {
-        setLoading(false);
-        return;
-      }
-      
-      // Step 2: For each duplicate, get the "other" contact details
-      const formattedDuplicates = [];
-      
-      for (const record of duplicateRecords) {
-        // Determine which contact ID is the "other" one
-        const otherContactId = record.primary_contact_id === contact.contact_id 
-          ? record.duplicate_contact_id 
-          : record.primary_contact_id;
-        
-        // Get the details of the other contact
-        const { data: contactDetails, error: contactError } = await supabase
-          .from('contacts')
-          .select('contact_id, first_name, last_name, email, mobile, linkedin, job_role, category')
-          .eq('contact_id', otherContactId)
-          .single();
-        
-        if (contactError) {
-          console.warn(`Error loading contact details for ID ${otherContactId}:`, contactError);
-          continue;
-        }
-        
-        if (contactDetails) {
-          // Add the duplicate record's metadata
-          const duplicateContact = {
-            ...contactDetails,
-            duplicate_id: record.duplicate_id,
-            matched_on: record.email ? 'Email match' : record.mobile_number ? 'Mobile match' : 'Name match'
-          };
-          
-          // If contact doesn't have an email but the duplicate record does, use that
-          if (!duplicateContact.email && record.email) {
-            duplicateContact.email = record.email;
-          }
-          
-          // If contact doesn't have a mobile but the duplicate record does, use that
-          if (!duplicateContact.mobile && record.mobile_number) {
-            duplicateContact.mobile = record.mobile_number;
-          }
-          
-          // Add email if not present 
-          if (!duplicateContact.email) {
-            const { data: emailData } = await supabase
-              .from('contact_emails')
-              .select('email')
-              .eq('contact_id', duplicateContact.contact_id)
-              .eq('is_primary', true)
-              .limit(1);
-              
-            if (emailData && emailData.length > 0) {
-              duplicateContact.email = emailData[0].email;
-            }
-          }
-          
-          // Add mobile if not present
-          if (!duplicateContact.mobile) {
-            const { data: mobileData } = await supabase
-              .from('contact_mobiles')
-              .select('mobile')
-              .eq('contact_id', duplicateContact.contact_id)
-              .eq('is_primary', true)
-              .limit(1);
-              
-            if (mobileData && mobileData.length > 0) {
-              duplicateContact.mobile = mobileData[0].mobile;
-            }
-          }
-          
-          formattedDuplicates.push(duplicateContact);
-        }
-      }
-      
-      setSupabaseDuplicates(formattedDuplicates);
-      console.log('Successfully loaded and formatted duplicates:', formattedDuplicates);
-    } catch (err) {
-      console.error('Error in loadSupabaseDuplicates:', err);
-      setError('Failed to load duplicate contacts');
     } finally {
       setLoading(false);
     }
@@ -11836,8 +12237,155 @@ const handleInputChange = (field, value) => {
                   {/* DEALS SECTION */}
                   {activeEnrichmentSection === "deals" && (
                     <>
-                      <div style={{ color: '#999', textAlign: 'center', padding: '30px 0' }}>
-                        Deal management will appear here
+                      <div style={{ marginBottom: '20px' }}>
+                        <SectionDivider>
+                          <SectionIcon><FiDollarSign size={16} /></SectionIcon>
+                          <SectionLabel>Deals Management</SectionLabel>
+                        </SectionDivider>
+                        
+                        {/* Deal search and actions */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px', gap: '10px' }}>
+                          <div style={{ display: 'flex', flex: 1 }}>
+                            <Input
+                              type="text"
+                              placeholder="Search deals..."
+                              value={dealSearchQuery}
+                              onChange={(e) => setDealSearchQuery(e.target.value)}
+                              style={{ flex: 1, marginRight: '10px' }}
+                            />
+                            <ActionButton onClick={() => searchDeals(dealSearchQuery)}>
+                              <FiSearch size={16} /> Search
+                            </ActionButton>
+                          </div>
+                          <div>
+                            <ActionButton 
+                              variant="primary" 
+                              onClick={() => {
+                                console.log('+ New Deal button clicked');
+                                setShowCreateDealModal(true);
+                                console.log('showCreateDealModal set to true');
+                              }}
+                              style={{ marginRight: '10px' }}
+                            >
+                              <FiPlus size={16} /> New Deal
+                            </ActionButton>
+                            <ActionButton onClick={() => setShowAssociateDealModal(true)}>
+                              <FiLink size={16} /> Associate Deal
+                            </ActionButton>
+                          </div>
+                        </div>
+                        
+                        {/* Deals table */}
+                        <div style={{ background: '#1a1a1a', borderRadius: '4px', padding: '0', overflow: 'hidden' }}>
+                          <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                              <thead style={{ position: 'sticky', top: 0, backgroundColor: '#222', zIndex: 1 }}>
+                                <tr>
+                                  <th style={{ padding: '12px 15px', textAlign: 'left', borderBottom: '1px solid #333', color: '#00ff00' }}>Deal Name</th>
+                                  <th style={{ padding: '12px 15px', textAlign: 'left', borderBottom: '1px solid #333', color: '#00ff00' }}>Stage</th>
+                                  <th style={{ padding: '12px 15px', textAlign: 'left', borderBottom: '1px solid #333', color: '#00ff00' }}>Value</th>
+                                  <th style={{ padding: '12px 15px', textAlign: 'left', borderBottom: '1px solid #333', color: '#00ff00' }}>Company</th>
+                                  <th style={{ padding: '12px 15px', textAlign: 'left', borderBottom: '1px solid #333', color: '#00ff00' }}>Relationship</th>
+                                  <th style={{ padding: '12px 15px', textAlign: 'left', borderBottom: '1px solid #333', color: '#00ff00' }}>Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {dealsLoading ? (
+                                  <tr>
+                                    <td colSpan="6" style={{ padding: '20px', textAlign: 'center', color: '#999', height: '80px' }}>
+                                      Loading deals...
+                                    </td>
+                                  </tr>
+                                ) : deals && deals.length > 0 ? (
+                                  deals.map((deal) => (
+                                    <tr key={deal.deal_id} style={{ borderBottom: '1px solid #333' }}>
+                                      <td style={{ padding: '12px 15px', color: '#ccc' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                                          <div style={{ marginRight: '8px', color: '#00ff00' }}>
+                                            <FiDollarSign size={16} />
+                                          </div>
+                                          <div>
+                                            <div style={{ fontWeight: 'bold', marginBottom: '4px', color: '#eee' }}>
+                                              {deal.opportunity}
+                                            </div>
+                                            <div style={{ fontSize: '0.8rem', color: '#999' }}>
+                                              Updated: {new Date(deal.last_modified_at).toLocaleDateString()}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </td>
+                                      <td style={{ padding: '12px 15px', color: '#ccc' }}>
+                                        <Badge 
+                                          bg={
+                                            deal.stage === 'Closed Won' ? 'rgba(0, 255, 0, 0.2)' : 
+                                            deal.stage === 'Closed Lost' ? 'rgba(255, 0, 0, 0.2)' : 
+                                            'rgba(255, 165, 0, 0.2)'
+                                          }
+                                          color={
+                                            deal.stage === 'Closed Won' ? '#00ff00' : 
+                                            deal.stage === 'Closed Lost' ? '#ff5555' : 
+                                            '#ffaa00'
+                                          }
+                                          borderColor={
+                                            deal.stage === 'Closed Won' ? '#00ff00' : 
+                                            deal.stage === 'Closed Lost' ? '#ff5555' : 
+                                            '#ffaa00'
+                                          }
+                                        >
+                                          {deal.stage}
+                                        </Badge>
+                                      </td>
+                                      <td style={{ padding: '12px 15px', color: '#ccc' }}>
+                                        {deal.total_investment ? `$${deal.total_investment.toLocaleString()}` : '-'}
+                                      </td>
+                                      <td style={{ padding: '12px 15px', color: '#ccc' }}>
+                                        {'-'} {/* Company relation no longer exists in schema */}
+                                      </td>
+                                      <td style={{ padding: '12px 15px', color: '#ccc' }}>
+                                        {deal.relationship || 'Not set'}
+                                      </td>
+                                      <td style={{ padding: '12px 15px' }}>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                          <ActionButton 
+                                            onClick={() => {
+                                              setSelectedDeal(deal);
+                                              setShowEditDealModal(true);
+                                            }}
+                                            style={{ padding: '4px 8px', fontSize: '0.8rem' }}
+                                          >
+                                            <FiEdit size={14} />
+                                          </ActionButton>
+                                          <ActionButton 
+                                            onClick={() => handleRemoveDealAssociation(deal.deals_contacts_id)}
+                                            style={{ padding: '4px 8px', fontSize: '0.8rem' }}
+                                          >
+                                            <FiX size={14} />
+                                          </ActionButton>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))
+                                ) : (
+                                  <tr>
+                                    <td colSpan="6" style={{ padding: '20px', textAlign: 'center', color: '#999', height: '80px' }}>
+                                      No deals associated with this contact.{' '}
+                                      <span 
+                                        onClick={() => setShowCreateDealModal(true)}
+                                        style={{ 
+                                          color: '#00ff00', 
+                                          cursor: 'pointer', 
+                                          textDecoration: 'underline'
+                                        }}
+                                      >
+                                        Create a deal
+                                      </span>
+                                    </td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
                       </div>
                     </>
                   )}
@@ -13342,8 +13890,615 @@ const handleInputChange = (field, value) => {
           }
         }}
       />
+
+      {/* Create Deal Modal */}
+      {showCreateDealModal && (
+        <div style={{ 
+          position: 'fixed', 
+          left: '50%', 
+          top: '50%', 
+          transform: 'translate(-50%, -50%)',
+          backgroundColor: '#1a1a1a',
+          width: '500px',
+          zIndex: 9999,
+          padding: '20px',
+          border: '1px solid green'
+        }}>
+          <div style={{ borderBottom: '1px solid green', marginBottom: '15px', paddingBottom: '10px', display: 'flex', justifyContent: 'space-between' }}>
+            <h3 style={{ margin: 0 }}>Create New Deal</h3>
+            <button 
+              onClick={() => setShowCreateDealModal(false)}
+              style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}
+            >
+              X
+            </button>
+          </div>
+          
+          {/* Simple form with just name and a create button */}
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            const dealName = e.target.elements.dealName.value;
+            handleCreateDeal({
+              name: dealName,
+              stage: 'Lead',
+              description: 'Created from quick form'
+            });
+          }}>
+            <div style={{marginBottom: '20px'}}>
+              <label htmlFor="dealName" style={{display: 'block', marginBottom: '5px'}}>Deal Name</label>
+              <input 
+                type="text" 
+                id="dealName" 
+                name="dealName" 
+                style={{
+                  width: '100%', 
+                  padding: '8px', 
+                  backgroundColor: '#333',
+                  border: '1px solid #555',
+                  color: 'white'
+                }}
+                required
+              />
+            </div>
+            
+            <div style={{textAlign: 'right'}}>
+              <button 
+                type="button" 
+                onClick={() => setShowCreateDealModal(false)}
+                style={{
+                  marginRight: '10px',
+                  padding: '8px 15px',
+                  backgroundColor: 'transparent',
+                  border: '1px solid #555',
+                  color: 'white',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button 
+                type="submit"
+                style={{
+                  padding: '8px 15px',
+                  backgroundColor: '#00ff00',
+                  border: 'none',
+                  color: 'black',
+                  cursor: 'pointer'
+                }}
+              >
+                Create Deal
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
     </Container>
   );
+  
+  {/* Associate Deal Modal */}
+  <Modal
+    isOpen={showAssociateDealModal}
+    onRequestClose={() => setShowAssociateDealModal(false)}
+    style={{
+      content: {
+        width: '550px',
+        maxWidth: '90%',
+        margin: 'auto',
+        backgroundColor: '#1a1a1a',
+        border: '1px solid #333',
+        borderRadius: '8px',
+        padding: '20px'
+      },
+      overlay: {
+        backgroundColor: 'rgba(0, 0, 0, 0.75)'
+      }
+    }}
+  >
+    <ModalHeader>
+      <h2><FiLink /> Associate Existing Deal</h2>
+      <CloseButton onClick={() => setShowAssociateDealModal(false)}>
+        <FiX />
+      </CloseButton>
+    </ModalHeader>
+    
+    <form onSubmit={(e) => {
+      e.preventDefault();
+      console.log('Create deal form submitted');
+      
+      const formData = new FormData(e.target);
+      
+      // Log all form values
+      console.log('Form values:');
+      for (let [key, value] of formData.entries()) {
+        console.log(`${key}: ${value}`);
+      }
+      
+      const dealData = {
+        name: formData.get('dealName'),
+        stage: formData.get('dealStage'),
+        value: parseFloat(formData.get('dealValue')) || null,
+        category: formData.get('dealCategory'),
+        source: formData.get('dealSource'),
+        description: formData.get('dealDescription'),
+        // expected_close_date and company_id removed as they don't exist in schema
+        relationship: formData.get('dealRelationship')
+      };
+      
+      console.log('Deal data from form:', dealData);
+      
+      // Call the create deal function
+      handleCreateDeal(dealData);
+    }}>
+      <FormGroup>
+        <InputLabel>Deal Name *</InputLabel>
+        <Input 
+          type="text" 
+          name="dealName"
+          placeholder="Enter deal name"
+          required
+        />
+      </FormGroup>
+      
+      <FormGrid>
+        <FormGroup>
+          <InputLabel>Stage *</InputLabel>
+          <Select name="dealStage" required>
+            {dealStages.map(stage => (
+              <option key={stage} value={stage}>{stage}</option>
+            ))}
+          </Select>
+        </FormGroup>
+        
+        <FormGroup>
+          <InputLabel>Deal Value</InputLabel>
+          <Input 
+            type="number" 
+            name="dealValue" 
+            placeholder="Enter deal value"
+            min="0"
+            step="0.01"
+          />
+        </FormGroup>
+      </FormGrid>
+      
+      <FormGrid>
+        <FormGroup>
+          <InputLabel>Category</InputLabel>
+          <Select name="dealCategory">
+            {dealCategories.map(category => (
+              <option key={category} value={category}>{category}</option>
+            ))}
+          </Select>
+        </FormGroup>
+        
+        <FormGroup>
+          <InputLabel>Source</InputLabel>
+          <Select name="dealSource">
+            {dealSourceCategories.map(source => (
+              <option key={source} value={source}>{source}</option>
+            ))}
+          </Select>
+        </FormGroup>
+      </FormGrid>
+      
+      <FormGroup>
+        <InputLabel>Company</InputLabel>
+        <Select name="dealCompany">
+          <option value="none">Not Associated With Company</option>
+          {contactCompanies.map(company => (
+            <option key={company.company_id} value={company.company_id}>
+              {company.name}
+            </option>
+          ))}
+        </Select>
+      </FormGroup>
+      
+      <FormGroup>
+        <InputLabel>Contact Relationship *</InputLabel>
+        <Select name="dealRelationship" required>
+          {dealRelationships.map(relationship => (
+            <option key={relationship} value={relationship}>{relationship}</option>
+          ))}
+        </Select>
+      </FormGroup>
+      
+      <FormGroup>
+        <InputLabel>Expected Close Date</InputLabel>
+        <Input type="date" name="dealCloseDate" />
+      </FormGroup>
+      
+      <FormGroup>
+        <InputLabel>Description</InputLabel>
+        <TextArea 
+          name="dealDescription"
+          placeholder="Enter deal description"
+        />
+      </FormGroup>
+      
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+        <ActionButton 
+          onClick={() => setShowCreateDealModal(false)}
+          type="button"
+        >
+          Cancel
+        </ActionButton>
+        <ActionButton variant="primary" type="submit">
+          <FiCheck /> Create Deal
+        </ActionButton>
+      </div>
+    </form>
+  </Modal>
+  
+  {/* Associate Deal Modal */}
+  <Modal
+    isOpen={showAssociateDealModal}
+    onRequestClose={() => setShowAssociateDealModal(false)}
+    style={{
+      content: {
+        width: '550px',
+        maxWidth: '90%',
+        margin: 'auto',
+        backgroundColor: '#1a1a1a',
+        border: '1px solid #333',
+        borderRadius: '8px',
+        padding: '20px'
+      },
+      overlay: {
+        backgroundColor: 'rgba(0, 0, 0, 0.75)'
+      }
+    }}
+  >
+    <ModalHeader>
+      <h2><FiLink /> Associate Existing Deal</h2>
+      <CloseButton onClick={() => setShowAssociateDealModal(false)}>
+        <FiX />
+      </CloseButton>
+    </ModalHeader>
+    
+    <form onSubmit={async (e) => {
+      e.preventDefault();
+      
+      const formData = new FormData(e.target);
+      const dealId = formData.get('dealId');
+      const relationship = formData.get('dealRelationship');
+      
+      if (!dealId) {
+        toast.error('Please select a deal');
+        return;
+      }
+      
+      handleAssociateDeal(dealId, relationship);
+    }}>
+      <FormGroup>
+        <InputLabel>Search For Deal</InputLabel>
+        <Input 
+          type="text" 
+          placeholder="Search by deal name..."
+          value={dealSearchQuery}
+          onChange={(e) => setDealSearchQuery(e.target.value)}
+        />
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'flex-end', 
+          marginTop: '10px' 
+        }}>
+          <ActionButton 
+            type="button"
+            onClick={() => {
+              // Search all deals globally, not just for this contact
+              if (!dealSearchQuery) {
+                toast.error('Please enter a search query');
+                return;
+              }
+              
+              setDealsLoading(true);
+              supabase
+                .from('deals')
+                .select(`
+                  deal_id,
+                  name,
+                  stage,
+                  value,
+                  category,
+                  companies:company_id (name)
+                `)
+                .ilike('name', `%${dealSearchQuery}%`)
+                .limit(10)
+                .then(({ data, error }) => {
+                  setDealsLoading(false);
+                  if (error) {
+                    console.error('Error searching deals:', error);
+                    toast.error('Error searching deals');
+                    return;
+                  }
+                  
+                  if (!data || data.length === 0) {
+                    toast.info('No deals found matching your search');
+                    return;
+                  }
+                  
+                  // Store search results temporarily
+                  setSelectedDeal({
+                    searchResults: data
+                  });
+                });
+            }}
+          >
+            <FiSearch /> Search
+          </ActionButton>
+        </div>
+      </FormGroup>
+      
+      {dealsLoading ? (
+        <div style={{ 
+          padding: '20px', 
+          textAlign: 'center',
+          color: '#999'
+        }}>
+          Searching deals...
+        </div>
+      ) : selectedDeal?.searchResults ? (
+        <FormGroup>
+          <InputLabel>Select Deal</InputLabel>
+          <div style={{ 
+            maxHeight: '200px', 
+            overflowY: 'auto',
+            border: '1px solid #333',
+            borderRadius: '4px',
+            marginBottom: '15px'
+          }}>
+            {selectedDeal.searchResults.map(deal => (
+              <div 
+                key={deal.deal_id}
+                style={{
+                  padding: '10px 15px',
+                  borderBottom: '1px solid #333',
+                  cursor: 'pointer',
+                  background: 'transparent'
+                }}
+                onClick={() => {
+                  // Select this deal
+                  document.querySelector(`input[name="dealId"][value="${deal.deal_id}"]`).checked = true;
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <input 
+                    type="radio" 
+                    name="dealId" 
+                    value={deal.deal_id}
+                    style={{ marginRight: '10px' }}
+                  />
+                  <div>
+                    <div style={{ fontWeight: 'bold', marginBottom: '3px' }}>
+                      {deal.opportunity}
+                    </div>
+                    <div style={{ 
+                      display: 'flex', 
+                      flexWrap: 'wrap',
+                      gap: '10px',
+                      fontSize: '0.8rem',
+                      color: '#999'
+                    }}>
+                      <span>Stage: {deal.stage}</span>
+                      {deal.total_investment && <span>Value: ${deal.total_investment.toLocaleString()}</span>}
+                      {/* Company relation removed as it doesn't exist in schema */}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </FormGroup>
+      ) : null}
+      
+      <FormGroup>
+        <InputLabel>Contact's Relationship to Deal *</InputLabel>
+        <Select name="dealRelationship" required>
+          {dealRelationships.map(relationship => (
+            <option key={relationship} value={relationship}>{relationship}</option>
+          ))}
+        </Select>
+      </FormGroup>
+      
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+        <ActionButton 
+          onClick={() => {
+            setShowAssociateDealModal(false);
+            setSelectedDeal(null);
+            setDealSearchQuery('');
+          }}
+          type="button"
+        >
+          Cancel
+        </ActionButton>
+        <ActionButton variant="primary" type="submit">
+          <FiLink /> Associate Deal
+        </ActionButton>
+      </div>
+    </form>
+  </Modal>
+  
+  {/* Edit Deal Modal */}
+  <Modal
+    isOpen={showEditDealModal}
+    onRequestClose={() => {
+      setShowEditDealModal(false);
+      setSelectedDeal(null);
+    }}
+    style={{
+      content: {
+        width: '550px',
+        maxWidth: '90%',
+        margin: 'auto',
+        backgroundColor: '#1a1a1a',
+        border: '1px solid #333',
+        borderRadius: '8px',
+        padding: '20px'
+      },
+      overlay: {
+        backgroundColor: 'rgba(0, 0, 0, 0.75)'
+      }
+    }}
+  >
+    {selectedDeal && (
+      <>
+        <ModalHeader>
+          <h2><FiEdit /> Edit Deal</h2>
+          <CloseButton onClick={() => {
+            setShowEditDealModal(false);
+            setSelectedDeal(null);
+          }}>
+            <FiX />
+          </CloseButton>
+        </ModalHeader>
+        
+        <form onSubmit={(e) => {
+          e.preventDefault();
+          
+          const formData = new FormData(e.target);
+          const updatedData = {
+            name: formData.get('dealName'),
+            stage: formData.get('dealStage'),
+            value: parseFloat(formData.get('dealValue')) || null,
+            category: formData.get('dealCategory'),
+            source: formData.get('dealSource'),
+            description: formData.get('dealDescription'),
+            // expected_close_date and company_id removed as they don't exist in schema
+            relationship: formData.get('dealRelationship'),
+            deals_contacts_id: selectedDeal.deals_contacts_id
+          };
+          
+          handleUpdateDeal(selectedDeal.deal_id, updatedData);
+        }}>
+          <FormGroup>
+            <InputLabel>Deal Name *</InputLabel>
+            <Input 
+              type="text" 
+              name="dealName"
+              placeholder="Enter deal name"
+              defaultValue={selectedDeal.name}
+              required
+            />
+          </FormGroup>
+          
+          <FormGrid>
+            <FormGroup>
+              <InputLabel>Stage *</InputLabel>
+              <Select 
+                name="dealStage" 
+                defaultValue={selectedDeal.stage}
+                required
+              >
+                {dealStages.map(stage => (
+                  <option key={stage} value={stage}>{stage}</option>
+                ))}
+              </Select>
+            </FormGroup>
+            
+            <FormGroup>
+              <InputLabel>Deal Value</InputLabel>
+              <Input 
+                type="number" 
+                name="dealValue" 
+                placeholder="Enter deal value"
+                defaultValue={selectedDeal.value || ''}
+                min="0"
+                step="0.01"
+              />
+            </FormGroup>
+          </FormGrid>
+          
+          <FormGrid>
+            <FormGroup>
+              <InputLabel>Category</InputLabel>
+              <Select 
+                name="dealCategory"
+                defaultValue={selectedDeal.category || 'Inbox'}
+              >
+                {dealCategories.map(category => (
+                  <option key={category} value={category}>{category}</option>
+                ))}
+              </Select>
+            </FormGroup>
+            
+            <FormGroup>
+              <InputLabel>Source</InputLabel>
+              <Select 
+                name="dealSource"
+                defaultValue={selectedDeal.source || 'Not Set'}
+              >
+                {dealSourceCategories.map(source => (
+                  <option key={source} value={source}>{source}</option>
+                ))}
+              </Select>
+            </FormGroup>
+          </FormGrid>
+          
+          <FormGroup>
+            <InputLabel>Company</InputLabel>
+            <Select 
+              name="dealCompany"
+              defaultValue={selectedDeal.company?.company_id || 'none'}
+            >
+              <option value="none">Not Associated With Company</option>
+              {contactCompanies.map(company => (
+                <option key={company.company_id} value={company.company_id}>
+                  {company.name}
+                </option>
+              ))}
+            </Select>
+          </FormGroup>
+          
+          <FormGroup>
+            <InputLabel>Contact Relationship *</InputLabel>
+            <Select 
+              name="dealRelationship" 
+              defaultValue={selectedDeal.relationship || 'Primary Contact'}
+              required
+            >
+              {dealRelationships.map(relationship => (
+                <option key={relationship} value={relationship}>{relationship}</option>
+              ))}
+            </Select>
+          </FormGroup>
+          
+          <FormGroup>
+            <InputLabel>Expected Close Date</InputLabel>
+            <Input 
+              type="date" 
+              name="dealCloseDate"
+              defaultValue={selectedDeal.expected_close_date || ''}
+            />
+          </FormGroup>
+          
+          <FormGroup>
+            <InputLabel>Description</InputLabel>
+            <TextArea 
+              name="dealDescription"
+              placeholder="Enter deal description"
+              defaultValue={selectedDeal.description || ''}
+            />
+          </FormGroup>
+          
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+            <ActionButton 
+              onClick={() => {
+                setShowEditDealModal(false);
+                setSelectedDeal(null);
+              }}
+              type="button"
+            >
+              Cancel
+            </ActionButton>
+            <ActionButton variant="primary" type="submit">
+              <FiCheck /> Update Deal
+            </ActionButton>
+          </div>
+        </form>
+      </>
+    )}
+  </Modal>
 };
 
 export default ContactCrmWorkflow;
