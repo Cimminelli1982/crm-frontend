@@ -15,7 +15,7 @@
 
 [functions]
   node_bundler = "esbuild"
-  external_node_modules = ["@hubspot/api-client", "@slack/bolt", "@slack/web-api", "@anthropic-ai/sdk"]
+  external_node_modules = ["@hubspot/api-client", "@slack/bolt", "@slack/web-api", "@anthropic-ai/sdk", "cheerio"]
 
 # API endpoint redirect
 [[redirects]]

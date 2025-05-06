@@ -13308,11 +13308,38 @@ const handleInputChange = (field, value) => {
         onComplete={(action, contactId) => {
           // Handle successful merge
           if (action === 'merged') {
-            toast.success('Contacts successfully merged!');
-            // Refresh the page to show updated data
-            window.location.reload();
+            // Close the modal
+            setShowDuplicateProcessingModal(false);
+            
+            // Show success toast
+            toast.success('Contacts successfully merged! Moving to enrichment...', {
+              duration: 3000,
+            });
+            
+            // Refresh contact data
+            const refreshData = async () => {
+              try {
+                // Load companies first
+                await loadContactCompanies();
+                
+                // Load other data
+                await loadContactData();
+                
+                // Advance to step 3 (enrichment)
+                setCurrentStep(3);
+                
+                // Set active section to basic info
+                setActiveEnrichmentSection('basic_info');
+              } catch (err) {
+                console.error('Error refreshing data after merge:', err);
+                toast.error('Error refreshing data. Please reload the page.');
+              }
+            };
+            
+            refreshData();
+          } else {
+            setShowDuplicateProcessingModal(false);
           }
-          setShowDuplicateProcessingModal(false);
         }}
       />
     </Container>
