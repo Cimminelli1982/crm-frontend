@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import Modal from 'react-modal';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
+import DuplicateProcessingModal from './DuplicateProcessingModal';
 import { 
   FiX, 
   FiCheck, 
@@ -515,6 +516,7 @@ const AddToCrmWorkflowModal = ({
   // Step 2: Duplicate check
   const [duplicates, setDuplicates] = useState([]);
   const [selectedDuplicate, setSelectedDuplicate] = useState(null);
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   
   // Step 3 & 4: Contact enrichment
   const [formData, setFormData] = useState({
@@ -1132,13 +1134,28 @@ const AddToCrmWorkflowModal = ({
   };
   
   return (
-    <Modal
-      isOpen={isOpen}
-      onRequestClose={loading ? null : closeModal}
-      shouldCloseOnOverlayClick={!loading}
-      style={modalStyles}
-      contentLabel="Add to CRM Workflow"
-    >
+    <>
+      <DuplicateProcessingModal 
+        isOpen={showDuplicateModal}
+        onClose={() => setShowDuplicateModal(false)}
+        primaryContactId={selectedDuplicate?.contact_id}
+        duplicateContactId={contact?.contact_id}
+        onComplete={(action, contactId) => {
+          setShowDuplicateModal(false);
+          if (action === 'merged') {
+            onComplete('merged', contactId);
+            closeModal();
+          }
+        }}
+      />
+      
+      <Modal
+        isOpen={isOpen}
+        onRequestClose={loading ? null : closeModal}
+        shouldCloseOnOverlayClick={!loading}
+        style={modalStyles}
+        contentLabel="Add to CRM Workflow"
+      >
       <ModalHeader>
         <h2>Add Contact to CRM</h2>
         <CloseButton onClick={closeModal} disabled={loading}>
@@ -1345,10 +1362,10 @@ const AddToCrmWorkflowModal = ({
                         border: 'none',
                         marginRight: '10px'
                       }} 
-                      onClick={handleMergeWithDuplicate} 
+                      onClick={() => setShowDuplicateModal(true)} 
                       disabled={loading}
                     >
-                      <FiGitMerge /> Merge with Selected
+                      <FiGitMerge /> Process Duplicate
                     </Button>
                   )}
                   <PrimaryButton onClick={handleNextStep} disabled={loading}>
@@ -1740,6 +1757,7 @@ const AddToCrmWorkflowModal = ({
         </>
       )}
     </Modal>
+    </>
   );
 };
 

@@ -1,0 +1,848 @@
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import styled from 'styled-components';
+import { supabase } from '../../lib/supabaseClient';
+// Airtable integration will be implemented later
+import toast from 'react-hot-toast';
+import Modal from 'react-modal';
+import LinkedInPreviewModal from '../../components/modals/LinkedInPreviewModal';
+import { 
+  FiX, 
+  FiCheck, 
+  FiTrash2, 
+  FiArrowRight,
+  FiArrowLeft, 
+  FiAlertTriangle, 
+  FiAlertCircle,
+  FiMessageSquare, 
+  FiMail, 
+  FiPhone, 
+  FiTag, 
+  FiMapPin, 
+  FiBriefcase, 
+  FiLink,
+  FiLink2,
+  FiCalendar,
+  FiGitMerge,
+  FiInfo,
+  FiHome,
+  FiChevronRight,
+  FiSearch,
+  FiUser,
+  FiEdit,
+  FiUsers,
+  FiFile,
+  FiPlus,
+  FiDatabase,
+  FiDollarSign,
+  FiAward
+} from 'react-icons/fi';
+
+// Configure Modal for React
+Modal.setAppElement('#root');
+
+// Styled components
+// (All the same styled components...)
+
+// Function to save basic contact information
+const saveContactBasicInfo = async (contactId, basicInfo) => {
+  try {
+    const { first_name, last_name, email, mobile, linkedin, notes } = basicInfo;
+    
+    // Validate required fields
+    if (!contactId) {
+      throw new Error('Contact ID is required');
+    }
+    
+    // Prepare update data object with only provided fields
+    const updateData = {};
+    if (first_name !== undefined) updateData.first_name = first_name;
+    if (last_name !== undefined) updateData.last_name = last_name;
+    if (email !== undefined) updateData.email = email;
+    if (mobile !== undefined) updateData.mobile = mobile;
+    if (linkedin !== undefined) updateData.linkedin = linkedin;
+    if (notes !== undefined) updateData.notes = notes;
+    
+    // Skip update if no fields to update
+    if (Object.keys(updateData).length === 0) {
+      return { success: true, message: 'No changes to update' };
+    }
+    
+    // Update the contact in Supabase
+    const { data, error } = await supabase
+      .from('contacts')
+      .update(updateData)
+      .eq('id', contactId);
+      
+    if (error) {
+      console.error('Error updating contact basic info:', error);
+      throw new Error(`Failed to update contact information: ${error.message}`);
+    }
+    
+    // Success response
+    toast.success('Contact information updated successfully');
+    return { success: true, data };
+  } catch (error) {
+    console.error('Exception updating contact basic info:', error);
+    toast.error(error.message || 'Failed to update contact information');
+    return { success: false, error };
+  }
+};
+
+const ContactCrmWorkflow = () => {
+  const { id: contactId } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const stepParam = searchParams.get('step');
+  
+  // State
+  const [contact, setContact] = useState(null);
+  const [airtableContact, setAirtableContact] = useState(null);
+  const [airtableSearchInput, setAirtableSearchInput] = useState('');
+  const [airtableSearchResults, setAirtableSearchResults] = useState([]);
+  const [currentStep, setCurrentStep] = useState(parseInt(stepParam) || 1);
+  const [loading, setLoading] = useState(true);
+  
+  // State for inline editing
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editLastName, setEditLastName] = useState('');
+  const [showLinkedInPreviewModal, setShowLinkedInPreviewModal] = useState(false);
+  const [error, setError] = useState(null);
+  
+  // Step 1: Interactions confirmation
+  const [interactions, setInteractions] = useState({
+    whatsapp: [],
+    email: [],
+    other: []
+  });
+  
+  // Step 2: Duplicate check
+  const [duplicates, setDuplicates] = useState([]);
+  const [selectedDuplicate, setSelectedDuplicate] = useState(null);
+  const [deletingContact, setDeletingContact] = useState(false);
+  const [mergeSelections, setMergeSelections] = useState({
+    first_name: 'current',
+    last_name: 'current',
+    category: 'current',
+    job_role: 'current', 
+    emails: 'current',
+    mobiles: 'current',
+    tags: 'current',
+    cities: 'current',
+    linkedin: 'current',
+    score: 'current',
+    keep_in_touch_frequency: 'current'
+  });
+  
+  // Step 3 & 4: Contact enrichment
+  const [formData, setFormData] = useState({
+    keepInTouch: null,
+    category: null,
+    notes: '',
+    city: null,
+    tags: [],
+    mobiles: [], // Array of mobile objects with mobile_id, mobile, type, is_primary
+    emails: [], // Array of email objects with email_id, email, type, is_primary
+    linkedIn: '',
+    dealInfo: '',
+    selectedTag: '', // For tag selection dropdown
+    newCustomTag: '', // For tag input field
+    tagSuggestions: [] // For autocomplete suggestions
+  });
+  
+  // Mock data for external source information
+  const [externalSources, setExternalSources] = useState({
+    hubspot: {
+      email: '',
+      mobile: '',
+      tags: [],
+      notes: '',
+      keepInTouch: null,
+      category: null
+    },
+    supabase: {
+      email: '',
+      mobile: '',
+      tags: [],
+      notes: '',
+      keepInTouch: null,
+      category: null
+    },
+    airtable: {
+      email: '',
+      mobile: '',
+      tags: [],
+      notes: '',
+      keepInTouch: null,
+      category: null
+    }
+  });
+  
+  const [showSources, setShowSources] = useState({
+    hubspot: false,
+    supabase: false,
+    airtable: false
+  });
+  
+  // State for WhatsApp chats and email threads
+  const [whatsappChats, setWhatsappChats] = useState([]);
+  const [emailThreads, setEmailThreads] = useState([]);
+  const [selectedChat, setSelectedChat] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  
+  // State for email threads
+  const [selectedEmailThread, setSelectedEmailThread] = useState(null);
+  const [emailMessages, setEmailMessages] = useState([]);
+  const [loadingEmails, setLoadingEmails] = useState(false);
+  const [expandedEmails, setExpandedEmails] = useState({});
+  
+  // State for tracking selected enrichment section
+  const [activeEnrichmentSection, setActiveEnrichmentSection] = useState(() => {
+    // Try to get the saved section from sessionStorage
+    const savedSection = sessionStorage.getItem(`enrichment_section_${contactId}`);
+    return savedSection || "basics";
+  });
+
+  // Save activeEnrichmentSection to sessionStorage when it changes
+  useEffect(() => {
+    if (activeEnrichmentSection) {
+      sessionStorage.setItem(`enrichment_section_${contactId}`, activeEnrichmentSection);
+    }
+  }, [activeEnrichmentSection, contactId]);
+  
+  // State for delete modal (same as in ContactsInbox)
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [contactToDelete, setContactToDelete] = useState(null);
+  const [associatedData, setAssociatedData] = useState({
+    chatCount: 0,
+    contactChatsCount: 0,
+    interactionsCount: 0,
+    emailsCount: 0,
+    emailParticipantsCount: 0,
+    emailThreadsCount: 0,
+    tagsCount: 0,
+    citiesCount: 0,
+    notesCount: 0,
+    attachmentsCount: 0,
+    contactEmailsCount: 0,
+    contactMobilesCount: 0,
+    dealsCount: 0,
+    meetingsCount: 0,
+    investmentsCount: 0,
+    kitCount: 0,
+    lastInteraction: null
+  });
+  const [selectedItems, setSelectedItems] = useState({
+    deleteChat: true,
+    deleteContactChats: true,
+    deleteInteractions: true,
+    deleteEmails: true,
+    deleteEmailParticipants: true,
+    deleteEmailThreads: true,
+    deleteTags: true,
+    deleteCities: true, 
+    deleteNotes: true,
+    deleteAttachments: true,
+    deleteContactEmails: true,
+    deleteContactMobiles: true,
+    deleteDeals: true,
+    deleteMeetings: true,
+    deleteInvestments: true,
+    deleteKit: true,
+    addToSpam: true,
+    addMobileToSpam: true
+  });
+  const [isDeleting, setIsDeleting] = useState(false);
+  
+  // Handle selecting a chat
+  const handleSelectChat = async (chatId) => {
+    setSelectedChat(chatId);
+    setSelectedEmailThread(null); // Clear selected email thread
+    setLoadingMessages(true);
+    setChatMessages([]); // Clear previous messages
+    
+    try {
+      // ... (code to load messages)
+    } catch (err) {
+      console.error('Error in handleSelectChat:', err);
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
+
+  // Load contact data and initialize workflow
+  useEffect(() => {
+    if (contactId) {
+      console.log('Loading data for contact ID:', contactId);
+      loadContactData();
+      loadWhatsappChats(contactId);
+      loadEmailThreads(contactId);
+      
+      // Enable all legacy data sources by default
+      setShowSources({
+        hubspot: true,
+        supabase: true,
+        airtable: true
+      });
+    }
+  }, [contactId]);
+
+  const loadContactData = async () => {
+    // ...contact loading
+  };
+
+  // Start editing name
+  const startEditingName = () => {
+    setEditFirstName(contact?.first_name || '');
+    setEditLastName(contact?.last_name || '');
+    setIsEditingName(true);
+  };
+
+  // Render functions for each step
+  
+  return (
+    <Container>
+      {/* Breadcrumbs */}
+      <Breadcrumbs>
+        {/* ... */}
+      </Breadcrumbs>
+      
+      {/* Steps and progress bar */}
+      <ProgressBar>
+        {/* ... */}
+      </ProgressBar>
+      
+      {error && (
+        <ErrorMessage>
+          <FiAlertTriangle size={18} />
+          <div>{error}</div>
+        </ErrorMessage>
+      )}
+      
+      {loading ? (
+        <LoadingContainer>
+          <div>Loading contact information...</div>
+        </LoadingContainer>
+      ) : (
+        <>
+          {/* Contact name and details header */}
+          <ContactHeader>
+            {/* ... */}
+          </ContactHeader>
+          
+          {/* Step 1: Interactions */}
+          {currentStep === 1 && (
+            <>
+              {/* ... */}
+            </>
+          )}
+          
+          {/* Step 2: Duplicate Check */}
+          {currentStep === 2 && (
+            <>
+              {/* ... */}
+            </>
+          )}
+          
+          {/* Step 3: Contact Enrichment */}
+          {currentStep === 3 && (
+            <>
+              <Card>
+                <SectionTitle>
+                  <FiInfo /> Contact Enrichment
+                </SectionTitle>
+                
+                <InteractionsLayout style={{ paddingRight: 0 }}>
+                  {/* Left navigation menu */}
+                  <ChannelsMenu style={{ flex: '0 0 17%' }}>
+                    <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold' }}>
+                      INFORMATION
+                    </div>
+                    <div 
+                      onClick={() => setActiveEnrichmentSection("basics")}
+                      style={{ 
+                        padding: '12px 15px', 
+                        cursor: 'pointer', 
+                        borderBottom: '1px solid #222',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        background: activeEnrichmentSection === "basics" ? '#222' : 'transparent'
+                      }}
+                    >
+                      <FiUser size={16} />
+                      <span>Basics</span>
+                    </div>
+                    
+                    <div 
+                      onClick={() => setActiveEnrichmentSection("tags")}
+                      style={{ 
+                        padding: '12px 15px', 
+                        cursor: 'pointer', 
+                        borderBottom: '1px solid #222',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        background: activeEnrichmentSection === "tags" ? '#222' : 'transparent'
+                      }}
+                    >
+                      <FiTag size={16} />
+                      <span>Tags</span>
+                    </div>
+                    
+                    <div 
+                      onClick={() => {
+                        setActiveEnrichmentSection("notes");
+                        // Initialize editingDescription to true when there's no description
+                        if (!formData.description) {
+                          handleInputChange('editingDescription', true);
+                        }
+                      }}
+                      style={{ 
+                        padding: '12px 15px', 
+                        cursor: 'pointer', 
+                        borderBottom: '1px solid #222',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        background: activeEnrichmentSection === "notes" ? '#222' : 'transparent'
+                      }}
+                    >
+                      <FiFile size={16} />
+                      <span>Notes</span>
+                    </div>
+                    
+                    <div 
+                      onClick={() => setActiveEnrichmentSection("deals")}
+                      style={{ 
+                        padding: '12px 15px', 
+                        cursor: 'pointer', 
+                        borderBottom: '1px solid #222',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        background: activeEnrichmentSection === "deals" ? '#222' : 'transparent'
+                      }}
+                    >
+                      <FiDollarSign size={16} />
+                      <span>Deals</span>
+                    </div>
+                    
+                    <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold', marginTop: '10px' }}>
+                      INTEGRATIONS
+                    </div>
+                    
+                    <div 
+                      onClick={() => setActiveEnrichmentSection("airtable")}
+                      style={{ 
+                        padding: '12px 15px', 
+                        cursor: 'pointer', 
+                        borderBottom: '1px solid #222',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        background: activeEnrichmentSection === "airtable" ? '#222' : 'transparent'
+                      }}
+                    >
+                      <FiDatabase size={16} />
+                      <span>Airtable</span>
+                    </div>
+                  </ChannelsMenu>
+                  
+                  {/* Main content area */}
+                  <InteractionsContainer style={{ flex: '0 0 83%' }}>
+                    <div style={{ padding: '20px 15px 0 20px' }}>
+                      {/* BASICS SECTION */}
+                      {activeEnrichmentSection === "basics" && (
+                        <>
+                          {/* Basics content */}
+                        </>
+                      )}
+                      
+                      {/* TAGS SECTION */}
+                      {activeEnrichmentSection === "tags" && (
+                        <>
+                          {/* Tags content */}
+                        </>
+                      )}
+                      
+                      {/* COMPANIES SECTION */}
+                      {activeEnrichmentSection === "companies" && (
+                        <>
+                          <FormGroup>
+                            <FormFieldLabel>
+                              <a 
+                                href={`https://www.linkedin.com/search/results/people/?keywords=${contact.first_name || ''}%20${contact.last_name || ''}&sid=Avh`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ color: '#fff', textDecoration: 'none', display: 'flex', alignItems: 'center' }}
+                              >
+                                <span>LinkedIn Profile</span>
+                                <span style={{ marginLeft: '5px', fontSize: '10px' }}>↗</span>
+                              </a>
+                              {airtableContact && airtableContact.linkedin_normalised && ` - Airtable: ${airtableContact.linkedin_normalised}`}
+                            </FormFieldLabel>
+                            <div style={{ 
+                              background: '#222', 
+                              padding: '12px', 
+                              borderRadius: '4px',
+                              marginBottom: '20px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '10px'
+                            }}>
+                              <Input 
+                                type="text"
+                                value={formData.linkedIn || ''}
+                                onChange={(e) => handleInputChange('linkedIn', e.target.value)}
+                                placeholder="LinkedIn URL"
+                                style={{ flex: 1 }}
+                              />
+                              
+                              {/* Save LinkedIn URL button */}
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    setLoading(true);
+                                    
+                                    // Update LinkedIn field in contacts table
+                                    const { error } = await supabase
+                                      .from('contacts')
+                                      .update({
+                                        linkedin: formData.linkedIn, // Database column is 'linkedin', form field is 'linkedIn'
+                                        last_modified_at: new Date()
+                                      })
+                                      .eq('contact_id', contactId);
+                                    
+                                    if (error) throw error;
+                                    
+                                    toast.success('LinkedIn profile saved');
+                                    setLoading(false);
+                                  } catch (err) {
+                                    console.error('Error saving LinkedIn:', err);
+                                    toast.error('Failed to save LinkedIn profile');
+                                    setLoading(false);
+                                  }
+                                }}
+                                style={{
+                                  background: '#00ff00',
+                                  color: '#000',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  padding: '8px 12px',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '5px'
+                                }}
+                              >
+                                <FiCheck size={14} /> Save
+                              </button>
+                              
+                              {/* Button to open LinkedIn search if no LinkedIn provided */}
+                              {!formData.linkedIn && (
+                                <button
+                                  onClick={() => {
+                                    const searchUrl = `https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(`${formData.firstName || ''} ${formData.lastName || ''}`.trim())}`;
+                                    window.open(searchUrl, '_blank');
+                                  }}
+                                  style={{
+                                    background: '#0077b5',
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '8px 12px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '5px'
+                                  }}
+                                >
+                                  <FiSearch size={14} /> Preview
+                                </button>
+                              )}
+                              
+                              {/* Button to view LinkedIn badge modal if LinkedIn provided */}
+                              {formData.linkedIn && (
+                                <button
+                                  onClick={() => setShowLinkedInPreviewModal(true)}
+                                  style={{
+                                    background: '#0077b5',
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '8px 12px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '5px'
+                                  }}
+                                >
+                                  <FiLink size={14} /> Open
+                                </button>
+                              )}
+                            </div>
+                          </FormGroup>
+                          
+                          <FormGroup>
+                            <FormFieldLabel>
+                              Job Role
+                              {airtableContact && airtableContact.job_title && ` - Airtable: ${airtableContact.job_title}`}
+                            </FormFieldLabel>
+                            <div style={{ 
+                              background: '#222', 
+                              padding: '15px', 
+                              borderRadius: '4px',
+                              marginBottom: '20px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '10px'
+                            }}>
+                              <Input 
+                                type="text"
+                                value={formData.jobRole || ''}
+                                onChange={(e) => handleInputChange('jobRole', e.target.value)}
+                                placeholder="Job Role"
+                                style={{ flex: 1 }}
+                              />
+                              
+                              {/* Save Job Role button */}
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    setLoading(true);
+                                    
+                                    // Update job_role field in contacts table
+                                    const { error } = await supabase
+                                      .from('contacts')
+                                      .update({
+                                        job_role: formData.jobRole,
+                                        last_modified_at: new Date()
+                                      })
+                                      .eq('contact_id', contactId);
+                                    
+                                    if (error) throw error;
+                                    
+                                    toast.success('Job role saved');
+                                    setLoading(false);
+                                  } catch (err) {
+                                    console.error('Error saving job role:', err);
+                                    toast.error('Failed to save job role');
+                                    setLoading(false);
+                                  }
+                                }}
+                                style={{
+                                  background: '#00ff00',
+                                  color: '#000',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  padding: '8px 12px',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '5px'
+                                }}
+                              >
+                                <FiCheck size={14} /> Save
+                              </button>
+                            </div>
+                          </FormGroup>
+                          
+                          {/* Associated Companies section removed */}
+                        </>
+                      )}
+                      
+                      {/* DEALS SECTION */}
+                      {activeEnrichmentSection === "deals" && (
+                        <>
+                          <div style={{ color: '#999', textAlign: 'center', padding: '30px 0' }}>
+                            Deal management will appear here
+                          </div>
+                        </>
+                      )}
+                      
+                      {/* NOTES SECTION */}
+                      {activeEnrichmentSection === "notes" && (
+                        <>
+                          <FormGroup>
+                            <FormFieldLabel>
+                              Rating
+                              {airtableContact && airtableContact.rating && ` - Airtable Rating: ${airtableContact.rating}`}
+                            </FormFieldLabel>
+                            <div style={{ 
+                              background: '#222', 
+                              padding: '12px', 
+                              borderRadius: '4px',
+                              marginBottom: '20px'
+                            }}>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                  <div 
+                                    key={star}
+                                    onClick={() => handleInputChange('score', star === formData.score ? null : star)}
+                                    style={{ 
+                                      cursor: 'pointer',
+                                      color: formData.score >= star ? '#ffbb00' : '#555',
+                                      fontSize: '24px',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      width: '30px',
+                                      height: '30px'
+                                    }}
+                                  >
+                                    ★
+                                  </div>
+                                ))}
+                                <div style={{ marginLeft: '10px', color: '#999', fontSize: '14px', alignSelf: 'center' }}>
+                                  {formData.score ? `${formData.score} of 5` : 'Not rated'} 
+                                  {formData.score && <span style={{ marginLeft: '5px', cursor: 'pointer', color: '#777' }} onClick={() => handleInputChange('score', null)}>(clear)</span>}
+                                </div>
+                              </div>
+                            </div>
+                          </FormGroup>
+                          
+                          <FormGroup>
+                            <FormFieldLabel>
+                              Description
+                              {airtableContact && airtableContact.description && ` - Airtable: ${airtableContact.description}`}
+                            </FormFieldLabel>
+                            <div style={{ 
+                              background: '#222', 
+                              padding: '12px', 
+                              borderRadius: '4px',
+                              marginBottom: '20px'
+                            }}>
+                              <TextArea 
+                                value={formData.notes || ''}
+                                onChange={(e) => handleInputChange('notes', e.target.value)}
+                                placeholder="Enter description or notes about this contact..."
+                                style={{ width: '100%', minHeight: '120px' }}
+                              />
+                            </div>
+                          </FormGroup>
+                          
+                          <FormGroup>
+                            <FormFieldLabel>
+                              Birthday
+                              {airtableContact && airtableContact.birthday && ` - Airtable: ${airtableContact.birthday}`}
+                            </FormFieldLabel>
+                            <div style={{ 
+                              background: '#222', 
+                              padding: '12px', 
+                              borderRadius: '4px',
+                              marginBottom: '20px'
+                            }}>
+                              <Input 
+                                type="date"
+                                value={formData.birthday || ''}
+                                onChange={(e) => handleInputChange('birthday', e.target.value)}
+                                style={{ width: '100%' }}
+                              />
+                            </div>
+                          </FormGroup>
+                        </>
+                      )}
+                      
+                      {/* AIRTABLE SECTION */}
+                      {activeEnrichmentSection === "airtable" && (
+                        <>
+                          <div style={{ color: '#999', textAlign: 'center', padding: '30px 0' }}>
+                            Airtable integration will appear here
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </InteractionsContainer>
+                </InteractionsLayout>
+              </Card>
+            </>
+          )}
+          
+          {currentStep === 4 && (
+            <>
+              <Card>
+                <SectionTitle>
+                  <FiBriefcase /> Professional Information
+                </SectionTitle>
+                {/* Final professional information section here */}
+              </Card>
+            </>
+          )}
+        </>
+      )}
+      
+      {/* Delete Confirmation Modal */}
+      <Modal isOpen={deleteModalOpen} onRequestClose={() => setDeleteModalOpen(false)}>
+        <ModalHeader>
+          <h2>Delete Contact and Associated Data</h2>
+          <CloseButton onClick={() => setDeleteModalOpen(false)}>
+            <FiX />
+          </CloseButton>
+        </ModalHeader>
+        <ModalContent>
+          <p>This will permanently delete this contact and all associated data.</p>
+          
+          <ContactDetail>
+            <DetailItem>
+              <DetailLabel>Name:</DetailLabel>
+              <DetailValue>{contact?.first_name} {contact?.last_name}</DetailValue>
+            </DetailItem>
+            {contact?.email && (
+              <DetailItem>
+                <DetailLabel>Email:</DetailLabel>
+                <DetailValue>{contact?.email}</DetailValue>
+              </DetailItem>
+            )}
+          </ContactDetail>
+          
+          <CheckboxContainer>
+            <div style={{ marginBottom: '10px', fontWeight: 'bold' }}>Select data to delete:</div>
+            <CheckboxGroup>
+              {/* Checkboxes for associated data types */}
+            </CheckboxGroup>
+          </CheckboxContainer>
+        </ModalContent>
+        <ButtonGroup>
+          <CancelModalButton onClick={() => setDeleteModalOpen(false)}>
+            <FiX size={14} /> Cancel
+          </CancelModalButton>
+          <ConfirmButton
+            onClick={handleDeleteContact}
+            disabled={isDeleting}
+          >
+            <FiTrash2 size={14} /> {isDeleting ? 'Deleting...' : 'Delete Contact'}
+          </ConfirmButton>
+        </ButtonGroup>
+      </Modal>
+      
+      {/* LinkedIn Preview Modal */}
+      <LinkedInPreviewModal
+        isOpen={showLinkedInPreviewModal}
+        onClose={() => setShowLinkedInPreviewModal(false)}
+        linkedInUrl={formData.linkedIn || contact?.linkedin}
+        contactName={`${contact?.first_name || ''} ${contact?.last_name || ''}`.trim()}
+        firstName={contact?.first_name}
+        lastName={contact?.last_name}
+        email={contact?.email}
+        jobRole={formData.jobRole || contact?.job_role}
+        onSaveData={(data) => {
+          // Update job role if provided
+          if (data.jobRole) {
+            handleInputChange('jobRole', data.jobRole);
+          }
+          
+          // Company handling removed
+          if (data.company) {
+            toast.success(`Job information extracted: ${data.jobRole}`);
+          }
+        }}
+      />
+    </Container>
+  );
+};
+
+export default ContactCrmWorkflow;
