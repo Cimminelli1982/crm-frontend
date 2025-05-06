@@ -15,6 +15,7 @@ import ManageContactMobiles from '../../components/modals/ManageContactMobiles';
 import CityModal from '../../components/modals/CityModal';
 import TagsModal from '../../components/modals/TagsModal';
 import CompanyContactsModal from '../../components/modals/CompanyContactsModal';
+import DuplicateProcessingModal from '../../components/modals/DuplicateProcessingModal';
 import { 
   FiX, 
   FiCheck, 
@@ -1315,6 +1316,7 @@ const ContactCrmWorkflow = () => {
   const [showCityModal, setShowCityModal] = useState(false);
   const [showTagsModal, setShowTagsModal] = useState(false);
   const [showCompanyContactsModal, setShowCompanyContactsModal] = useState(false);
+  const [showDuplicateProcessingModal, setShowDuplicateProcessingModal] = useState(false);
   const [newCompanyInitialName, setNewCompanyInitialName] = useState('');
   const [newCompanyData, setNewCompanyData] = useState({
     name: '',
@@ -1350,6 +1352,13 @@ const ContactCrmWorkflow = () => {
     score: 'current',
     keep_in_touch_frequency: 'current'
   });
+  
+  // Supabase duplicates section
+  const [supabaseDuplicates, setSupabaseDuplicates] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [showContactPreview, setShowContactPreview] = useState(false);
+  const [previewContact, setPreviewContact] = useState(null);
   
   // Step 3 & 4: Contact enrichment
   const [formData, setFormData] = useState({
@@ -2489,6 +2498,11 @@ const handleSelectEmailThread = async (threadId) => {
           loadWhatsappChats(contactId);
           loadEmailThreads(contactId);
           
+          // Also load duplicates if we're on step 2
+          if (currentStep === 2) {
+            loadSupabaseDuplicates();
+          }
+          
           // Enable all legacy data sources by default
           setShowSources({
             hubspot: true,
@@ -2502,7 +2516,14 @@ const handleSelectEmailThread = async (threadId) => {
       
       loadAllData();
     }
-  }, [contactId]); // Only depend on contactId to prevent reloading cycle
+  }, [contactId, currentStep]); // Depends on contactId and currentStep
+  
+  // Load Supabase duplicates when active section changes
+  useEffect(() => {
+    if (contactId && activeEnrichmentSection === 'supabase_duplicates') {
+      loadSupabaseDuplicates();
+    }
+  }, [contactId, activeEnrichmentSection]);
   
   // Start editing name
   const startEditingName = () => {
@@ -4382,8 +4403,37 @@ const handleInputChange = (field, value) => {
         }
       });
       
+      // Filter out contacts that have been marked as false positives
+      const { data: falsePositives } = await supabase
+        .from('contact_duplicates')
+        .select('primary_contact_id, duplicate_contact_id')
+        .eq('false_positive', true)
+        .or(`primary_contact_id.eq.${contact.contact_id},duplicate_contact_id.eq.${contact.contact_id}`);
+      
+      const falsePositiveIds = new Set();
+      if (falsePositives && falsePositives.length > 0) {
+        console.log("Found false positive records:", falsePositives.length);
+        falsePositives.forEach(record => {
+          const otherContactId = record.primary_contact_id === contact.contact_id 
+            ? record.duplicate_contact_id 
+            : record.primary_contact_id;
+          
+          falsePositiveIds.add(otherContactId);
+          console.log("Adding to false positive set:", otherContactId);
+        });
+      }
+      
+      // Filter out contacts that are in the false positive set
+      const filteredMatches = uniqueMatches.filter(match => {
+        const isFalsePositive = falsePositiveIds.has(match.contact_id);
+        if (isFalsePositive) {
+          console.log("Filtering out false positive contact:", match.contact_id, match.first_name, match.last_name);
+        }
+        return !isFalsePositive;
+      });
+      
       // For each match, check if we need to load email and mobile fields
-      for (const match of uniqueMatches) {
+      for (const match of filteredMatches) {
         // Load email if not present
         if (!match.email) {
           const { data: emailData } = await supabase
@@ -4413,14 +4463,419 @@ const handleInputChange = (field, value) => {
         }
       }
       
-      // Set the final list of duplicates
-      setDuplicates(uniqueMatches);
+      // Set the final list of duplicates (only those that aren't false positives)
+      setDuplicates(filteredMatches);
+      // Also set these as Supabase duplicates
+      setSupabaseDuplicates(filteredMatches);
       
     } catch (err) {
       console.error('Error searching for duplicates:', err);
       setError('Failed to search for duplicates. Please try again.');
     } finally {
       setLoading(false);
+    }
+  };
+  
+  // Load all potential duplicates for a contact from the contact_duplicates table
+  const loadSupabaseDuplicates = async () => {
+    if (!contact || !contact.contact_id) return;
+    
+    setLoading(true);
+    setSupabaseDuplicates([]); // Clear existing list while loading
+    
+    try {
+      console.log("Loading duplicates for contact ID:", contact.contact_id);
+      
+      // Use a two-step process to avoid foreign key relationship issues
+      console.log("Loading non-false-positive duplicates for contact:", contact.contact_id);
+      
+      // Get all records first without filtering by false_positive
+      const { data: allDuplicateRecords, error: dupeError } = await supabase
+        .from('contact_duplicates')
+        .select('duplicate_id, primary_contact_id, duplicate_contact_id, status, false_positive, mobile_number, email')
+        .or(`primary_contact_id.eq.${contact.contact_id},duplicate_contact_id.eq.${contact.contact_id}`);
+      
+      // Then filter out the false positives in JavaScript
+      const duplicateRecords = allDuplicateRecords ? allDuplicateRecords.filter(record => {
+        const isFalsePositive = record.false_positive === true;
+        if (isFalsePositive) {
+          console.log("Filtering out false positive record:", record.duplicate_id);
+        }
+        return !isFalsePositive;
+      }) : [];
+      
+      if (dupeError) {
+        console.error('Error loading duplicate records:', dupeError);
+        setError('Failed to load duplicate contacts');
+        setLoading(false);
+        return;
+      }
+      
+      console.log(`Found ${duplicateRecords?.length || 0} potential duplicates`);
+      
+      if (!duplicateRecords || duplicateRecords.length === 0) {
+        setLoading(false);
+        return;
+      }
+      
+      // Step 2: For each duplicate, get the "other" contact details
+      const formattedDuplicates = [];
+      
+      for (const record of duplicateRecords) {
+        // Determine which contact ID is the "other" one
+        const otherContactId = record.primary_contact_id === contact.contact_id 
+          ? record.duplicate_contact_id 
+          : record.primary_contact_id;
+        
+        // Get the details of the other contact
+        const { data: contactDetails, error: contactError } = await supabase
+          .from('contacts')
+          .select('contact_id, first_name, last_name, email, mobile, linkedin, job_role, category')
+          .eq('contact_id', otherContactId)
+          .single();
+        
+        if (contactError) {
+          console.warn(`Error loading contact details for ID ${otherContactId}:`, contactError);
+          continue;
+        }
+        
+        if (contactDetails) {
+          // Add the duplicate record's metadata
+          const duplicateContact = {
+            ...contactDetails,
+            duplicate_id: record.duplicate_id,
+            matched_on: record.email ? 'Email match' : record.mobile_number ? 'Mobile match' : 'Name match'
+          };
+          
+          // If contact doesn't have an email but the duplicate record does, use that
+          if (!duplicateContact.email && record.email) {
+            duplicateContact.email = record.email;
+          }
+          
+          // If contact doesn't have a mobile but the duplicate record does, use that
+          if (!duplicateContact.mobile && record.mobile_number) {
+            duplicateContact.mobile = record.mobile_number;
+          }
+          
+          // Add email if not present 
+          if (!duplicateContact.email) {
+            const { data: emailData } = await supabase
+              .from('contact_emails')
+              .select('email')
+              .eq('contact_id', duplicateContact.contact_id)
+              .eq('is_primary', true)
+              .limit(1);
+              
+            if (emailData && emailData.length > 0) {
+              duplicateContact.email = emailData[0].email;
+            }
+          }
+          
+          // Add mobile if not present
+          if (!duplicateContact.mobile) {
+            const { data: mobileData } = await supabase
+              .from('contact_mobiles')
+              .select('mobile')
+              .eq('contact_id', duplicateContact.contact_id)
+              .eq('is_primary', true)
+              .limit(1);
+              
+            if (mobileData && mobileData.length > 0) {
+              duplicateContact.mobile = mobileData[0].mobile;
+            }
+          }
+          
+          formattedDuplicates.push(duplicateContact);
+        }
+      }
+      
+      setSupabaseDuplicates(formattedDuplicates);
+      console.log('Successfully loaded and formatted duplicates:', formattedDuplicates);
+    } catch (err) {
+      console.error('Error in loadSupabaseDuplicates:', err);
+      setError('Failed to load duplicate contacts');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Search for contacts in Supabase
+  const searchContacts = async (query) => {
+    console.log("Searching for contacts with query:", query);
+    
+    if (!query || query.length < 2) {
+      console.log("Search query too short, skipping search");
+      setSearchResults([]);
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      setSearchResults([]); // Clear previous results
+      
+      // Execute the simplest possible query
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .limit(10);
+      
+      if (error) {
+        console.error('Error searching contacts:', error);
+        toast.error("Error searching for contacts");
+        setLoading(false);
+        return;
+      }
+      
+      // Filter the results in JavaScript (client-side) to avoid query issues
+      const filteredResults = data.filter(contact => {
+        const firstNameMatch = contact.first_name && 
+          contact.first_name.toLowerCase().includes(query.toLowerCase());
+        const lastNameMatch = contact.last_name && 
+          contact.last_name.toLowerCase().includes(query.toLowerCase());
+        
+        return (firstNameMatch || lastNameMatch) && 
+          contact.contact_id !== (contact?.contact_id);
+      });
+      
+      console.log(`Found ${filteredResults.length} contacts matching query "${query}"`);
+      
+      // If no results, show message and return
+      if (filteredResults.length === 0) {
+        toast.info(`No contacts found matching "${query}"`);
+        setLoading(false);
+        return;
+      }
+      
+      // For each result, add the matched_on field
+      const enhancedResults = filteredResults.map(contact => ({
+        ...contact,
+        matched_on: "Manual search"
+      }));
+      
+      setSearchResults(enhancedResults);
+      toast.success(`Found ${enhancedResults.length} contacts matching "${query}"`);
+      
+    } catch (err) {
+      console.error('Error in searchContacts:', err);
+      toast.error("Error while searching contacts");
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Preview a contact
+  const handlePreviewContact = (contact) => {
+    setPreviewContact(contact);
+    setShowContactPreview(true);
+  };
+  
+  // Close preview modal
+  const closePreviewModal = (markAsNonDuplicate = false) => {
+    // If markAsNonDuplicate is true, mark the contact as not a duplicate before closing
+    if (markAsNonDuplicate && previewContact && previewContact.contact_id) {
+      markAsFalsePositive(previewContact.duplicate_id, previewContact.contact_id);
+    }
+    
+    setShowContactPreview(false);
+    setPreviewContact(null);
+  };
+  
+  // Mark a duplicate as a false positive
+  const markAsFalsePositive = async (duplicateId, otherContactId) => {
+    if (!duplicateId && !otherContactId) {
+      console.error("Neither duplicate ID nor contact ID provided");
+      return;
+    }
+    
+    // First confirm with the user
+    if (!window.confirm("Are you sure this is not a duplicate? This will remove it from the list.")) {
+      return;
+    }
+    
+    try {
+      let toastId = toast.loading('Updating duplicate status...');
+      
+      // If we have a duplicate ID, use it directly
+      if (duplicateId) {
+        console.log("Marking existing duplicate as false positive:", duplicateId);
+        
+        // Now update the database
+        const { error } = await supabase
+          .from('contact_duplicates')
+          .update({ 
+            false_positive: true,
+            status: 'resolved',
+            resolved_at: new Date().toISOString(),
+            resolved_by: 'User',
+            notes: 'Marked as false positive by user'
+          })
+          .eq('duplicate_id', duplicateId);
+        
+        if (error) {
+          console.error('Error marking as false positive:', error);
+          toast.error('Failed to mark as false positive', { id: toastId });
+          return;
+        }
+        
+        // Refresh the duplicates list instead of just removing from UI
+        await loadSupabaseDuplicates();
+      } 
+      // If we only have the other contact ID, create a duplicate record first and then mark it as false positive
+      else if (otherContactId && contact?.contact_id) {
+        console.log("Creating and marking duplicate as false positive for contact:", otherContactId);
+        
+        // Simplified approach - don't check for existing duplicates
+        // Just create a minimal record with only the essential fields
+        console.log("Creating minimal duplicate record for contacts:", contact.contact_id, otherContactId);
+        
+        // Make sure to include all required fields with proper format
+        const { data: newDupe, error: createError } = await supabase
+          .from('contact_duplicates')
+          .insert({
+            primary_contact_id: contact.contact_id,
+            duplicate_contact_id: otherContactId,
+            status: 'pending', // Use 'pending' as this is the default in the schema
+            false_positive: true,
+            detected_at: new Date().toISOString() // Include with proper ISO format
+          });
+          
+        if (createError) {
+          console.error('Error creating minimal duplicate record:', createError);
+          toast.error('Failed to mark as not a duplicate', { id: toastId });
+          return;
+        }
+        
+        console.log("Successfully marked as false positive");
+        
+        // Remove from search results if present
+        setSearchResults(prev => prev.filter(d => d.contact_id !== otherContactId));
+        
+        // Refresh the duplicates list to ensure the UI is up to date
+        await loadSupabaseDuplicates();
+      }
+      
+      // Get the name of the contact for a more descriptive toast message
+      let contactName = "";
+      if (duplicateId) {
+        // Find the contact in the supabaseDuplicates array
+        const dupContact = supabaseDuplicates.find(d => d.duplicate_id === duplicateId);
+        if (dupContact) {
+          contactName = `${dupContact.first_name || ''} ${dupContact.last_name || ''}`.trim();
+        }
+      } else if (otherContactId) {
+        // Find the contact in the searchResults array
+        const searchContact = searchResults.find(r => r.contact_id === otherContactId);
+        if (searchContact) {
+          contactName = `${searchContact.first_name || ''} ${searchContact.last_name || ''}`.trim();
+        }
+      }
+      
+      // Update the toast to show success with contact name if available
+      if (contactName) {
+        toast.success(`"${contactName}" marked as not a duplicate`, { id: toastId });
+      } else {
+        toast.success('Contact marked as not a duplicate', { id: toastId });
+      }
+      
+      // If no more duplicates, show a message
+      if (supabaseDuplicates.length <= 1) {
+        toast.info('No more potential duplicates to review');
+      }
+    } catch (err) {
+      console.error('Error in markAsFalsePositive:', err);
+      toast.error('Failed to mark as false positive');
+      
+      // Reload the list to restore the item
+      loadSupabaseDuplicates();
+    }
+  };
+  
+  // Add a duplicate pair that doesn't exist yet
+  const addDuplicatePair = async (otherContactId, matchType = 'Manual') => {
+    if (!contact || !contact.contact_id || !otherContactId) return;
+    
+    try {
+      // First check if one already exists
+      const { data: existing, error: checkError } = await supabase
+        .from('contact_duplicates')
+        .select('duplicate_id')
+        .or(
+          `and(primary_contact_id.eq.${contact.contact_id},duplicate_contact_id.eq.${otherContactId}),` +
+          `and(primary_contact_id.eq.${otherContactId},duplicate_contact_id.eq.${contact.contact_id})`
+        )
+        .eq('false_positive', false);
+      
+      if (checkError) {
+        console.error('Error checking for existing duplicate pairs:', checkError);
+        toast.error('Failed to check for existing duplicates');
+        return;
+      }
+      
+      // If duplicate already exists, don't create another one
+      if (existing && existing.length > 0) {
+        toast.info('This contact is already marked as a potential duplicate');
+        return;
+      }
+      
+      // Get matching email or mobile if any
+      let matchingEmail = null;
+      let matchingMobile = null;
+      
+      // Check if email matches
+      if (contact.email) {
+        const { data: otherEmailsData } = await supabase
+          .from('contact_emails')
+          .select('email')
+          .eq('contact_id', otherContactId)
+          .eq('email', contact.email)
+          .limit(1);
+          
+        if (otherEmailsData && otherEmailsData.length > 0) {
+          matchingEmail = contact.email;
+        }
+      }
+      
+      // Check if mobile matches
+      if (contact.mobile) {
+        const { data: otherMobilesData } = await supabase
+          .from('contact_mobiles')
+          .select('mobile')
+          .eq('contact_id', otherContactId)
+          .eq('mobile', contact.mobile)
+          .limit(1);
+          
+        if (otherMobilesData && otherMobilesData.length > 0) {
+          matchingMobile = contact.mobile;
+        }
+      }
+      
+      // Create the duplicate pair
+      const { data, error } = await supabase
+        .from('contact_duplicates')
+        .insert({
+          primary_contact_id: contact.contact_id,
+          duplicate_contact_id: otherContactId,
+          status: 'pending',
+          false_positive: false,
+          email: matchingEmail,
+          mobile_number: matchingMobile,
+          detected_at: new Date().toISOString(),
+          notes: 'Manually added as potential duplicate'
+        })
+        .select('*');
+      
+      if (error) {
+        console.error('Error adding duplicate pair:', error);
+        toast.error('Failed to add duplicate pair');
+        return;
+      }
+      
+      // Reload duplicates
+      loadSupabaseDuplicates();
+      toast.success('Duplicate pair added');
+    } catch (err) {
+      console.error('Error in addDuplicatePair:', err);
+      toast.error('Failed to add duplicate pair');
     }
   };
   
@@ -5864,111 +6319,30 @@ const handleInputChange = (field, value) => {
               </LoadingContainer>
             ) : (
               <InteractionsLayout>
-                {/* Duplicates menu - left side (1/3) */}
+                {/* Left side menu (1/3) */}
                 <ChannelsMenu>
-                  {/* Group by match type - Only show when duplicates exist */}
-                  {duplicates.length > 0 && (
-                    <>
-                      {/* Matches by Name */}
-                      {duplicates.some(d => d.matched_on && d.matched_on.includes('Name')) && (
-                        <>
-                          <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold' }}>
-                            MATCHES BY NAME
-                          </div>
-                          {duplicates
-                            .filter(d => d.matched_on && d.matched_on.includes('Name'))
-                            .map(duplicate => (
-                              <ChannelItem 
-                                key={duplicate.contact_id}
-                                active={selectedDuplicate?.contact_id === duplicate.contact_id}
-                                onClick={() => handleSelectDuplicate(duplicate)}
-                              >
-                                <FiUser size={16} />
-                                <span className="channel-name">
-                                  {duplicate.first_name} {duplicate.last_name}
-                                </span>
-                              </ChannelItem>
-                            ))}
-                        </>
-                      )}
-                      
-                      {/* Matches by Email */}
-                      {duplicates.some(d => d.matched_on && d.matched_on.includes('Email')) && (
-                        <>
-                          <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold' }}>
-                            MATCHES BY EMAIL
-                          </div>
-                          {duplicates
-                            .filter(d => d.matched_on && d.matched_on.includes('Email'))
-                            .map(duplicate => (
-                              <ChannelItem 
-                                key={duplicate.contact_id}
-                                active={selectedDuplicate?.contact_id === duplicate.contact_id}
-                                onClick={() => handleSelectDuplicate(duplicate)}
-                              >
-                                <FiUser size={16} />
-                                <span className="channel-name">
-                                  {duplicate.first_name} {duplicate.last_name}
-                                </span>
-                              </ChannelItem>
-                            ))}
-                        </>
-                      )}
-                      
-                      {/* Matches by Mobile */}
-                      {duplicates.some(d => d.matched_on && d.matched_on.includes('Mobile')) && (
-                        <>
-                          <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold' }}>
-                            MATCHES BY MOBILE
-                          </div>
-                          {duplicates
-                            .filter(d => d.matched_on && d.matched_on.includes('Mobile'))
-                            .map(duplicate => (
-                              <ChannelItem 
-                                key={duplicate.contact_id}
-                                active={selectedDuplicate?.contact_id === duplicate.contact_id}
-                                onClick={() => handleSelectDuplicate(duplicate)}
-                              >
-                                <FiUser size={16} />
-                                <span className="channel-name">
-                                  {duplicate.first_name} {duplicate.last_name}
-                                </span>
-                              </ChannelItem>
-                            ))}
-                        </>
-                      )}
-                      
-                      {/* Fallback for duplicates without a specified match type */}
-                      {duplicates.some(d => !d.matched_on) && (
-                        <>
-                          <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold' }}>
-                            OTHER MATCHES
-                          </div>
-                          {duplicates
-                            .filter(d => !d.matched_on)
-                            .map(duplicate => (
-                              <ChannelItem 
-                                key={duplicate.contact_id}
-                                active={selectedDuplicate?.contact_id === duplicate.contact_id}
-                                onClick={() => handleSelectDuplicate(duplicate)}
-                              >
-                                <FiUser size={16} />
-                                <span className="channel-name">
-                                  {duplicate.first_name} {duplicate.last_name}
-                                </span>
-                              </ChannelItem>
-                            ))}
-                        </>
-                      )}
-                    </>
-                  )}
-                  
-                  {/* Show message when no duplicates found */}
-                  {duplicates.length === 0 && (
-                    <div style={{ padding: '15px', color: '#999', fontSize: '0.9rem', borderBottom: '1px solid #333' }}>
-                      No potential duplicates found
-                    </div>
-                  )}
+                  {/* Supabase Section - Always show */}
+                  <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold' }}>
+                    SUPABASE
+                  </div>
+                  <div 
+                    onClick={() => {
+                      setActiveEnrichmentSection("supabase_duplicates");
+                      setSelectedDuplicate(null); // Clear selected duplicate
+                    }}
+                    style={{ 
+                      padding: '12px 15px', 
+                      cursor: 'pointer', 
+                      borderBottom: '1px solid #222',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      background: activeEnrichmentSection === "supabase_duplicates" ? '#222' : 'transparent'
+                    }}
+                  >
+                    <FiDatabase size={16} />
+                    <span>Duplicates</span>
+                  </div>
                   
                   {/* Airtable Section - Always show regardless of duplicates */}
                   <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold', marginTop: '10px' }}>
@@ -6013,8 +6387,283 @@ const handleInputChange = (field, value) => {
                 </ChannelsMenu>
                 
                 {/* Duplicate details - right side (2/3) */}
-                <InteractionsContainer style={{ paddingRight: activeEnrichmentSection === "airtable" || activeEnrichmentSection === "airtable_combining" ? '20px' : '0' }}>
-                  {activeEnrichmentSection === "airtable" ? (
+                <InteractionsContainer style={{ paddingRight: activeEnrichmentSection === "airtable" || activeEnrichmentSection === "airtable_combining" || activeEnrichmentSection === "supabase_duplicates" ? '20px' : '0' }}>
+                  {activeEnrichmentSection === "supabase_duplicates" ? (
+                    <div style={{ padding: '20px 0 20px 20px', width: '90%' }}>
+                      <FormGroup>
+                        <h3 style={{ fontSize: '16px', marginBottom: '15px' }}>Supabase Duplicate Management</h3>
+                        
+                        {/* Search for duplicates */}
+                        <FormFieldLabel>Search for potential duplicates</FormFieldLabel>
+                        <div style={{ position: 'relative', marginBottom: '15px' }}>
+                          <div style={{ 
+                            display: 'flex',
+                            gap: '8px',
+                            marginBottom: '10px'
+                          }}>
+                            <Input
+                              type="text"
+                              value={searchQuery}
+                              onChange={(e) => {
+                                setSearchQuery(e.target.value);
+                                // Clear results if the search is empty
+                                if (!e.target.value.trim()) {
+                                  setSearchResults([]);
+                                }
+                              }}
+                              onClick={(e) => {
+                                // Keep focus when clicked
+                                e.target.focus();
+                              }}
+                              onFocus={(e) => {
+                                // Auto-select text when focused
+                                e.target.select();
+                              }}
+                              onKeyDown={(e) => {
+                                // Handle special keys
+                                if (e.key === 'Escape') {
+                                  // Clear on escape
+                                  setSearchQuery('');
+                                  setSearchResults([]);
+                                } else if (e.key === 'Enter') {
+                                  // Search on enter
+                                  e.preventDefault();
+                                  console.log("Enter key pressed with query:", searchQuery);
+                                  if (searchQuery.trim().length >= 2) {
+                                    searchContacts(searchQuery.trim());
+                                  } else if (searchQuery.trim().length > 0) {
+                                    toast.info("Please enter at least 2 characters to search");
+                                  }
+                                }
+                                // Stop propagation to prevent losing focus
+                                e.stopPropagation();
+                              }}
+                              placeholder="Search by name or email... (ESC to clear, Enter to search)"
+                              style={{ flex: 1 }}
+                              autoComplete="off"
+                            />
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                console.log("Search button clicked with query:", searchQuery);
+                                if (searchQuery.trim().length >= 2) {
+                                  searchContacts(searchQuery.trim());
+                                } else {
+                                  toast.info("Please enter at least 2 characters to search");
+                                }
+                              }}
+                              disabled={searchQuery.trim().length < 2}
+                              style={{
+                                background: searchQuery.trim().length >= 2 ? '#00ff00' : '#444',
+                                border: 'none',
+                                borderRadius: '4px',
+                                padding: '0 15px',
+                                color: searchQuery.trim().length >= 2 ? 'black' : '#999',
+                                cursor: searchQuery.trim().length >= 2 ? 'pointer' : 'not-allowed'
+                              }}
+                            >
+                              Search
+                            </button>
+                          </div>
+                          
+                          {/* Search results */}
+                          {searchResults.length > 0 && (
+                            <div style={{ 
+                              position: 'absolute', 
+                              zIndex: 10, 
+                              background: '#333', 
+                              width: '100%', 
+                              maxHeight: '250px', 
+                              overflowY: 'auto',
+                              borderRadius: '4px',
+                              boxShadow: '0 4px 8px rgba(0,0,0,0.3)'
+                            }}>
+                              {searchResults.map((result) => (
+                                <div 
+                                  key={result.contact_id}
+                                  onClick={() => handlePreviewContact(result)}
+                                  style={{ 
+                                    padding: '10px 15px',
+                                    borderBottom: '1px solid #444',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '3px'
+                                  }}
+                                  onMouseOver={(e) => e.currentTarget.style.background = '#444'}
+                                  onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                                >
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                      <div style={{ fontSize: '14px', fontWeight: 'bold' }}>
+                                        {result.first_name} {result.last_name}
+                                      </div>
+                                      <div style={{ fontSize: '12px', color: '#ccc' }}>
+                                        {result.email && (
+                                          <div style={{ marginBottom: '3px' }}>
+                                            <FiMail size={12} style={{ marginRight: '5px' }} />
+                                            {result.email}
+                                          </div>
+                                        )}
+                                        {result.mobile && (
+                                          <div>
+                                            <FiPhone size={12} style={{ marginRight: '5px' }} />
+                                            {result.mobile}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '5px' }}>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation(); // Prevent triggering parent click
+                                          markAsFalsePositive(null, result.contact_id);
+                                        }}
+                                        title="Mark as not a duplicate"
+                                        style={{
+                                          background: 'transparent',
+                                          color: '#ff4444',
+                                          border: '1px solid #ff4444',
+                                          borderRadius: '4px',
+                                          padding: '2px 7px',
+                                          cursor: 'pointer',
+                                          fontSize: '12px',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          minWidth: '25px',
+                                          minHeight: '25px'
+                                        }}
+                                      >
+                                        <FiX size={14} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* All duplicates list */}
+                        <div style={{ marginBottom: '15px' }}>
+                          <FormFieldLabel>Potential Duplicates</FormFieldLabel>
+                          <div style={{ 
+                            background: '#222',
+                            borderRadius: '4px',
+                            maxHeight: '500px',
+                            overflowY: 'auto'
+                          }}>
+                            {supabaseDuplicates.length > 0 ? (
+                              supabaseDuplicates.map((duplicate) => (
+                                <div
+                                  key={duplicate.contact_id}
+                                  style={{
+                                    padding: '12px 15px',
+                                    borderBottom: '1px solid #333',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center'
+                                  }}
+                                >
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '5px' }}>
+                                      {duplicate.first_name} {duplicate.last_name}
+                                    </div>
+                                    <div style={{ fontSize: '12px', color: '#ccc', display: 'flex', gap: '15px' }}>
+                                      {duplicate.email && (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                          <FiMail size={12} />
+                                          <span>{duplicate.email}</span>
+                                        </div>
+                                      )}
+                                      {duplicate.mobile && (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                          <FiPhone size={12} />
+                                          <span>{duplicate.mobile}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div style={{ fontSize: '11px', color: '#999', marginTop: '5px' }}>
+                                      Match type: {duplicate.matched_on}
+                                    </div>
+                                  </div>
+                                  <div style={{ display: 'flex', gap: '10px' }}>
+                                    <button 
+                                      onClick={() => {
+                                        setSelectedDuplicate(duplicate);
+                                        setShowDuplicateProcessingModal(true);
+                                      }}
+                                      style={{
+                                        background: '#00ff00',
+                                        color: 'black',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '5px 10px',
+                                        cursor: 'pointer',
+                                        fontSize: '12px',
+                                        display: 'flex',
+                                        alignItems: 'center', 
+                                        gap: '5px'
+                                      }}
+                                    >
+                                      <FiGitMerge size={12} /> Merge
+                                    </button>
+                                    <button 
+                                      onClick={(e) => {
+                                        e.stopPropagation(); // Prevent triggering parent click
+                                        console.log("Marking as false positive:", duplicate);
+                                        
+                                        if (duplicate.duplicate_id) {
+                                          // If we have a duplicate_id, use it directly
+                                          markAsFalsePositive(duplicate.duplicate_id);
+                                        } else if (duplicate.contact_id) {
+                                          // Otherwise use the contact_id to create a new duplicate record
+                                          markAsFalsePositive(null, duplicate.contact_id);
+                                        } else {
+                                          console.error("No duplicate_id or contact_id found in object:", duplicate);
+                                          toast.error("Failed to mark as not a duplicate - missing ID");
+                                        }
+                                      }}
+                                      title="Mark as not a duplicate"
+                                      style={{
+                                        background: 'transparent',
+                                        color: '#ff4444',
+                                        border: '1px solid #ff4444',
+                                        borderRadius: '4px',
+                                        padding: '5px 10px',
+                                        cursor: 'pointer',
+                                        fontSize: '12px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        minWidth: '30px',
+                                        minHeight: '30px',
+                                        transition: 'all 0.2s ease'
+                                      }}
+                                      onMouseOver={(e) => {
+                                        e.currentTarget.style.background = '#ff444420';
+                                      }}
+                                      onMouseOut={(e) => {
+                                        e.currentTarget.style.background = 'transparent';
+                                      }}
+                                    >
+                                      <FiX size={16} />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>
+                                No duplicates found. Use the search above to find potential duplicates.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </FormGroup>
+                    </div>
+                  ) : activeEnrichmentSection === "airtable" ? (
                     <div style={{ padding: '20px 0 20px 20px', width: '90%' }}>
                       <FormGroup>
                         <h3 style={{ fontSize: '16px', marginBottom: '15px' }}>Airtable Integration</h3>
@@ -12648,6 +13297,23 @@ const handleInputChange = (field, value) => {
         isOpen={showCompanyContactsModal}
         onRequestClose={() => setShowCompanyContactsModal(false)}
         contact={contact}
+      />
+
+      {/* Duplicate Processing Modal */}
+      <DuplicateProcessingModal
+        isOpen={showDuplicateProcessingModal}
+        onClose={() => setShowDuplicateProcessingModal(false)}
+        primaryContactId={contactId}
+        duplicateContactId={selectedDuplicate?.contact_id}
+        onComplete={(action, contactId) => {
+          // Handle successful merge
+          if (action === 'merged') {
+            toast.success('Contacts successfully merged!');
+            // Refresh the page to show updated data
+            window.location.reload();
+          }
+          setShowDuplicateProcessingModal(false);
+        }}
       />
     </Container>
   );
