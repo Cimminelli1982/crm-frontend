@@ -12238,83 +12238,193 @@ const handleInputChange = (field, value) => {
                   {activeEnrichmentSection === "deals" && (
                     <>
                       <div style={{ marginBottom: '20px' }}>
-                        <SectionDivider>
-                          <SectionIcon><FiDollarSign size={16} /></SectionIcon>
-                          <SectionLabel>Deals Management</SectionLabel>
-                        </SectionDivider>
+                        <SectionDivider style={{ marginBottom: '15px' }} />
                         
-                        {/* Deal search and actions */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px', gap: '10px' }}>
-                          <div style={{ display: 'flex', flex: 1 }}>
-                            <Input
-                              type="text"
-                              placeholder="Search deals..."
-                              value={dealSearchQuery}
-                              onChange={(e) => setDealSearchQuery(e.target.value)}
-                              style={{ flex: 1, marginRight: '10px' }}
-                            />
-                            <ActionButton onClick={() => searchDeals(dealSearchQuery)}>
-                              <FiSearch size={16} /> Search
-                            </ActionButton>
-                          </div>
-                          <div>
-                            <ActionButton 
-                              variant="primary" 
-                              onClick={() => {
-                                console.log('+ New Deal button clicked');
-                                setShowCreateDealModal(true);
-                                console.log('showCreateDealModal set to true');
-                              }}
-                              style={{ marginRight: '10px' }}
-                            >
-                              <FiPlus size={16} /> New Deal
-                            </ActionButton>
-                            <ActionButton onClick={() => setShowAssociateDealModal(true)}>
-                              <FiLink size={16} /> Associate Deal
-                            </ActionButton>
-                          </div>
-                        </div>
-                        
-                        {/* Deals table */}
-                        <div style={{ background: '#1a1a1a', borderRadius: '4px', padding: '0', overflow: 'hidden' }}>
-                          <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                              <thead style={{ position: 'sticky', top: 0, backgroundColor: '#222', zIndex: 1 }}>
-                                <tr>
-                                  <th style={{ padding: '12px 15px', textAlign: 'left', borderBottom: '1px solid #333', color: '#00ff00' }}>Deal Name</th>
-                                  <th style={{ padding: '12px 15px', textAlign: 'left', borderBottom: '1px solid #333', color: '#00ff00' }}>Stage</th>
-                                  <th style={{ padding: '12px 15px', textAlign: 'left', borderBottom: '1px solid #333', color: '#00ff00' }}>Value</th>
-                                  <th style={{ padding: '12px 15px', textAlign: 'left', borderBottom: '1px solid #333', color: '#00ff00' }}>Company</th>
-                                  <th style={{ padding: '12px 15px', textAlign: 'left', borderBottom: '1px solid #333', color: '#00ff00' }}>Relationship</th>
-                                  <th style={{ padding: '12px 15px', textAlign: 'left', borderBottom: '1px solid #333', color: '#00ff00' }}>Actions</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {dealsLoading ? (
-                                  <tr>
-                                    <td colSpan="6" style={{ padding: '20px', textAlign: 'center', color: '#999', height: '80px' }}>
-                                      Loading deals...
-                                    </td>
-                                  </tr>
-                                ) : deals && deals.length > 0 ? (
-                                  deals.map((deal) => (
-                                    <tr key={deal.deal_id} style={{ borderBottom: '1px solid #333' }}>
-                                      <td style={{ padding: '12px 15px', color: '#ccc' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                                          <div style={{ marginRight: '8px', color: '#00ff00' }}>
-                                            <FiDollarSign size={16} />
-                                          </div>
-                                          <div>
-                                            <div style={{ fontWeight: 'bold', marginBottom: '4px', color: '#eee' }}>
-                                              {deal.opportunity}
-                                            </div>
-                                            <div style={{ fontSize: '0.8rem', color: '#999' }}>
-                                              Updated: {new Date(deal.last_modified_at).toLocaleDateString()}
-                                            </div>
-                                          </div>
+                        {/* Deals cards layout */}
+                        <div style={{ 
+                          position: 'relative',
+                          minHeight: '200px', 
+                          padding: '10px 0',
+                          marginBottom: '20px'
+                        }}>
+                          {dealsLoading ? (
+                            <div style={{ 
+                              display: 'flex',
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                              height: '200px',
+                              color: '#999'
+                            }}>
+                              Loading deals...
+                            </div>
+                          ) : (
+                            <div>
+                              {/* Cards container with grid layout */}
+                              <div style={{ 
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                                gap: '16px',
+                                marginBottom: '20px'
+                              }}>
+                                {/* Add deal card (always visible) */}
+                                <div 
+                                  style={{
+                                    position: 'relative',
+                                    backgroundColor: 'rgba(0, 255, 0, 0.03)',
+                                    borderRadius: '8px',
+                                    border: '1px dashed rgba(0, 255, 0, 0.2)',
+                                    padding: '20px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                    color: '#00ff00'
+                                  }}
+                                  onClick={() => setShowCreateDealModal(true)}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.05)';
+                                    e.currentTarget.style.borderColor = 'rgba(0, 255, 0, 0.3)';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.03)';
+                                    e.currentTarget.style.borderColor = 'rgba(0, 255, 0, 0.2)';
+                                  }}
+                                >
+                                  <FiPlus size={24} color="#00ff00" style={{ marginBottom: '12px' }} />
+                                  <div style={{ textAlign: 'center' }}>
+                                    <div style={{ fontWeight: 'bold' }}>Add Deal</div>
+                                  </div>
+                                </div>
+                                
+                                {/* Deal cards */}
+                                {deals && deals.length > 0 ? deals.map((deal) => (
+                                  <div 
+                                    key={deal.deal_id} 
+                                    style={{
+                                      position: 'relative',
+                                      backgroundColor: '#1a1a1a',
+                                      borderRadius: '8px',
+                                      border: '1px solid #333',
+                                      padding: '15px',
+                                      height: '220px',
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.2s ease',
+                                      overflow: 'hidden'
+                                    }}
+                                    onClick={() => {
+                                      setSelectedDeal({
+                                        deal_id: deal.deal_id,
+                                        name: deal.opportunity,
+                                        stage: deal.stage,
+                                        value: deal.total_investment,
+                                        category: deal.category,
+                                        source: deal.source_category,
+                                        description: deal.description,
+                                        relationship: deal.relationship,
+                                        deals_contacts_id: deal.deals_contacts_id,
+                                        created_at: deal.created_at,
+                                        last_modified_at: deal.last_modified_at
+                                      });
+                                      setShowEditDealModal(true);
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      e.currentTarget.style.backgroundColor = '#222';
+                                      e.currentTarget.style.borderColor = '#444';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.backgroundColor = '#1a1a1a';
+                                      e.currentTarget.style.borderColor = '#333';
+                                    }}
+                                  >
+                                    {/* Remove association button (X in corner) */}
+                                    <div 
+                                      style={{
+                                        position: 'absolute',
+                                        top: '10px',
+                                        right: '10px',
+                                        width: '24px',
+                                        height: '24px',
+                                        borderRadius: '50%',
+                                        backgroundColor: 'rgba(255, 0, 0, 0.1)',
+                                        display: 'flex',
+                                        justifyContent: 'center',
+                                        alignItems: 'center',
+                                        cursor: 'pointer',
+                                        zIndex: 2,
+                                        transition: 'all 0.2s ease'
+                                      }}
+                                      onClick={(e) => {
+                                        // Stop propagation to prevent the card click
+                                        e.stopPropagation();
+                                        
+                                        if (window.confirm(`Are you sure you want to remove association with "${deal.opportunity}"?`)) {
+                                          try {
+                                            supabase
+                                              .from('deals_contacts')
+                                              .delete()
+                                              .eq('deals_contacts_id', deal.deals_contacts_id)
+                                              .then(({ error }) => {
+                                                if (error) throw error;
+                                                
+                                                toast.success('Deal association removed');
+                                                loadContactDeals();
+                                              })
+                                              .catch(err => {
+                                                console.error('Error removing deal association:', err);
+                                                toast.error('Failed to remove deal association');
+                                              });
+                                          } catch (err) {
+                                            console.error('Error removing deal association:', err);
+                                            toast.error('Failed to remove deal association');
+                                          }
+                                        }
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.backgroundColor = 'rgba(255, 0, 0, 0.3)';
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.backgroundColor = 'rgba(255, 0, 0, 0.1)';
+                                      }}
+                                    >
+                                      <FiX size={14} color="#ff5555" />
+                                    </div>
+                                    
+                                    {/* Deal header */}
+                                    <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center' }}>
+                                      <div style={{ 
+                                        width: '32px',
+                                        height: '32px',
+                                        borderRadius: '50%',
+                                        backgroundColor: 'rgba(0, 255, 255, 0.1)',
+                                        display: 'flex',
+                                        justifyContent: 'center',
+                                        alignItems: 'center',
+                                        marginRight: '10px'
+                                      }}>
+                                        <FiDollarSign size={16} color="#00ffff" />
+                                      </div>
+                                      <div style={{ flex: 1, overflow: 'hidden' }}>
+                                        <div style={{ 
+                                          fontWeight: 'bold', 
+                                          color: '#eee', 
+                                          fontSize: '1.1rem',
+                                          whiteSpace: 'nowrap',
+                                          overflow: 'hidden',
+                                          textOverflow: 'ellipsis'
+                                        }}>
+                                          {deal.opportunity}
                                         </div>
-                                      </td>
-                                      <td style={{ padding: '12px 15px', color: '#ccc' }}>
+                                      </div>
+                                    </div>
+                                    
+                                    {/* Deal info */}
+                                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                                      {/* Stage badge */}
+                                      <div style={{ marginBottom: '10px' }}>
                                         <Badge 
                                           bg={
                                             deal.stage === 'Closed Won' ? 'rgba(0, 255, 0, 0.2)' : 
@@ -12334,57 +12444,55 @@ const handleInputChange = (field, value) => {
                                         >
                                           {deal.stage}
                                         </Badge>
-                                      </td>
-                                      <td style={{ padding: '12px 15px', color: '#ccc' }}>
-                                        {deal.total_investment ? `$${deal.total_investment.toLocaleString()}` : '-'}
-                                      </td>
-                                      <td style={{ padding: '12px 15px', color: '#ccc' }}>
-                                        {'-'} {/* Company relation no longer exists in schema */}
-                                      </td>
-                                      <td style={{ padding: '12px 15px', color: '#ccc' }}>
-                                        {deal.relationship || 'Not set'}
-                                      </td>
-                                      <td style={{ padding: '12px 15px' }}>
-                                        <div style={{ display: 'flex', gap: '8px' }}>
-                                          <ActionButton 
-                                            onClick={() => {
-                                              setSelectedDeal(deal);
-                                              setShowEditDealModal(true);
-                                            }}
-                                            style={{ padding: '4px 8px', fontSize: '0.8rem' }}
-                                          >
-                                            <FiEdit size={14} />
-                                          </ActionButton>
-                                          <ActionButton 
-                                            onClick={() => handleRemoveDealAssociation(deal.deals_contacts_id)}
-                                            style={{ padding: '4px 8px', fontSize: '0.8rem' }}
-                                          >
-                                            <FiX size={14} />
-                                          </ActionButton>
+                                      </div>
+                                      
+                                      {/* Description */}
+                                      <div style={{ 
+                                        fontSize: '0.9rem', 
+                                        color: '#bbb',
+                                        marginBottom: '10px',
+                                        flex: 1,
+                                        overflow: 'hidden',
+                                        display: '-webkit-box',
+                                        WebkitLineClamp: 3,
+                                        WebkitBoxOrient: 'vertical',
+                                        textOverflow: 'ellipsis'
+                                      }}>
+                                        {deal.description || 'No description provided'}
+                                      </div>
+                                      
+                                      {/* Stats and info */}
+                                      <div style={{ marginTop: 'auto' }}>
+                                        {/* Value */}
+                                        {deal.total_investment && (
+                                          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '5px' }}>
+                                            <span style={{ color: '#999', marginRight: '5px', width: '70px' }}>Value:</span>
+                                            <span style={{ color: '#00ff00', fontWeight: 'bold' }}>
+                                              ${deal.total_investment.toLocaleString()}
+                                            </span>
+                                          </div>
+                                        )}
+                                        
+                                        {/* Relationship */}
+                                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '5px' }}>
+                                          <span style={{ color: '#999', marginRight: '5px', width: '70px' }}>Role:</span>
+                                          <span style={{ color: '#eee' }}>{deal.relationship}</span>
                                         </div>
-                                      </td>
-                                    </tr>
-                                  ))
-                                ) : (
-                                  <tr>
-                                    <td colSpan="6" style={{ padding: '20px', textAlign: 'center', color: '#999', height: '80px' }}>
-                                      No deals associated with this contact.{' '}
-                                      <span 
-                                        onClick={() => setShowCreateDealModal(true)}
-                                        style={{ 
-                                          color: '#00ff00', 
-                                          cursor: 'pointer', 
-                                          textDecoration: 'underline'
-                                        }}
-                                      >
-                                        Create a deal
-                                      </span>
-                                    </td>
-                                  </tr>
-                                )}
-                              </tbody>
-                            </table>
-                          </div>
+                                        
+                                        {/* Date */}
+                                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                                          <span style={{ color: '#999', marginRight: '5px', width: '70px' }}>Updated:</span>
+                                          <span style={{ color: '#999', fontSize: '0.8rem' }}>
+                                            {new Date(deal.last_modified_at).toLocaleDateString()}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )) : null}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </>
@@ -13892,86 +14000,132 @@ const handleInputChange = (field, value) => {
       />
 
       {/* Create Deal Modal */}
-      {showCreateDealModal && (
-        <div style={{ 
-          position: 'fixed', 
-          left: '50%', 
-          top: '50%', 
-          transform: 'translate(-50%, -50%)',
-          backgroundColor: '#1a1a1a',
-          width: '500px',
-          zIndex: 9999,
-          padding: '20px',
-          border: '1px solid green'
-        }}>
-          <div style={{ borderBottom: '1px solid green', marginBottom: '15px', paddingBottom: '10px', display: 'flex', justifyContent: 'space-between' }}>
-            <h3 style={{ margin: 0 }}>Create New Deal</h3>
-            <button 
-              onClick={() => setShowCreateDealModal(false)}
-              style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}
-            >
-              X
-            </button>
-          </div>
+      <Modal
+        isOpen={showCreateDealModal}
+        onRequestClose={() => setShowCreateDealModal(false)}
+        style={{
+          content: {
+            width: '550px',
+            maxWidth: '90%',
+            margin: 'auto',
+            backgroundColor: '#1a1a1a',
+            border: '1px solid #333',
+            borderRadius: '8px',
+            padding: '20px'
+          },
+          overlay: {
+            backgroundColor: 'rgba(0, 0, 0, 0.75)'
+          }
+        }}
+      >
+        <ModalHeader>
+          <h2><FiDollarSign /> Create New Deal</h2>
+          <CloseButton onClick={() => setShowCreateDealModal(false)}>
+            <FiX />
+          </CloseButton>
+        </ModalHeader>
+        
+        <form onSubmit={(e) => {
+          e.preventDefault();
           
-          {/* Simple form with just name and a create button */}
-          <form onSubmit={(e) => {
-            e.preventDefault();
-            const dealName = e.target.elements.dealName.value;
-            handleCreateDeal({
-              name: dealName,
-              stage: 'Lead',
-              description: 'Created from quick form'
-            });
-          }}>
-            <div style={{marginBottom: '20px'}}>
-              <label htmlFor="dealName" style={{display: 'block', marginBottom: '5px'}}>Deal Name</label>
-              <input 
-                type="text" 
-                id="dealName" 
-                name="dealName" 
-                style={{
-                  width: '100%', 
-                  padding: '8px', 
-                  backgroundColor: '#333',
-                  border: '1px solid #555',
-                  color: 'white'
-                }}
-                required
-              />
-            </div>
+          const formData = new FormData(e.target);
+          
+          const dealData = {
+            name: formData.get('dealName'),
+            stage: formData.get('dealStage') || 'Lead',
+            value: parseFloat(formData.get('dealValue')) || null,
+            category: formData.get('dealCategory') || 'Active',
+            source: formData.get('dealSource') || 'Not Set',
+            description: formData.get('dealDescription') || '',
+            relationship: formData.get('dealRelationship') || 'Primary Contact'
+          };
+          
+          handleCreateDeal(dealData);
+        }}>
+          <FormGroup>
+            <InputLabel>Deal Name *</InputLabel>
+            <Input 
+              type="text"
+              name="dealName"
+              placeholder="Enter deal name"
+              autoFocus
+              required
+            />
+          </FormGroup>
+          
+          <FormGrid>
+            <FormGroup>
+              <InputLabel>Stage *</InputLabel>
+              <Select name="dealStage" defaultValue="Lead" required>
+                {dealStages.map(stage => (
+                  <option key={stage} value={stage}>{stage}</option>
+                ))}
+              </Select>
+            </FormGroup>
             
-            <div style={{textAlign: 'right'}}>
-              <button 
-                type="button" 
-                onClick={() => setShowCreateDealModal(false)}
-                style={{
-                  marginRight: '10px',
-                  padding: '8px 15px',
-                  backgroundColor: 'transparent',
-                  border: '1px solid #555',
-                  color: 'white',
-                  cursor: 'pointer'
-                }}
-              >
-                Cancel
-              </button>
-              <button 
-                type="submit"
-                style={{
-                  padding: '8px 15px',
-                  backgroundColor: '#00ff00',
-                  border: 'none',
-                  color: 'black',
-                  cursor: 'pointer'
-                }}
-              >
-                Create Deal
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+            <FormGroup>
+              <InputLabel>Value</InputLabel>
+              <Input 
+                type="number" 
+                name="dealValue" 
+                placeholder="Enter deal value"
+                min="0"
+                step="0.01"
+              />
+            </FormGroup>
+          </FormGrid>
+          
+          <FormGrid>
+            <FormGroup>
+              <InputLabel>Category</InputLabel>
+              <Select name="dealCategory" defaultValue="Active">
+                {dealCategories.map(category => (
+                  <option key={category} value={category}>{category}</option>
+                ))}
+              </Select>
+            </FormGroup>
+            
+            <FormGroup>
+              <InputLabel>Source</InputLabel>
+              <Select name="dealSource" defaultValue="Not Set">
+                {dealSourceCategories.map(source => (
+                  <option key={source} value={source}>{source}</option>
+                ))}
+              </Select>
+            </FormGroup>
+          </FormGrid>
+          
+          <FormGroup>
+            <InputLabel>Contact Relationship *</InputLabel>
+            <Select name="dealRelationship" defaultValue="Primary Contact" required>
+              {dealRelationships.map(relationship => (
+                <option key={relationship} value={relationship}>{relationship}</option>
+              ))}
+            </Select>
+          </FormGroup>
+          
+          <FormGroup>
+            <InputLabel>Description</InputLabel>
+            <TextArea 
+              name="dealDescription"
+              placeholder="Enter deal description (optional)"
+              rows={4}
+            />
+          </FormGroup>
+          
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+            <ActionButton 
+              onClick={() => setShowCreateDealModal(false)}
+              type="button"
+            >
+              Cancel
+            </ActionButton>
+            <ActionButton variant="primary" type="submit">
+              <FiPlus /> Create Deal
+            </ActionButton>
+          </div>
+        </form>
+      </Modal>
 
     </Container>
   );
@@ -14172,17 +14326,15 @@ const handleInputChange = (field, value) => {
     }}>
       <FormGroup>
         <InputLabel>Search For Deal</InputLabel>
-        <Input 
-          type="text" 
-          placeholder="Search by deal name..."
-          value={dealSearchQuery}
-          onChange={(e) => setDealSearchQuery(e.target.value)}
-        />
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'flex-end', 
-          marginTop: '10px' 
-        }}>
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+          <Input 
+            type="text" 
+            placeholder="Search by deal name..."
+            value={dealSearchQuery}
+            onChange={(e) => setDealSearchQuery(e.target.value)}
+            style={{ flex: 1 }}
+            autoFocus
+          />
           <ActionButton 
             type="button"
             onClick={() => {
@@ -14197,13 +14349,15 @@ const handleInputChange = (field, value) => {
                 .from('deals')
                 .select(`
                   deal_id,
-                  name,
+                  opportunity,
                   stage,
-                  value,
+                  total_investment,
                   category,
-                  companies:company_id (name)
+                  description,
+                  created_at,
+                  last_modified_at
                 `)
-                .ilike('name', `%${dealSearchQuery}%`)
+                .ilike('opportunity', `%${dealSearchQuery}%`)
                 .limit(10)
                 .then(({ data, error }) => {
                   setDealsLoading(false);
@@ -14236,53 +14390,100 @@ const handleInputChange = (field, value) => {
           textAlign: 'center',
           color: '#999'
         }}>
-          Searching deals...
+          <div>Searching deals...</div>
         </div>
       ) : selectedDeal?.searchResults ? (
         <FormGroup>
           <InputLabel>Select Deal</InputLabel>
           <div style={{ 
-            maxHeight: '200px', 
+            maxHeight: '300px', 
             overflowY: 'auto',
             border: '1px solid #333',
-            borderRadius: '4px',
+            borderRadius: '8px',
             marginBottom: '15px'
           }}>
             {selectedDeal.searchResults.map(deal => (
               <div 
                 key={deal.deal_id}
                 style={{
-                  padding: '10px 15px',
+                  padding: '15px',
                   borderBottom: '1px solid #333',
                   cursor: 'pointer',
-                  background: 'transparent'
+                  background: 'transparent',
+                  transition: 'background-color 0.2s ease'
                 }}
                 onClick={() => {
                   // Select this deal
                   document.querySelector(`input[name="dealId"][value="${deal.deal_id}"]`).checked = true;
                 }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
               >
-                <div style={{ display: 'flex', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
                   <input 
                     type="radio" 
                     name="dealId" 
                     value={deal.deal_id}
-                    style={{ marginRight: '10px' }}
+                    style={{ marginTop: '5px' }}
                   />
-                  <div>
-                    <div style={{ fontWeight: 'bold', marginBottom: '3px' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 'bold', marginBottom: '5px', color: '#eee', fontSize: '1.1rem' }}>
                       {deal.opportunity}
                     </div>
-                    <div style={{ 
-                      display: 'flex', 
-                      flexWrap: 'wrap',
-                      gap: '10px',
-                      fontSize: '0.8rem',
-                      color: '#999'
-                    }}>
-                      <span>Stage: {deal.stage}</span>
-                      {deal.total_investment && <span>Value: ${deal.total_investment.toLocaleString()}</span>}
-                      {/* Company relation removed as it doesn't exist in schema */}
+                    
+                    <div style={{ display: 'flex', gap: '10px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                      <Badge 
+                        bg={
+                          deal.stage === 'Closed Won' ? 'rgba(0, 255, 0, 0.2)' : 
+                          deal.stage === 'Closed Lost' ? 'rgba(255, 0, 0, 0.2)' : 
+                          'rgba(255, 165, 0, 0.2)'
+                        }
+                        color={
+                          deal.stage === 'Closed Won' ? '#00ff00' : 
+                          deal.stage === 'Closed Lost' ? '#ff5555' : 
+                          '#ffaa00'
+                        }
+                        borderColor={
+                          deal.stage === 'Closed Won' ? '#00ff00' : 
+                          deal.stage === 'Closed Lost' ? '#ff5555' : 
+                          '#ffaa00'
+                        }
+                      >
+                        {deal.stage}
+                      </Badge>
+                      
+                      {deal.total_investment && (
+                        <Badge 
+                          bg='rgba(0, 255, 0, 0.1)'
+                          color='#00ff00'
+                          borderColor='#00ff00'
+                        >
+                          ${deal.total_investment.toLocaleString()}
+                        </Badge>
+                      )}
+                    </div>
+                    
+                    {deal.description && (
+                      <div style={{ 
+                        fontSize: '0.9rem', 
+                        color: '#bbb',
+                        marginBottom: '8px',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical'
+                      }}>
+                        {deal.description}
+                      </div>
+                    )}
+                    
+                    <div style={{ fontSize: '0.8rem', color: '#999' }}>
+                      Last updated: {new Date(deal.last_modified_at).toLocaleDateString()}
                     </div>
                   </div>
                 </div>
