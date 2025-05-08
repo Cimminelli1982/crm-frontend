@@ -269,20 +269,12 @@ const ManageContactEmails = ({ isOpen, onRequestClose, contact, onUpdateEmails }
             console.log(`Found ${emailsData.length} emails`);
           }
           
-          // Create sample email for testing if none found
-          if (!emailsData || emailsData.length === 0) {
-            console.log('No emails found, using sample data for testing');
-            const sampleEmails = [
-              { 
-                email_id: 'sample-1', 
-                contact_id: contact.contact_id, 
-                email: 'test@example.com', 
-                is_primary: true, 
-                type: 'personal' 
-              }
-            ];
-            setEmails(sampleEmails);
+          // Just use the actual emails from the database
+          if (!emailsData) {
+            console.log('No email data returned');
+            setEmails([]);
           } else {
+            console.log(`Setting ${emailsData.length} emails`);
             setEmails(emailsData);
           }
         } catch (err) {
