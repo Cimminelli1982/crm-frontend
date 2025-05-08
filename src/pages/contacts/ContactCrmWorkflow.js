@@ -689,9 +689,30 @@ const ModalHeader = styled.div`
   h2 {
     color: #00ff00;
     margin: 0;
-    font-size: 1.2rem;
-    font-family: 'Courier New', monospace;
   }
+`;
+
+// Tab styled components
+const Tabs = styled.div`
+  display: flex;
+  border-bottom: 1px solid #333;
+  margin-bottom: 20px;
+`;
+
+const Tab = styled.div`
+  padding: 10px 20px;
+  cursor: pointer;
+  color: ${props => props.active ? '#00ff00' : '#ccc'};
+  border-bottom: 2px solid ${props => props.active ? '#00ff00' : 'transparent'};
+  font-family: 'Courier New', monospace;
+  
+  &:hover {
+    color: ${props => props.active ? '#00ff00' : '#eee'};
+  }
+`;
+
+const TabContent = styled.div`
+  display: ${props => props.active ? 'block' : 'none'};
 `;
 
 const CloseButton = styled.button`
@@ -1301,19 +1322,26 @@ const ContactCrmWorkflow = () => {
   const [showCreateDealModal, setShowCreateDealModal] = useState(false);
   const [showAssociateDealModal, setShowAssociateDealModal] = useState(false);
   const [showEditDealModal, setShowEditDealModal] = useState(false);
+  const [dealModalTab, setDealModalTab] = useState('list');
   const [selectedDeal, setSelectedDeal] = useState(null);
   const [dealSearchQuery, setDealSearchQuery] = useState('');
+  const [dealNameInput, setDealNameInput] = useState('');
+  const [dealSuggestions, setDealSuggestions] = useState([]);
+  const [allDeals, setAllDeals] = useState([]);
+  const [showDealSuggestions, setShowDealSuggestions] = useState(false);
+  const [selectedDealForEdit, setSelectedDealForEdit] = useState(null);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
   const [dealStages] = useState([
-    'Lead', 'Prospect', 'Proposal', 'Negotiation', 'Closed Won', 'Closed Lost'
+    'Lead', 'Qualified', 'Evaluating', 'Negotiation', 'Closing', 'Closed Won', 'Closed Lost', 'Invested', 'Monitoring', 'Passed'
   ]);
   const [dealCategories] = useState([
-    'Inbox', 'Active', 'On Hold', 'Won', 'Lost', 'Archived'
+    'Inbox', 'Startup', 'Investment', 'Fund', 'Partnership', 'Real Estate', 'Private Debt', 'Private Equity', 'Other'
   ]);
   const [dealSourceCategories] = useState([
-    'Not Set', 'Referral', 'Direct', 'Social Media', 'Event', 'Website', 'Cold Outreach', 'Other'
+    'Not Set', 'Cold Contacting', 'Introduction'
   ]);
   const [dealRelationships] = useState([
-    'Primary Contact', 'Decision Maker', 'Influencer', 'Introducer', 'Other'
+    'Introducer', 'Co-Investor', 'Advisor', 'Other'
   ]);
   
   // State for inline editing
@@ -1377,6 +1405,7 @@ const ContactCrmWorkflow = () => {
   // Supabase duplicates section
   const [supabaseDuplicates, setSupabaseDuplicates] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchType, setSearchType] = useState("name");
   const [searchResults, setSearchResults] = useState([]);
   const [showContactPreview, setShowContactPreview] = useState(false);
   const [previewContact, setPreviewContact] = useState(null);
@@ -2158,10 +2187,79 @@ const ContactCrmWorkflow = () => {
     }
   }, [contactId, loadContactDeals, setDeals, setDealsLoading, supabase, toast]); // Add dependencies for useCallback
   
-  // Handle creating a new deal and associating it with the contact
+  // Load all deals and filter as user types
+  const searchDealSuggestions = useCallback(async (query = '') => {
+    try {
+      // If allDeals is empty or we're initializing, fetch all deals
+      if (allDeals.length === 0) {
+        console.log('Loading all deals...');
+        
+        const { data, error } = await supabase
+          .from('deals')
+          .select(`
+            deal_id,
+            opportunity,
+            stage,
+            total_investment,
+            category,
+            description,
+            created_at,
+            last_modified_at
+          `)
+          .order('last_modified_at', { ascending: false })
+          .limit(100);
+          
+        if (error) {
+          console.error('Error loading deals:', error);
+          return;
+        }
+        
+        if (data && data.length > 0) {
+          setAllDeals(data);
+          
+          // If no query, set all deals as suggestions
+          if (!query) {
+            setDealSuggestions(data);
+            return;
+          }
+          
+          // Continue with filtering if there's a query
+          const filtered = data.filter(deal => 
+            deal.opportunity.toLowerCase().includes(query.toLowerCase())
+          );
+          setDealSuggestions(filtered);
+          return;
+        } else {
+          console.log('No deals found');
+          setDealSuggestions([]);
+          return;
+        }
+      }
+      
+      // Filter existing deals based on query
+      if (!query) {
+        // If query is empty, show all deals
+        setDealSuggestions(allDeals);
+      } else {
+        // Filter by query (case insensitive)
+        const filtered = allDeals.filter(deal => 
+          deal.opportunity.toLowerCase().includes(query.toLowerCase())
+        );
+        setDealSuggestions(filtered);
+      }
+    } catch (error) {
+      console.error('Error in searchDealSuggestions:', error);
+      setDealSuggestions([]);
+    }
+  }, [supabase, allDeals]);
+  
+  // Declare handleDealSuggestionSelect reference but implement it later
+  let handleDealSuggestionSelect;
+  
+  // Handle creating a new deal or using an existing one, and associating it with the contact
   const handleCreateDeal = useCallback(async (dealData) => {
     try {
-      console.log('Creating new deal with data:', dealData);
+      console.log('Processing deal with data:', dealData);
       setDealsLoading(true);
       
       // Validate the required fields
@@ -2172,78 +2270,79 @@ const ContactCrmWorkflow = () => {
         return;
       }
       
-      // Step 1: Create the deal record
-      console.log('Inserting new deal into database...');
-      const insertData = {
-        opportunity: dealData.name, // Mapping name to opportunity
-        stage: dealData.stage || 'Lead',
-        total_investment: dealData.value, // Mapping value to total_investment
-        category: dealData.category || 'Active',
-        source_category: dealData.source || 'Not Set', // Mapping source to source_category
-        description: dealData.description || ''
-        // company_id and expected_close_date removed as they don't exist in the schema
-      };
+      let dealId;
       
-      console.log('Deal data to insert:', insertData);
-      
-      const { data: newDeal, error: dealError } = await supabase
-        .from('deals')
-        .insert([insertData])
-        .select('deal_id')
-        .single();
-      
-      if (dealError) {
-        console.error('Error creating deal:', dealError);
-        throw dealError;
+      // Check if we're editing an existing deal or creating a new one
+      if (selectedDealForEdit && selectedDealForEdit.deal_id) {
+        console.log('Using existing deal with ID:', selectedDealForEdit.deal_id);
+        dealId = selectedDealForEdit.deal_id;
+        
+        // Update the deal record if any fields have changed
+        if (
+          dealData.name !== selectedDealForEdit.opportunity ||
+          dealData.stage !== selectedDealForEdit.stage ||
+          dealData.value !== selectedDealForEdit.total_investment ||
+          dealData.category !== selectedDealForEdit.category ||
+          dealData.source !== selectedDealForEdit.source_category ||
+          dealData.description !== selectedDealForEdit.description
+        ) {
+          console.log('Updating existing deal with new data');
+          const updateData = {
+            opportunity: dealData.name,
+            stage: dealData.stage || 'Lead',
+            total_investment: dealData.value, // Mapping value to total_investment
+            category: dealData.category || 'Active',
+            source_category: dealData.source || 'Not Set', // Mapping source to source_category
+            description: dealData.description || '',
+            last_modified_at: new Date().toISOString(),
+            last_modified_by: 'User'
+          };
+          
+          const { error: updateError } = await supabase
+            .from('deals')
+            .update(updateData)
+            .eq('deal_id', dealId);
+            
+          if (updateError) {
+            console.error('Error updating deal:', updateError);
+            throw updateError;
+          }
+          
+          console.log('Deal updated successfully');
+        }
+      } else {
+        // Step 1: Create a new deal record
+        console.log('Creating new deal in database...');
+        const insertData = {
+          opportunity: dealData.name, // Mapping name to opportunity
+          stage: dealData.stage || 'Lead',
+          total_investment: dealData.value, // Mapping value to total_investment
+          category: dealData.category || 'Active',
+          source_category: dealData.source || 'Not Set', // Mapping source to source_category
+          description: dealData.description || ''
+        };
+        
+        console.log('Deal data to insert:', insertData);
+        
+        const { data: newDeal, error: dealError } = await supabase
+          .from('deals')
+          .insert([insertData])
+          .select('deal_id')
+          .single();
+        
+        if (dealError) {
+          console.error('Error creating deal:', dealError);
+          throw dealError;
+        }
+        
+        if (!newDeal || !newDeal.deal_id) {
+          console.error('No deal ID returned from insert operation:', newDeal);
+          throw new Error('Failed to create deal: No deal ID returned');
+        }
+        
+        console.log('New deal created with ID:', newDeal.deal_id);
+        dealId = newDeal.deal_id;
       }
-      
-      if (!newDeal || !newDeal.deal_id) {
-        console.error('No deal ID returned from insert operation:', newDeal);
-        throw new Error('Failed to create deal: No deal ID returned');
-      }
-      
-      console.log('New deal created with ID:', newDeal.deal_id);
-      
-      // Step 2: Create the deal-contact association
-      console.log('Creating deal-contact association...');
-      const associationData = {
-        deal_id: newDeal.deal_id,
-        contact_id: contactId,
-        relationship: dealData.relationship || 'Primary Contact'
-      };
-      
-      console.log('Association data:', associationData);
-      
-      const { data: association, error: associationError } = await supabase
-        .from('deals_contacts')
-        .insert([associationData])
-        .select('*');
-      
-      if (associationError) {
-        console.error('Error creating deal-contact association:', associationError);
-        throw associationError;
-      }
-      
-      console.log('Deal-contact association created:', association);
-      toast.success('Deal created successfully');
-      setShowCreateDealModal(false);
-      
-      // Reload deals list
-      console.log('Reloading deals list...');
-      await loadContactDeals();
-      console.log('Deals list reloaded');
-    } catch (err) {
-      console.error('Error creating deal:', err);
-      toast.error('Failed to create deal: ' + (err.message || 'Unknown error'));
-    } finally {
-      setDealsLoading(false);
-    }
-  }, [contactId, loadContactDeals, setDealsLoading, setShowCreateDealModal, supabase, toast]); // Add dependencies for useCallback
-  
-  // Handle associating an existing deal with the contact
-  const handleAssociateDeal = useCallback(async (dealId, relationship) => {
-    try {
-      setDealsLoading(true);
       
       // Check if this association already exists
       const { data: existingAssoc, error: checkError } = await supabase
@@ -2252,7 +2351,104 @@ const ContactCrmWorkflow = () => {
         .eq('deal_id', dealId)
         .eq('contact_id', contactId);
       
-      if (checkError) throw checkError;
+      if (checkError) {
+        console.error('Error checking for existing association:', checkError);
+        throw checkError;
+      }
+      
+      // Only create the association if it doesn't already exist
+      if (!existingAssoc || existingAssoc.length === 0) {
+        // Step 2: Create the deal-contact association
+        console.log('Creating deal-contact association...');
+        const associationData = {
+          deal_id: dealId,
+          contact_id: contactId,
+          relationship: dealData.relationship || 'Primary Contact'
+        };
+        
+        console.log('Association data:', associationData);
+        
+        const { data: association, error: associationError } = await supabase
+          .from('deals_contacts')
+          .insert([associationData])
+          .select('*');
+        
+        if (associationError) {
+          console.error('Error creating deal-contact association:', associationError);
+          throw associationError;
+        }
+        
+        console.log('Deal-contact association created:', association);
+        toast.success(selectedDealForEdit ? 'Existing deal associated successfully' : 'New deal created successfully');
+      } else {
+        console.log('Deal association already exists, skipping creation');
+        toast.success('Deal updated successfully');
+      }
+      
+      // Reset state
+      setSelectedDealForEdit(null);
+      setDealNameInput('');
+      setShowCreateDealModal(false);
+      
+      // Reload deals list
+      console.log('Reloading deals list...');
+      await loadContactDeals();
+      
+      // Reset tab and close modal after successful creation
+      setDealModalTab('list');
+      setShowCreateDealModal(false);
+      
+      console.log('Deals list reloaded');
+    } catch (err) {
+      console.error('Error processing deal:', err);
+      toast.error('Failed to process deal: ' + (err.message || 'Unknown error'));
+    } finally {
+      setDealsLoading(false);
+    }
+  }, [contactId, loadContactDeals, setDealsLoading, setShowCreateDealModal, setDealModalTab, supabase, toast, selectedDealForEdit, setSelectedDealForEdit, setDealNameInput]); // Add dependencies for useCallback
+  
+  // Handle associating an existing deal with the contact
+  const handleAssociateDeal = useCallback(async (dealId, relationship) => {
+    try {
+      setDealsLoading(true);
+      
+      // Add debug logs
+      console.log('Associating deal with the following data:', { 
+        dealId, 
+        contactId, 
+        relationship,
+        dealIdType: typeof dealId,
+        contactIdType: typeof contactId
+      });
+      
+      if (!dealId) {
+        toast.error('Deal ID is missing');
+        setDealsLoading(false);
+        return;
+      }
+      
+      if (!contactId) {
+        toast.error('Contact ID is missing');
+        setDealsLoading(false);
+        return;
+      }
+      
+      if (!relationship) {
+        console.warn('Relationship not specified, using default');
+        relationship = 'Primary Contact';
+      }
+      
+      // Check if this association already exists
+      const { data: existingAssoc, error: checkError } = await supabase
+        .from('deals_contacts')
+        .select('deals_contacts_id')
+        .eq('deal_id', dealId)
+        .eq('contact_id', contactId);
+      
+      if (checkError) {
+        console.error('Error checking existing association:', checkError);
+        throw checkError;
+      }
       
       if (existingAssoc && existingAssoc.length > 0) {
         toast.error('This deal is already associated with this contact');
@@ -2261,16 +2457,36 @@ const ContactCrmWorkflow = () => {
       }
       
       // Create the association
-      const { error: associationError } = await supabase
+      // Using the exact enum values from the database as provided
+      const dbEnumValues = {
+        'Introducer': 'introducer',
+        'Co-Investor': 'co-investor',
+        'Advisor': 'advisor',
+        'Other': 'other'
+      };
+      
+      // Map the UI friendly name to the actual enum value in the database
+      const safeRelationship = dbEnumValues[relationship] || 'introducer';
+        
+      const insertData = {
+        deal_id: dealId,
+        contact_id: contactId,
+        relationship: safeRelationship
+      };
+      
+      console.log('Inserting deals_contacts record:', insertData);
+      
+      const { data, error: associationError } = await supabase
         .from('deals_contacts')
-        .insert([{
-          deal_id: dealId,
-          contact_id: contactId,
-          relationship: relationship || 'Primary Contact'
-        }]);
+        .insert([insertData])
+        .select();
       
-      if (associationError) throw associationError;
+      if (associationError) {
+        console.error('Error inserting association:', associationError);
+        throw associationError;
+      }
       
+      console.log('Deal association successful:', data);
       toast.success('Deal associated successfully');
       setShowAssociateDealModal(false);
       
@@ -2278,11 +2494,33 @@ const ContactCrmWorkflow = () => {
       loadContactDeals();
     } catch (err) {
       console.error('Error associating deal:', err);
-      toast.error('Failed to associate deal');
+      toast.error('Failed to associate deal: ' + (err.message || 'Unknown error'));
     } finally {
       setDealsLoading(false);
     }
   }, [contactId, loadContactDeals, setDealsLoading, setShowAssociateDealModal, supabase, toast]); // Add dependencies for useCallback
+  
+  // Now that handleAssociateDeal is defined, let's implement handleDealSuggestionSelect
+  handleDealSuggestionSelect = useCallback((dealSuggestion) => {
+    console.log('Deal suggestion selected:', dealSuggestion);
+    setDealNameInput(dealSuggestion.opportunity);
+    setSelectedDealForEdit(dealSuggestion);
+    setShowDealSuggestions(false);
+    
+    // For List tab, directly associate the deal with the contact
+    if (dealModalTab === 'list') {
+      // UI-friendly relationship display name matching database enum
+      const relationship = 'Introducer';
+      
+      console.log(`Associating deal ID ${dealSuggestion.deal_id} with relationship "${relationship}"`);
+      
+      // Create a relationship between the contact and this deal - the function will convert to correct DB enum
+      handleAssociateDeal(dealSuggestion.deal_id, relationship);
+      
+      // Close the modal after association
+      setShowCreateDealModal(false);
+    }
+  }, [dealModalTab, handleAssociateDeal, setShowCreateDealModal, setDealNameInput, setSelectedDealForEdit, setShowDealSuggestions]);
   
   // Handle updating an existing deal
   const handleUpdateDeal = useCallback(async (dealId, updatedData) => {
@@ -5001,8 +5239,8 @@ const handleInputChange = (field, value) => {
   };
   
   // Search for contacts in Supabase
-  const searchContacts = async (query) => {
-    console.log("Searching for contacts with query:", query);
+  const searchContacts = async (query, type = "name") => {
+    console.log("Searching for contacts with query:", query, "type:", type);
     
     if (!query || query.length < 2) {
       console.log("Search query too short, skipping search");
@@ -5014,11 +5252,63 @@ const handleInputChange = (field, value) => {
       setLoading(true);
       setSearchResults([]); // Clear previous results
       
-      // Execute the simplest possible query
-      const { data, error } = await supabase
-        .from('contacts')
-        .select('*')
-        .limit(10);
+      // Use a direct database query with filters for more accurate results
+      let dbQuery;
+      
+      if (type === "name") {
+        // Search by first_name or last_name
+        console.log("Searching by name for:", query);
+        dbQuery = supabase
+          .from('contacts')
+          .select(`
+            contact_id,
+            first_name,
+            last_name,
+            description,
+            contact_emails(email_id, email, is_primary),
+            contact_mobiles(mobile_id, mobile, is_primary),
+            contact_companies(
+              contact_companies_id,
+              company_id,
+              relationship,
+              is_primary,
+              companies(company_id, name)
+            )
+          `)
+          .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%`)
+          .limit(50);
+      } else if (type === "email") {
+        // Search by email
+        console.log("Searching by email for:", query);
+        dbQuery = supabase
+          .from('contacts')
+          .select(`
+            contact_id,
+            first_name,
+            last_name,
+            description,
+            contact_emails!inner(email_id, email, is_primary)
+          `)
+          .filter('contact_emails.email', 'ilike', `%${query}%`)
+          .limit(50);
+      } else if (type === "mobile") {
+        // Search by mobile
+        console.log("Searching by mobile for:", query);
+        dbQuery = supabase
+          .from('contacts')
+          .select(`
+            contact_id,
+            first_name,
+            last_name,
+            description,
+            contact_mobiles!inner(mobile_id, mobile, is_primary)
+          `)
+          .filter('contact_mobiles.mobile', 'ilike', `%${query}%`)
+          .limit(50);
+      }
+      
+      // Execute the query
+      const { data, error } = await dbQuery;
       
       if (error) {
         console.error('Error searching contacts:', error);
@@ -5027,31 +5317,84 @@ const handleInputChange = (field, value) => {
         return;
       }
       
-      // Filter the results in JavaScript (client-side) to avoid query issues
-      const filteredResults = data.filter(contact => {
-        const firstNameMatch = contact.first_name && 
-          contact.first_name.toLowerCase().includes(query.toLowerCase());
-        const lastNameMatch = contact.last_name && 
-          contact.last_name.toLowerCase().includes(query.toLowerCase());
-        
-        return (firstNameMatch || lastNameMatch) && 
-          contact.contact_id !== (contact?.contact_id);
-      });
-      
-      console.log(`Found ${filteredResults.length} contacts matching query "${query}"`);
+      console.log("Search returned data:", data);
       
       // If no results, show message and return
-      if (filteredResults.length === 0) {
-        toast.info(`No contacts found matching "${query}"`);
+      if (!data || data.length === 0) {
+        toast(`No contacts found matching "${query}"`);
         setLoading(false);
         return;
       }
       
-      // For each result, add the matched_on field
-      const enhancedResults = filteredResults.map(contact => ({
-        ...contact,
-        matched_on: "Manual search"
-      }));
+      // Filter out any null results and the current contact
+      let filteredResults = data.filter(contact => 
+        contact != null && 
+        // Exclude the contact we're currently editing
+        contact.contact_id !== contactId
+      );
+      
+      console.log(`Found ${filteredResults.length} contacts matching ${type} query "${query}"`);
+      
+      // If no results, show message and return
+      if (filteredResults.length === 0) {
+        toast(`No contacts found matching "${query}"`);
+        setLoading(false);
+        return;
+      }
+      
+      // For each result, add the matched_on field indicating what type of match occurred
+      const enhancedResults = filteredResults.map(contact => {
+        let matchedOn = "Manual search";
+        
+        if (type === "name") {
+          if (contact.first_name && contact.first_name.toLowerCase().includes(query.toLowerCase())) {
+            matchedOn = `First name: ${contact.first_name}`;
+          } else if (contact.last_name && contact.last_name.toLowerCase().includes(query.toLowerCase())) {
+            matchedOn = `Last name: ${contact.last_name}`;
+          }
+        } else if (type === "email") {
+          const matchedEmail = contact.contact_emails.find(email => 
+            email.email && email.email.toLowerCase().includes(query.toLowerCase())
+          );
+          if (matchedEmail) {
+            matchedOn = `Email: ${matchedEmail.email}`;
+          }
+        } else if (type === "mobile") {
+          const matchedMobile = contact.contact_mobiles.find(mobile => 
+            mobile.mobile && mobile.mobile.toLowerCase().includes(query.toLowerCase())
+          );
+          if (matchedMobile) {
+            matchedOn = `Mobile: ${matchedMobile.mobile}`;
+          }
+        }
+        
+        // Add primary email and mobile for display
+        if (contact.contact_emails && contact.contact_emails.length > 0) {
+          const primaryEmail = contact.contact_emails.find(e => e.is_primary) || contact.contact_emails[0];
+          contact.email = primaryEmail.email;
+        }
+        
+        if (contact.contact_mobiles && contact.contact_mobiles.length > 0) {
+          const primaryMobile = contact.contact_mobiles.find(m => m.is_primary) || contact.contact_mobiles[0];
+          contact.mobile = primaryMobile.mobile;
+        }
+        
+        // Add company information if available
+        let companyName = "";
+        if (contact.contact_companies && contact.contact_companies.length > 0) {
+          // Try to find primary company first
+          const primaryCompany = contact.contact_companies.find(c => c.is_primary) || contact.contact_companies[0];
+          if (primaryCompany && primaryCompany.companies) {
+            companyName = primaryCompany.companies.name || "";
+          }
+        }
+        
+        return {
+          ...contact,
+          company: companyName,
+          matched_on: matchedOn
+        };
+      });
       
       setSearchResults(enhancedResults);
       toast.success(`Found ${enhancedResults.length} contacts matching "${query}"`);
@@ -6722,13 +7065,13 @@ const handleInputChange = (field, value) => {
               <InteractionsLayout>
                 {/* Left side menu (1/3) */}
                 <ChannelsMenu>
-                  {/* Supabase Section - Always show */}
+                  {/* Duplicates Section - Always show */}
                   <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold' }}>
-                    SUPABASE
+                    DUPLICATES
                   </div>
                   <div 
                     onClick={() => {
-                      setActiveEnrichmentSection("supabase_duplicates");
+                      setActiveEnrichmentSection("duplicates_find");
                       setSelectedDuplicate(null); // Clear selected duplicate
                     }}
                     style={{ 
@@ -6738,11 +7081,29 @@ const handleInputChange = (field, value) => {
                       display: 'flex',
                       alignItems: 'center',
                       gap: '8px',
-                      background: activeEnrichmentSection === "supabase_duplicates" ? '#222' : 'transparent'
+                      background: activeEnrichmentSection === "duplicates_find" ? '#222' : 'transparent'
                     }}
                   >
-                    <FiDatabase size={16} />
-                    <span>Duplicates</span>
+                    <FiSearch size={16} />
+                    <span>Find</span>
+                  </div>
+                  <div 
+                    onClick={() => {
+                      setActiveEnrichmentSection("duplicates_done");
+                      setSelectedDuplicate(null); // Clear selected duplicate
+                    }}
+                    style={{ 
+                      padding: '12px 15px', 
+                      cursor: 'pointer', 
+                      borderBottom: '1px solid #222',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      background: activeEnrichmentSection === "duplicates_done" ? '#222' : 'transparent'
+                    }}
+                  >
+                    <FiCheck size={16} />
+                    <span>Done</span>
                   </div>
                   
                   {/* Airtable Section - Always show regardless of duplicates */}
@@ -6788,20 +7149,62 @@ const handleInputChange = (field, value) => {
                 </ChannelsMenu>
                 
                 {/* Duplicate details - right side (2/3) */}
-                <InteractionsContainer style={{ paddingRight: activeEnrichmentSection === "airtable" || activeEnrichmentSection === "airtable_combining" || activeEnrichmentSection === "supabase_duplicates" ? '20px' : '0' }}>
-                  {activeEnrichmentSection === "supabase_duplicates" ? (
+                <InteractionsContainer style={{ paddingRight: activeEnrichmentSection === "airtable" || activeEnrichmentSection === "airtable_combining" || activeEnrichmentSection === "supabase_duplicates" || activeEnrichmentSection === "duplicates_find" || activeEnrichmentSection === "duplicates_done" ? '20px' : '0' }}>
+                  {activeEnrichmentSection === "duplicates_done" ? (
                     <div style={{ padding: '20px 0 20px 20px', width: '90%' }}>
                       <FormGroup>
-                        <h3 style={{ fontSize: '16px', marginBottom: '15px' }}>Supabase Duplicate Management</h3>
+                        <h3 style={{ fontSize: '16px', marginBottom: '15px' }}>Completed Duplicate Processing</h3>
+                        
+                        <div style={{ 
+                          display: 'flex', 
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: '50px 20px',
+                          background: '#222',
+                          borderRadius: '4px',
+                          marginTop: '20px'
+                        }}>
+                          <FiCheck size={50} color="#00aa00" style={{ marginBottom: '20px' }} />
+                          <div style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '10px' }}>
+                            Coming Soon
+                          </div>
+                          <div style={{ textAlign: 'center', color: '#999', maxWidth: '400px' }}>
+                            This section will show a history of processed duplicates and their resolutions.
+                          </div>
+                        </div>
+                      </FormGroup>
+                    </div>
+                  ) : activeEnrichmentSection === "duplicates_find" ? (
+                    <div style={{ padding: '20px 0 20px 20px', width: '90%' }}>
+                      <FormGroup>
+                        <h3 style={{ fontSize: '16px', marginBottom: '15px' }}>Find Potential Duplicates</h3>
                         
                         {/* Search for duplicates */}
                         <FormFieldLabel>Search for potential duplicates</FormFieldLabel>
                         <div style={{ position: 'relative', marginBottom: '15px' }}>
+                          {/* Search type dropdown */}
                           <div style={{ 
                             display: 'flex',
                             gap: '8px',
                             marginBottom: '10px'
                           }}>
+                            <select
+                              value={searchType || 'name'}
+                              onChange={(e) => setSearchType(e.target.value)}
+                              style={{
+                                padding: '8px 10px',
+                                borderRadius: '4px',
+                                background: '#333',
+                                color: '#fff',
+                                border: '1px solid #444',
+                                width: '110px'
+                              }}
+                            >
+                              <option value="name">Name</option>
+                              <option value="email">Email</option>
+                              <option value="mobile">Mobile</option>
+                            </select>
                             <Input
                               type="text"
                               value={searchQuery}
@@ -6831,7 +7234,7 @@ const handleInputChange = (field, value) => {
                                   e.preventDefault();
                                   console.log("Enter key pressed with query:", searchQuery);
                                   if (searchQuery.trim().length >= 2) {
-                                    searchContacts(searchQuery.trim());
+                                    searchContacts(searchQuery.trim(), searchType || 'name');
                                   } else if (searchQuery.trim().length > 0) {
                                     toast.info("Please enter at least 2 characters to search");
                                   }
@@ -6839,7 +7242,7 @@ const handleInputChange = (field, value) => {
                                 // Stop propagation to prevent losing focus
                                 e.stopPropagation();
                               }}
-                              placeholder="Search by name or email... (ESC to clear, Enter to search)"
+                              placeholder={`Search by ${searchType || 'name'}... (ESC to clear, Enter to search)`}
                               style={{ flex: 1 }}
                               autoComplete="off"
                             />
@@ -6849,7 +7252,7 @@ const handleInputChange = (field, value) => {
                                 e.stopPropagation();
                                 console.log("Search button clicked with query:", searchQuery);
                                 if (searchQuery.trim().length >= 2) {
-                                  searchContacts(searchQuery.trim());
+                                  searchContacts(searchQuery.trim(), searchType || 'name');
                                 } else {
                                   toast.info("Please enter at least 2 characters to search");
                                 }
@@ -6899,6 +7302,11 @@ const handleInputChange = (field, value) => {
                                     <div>
                                       <div style={{ fontSize: '14px', fontWeight: 'bold' }}>
                                         {result.first_name} {result.last_name}
+                                        {result.company && (
+                                          <span style={{ fontSize: '12px', fontWeight: 'normal', color: '#00aa00', marginLeft: '8px' }}>
+                                            @ {result.company}
+                                          </span>
+                                        )}
                                       </div>
                                       <div style={{ fontSize: '12px', color: '#ccc' }}>
                                         {result.email && (
@@ -6908,14 +7316,49 @@ const handleInputChange = (field, value) => {
                                           </div>
                                         )}
                                         {result.mobile && (
-                                          <div>
+                                          <div style={{ marginBottom: '3px' }}>
                                             <FiPhone size={12} style={{ marginRight: '5px' }} />
                                             {result.mobile}
+                                          </div>
+                                        )}
+                                        {result.description && (
+                                          <div style={{ marginTop: '3px', color: '#aaa' }}>
+                                            {result.description.substring(0, 100)}
+                                            {result.description.length > 100 ? '...' : ''}
                                           </div>
                                         )}
                                       </div>
                                     </div>
                                     <div style={{ display: 'flex', gap: '5px' }}>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation(); // Prevent triggering parent click
+                                          // First mark as duplicate
+                                          addDuplicatePair(result.contact_id, 'Manual search')
+                                            .then(() => {
+                                              // Then show the merge modal
+                                              setSelectedDuplicate(result);
+                                              setShowDuplicateProcessingModal(true);
+                                            });
+                                        }}
+                                        title="Mark as duplicate and merge"
+                                        style={{
+                                          background: '#00ff00',
+                                          color: 'black',
+                                          border: 'none',
+                                          borderRadius: '4px',
+                                          padding: '2px 7px',
+                                          cursor: 'pointer',
+                                          fontSize: '12px',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          minWidth: '25px',
+                                          minHeight: '25px'
+                                        }}
+                                      >
+                                        <FiGitMerge size={14} />
+                                      </button>
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation(); // Prevent triggering parent click
@@ -12282,7 +12725,12 @@ const handleInputChange = (field, value) => {
                                     transition: 'all 0.2s ease',
                                     color: '#00ff00'
                                   }}
-                                  onClick={() => setShowCreateDealModal(true)}
+                                  onClick={() => {
+                                    setDealModalTab('list');
+                                    setShowCreateDealModal(true);
+                                    // Load all deals when opening modal
+                                    searchDealSuggestions('');
+                                  }}
                                   onMouseEnter={(e) => {
                                     e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.05)';
                                     e.currentTarget.style.borderColor = 'rgba(0, 255, 0, 0.3)';
@@ -13787,7 +14235,7 @@ const handleInputChange = (field, value) => {
         isOpen={showManageContactEmailsModal}
         onRequestClose={() => setShowManageContactEmailsModal(false)}
         contact={contact}
-        onUpdateEmails={(updatedEmails) => {
+        onUpdateEmails={async (updatedEmails) => {
           // Update emails in the contact object
           const updatedContact = { ...contact, emails: updatedEmails };
           setContact(updatedContact);
@@ -13797,8 +14245,50 @@ const handleInputChange = (field, value) => {
             setFormData(prev => ({ ...prev, emails: updatedEmails }));
           }
           
-          // You might want to add code here to save to Supabase
-          // This would depend on your backend structure
+          try {
+            const contactId = contact.contact_id;
+            
+            // Get existing emails to identify what's new
+            const { data: existingEmails } = await supabase
+              .from('contact_emails')
+              .select('*')
+              .eq('contact_id', contactId);
+              
+            const existingEmailAddresses = existingEmails?.map(e => e.email) || [];
+            
+            // Find only the new emails to add (not already in the database)
+            const newEmails = updatedEmails.filter(e => !existingEmailAddresses.includes(e.email));
+            
+            // Insert only the new emails
+            if (newEmails.length > 0) {
+              const emailsToInsert = newEmails.map(e => ({
+                contact_id: contactId,
+                email: e.email,
+                is_primary: e.is_primary,
+                type: 'personal' // Default type
+              }));
+              
+              await supabase
+                .from('contact_emails')
+                .insert(emailsToInsert);
+              
+              toast.success(`${newEmails.length} new email${newEmails.length > 1 ? 's' : ''} added`);
+            }
+            
+            // Refresh contact data
+            const { data } = await supabase
+              .from('contacts')
+              .select('*, emails:contact_emails(*)')
+              .eq('contact_id', contactId)
+              .single();
+              
+            if (data) {
+              setContact(data);
+            }
+          } catch (error) {
+            console.error('Error saving emails:', error);
+            toast.error('Failed to save email changes');
+          }
         }}
       />
       
@@ -13807,7 +14297,7 @@ const handleInputChange = (field, value) => {
         isOpen={showManageContactMobilesModal}
         onRequestClose={() => setShowManageContactMobilesModal(false)}
         contact={contact}
-        onUpdateMobiles={(updatedMobiles) => {
+        onUpdateMobiles={async (updatedMobiles) => {
           // Update mobiles in the contact object
           const updatedContact = { ...contact, mobiles: updatedMobiles };
           setContact(updatedContact);
@@ -13817,8 +14307,50 @@ const handleInputChange = (field, value) => {
             setFormData(prev => ({ ...prev, mobiles: updatedMobiles }));
           }
           
-          // You might want to add code here to save to Supabase
-          // This would depend on your backend structure
+          try {
+            const contactId = contact.contact_id;
+            
+            // Get existing mobile numbers to identify what's new
+            const { data: existingMobiles } = await supabase
+              .from('contact_mobiles')
+              .select('*')
+              .eq('contact_id', contactId);
+              
+            const existingMobileNumbers = existingMobiles?.map(m => m.mobile) || [];
+            
+            // Find only the new mobile numbers to add (not already in the database)
+            const newMobiles = updatedMobiles.filter(m => !existingMobileNumbers.includes(m.mobile));
+            
+            // Insert only the new mobile numbers
+            if (newMobiles.length > 0) {
+              const mobilesToInsert = newMobiles.map(m => ({
+                contact_id: contactId,
+                mobile: m.mobile,
+                is_primary: m.is_primary,
+                type: 'personal' // Default type
+              }));
+              
+              await supabase
+                .from('contact_mobiles')
+                .insert(mobilesToInsert);
+              
+              toast.success(`${newMobiles.length} new phone number${newMobiles.length > 1 ? 's' : ''} added`);
+            }
+            
+            // Refresh contact data
+            const { data } = await supabase
+              .from('contacts')
+              .select('*, mobiles:contact_mobiles(*)')
+              .eq('contact_id', contactId)
+              .single();
+              
+            if (data) {
+              setContact(data);
+            }
+          } catch (error) {
+            console.error('Error saving mobile numbers:', error);
+            toast.error('Failed to save phone number changes');
+          }
         }}
       />
       
@@ -14002,10 +14534,16 @@ const handleInputChange = (field, value) => {
       {/* Create Deal Modal */}
       <Modal
         isOpen={showCreateDealModal}
-        onRequestClose={() => setShowCreateDealModal(false)}
+        onRequestClose={() => {
+          setShowCreateDealModal(false);
+          setDealNameInput('');
+          setSelectedDealForEdit(null);
+          // Reset tab after modal closes
+          setTimeout(() => setDealModalTab('list'), 300);
+        }}
         style={{
           content: {
-            width: '550px',
+            width: '650px',
             maxWidth: '90%',
             margin: 'auto',
             backgroundColor: '#1a1a1a',
@@ -14019,112 +14557,244 @@ const handleInputChange = (field, value) => {
         }}
       >
         <ModalHeader>
-          <h2><FiDollarSign /> Create New Deal</h2>
-          <CloseButton onClick={() => setShowCreateDealModal(false)}>
+          <CloseButton onClick={() => {
+            setShowCreateDealModal(false);
+            setDealNameInput('');
+            setSelectedDealForEdit(null);
+            // Reset tab after modal closes
+            setTimeout(() => setDealModalTab('list'), 300);
+          }}>
             <FiX />
           </CloseButton>
         </ModalHeader>
         
-        <form onSubmit={(e) => {
-          e.preventDefault();
-          
-          const formData = new FormData(e.target);
-          
-          const dealData = {
-            name: formData.get('dealName'),
-            stage: formData.get('dealStage') || 'Lead',
-            value: parseFloat(formData.get('dealValue')) || null,
-            category: formData.get('dealCategory') || 'Active',
-            source: formData.get('dealSource') || 'Not Set',
-            description: formData.get('dealDescription') || '',
-            relationship: formData.get('dealRelationship') || 'Primary Contact'
-          };
-          
-          handleCreateDeal(dealData);
-        }}>
-          <FormGroup>
-            <InputLabel>Deal Name *</InputLabel>
-            <Input 
-              type="text"
-              name="dealName"
-              placeholder="Enter deal name"
-              autoFocus
-              required
-            />
-          </FormGroup>
-          
-          <FormGrid>
+        {/* Tab Navigation */}
+        <Tabs>
+          <Tab
+            active={dealModalTab === 'list'}
+            onClick={() => setDealModalTab('list')}
+          >
+            List
+          </Tab>
+          <Tab
+            active={dealModalTab === 'new'}
+            onClick={() => setDealModalTab('new')}
+          >
+            New
+          </Tab>
+        </Tabs>
+        
+        {/* List Tab Content */}
+        <TabContent active={dealModalTab === 'list'}>
+          <div style={{ marginBottom: '20px' }}>
             <FormGroup>
-              <InputLabel>Stage *</InputLabel>
-              <Select name="dealStage" defaultValue="Lead" required>
-                {dealStages.map(stage => (
-                  <option key={stage} value={stage}>{stage}</option>
-                ))}
-              </Select>
-            </FormGroup>
-            
-            <FormGroup>
-              <InputLabel>Value</InputLabel>
+              <InputLabel>Search Deals</InputLabel>
               <Input 
-                type="number" 
-                name="dealValue" 
-                placeholder="Enter deal value"
-                min="0"
-                step="0.01"
+                type="text"
+                value={dealSearchQuery}
+                onChange={(e) => {
+                  setDealSearchQuery(e.target.value);
+                  // Search even with empty query to show all deals
+                  searchDealSuggestions(e.target.value);
+                }}
+                placeholder="Search deals by name..."
+                autoFocus
               />
             </FormGroup>
-          </FormGrid>
+          </div>
           
-          <FormGrid>
-            <FormGroup>
-              <InputLabel>Category</InputLabel>
-              <Select name="dealCategory" defaultValue="Active">
-                {dealCategories.map(category => (
-                  <option key={category} value={category}>{category}</option>
-                ))}
-              </Select>
-            </FormGroup>
-            
-            <FormGroup>
-              <InputLabel>Source</InputLabel>
-              <Select name="dealSource" defaultValue="Not Set">
-                {dealSourceCategories.map(source => (
-                  <option key={source} value={source}>{source}</option>
-                ))}
-              </Select>
-            </FormGroup>
-          </FormGrid>
+          <div style={{
+            maxHeight: '350px',
+            overflowY: 'auto',
+            border: '1px solid #333',
+            borderRadius: '4px',
+            marginBottom: '20px'
+          }}>
+            {dealSuggestions.length > 0 ? (
+              dealSuggestions.map((deal) => (
+                <div
+                  key={deal.deal_id}
+                  style={{
+                    padding: '12px',
+                    borderBottom: '1px solid #333',
+                    cursor: 'pointer',
+                    transition: 'background-color 0.2s'
+                  }}
+                  onClick={() => {
+                    // This will associate the selected deal with the contact
+                    handleDealSuggestionSelect(deal);
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#222';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                >
+                  <div style={{ 
+                    fontWeight: 'bold', 
+                    marginBottom: '4px',
+                    color: '#00ff00'
+                  }}>
+                    {deal.opportunity}
+                  </div>
+                  <div style={{ 
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '15px',
+                    fontSize: '0.85rem',
+                    color: '#bbb'
+                  }}>
+                    <span>Stage: {deal.stage}</span>
+                    <span>Category: {deal.category}</span>
+                    {deal.total_investment && (
+                      <span>Value: ${deal.total_investment.toLocaleString()}</span>
+                    )}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div style={{ 
+                padding: '20px', 
+                textAlign: 'center', 
+                color: '#888' 
+              }}>
+                {dealSearchQuery.length > 0 
+                  ? 'No matching deals found. Try a different search or create a new deal.' 
+                  : 'Type to search for existing deals or switch to the New tab to create one.'}
+              </div>
+            )}
+          </div>
           
-          <FormGroup>
-            <InputLabel>Contact Relationship *</InputLabel>
-            <Select name="dealRelationship" defaultValue="Primary Contact" required>
-              {dealRelationships.map(relationship => (
-                <option key={relationship} value={relationship}>{relationship}</option>
-              ))}
-            </Select>
-          </FormGroup>
-          
-          <FormGroup>
-            <InputLabel>Description</InputLabel>
-            <TextArea 
-              name="dealDescription"
-              placeholder="Enter deal description (optional)"
-              rows={4}
-            />
-          </FormGroup>
-          
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <ActionButton 
               onClick={() => setShowCreateDealModal(false)}
               type="button"
             >
               Cancel
             </ActionButton>
-            <ActionButton variant="primary" type="submit">
-              <FiPlus /> Create Deal
+            <ActionButton onClick={() => setDealModalTab('new')} variant="primary">
+              <FiPlus /> Create New Deal
             </ActionButton>
           </div>
-        </form>
+        </TabContent>
+        
+        {/* New Tab Content */}
+        <TabContent active={dealModalTab === 'new'}>
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            
+            // If using the input field directly, use value from form data
+            const name = dealNameInput;
+            const formData = new FormData(e.target);
+            
+            const dealData = {
+              name: name,
+              stage: formData.get('dealStage') || 'Lead',
+              value: parseFloat(formData.get('dealValue')) || null,
+              category: formData.get('dealCategory') || 'Inbox',
+              source: formData.get('dealSource') || 'Not Set',
+              description: formData.get('dealDescription') || '',
+              relationship: formData.get('dealRelationship') || 'Introducer'
+            };
+            
+            // If we have a selected deal from suggestions, pass that to create/update
+            if (selectedDealForEdit) {
+              console.log('Using selected deal for edit/association:', selectedDealForEdit.deal_id);
+            } else {
+              console.log('Creating new deal with name:', name);
+            }
+            
+            handleCreateDeal(dealData);
+          }}>
+            <FormGroup>
+              <InputLabel>Deal Name *</InputLabel>
+              <Input 
+                type="text"
+                name="dealName"
+                value={dealNameInput}
+                onChange={(e) => {
+                  setDealNameInput(e.target.value);
+                }}
+                placeholder="Enter deal name"
+                autoFocus
+                required
+              />
+            </FormGroup>
+            
+            <FormGrid>
+              <FormGroup>
+                <InputLabel>Stage *</InputLabel>
+                <Select name="dealStage" defaultValue="Lead" required>
+                  {dealStages.map(stage => (
+                    <option key={stage} value={stage}>{stage}</option>
+                  ))}
+                </Select>
+              </FormGroup>
+              
+              <FormGroup>
+                <InputLabel>Value</InputLabel>
+                <Input 
+                  type="number" 
+                  name="dealValue" 
+                  placeholder="Enter deal value"
+                  min="0"
+                  step="0.01"
+                />
+              </FormGroup>
+            </FormGrid>
+            
+            <FormGrid>
+              <FormGroup>
+                <InputLabel>Category</InputLabel>
+                <Select name="dealCategory" defaultValue="Inbox">
+                  {dealCategories.map(category => (
+                    <option key={category} value={category}>{category}</option>
+                  ))}
+                </Select>
+              </FormGroup>
+              
+              <FormGroup>
+                <InputLabel>Source</InputLabel>
+                <Select name="dealSource" defaultValue="Not Set">
+                  {dealSourceCategories.map(source => (
+                    <option key={source} value={source}>{source}</option>
+                  ))}
+                </Select>
+              </FormGroup>
+            </FormGrid>
+            
+            <FormGroup>
+              <InputLabel>Contact Relationship *</InputLabel>
+              <Select name="dealRelationship" defaultValue="Introducer" required>
+                {dealRelationships.map(relationship => (
+                  <option key={relationship} value={relationship}>{relationship}</option>
+                ))}
+              </Select>
+            </FormGroup>
+            
+            <FormGroup>
+              <InputLabel>Description</InputLabel>
+              <TextArea 
+                name="dealDescription"
+                placeholder="Enter deal description (optional)"
+                rows={3}
+              />
+            </FormGroup>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', marginTop: '20px' }}>
+              <ActionButton 
+                onClick={() => setDealModalTab('list')}
+                type="button"
+              >
+                Back to List
+              </ActionButton>
+              <ActionButton variant="primary" type="submit">
+                <FiPlus /> Create Deal
+              </ActionButton>
+            </div>
+          </form>
+        </TabContent>
       </Modal>
 
     </Container>
@@ -14170,13 +14840,13 @@ const handleInputChange = (field, value) => {
       
       const dealData = {
         name: formData.get('dealName'),
-        stage: formData.get('dealStage'),
+        stage: formData.get('dealStage') || 'Lead',
         value: parseFloat(formData.get('dealValue')) || null,
-        category: formData.get('dealCategory'),
-        source: formData.get('dealSource'),
-        description: formData.get('dealDescription'),
+        category: formData.get('dealCategory') || 'Inbox',
+        source: formData.get('dealSource') || 'Not Set',
+        description: formData.get('dealDescription') || '',
         // expected_close_date and company_id removed as they don't exist in schema
-        relationship: formData.get('dealRelationship')
+        relationship: formData.get('dealRelationship') || 'Introducer'
       };
       
       console.log('Deal data from form:', dealData);
