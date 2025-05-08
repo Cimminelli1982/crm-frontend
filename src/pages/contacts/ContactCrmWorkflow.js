@@ -1331,6 +1331,7 @@ const ContactCrmWorkflow = () => {
   const [showDealSuggestions, setShowDealSuggestions] = useState(false);
   const [selectedDealForEdit, setSelectedDealForEdit] = useState(null);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
+  // Deal stages - using the exact enum values from the database
   const [dealStages] = useState([
     'Lead', 'Qualified', 'Evaluating', 'Negotiation', 'Closing', 'Closed Won', 'Closed Lost', 'Invested', 'Monitoring', 'Passed'
   ]);
@@ -1340,9 +1341,31 @@ const ContactCrmWorkflow = () => {
   const [dealSourceCategories] = useState([
     'Not Set', 'Cold Contacting', 'Introduction'
   ]);
-  const [dealRelationships] = useState([
+  // UI display names for relationship types (capitalized for UI consistency)
+  const [dealRelationshipsDisplay] = useState([
     'Introducer', 'Co-Investor', 'Advisor', 'Other'
   ]);
+  
+  // Actual database enum values for relationship types
+  const [dealRelationships] = useState([
+    'introducer', 'co-investor', 'advisor', 'other'
+  ]);
+  
+  // Mapping between UI display names and actual database enum values
+  const dealRelationshipMap = {
+    'Introducer': 'introducer',
+    'Co-Investor': 'co-investor',
+    'Advisor': 'advisor',
+    'Other': 'other'
+  };
+  
+  // Mapping from DB values to display values (for consistency when loading from DB)
+  const dealRelationshipDisplayMap = {
+    'introducer': 'Introducer',
+    'co-investor': 'Co-Investor',
+    'advisor': 'Advisor',
+    'other': 'Other'
+  };
   
   // State for inline editing
   const [isEditingName, setIsEditingName] = useState(false);
@@ -2291,7 +2314,7 @@ const ContactCrmWorkflow = () => {
             opportunity: dealData.name,
             stage: dealData.stage || 'Lead',
             total_investment: dealData.value, // Mapping value to total_investment
-            category: dealData.category || 'Active',
+            category: dealData.category || 'Inbox',
             source_category: dealData.source || 'Not Set', // Mapping source to source_category
             description: dealData.description || '',
             last_modified_at: new Date().toISOString(),
@@ -2317,7 +2340,7 @@ const ContactCrmWorkflow = () => {
           opportunity: dealData.name, // Mapping name to opportunity
           stage: dealData.stage || 'Lead',
           total_investment: dealData.value, // Mapping value to total_investment
-          category: dealData.category || 'Active',
+          category: dealData.category || 'Inbox',
           source_category: dealData.source || 'Not Set', // Mapping source to source_category
           description: dealData.description || ''
         };
@@ -2363,7 +2386,7 @@ const ContactCrmWorkflow = () => {
         const associationData = {
           deal_id: dealId,
           contact_id: contactId,
-          relationship: dealData.relationship || 'Primary Contact'
+          relationship: dealRelationshipMap[dealData.relationship] || 'introducer'
         };
         
         console.log('Association data:', associationData);
@@ -2457,16 +2480,10 @@ const ContactCrmWorkflow = () => {
       }
       
       // Create the association
-      // Using the exact enum values from the database as provided
-      const dbEnumValues = {
-        'Introducer': 'introducer',
-        'Co-Investor': 'co-investor',
-        'Advisor': 'advisor',
-        'Other': 'other'
-      };
-      
-      // Map the UI friendly name to the actual enum value in the database
-      const safeRelationship = dbEnumValues[relationship] || 'introducer';
+      // Use the provided relationship which should already be a valid DB enum value
+      // But verify it's a valid value and fallback to 'introducer' if not
+      const validRelationships = ['introducer', 'co-investor', 'advisor', 'other'];
+      const safeRelationship = validRelationships.includes(relationship) ? relationship : 'introducer';
         
       const insertData = {
         deal_id: dealId,
@@ -2509,12 +2526,12 @@ const ContactCrmWorkflow = () => {
     
     // For List tab, directly associate the deal with the contact
     if (dealModalTab === 'list') {
-      // UI-friendly relationship display name matching database enum
-      const relationship = 'Introducer';
+      // Use exact DB enum value for relationship
+      const relationship = 'introducer';
       
       console.log(`Associating deal ID ${dealSuggestion.deal_id} with relationship "${relationship}"`);
       
-      // Create a relationship between the contact and this deal - the function will convert to correct DB enum
+      // Create a relationship between the contact and this deal
       handleAssociateDeal(dealSuggestion.deal_id, relationship);
       
       // Close the modal after association
@@ -3275,6 +3292,7 @@ const handleSelectEmailThread = async (threadId) => {
     }
   }, [contactId, currentStep]); // Depends on contactId and currentStep
   
+  
   // Load Supabase duplicates when active section changes
   useEffect(() => {
     if (contactId && activeEnrichmentSection === 'supabase_duplicates') {
@@ -3285,6 +3303,7 @@ const handleSelectEmailThread = async (threadId) => {
     if (contactId && activeEnrichmentSection === 'deals') {
       loadContactDeals();
     }
+    
   }, [contactId, activeEnrichmentSection, loadSupabaseDuplicates, loadContactDeals]);
   
   // Start editing name
@@ -5312,7 +5331,15 @@ const handleInputChange = (field, value) => {
       
       if (error) {
         console.error('Error searching contacts:', error);
-        toast.error("Error searching for contacts");
+        toast("Error searching for potential duplicates", {
+          style: {
+            background: '#222',
+            color: '#ff4444',
+            border: '1px solid #ff4444',
+            fontWeight: 'bold',
+          },
+          icon: '✗',
+        });
         setLoading(false);
         return;
       }
@@ -5321,7 +5348,14 @@ const handleInputChange = (field, value) => {
       
       // If no results, show message and return
       if (!data || data.length === 0) {
-        toast(`No contacts found matching "${query}"`);
+        toast(`No potential duplicates found matching "${query}"`, {
+          style: {
+            background: '#222',
+            color: '#00ff00',
+            border: '1px solid #00ff00',
+            fontWeight: 'bold',
+          },
+        });
         setLoading(false);
         return;
       }
@@ -5337,7 +5371,14 @@ const handleInputChange = (field, value) => {
       
       // If no results, show message and return
       if (filteredResults.length === 0) {
-        toast(`No contacts found matching "${query}"`);
+        toast(`No potential duplicates found matching "${query}"`, {
+          style: {
+            background: '#222',
+            color: '#00ff00',
+            border: '1px solid #00ff00',
+            fontWeight: 'bold',
+          },
+        });
         setLoading(false);
         return;
       }
@@ -5397,15 +5438,32 @@ const handleInputChange = (field, value) => {
       });
       
       setSearchResults(enhancedResults);
-      toast.success(`Found ${enhancedResults.length} contacts matching "${query}"`);
+      toast(`Found ${enhancedResults.length} potential duplicates matching "${query}"`, {
+        style: {
+          background: '#222',
+          color: '#00ff00',
+          border: '1px solid #00ff00',
+          fontWeight: 'bold',
+        },
+        icon: '✓',
+      });
       
     } catch (err) {
       console.error('Error in searchContacts:', err);
-      toast.error("Error while searching contacts");
+      toast("Error while searching for potential duplicates", {
+        style: {
+          background: '#222',
+          color: '#ff4444',
+          border: '1px solid #ff4444',
+          fontWeight: 'bold',
+        },
+        icon: '✗',
+      });
     } finally {
       setLoading(false);
     }
   };
+  
   
   // Preview a contact
   const handlePreviewContact = (contact) => {
@@ -7151,34 +7209,273 @@ const handleInputChange = (field, value) => {
                 {/* Duplicate details - right side (2/3) */}
                 <InteractionsContainer style={{ paddingRight: activeEnrichmentSection === "airtable" || activeEnrichmentSection === "airtable_combining" || activeEnrichmentSection === "supabase_duplicates" || activeEnrichmentSection === "duplicates_find" || activeEnrichmentSection === "duplicates_done" ? '20px' : '0' }}>
                   {activeEnrichmentSection === "duplicates_done" ? (
-                    <div style={{ padding: '20px 0 20px 20px', width: '90%' }}>
+                    <div style={{ padding: '0 0 20px 20px', width: '90%' }}>
                       <FormGroup>
-                        <h3 style={{ fontSize: '16px', marginBottom: '15px' }}>Completed Duplicate Processing</h3>
+                        <h3 style={{ fontSize: '16px', marginBottom: '8px' }}>Completed Duplicate Processing</h3>
                         
+                        <FormFieldLabel>Completed Merges</FormFieldLabel>
+                        <div style={{ marginBottom: '15px' }}>
+                          {/* List of completed merges from contact_duplicates_completed table */}
+                          <div style={{ 
+                            background: '#222',
+                            borderRadius: '4px',
+                            overflow: 'hidden'
+                          }}>
+                            {/* Table header */}
+                            <div style={{ 
+                              padding: '10px 15px',
+                              borderBottom: '1px solid #444',
+                              display: 'grid',
+                              gridTemplateColumns: '180px 180px 1fr 100px',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              color: '#ccc'
+                            }}>
+                              <div>Merged Contact</div>
+                              <div>Primary Contact</div>
+                              <div>Merge Details</div>
+                              <div>Date</div>
+                            </div>
+                            
+                            {/* This would be a mapping of completedMerges */}
+                            {completedMerges && completedMerges.length > 0 ? (
+                              completedMerges.map(merge => (
+                                <div 
+                                  key={merge.completed_merge_id}
+                                  style={{ 
+                                    padding: '15px', 
+                                    borderBottom: '1px solid #333', 
+                                    display: 'grid',
+                                    gridTemplateColumns: '180px 180px 1fr 100px',
+                                    alignItems: 'center'
+                                  }}
+                                >
+                                  <div>
+                                    <div style={{ fontWeight: 'bold', fontSize: '13px' }}>
+                                      {merge.merged_contact_name || 'Unknown Contact'}
+                                    </div>
+                                    <div style={{ fontSize: '11px', color: '#999' }}>
+                                      {merge.merged_duplicate_contact_id}
+                                    </div>
+                                  </div>
+                                  
+                                  <div>
+                                    <div style={{ fontWeight: 'bold', fontSize: '13px' }}>
+                                      {merge.primary_contact_name || 'Current Contact'}
+                                    </div>
+                                    <div style={{ fontSize: '11px', color: '#999' }}>
+                                      {merge.primary_contact_id}
+                                    </div>
+                                  </div>
+                                  
+                                  <div>
+                                    {merge.merge_selections && (
+                                      <div style={{ fontSize: '12px' }}>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                                          {Object.entries(merge.merge_selections).map(([field, value]) => (
+                                            <div 
+                                              key={field}
+                                              style={{ 
+                                                fontSize: '11px', 
+                                                padding: '2px 6px',
+                                                background: '#333',
+                                                borderRadius: '3px',
+                                                color: value === 'primary' ? '#00ff00' : '#00ccff'
+                                              }}
+                                            >
+                                              {field}
+                                            </div>
+                                          ))}
+                                        </div>
+                                        {merge.final_notes && (
+                                          <div style={{ marginTop: '5px', color: '#999', fontSize: '11px' }}>
+                                            {merge.final_notes}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                  
+                                  <div style={{ fontSize: '11px', color: '#999' }}>
+                                    {new Date(merge.resolved_at).toLocaleDateString()}
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>
+                                No completed merges found for this contact.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {/* Additional info section */}
+                        <FormFieldLabel>Table Details</FormFieldLabel>
                         <div style={{ 
-                          display: 'flex', 
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          padding: '50px 20px',
+                          padding: '15px',
                           background: '#222',
                           borderRadius: '4px',
-                          marginTop: '20px'
+                          fontSize: '12px',
+                          color: '#ccc'
                         }}>
-                          <FiCheck size={50} color="#00aa00" style={{ marginBottom: '20px' }} />
-                          <div style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '10px' }}>
-                            Coming Soon
+                          <div style={{ marginBottom: '10px' }}>
+                            <span style={{ fontWeight: 'bold', color: '#00ff00' }}>Table:</span> contact_duplicates_completed
                           </div>
-                          <div style={{ textAlign: 'center', color: '#999', maxWidth: '400px' }}>
-                            This section will show a history of processed duplicates and their resolutions.
+                          <div style={{ 
+                            display: 'grid', 
+                            gridTemplateColumns: '1fr 1fr 2fr',
+                            gap: '5px'
+                          }}>
+                            <div style={{ fontWeight: 'bold', color: '#00ccff' }}>completed_merge_id</div>
+                            <div>uuid</div>
+                            <div>Primary key</div>
+                            
+                            <div style={{ fontWeight: 'bold', color: '#00ccff' }}>original_duplicate_id</div>
+                            <div>uuid</div>
+                            <div>Reference to original duplicate record</div>
+                            
+                            <div style={{ fontWeight: 'bold', color: '#00ccff' }}>primary_contact_id</div>
+                            <div>uuid</div>
+                            <div>The contact that was kept</div>
+                            
+                            <div style={{ fontWeight: 'bold', color: '#00ccff' }}>merged_duplicate_contact_id</div>
+                            <div>uuid</div>
+                            <div>The contact that was merged (duplicate)</div>
+                            
+                            <div style={{ fontWeight: 'bold', color: '#00ccff' }}>merge_selections</div>
+                            <div>jsonb</div>
+                            <div>Selected fields for the merge</div>
+                            
+                            <div style={{ fontWeight: 'bold', color: '#00ccff' }}>detected_at</div>
+                            <div>timestamp</div>
+                            <div>When the duplicate was detected</div>
+                            
+                            <div style={{ fontWeight: 'bold', color: '#00ccff' }}>resolved_at</div>
+                            <div>timestamp</div>
+                            <div>When the merge was completed</div>
                           </div>
                         </div>
                       </FormGroup>
                     </div>
                   ) : activeEnrichmentSection === "duplicates_find" ? (
-                    <div style={{ padding: '20px 0 20px 20px', width: '90%' }}>
+                    <div style={{ padding: '0 0 20px 20px', width: '90%' }}>
                       <FormGroup>
-                        <h3 style={{ fontSize: '16px', marginBottom: '15px' }}>Find Potential Duplicates</h3>
+                        <h3 style={{ fontSize: '16px', marginBottom: '8px' }}>Find Potential Duplicates</h3>
+                        
+                        {/* Suggested search terms */}
+                        <FormFieldLabel>Suggested search</FormFieldLabel>
+                        <div style={{ 
+                          padding: '10px',
+                          background: '#333',
+                          borderRadius: '4px',
+                          marginBottom: '15px' 
+                        }}>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            {/* Last name suggestion */}
+                            {contact?.last_name && (
+                              <div 
+                                onClick={() => {
+                                  setSearchType('name');
+                                  setSearchQuery(contact.last_name);
+                                  searchContacts(contact.last_name, 'name');
+                                }}
+                                style={{
+                                  background: '#444', 
+                                  color: '#00ff00',
+                                  padding: '5px 10px',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  fontSize: '13px',
+                                  border: '1px solid #555',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '5px'
+                                }}
+                              >
+                                <FiUser size={12} /> 
+                                {contact.last_name}
+                              </div>
+                            )}
+                            
+                            {/* First name suggestion */}
+                            {contact?.first_name && (
+                              <div 
+                                onClick={() => {
+                                  setSearchType('name');
+                                  setSearchQuery(contact.first_name);
+                                  searchContacts(contact.first_name, 'name');
+                                }}
+                                style={{
+                                  background: '#444', 
+                                  color: '#ccc',
+                                  padding: '5px 10px',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  fontSize: '13px',
+                                  border: '1px solid #555',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '5px'
+                                }}
+                              >
+                                <FiUser size={12} /> 
+                                {contact.first_name}
+                              </div>
+                            )}
+                            
+                            {/* Email suggestions */}
+                            {contact?.email && (
+                              <div 
+                                onClick={() => {
+                                  setSearchType('email');
+                                  setSearchQuery(contact.email);
+                                  searchContacts(contact.email, 'email');
+                                }}
+                                style={{
+                                  background: '#444', 
+                                  color: '#ffcc00',
+                                  padding: '5px 10px',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  fontSize: '13px',
+                                  border: '1px solid #555',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '5px'
+                                }}
+                              >
+                                <FiMail size={12} /> 
+                                {contact.email}
+                              </div>
+                            )}
+                            
+                            {/* Mobile suggestions */}
+                            {contact?.mobile && (
+                              <div 
+                                onClick={() => {
+                                  setSearchType('mobile');
+                                  setSearchQuery(contact.mobile);
+                                  searchContacts(contact.mobile, 'mobile');
+                                }}
+                                style={{
+                                  background: '#444', 
+                                  color: '#00ccff',
+                                  padding: '5px 10px',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  fontSize: '13px',
+                                  border: '1px solid #555',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '5px'
+                                }}
+                              >
+                                <FiPhone size={12} /> 
+                                {contact.mobile}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                         
                         {/* Search for duplicates */}
                         <FormFieldLabel>Search for potential duplicates</FormFieldLabel>
@@ -7359,151 +7656,12 @@ const handleInputChange = (field, value) => {
                                       >
                                         <FiGitMerge size={14} />
                                       </button>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation(); // Prevent triggering parent click
-                                          markAsFalsePositive(null, result.contact_id);
-                                        }}
-                                        title="Mark as not a duplicate"
-                                        style={{
-                                          background: 'transparent',
-                                          color: '#ff4444',
-                                          border: '1px solid #ff4444',
-                                          borderRadius: '4px',
-                                          padding: '2px 7px',
-                                          cursor: 'pointer',
-                                          fontSize: '12px',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'center',
-                                          minWidth: '25px',
-                                          minHeight: '25px'
-                                        }}
-                                      >
-                                        <FiX size={14} />
-                                      </button>
                                     </div>
                                   </div>
                                 </div>
                               ))}
                             </div>
                           )}
-                        </div>
-                        
-                        {/* All duplicates list */}
-                        <div style={{ marginBottom: '15px' }}>
-                          <FormFieldLabel>Potential Duplicates</FormFieldLabel>
-                          <div style={{ 
-                            background: '#222',
-                            borderRadius: '4px',
-                            maxHeight: '500px',
-                            overflowY: 'auto'
-                          }}>
-                            {supabaseDuplicates.length > 0 ? (
-                              supabaseDuplicates.map((duplicate) => (
-                                <div
-                                  key={duplicate.contact_id}
-                                  style={{
-                                    padding: '12px 15px',
-                                    borderBottom: '1px solid #333',
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center'
-                                  }}
-                                >
-                                  <div style={{ flex: 1 }}>
-                                    <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '5px' }}>
-                                      {duplicate.first_name} {duplicate.last_name}
-                                    </div>
-                                    <div style={{ fontSize: '12px', color: '#ccc', display: 'flex', gap: '15px' }}>
-                                      {duplicate.email && (
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                          <FiMail size={12} />
-                                          <span>{duplicate.email}</span>
-                                        </div>
-                                      )}
-                                      {duplicate.mobile && (
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                          <FiPhone size={12} />
-                                          <span>{duplicate.mobile}</span>
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div style={{ fontSize: '11px', color: '#999', marginTop: '5px' }}>
-                                      Match type: {duplicate.matched_on}
-                                    </div>
-                                  </div>
-                                  <div style={{ display: 'flex', gap: '10px' }}>
-                                    <button 
-                                      onClick={() => {
-                                        setSelectedDuplicate(duplicate);
-                                        setShowDuplicateProcessingModal(true);
-                                      }}
-                                      style={{
-                                        background: '#00ff00',
-                                        color: 'black',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        padding: '5px 10px',
-                                        cursor: 'pointer',
-                                        fontSize: '12px',
-                                        display: 'flex',
-                                        alignItems: 'center', 
-                                        gap: '5px'
-                                      }}
-                                    >
-                                      <FiGitMerge size={12} /> Merge
-                                    </button>
-                                    <button 
-                                      onClick={(e) => {
-                                        e.stopPropagation(); // Prevent triggering parent click
-                                        console.log("Marking as false positive:", duplicate);
-                                        
-                                        if (duplicate.duplicate_id) {
-                                          // If we have a duplicate_id, use it directly
-                                          markAsFalsePositive(duplicate.duplicate_id);
-                                        } else if (duplicate.contact_id) {
-                                          // Otherwise use the contact_id to create a new duplicate record
-                                          markAsFalsePositive(null, duplicate.contact_id);
-                                        } else {
-                                          console.error("No duplicate_id or contact_id found in object:", duplicate);
-                                          toast.error("Failed to mark as not a duplicate - missing ID");
-                                        }
-                                      }}
-                                      title="Mark as not a duplicate"
-                                      style={{
-                                        background: 'transparent',
-                                        color: '#ff4444',
-                                        border: '1px solid #ff4444',
-                                        borderRadius: '4px',
-                                        padding: '5px 10px',
-                                        cursor: 'pointer',
-                                        fontSize: '12px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        minWidth: '30px',
-                                        minHeight: '30px',
-                                        transition: 'all 0.2s ease'
-                                      }}
-                                      onMouseOver={(e) => {
-                                        e.currentTarget.style.background = '#ff444420';
-                                      }}
-                                      onMouseOut={(e) => {
-                                        e.currentTarget.style.background = 'transparent';
-                                      }}
-                                    >
-                                      <FiX size={16} />
-                                    </button>
-                                  </div>
-                                </div>
-                              ))
-                            ) : (
-                              <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>
-                                No duplicates found. Use the search above to find potential duplicates.
-                              </div>
-                            )}
-                          </div>
                         </div>
                       </FormGroup>
                     </div>
@@ -11539,7 +11697,38 @@ const handleInputChange = (field, value) => {
                   {activeEnrichmentSection === "basics" && (
                     <>
                       <FormGroup>
-                        <FormFieldLabel>Name {airtableContact && `- Airtable: ${airtableContact.full_name}`}</FormFieldLabel>
+                        <FormFieldLabel>
+                          Name {airtableContact && airtableContact.full_name && (
+                            <span>
+                              - Airtable: {airtableContact.full_name}
+                              <FiArrowRight
+                                size={12}
+                                color="#00ff00"
+                                style={{ marginLeft: '5px', cursor: 'pointer' }}
+                                onClick={() => {
+                                  // Split full name into first and last
+                                  const nameParts = airtableContact.full_name.split(' ');
+                                  const firstName = nameParts[0] || '';
+                                  const lastName = nameParts.slice(1).join(' ') || '';
+                                  
+                                  // Find and update first name input
+                                  const firstNameInput = document.querySelector('input[placeholder="First Name"]');
+                                  if (firstNameInput) {
+                                    firstNameInput.value = firstName;
+                                    firstNameInput.dispatchEvent(new Event('input', { bubbles: true }));
+                                  }
+                                  
+                                  // Find and update last name input
+                                  const lastNameInput = document.querySelector('input[placeholder="Last Name"]');
+                                  if (lastNameInput) {
+                                    lastNameInput.value = lastName;
+                                    lastNameInput.dispatchEvent(new Event('input', { bubbles: true }));
+                                  }
+                                }}
+                              />
+                            </span>
+                          )}
+                        </FormFieldLabel>
                         <div style={{ 
                           display: 'flex', 
                           gap: '10px', 
@@ -11576,7 +11765,23 @@ const handleInputChange = (field, value) => {
                             <span>Email Addresses</span>
                             <span style={{ marginLeft: '5px', fontSize: '10px' }}>↗</span>
                           </a>
-                          {airtableContact && airtableContact.primary_email && `- Airtable: ${airtableContact.primary_email}`}
+                          {airtableContact && airtableContact.primary_email && (
+                            <span>
+                              - Airtable: {airtableContact.primary_email} 
+                              <FiArrowRight
+                                size={12}
+                                color="#00ff00"
+                                style={{ marginLeft: '5px', cursor: 'pointer' }}
+                                onClick={() => {
+                                  const input = document.querySelector('input[placeholder="Add new email address"]');
+                                  if (input) {
+                                    input.value = airtableContact.primary_email;
+                                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                                  }
+                                }}
+                              />
+                            </span>
+                          )}
                         </FormFieldLabel>
                         
                         <div style={{ 
@@ -14695,7 +14900,7 @@ const handleInputChange = (field, value) => {
               category: formData.get('dealCategory') || 'Inbox',
               source: formData.get('dealSource') || 'Not Set',
               description: formData.get('dealDescription') || '',
-              relationship: formData.get('dealRelationship') || 'Introducer'
+              relationship: formData.get('dealRelationship') || 'introducer'
             };
             
             // If we have a selected deal from suggestions, pass that to create/update
@@ -14766,9 +14971,11 @@ const handleInputChange = (field, value) => {
             
             <FormGroup>
               <InputLabel>Contact Relationship *</InputLabel>
-              <Select name="dealRelationship" defaultValue="Introducer" required>
-                {dealRelationships.map(relationship => (
-                  <option key={relationship} value={relationship}>{relationship}</option>
+              <Select name="dealRelationship" defaultValue="introducer" required>
+                {dealRelationships.map((dbValue, index) => (
+                  <option key={dbValue} value={dbValue}>
+                    {dealRelationshipsDisplay[index]}
+                  </option>
                 ))}
               </Select>
             </FormGroup>
@@ -14846,7 +15053,7 @@ const handleInputChange = (field, value) => {
         source: formData.get('dealSource') || 'Not Set',
         description: formData.get('dealDescription') || '',
         // expected_close_date and company_id removed as they don't exist in schema
-        relationship: formData.get('dealRelationship') || 'Introducer'
+        relationship: formData.get('dealRelationship') || 'introducer'
       };
       
       console.log('Deal data from form:', dealData);
@@ -14985,6 +15192,7 @@ const handleInputChange = (field, value) => {
       
       const formData = new FormData(e.target);
       const dealId = formData.get('dealId');
+      // Get UI value from form, convert to DB value in handleAssociateDeal
       const relationship = formData.get('dealRelationship');
       
       if (!dealId) {

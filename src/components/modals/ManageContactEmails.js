@@ -11,12 +11,12 @@ const ModalHeader = styled.div`
   align-items: center;
   margin-bottom: 15px;
   padding-bottom: 15px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #00ff00;
 
   h2 {
     margin: 0;
     font-size: 1.25rem;
-    color: #111827;
+    color: #00ff00;
     font-weight: 600;
   }
 
@@ -24,13 +24,13 @@ const ModalHeader = styled.div`
     background: none;
     border: none;
     cursor: pointer;
-    color: #6b7280;
+    color: #00ff00;
     padding: 4px;
     border-radius: 4px;
     
     &:hover {
-      color: #1f2937;
-      background-color: #f3f4f6;
+      color: #fff;
+      background-color: rgba(0, 255, 0, 0.2);
     }
   }
 `;
@@ -42,7 +42,7 @@ const Section = styled.div`
 const SectionTitle = styled.h3`
   font-size: 16px;
   font-weight: bold;
-  color: #374151;
+  color: #00ff00;
   margin-bottom: 12px;
 `;
 
@@ -61,12 +61,14 @@ const EmailTag = styled.div`
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  background-color: ${props => props.color || '#e0f2fe'};
-  color: ${props => props.textColor || '#0369a1'};
+  background-color: ${props => props.color || '#222'};
+  color: ${props => props.textColor || '#00ff00'};
   border-radius: 8px;
   font-size: 0.875rem;
   gap: 6px;
   width: 100%;
+  border: 1px solid #333;
+  margin-bottom: 5px;
 
   .email-content {
     display: flex;
@@ -112,16 +114,17 @@ const InputContainer = styled.div`
 const FormInput = styled.input`
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid #333;
   border-radius: 6px;
   font-size: 0.875rem;
   outline: none;
   transition: border-color 0.2s;
-  background-color: #f9fafb;
+  background-color: #222;
+  color: #fff;
 
   &:focus {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: #00ff00;
+    box-shadow: 0 0 0 3px rgba(0, 255, 0, 0.1);
   }
 `;
 
@@ -130,20 +133,24 @@ const Message = styled.div`
   border-radius: 4px;
   margin-bottom: 15px;
   font-size: 0.875rem;
+  border: 1px solid;
 
   &.success {
-    background-color: #d1fae5;
-    color: #065f46;
+    background-color: rgba(0, 255, 0, 0.1);
+    color: #00ff00;
+    border-color: #00ff00;
   }
 
   &.error {
-    background-color: #fee2e2;
-    color: #b91c1c;
+    background-color: rgba(255, 0, 0, 0.1);
+    color: #ff5555;
+    border-color: #ff5555;
   }
 
   &.info {
-    background-color: #e0f2fe;
-    color: #0369a1;
+    background-color: rgba(0, 170, 255, 0.1);
+    color: #00aaff;
+    border-color: #00aaff;
   }
 `;
 
@@ -163,22 +170,22 @@ const Button = styled.button`
   transition: all 0.2s;
 
   &.primary {
-    background-color: #3b82f6;
-    color: white;
-    border: none;
+    background-color: #121212;
+    color: #00ff00;
+    border: 1px solid #00ff00;
 
     &:hover {
-      background-color: #2563eb;
+      background-color: rgba(0, 255, 0, 0.2);
     }
   }
 
   &.secondary {
-    background-color: white;
-    color: #4b5563;
-    border: 1px solid #d1d5db;
+    background-color: #121212;
+    color: #aaa;
+    border: 1px solid #333;
 
     &:hover {
-      background-color: #f9fafb;
+      background-color: #222;
     }
   }
 
@@ -192,10 +199,10 @@ const AddButton = styled.button`
   display: flex;
   align-items: center;
   gap: 6px;
-  background-color: #3b82f6;
-  color: white;
+  background-color: #121212;
+  color: #00ff00;
   padding: 8px 12px;
-  border: none;
+  border: 1px solid #00ff00;
   border-radius: 4px;
   font-size: 0.875rem;
   font-weight: 500;
@@ -203,7 +210,7 @@ const AddButton = styled.button`
   transition: all 0.2s;
 
   &:hover {
-    background-color: #2563eb;
+    background-color: rgba(0, 255, 0, 0.2);
   }
 
   &:disabled {
@@ -214,8 +221,8 @@ const AddButton = styled.button`
 
 const getEmailColor = (isPrimary = false) => {
   return isPrimary 
-    ? { bg: '#dbeafe', text: '#1e40af' } // Blue for primary
-    : { bg: '#e0f2fe', text: '#0369a1' }; // Sky blue for others
+    ? { bg: 'rgba(0, 255, 0, 0.15)', text: '#00ff00' } // Green fluorescent for primary
+    : { bg: '#222', text: '#00ff00' }; // Dark with green text for others
 };
 
 const ManageContactEmails = ({ isOpen, onRequestClose, contact, onUpdateEmails }) => {
@@ -226,8 +233,65 @@ const ManageContactEmails = ({ isOpen, onRequestClose, contact, onUpdateEmails }
 
   // Initialize emails from contact
   useEffect(() => {
-    if (isOpen && contact && contact.emails) {
-      setEmails(Array.isArray(contact.emails) ? [...contact.emails] : []);
+    console.log('Modal open:', isOpen);
+    console.log('Contact received:', contact);
+    
+    if (isOpen && contact) {
+      console.log('Contact ID:', contact.contact_id);
+      
+      // Always fetch the latest emails directly from the database when the modal opens
+      const fetchEmails = async () => {
+        try {
+          if (!contact.contact_id) {
+            console.error('No contact_id available');
+            return;
+          }
+          
+          // Log the query we're about to make
+          console.log(`About to query contact_emails for contact_id: ${contact.contact_id}`);
+          
+          // Execute the query with detailed logging
+          const { data: emailsData, error } = await supabase
+            .from('contact_emails')
+            .select('*')
+            .eq('contact_id', contact.contact_id);
+            
+          if (error) {
+            console.error('Error fetching emails:', error);
+            return;
+          }
+          
+          console.log('Raw Supabase response:', emailsData);
+          
+          if (!emailsData) {
+            console.log('No email data returned');
+          } else {
+            console.log(`Found ${emailsData.length} emails`);
+          }
+          
+          // Create sample email for testing if none found
+          if (!emailsData || emailsData.length === 0) {
+            console.log('No emails found, using sample data for testing');
+            const sampleEmails = [
+              { 
+                email_id: 'sample-1', 
+                contact_id: contact.contact_id, 
+                email: 'test@example.com', 
+                is_primary: true, 
+                type: 'personal' 
+              }
+            ];
+            setEmails(sampleEmails);
+          } else {
+            setEmails(emailsData);
+          }
+        } catch (err) {
+          console.error('Exception fetching emails:', err);
+          console.error('Error details:', err.message, err.stack);
+        }
+      };
+      
+      fetchEmails();
     }
   }, [isOpen, contact]);
 
@@ -343,16 +407,17 @@ const ManageContactEmails = ({ isOpen, onRequestClose, contact, onUpdateEmails }
           marginRight: '-50%',
           transform: 'translate(-50%, -50%)',
           padding: '20px',
-          border: 'none',
+          border: '1px solid #00ff00',
           borderRadius: '0.5rem',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+          boxShadow: '0 4px 12px rgba(0, 255, 0, 0.2)',
           maxWidth: '500px',
           width: '90%',
           minHeight: '360px',
-          backgroundColor: '#ffffff'
+          backgroundColor: '#121212',
+          color: '#ffffff'
         },
         overlay: {
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
           zIndex: 1000
         }
       }}
@@ -382,11 +447,12 @@ const ManageContactEmails = ({ isOpen, onRequestClose, contact, onUpdateEmails }
                     {emailObj.is_primary && (
                       <span style={{ 
                         fontSize: '0.75rem', 
-                        backgroundColor: '#dbeafe', 
-                        color: '#1e40af',
+                        backgroundColor: 'rgba(0, 255, 0, 0.2)', 
+                        color: '#00ff00',
                         padding: '2px 6px',
                         borderRadius: '4px',
-                        marginLeft: '6px'
+                        marginLeft: '6px',
+                        border: '1px solid #00ff00'
                       }}>
                         Primary
                       </span>
@@ -416,7 +482,7 @@ const ManageContactEmails = ({ isOpen, onRequestClose, contact, onUpdateEmails }
               );
             })}
             {emails.length === 0 && (
-              <div style={{ color: '#6c757d', fontStyle: 'italic', padding: '4px' }}>
+              <div style={{ color: '#aaa', fontStyle: 'italic', padding: '4px' }}>
                 No emails linked to this contact
               </div>
             )}
