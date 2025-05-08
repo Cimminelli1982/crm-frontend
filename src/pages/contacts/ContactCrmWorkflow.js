@@ -16,6 +16,8 @@ import CityModal from '../../components/modals/CityModal';
 import TagsModal from '../../components/modals/TagsModal';
 import CompanyContactsModal from '../../components/modals/CompanyContactsModal';
 import DuplicateProcessingModal from '../../components/modals/DuplicateProcessingModal';
+import NewIntroductionModal from '../../components/modals/NewIntroductionModal';
+import ViewDealModal from '../../components/modals/ViewDealModal';
 import { 
   FiX, 
   FiCheck, 
@@ -1324,6 +1326,15 @@ const ContactCrmWorkflow = () => {
   const [showAssociateDealModal, setShowAssociateDealModal] = useState(false);
   const [showEditDealModal, setShowEditDealModal] = useState(false);
   const [dealModalTab, setDealModalTab] = useState('list');
+  
+  // Introductions-related state
+  const [introductions, setIntroductions] = useState([]);
+  const [introductionsLoading, setIntroductionsLoading] = useState(false);
+  const [showNewIntroductionModal, setShowNewIntroductionModal] = useState(false);
+  const [selectedIntroduction, setSelectedIntroduction] = useState(null);
+  const [introductionTools] = useState(['Email', 'Meeting', 'Phone', 'Video Call', 'Other']);
+  const [introductionCategories] = useState(['Business', 'Personal', 'Investment', 'Other']);
+  const [introductionStatuses] = useState(['Requested', 'Completed', 'Declined', 'Pending']);
   const [selectedDeal, setSelectedDeal] = useState(null);
   const [dealSearchQuery, setDealSearchQuery] = useState('');
   const [dealNameInput, setDealNameInput] = useState('');
@@ -1500,7 +1511,7 @@ const ContactCrmWorkflow = () => {
   const [emailMessages, setEmailMessages] = useState([]);
   const [loadingEmails, setLoadingEmails] = useState(false);
   const [expandedEmails, setExpandedEmails] = useState({});
-  
+
   // State for companies
   const [contactCompanies, setContactCompanies] = useState([]); // Initialize with empty array for consistent rendering
   
@@ -1985,6 +1996,9 @@ const ContactCrmWorkflow = () => {
     const savedSection = sessionStorage.getItem(`enrichment_section_${contactId}`);
     return savedSection || "basics";
   });
+  
+  // State for deal modal
+  const [showViewDealModal, setShowViewDealModal] = useState(false);
 
   // Save activeEnrichmentSection to sessionStorage when it changes
   useEffect(() => {
@@ -2039,7 +2053,45 @@ const ContactCrmWorkflow = () => {
   });
   const [isDeleting, setIsDeleting] = useState(false);
   
+  // Load introductions for the current contact
+  const loadContactIntroductions = useCallback(async () => {
+    try {
+      setIntroductionsLoading(true);
+      console.log('Loading introductions for contact ID:', contactId);
+      
+      if (!contactId) {
+        console.warn('Cannot load introductions: Missing contact ID');
+        setIntroductions([]);
+        setIntroductionsLoading(false);
+        return;
+      }
+      
+      // Fetch introductions where this contact is included in contact_ids array
+      const { data, error } = await supabase
+        .from('contact_introductions')
+        .select('*')
+        .contains('contacts_introduced', [contactId])
+        .order('intro_date', { ascending: false });
+      
+      if (error) {
+        console.error('Error loading introductions:', error);
+        toast.error('Failed to load introductions');
+        setIntroductionsLoading(false);
+        return;
+      }
+      
+      console.log('Fetched introductions:', data);
+      setIntroductions(data || []);
+    } catch (err) {
+      console.error('Error in loadContactIntroductions:', err);
+      toast.error('Error loading introductions');
+    } finally {
+      setIntroductionsLoading(false);
+    }
+  }, [contactId, supabase]);
+
   // Load deals for the current contact
+
   const loadContactDeals = useCallback(async () => {
     try {
       setDealsLoading(true);
@@ -3305,7 +3357,13 @@ const handleSelectEmailThread = async (threadId) => {
       loadContactDeals();
     }
     
-  }, [contactId, activeEnrichmentSection, loadSupabaseDuplicates, loadContactDeals]);
+    
+    // Reload introductions when introductions section is selected
+    if (contactId && activeEnrichmentSection === 'introductions') {
+      loadContactIntroductions();
+    }
+    
+  }, [contactId, activeEnrichmentSection, loadSupabaseDuplicates, loadContactDeals, loadContactIntroductions]);
   
   // Start editing name
   const startEditingName = () => {
@@ -6699,9 +6757,13 @@ const handleInputChange = (field, value) => {
             )}
           </h2>
           <div className="contact-details">
-            {contact.email && (
+            {contact.email ? (
               <div className="detail-item">
                 <FiMail /> <a href={`https://mail.superhuman.com/search/${encodeURIComponent(contact.first_name)}%20${encodeURIComponent(contact.last_name)}`} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>{contact.email}</a>
+              </div>
+            ) : (
+              <div className="detail-item">
+                <FiMail /> <a href={`https://mail.superhuman.com/search/${encodeURIComponent(contact.first_name)}%20${encodeURIComponent(contact.last_name)}`} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>Search Email</a>
               </div>
             )}
             {contact.mobile && (
@@ -11591,6 +11653,21 @@ const handleInputChange = (field, value) => {
                   <FiDollarSign size={16} />
                   <span>Deals</span>
                 </div>
+                <div 
+                  onClick={() => setActiveEnrichmentSection("introductions")}
+                  style={{ 
+                    padding: '12px 15px', 
+                    cursor: 'pointer', 
+                    borderBottom: '1px solid #222',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    background: activeEnrichmentSection === "introductions" ? '#222' : 'transparent'
+                  }}
+                >
+                  <FiUsers size={16} />
+                  <span>Introductions</span>
+                </div>
                 
               </ChannelsMenu>
               
@@ -13219,18 +13296,18 @@ const handleInputChange = (field, value) => {
                                     onClick={() => {
                                       setSelectedDeal({
                                         deal_id: deal.deal_id,
-                                        name: deal.opportunity,
+                                        opportunity: deal.opportunity,
                                         stage: deal.stage,
-                                        value: deal.total_investment,
+                                        total_investment: deal.total_investment,
                                         category: deal.category,
-                                        source: deal.source_category,
+                                        source_category: deal.source_category,
                                         description: deal.description,
                                         relationship: deal.relationship,
                                         deals_contacts_id: deal.deals_contacts_id,
                                         created_at: deal.created_at,
                                         last_modified_at: deal.last_modified_at
                                       });
-                                      setShowEditDealModal(true);
+                                      setShowViewDealModal(true);
                                     }}
                                     onMouseEnter={(e) => {
                                       e.currentTarget.style.backgroundColor = '#222';
@@ -13396,6 +13473,196 @@ const handleInputChange = (field, value) => {
                           )}
                         </div>
                       </div>
+                    </>
+                  )}
+                  
+                  {/* INTRODUCTIONS SECTION */}
+                  {activeEnrichmentSection === "introductions" && (
+                    <>
+                      <div style={{ marginBottom: '20px' }}>
+                        <SectionDivider style={{ marginBottom: '15px' }} />
+                        
+                        {/* Introductions layout */}
+                        <div style={{ 
+                          position: 'relative',
+                          minHeight: '200px', 
+                          padding: '10px 0',
+                          marginBottom: '20px'
+                        }}>
+                          {introductionsLoading ? (
+                            <div style={{ 
+                              display: 'flex',
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                              height: '200px',
+                              color: '#999'
+                            }}>
+                              Loading introductions...
+                            </div>
+                          ) : (
+                            <div>
+                              {/* Add introduction button */}
+                              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '20px' }}>
+                                <button
+                                  onClick={() => setShowNewIntroductionModal(true)}
+                                  style={{
+                                    backgroundColor: '#00ff00',
+                                    color: '#000',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '10px 16px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    fontWeight: '500'
+                                  }}
+                                >
+                                  <FiPlus size={16} />
+                                  Add Introduction
+                                </button>
+                              </div>
+                              
+                              {/* Introductions table */}
+                              <div style={{ 
+                                backgroundColor: '#111', 
+                                borderRadius: '8px',
+                                border: '1px solid #333',
+                                overflow: 'hidden'
+                              }}>
+                                {introductions.length === 0 ? (
+                                  <div style={{ 
+                                    padding: '40px 20px',
+                                    textAlign: 'center',
+                                    color: '#777'
+                                  }}>
+                                    <div style={{ marginBottom: '15px' }}>
+                                      <FiUsers size={30} color="#444" />
+                                    </div>
+                                    <p>No introductions found for this contact.</p>
+                                    <button
+                                      onClick={() => setShowNewIntroductionModal(true)}
+                                      style={{
+                                        backgroundColor: 'transparent',
+                                        color: '#00ff00',
+                                        border: '1px solid #00ff00',
+                                        borderRadius: '4px',
+                                        padding: '8px 16px',
+                                        marginTop: '15px',
+                                        cursor: 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        fontSize: '0.9rem'
+                                      }}
+                                    >
+                                      <FiPlus size={14} />
+                                      Add Introduction
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <>
+                                    {/* Table header */}
+                                    <div style={{ 
+                                      display: 'grid', 
+                                      gridTemplateColumns: '150px 1fr 150px 150px',
+                                      padding: '12px 16px',
+                                      borderBottom: '1px solid #333',
+                                      backgroundColor: '#222',
+                                      fontWeight: '500',
+                                      color: '#aaa',
+                                      fontSize: '0.9rem'
+                                    }}>
+                                      <div>Date</div>
+                                      <div>Contacts</div>
+                                      <div>Category</div>
+                                      <div>Status</div>
+                                    </div>
+                                    
+                                    {/* Table rows */}
+                                    {introductions.map(intro => (
+                                      <div 
+                                        key={intro.intro_id} 
+                                        style={{ 
+                                          display: 'grid', 
+                                          gridTemplateColumns: '150px 1fr 150px 150px',
+                                          padding: '16px',
+                                          borderBottom: '1px solid #222',
+                                          alignItems: 'center',
+                                          cursor: 'pointer',
+                                          transition: 'background-color 0.2s',
+                                          '&:hover': {
+                                            backgroundColor: '#1a1a1a'
+                                          }
+                                        }}
+                                        onClick={() => {
+                                          setSelectedIntroduction(intro);
+                                          setShowNewIntroductionModal(true);
+                                        }}
+                                      >
+                                        {/* Date column */}
+                                        <div style={{ color: '#ccc' }}>
+                                          {new Date(intro.introduction_date).toLocaleDateString()}
+                                        </div>
+                                        
+                                        {/* Contacts column */}
+                                        <div>
+                                          {/* This would need to be enhanced to show actual contact names */}
+                                          <span style={{ color: '#00ff00' }}>
+                                            {intro.contact_ids ? intro.contact_ids.length : 0} contacts
+                                          </span>
+                                        </div>
+                                        
+                                        {/* Category column */}
+                                        <div>
+                                          <span style={{ 
+                                            display: 'inline-block',
+                                            padding: '4px 10px',
+                                            borderRadius: '12px',
+                                            fontSize: '0.8rem',
+                                            backgroundColor: '#2a2a2a',
+                                            color: '#ccc'
+                                          }}>
+                                            {intro.introduction_category || 'Other'}
+                                          </span>
+                                        </div>
+                                        
+                                        {/* Status column */}
+                                        <div>
+                                          <span style={{ 
+                                            display: 'inline-block',
+                                            padding: '4px 10px',
+                                            borderRadius: '12px',
+                                            fontSize: '0.8rem',
+                                            backgroundColor: intro.introduction_status === 'Completed' ? '#0d2b0d' : '#2b2b0d',
+                                            color: intro.introduction_status === 'Completed' ? '#00ff00' : '#ffff00'
+                                          }}>
+                                            {intro.introduction_status || 'Pending'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Introduction modal */}
+                      {showNewIntroductionModal && (
+                        <NewIntroductionModal
+                          isOpen={showNewIntroductionModal}
+                          onRequestClose={() => {
+                            setShowNewIntroductionModal(false);
+                            setSelectedIntroduction(null);
+                            loadContactIntroductions(); // Reload data when modal closes
+                          }}
+                          preSelectedContact={contact}
+                          editingIntro={selectedIntroduction}
+                        />
+                      )}
                     </>
                   )}
                   
@@ -13615,115 +13882,479 @@ const handleInputChange = (field, value) => {
         <>
           <Card>
             <SectionTitle>
-              <FiBriefcase /> Professional Information
+              <FiUser /> Contact Information Recap
             </SectionTitle>
             
-            <FormGrid>
-              <div>
-                <FormGroup>
-                  <InputLabel>LinkedIn Profile</InputLabel>
-                  <Input 
-                    type="text"
-                    value={formData.linkedIn || ''}
-                    onChange={(e) => handleInputChange('linkedIn', e.target.value)}
-                    placeholder="Enter LinkedIn URL"
-                  />
-                </FormGroup>
+            <InteractionsLayout>
+              <InteractionsContainer>
+                <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                  {/* 3-column layout for fields */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', width: '100%' }}>
+                    {/* Column 1: Basic Info */}
+                    <div>
+                      <FormGroup>
+                        <FormFieldLabel>First Name & Last Name</FormFieldLabel>
+                        <div style={{ 
+                          background: '#222', 
+                          padding: '12px', 
+                          borderRadius: '4px',
+                          marginBottom: '15px',
+                          display: 'flex',
+                          gap: '10px'
+                        }}>
+                          <Input 
+                            type="text"
+                            value={formData.firstName || ''}
+                            onChange={(e) => handleInputChange('firstName', e.target.value)}
+                            placeholder="First name"
+                            style={{ flex: 1 }}
+                          />
+                          <Input 
+                            type="text"
+                            value={formData.lastName || ''}
+                            onChange={(e) => handleInputChange('lastName', e.target.value)}
+                            placeholder="Last name"
+                            style={{ flex: 1 }}
+                          />
+                        </div>
+                      </FormGroup>
+
+                      <FormGroup>
+                        <FormFieldLabel>Email</FormFieldLabel>
+                        <div style={{ 
+                          background: '#222', 
+                          padding: '12px', 
+                          borderRadius: '4px',
+                          marginBottom: '15px'
+                        }}>
+                          <Input 
+                            type="email"
+                            value={formData.email || ''}
+                            onChange={(e) => handleInputChange('email', e.target.value)}
+                            placeholder="Email address"
+                          />
+                        </div>
+                      </FormGroup>
+                      
+                      <FormGroup>
+                        <FormFieldLabel>Mobile</FormFieldLabel>
+                        <div style={{ 
+                          background: '#222', 
+                          padding: '12px', 
+                          borderRadius: '4px',
+                          marginBottom: '15px'
+                        }}>
+                          <Input 
+                            type="tel"
+                            value={formData.mobile || ''}
+                            onChange={(e) => handleInputChange('mobile', e.target.value)}
+                            placeholder="Mobile number"
+                          />
+                        </div>
+                      </FormGroup>
+                    </div>
+                    
+                    {/* Column 2: Professional Info */}
+                    <div>
+                      <FormGroup>
+                        <FormFieldLabel>Job Role</FormFieldLabel>
+                        <div style={{ 
+                          background: '#222', 
+                          padding: '12px', 
+                          borderRadius: '4px',
+                          marginBottom: '15px'
+                        }}>
+                          <Input 
+                            type="text"
+                            value={formData.jobRole || ''}
+                            onChange={(e) => handleInputChange('jobRole', e.target.value)}
+                            placeholder="Enter job title"
+                          />
+                        </div>
+                      </FormGroup>
+                      
+                      <FormGroup>
+                        <FormFieldLabel>LinkedIn Profile</FormFieldLabel>
+                        <div style={{ 
+                          background: '#222', 
+                          padding: '12px', 
+                          borderRadius: '4px',
+                          marginBottom: '15px'
+                        }}>
+                          <Input 
+                            type="text"
+                            value={formData.linkedIn || ''}
+                            onChange={(e) => handleInputChange('linkedIn', e.target.value)}
+                            placeholder="Enter LinkedIn URL"
+                          />
+                        </div>
+                      </FormGroup>
+                      
+                      <FormGroup>
+                        <FormFieldLabel>Company</FormFieldLabel>
+                        <div style={{ 
+                          background: '#222', 
+                          padding: '12px', 
+                          borderRadius: '4px',
+                          marginBottom: '15px'
+                        }}>
+                          <Select 
+                            value={formData.company?.id || ''}
+                            onChange={(e) => {
+                              const companyId = e.target.value;
+                              handleInputChange('company', companyId ? { 
+                                id: companyId, 
+                                name: e.target.options[e.target.selectedIndex].text 
+                              } : null);
+                            }}
+                          >
+                            <option value="">Select a company</option>
+                            <option value="1">Acme Corp</option>
+                            <option value="2">Stark Industries</option>
+                            <option value="3">Wayne Enterprises</option>
+                            <option value="4">Hooli</option>
+                            <option value="5">Pied Piper</option>
+                          </Select>
+                        </div>
+                      </FormGroup>
+                    </div>
+                    
+                    {/* Column 3: Additional Info */}
+                    <div>
+                      <FormGroup>
+                        <FormFieldLabel>Category</FormFieldLabel>
+                        <div style={{ 
+                          background: '#222', 
+                          padding: '12px', 
+                          borderRadius: '4px',
+                          marginBottom: '15px'
+                        }}>
+                          <Select 
+                            value={formData.category || ''}
+                            onChange={(e) => handleInputChange('category', e.target.value)}
+                          >
+                            <option value="">Select a category</option>
+                            <option value="Lead">Lead</option>
+                            <option value="Customer">Customer</option>
+                            <option value="Partner">Partner</option>
+                            <option value="Investor">Investor</option>
+                            <option value="Advisor">Advisor</option>
+                            <option value="Other">Other</option>
+                          </Select>
+                        </div>
+                      </FormGroup>
+                      
+                      <FormGroup>
+                        <FormFieldLabel>Rating</FormFieldLabel>
+                        <div style={{ 
+                          background: '#222', 
+                          padding: '12px', 
+                          borderRadius: '4px',
+                          marginBottom: '15px'
+                        }}>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <div 
+                                key={star}
+                                onClick={() => handleInputChange('score', star === formData.score ? null : star)}
+                                style={{ 
+                                  cursor: 'pointer',
+                                  color: formData.score >= star ? '#ffbb00' : '#555',
+                                  fontSize: '24px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  width: '30px',
+                                  height: '30px'
+                                }}
+                              >
+                                ★
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </FormGroup>
+                      
+                      <FormGroup>
+                        <FormFieldLabel>Birthday</FormFieldLabel>
+                        <div style={{ 
+                          background: '#222', 
+                          padding: '12px', 
+                          borderRadius: '4px',
+                          marginBottom: '15px'
+                        }}>
+                          <Input 
+                            type="date"
+                            value={formData.birthday || ''}
+                            onChange={(e) => handleInputChange('birthday', e.target.value)}
+                          />
+                        </div>
+                      </FormGroup>
+                    </div>
+                  </div>
+                  
+                  {/* 2-column layout for tags and cities */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', width: '100%' }}>
+                    <div>
+                      <FormGroup>
+                        <FormFieldLabel>Tags</FormFieldLabel>
+                        <div style={{ 
+                          background: '#222', 
+                          padding: '12px', 
+                          borderRadius: '4px',
+                          marginBottom: '15px'
+                        }}>
+                          <div style={{ position: 'relative' }}>
+                            <Input 
+                              type="text"
+                              value={formData.tagInput || ''}
+                              onChange={(e) => handleInputChange('tagInput', e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && formData.tagInput.trim()) {
+                                  e.preventDefault();
+                                  const newTags = [...(formData.tags || [])];
+                                  if (!newTags.includes(formData.tagInput.trim())) {
+                                    newTags.push(formData.tagInput.trim());
+                                    handleInputChange('tags', newTags);
+                                  }
+                                  handleInputChange('tagInput', '');
+                                }
+                              }}
+                              placeholder="Type a tag and press Enter"
+                            />
+                            <button
+                              onClick={() => {
+                                if (formData.tagInput.trim()) {
+                                  const newTags = [...(formData.tags || [])];
+                                  if (!newTags.includes(formData.tagInput.trim())) {
+                                    newTags.push(formData.tagInput.trim());
+                                    handleInputChange('tags', newTags);
+                                  }
+                                  handleInputChange('tagInput', '');
+                                }
+                              }}
+                              style={{
+                                position: 'absolute',
+                                right: '5px',
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                                background: 'none',
+                                border: 'none',
+                                color: '#00ff00',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <FiPlus size={16} />
+                            </button>
+                          </div>
+                          
+                          {formData.tags && formData.tags.length > 0 && (
+                            <TagsContainer>
+                              {formData.tags.map((tag, index) => (
+                                <Tag key={index}>
+                                  {tag}
+                                  <span 
+                                    className="remove" 
+                                    onClick={() => {
+                                      const newTags = [...formData.tags];
+                                      newTags.splice(index, 1);
+                                      handleInputChange('tags', newTags);
+                                    }}
+                                  >
+                                    <FiX size={14} />
+                                  </span>
+                                </Tag>
+                              ))}
+                            </TagsContainer>
+                          )}
+                        </div>
+                      </FormGroup>
+                    </div>
+                    
+                    <div>
+                      <FormGroup>
+                        <FormFieldLabel>Cities</FormFieldLabel>
+                        <div style={{ 
+                          background: '#222', 
+                          padding: '12px', 
+                          borderRadius: '4px',
+                          marginBottom: '15px'
+                        }}>
+                          <div style={{ position: 'relative' }}>
+                            <Input 
+                              type="text"
+                              value={formData.cityInput || ''}
+                              onChange={(e) => handleInputChange('cityInput', e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && formData.cityInput.trim()) {
+                                  e.preventDefault();
+                                  const newCities = [...(formData.cities || [])];
+                                  if (!newCities.includes(formData.cityInput.trim())) {
+                                    newCities.push(formData.cityInput.trim());
+                                    handleInputChange('cities', newCities);
+                                  }
+                                  handleInputChange('cityInput', '');
+                                }
+                              }}
+                              placeholder="Type a city and press Enter"
+                            />
+                            <button
+                              onClick={() => {
+                                if (formData.cityInput.trim()) {
+                                  const newCities = [...(formData.cities || [])];
+                                  if (!newCities.includes(formData.cityInput.trim())) {
+                                    newCities.push(formData.cityInput.trim());
+                                    handleInputChange('cities', newCities);
+                                  }
+                                  handleInputChange('cityInput', '');
+                                }
+                              }}
+                              style={{
+                                position: 'absolute',
+                                right: '5px',
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                                background: 'none',
+                                border: 'none',
+                                color: '#00ff00',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <FiPlus size={16} />
+                            </button>
+                          </div>
+                          
+                          {formData.cities && formData.cities.length > 0 && (
+                            <TagsContainer>
+                              {formData.cities.map((city, index) => (
+                                <Tag key={index}>
+                                  {typeof city === 'object' ? city.name : city}
+                                  <span 
+                                    className="remove" 
+                                    onClick={() => {
+                                      const newCities = [...formData.cities];
+                                      newCities.splice(index, 1);
+                                      handleInputChange('cities', newCities);
+                                    }}
+                                  >
+                                    <FiX size={14} />
+                                  </span>
+                                </Tag>
+                              ))}
+                            </TagsContainer>
+                          )}
+                        </div>
+                      </FormGroup>
+                    </div>
+                  </div>
+                  
+                  {/* 2-column layout for description/notes */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', width: '100%' }}>
+                    <div>
+                      <FormGroup>
+                        <FormFieldLabel>Description</FormFieldLabel>
+                        <div style={{ 
+                          background: '#222', 
+                          padding: '12px', 
+                          borderRadius: '4px',
+                          marginBottom: '15px'
+                        }}>
+                          <TextArea 
+                            value={formData.description || ''}
+                            onChange={(e) => handleInputChange('description', e.target.value)}
+                            placeholder="Add description about this contact..."
+                            style={{ minHeight: '120px' }}
+                          />
+                        </div>
+                      </FormGroup>
+                    </div>
+                    
+                    <div>
+                      <FormGroup>
+                        <FormFieldLabel>Notes</FormFieldLabel>
+                        <div style={{ 
+                          background: '#222', 
+                          padding: '12px', 
+                          borderRadius: '4px',
+                          marginBottom: '15px'
+                        }}>
+                          <TextArea 
+                            value={formData.notes || ''}
+                            onChange={(e) => handleInputChange('notes', e.target.value)}
+                            placeholder="Enter notes about this contact"
+                            style={{ minHeight: '120px' }}
+                          />
+                        </div>
+                      </FormGroup>
+                    </div>
+                  </div>
+                  
+                  {/* Keep in touch */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', width: '100%' }}>
+                    <div>
+                      <FormGroup>
+                        <FormFieldLabel>Keep in Touch</FormFieldLabel>
+                        <div style={{ 
+                          background: '#222', 
+                          padding: '12px', 
+                          borderRadius: '4px',
+                          marginBottom: '15px'
+                        }}>
+                          <Select 
+                            value={formData.keepInTouch || ''}
+                            onChange={(e) => handleInputChange('keepInTouch', e.target.value)}
+                          >
+                            <option value="">Select frequency</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="biweekly">Bi-weekly</option>
+                            <option value="monthly">Monthly</option>
+                            <option value="quarterly">Quarterly</option>
+                            <option value="biannually">Bi-annually</option>
+                            <option value="annually">Annually</option>
+                          </Select>
+                        </div>
+                      </FormGroup>
+                    </div>
+                    
+                    <div>
+                      <FormGroup>
+                        <FormFieldLabel>Deal Information</FormFieldLabel>
+                        <div style={{ 
+                          background: '#222', 
+                          padding: '12px', 
+                          borderRadius: '4px',
+                          marginBottom: '15px'
+                        }}>
+                          <TextArea 
+                            value={formData.dealInfo || ''}
+                            onChange={(e) => handleInputChange('dealInfo', e.target.value)}
+                            placeholder="Enter any deal-related information"
+                            style={{ minHeight: '100px' }}
+                          />
+                        </div>
+                      </FormGroup>
+                    </div>
+                  </div>
+                </div>
                 
-                <FormGroup>
-                  <InputLabel>Company</InputLabel>
-                  <Select 
-                    value={formData.company?.id || ''}
-                    onChange={(e) => {
-                      const companyId = e.target.value;
-                      // This would typically fetch the company details from a list of companies
-                      handleInputChange('company', companyId ? { 
-                        id: companyId, 
-                        name: e.target.options[e.target.selectedIndex].text 
-                      } : null);
-                    }}
+                <ButtonGroup style={{ marginTop: '20px', marginBottom: '20px', width: '100%', justifyContent: 'space-between' }}>
+                  <ActionButton onClick={() => goToStep(3)} disabled={loading}>
+                    <FiArrowLeft /> Back
+                  </ActionButton>
+                  <ActionButton 
+                    variant="primary" 
+                    onClick={saveToCRM} 
+                    disabled={loading}
                   >
-                    <option value="">Select a company</option>
-                    <option value="1">Acme Corp</option>
-                    <option value="2">Stark Industries</option>
-                    <option value="3">Wayne Enterprises</option>
-                    <option value="4">Hooli</option>
-                    <option value="5">Pied Piper</option>
-                  </Select>
-                  
-                  {showSources.hubspot && externalSources.hubspot.company && (
-                    <ExternalSourceInfo color="#ff7a59">
-                      <div className="source-label">HubSpot</div>
-                      <div className="source-value">{externalSources.hubspot.company.name}</div>
-                    </ExternalSourceInfo>
-                  )}
-                  
-                  {showSources.airtable && externalSources.airtable.company && (
-                    <ExternalSourceInfo color="#2d7ff9">
-                      <div className="source-label">Airtable</div>
-                      <div className="source-value">{externalSources.airtable.company.name}</div>
-                    </ExternalSourceInfo>
-                  )}
-                </FormGroup>
-              </div>
-              
-              <div>
-                <FormGroup>
-                  <InputLabel>Notes</InputLabel>
-                  <TextArea 
-                    value={formData.notes || ''}
-                    onChange={(e) => handleInputChange('notes', e.target.value)}
-                    placeholder="Enter notes about this contact"
-                  />
-                  
-                  {showSources.hubspot && externalSources.hubspot.notes && (
-                    <ExternalSourceInfo color="#ff7a59">
-                      <div className="source-label">HubSpot Notes</div>
-                      <div className="source-value">{externalSources.hubspot.notes}</div>
-                    </ExternalSourceInfo>
-                  )}
-                  
-                  {showSources.supabase && externalSources.supabase.notes && (
-                    <ExternalSourceInfo color="#3ecf8e">
-                      <div className="source-label">Old Supabase Notes</div>
-                      <div className="source-value">{externalSources.supabase.notes}</div>
-                    </ExternalSourceInfo>
-                  )}
-                  
-                  {showSources.airtable && externalSources.airtable.notes && (
-                    <ExternalSourceInfo color="#2d7ff9">
-                      <div className="source-label">Airtable Notes</div>
-                      <div className="source-value">{externalSources.airtable.notes}</div>
-                    </ExternalSourceInfo>
-                  )}
-                </FormGroup>
-                
-                <FormGroup>
-                  <InputLabel>Deal Information</InputLabel>
-                  <TextArea 
-                    value={formData.dealInfo || ''}
-                    onChange={(e) => handleInputChange('dealInfo', e.target.value)}
-                    placeholder="Enter any deal-related information"
-                  />
-                </FormGroup>
-              </div>
-            </FormGrid>
+                    <FiCheck /> Add to CRM
+                  </ActionButton>
+                </ButtonGroup>
+              </InteractionsContainer>
+            </InteractionsLayout>
           </Card>
-          
-          <ButtonGroup>
-            <ActionButton onClick={() => goToStep(3)} disabled={loading}>
-              <FiArrowLeft /> Back
-            </ActionButton>
-            <ActionButton 
-              variant="primary" 
-              onClick={saveToCRM} 
-              disabled={loading}
-            >
-              <FiCheck /> Add to CRM
-            </ActionButton>
-          </ButtonGroup>
         </>
       )}
+      
       {/* Delete confirmation modal */}
       <Modal
         isOpen={deleteModalOpen}
