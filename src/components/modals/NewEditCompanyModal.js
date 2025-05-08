@@ -1348,8 +1348,8 @@ const AddContactCompanyRelationshipModal = ({ isOpen, onRequestClose, companyId,
       // Search by name or email
       const { data, error } = await supabase
         .from('contacts')
-        .select('contact_id, first_name, last_name, email, mobile, job_role, category')
-        .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%,mobile.ilike.%${term}%`)
+        .select('contact_id, first_name, last_name, job_role, category')
+        .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%`)
         .limit(10);
         
       if (error) throw error;
@@ -1460,8 +1460,6 @@ const AddContactCompanyRelationshipModal = ({ isOpen, onRequestClose, companyId,
               {selectedContact.first_name} {selectedContact.last_name}
             </div>
             <div style={{ fontSize: '14px', color: '#ccc' }}>
-              {selectedContact.email && <div>{selectedContact.email}</div>}
-              {selectedContact.mobile && <div>{selectedContact.mobile}</div>}
               {selectedContact.job_role && <div>{selectedContact.job_role}</div>}
               {selectedContact.category && <div>Category: {selectedContact.category}</div>}
             </div>
@@ -1530,7 +1528,7 @@ const AddContactCompanyRelationshipModal = ({ isOpen, onRequestClose, companyId,
               type="text"
               value={searchTerm}
               onChange={(e) => handleSearchChange(e.target.value)}
-              placeholder="Search by name, email or mobile..."
+              placeholder="Search by first or last name..."
               style={{ marginBottom: '10px' }}
             />
             
@@ -1571,7 +1569,8 @@ const AddContactCompanyRelationshipModal = ({ isOpen, onRequestClose, companyId,
                       {contact.first_name} {contact.last_name}
                     </div>
                     <div style={{ fontSize: '12px', color: '#999' }}>
-                      {contact.email || contact.mobile || contact.job_role || contact.category || ''}
+                      {contact.job_role ? `${contact.job_role}` : ''}
+                      {contact.category ? ` • ${contact.category}` : ''}
                     </div>
                   </div>
                 ))}
