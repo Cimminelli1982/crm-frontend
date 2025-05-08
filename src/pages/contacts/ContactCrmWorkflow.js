@@ -7145,24 +7145,6 @@ const handleInputChange = (field, value) => {
                     <FiSearch size={16} />
                     <span>Find</span>
                   </div>
-                  <div 
-                    onClick={() => {
-                      setActiveEnrichmentSection("duplicates_done");
-                      setSelectedDuplicate(null); // Clear selected duplicate
-                    }}
-                    style={{ 
-                      padding: '12px 15px', 
-                      cursor: 'pointer', 
-                      borderBottom: '1px solid #222',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      background: activeEnrichmentSection === "duplicates_done" ? '#222' : 'transparent'
-                    }}
-                  >
-                    <FiCheck size={16} />
-                    <span>Done</span>
-                  </div>
                   
                   {/* Airtable Section - Always show regardless of duplicates */}
                   <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold', marginTop: '10px' }}>
@@ -7207,131 +7189,8 @@ const handleInputChange = (field, value) => {
                 </ChannelsMenu>
                 
                 {/* Duplicate details - right side (2/3) */}
-                <InteractionsContainer style={{ paddingRight: activeEnrichmentSection === "airtable" || activeEnrichmentSection === "airtable_combining" || activeEnrichmentSection === "supabase_duplicates" || activeEnrichmentSection === "duplicates_find" || activeEnrichmentSection === "duplicates_done" ? '20px' : '0' }}>
-                  {activeEnrichmentSection === "duplicates_done" ? (
-                    <div style={{ padding: '0 0 20px 20px', width: '90%' }}>
-                      <FormGroup>
-                        <h3 style={{ fontSize: '16px', marginBottom: '8px' }}>Completed Duplicate Processing</h3>
-                        
-                        <FormFieldLabel>Completed Merges</FormFieldLabel>
-                        <div style={{ marginBottom: '15px' }}>
-                          {/* List of completed merges from contact_duplicates_completed table */}
-                          <div style={{ 
-                            background: '#222',
-                            borderRadius: '4px',
-                            overflow: 'hidden'
-                          }}>
-                            {/* Table header */}
-                            <div style={{ 
-                              padding: '10px 15px',
-                              borderBottom: '1px solid #444',
-                              display: 'grid',
-                              gridTemplateColumns: '180px 180px 1fr 100px',
-                              fontSize: '12px',
-                              fontWeight: 'bold',
-                              color: '#ccc'
-                            }}>
-                              <div>Merged Contact</div>
-                              <div>Primary Contact</div>
-                              <div>Merge Details</div>
-                              <div>Date</div>
-                            </div>
-                            
-                            {/* Example merge data - will be replaced with real data */}
-                            <div style={{ padding: '15px', borderBottom: '1px solid #333', display: 'grid', gridTemplateColumns: '180px 180px 1fr 100px', alignItems: 'center' }}>
-                              <div>
-                                <div style={{ fontWeight: 'bold', fontSize: '13px' }}>
-                                  John Doe
-                                </div>
-                                <div style={{ fontSize: '11px', color: '#999' }}>
-                                  e12b3c4d-5e6f-7890-1234-567890abcdef
-                                </div>
-                              </div>
-                              
-                              <div>
-                                <div style={{ fontWeight: 'bold', fontSize: '13px' }}>
-                                  Current Contact
-                                </div>
-                                <div style={{ fontSize: '11px', color: '#999' }}>
-                                  {contact?.contact_id || 'unknown-id'}
-                                </div>
-                              </div>
-                              
-                              <div>
-                                <div style={{ fontSize: '12px' }}>
-                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
-                                    <div style={{ fontSize: '11px', padding: '2px 6px', background: '#333', borderRadius: '3px', color: '#00ff00' }}>
-                                      first_name
-                                    </div>
-                                    <div style={{ fontSize: '11px', padding: '2px 6px', background: '#333', borderRadius: '3px', color: '#00ccff' }}>
-                                      last_name
-                                    </div>
-                                    <div style={{ fontSize: '11px', padding: '2px 6px', background: '#333', borderRadius: '3px', color: '#00ff00' }}>
-                                      email
-                                    </div>
-                                  </div>
-                                  <div style={{ marginTop: '5px', color: '#999', fontSize: '11px' }}>
-                                    Merged duplicate contacts
-                                  </div>
-                                </div>
-                              </div>
-                              
-                              <div style={{ fontSize: '11px', color: '#999' }}>
-                                {new Date().toLocaleDateString()}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                        
-                        {/* Additional info section */}
-                        <FormFieldLabel>Table Details</FormFieldLabel>
-                        <div style={{ 
-                          padding: '15px',
-                          background: '#222',
-                          borderRadius: '4px',
-                          fontSize: '12px',
-                          color: '#ccc'
-                        }}>
-                          <div style={{ marginBottom: '10px' }}>
-                            <span style={{ fontWeight: 'bold', color: '#00ff00' }}>Table:</span> contact_duplicates_completed
-                          </div>
-                          <div style={{ 
-                            display: 'grid', 
-                            gridTemplateColumns: '1fr 1fr 2fr',
-                            gap: '5px'
-                          }}>
-                            <div style={{ fontWeight: 'bold', color: '#00ccff' }}>completed_merge_id</div>
-                            <div>uuid</div>
-                            <div>Primary key</div>
-                            
-                            <div style={{ fontWeight: 'bold', color: '#00ccff' }}>original_duplicate_id</div>
-                            <div>uuid</div>
-                            <div>Reference to original duplicate record</div>
-                            
-                            <div style={{ fontWeight: 'bold', color: '#00ccff' }}>primary_contact_id</div>
-                            <div>uuid</div>
-                            <div>The contact that was kept</div>
-                            
-                            <div style={{ fontWeight: 'bold', color: '#00ccff' }}>merged_duplicate_contact_id</div>
-                            <div>uuid</div>
-                            <div>The contact that was merged (duplicate)</div>
-                            
-                            <div style={{ fontWeight: 'bold', color: '#00ccff' }}>merge_selections</div>
-                            <div>jsonb</div>
-                            <div>Selected fields for the merge</div>
-                            
-                            <div style={{ fontWeight: 'bold', color: '#00ccff' }}>detected_at</div>
-                            <div>timestamp</div>
-                            <div>When the duplicate was detected</div>
-                            
-                            <div style={{ fontWeight: 'bold', color: '#00ccff' }}>resolved_at</div>
-                            <div>timestamp</div>
-                            <div>When the merge was completed</div>
-                          </div>
-                        </div>
-                      </FormGroup>
-                    </div>
-                  ) : activeEnrichmentSection === "duplicates_find" ? (
+                <InteractionsContainer style={{ paddingRight: activeEnrichmentSection === "airtable" || activeEnrichmentSection === "airtable_combining" || activeEnrichmentSection === "supabase_duplicates" || activeEnrichmentSection === "duplicates_find" ? '20px' : '0' }}>
+                  {activeEnrichmentSection === "duplicates_find" ? (
                     <div style={{ padding: '0 0 20px 20px', width: '90%' }}>
                       <FormGroup>
                         <h3 style={{ fontSize: '16px', marginBottom: '8px' }}>Find Potential Duplicates</h3>
