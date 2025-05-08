@@ -46,7 +46,8 @@ import {
   FiDatabase,
   FiDollarSign,
   FiAward,
-  FiRefreshCw
+  FiRefreshCw,
+  FiExternalLink
 } from 'react-icons/fi';
 
 // Configure Modal for React
@@ -6934,6 +6935,48 @@ const handleInputChange = (field, value) => {
                             >
                               <FiArrowRight size={16} />
                             </div>
+                            
+                            <button 
+                              title="Open in WhatsApp"
+                              onClick={() => {
+                                // Get the primary mobile number if available
+                                if (formData.mobiles && formData.mobiles.length > 0) {
+                                  // Try to find primary mobile first
+                                  let mobileToUse = formData.mobiles.find(m => m.is_primary)?.mobile;
+                                  
+                                  // If no primary, use the first one
+                                  if (!mobileToUse && formData.mobiles.length > 0) {
+                                    mobileToUse = formData.mobiles[0].mobile;
+                                  }
+                                  
+                                  if (mobileToUse) {
+                                    // Format the number for WhatsApp by removing any non-digit characters
+                                    const formattedNumber = mobileToUse.replace(/\D/g, '');
+                                    window.open(`https://wa.me/${formattedNumber}`, '_blank');
+                                  } else {
+                                    toast.error('No mobile number available for this contact');
+                                  }
+                                } else {
+                                  toast.error('No mobile number available for this contact');
+                                }
+                              }}
+                              style={{ 
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                backgroundColor: '#1a1a1a',
+                                color: '#25d366', // WhatsApp green
+                                borderRadius: '4px',
+                                padding: '4px 8px',
+                                fontSize: '0.7rem',
+                                fontWeight: 'bold',
+                                border: '1px solid #25d366',
+                                cursor: 'pointer',
+                                marginLeft: '10px'
+                              }}
+                            >
+                              <FiPhone size={12} style={{ marginRight: '3px' }} />
+                              WhatsApp
+                            </button>
                           </div>
                           <ChatStatus>
                             {chatMessages.length} messages
@@ -6968,12 +7011,31 @@ const handleInputChange = (field, value) => {
                   ) : selectedEmailThread ? (
                     <EmailThreadContainer>
                       <EmailHeader>
-                        <EmailSubject>
-                          {emailThreads.find(thread => thread.thread_id === selectedEmailThread)?.title || 'No Subject'}
-                        </EmailSubject>
-                        <EmailCount>
-                          {emailMessages.length} emails in conversation
-                        </EmailCount>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <EmailSubject style={{ marginBottom: '10px' }}>
+                            {emailThreads.find(thread => thread.thread_id === selectedEmailThread)?.title || 'No Subject'}
+                          </EmailSubject>
+                          
+                          <button 
+                            onClick={() => window.open(`https://mail.superhuman.com/search/${contact.first_name || ''}%20${contact.last_name || ''}`, '_blank')}
+                            style={{ 
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              alignSelf: 'flex-start',
+                              backgroundColor: '#1a1a1a',
+                              color: '#00ff00',
+                              borderRadius: '4px',
+                              padding: '5px 10px',
+                              fontSize: '0.8rem',
+                              fontWeight: 'bold',
+                              border: '1px solid #00ff00',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <FiExternalLink size={14} style={{ marginRight: '5px' }} />
+                            Open in Superhuman
+                          </button>
+                        </div>
                       </EmailHeader>
                       
                       <EmailList>
