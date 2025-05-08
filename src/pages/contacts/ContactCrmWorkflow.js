@@ -7237,75 +7237,49 @@ const handleInputChange = (field, value) => {
                               <div>Date</div>
                             </div>
                             
-                            {/* This would be a mapping of completedMerges */}
-                            {completedMerges && completedMerges.length > 0 ? (
-                              completedMerges.map(merge => (
-                                <div 
-                                  key={merge.completed_merge_id}
-                                  style={{ 
-                                    padding: '15px', 
-                                    borderBottom: '1px solid #333', 
-                                    display: 'grid',
-                                    gridTemplateColumns: '180px 180px 1fr 100px',
-                                    alignItems: 'center'
-                                  }}
-                                >
-                                  <div>
-                                    <div style={{ fontWeight: 'bold', fontSize: '13px' }}>
-                                      {merge.merged_contact_name || 'Unknown Contact'}
+                            {/* Example merge data - will be replaced with real data */}
+                            <div style={{ padding: '15px', borderBottom: '1px solid #333', display: 'grid', gridTemplateColumns: '180px 180px 1fr 100px', alignItems: 'center' }}>
+                              <div>
+                                <div style={{ fontWeight: 'bold', fontSize: '13px' }}>
+                                  John Doe
+                                </div>
+                                <div style={{ fontSize: '11px', color: '#999' }}>
+                                  e12b3c4d-5e6f-7890-1234-567890abcdef
+                                </div>
+                              </div>
+                              
+                              <div>
+                                <div style={{ fontWeight: 'bold', fontSize: '13px' }}>
+                                  Current Contact
+                                </div>
+                                <div style={{ fontSize: '11px', color: '#999' }}>
+                                  {contact?.contact_id || 'unknown-id'}
+                                </div>
+                              </div>
+                              
+                              <div>
+                                <div style={{ fontSize: '12px' }}>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                                    <div style={{ fontSize: '11px', padding: '2px 6px', background: '#333', borderRadius: '3px', color: '#00ff00' }}>
+                                      first_name
                                     </div>
-                                    <div style={{ fontSize: '11px', color: '#999' }}>
-                                      {merge.merged_duplicate_contact_id}
+                                    <div style={{ fontSize: '11px', padding: '2px 6px', background: '#333', borderRadius: '3px', color: '#00ccff' }}>
+                                      last_name
+                                    </div>
+                                    <div style={{ fontSize: '11px', padding: '2px 6px', background: '#333', borderRadius: '3px', color: '#00ff00' }}>
+                                      email
                                     </div>
                                   </div>
-                                  
-                                  <div>
-                                    <div style={{ fontWeight: 'bold', fontSize: '13px' }}>
-                                      {merge.primary_contact_name || 'Current Contact'}
-                                    </div>
-                                    <div style={{ fontSize: '11px', color: '#999' }}>
-                                      {merge.primary_contact_id}
-                                    </div>
-                                  </div>
-                                  
-                                  <div>
-                                    {merge.merge_selections && (
-                                      <div style={{ fontSize: '12px' }}>
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
-                                          {Object.entries(merge.merge_selections).map(([field, value]) => (
-                                            <div 
-                                              key={field}
-                                              style={{ 
-                                                fontSize: '11px', 
-                                                padding: '2px 6px',
-                                                background: '#333',
-                                                borderRadius: '3px',
-                                                color: value === 'primary' ? '#00ff00' : '#00ccff'
-                                              }}
-                                            >
-                                              {field}
-                                            </div>
-                                          ))}
-                                        </div>
-                                        {merge.final_notes && (
-                                          <div style={{ marginTop: '5px', color: '#999', fontSize: '11px' }}>
-                                            {merge.final_notes}
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                  
-                                  <div style={{ fontSize: '11px', color: '#999' }}>
-                                    {new Date(merge.resolved_at).toLocaleDateString()}
+                                  <div style={{ marginTop: '5px', color: '#999', fontSize: '11px' }}>
+                                    Merged duplicate contacts
                                   </div>
                                 </div>
-                              ))
-                            ) : (
-                              <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>
-                                No completed merges found for this contact.
                               </div>
-                            )}
+                              
+                              <div style={{ fontSize: '11px', color: '#999' }}>
+                                {new Date().toLocaleDateString()}
+                              </div>
+                            </div>
                           </div>
                         </div>
                         
@@ -11948,7 +11922,41 @@ const handleInputChange = (field, value) => {
                             <span>Mobile Numbers</span>
                             <span style={{ marginLeft: '5px', fontSize: '10px' }}>↗</span>
                           </a>
-                          {airtableContact && `- Airtable: ${airtableContact.phone_number_1 || ''}${airtableContact.phone_number_1 && airtableContact.phone_number_2 ? ' - ' : ''}${airtableContact.phone_number_2 || ''}`}
+                          {airtableContact && (airtableContact.phone_number_1 || airtableContact.phone_number_2) && (
+                            <span>
+                              - Airtable: {airtableContact.phone_number_1 || ''}
+                              {airtableContact.phone_number_1 && (
+                                <FiArrowRight
+                                  size={12}
+                                  color="#00ff00"
+                                  style={{ marginLeft: '5px', cursor: 'pointer' }}
+                                  onClick={() => {
+                                    const input = document.querySelector('input[placeholder="Add new mobile number"]');
+                                    if (input) {
+                                      input.value = airtableContact.phone_number_1;
+                                      input.dispatchEvent(new Event('input', { bubbles: true }));
+                                    }
+                                  }}
+                                />
+                              )}
+                              {airtableContact.phone_number_1 && airtableContact.phone_number_2 ? ' - ' : ''}
+                              {airtableContact.phone_number_2 || ''}
+                              {airtableContact.phone_number_2 && (
+                                <FiArrowRight
+                                  size={12}
+                                  color="#00ff00"
+                                  style={{ marginLeft: '5px', cursor: 'pointer' }}
+                                  onClick={() => {
+                                    const input = document.querySelector('input[placeholder="Add new mobile number"]');
+                                    if (input) {
+                                      input.value = airtableContact.phone_number_2;
+                                      input.dispatchEvent(new Event('input', { bubbles: true }));
+                                    }
+                                  }}
+                                />
+                              )}
+                            </span>
+                          )}
                         </FormFieldLabel>
                         
                         <div style={{ 
