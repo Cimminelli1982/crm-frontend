@@ -882,8 +882,8 @@ const DuplicateProcessingModal = ({
                   </tr>
                   <tr>
                     <td>LinkedIn</td>
-                    <td>{primaryContact.linkedin || '-'}</td>
-                    <td>{duplicateContact.linkedin || '-'}</td>
+                    <td>{primaryContact.linkedin ? (primaryContact.linkedin.length > 30 ? primaryContact.linkedin.substring(0, 30) + '...' : primaryContact.linkedin) : '-'}</td>
+                    <td>{duplicateContact.linkedin ? (duplicateContact.linkedin.length > 30 ? duplicateContact.linkedin.substring(0, 30) + '...' : duplicateContact.linkedin) : '-'}</td>
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                         <MergeOption>

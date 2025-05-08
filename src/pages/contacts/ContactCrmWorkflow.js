@@ -562,7 +562,7 @@ const InlineEditContainer = styled.div`
 `;
 
 const InlineEditInput = styled.input`
-  background-color: #128c7e;
+  background-color: #000;
   border: none;
   border-bottom: 1px solid #fff;
   color: white;
@@ -6700,12 +6700,12 @@ const handleInputChange = (field, value) => {
           <div className="contact-details">
             {contact.email && (
               <div className="detail-item">
-                <FiMail /> {contact.email}
+                <FiMail /> <a href={`https://mail.superhuman.com/search/${encodeURIComponent(contact.first_name)}%20${encodeURIComponent(contact.last_name)}`} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>{contact.email}</a>
               </div>
             )}
             {contact.mobile && (
               <div className="detail-item">
-                <FiPhone /> {contact.mobile}
+                <FiPhone /> <a href={`https://wa.me/${contact.mobile ? contact.mobile.replace(/\D/g, '') : ''}`} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>{contact.mobile}</a>
               </div>
             )}
             {contact.category && (
@@ -7131,6 +7131,8 @@ const handleInputChange = (field, value) => {
                     onClick={() => {
                       setActiveEnrichmentSection("duplicates_find");
                       setSelectedDuplicate(null); // Clear selected duplicate
+                      setSearchQuery(""); // Reset the search query when tab is clicked
+                      searchForDuplicates(); // Refresh the potential duplicates right tab
                     }}
                     style={{ 
                       padding: '12px 15px', 
@@ -11605,11 +11607,49 @@ const handleInputChange = (field, value) => {
                                 size={12}
                                 color="#00ff00"
                                 style={{ marginLeft: '5px', cursor: 'pointer' }}
-                                onClick={() => {
-                                  const input = document.querySelector('input[placeholder="Add new email address"]');
-                                  if (input) {
-                                    input.value = airtableContact.primary_email;
-                                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                                onClick={async () => {
+                                  try {
+                                    // First check if the email already exists for this contact
+                                    const { data: existingEmails } = await supabase
+                                      .from('contact_emails')
+                                      .select('*')
+                                      .eq('contact_id', contact.contact_id)
+                                      .eq('email', airtableContact.primary_email);
+                                    
+                                    if (existingEmails && existingEmails.length > 0) {
+                                      toast.info('This email already exists for this contact');
+                                      return;
+                                    }
+                                    
+                                    // Insert the new email into contact_emails
+                                    const { data, error } = await supabase
+                                      .from('contact_emails')
+                                      .insert({
+                                        contact_id: contact.contact_id,
+                                        email: airtableContact.primary_email,
+                                        type: 'personal', // Default type as required
+                                        is_primary: false // Not primary by default
+                                      });
+                                    
+                                    if (error) {
+                                      throw error;
+                                    }
+                                    
+                                    // Show success notification
+                                    toast.success('Email added successfully');
+                                    
+                                    // Refresh contact data to show the new email
+                                    loadContactData();
+                                    
+                                    // Update the input field for visual feedback (optional)
+                                    const input = document.querySelector('input[placeholder="Add new email address"]');
+                                    if (input) {
+                                      input.value = airtableContact.primary_email;
+                                      input.dispatchEvent(new Event('input', { bubbles: true }));
+                                    }
+                                  } catch (err) {
+                                    console.error('Error adding email:', err);
+                                    toast.error('Failed to add email');
                                   }
                                 }}
                               />
@@ -11652,10 +11692,30 @@ const handleInputChange = (field, value) => {
                                 <div style={{ flex: 1 }}>
                                   <Select
                                     value={emailItem.type || 'personal'}
-                                    onChange={(e) => {
-                                      const updatedEmails = [...formData.emails];
-                                      updatedEmails[index].type = e.target.value;
-                                      handleInputChange('emails', updatedEmails);
+                                    onChange={async (e) => {
+                                      try {
+                                        // Update local state
+                                        const updatedEmails = [...formData.emails];
+                                        updatedEmails[index].type = e.target.value;
+                                        handleInputChange('emails', updatedEmails);
+                                        
+                                        // Update database if we have a valid email_id
+                                        if (emailItem.email_id) {
+                                          const { error } = await supabase
+                                            .from('contact_emails')
+                                            .update({ 
+                                              type: e.target.value,
+                                              last_modified_at: new Date().toISOString()
+                                            })
+                                            .eq('email_id', emailItem.email_id);
+                                            
+                                          if (error) throw error;
+                                          toast.success('Email type updated');
+                                        }
+                                      } catch (err) {
+                                        console.error('Error updating email type:', err);
+                                        toast.error('Failed to update email type');
+                                      }
                                     }}
                                   >
                                     <option value="personal">Personal</option>
@@ -11674,12 +11734,47 @@ const handleInputChange = (field, value) => {
                                   background: emailItem.is_primary ? '#444444' : 'transparent',
                                   cursor: 'pointer'
                                 }}
-                                onClick={() => {
-                                  const updatedEmails = formData.emails.map((item, i) => ({
-                                    ...item,
-                                    is_primary: i === index // Make this one primary, all others not primary
-                                  }));
-                                  handleInputChange('emails', updatedEmails);
+                                onClick={async () => {
+                                  // Don't do anything if this is already the primary email
+                                  if (emailItem.is_primary) return;
+                                  
+                                  try {
+                                    // Update local state
+                                    const updatedEmails = formData.emails.map((item, i) => ({
+                                      ...item,
+                                      is_primary: i === index // Make this one primary, all others not primary
+                                    }));
+                                    handleInputChange('emails', updatedEmails);
+                                    
+                                    // If we have valid email_id, update in the database
+                                    if (emailItem.email_id) {
+                                      // First update all contact emails to not be primary
+                                      const { error: bulkError } = await supabase
+                                        .from('contact_emails')
+                                        .update({ 
+                                          is_primary: false,
+                                          last_modified_at: new Date().toISOString()
+                                        })
+                                        .eq('contact_id', contact.contact_id);
+                                        
+                                      if (bulkError) throw bulkError;
+                                      
+                                      // Then set this specific email as primary
+                                      const { error } = await supabase
+                                        .from('contact_emails')
+                                        .update({ 
+                                          is_primary: true,
+                                          last_modified_at: new Date().toISOString()
+                                        })
+                                        .eq('email_id', emailItem.email_id);
+                                        
+                                      if (error) throw error;
+                                      toast.success('Primary email updated');
+                                    }
+                                  } catch (err) {
+                                    console.error('Error updating primary email:', err);
+                                    toast.error('Failed to update primary email');
+                                  }
                                 }}
                                 >
                                   {emailItem.is_primary ? (
@@ -11690,13 +11785,56 @@ const handleInputChange = (field, value) => {
                                 </div>
                                 
                                 <button 
-                                  onClick={() => {
-                                    // If deleting primary, make the first remaining email primary
-                                    let updatedEmails = formData.emails.filter((_, i) => i !== index);
-                                    if (emailItem.is_primary && updatedEmails.length > 0) {
-                                      updatedEmails[0].is_primary = true;
+                                  onClick={async () => {
+                                    try {
+                                      // If we have a valid email_id, delete from database
+                                      if (emailItem.email_id && !emailItem.email_id.toString().startsWith('temp-')) {
+                                        // First confirm deletion
+                                        if (!window.confirm(`Are you sure you want to delete this email: ${emailItem.email}?`)) {
+                                          return;
+                                        }
+                                        
+                                        const { error } = await supabase
+                                          .from('contact_emails')
+                                          .delete()
+                                          .eq('email_id', emailItem.email_id);
+                                          
+                                        if (error) throw error;
+                                        
+                                        // Show success notification
+                                        toast.success('Email deleted successfully');
+                                        
+                                        // If this was the primary email and other emails exist, need to set a new primary
+                                        if (emailItem.is_primary) {
+                                          const remainingEmails = formData.emails.filter((_, i) => i !== index);
+                                          if (remainingEmails.length > 0 && remainingEmails[0].email_id) {
+                                            // Update the first remaining email to be primary
+                                            const { error: updateError } = await supabase
+                                              .from('contact_emails')
+                                              .update({ 
+                                                is_primary: true,
+                                                last_modified_at: new Date().toISOString()
+                                              })
+                                              .eq('email_id', remainingEmails[0].email_id);
+                                              
+                                            if (updateError) console.error('Error updating new primary:', updateError);
+                                          }
+                                        }
+                                        
+                                        // Refresh data to reflect changes
+                                        loadContactData();
+                                      } else {
+                                        // Just update local state for temporary emails not yet saved to DB
+                                        let updatedEmails = formData.emails.filter((_, i) => i !== index);
+                                        if (emailItem.is_primary && updatedEmails.length > 0) {
+                                          updatedEmails[0].is_primary = true;
+                                        }
+                                        handleInputChange('emails', updatedEmails);
+                                      }
+                                    } catch (err) {
+                                      console.error('Error deleting email:', err);
+                                      toast.error('Failed to delete email');
                                     }
-                                    handleInputChange('emails', updatedEmails);
                                   }}
                                   style={{
                                     background: 'none',
@@ -11789,11 +11927,49 @@ const handleInputChange = (field, value) => {
                                   size={12}
                                   color="#00ff00"
                                   style={{ marginLeft: '5px', cursor: 'pointer' }}
-                                  onClick={() => {
-                                    const input = document.querySelector('input[placeholder="Add new mobile number"]');
-                                    if (input) {
-                                      input.value = airtableContact.phone_number_1;
-                                      input.dispatchEvent(new Event('input', { bubbles: true }));
+                                  onClick={async () => {
+                                    try {
+                                      // First check if the mobile already exists for this contact
+                                      const { data: existingMobiles } = await supabase
+                                        .from('contact_mobiles')
+                                        .select('*')
+                                        .eq('contact_id', contact.contact_id)
+                                        .eq('mobile', airtableContact.phone_number_1);
+                                      
+                                      if (existingMobiles && existingMobiles.length > 0) {
+                                        toast.info('This mobile number already exists for this contact');
+                                        return;
+                                      }
+                                      
+                                      // Insert the new mobile into contact_mobiles
+                                      const { data, error } = await supabase
+                                        .from('contact_mobiles')
+                                        .insert({
+                                          contact_id: contact.contact_id,
+                                          mobile: airtableContact.phone_number_1,
+                                          type: 'personal', // Default type as required
+                                          is_primary: false // Not primary by default
+                                        });
+                                      
+                                      if (error) {
+                                        throw error;
+                                      }
+                                      
+                                      // Show success notification
+                                      toast.success('Mobile number added successfully');
+                                      
+                                      // Refresh contact data to show the new mobile
+                                      loadContactData();
+                                      
+                                      // Update the input field for visual feedback (optional)
+                                      const input = document.querySelector('input[placeholder="Add new mobile number"]');
+                                      if (input) {
+                                        input.value = airtableContact.phone_number_1;
+                                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                                      }
+                                    } catch (err) {
+                                      console.error('Error adding mobile number:', err);
+                                      toast.error('Failed to add mobile number');
                                     }
                                   }}
                                 />
@@ -11805,11 +11981,49 @@ const handleInputChange = (field, value) => {
                                   size={12}
                                   color="#00ff00"
                                   style={{ marginLeft: '5px', cursor: 'pointer' }}
-                                  onClick={() => {
-                                    const input = document.querySelector('input[placeholder="Add new mobile number"]');
-                                    if (input) {
-                                      input.value = airtableContact.phone_number_2;
-                                      input.dispatchEvent(new Event('input', { bubbles: true }));
+                                  onClick={async () => {
+                                    try {
+                                      // First check if the mobile already exists for this contact
+                                      const { data: existingMobiles } = await supabase
+                                        .from('contact_mobiles')
+                                        .select('*')
+                                        .eq('contact_id', contact.contact_id)
+                                        .eq('mobile', airtableContact.phone_number_2);
+                                      
+                                      if (existingMobiles && existingMobiles.length > 0) {
+                                        toast.info('This mobile number already exists for this contact');
+                                        return;
+                                      }
+                                      
+                                      // Insert the new mobile into contact_mobiles
+                                      const { data, error } = await supabase
+                                        .from('contact_mobiles')
+                                        .insert({
+                                          contact_id: contact.contact_id,
+                                          mobile: airtableContact.phone_number_2,
+                                          type: 'personal', // Default type as required
+                                          is_primary: false // Not primary by default
+                                        });
+                                      
+                                      if (error) {
+                                        throw error;
+                                      }
+                                      
+                                      // Show success notification
+                                      toast.success('Mobile number added successfully');
+                                      
+                                      // Refresh contact data to show the new mobile
+                                      loadContactData();
+                                      
+                                      // Update the input field for visual feedback (optional)
+                                      const input = document.querySelector('input[placeholder="Add new mobile number"]');
+                                      if (input) {
+                                        input.value = airtableContact.phone_number_2;
+                                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                                      }
+                                    } catch (err) {
+                                      console.error('Error adding mobile number:', err);
+                                      toast.error('Failed to add mobile number');
                                     }
                                   }}
                                 />
@@ -11853,10 +12067,30 @@ const handleInputChange = (field, value) => {
                                 <div style={{ flex: 1 }}>
                                   <Select
                                     value={mobileItem.type || 'personal'}
-                                    onChange={(e) => {
-                                      const updatedMobiles = [...formData.mobiles];
-                                      updatedMobiles[index].type = e.target.value;
-                                      handleInputChange('mobiles', updatedMobiles);
+                                    onChange={async (e) => {
+                                      try {
+                                        // Update local state
+                                        const updatedMobiles = [...formData.mobiles];
+                                        updatedMobiles[index].type = e.target.value;
+                                        handleInputChange('mobiles', updatedMobiles);
+                                        
+                                        // Update database if we have a valid mobile_id
+                                        if (mobileItem.mobile_id) {
+                                          const { error } = await supabase
+                                            .from('contact_mobiles')
+                                            .update({ 
+                                              type: e.target.value,
+                                              last_modified_at: new Date().toISOString()
+                                            })
+                                            .eq('mobile_id', mobileItem.mobile_id);
+                                            
+                                          if (error) throw error;
+                                          toast.success('Mobile type updated');
+                                        }
+                                      } catch (err) {
+                                        console.error('Error updating mobile type:', err);
+                                        toast.error('Failed to update mobile type');
+                                      }
                                     }}
                                   >
                                     <option value="personal">Personal</option>
@@ -11875,12 +12109,47 @@ const handleInputChange = (field, value) => {
                                   background: mobileItem.is_primary ? '#444444' : 'transparent',
                                   cursor: 'pointer'
                                 }}
-                                onClick={() => {
-                                  const updatedMobiles = formData.mobiles.map((item, i) => ({
-                                    ...item,
-                                    is_primary: i === index // Make this one primary, all others not primary
-                                  }));
-                                  handleInputChange('mobiles', updatedMobiles);
+                                onClick={async () => {
+                                  // Don't do anything if this is already the primary mobile
+                                  if (mobileItem.is_primary) return;
+                                  
+                                  try {
+                                    // Update local state
+                                    const updatedMobiles = formData.mobiles.map((item, i) => ({
+                                      ...item,
+                                      is_primary: i === index // Make this one primary, all others not primary
+                                    }));
+                                    handleInputChange('mobiles', updatedMobiles);
+                                    
+                                    // If we have valid mobile_id, update in the database
+                                    if (mobileItem.mobile_id) {
+                                      // First update all contact mobiles to not be primary
+                                      const { error: bulkError } = await supabase
+                                        .from('contact_mobiles')
+                                        .update({ 
+                                          is_primary: false,
+                                          last_modified_at: new Date().toISOString()
+                                        })
+                                        .eq('contact_id', contact.contact_id);
+                                        
+                                      if (bulkError) throw bulkError;
+                                      
+                                      // Then set this specific mobile as primary
+                                      const { error } = await supabase
+                                        .from('contact_mobiles')
+                                        .update({ 
+                                          is_primary: true,
+                                          last_modified_at: new Date().toISOString()
+                                        })
+                                        .eq('mobile_id', mobileItem.mobile_id);
+                                        
+                                      if (error) throw error;
+                                      toast.success('Primary mobile updated');
+                                    }
+                                  } catch (err) {
+                                    console.error('Error updating primary mobile:', err);
+                                    toast.error('Failed to update primary mobile');
+                                  }
                                 }}
                                 >
                                   {mobileItem.is_primary ? (
@@ -11891,13 +12160,56 @@ const handleInputChange = (field, value) => {
                                 </div>
                                 
                                 <button 
-                                  onClick={() => {
-                                    // If deleting primary, make the first remaining mobile primary
-                                    let updatedMobiles = formData.mobiles.filter((_, i) => i !== index);
-                                    if (mobileItem.is_primary && updatedMobiles.length > 0) {
-                                      updatedMobiles[0].is_primary = true;
+                                  onClick={async () => {
+                                    try {
+                                      // If we have a valid mobile_id, delete from database
+                                      if (mobileItem.mobile_id && !mobileItem.mobile_id.toString().startsWith('temp-')) {
+                                        // First confirm deletion
+                                        if (!window.confirm(`Are you sure you want to delete this mobile number: ${mobileItem.mobile}?`)) {
+                                          return;
+                                        }
+                                        
+                                        const { error } = await supabase
+                                          .from('contact_mobiles')
+                                          .delete()
+                                          .eq('mobile_id', mobileItem.mobile_id);
+                                          
+                                        if (error) throw error;
+                                        
+                                        // Show success notification
+                                        toast.success('Mobile number deleted successfully');
+                                        
+                                        // If this was the primary mobile and other mobiles exist, need to set a new primary
+                                        if (mobileItem.is_primary) {
+                                          const remainingMobiles = formData.mobiles.filter((_, i) => i !== index);
+                                          if (remainingMobiles.length > 0 && remainingMobiles[0].mobile_id) {
+                                            // Update the first remaining mobile to be primary
+                                            const { error: updateError } = await supabase
+                                              .from('contact_mobiles')
+                                              .update({ 
+                                                is_primary: true,
+                                                last_modified_at: new Date().toISOString()
+                                              })
+                                              .eq('mobile_id', remainingMobiles[0].mobile_id);
+                                              
+                                            if (updateError) console.error('Error updating new primary:', updateError);
+                                          }
+                                        }
+                                        
+                                        // Refresh data to reflect changes
+                                        loadContactData();
+                                      } else {
+                                        // Just update local state for temporary mobiles not yet saved to DB
+                                        let updatedMobiles = formData.mobiles.filter((_, i) => i !== index);
+                                        if (mobileItem.is_primary && updatedMobiles.length > 0) {
+                                          updatedMobiles[0].is_primary = true;
+                                        }
+                                        handleInputChange('mobiles', updatedMobiles);
+                                      }
+                                    } catch (err) {
+                                      console.error('Error deleting mobile number:', err);
+                                      toast.error('Failed to delete mobile number');
                                     }
-                                    handleInputChange('mobiles', updatedMobiles);
                                   }}
                                   style={{
                                     background: 'none',
