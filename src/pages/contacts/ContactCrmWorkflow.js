@@ -13390,33 +13390,7 @@ const handleInputChange = (field, value) => {
                           marginBottom: '20px'
                         }}>
                           {/* Description content display with edit toggle */}
-                          {formData.description && !formData.editingDescription ? (
-                            <>
-                              <div 
-                                style={{ 
-                                  whiteSpace: 'pre-wrap',
-                                  marginBottom: '10px',
-                                  minHeight: '50px'
-                                }}
-                              >
-                                {formData.description}
-                              </div>
-                              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                                <div 
-                                  onClick={() => handleInputChange('editingDescription', true)}
-                                  style={{ cursor: 'pointer', color: '#00ff00', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                >
-                                  <FiEdit size={14} /> Edit
-                                </div>
-                                <div 
-                                  onClick={() => handleInputChange('description', '')}
-                                  style={{ cursor: 'pointer', color: '#777', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                >
-                                  <FiX size={14} /> Clear
-                                </div>
-                              </div>
-                            </>
-                          ) : (
+                          {formData.editingDescription ? (
                             <>
                               <TextArea 
                                 value={formData.description || ''}
@@ -13436,12 +13410,38 @@ const handleInputChange = (field, value) => {
                                     `${formData.description.length} characters` : 
                                     'No description added'}
                                 </div>
-                                {formData.editingDescription && (
+                                <div 
+                                  onClick={() => handleInputChange('editingDescription', false)}
+                                  style={{ cursor: 'pointer', color: '#00ff00' }}
+                                >
+                                  Done editing
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div 
+                                style={{ 
+                                  whiteSpace: 'pre-wrap',
+                                  marginBottom: '10px',
+                                  minHeight: '50px'
+                                }}
+                              >
+                                {formData.description || 'No description added'}
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                                <div 
+                                  onClick={() => handleInputChange('editingDescription', true)}
+                                  style={{ cursor: 'pointer', color: '#00ff00', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                >
+                                  <FiEdit size={14} /> Edit
+                                </div>
+                                {formData.description && (
                                   <div 
-                                    onClick={() => handleInputChange('editingDescription', false)}
-                                    style={{ cursor: 'pointer', color: '#00ff00' }}
+                                    onClick={() => handleInputChange('description', '')}
+                                    style={{ cursor: 'pointer', color: '#777', display: 'flex', alignItems: 'center', gap: '4px' }}
                                   >
-                                    Done editing
+                                    <FiX size={14} /> Clear
                                   </div>
                                 )}
                               </div>
