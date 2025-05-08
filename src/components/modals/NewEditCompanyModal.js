@@ -11,7 +11,8 @@ import {
   FiCopy,
   FiSave,
   FiExternalLink,
-  FiGitMerge
+  FiGitMerge,
+  FiUserPlus
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -306,6 +307,9 @@ const NewEditCompanyModal = ({
   
   // State for editing company name inline
   const [editingHeaderName, setEditingHeaderName] = useState(false);
+  
+  // State for add contact company relationship modal
+  const [showAddContactModal, setShowAddContactModal] = useState(false);
   
   // Load company data when modal opens
   useEffect(() => {
@@ -1032,9 +1036,16 @@ const NewEditCompanyModal = ({
       case 'related':
         return (
           <div style={{ minHeight: '400px', display: 'flex', flexDirection: 'column' }}>
-            <FormGroup>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
               <FormLabel>Related Contacts</FormLabel>
-            </FormGroup>
+              <Button 
+                className="primary" 
+                style={{ padding: '5px 10px', fontSize: '12px' }}
+                onClick={() => setShowAddContactModal(true)}
+              >
+                <FiUserPlus size={14} /> Add Contact
+              </Button>
+            </div>
             
             {loadingRelated ? (
               <div style={{ textAlign: 'center', padding: '30px', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1182,34 +1193,49 @@ const NewEditCompanyModal = ({
     }
   };
   
+  // Handler for successful contact addition
+  const handleContactAdded = () => {
+    // Reload related contacts
+    loadRelatedContacts();
+  };
+
   return (
-    <Modal
-      isOpen={isOpen}
-      onRequestClose={onRequestClose}
-      style={{
-        content: {
-          top: '50%',
-          left: '50%',
-          right: 'auto',
-          bottom: 'auto',
-          marginRight: '-50%',
-          transform: 'translate(-50%, -50%)',
-          padding: 0,
-          border: '1px solid #444',
-          borderRadius: '8px',
-          backgroundColor: '#111',
-          color: '#fff',
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)',
-          width: '900px',
-          height: '600px',
-          overflow: 'hidden'
-        },
-        overlay: {
-          backgroundColor: 'rgba(0, 0, 0, 0.7)',
-          zIndex: 1000
-        }
-      }}
-    >
+    <>
+      <Modal
+        isOpen={isOpen}
+        onRequestClose={onRequestClose}
+        style={{
+          content: {
+            top: '50%',
+            left: '50%',
+            right: 'auto',
+            bottom: 'auto',
+            marginRight: '-50%',
+            transform: 'translate(-50%, -50%)',
+            padding: 0,
+            border: '1px solid #444',
+            borderRadius: '8px',
+            backgroundColor: '#111',
+            color: '#fff',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)',
+            width: '900px',
+            height: '600px',
+            overflow: 'hidden'
+          },
+          overlay: {
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            zIndex: 1000
+          }
+        }}
+      >
+      
+      {/* Add Contact Company Relationship Modal */}
+      <AddContactCompanyRelationshipModal
+        isOpen={showAddContactModal}
+        onRequestClose={() => setShowAddContactModal(false)}
+        companyId={company?.company_id}
+        onContactAdded={handleContactAdded}
+      />
       <ModalContainer>
         <Sidebar>
           <TabButton 
@@ -1293,7 +1319,276 @@ const NewEditCompanyModal = ({
         </Content>
       </ModalContainer>
     </Modal>
+    </>
   );
 };
 
+// Add Contact Company Relationship Modal
+const AddContactCompanyRelationshipModal = ({ isOpen, onRequestClose, companyId, onContactAdded }) => {
+  // State for contact search
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [selectedContact, setSelectedContact] = useState(null);
+  const [relationship, setRelationship] = useState('not_set');
+  const [isPrimary, setIsPrimary] = useState(false);
+
+  // Handle search input change
+  const handleSearchChange = async (term) => {
+    setSearchTerm(term);
+    
+    if (term.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    
+    setSearching(true);
+    
+    try {
+      // Search by name or email
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('contact_id, first_name, last_name, email, mobile, job_role, category')
+        .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%,mobile.ilike.%${term}%`)
+        .limit(10);
+        
+      if (error) throw error;
+      
+      // Filter out contacts that are already associated with this company
+      // This would ideally be done in the database query
+      const { data: existingAssociations, error: assocError } = await supabase
+        .from('contact_companies')
+        .select('contact_id')
+        .eq('company_id', companyId);
+        
+      if (assocError) throw assocError;
+      
+      const existingContactIds = new Set(existingAssociations.map(a => a.contact_id));
+      const filteredResults = data.filter(c => !existingContactIds.has(c.contact_id));
+      
+      setSearchResults(filteredResults);
+    } catch (error) {
+      console.error('Error searching for contacts:', error);
+      toast.error('Failed to search for contacts');
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  // Handle contact selection
+  const handleSelectContact = (contact) => {
+    setSelectedContact(contact);
+    setSearchTerm(''); // Clear search term
+    setSearchResults([]); // Clear search results
+  };
+
+  // Handle form submission
+  const handleSubmit = async () => {
+    if (!selectedContact) {
+      toast.error('Please select a contact');
+      return;
+    }
+    
+    try {
+      // Add the association
+      const { error } = await supabase
+        .from('contact_companies')
+        .insert({
+          contact_id: selectedContact.contact_id,
+          company_id: companyId,
+          relationship: relationship,
+          is_primary: isPrimary
+        });
+        
+      if (error) throw error;
+      
+      toast.success('Contact added successfully');
+      
+      // Call the onContactAdded callback
+      if (onContactAdded) {
+        onContactAdded();
+      }
+      
+      // Close the modal
+      onRequestClose();
+    } catch (error) {
+      console.error('Error adding contact to company:', error);
+      toast.error('Failed to add contact to company');
+    }
+  };
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onRequestClose={onRequestClose}
+      style={{
+        content: {
+          top: '50%',
+          left: '50%',
+          right: 'auto',
+          bottom: 'auto',
+          marginRight: '-50%',
+          transform: 'translate(-50%, -50%)',
+          padding: '20px',
+          border: '1px solid #444',
+          borderRadius: '8px',
+          backgroundColor: '#111',
+          color: '#fff',
+          width: '500px',
+          maxWidth: '95%',
+          maxHeight: '90vh',
+          overflow: 'auto'
+        },
+        overlay: {
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          zIndex: 1100 // Higher than parent modal
+        }
+      }}
+    >
+      <Header>
+        <Title>Add Contact to Company</Title>
+        <CloseButton onClick={onRequestClose}>
+          <FiX size={20} />
+        </CloseButton>
+      </Header>
+      
+      {selectedContact ? (
+        // Selected contact view
+        <>
+          <div style={{ padding: '15px', background: '#222', borderRadius: '4px', marginBottom: '20px' }}>
+            <div style={{ fontSize: '16px', marginBottom: '10px', color: '#00ff00' }}>
+              {selectedContact.first_name} {selectedContact.last_name}
+            </div>
+            <div style={{ fontSize: '14px', color: '#ccc' }}>
+              {selectedContact.email && <div>{selectedContact.email}</div>}
+              {selectedContact.mobile && <div>{selectedContact.mobile}</div>}
+              {selectedContact.job_role && <div>{selectedContact.job_role}</div>}
+              {selectedContact.category && <div>Category: {selectedContact.category}</div>}
+            </div>
+          </div>
+          
+          <FormGroup>
+            <FormLabel>Relationship Type</FormLabel>
+            <Select
+              value={relationship}
+              onChange={(e) => setRelationship(e.target.value)}
+            >
+              {RELATIONSHIP_TYPES.map(type => (
+                <option key={type} value={type}>
+                  {type === 'not_set' ? 'Not Set' : type.charAt(0).toUpperCase() + type.slice(1)}
+                </option>
+              ))}
+            </Select>
+          </FormGroup>
+          
+          <FormGroup>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <input
+                type="checkbox"
+                id="isPrimary"
+                checked={isPrimary}
+                onChange={(e) => setIsPrimary(e.target.checked)}
+                style={{
+                  appearance: 'none',
+                  width: '16px',
+                  height: '16px',
+                  border: '1px solid #555',
+                  borderRadius: '3px',
+                  position: 'relative',
+                  cursor: 'pointer',
+                  backgroundColor: isPrimary ? '#00ff00' : 'transparent',
+                  '&:checked::after': {
+                    content: '✓',
+                    color: '#000',
+                    position: 'absolute',
+                    top: '1px',
+                    left: '4px'
+                  }
+                }}
+              />
+              <label htmlFor="isPrimary" style={{ fontSize: '14px', cursor: 'pointer' }}>
+                Set as primary company for this contact
+              </label>
+            </div>
+          </FormGroup>
+          
+          <ButtonGroup>
+            <Button className="cancel" onClick={() => setSelectedContact(null)}>
+              Back
+            </Button>
+            <Button className="primary" onClick={handleSubmit}>
+              <FiUserPlus size={16} /> Add Contact
+            </Button>
+          </ButtonGroup>
+        </>
+      ) : (
+        // Search view
+        <>
+          <FormGroup>
+            <FormLabel>Search for Contact</FormLabel>
+            <Input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              placeholder="Search by name, email or mobile..."
+              style={{ marginBottom: '10px' }}
+            />
+            
+            {searching && (
+              <div style={{ color: '#999', fontSize: '14px', marginTop: '10px' }}>
+                Searching...
+              </div>
+            )}
+            
+            {!searching && searchTerm.length > 1 && searchResults.length === 0 && (
+              <div style={{ color: '#999', fontSize: '14px', marginTop: '10px' }}>
+                No contacts found
+              </div>
+            )}
+            
+            {searchResults.length > 0 && (
+              <div style={{ 
+                maxHeight: '300px', 
+                overflowY: 'auto', 
+                border: '1px solid #444', 
+                borderRadius: '4px',
+                marginTop: '10px'
+              }}>
+                {searchResults.map(contact => (
+                  <div 
+                    key={contact.contact_id}
+                    style={{
+                      padding: '10px',
+                      borderBottom: '1px solid #333',
+                      cursor: 'pointer',
+                      '&:hover': {
+                        backgroundColor: '#222'
+                      }
+                    }}
+                    onClick={() => handleSelectContact(contact)}
+                  >
+                    <div style={{ fontSize: '14px', fontWeight: 'bold' }}>
+                      {contact.first_name} {contact.last_name}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#999' }}>
+                      {contact.email || contact.mobile || contact.job_role || contact.category || ''}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </FormGroup>
+          
+          <ButtonGroup>
+            <Button className="cancel" onClick={onRequestClose}>
+              Cancel
+            </Button>
+          </ButtonGroup>
+        </>
+      )}
+    </Modal>
+  );
+};
+
+// Add the export for the main component
 export default NewEditCompanyModal;
