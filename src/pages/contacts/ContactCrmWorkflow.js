@@ -18,6 +18,8 @@ import CompanyContactsModal from '../../components/modals/CompanyContactsModal';
 import DuplicateProcessingModal from '../../components/modals/DuplicateProcessingModal';
 import NewIntroductionModal from '../../components/modals/NewIntroductionModal';
 import ViewDealModal from '../../components/modals/ViewDealModal';
+import EditDealModalPortal from '../../components/modals/EditDealModalPortal';
+import DealViewModalPortal from '../../components/modals/DealViewModalPortal';
 import { 
   FiX, 
   FiCheck, 
@@ -13371,6 +13373,104 @@ const handleInputChange = (field, value) => {
                                       <FiX size={14} color="#ff5555" />
                                     </div>
                                     
+                                    {/* Edit button */}
+                                    <button 
+                                      type="button"
+                                      style={{
+                                        position: 'absolute',
+                                        top: '10px',
+                                        right: '40px',
+                                        backgroundColor: 'rgba(0, 255, 0, 0.1)',
+                                        border: '1px solid rgba(0, 255, 0, 0.3)',
+                                        borderRadius: '4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        cursor: 'pointer',
+                                        padding: '3px 8px',
+                                        gap: '5px',
+                                        zIndex: 2
+                                      }}
+                                      onClick={(e) => {
+                                        e.preventDefault(); // Prevent any default action
+                                        e.stopPropagation(); // Stop event bubbling
+                                        
+                                        // Open modal directly (alert removed)
+                                        
+                                        // Create a direct DOM modal instead of using React state
+                                        const modalContainer = document.createElement('div');
+                                        modalContainer.id = 'direct-edit-modal';
+                                        modalContainer.style.position = 'fixed';
+                                        modalContainer.style.zIndex = '10000';
+                                        modalContainer.style.top = '0';
+                                        modalContainer.style.left = '0';
+                                        modalContainer.style.width = '100%';
+                                        modalContainer.style.height = '100%';
+                                        modalContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.75)';
+                                        modalContainer.style.display = 'flex';
+                                        modalContainer.style.alignItems = 'center';
+                                        modalContainer.style.justifyContent = 'center';
+                                        
+                                        // Create modal content with better styling
+                                        modalContainer.innerHTML = `
+                                          <div style="background-color: #222; border-radius: 8px; padding: 20px; border: 1px solid #333; max-width: 600px; width: 90%; color: #eee; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);">
+                                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid #333;">
+                                              <h2 style="margin: 0; font-size: 1.4rem; color: #00ff00;">Edit Deal Working Modal</h2>
+                                              <button id="close-modal-btn" style="background: none; border: none; color: #ccc; font-size: 1.5rem; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; transition: background-color 0.2s;">✕</button>
+                                            </div>
+                                            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; min-height: 200px;">
+                                              <h3 style="color: #00ffff; font-size: 1.5rem; text-align: center; margin: 20px 0;">Coming Soon</h3>
+                                              <div style="margin-top: 20px; color: #bbb; font-size: 1.1rem;">Deal: <strong>${deal.opportunity}</strong></div>
+                                            </div>
+                                          </div>
+                                        `;
+                                        
+                                        // Add to body
+                                        document.body.appendChild(modalContainer);
+                                        
+                                        // Add event listeners for close button and escape key
+                                        setTimeout(() => {
+                                          const closeBtn = document.getElementById('close-modal-btn');
+                                          
+                                          // Add hover effect
+                                          closeBtn.addEventListener('mouseover', () => {
+                                            closeBtn.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                                          });
+                                          
+                                          closeBtn.addEventListener('mouseout', () => {
+                                            closeBtn.style.backgroundColor = 'transparent';
+                                          });
+                                          
+                                          // Close on button click
+                                          closeBtn.addEventListener('click', () => {
+                                            document.body.removeChild(modalContainer);
+                                          });
+                                          
+                                          // Close on ESC key press
+                                          document.addEventListener('keydown', (e) => {
+                                            if (e.key === 'Escape' && document.body.contains(modalContainer)) {
+                                              document.body.removeChild(modalContainer);
+                                            }
+                                          });
+                                          
+                                          // Close on background click (modal container but not modal content)
+                                          modalContainer.addEventListener('click', (e) => {
+                                            if (e.target === modalContainer) {
+                                              document.body.removeChild(modalContainer);
+                                            }
+                                          });
+                                        }, 100);
+                                        
+                                        // No need to use React state anymore
+                                        // setSelectedDealForEdit(deal);
+                                        // setShowEditDealModal(true);
+                                      }}
+                                      title="Edit deal"
+                                    >
+                                      <FiEdit size={14} color="#00ff00" />
+                                      <span style={{ color: '#00ff00', fontSize: '0.85rem' }}>Edit</span>
+                                    </button>
+                                    
                                     {/* Deal header */}
                                     <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center' }}>
                                       <div style={{ 
@@ -16277,186 +16377,98 @@ const handleInputChange = (field, value) => {
     </form>
   </Modal>
   
-  {/* Edit Deal Modal */}
-  <Modal
-    isOpen={showEditDealModal}
-    onRequestClose={() => {
-      setShowEditDealModal(false);
-      setSelectedDeal(null);
-    }}
-    style={{
-      content: {
-        width: '550px',
-        maxWidth: '90%',
-        margin: 'auto',
-        backgroundColor: '#1a1a1a',
-        border: '1px solid #333',
+  {/* Deal View Modal Portal */}
+  <DealViewModalPortal
+    isOpen={showViewDealModal}
+    ariaHideApp={false}
+    onClose={() => setShowViewDealModal(false)}
+    deal={selectedDeal}
+    contactId={contactId}
+    onUpdate={loadContactDeals}
+  />
+  
+  {/* Simple Direct Edit Deal Modal */}
+  {showEditDealModal && (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.75)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 10000
+    }}>
+      <div style={{
+        backgroundColor: '#222',
         borderRadius: '8px',
-        padding: '20px'
-      },
-      overlay: {
-        backgroundColor: 'rgba(0, 0, 0, 0.75)'
-      }
-    }}
-  >
-    {selectedDeal && (
-      <>
-        <ModalHeader>
-          <h2><FiEdit /> Edit Deal</h2>
-          <CloseButton onClick={() => {
-            setShowEditDealModal(false);
-            setSelectedDeal(null);
-          }}>
-            <FiX />
-          </CloseButton>
-        </ModalHeader>
-        
-        <form onSubmit={(e) => {
-          e.preventDefault();
-          
-          const formData = new FormData(e.target);
-          const updatedData = {
-            name: formData.get('dealName'),
-            stage: formData.get('dealStage'),
-            value: parseFloat(formData.get('dealValue')) || null,
-            category: formData.get('dealCategory'),
-            source: formData.get('dealSource'),
-            description: formData.get('dealDescription'),
-            // expected_close_date and company_id removed as they don't exist in schema
-            relationship: formData.get('dealRelationship'),
-            deals_contacts_id: selectedDeal.deals_contacts_id
-          };
-          
-          handleUpdateDeal(selectedDeal.deal_id, updatedData);
+        padding: '20px',
+        border: '1px solid #333',
+        maxWidth: '600px',
+        width: '90%',
+        maxHeight: '80vh',
+        overflow: 'auto',
+        color: '#eee'
+      }}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '20px',
+          paddingBottom: '10px',
+          borderBottom: '1px solid #333'
         }}>
-          <FormGroup>
-            <InputLabel>Deal Name *</InputLabel>
-            <Input 
-              type="text" 
-              name="dealName"
-              placeholder="Enter deal name"
-              defaultValue={selectedDeal.name}
-              required
-            />
-          </FormGroup>
-          
-          <FormGrid>
-            <FormGroup>
-              <InputLabel>Stage *</InputLabel>
-              <Select 
-                name="dealStage" 
-                defaultValue={selectedDeal.stage}
-                required
-              >
-                {dealStages.map(stage => (
-                  <option key={stage} value={stage}>{stage}</option>
-                ))}
-              </Select>
-            </FormGroup>
-            
-            <FormGroup>
-              <InputLabel>Deal Value</InputLabel>
-              <Input 
-                type="number" 
-                name="dealValue" 
-                placeholder="Enter deal value"
-                defaultValue={selectedDeal.value || ''}
-                min="0"
-                step="0.01"
-              />
-            </FormGroup>
-          </FormGrid>
-          
-          <FormGrid>
-            <FormGroup>
-              <InputLabel>Category</InputLabel>
-              <Select 
-                name="dealCategory"
-                defaultValue={selectedDeal.category || 'Inbox'}
-              >
-                {dealCategories.map(category => (
-                  <option key={category} value={category}>{category}</option>
-                ))}
-              </Select>
-            </FormGroup>
-            
-            <FormGroup>
-              <InputLabel>Source</InputLabel>
-              <Select 
-                name="dealSource"
-                defaultValue={selectedDeal.source || 'Not Set'}
-              >
-                {dealSourceCategories.map(source => (
-                  <option key={source} value={source}>{source}</option>
-                ))}
-              </Select>
-            </FormGroup>
-          </FormGrid>
-          
-          <FormGroup>
-            <InputLabel>Company</InputLabel>
-            <Select 
-              name="dealCompany"
-              defaultValue={selectedDeal.company?.company_id || 'none'}
-            >
-              <option value="none">Not Associated With Company</option>
-              {contactCompanies.map(company => (
-                <option key={company.company_id} value={company.company_id}>
-                  {company.name}
-                </option>
-              ))}
-            </Select>
-          </FormGroup>
-          
-          <FormGroup>
-            <InputLabel>Contact Relationship *</InputLabel>
-            <Select 
-              name="dealRelationship" 
-              defaultValue={selectedDeal.relationship || 'Primary Contact'}
-              required
-            >
-              {dealRelationships.map(relationship => (
-                <option key={relationship} value={relationship}>{relationship}</option>
-              ))}
-            </Select>
-          </FormGroup>
-          
-          <FormGroup>
-            <InputLabel>Expected Close Date</InputLabel>
-            <Input 
-              type="date" 
-              name="dealCloseDate"
-              defaultValue={selectedDeal.expected_close_date || ''}
-            />
-          </FormGroup>
-          
-          <FormGroup>
-            <InputLabel>Description</InputLabel>
-            <TextArea 
-              name="dealDescription"
-              placeholder="Enter deal description"
-              defaultValue={selectedDeal.description || ''}
-            />
-          </FormGroup>
-          
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
-            <ActionButton 
-              onClick={() => {
-                setShowEditDealModal(false);
-                setSelectedDeal(null);
-              }}
-              type="button"
-            >
-              Cancel
-            </ActionButton>
-            <ActionButton variant="primary" type="submit">
-              <FiCheck /> Update Deal
-            </ActionButton>
-          </div>
-        </form>
-      </>
-    )}
-  </Modal>
+          <h2 style={{ margin: 0, fontSize: '1.4rem', color: '#00ff00' }}>
+            Edit Deal Working Modal
+          </h2>
+          <button 
+            onClick={() => {
+              setShowEditDealModal(false);
+              setSelectedDealForEdit(null);
+            }}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#ccc',
+              fontSize: '1.5rem',
+              cursor: 'pointer',
+              padding: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <FiX />
+          </button>
+        </div>
+        
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px',
+          minHeight: '200px'
+        }}>
+          <h3 style={{
+            color: '#00ffff',
+            fontSize: '1.5rem',
+            textAlign: 'center',
+            margin: '20px 0'
+          }}>
+            Coming Soon
+          </h3>
+          {selectedDealForEdit && (
+            <div style={{ marginTop: '20px', color: '#aaa' }}>
+              Deal: {selectedDealForEdit.opportunity}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )}
 };
 
 export default ContactCrmWorkflow;
