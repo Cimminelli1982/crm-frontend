@@ -18,7 +18,6 @@ import CompanyContactsModal from '../../components/modals/CompanyContactsModal';
 import DuplicateProcessingModal from '../../components/modals/DuplicateProcessingModal';
 import NewIntroductionModal from '../../components/modals/NewIntroductionModal';
 import ViewDealModal from '../../components/modals/ViewDealModal';
-import DealViewModalPortal from '../../components/modals/DealViewModalPortal';
 import { 
   FiX, 
   FiCheck, 
@@ -13470,29 +13469,37 @@ const handleInputChange = (field, value) => {
                                       <span style={{ color: '#00ff00', fontSize: '0.85rem' }}>Edit</span>
                                     </button>
                                     
-                                    {/* Deal header */}
+                                    {/* Deal header with inline editable name */}
                                     <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center' }}>
-                                      <div style={{ 
-                                        width: '32px',
-                                        height: '32px',
-                                        borderRadius: '50%',
-                                        backgroundColor: 'rgba(0, 255, 255, 0.1)',
-                                        display: 'flex',
-                                        justifyContent: 'center',
-                                        alignItems: 'center',
-                                        marginRight: '10px'
-                                      }}>
-                                        <FiDollarSign size={16} color="#00ffff" />
-                                      </div>
                                       <div style={{ flex: 1, overflow: 'hidden' }}>
-                                        <div style={{ 
-                                          fontWeight: 'bold', 
-                                          color: '#eee', 
-                                          fontSize: '1.1rem',
-                                          whiteSpace: 'nowrap',
-                                          overflow: 'hidden',
-                                          textOverflow: 'ellipsis'
-                                        }}>
+                                        <div 
+                                          contentEditable={true}
+                                          suppressContentEditableWarning={true}
+                                          style={{ 
+                                            fontWeight: 'bold', 
+                                            color: '#eee', 
+                                            fontSize: '1.1rem',
+                                            border: '1px dashed transparent',
+                                            padding: '4px 8px',
+                                            borderRadius: '4px',
+                                            whiteSpace: 'nowrap',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            outline: 'none'
+                                          }}
+                                          onFocus={(e) => {
+                                            e.currentTarget.style.border = '1px dashed #00ffff';
+                                            e.stopPropagation();
+                                          }}
+                                          onBlur={(e) => {
+                                            e.currentTarget.style.border = '1px dashed transparent';
+                                            // Here you would typically save the edited text
+                                            console.log('Deal name edited:', e.currentTarget.textContent);
+                                          }}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                          }}
+                                        >
                                           {deal.opportunity}
                                         </div>
                                       </div>
@@ -16376,11 +16383,11 @@ const handleInputChange = (field, value) => {
     </form>
   </Modal>
   
-  {/* Deal View Modal Portal */}
-  <DealViewModalPortal
+  {/* Deal View Modal */}
+  <ViewDealModal
     isOpen={showViewDealModal}
     ariaHideApp={false}
-    onClose={() => setShowViewDealModal(false)}
+    onRequestClose={() => setShowViewDealModal(false)}
     deal={selectedDeal}
     contactId={contactId}
     onUpdate={loadContactDeals}
