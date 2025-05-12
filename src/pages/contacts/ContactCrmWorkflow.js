@@ -1327,6 +1327,10 @@ const ContactCrmWorkflow = () => {
   const [showEditDealModal, setShowEditDealModal] = useState(false);
   const [dealModalTab, setDealModalTab] = useState('list');
   
+  // State for deal tags and attachments
+  const [dealTags, setDealTags] = useState({}); // Format: { deal_id1: [{tag_info}, {tag_info}], ... }
+  const [dealAttachments, setDealAttachments] = useState({}); // Format: { deal_id1: count, ... }
+  
   // Introductions-related state
   const [introductions, setIntroductions] = useState([]);
   const [introductionsLoading, setIntroductionsLoading] = useState(false);
@@ -2090,8 +2094,86 @@ const ContactCrmWorkflow = () => {
     }
   }, [contactId, supabase]);
 
-  // Load deals for the current contact
+  // Load deal tags for a list of deal IDs
+  const loadDealTags = useCallback(async (dealIds) => {
+    if (!dealIds || dealIds.length === 0) return;
+    
+    try {
+      // First, get the deal_tags entries
+      const { data: dealTagsData, error: dealTagsError } = await supabase
+        .from('deal_tags')
+        .select(`
+          entry_id,
+          deal_id,
+          tag_id,
+          tags:tag_id (
+            tag_id,
+            name,
+            color
+          )
+        `)
+        .in('deal_id', dealIds);
+      
+      if (dealTagsError) {
+        console.error('Error loading deal tags:', dealTagsError);
+        return;
+      }
+      
+      // Group tags by deal_id
+      const groupedTags = {};
+      dealTagsData.forEach(tagRelation => {
+        if (!groupedTags[tagRelation.deal_id]) {
+          groupedTags[tagRelation.deal_id] = [];
+        }
+        
+        if (tagRelation.tags) {
+          groupedTags[tagRelation.deal_id].push({
+            entry_id: tagRelation.entry_id,
+            tag_id: tagRelation.tag_id,
+            name: tagRelation.tags.name,
+            color: tagRelation.tags.color || '#00ffff' // Default color if none set
+          });
+        }
+      });
+      
+      setDealTags(groupedTags);
+      console.log('Loaded deal tags:', groupedTags);
+    } catch (error) {
+      console.error('Error in loadDealTags:', error);
+    }
+  }, [supabase]);
+  
+  // Load attachment counts for a list of deal IDs
+  const loadDealAttachments = useCallback(async (dealIds) => {
+    if (!dealIds || dealIds.length === 0) return;
+    
+    try {
+      // We'll count attachments per deal
+      const counts = {};
+      
+      // For each deal, count its attachments
+      for (const dealId of dealIds) {
+        const { count, error } = await supabase
+          .from('deal_attachments')
+          .select('*', { count: 'exact', head: true })
+          .eq('deal_id', dealId);
+        
+        if (error) {
+          console.error(`Error counting attachments for deal ${dealId}:`, error);
+          counts[dealId] = 0;
+        } else {
+          counts[dealId] = count || 0;
+        }
+      }
+      
+      setDealAttachments(counts);
+      console.log('Loaded deal attachment counts:', counts);
+    } catch (error) {
+      console.error('Error in loadDealAttachments:', error);
+    }
+  }, [supabase]);
 
+  // Load deals for the current contact
   const loadContactDeals = useCallback(async () => {
     try {
       setDealsLoading(true);
@@ -2142,13 +2224,20 @@ const ContactCrmWorkflow = () => {
       
       console.log('Formatted deals:', formattedDeals);
       setDeals(formattedDeals);
+      
+      // After loading deals, load their tags and attachment counts
+      if (formattedDeals.length > 0) {
+        const dealIds = formattedDeals.map(deal => deal.deal_id);
+        loadDealTags(dealIds);
+        loadDealAttachments(dealIds);
+      }
     } catch (err) {
       console.error('Error in loadContactDeals:', err);
       toast.error('Error loading deals');
     } finally {
       setDealsLoading(false);
     }
-  }, [contactId, setDeals, setDealsLoading, supabase]); // Add dependencies for useCallback
+  }, [contactId, setDeals, setDealsLoading, supabase, loadDealTags, loadDealAttachments]); // Add dependencies for useCallback
   
   // Search for deals based on name
   const searchDeals = useCallback(async (query) => {
@@ -6819,22 +6908,12 @@ const handleInputChange = (field, value) => {
           <div className="step-number">3</div>
           <div className="step-label">Enrichment</div>
         </Step>
-        <Step 
-          $active={currentStep === 4} 
-          $completed={currentStep > 4}
-          $clickable={currentStep >= 4 || currentStep === 3}
-          onClick={() => currentStep >= 4 || currentStep === 3 ? goToStep(4) : null}
-        >
-          <div className="step-number">4</div>
-          <div className="step-label">Recap</div>
-        </Step>
       </StepIndicator>
       
       <ProgressBar>
         <ProgressStep $active={currentStep === 1} $completed={currentStep > 1} />
         <ProgressStep $active={currentStep === 2} $completed={currentStep > 2} />
         <ProgressStep $active={currentStep === 3} $completed={currentStep > 3} />
-        <ProgressStep $active={currentStep === 4} $completed={currentStep > 4} />
       </ProgressBar>
       
       {error && (
@@ -13211,6 +13290,37 @@ const handleInputChange = (field, value) => {
                   {activeEnrichmentSection === "deals" && (
                     <>
                       <div style={{ marginBottom: '20px' }}>
+                        <div style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          alignItems: 'center',
+                          marginBottom: '15px'
+                        }}>
+                          <h3 style={{ margin: 0, color: '#00ff00' }}>Deals</h3>
+                          <button
+                            type="button"
+                            style={{
+                              backgroundColor: 'rgba(0, 255, 0, 0.1)',
+                              border: '1px solid rgba(0, 255, 0, 0.3)',
+                              borderRadius: '4px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'pointer',
+                              padding: '8px 12px',
+                              gap: '5px'
+                            }}
+                            onClick={() => {
+                              setDealModalTab('list');
+                              setShowCreateDealModal(true);
+                              // Load all deals when opening modal
+                              searchDealSuggestions('');
+                            }}
+                          >
+                            <FiPlus size={16} color="#00ff00" />
+                            <span style={{ color: '#00ff00' }}>Add Deal</span>
+                          </button>
+                        </div>
                         <SectionDivider style={{ marginBottom: '15px' }} />
                         
                         {/* Deals cards layout */}
@@ -13232,91 +13342,39 @@ const handleInputChange = (field, value) => {
                             </div>
                           ) : (
                             <div>
-                              {/* Cards container with grid layout */}
+                              {/* Cards container with full width layout */}
                               <div style={{ 
-                                display: 'grid',
-                                gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                                display: 'flex',
+                                flexDirection: 'column',
                                 gap: '16px',
                                 marginBottom: '20px'
                               }}>
-                                {/* Add deal card (always visible) */}
-                                <div 
-                                  style={{
-                                    position: 'relative',
-                                    backgroundColor: 'rgba(0, 255, 0, 0.03)',
-                                    borderRadius: '8px',
-                                    border: '1px dashed rgba(0, 255, 0, 0.2)',
-                                    padding: '20px',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    justifyContent: 'center',
-                                    alignItems: 'center',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.2s ease',
-                                    color: '#00ff00'
-                                  }}
-                                  onClick={() => {
-                                    setDealModalTab('list');
-                                    setShowCreateDealModal(true);
-                                    // Load all deals when opening modal
-                                    searchDealSuggestions('');
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.05)';
-                                    e.currentTarget.style.borderColor = 'rgba(0, 255, 0, 0.3)';
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.03)';
-                                    e.currentTarget.style.borderColor = 'rgba(0, 255, 0, 0.2)';
-                                  }}
-                                >
-                                  <FiPlus size={24} color="#00ff00" style={{ marginBottom: '12px' }} />
-                                  <div style={{ textAlign: 'center' }}>
-                                    <div style={{ fontWeight: 'bold' }}>Add Deal</div>
-                                  </div>
-                                </div>
                                 
                                 {/* Deal cards */}
-                                {deals && deals.length > 0 ? deals.map((deal) => (
-                                  <div 
-                                    key={deal.deal_id} 
-                                    style={{
-                                      position: 'relative',
-                                      backgroundColor: '#1a1a1a',
-                                      borderRadius: '8px',
-                                      border: '1px solid #333',
-                                      padding: '15px',
-                                      height: '220px',
-                                      display: 'flex',
-                                      flexDirection: 'column',
-                                      cursor: 'pointer',
-                                      transition: 'all 0.2s ease',
-                                      overflow: 'hidden'
-                                    }}
-                                    onClick={() => {
-                                      setSelectedDeal({
-                                        deal_id: deal.deal_id,
-                                        opportunity: deal.opportunity,
-                                        stage: deal.stage,
-                                        total_investment: deal.total_investment,
-                                        category: deal.category,
-                                        source_category: deal.source_category,
-                                        description: deal.description,
-                                        relationship: deal.relationship,
-                                        deals_contacts_id: deal.deals_contacts_id,
-                                        created_at: deal.created_at,
-                                        last_modified_at: deal.last_modified_at
-                                      });
-                                      setShowViewDealModal(true);
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      e.currentTarget.style.backgroundColor = '#222';
-                                      e.currentTarget.style.borderColor = '#444';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      e.currentTarget.style.backgroundColor = '#1a1a1a';
-                                      e.currentTarget.style.borderColor = '#333';
-                                    }}
+                                {deals && deals.length > 0 ? (
+                                  deals.map((deal) => (
+                                    <div 
+                                      key={deal.deal_id} 
+                                      style={{
+                                        position: 'relative',
+                                        backgroundColor: '#1a1a1a',
+                                        borderRadius: '8px',
+                                        border: '1px solid #333',
+                                        padding: '15px',
+                                        height: 'auto',
+                                        minHeight: '180px',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        transition: 'all 0.2s ease'
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.backgroundColor = '#222';
+                                        e.currentTarget.style.borderColor = '#444';
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.backgroundColor = '#1a1a1a';
+                                        e.currentTarget.style.borderColor = '#333';
+                                      }}
                                   >
                                     {/* Remove association button (X in corner) */}
                                     <div 
@@ -13371,128 +13429,35 @@ const handleInputChange = (field, value) => {
                                       <FiX size={14} color="#ff5555" />
                                     </div>
                                     
-                                    {/* Edit button */}
-                                    <button 
-                                      type="button"
-                                      style={{
-                                        position: 'absolute',
-                                        top: '10px',
-                                        right: '40px',
-                                        backgroundColor: 'rgba(0, 255, 0, 0.1)',
-                                        border: '1px solid rgba(0, 255, 0, 0.3)',
-                                        borderRadius: '4px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        cursor: 'pointer',
-                                        padding: '3px 8px',
-                                        gap: '5px',
-                                        zIndex: 2
-                                      }}
-                                      onClick={(e) => {
-                                        e.preventDefault(); // Prevent any default action
-                                        e.stopPropagation(); // Stop event bubbling
-                                        
-                                        // Open modal directly (alert removed)
-                                        
-                                        // Create a direct DOM modal instead of using React state
-                                        const modalContainer = document.createElement('div');
-                                        modalContainer.id = 'direct-edit-modal';
-                                        modalContainer.style.position = 'fixed';
-                                        modalContainer.style.zIndex = '10000';
-                                        modalContainer.style.top = '0';
-                                        modalContainer.style.left = '0';
-                                        modalContainer.style.width = '100%';
-                                        modalContainer.style.height = '100%';
-                                        modalContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.75)';
-                                        modalContainer.style.display = 'flex';
-                                        modalContainer.style.alignItems = 'center';
-                                        modalContainer.style.justifyContent = 'center';
-                                        
-                                        // Create modal content with better styling
-                                        modalContainer.innerHTML = `
-                                          <div style="background-color: #222; border-radius: 8px; padding: 20px; border: 1px solid #333; max-width: 600px; width: 90%; color: #eee; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);">
-                                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid #333;">
-                                              <h2 style="margin: 0; font-size: 1.4rem; color: #00ff00;">Edit Deal Working Modal</h2>
-                                              <button id="close-modal-btn" style="background: none; border: none; color: #ccc; font-size: 1.5rem; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; transition: background-color 0.2s;">✕</button>
-                                            </div>
-                                            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; min-height: 200px;">
-                                              <h3 style="color: #00ffff; font-size: 1.5rem; text-align: center; margin: 20px 0;">Coming Soon</h3>
-                                              <div style="margin-top: 20px; color: #bbb; font-size: 1.1rem;">Deal: <strong>${deal.opportunity}</strong></div>
-                                            </div>
-                                          </div>
-                                        `;
-                                        
-                                        // Add to body
-                                        document.body.appendChild(modalContainer);
-                                        
-                                        // Add event listeners for close button and escape key
-                                        setTimeout(() => {
-                                          const closeBtn = document.getElementById('close-modal-btn');
-                                          
-                                          // Add hover effect
-                                          closeBtn.addEventListener('mouseover', () => {
-                                            closeBtn.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-                                          });
-                                          
-                                          closeBtn.addEventListener('mouseout', () => {
-                                            closeBtn.style.backgroundColor = 'transparent';
-                                          });
-                                          
-                                          // Close on button click
-                                          closeBtn.addEventListener('click', () => {
-                                            document.body.removeChild(modalContainer);
-                                          });
-                                          
-                                          // Close on ESC key press
-                                          document.addEventListener('keydown', (e) => {
-                                            if (e.key === 'Escape' && document.body.contains(modalContainer)) {
-                                              document.body.removeChild(modalContainer);
-                                            }
-                                          });
-                                          
-                                          // Close on background click (modal container but not modal content)
-                                          modalContainer.addEventListener('click', (e) => {
-                                            if (e.target === modalContainer) {
-                                              document.body.removeChild(modalContainer);
-                                            }
-                                          });
-                                        }, 100);
-                                        
-                                        // No need to use React state anymore
-                                        // setSelectedDealForEdit(deal);
-                                        // setShowEditDealModal(true);
-                                      }}
-                                      title="Edit deal"
-                                    >
-                                      <FiEdit size={14} color="#00ff00" />
-                                      <span style={{ color: '#00ff00', fontSize: '0.85rem' }}>Edit</span>
-                                    </button>
                                     
-                                    {/* Deal header with inline editable name */}
-                                    <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center' }}>
-                                      <div style={{ flex: 1, overflow: 'hidden' }}>
+                                    {/* Deal header with deal name - left aligned */}
+                                    <div style={{ 
+                                      marginBottom: '15px', 
+                                      display: 'flex', 
+                                      alignItems: 'center', 
+                                      padding: '0 0 10px 0',
+                                      borderBottom: '1px solid #333'
+                                    }}>
+                                      <div style={{ flex: 1, overflow: 'hidden', paddingLeft: '0' }}>
                                         <div 
                                           contentEditable={true}
                                           suppressContentEditableWarning={true}
                                           style={{ 
                                             fontWeight: 'bold', 
                                             color: '#eee', 
-                                            fontSize: '1.1rem',
-                                            border: '1px dashed transparent',
-                                            padding: '4px 8px',
-                                            borderRadius: '4px',
-                                            whiteSpace: 'nowrap',
+                                            fontSize: '1.2rem',
+                                            padding: '0',
                                             overflow: 'hidden',
                                             textOverflow: 'ellipsis',
-                                            outline: 'none'
+                                            outline: 'none',
+                                            marginLeft: '0'
                                           }}
                                           onFocus={(e) => {
-                                            e.currentTarget.style.border = '1px dashed #00ffff';
+                                            e.currentTarget.style.borderBottom = '1px dashed #00ffff';
                                             e.stopPropagation();
                                           }}
                                           onBlur={(e) => {
-                                            e.currentTarget.style.border = '1px dashed transparent';
+                                            e.currentTarget.style.borderBottom = 'none';
                                             // Here you would typically save the edited text
                                             console.log('Deal name edited:', e.currentTarget.textContent);
                                           }}
@@ -13505,75 +13470,265 @@ const handleInputChange = (field, value) => {
                                       </div>
                                     </div>
                                     
-                                    {/* Deal info */}
+                                    {/* Deal info - organized in 3-column grid layout */}
                                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                                      {/* Stage badge */}
-                                      <div style={{ marginBottom: '10px' }}>
-                                        <Badge 
-                                          bg={
-                                            deal.stage === 'Closed Won' ? 'rgba(0, 255, 0, 0.2)' : 
-                                            deal.stage === 'Closed Lost' ? 'rgba(255, 0, 0, 0.2)' : 
-                                            'rgba(255, 165, 0, 0.2)'
-                                          }
-                                          color={
-                                            deal.stage === 'Closed Won' ? '#00ff00' : 
-                                            deal.stage === 'Closed Lost' ? '#ff5555' : 
-                                            '#ffaa00'
-                                          }
-                                          borderColor={
-                                            deal.stage === 'Closed Won' ? '#00ff00' : 
-                                            deal.stage === 'Closed Lost' ? '#ff5555' : 
-                                            '#ffaa00'
-                                          }
-                                        >
-                                          {deal.stage}
-                                        </Badge>
-                                      </div>
-                                      
-                                      {/* Description */}
+                                      {/* Main deal information grid */}
                                       <div style={{ 
-                                        fontSize: '0.9rem', 
-                                        color: '#bbb',
-                                        marginBottom: '10px',
-                                        flex: 1,
-                                        overflow: 'hidden',
-                                        display: '-webkit-box',
-                                        WebkitLineClamp: 3,
-                                        WebkitBoxOrient: 'vertical',
-                                        textOverflow: 'ellipsis'
+                                        display: 'grid',
+                                        gridTemplateColumns: '1fr 1fr 2fr',
+                                        gap: '12px',
+                                        marginBottom: '15px',
+                                        fontSize: '0.9rem'
                                       }}>
-                                        {deal.description || 'No description provided'}
+                                        {/* Value */}
+                                        <div className="deal-attribute">
+                                          <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '3px' }}>Value</div>
+                                          <div style={{ color: '#00ff00', fontWeight: 'bold' }}>
+                                            {deal.total_investment ? `$${deal.total_investment.toLocaleString()}` : 'Not set'}
+                                          </div>
+                                        </div>
+                                        
+                                        {/* Category */}
+                                        <div className="deal-attribute">
+                                          <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '3px' }}>Category</div>
+                                          <div style={{ 
+                                            color: '#eee',
+                                            backgroundColor: 'rgba(0, 255, 255, 0.1)',
+                                            padding: '2px 8px',
+                                            borderRadius: '4px',
+                                            fontSize: '0.85rem',
+                                            display: 'inline-block'
+                                          }}>
+                                            {deal.category || 'Not set'}
+                                          </div>
+                                        </div>
+                                        
+                                        {/* Relationship/Role */}
+                                        <div className="deal-attribute">
+                                          <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '3px' }}>Role</div>
+                                          <div style={{ color: '#eee' }}>
+                                            {deal.relationship || 'Not specified'}
+                                          </div>
+                                        </div>
+                                        
+                                        {/* Source */}
+                                        <div className="deal-attribute">
+                                          <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '3px' }}>Source</div>
+                                          <div style={{ 
+                                            color: '#eee',
+                                            backgroundColor: 'rgba(255, 165, 0, 0.1)',
+                                            padding: '2px 8px',
+                                            borderRadius: '4px',
+                                            fontSize: '0.85rem',
+                                            display: 'inline-block'
+                                          }}>
+                                            {deal.source_category || 'Not set'}
+                                          </div>
+                                        </div>
+                                        
+                                        {/* Created Date */}
+                                        <div className="deal-attribute">
+                                          <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '3px' }}>Created</div>
+                                          <div style={{ color: '#eee', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <FiCalendar size={12} />
+                                            {new Date(deal.created_at).toLocaleDateString()}
+                                          </div>
+                                        </div>
+                                        
+                                        {/* Modified Date */}
+                                        <div className="deal-attribute">
+                                          <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '3px' }}>Last Updated</div>
+                                          <div style={{ color: '#eee', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <FiCalendar size={12} />
+                                            {new Date(deal.last_modified_at).toLocaleDateString()}
+                                          </div>
+                                        </div>
+                                        
+                                        {/* Attachments */}
+                                        <div className="deal-attribute">
+                                          <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '3px' }}>Attachments</div>
+                                          <div style={{ color: '#eee', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <FiFile size={12} />
+                                            {dealAttachments[deal.deal_id] ? 
+                                              `${dealAttachments[deal.deal_id]} attachment${dealAttachments[deal.deal_id] !== 1 ? 's' : ''}` : 
+                                              '0 attachments'}
+                                          </div>
+                                        </div>
+                                        
+                                        {/* Stage */}
+                                        <div className="deal-attribute">
+                                          <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '3px' }}>Stage</div>
+                                          <Badge 
+                                            bg={
+                                              deal.stage === 'Closed Won' ? 'rgba(0, 255, 0, 0.2)' : 
+                                              deal.stage === 'Closed Lost' ? 'rgba(255, 0, 0, 0.2)' : 
+                                              'rgba(255, 165, 0, 0.2)'
+                                            }
+                                            color={
+                                              deal.stage === 'Closed Won' ? '#00ff00' : 
+                                              deal.stage === 'Closed Lost' ? '#ff5555' : 
+                                              '#ffaa00'
+                                            }
+                                            borderColor={
+                                              deal.stage === 'Closed Won' ? '#00ff00' : 
+                                              deal.stage === 'Closed Lost' ? '#ff5555' : 
+                                              '#ffaa00'
+                                            }
+                                          >
+                                            {deal.stage}
+                                          </Badge>
+                                        </div>
+                                        
+                                        {/* Description - Spanning the third column grid area */}
+                                        <div className="deal-attribute" style={{ 
+                                          gridColumn: '3 / 4', 
+                                          gridRow: '1 / 5',
+                                          display: 'flex',
+                                          flexDirection: 'column',
+                                          width: '100%'
+                                        }}>
+                                          <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '3px' }}>Description</div>
+                                          <div style={{ 
+                                            flex: 1,
+                                            color: '#bbb',
+                                            fontSize: '0.9rem',
+                                            backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                                            borderRadius: '4px',
+                                            padding: '12px',
+                                            height: '100%',
+                                            minHeight: '120px',
+                                            overflow: 'auto',
+                                            lineHeight: '1.5'
+                                          }}>
+                                            {deal.description || 'No description provided for this deal.'}
+                                          </div>
+                                        </div>
                                       </div>
                                       
-                                      {/* Stats and info */}
-                                      <div style={{ marginTop: 'auto' }}>
-                                        {/* Value */}
-                                        {deal.total_investment && (
-                                          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '5px' }}>
-                                            <span style={{ color: '#999', marginRight: '5px', width: '70px' }}>Value:</span>
-                                            <span style={{ color: '#00ff00', fontWeight: 'bold' }}>
-                                              ${deal.total_investment.toLocaleString()}
-                                            </span>
-                                          </div>
-                                        )}
-                                        
-                                        {/* Relationship */}
-                                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '5px' }}>
-                                          <span style={{ color: '#999', marginRight: '5px', width: '70px' }}>Role:</span>
-                                          <span style={{ color: '#eee' }}>{deal.relationship}</span>
+                                      {/* Tags section */}
+                                      <div style={{ marginBottom: '15px' }}>
+                                        <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '3px' }}>Tags</div>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                          {dealTags[deal.deal_id] && dealTags[deal.deal_id].length > 0 ? (
+                                            dealTags[deal.deal_id].map(tag => (
+                                              <span 
+                                                key={tag.entry_id} 
+                                                style={{ 
+                                                  backgroundColor: `rgba(${tag.color ? tag.color : '0, 255, 255'}, 0.1)`, 
+                                                  padding: '2px 6px', 
+                                                  borderRadius: '4px', 
+                                                  fontSize: '0.8rem',
+                                                  color: tag.color || '#00ffff',
+                                                  border: `1px solid rgba(${tag.color ? tag.color : '0, 255, 255'}, 0.3)`
+                                                }}
+                                              >
+                                                {tag.name}
+                                              </span>
+                                            ))
+                                          ) : (
+                                            <span style={{ color: '#777', fontStyle: 'italic', fontSize: '0.8rem' }}>No tags</span>
+                                          )}
                                         </div>
-                                        
-                                        {/* Date */}
-                                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                                          <span style={{ color: '#999', marginRight: '5px', width: '70px' }}>Updated:</span>
-                                          <span style={{ color: '#999', fontSize: '0.8rem' }}>
-                                            {new Date(deal.last_modified_at).toLocaleDateString()}
-                                          </span>
-                                        </div>
+                                      </div>
+                                      
+                                      {/* Simple spacer */}
+                                      <div style={{ margin: 'auto 0 15px 0' }}></div>
+                                      
+                                      {/* Edit button */}
+                                      <button 
+                                          type="button"
+                                          style={{
+                                            backgroundColor: 'rgba(0, 255, 0, 0.1)',
+                                            border: '1px solid rgba(0, 255, 0, 0.3)',
+                                            borderRadius: '4px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            cursor: 'pointer',
+                                            padding: '5px 10px',
+                                            gap: '5px',
+                                            margin: '5px 0',
+                                            width: '100%',
+                                            position: 'relative',
+                                            zIndex: 5
+                                          }}
+                                          onClick={(e) => {
+                                            e.preventDefault(); // Prevent any default action
+                                            e.stopPropagation(); // Stop event bubbling - IMPORTANT for stopping expansion
+                                            
+                                            // Create a direct DOM modal instead of using React state
+                                            const modalContainer = document.createElement('div');
+                                            modalContainer.id = 'direct-edit-modal';
+                                            modalContainer.style.position = 'fixed';
+                                            modalContainer.style.zIndex = '10000';
+                                            modalContainer.style.top = '0';
+                                            modalContainer.style.left = '0';
+                                            modalContainer.style.width = '100%';
+                                            modalContainer.style.height = '100%';
+                                            modalContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.75)';
+                                            modalContainer.style.display = 'flex';
+                                            modalContainer.style.alignItems = 'center';
+                                            modalContainer.style.justifyContent = 'center';
+                                            
+                                            // Create modal content with better styling
+                                            modalContainer.innerHTML = `
+                                              <div style="background-color: #222; border-radius: 8px; padding: 20px; border: 1px solid #333; max-width: 600px; width: 90%; color: #eee; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);">
+                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid #333;">
+                                                  <h2 style="margin: 0; font-size: 1.4rem; color: #00ff00;">Edit Deal Working Modal</h2>
+                                                  <button id="close-modal-btn" style="background: none; border: none; color: #ccc; font-size: 1.5rem; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; transition: background-color 0.2s;">✕</button>
+                                                </div>
+                                                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; min-height: 200px;">
+                                                  <h3 style="color: #00ffff; font-size: 1.5rem; text-align: center; margin: 20px 0;">Coming Soon</h3>
+                                                  <div style="margin-top: 20px; color: #bbb; font-size: 1.1rem;">Deal: <strong>${deal.opportunity}</strong></div>
+                                                </div>
+                                              </div>
+                                            `;
+                                            
+                                            // Add to body
+                                            document.body.appendChild(modalContainer);
+                                            
+                                            // Add event listeners for close button and escape key
+                                            setTimeout(() => {
+                                              const closeBtn = document.getElementById('close-modal-btn');
+                                              
+                                              // Add hover effect
+                                              closeBtn.addEventListener('mouseover', () => {
+                                                closeBtn.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                                              });
+                                              
+                                              closeBtn.addEventListener('mouseout', () => {
+                                                closeBtn.style.backgroundColor = 'transparent';
+                                              });
+                                              
+                                              // Close on button click
+                                              closeBtn.addEventListener('click', () => {
+                                                document.body.removeChild(modalContainer);
+                                              });
+                                              
+                                              // Close on ESC key press
+                                              document.addEventListener('keydown', (e) => {
+                                                if (e.key === 'Escape' && document.body.contains(modalContainer)) {
+                                                  document.body.removeChild(modalContainer);
+                                                }
+                                              });
+                                              
+                                              // Close on background click (modal container but not modal content)
+                                              modalContainer.addEventListener('click', (e) => {
+                                                if (e.target === modalContainer) {
+                                                  document.body.removeChild(modalContainer);
+                                                }
+                                              });
+                                            }, 100);
+                                          }}
+                                          title="Edit deal"
+                                        >
+                                          <FiEdit size={14} color="#00ff00" />
+                                          <span style={{ color: '#00ff00', fontSize: '0.85rem' }}>Edit Deal</span>
+                                        </button>
                                       </div>
                                     </div>
-                                  </div>
-                                )) : null}
+                                  ))
+                                ) : null}
                               </div>
                             </div>
                           )}
@@ -13949,11 +14104,11 @@ const handleInputChange = (field, value) => {
                   
                   <div>
                     <ActionButton 
-                      onClick={() => goToStep(4)} 
+                      onClick={saveToCRM} 
                       disabled={loading}
                       style={{ marginRight: '10px' }}
                     >
-                      Recap <FiArrowRight />
+                      Save to CRM <FiCheck />
                     </ActionButton>
                   
                     <ActionButton 
@@ -13968,8 +14123,8 @@ const handleInputChange = (field, value) => {
                             // Move to next section
                             setActiveEnrichmentSection(sections[currentIndex + 1]);
                           } else {
-                            // After going through all sections, move to recap
-                            goToStep(4);
+                            // Save when done with all sections
+                            saveToCRM();
                           }
                         }
                       }} 
@@ -13983,484 +14138,8 @@ const handleInputChange = (field, value) => {
             </InteractionsLayout>
           </Card>
         </>
-      )}      {/* Step 4: Recap */}
-      {currentStep === 4 && (
-        <>
-          <Card>
-            <SectionTitle>
-              <FiUser /> Contact Information Recap
-            </SectionTitle>
-            
-            <InteractionsLayout>
-              <InteractionsContainer>
-                <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
-                  {/* 3-column layout for fields */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', width: '100%' }}>
-                    {/* Column 1: Basic Info */}
-                    <div>
-                      <FormGroup>
-                        <FormFieldLabel>First Name & Last Name</FormFieldLabel>
-                        <div style={{ 
-                          background: '#222', 
-                          padding: '12px', 
-                          borderRadius: '4px',
-                          marginBottom: '15px',
-                          display: 'flex',
-                          gap: '10px'
-                        }}>
-                          <Input 
-                            type="text"
-                            value={formData.firstName || ''}
-                            onChange={(e) => handleInputChange('firstName', e.target.value)}
-                            placeholder="First name"
-                            style={{ flex: 1 }}
-                          />
-                          <Input 
-                            type="text"
-                            value={formData.lastName || ''}
-                            onChange={(e) => handleInputChange('lastName', e.target.value)}
-                            placeholder="Last name"
-                            style={{ flex: 1 }}
-                          />
-                        </div>
-                      </FormGroup>
-
-                      <FormGroup>
-                        <FormFieldLabel>Email</FormFieldLabel>
-                        <div style={{ 
-                          background: '#222', 
-                          padding: '12px', 
-                          borderRadius: '4px',
-                          marginBottom: '15px'
-                        }}>
-                          <Input 
-                            type="email"
-                            value={formData.email || ''}
-                            onChange={(e) => handleInputChange('email', e.target.value)}
-                            placeholder="Email address"
-                          />
-                        </div>
-                      </FormGroup>
-                      
-                      <FormGroup>
-                        <FormFieldLabel>Mobile</FormFieldLabel>
-                        <div style={{ 
-                          background: '#222', 
-                          padding: '12px', 
-                          borderRadius: '4px',
-                          marginBottom: '15px'
-                        }}>
-                          <Input 
-                            type="tel"
-                            value={formData.mobile || ''}
-                            onChange={(e) => handleInputChange('mobile', e.target.value)}
-                            placeholder="Mobile number"
-                          />
-                        </div>
-                      </FormGroup>
-                    </div>
-                    
-                    {/* Column 2: Professional Info */}
-                    <div>
-                      <FormGroup>
-                        <FormFieldLabel>Job Role</FormFieldLabel>
-                        <div style={{ 
-                          background: '#222', 
-                          padding: '12px', 
-                          borderRadius: '4px',
-                          marginBottom: '15px'
-                        }}>
-                          <Input 
-                            type="text"
-                            value={formData.jobRole || ''}
-                            onChange={(e) => handleInputChange('jobRole', e.target.value)}
-                            placeholder="Enter job title"
-                          />
-                        </div>
-                      </FormGroup>
-                      
-                      <FormGroup>
-                        <FormFieldLabel>LinkedIn Profile</FormFieldLabel>
-                        <div style={{ 
-                          background: '#222', 
-                          padding: '12px', 
-                          borderRadius: '4px',
-                          marginBottom: '15px'
-                        }}>
-                          <Input 
-                            type="text"
-                            value={formData.linkedIn || ''}
-                            onChange={(e) => handleInputChange('linkedIn', e.target.value)}
-                            placeholder="Enter LinkedIn URL"
-                          />
-                        </div>
-                      </FormGroup>
-                      
-                      <FormGroup>
-                        <FormFieldLabel>Company</FormFieldLabel>
-                        <div style={{ 
-                          background: '#222', 
-                          padding: '12px', 
-                          borderRadius: '4px',
-                          marginBottom: '15px'
-                        }}>
-                          <Select 
-                            value={formData.company?.id || ''}
-                            onChange={(e) => {
-                              const companyId = e.target.value;
-                              handleInputChange('company', companyId ? { 
-                                id: companyId, 
-                                name: e.target.options[e.target.selectedIndex].text 
-                              } : null);
-                            }}
-                          >
-                            <option value="">Select a company</option>
-                            <option value="1">Acme Corp</option>
-                            <option value="2">Stark Industries</option>
-                            <option value="3">Wayne Enterprises</option>
-                            <option value="4">Hooli</option>
-                            <option value="5">Pied Piper</option>
-                          </Select>
-                        </div>
-                      </FormGroup>
-                    </div>
-                    
-                    {/* Column 3: Additional Info */}
-                    <div>
-                      <FormGroup>
-                        <FormFieldLabel>Category</FormFieldLabel>
-                        <div style={{ 
-                          background: '#222', 
-                          padding: '12px', 
-                          borderRadius: '4px',
-                          marginBottom: '15px'
-                        }}>
-                          <Select 
-                            value={formData.category || ''}
-                            onChange={(e) => handleInputChange('category', e.target.value)}
-                          >
-                            <option value="">Select a category</option>
-                            <option value="Lead">Lead</option>
-                            <option value="Customer">Customer</option>
-                            <option value="Partner">Partner</option>
-                            <option value="Investor">Investor</option>
-                            <option value="Advisor">Advisor</option>
-                            <option value="Other">Other</option>
-                          </Select>
-                        </div>
-                      </FormGroup>
-                      
-                      <FormGroup>
-                        <FormFieldLabel>Rating</FormFieldLabel>
-                        <div style={{ 
-                          background: '#222', 
-                          padding: '12px', 
-                          borderRadius: '4px',
-                          marginBottom: '15px'
-                        }}>
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            {[1, 2, 3, 4, 5].map((star) => (
-                              <div 
-                                key={star}
-                                onClick={() => handleInputChange('score', star === formData.score ? null : star)}
-                                style={{ 
-                                  cursor: 'pointer',
-                                  color: formData.score >= star ? '#ffbb00' : '#555',
-                                  fontSize: '24px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  width: '30px',
-                                  height: '30px'
-                                }}
-                              >
-                                ★
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </FormGroup>
-                      
-                      <FormGroup>
-                        <FormFieldLabel>Birthday</FormFieldLabel>
-                        <div style={{ 
-                          background: '#222', 
-                          padding: '12px', 
-                          borderRadius: '4px',
-                          marginBottom: '15px'
-                        }}>
-                          <Input 
-                            type="date"
-                            value={formData.birthday || ''}
-                            onChange={(e) => handleInputChange('birthday', e.target.value)}
-                          />
-                        </div>
-                      </FormGroup>
-                    </div>
-                  </div>
-                  
-                  {/* 2-column layout for tags and cities */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', width: '100%' }}>
-                    <div>
-                      <FormGroup>
-                        <FormFieldLabel>Tags</FormFieldLabel>
-                        <div style={{ 
-                          background: '#222', 
-                          padding: '12px', 
-                          borderRadius: '4px',
-                          marginBottom: '15px'
-                        }}>
-                          <div style={{ position: 'relative' }}>
-                            <Input 
-                              type="text"
-                              value={formData.tagInput || ''}
-                              onChange={(e) => handleInputChange('tagInput', e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' && formData.tagInput.trim()) {
-                                  e.preventDefault();
-                                  const newTags = [...(formData.tags || [])];
-                                  if (!newTags.includes(formData.tagInput.trim())) {
-                                    newTags.push(formData.tagInput.trim());
-                                    handleInputChange('tags', newTags);
-                                  }
-                                  handleInputChange('tagInput', '');
-                                }
-                              }}
-                              placeholder="Type a tag and press Enter"
-                            />
-                            <button
-                              onClick={() => {
-                                if (formData.tagInput.trim()) {
-                                  const newTags = [...(formData.tags || [])];
-                                  if (!newTags.includes(formData.tagInput.trim())) {
-                                    newTags.push(formData.tagInput.trim());
-                                    handleInputChange('tags', newTags);
-                                  }
-                                  handleInputChange('tagInput', '');
-                                }
-                              }}
-                              style={{
-                                position: 'absolute',
-                                right: '5px',
-                                top: '50%',
-                                transform: 'translateY(-50%)',
-                                background: 'none',
-                                border: 'none',
-                                color: '#00ff00',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              <FiPlus size={16} />
-                            </button>
-                          </div>
-                          
-                          {formData.tags && formData.tags.length > 0 && (
-                            <TagsContainer>
-                              {formData.tags.map((tag, index) => (
-                                <Tag key={index}>
-                                  {tag}
-                                  <span 
-                                    className="remove" 
-                                    onClick={() => {
-                                      const newTags = [...formData.tags];
-                                      newTags.splice(index, 1);
-                                      handleInputChange('tags', newTags);
-                                    }}
-                                  >
-                                    <FiX size={14} />
-                                  </span>
-                                </Tag>
-                              ))}
-                            </TagsContainer>
-                          )}
-                        </div>
-                      </FormGroup>
-                    </div>
-                    
-                    <div>
-                      <FormGroup>
-                        <FormFieldLabel>Cities</FormFieldLabel>
-                        <div style={{ 
-                          background: '#222', 
-                          padding: '12px', 
-                          borderRadius: '4px',
-                          marginBottom: '15px'
-                        }}>
-                          <div style={{ position: 'relative' }}>
-                            <Input 
-                              type="text"
-                              value={formData.cityInput || ''}
-                              onChange={(e) => handleInputChange('cityInput', e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' && formData.cityInput.trim()) {
-                                  e.preventDefault();
-                                  const newCities = [...(formData.cities || [])];
-                                  if (!newCities.includes(formData.cityInput.trim())) {
-                                    newCities.push(formData.cityInput.trim());
-                                    handleInputChange('cities', newCities);
-                                  }
-                                  handleInputChange('cityInput', '');
-                                }
-                              }}
-                              placeholder="Type a city and press Enter"
-                            />
-                            <button
-                              onClick={() => {
-                                if (formData.cityInput.trim()) {
-                                  const newCities = [...(formData.cities || [])];
-                                  if (!newCities.includes(formData.cityInput.trim())) {
-                                    newCities.push(formData.cityInput.trim());
-                                    handleInputChange('cities', newCities);
-                                  }
-                                  handleInputChange('cityInput', '');
-                                }
-                              }}
-                              style={{
-                                position: 'absolute',
-                                right: '5px',
-                                top: '50%',
-                                transform: 'translateY(-50%)',
-                                background: 'none',
-                                border: 'none',
-                                color: '#00ff00',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              <FiPlus size={16} />
-                            </button>
-                          </div>
-                          
-                          {formData.cities && formData.cities.length > 0 && (
-                            <TagsContainer>
-                              {formData.cities.map((city, index) => (
-                                <Tag key={index}>
-                                  {typeof city === 'object' ? city.name : city}
-                                  <span 
-                                    className="remove" 
-                                    onClick={() => {
-                                      const newCities = [...formData.cities];
-                                      newCities.splice(index, 1);
-                                      handleInputChange('cities', newCities);
-                                    }}
-                                  >
-                                    <FiX size={14} />
-                                  </span>
-                                </Tag>
-                              ))}
-                            </TagsContainer>
-                          )}
-                        </div>
-                      </FormGroup>
-                    </div>
-                  </div>
-                  
-                  {/* 2-column layout for description/notes */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', width: '100%' }}>
-                    <div>
-                      <FormGroup>
-                        <FormFieldLabel>Description</FormFieldLabel>
-                        <div style={{ 
-                          background: '#222', 
-                          padding: '12px', 
-                          borderRadius: '4px',
-                          marginBottom: '15px'
-                        }}>
-                          <TextArea 
-                            value={formData.description || ''}
-                            onChange={(e) => handleInputChange('description', e.target.value)}
-                            placeholder="Add description about this contact..."
-                            style={{ minHeight: '120px' }}
-                          />
-                        </div>
-                      </FormGroup>
-                    </div>
-                    
-                    <div>
-                      <FormGroup>
-                        <FormFieldLabel>Notes</FormFieldLabel>
-                        <div style={{ 
-                          background: '#222', 
-                          padding: '12px', 
-                          borderRadius: '4px',
-                          marginBottom: '15px'
-                        }}>
-                          <TextArea 
-                            value={formData.notes || ''}
-                            onChange={(e) => handleInputChange('notes', e.target.value)}
-                            placeholder="Enter notes about this contact"
-                            style={{ minHeight: '120px' }}
-                          />
-                        </div>
-                      </FormGroup>
-                    </div>
-                  </div>
-                  
-                  {/* Keep in touch */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', width: '100%' }}>
-                    <div>
-                      <FormGroup>
-                        <FormFieldLabel>Keep in Touch</FormFieldLabel>
-                        <div style={{ 
-                          background: '#222', 
-                          padding: '12px', 
-                          borderRadius: '4px',
-                          marginBottom: '15px'
-                        }}>
-                          <Select 
-                            value={formData.keepInTouch || ''}
-                            onChange={(e) => handleInputChange('keepInTouch', e.target.value)}
-                          >
-                            <option value="">Select frequency</option>
-                            <option value="weekly">Weekly</option>
-                            <option value="biweekly">Bi-weekly</option>
-                            <option value="monthly">Monthly</option>
-                            <option value="quarterly">Quarterly</option>
-                            <option value="biannually">Bi-annually</option>
-                            <option value="annually">Annually</option>
-                          </Select>
-                        </div>
-                      </FormGroup>
-                    </div>
-                    
-                    <div>
-                      <FormGroup>
-                        <FormFieldLabel>Deal Information</FormFieldLabel>
-                        <div style={{ 
-                          background: '#222', 
-                          padding: '12px', 
-                          borderRadius: '4px',
-                          marginBottom: '15px'
-                        }}>
-                          <TextArea 
-                            value={formData.dealInfo || ''}
-                            onChange={(e) => handleInputChange('dealInfo', e.target.value)}
-                            placeholder="Enter any deal-related information"
-                            style={{ minHeight: '100px' }}
-                          />
-                        </div>
-                      </FormGroup>
-                    </div>
-                  </div>
-                </div>
-                
-                <ButtonGroup style={{ marginTop: '20px', marginBottom: '20px', width: '100%', justifyContent: 'space-between' }}>
-                  <ActionButton onClick={() => goToStep(3)} disabled={loading}>
-                    <FiArrowLeft /> Back
-                  </ActionButton>
-                  <ActionButton 
-                    variant="primary" 
-                    onClick={saveToCRM} 
-                    disabled={loading}
-                  >
-                    <FiCheck /> Add to CRM
-                  </ActionButton>
-                </ButtonGroup>
-              </InteractionsContainer>
-            </InteractionsLayout>
-          </Card>
-        </>
       )}
-      
+
       {/* Delete confirmation modal */}
       <Modal
         isOpen={deleteModalOpen}
