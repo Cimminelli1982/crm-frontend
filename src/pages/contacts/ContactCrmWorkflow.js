@@ -18,7 +18,6 @@ import CompanyContactsModal from '../../components/modals/CompanyContactsModal';
 import DuplicateProcessingModal from '../../components/modals/DuplicateProcessingModal';
 import NewIntroductionModal from '../../components/modals/NewIntroductionModal';
 import ViewDealModal from '../../components/modals/ViewDealModal';
-import EditDealModalPortal from '../../components/modals/EditDealModalPortal';
 import DealViewModalPortal from '../../components/modals/DealViewModalPortal';
 import { 
   FiX, 
