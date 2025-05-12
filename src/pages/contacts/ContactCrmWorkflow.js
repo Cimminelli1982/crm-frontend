@@ -13475,7 +13475,7 @@ const handleInputChange = (field, value) => {
                                       {/* Main deal information grid */}
                                       <div style={{ 
                                         display: 'grid',
-                                        gridTemplateColumns: '1fr 1fr 2fr',
+                                        gridTemplateColumns: '1fr 1fr 3fr',
                                         gap: '12px',
                                         marginBottom: '15px',
                                         fontSize: '0.9rem'
@@ -13582,149 +13582,170 @@ const handleInputChange = (field, value) => {
                                         {/* Description - Spanning the third column grid area */}
                                         <div className="deal-attribute" style={{ 
                                           gridColumn: '3 / 4', 
-                                          gridRow: '1 / 5',
+                                          gridRow: '1 / 8',
                                           display: 'flex',
                                           flexDirection: 'column',
-                                          width: '100%'
+                                          width: '100%',
+                                          height: '100%'
                                         }}>
-                                          <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '3px' }}>Description</div>
+                                          <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '5px' }}>Description</div>
                                           <div style={{ 
                                             flex: 1,
                                             color: '#bbb',
                                             fontSize: '0.9rem',
                                             backgroundColor: 'rgba(0, 0, 0, 0.2)',
                                             borderRadius: '4px',
-                                            padding: '12px',
+                                            padding: '14px',
                                             height: '100%',
-                                            minHeight: '120px',
+                                            minHeight: '200px',
+                                            maxHeight: '300px',
                                             overflow: 'auto',
-                                            lineHeight: '1.5'
+                                            lineHeight: '1.6',
+                                            whiteSpace: 'pre-wrap',
+                                            boxShadow: 'inset 0 0 5px rgba(0, 0, 0, 0.3)',
+                                            scrollbarWidth: 'thin',
+                                            scrollbarColor: '#555 #222'
                                           }}>
                                             {deal.description || 'No description provided for this deal.'}
                                           </div>
                                         </div>
                                       </div>
                                       
-                                      {/* Tags section */}
-                                      <div style={{ marginBottom: '15px' }}>
-                                        <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '3px' }}>Tags</div>
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                                          {dealTags[deal.deal_id] && dealTags[deal.deal_id].length > 0 ? (
-                                            dealTags[deal.deal_id].map(tag => (
-                                              <span 
-                                                key={tag.entry_id} 
-                                                style={{ 
-                                                  backgroundColor: `rgba(${tag.color ? tag.color : '0, 255, 255'}, 0.1)`, 
-                                                  padding: '2px 6px', 
-                                                  borderRadius: '4px', 
-                                                  fontSize: '0.8rem',
-                                                  color: tag.color || '#00ffff',
-                                                  border: `1px solid rgba(${tag.color ? tag.color : '0, 255, 255'}, 0.3)`
-                                                }}
-                                              >
-                                                {tag.name}
-                                              </span>
-                                            ))
-                                          ) : (
-                                            <span style={{ color: '#777', fontStyle: 'italic', fontSize: '0.8rem' }}>No tags</span>
-                                          )}
-                                        </div>
-                                      </div>
-                                      
-                                      {/* Simple spacer */}
-                                      <div style={{ margin: 'auto 0 15px 0' }}></div>
-                                      
-                                      {/* Edit button */}
-                                      <button 
-                                          type="button"
-                                          style={{
-                                            backgroundColor: 'rgba(0, 255, 0, 0.1)',
-                                            border: '1px solid rgba(0, 255, 0, 0.3)',
+                                      {/* Tags and actions section - Two column layout */}
+                                      <div style={{ 
+                                        display: 'grid', 
+                                        gridTemplateColumns: '2fr 1fr', 
+                                        marginTop: '15px',
+                                        marginBottom: '15px',
+                                        gap: '15px'
+                                      }}>
+                                        {/* Tags on the left */}
+                                        <div>
+                                          <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '5px' }}>Tags</div>
+                                          <div style={{ 
+                                            display: 'flex', 
+                                            flexWrap: 'wrap', 
+                                            gap: '4px',
+                                            backgroundColor: 'rgba(0, 0, 0, 0.1)',
+                                            padding: '8px',
                                             borderRadius: '4px',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            cursor: 'pointer',
-                                            padding: '5px 10px',
-                                            gap: '5px',
-                                            margin: '5px 0',
-                                            width: '100%',
-                                            position: 'relative',
-                                            zIndex: 5
-                                          }}
-                                          onClick={(e) => {
-                                            e.preventDefault(); // Prevent any default action
-                                            e.stopPropagation(); // Stop event bubbling - IMPORTANT for stopping expansion
-                                            
-                                            // Create a direct DOM modal instead of using React state
-                                            const modalContainer = document.createElement('div');
-                                            modalContainer.id = 'direct-edit-modal';
-                                            modalContainer.style.position = 'fixed';
-                                            modalContainer.style.zIndex = '10000';
-                                            modalContainer.style.top = '0';
-                                            modalContainer.style.left = '0';
-                                            modalContainer.style.width = '100%';
-                                            modalContainer.style.height = '100%';
-                                            modalContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.75)';
-                                            modalContainer.style.display = 'flex';
-                                            modalContainer.style.alignItems = 'center';
-                                            modalContainer.style.justifyContent = 'center';
-                                            
-                                            // Create modal content with better styling
-                                            modalContainer.innerHTML = `
-                                              <div style="background-color: #222; border-radius: 8px; padding: 20px; border: 1px solid #333; max-width: 600px; width: 90%; color: #eee; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);">
-                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid #333;">
-                                                  <h2 style="margin: 0; font-size: 1.4rem; color: #00ff00;">Edit Deal Working Modal</h2>
-                                                  <button id="close-modal-btn" style="background: none; border: none; color: #ccc; font-size: 1.5rem; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; transition: background-color 0.2s;">✕</button>
+                                            minHeight: '32px'
+                                          }}>
+                                            {dealTags[deal.deal_id] && dealTags[deal.deal_id].length > 0 ? (
+                                              dealTags[deal.deal_id].map(tag => (
+                                                <span 
+                                                  key={tag.entry_id} 
+                                                  style={{ 
+                                                    backgroundColor: `rgba(${tag.color ? tag.color : '0, 255, 255'}, 0.1)`, 
+                                                    padding: '3px 8px', 
+                                                    borderRadius: '4px', 
+                                                    fontSize: '0.85rem',
+                                                    color: tag.color || '#00ffff',
+                                                    border: `1px solid rgba(${tag.color ? tag.color : '0, 255, 255'}, 0.3)`
+                                                  }}
+                                                >
+                                                  {tag.name}
+                                                </span>
+                                              ))
+                                            ) : (
+                                              <span style={{ color: '#777', fontStyle: 'italic', fontSize: '0.85rem' }}>No tags</span>
+                                            )}
+                                          </div>
+                                        </div>
+                                        
+                                        {/* Edit button on the right */}
+                                        <div>
+                                          <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '5px' }}>Actions</div>
+                                          <button 
+                                            type="button"
+                                            style={{
+                                              backgroundColor: 'rgba(0, 255, 0, 0.1)',
+                                              border: '1px solid rgba(0, 255, 0, 0.3)',
+                                              borderRadius: '4px',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              justifyContent: 'center',
+                                              cursor: 'pointer',
+                                              padding: '8px 10px',
+                                              gap: '5px',
+                                              width: '100%',
+                                              position: 'relative',
+                                              zIndex: 5,
+                                              height: '38px'
+                                            }}
+                                            onClick={(e) => {
+                                              e.preventDefault(); // Prevent any default action
+                                              e.stopPropagation(); // Stop event bubbling
+                                              
+                                              // Create a direct DOM modal instead of using React state
+                                              const modalContainer = document.createElement('div');
+                                              modalContainer.id = 'direct-edit-modal';
+                                              modalContainer.style.position = 'fixed';
+                                              modalContainer.style.zIndex = '10000';
+                                              modalContainer.style.top = '0';
+                                              modalContainer.style.left = '0';
+                                              modalContainer.style.width = '100%';
+                                              modalContainer.style.height = '100%';
+                                              modalContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.75)';
+                                              modalContainer.style.display = 'flex';
+                                              modalContainer.style.alignItems = 'center';
+                                              modalContainer.style.justifyContent = 'center';
+                                              
+                                              // Create modal content with better styling
+                                              modalContainer.innerHTML = `
+                                                <div style="background-color: #222; border-radius: 8px; padding: 20px; border: 1px solid #333; max-width: 600px; width: 90%; color: #eee; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);">
+                                                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid #333;">
+                                                    <h2 style="margin: 0; font-size: 1.4rem; color: #00ff00;">Edit Deal Working Modal</h2>
+                                                    <button id="close-modal-btn" style="background: none; border: none; color: #ccc; font-size: 1.5rem; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; transition: background-color 0.2s;">✕</button>
+                                                  </div>
+                                                  <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; min-height: 200px;">
+                                                    <h3 style="color: #00ffff; font-size: 1.5rem; text-align: center; margin: 20px 0;">Coming Soon</h3>
+                                                    <div style="margin-top: 20px; color: #bbb; font-size: 1.1rem;">Deal: <strong>${deal.opportunity}</strong></div>
+                                                  </div>
                                                 </div>
-                                                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; min-height: 200px;">
-                                                  <h3 style="color: #00ffff; font-size: 1.5rem; text-align: center; margin: 20px 0;">Coming Soon</h3>
-                                                  <div style="margin-top: 20px; color: #bbb; font-size: 1.1rem;">Deal: <strong>${deal.opportunity}</strong></div>
-                                                </div>
-                                              </div>
-                                            `;
-                                            
-                                            // Add to body
-                                            document.body.appendChild(modalContainer);
-                                            
-                                            // Add event listeners for close button and escape key
-                                            setTimeout(() => {
-                                              const closeBtn = document.getElementById('close-modal-btn');
+                                              `;
                                               
-                                              // Add hover effect
-                                              closeBtn.addEventListener('mouseover', () => {
-                                                closeBtn.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-                                              });
+                                              // Add to body
+                                              document.body.appendChild(modalContainer);
                                               
-                                              closeBtn.addEventListener('mouseout', () => {
-                                                closeBtn.style.backgroundColor = 'transparent';
-                                              });
-                                              
-                                              // Close on button click
-                                              closeBtn.addEventListener('click', () => {
-                                                document.body.removeChild(modalContainer);
-                                              });
-                                              
-                                              // Close on ESC key press
-                                              document.addEventListener('keydown', (e) => {
-                                                if (e.key === 'Escape' && document.body.contains(modalContainer)) {
+                                              // Add event listeners for close button and escape key
+                                              setTimeout(() => {
+                                                const closeBtn = document.getElementById('close-modal-btn');
+                                                
+                                                // Add hover effect
+                                                closeBtn.addEventListener('mouseover', () => {
+                                                  closeBtn.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                                                });
+                                                
+                                                closeBtn.addEventListener('mouseout', () => {
+                                                  closeBtn.style.backgroundColor = 'transparent';
+                                                });
+                                                
+                                                // Close on button click
+                                                closeBtn.addEventListener('click', () => {
                                                   document.body.removeChild(modalContainer);
-                                                }
-                                              });
-                                              
-                                              // Close on background click (modal container but not modal content)
-                                              modalContainer.addEventListener('click', (e) => {
-                                                if (e.target === modalContainer) {
-                                                  document.body.removeChild(modalContainer);
-                                                }
-                                              });
-                                            }, 100);
-                                          }}
-                                          title="Edit deal"
-                                        >
-                                          <FiEdit size={14} color="#00ff00" />
-                                          <span style={{ color: '#00ff00', fontSize: '0.85rem' }}>Edit Deal</span>
-                                        </button>
+                                                });
+                                                
+                                                // Close on ESC key press
+                                                document.addEventListener('keydown', (e) => {
+                                                  if (e.key === 'Escape' && document.body.contains(modalContainer)) {
+                                                    document.body.removeChild(modalContainer);
+                                                  }
+                                                });
+                                                
+                                                // Close on background click (modal container but not modal content)
+                                                modalContainer.addEventListener('click', (e) => {
+                                                  if (e.target === modalContainer) {
+                                                    document.body.removeChild(modalContainer);
+                                                  }
+                                                });
+                                              }, 100);
+                                            }}
+                                          >
+                                            <FiEdit size={14} color="#00ff00" />
+                                            <span style={{ color: '#00ff00', fontSize: '0.85rem' }}>Edit Deal</span>
+                                          </button>
+                                        </div>
                                       </div>
                                     </div>
                                   ))
