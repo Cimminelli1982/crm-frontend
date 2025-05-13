@@ -13749,7 +13749,7 @@ const handleInputChange = (field, value) => {
                                           {editingSourceDealId === deal.deal_id ? (
                                             <div style={{ position: 'relative' }}>
                                               <React.Fragment>
-                                              <select
+                                                <select
                                                 value={editingSourceValue}
                                                 onChange={(e) => setEditingSourceValue(e.target.value)}
                                                 onBlur={() => updateDealSource(deal.deal_id, editingSourceValue)}
