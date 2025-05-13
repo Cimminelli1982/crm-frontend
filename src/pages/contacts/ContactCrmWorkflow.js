@@ -1340,12 +1340,6 @@ const ContactCrmWorkflow = () => {
   const [introductionCategories] = useState(['Business', 'Personal', 'Investment', 'Other']);
   const [introductionStatuses] = useState(['Requested', 'Completed', 'Declined', 'Pending']);
   const [selectedDeal, setSelectedDeal] = useState(null);
-  const [editingCategoryDealId, setEditingCategoryDealId] = useState(null);
-  const [editingCategoryValue, setEditingCategoryValue] = useState('');
-  const [editingSourceDealId, setEditingSourceDealId] = useState(null);
-  const [editingSourceValue, setEditingSourceValue] = useState('');
-  const [editingStageDealId, setEditingStageDealId] = useState(null);
-  const [editingStageValue, setEditingStageValue] = useState('');
   const [dealSearchQuery, setDealSearchQuery] = useState('');
   const [dealNameInput, setDealNameInput] = useState('');
   const [dealSuggestions, setDealSuggestions] = useState([]);
@@ -1355,7 +1349,7 @@ const ContactCrmWorkflow = () => {
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
   // Deal stages - using the exact enum values from the database
   const [dealStages] = useState([
-    'Lead', 'Qualified', 'Evaluating', 'Closing', 'Negotiation', 'Closed Won', 'Invested', 'Closed Lost', 'Monitoring', 'Passed'
+    'Lead', 'Qualified', 'Evaluating', 'Negotiation', 'Closing', 'Closed Won', 'Closed Lost', 'Invested', 'Monitoring', 'Passed'
   ]);
   const [dealCategories] = useState([
     'Inbox', 'Startup', 'Investment', 'Fund', 'Partnership', 'Real Estate', 'Private Debt', 'Private Equity', 'Other'
@@ -2114,7 +2108,8 @@ const ContactCrmWorkflow = () => {
           tag_id,
           tags:tag_id (
             tag_id,
-            name
+            name,
+            color
           )
         `)
         .in('deal_id', dealIds);
@@ -2136,7 +2131,7 @@ const ContactCrmWorkflow = () => {
             entry_id: tagRelation.entry_id,
             tag_id: tagRelation.tag_id,
             name: tagRelation.tags.name,
-            color: '#00ffff' // Default color since color column doesn't exist
+            color: tagRelation.tags.color || '#00ffff' // Default color if none set
           });
         }
       });
@@ -2761,170 +2756,6 @@ const ContactCrmWorkflow = () => {
       setDealsLoading(false);
     }
   }, [loadContactDeals, setDealsLoading, supabase, toast]); // Add dependencies for useCallback
-  
-  // Handle updating a deal's category
-  const updateDealCategory = useCallback(async (dealId, categoryValue) => {
-    try {
-      setDealsLoading(true);
-      
-      // Validate category value against allowed values
-      if (categoryValue && !dealCategories.includes(categoryValue)) {
-        console.error(`Invalid category value: ${categoryValue}. Must be one of: ${dealCategories.join(', ')}`);
-        toast.error(`Invalid category value. Must be one of: ${dealCategories.join(', ')}`);
-        return;
-      }
-      
-      console.log(`Updating deal ${dealId} with category: "${categoryValue}"`);
-      
-      // Update the deal record with the new category
-      const { data, error } = await supabase
-        .from('deals')
-        .update({
-          category: categoryValue,
-          last_modified_at: new Date().toISOString()
-        })
-        .eq('deal_id', dealId)
-        .select();
-      
-      if (error) {
-        console.error('Supabase error details:', error);
-        throw error;
-      }
-      
-      console.log('Update successful, returned data:', data);
-      
-      // Update local state to reflect the change
-      setDeals(prevDeals => 
-        prevDeals.map(deal => 
-          deal.deal_id === dealId 
-            ? { ...deal, category: categoryValue } 
-            : deal
-        )
-      );
-      
-      // Reset editing state
-      setEditingCategoryDealId(null);
-      
-      // Show success notification
-      toast.success('Deal category updated successfully');
-    } catch (err) {
-      console.error('Error updating deal category:', err);
-      console.error('Error details:', JSON.stringify(err, null, 2));
-      toast.error(`Failed to update deal category: ${err.message || 'Unknown error'}`);
-      
-      // Reset editing state on error too
-      setEditingCategoryDealId(null);
-    } finally {
-      setDealsLoading(false);
-    }
-  }, [supabase, setDeals, setEditingCategoryDealId, setDealsLoading, toast, dealCategories]);
-  
-  // Handle updating a deal's source
-  const updateDealSource = useCallback(async (dealId, sourceValue) => {
-    try {
-      setDealsLoading(true);
-      
-      // Validate source value against allowed values
-      if (sourceValue && !dealSourceCategories.includes(sourceValue)) {
-        console.error(`Invalid source value: ${sourceValue}. Must be one of: ${dealSourceCategories.join(', ')}`);
-        toast.error(`Invalid source value. Must be one of: ${dealSourceCategories.join(', ')}`);
-        return;
-      }
-      
-      console.log(`Updating deal ${dealId} with source: "${sourceValue}"`);
-      
-      // Update the deal record with the new source
-      const { data, error } = await supabase
-        .from('deals')
-        .update({
-          source_category: sourceValue,
-          last_modified_at: new Date().toISOString()
-        })
-        .eq('deal_id', dealId)
-        .select();
-      
-      if (error) {
-        console.error('Supabase error details:', error);
-        throw error;
-      }
-      
-      console.log('Update successful, returned data:', data);
-      
-      // Update local state to reflect the change
-      setDeals(prevDeals => 
-        prevDeals.map(deal => 
-          deal.deal_id === dealId 
-            ? { ...deal, source_category: sourceValue } 
-            : deal
-        )
-      );
-      
-      // Reset editing state
-      setEditingSourceDealId(null);
-      
-      // Show success notification
-      toast.success('Deal source updated successfully');
-    } catch (err) {
-      console.error('Error updating deal source:', err);
-      console.error('Error details:', JSON.stringify(err, null, 2));
-      toast.error(`Failed to update deal source: ${err.message || 'Unknown error'}`);
-      
-      // Reset editing state on error too
-      setEditingSourceDealId(null);
-    } finally {
-      setDealsLoading(false);
-    }
-  }, [supabase, setDeals, setEditingSourceDealId, setDealsLoading, toast, dealSourceCategories]);
-  
-  // Handle updating a deal's stage
-  const updateDealStage = useCallback(async (dealId, stageValue) => {
-    try {
-      setDealsLoading(true);
-      
-      console.log(`Updating deal ${dealId} with stage: "${stageValue}"`);
-      
-      // Update the deal record with the new stage
-      const { data, error } = await supabase
-        .from('deals')
-        .update({
-          stage: stageValue,
-          last_modified_at: new Date().toISOString()
-        })
-        .eq('deal_id', dealId)
-        .select();
-      
-      if (error) {
-        console.error('Supabase error details:', error);
-        throw error;
-      }
-      
-      console.log('Update successful, returned data:', data);
-      
-      // Update local state to reflect the change
-      setDeals(prevDeals => 
-        prevDeals.map(deal => 
-          deal.deal_id === dealId 
-            ? { ...deal, stage: stageValue } 
-            : deal
-        )
-      );
-      
-      // Reset editing state
-      setEditingStageDealId(null);
-      
-      // Show success notification
-      toast.success('Deal stage updated successfully');
-    } catch (err) {
-      console.error('Error updating deal stage:', err);
-      console.error('Error details:', JSON.stringify(err, null, 2));
-      toast.error(`Failed to update deal stage: ${err.message || 'Unknown error'}`);
-      
-      // Reset editing state on error too
-      setEditingStageDealId(null);
-    } finally {
-      setDealsLoading(false);
-    }
-  }, [supabase, setDeals, setEditingStageDealId, setDealsLoading, toast]);
 
   // Load all potential duplicates for a contact from the contact_duplicates table
   const loadSupabaseDuplicates = useCallback(async () => {
@@ -13619,8 +13450,7 @@ const handleInputChange = (field, value) => {
                                             overflow: 'hidden',
                                             textOverflow: 'ellipsis',
                                             outline: 'none',
-                                            marginLeft: '0',
-                                            marginBottom: '5px'
+                                            marginLeft: '0'
                                           }}
                                           onFocus={(e) => {
                                             e.currentTarget.style.borderBottom = '1px dashed #00ffff';
@@ -13637,20 +13467,6 @@ const handleInputChange = (field, value) => {
                                         >
                                           {deal.opportunity}
                                         </div>
-                                        
-                                        {/* Timestamps */}
-                                        <div style={{ fontSize: '0.75rem', color: '#999', marginBottom: '8px', display: 'flex', gap: '15px' }}>
-                                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                            <FiCalendar size={12} />
-                                            Created: {new Date(deal.created_at).toLocaleDateString()}
-                                          </span>
-                                          {deal.last_modified_at && 
-                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                              <FiCalendar size={12} />
-                                              Updated: {new Date(deal.last_modified_at).toLocaleDateString()}
-                                            </span>
-                                          }
-                                        </div>
                                       </div>
                                     </div>
                                     
@@ -13659,7 +13475,7 @@ const handleInputChange = (field, value) => {
                                       {/* Main deal information grid */}
                                       <div style={{ 
                                         display: 'grid',
-                                        gridTemplateColumns: '1fr 1fr 3fr',
+                                        gridTemplateColumns: '1fr 1fr 2fr',
                                         gap: '12px',
                                         marginBottom: '15px',
                                         fontSize: '0.9rem'
@@ -13675,64 +13491,16 @@ const handleInputChange = (field, value) => {
                                         {/* Category */}
                                         <div className="deal-attribute">
                                           <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '3px' }}>Category</div>
-                                          {editingCategoryDealId === deal.deal_id ? (
-                                            <div style={{ position: 'relative' }}>
-                                              <select
-                                                value={editingCategoryValue}
-                                                onChange={(e) => setEditingCategoryValue(e.target.value)}
-                                                onBlur={() => updateDealCategory(deal.deal_id, editingCategoryValue)}
-                                                autoFocus
-                                                style={{
-                                                  backgroundColor: '#333',
-                                                  color: '#eee',
-                                                  border: '1px solid #00ffff',
-                                                  borderRadius: '4px',
-                                                  padding: '2px 8px',
-                                                  fontSize: '0.85rem',
-                                                  width: '100%',
-                                                  outline: 'none'
-                                                }}
-                                                onClick={(e) => e.stopPropagation()}
-                                                onKeyDown={(e) => {
-                                                  if (e.key === 'Enter') {
-                                                    updateDealCategory(deal.deal_id, editingCategoryValue);
-                                                  } else if (e.key === 'Escape') {
-                                                    setEditingCategoryDealId(null);
-                                                  }
-                                                }}
-                                              >
-                                                <option value="">Not set</option>
-                                                <option value="Inbox">Inbox</option>
-                                                <option value="Startup">Startup</option>
-                                                <option value="Investment">Investment</option>
-                                                <option value="Fund">Fund</option>
-                                                <option value="Partnership">Partnership</option>
-                                                <option value="Real Estate">Real Estate</option>
-                                                <option value="Private Debt">Private Debt</option>
-                                                <option value="Private Equity">Private Equity</option>
-                                                <option value="Other">Other</option>
-                                              </select>
-                                            </div>
-                                          ) : (
-                                            <div 
-                                              style={{ 
-                                                color: '#eee',
-                                                backgroundColor: 'rgba(0, 255, 255, 0.1)',
-                                                padding: '2px 8px',
-                                                borderRadius: '4px',
-                                                fontSize: '0.85rem',
-                                                display: 'inline-block',
-                                                cursor: 'pointer'
-                                              }}
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setEditingCategoryDealId(deal.deal_id);
-                                                setEditingCategoryValue(deal.category || '');
-                                              }}
-                                            >
-                                              {deal.category || 'Not set'}
-                                            </div>
-                                          )}
+                                          <div style={{ 
+                                            color: '#eee',
+                                            backgroundColor: 'rgba(0, 255, 255, 0.1)',
+                                            padding: '2px 8px',
+                                            borderRadius: '4px',
+                                            fontSize: '0.85rem',
+                                            display: 'inline-block'
+                                          }}>
+                                            {deal.category || 'Not set'}
+                                          </div>
                                         </div>
                                         
                                         {/* Relationship/Role */}
@@ -13746,61 +13514,35 @@ const handleInputChange = (field, value) => {
                                         {/* Source */}
                                         <div className="deal-attribute">
                                           <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '3px' }}>Source</div>
-                                          {editingSourceDealId === deal.deal_id ? (
-                                            <div style={{ position: 'relative' }}>
-                                              <React.Fragment>
-                                                <select
-                                                value={editingSourceValue}
-                                                onChange={(e) => setEditingSourceValue(e.target.value)}
-                                                onBlur={() => updateDealSource(deal.deal_id, editingSourceValue)}
-                                                autoFocus
-                                                style={{
-                                                  backgroundColor: '#333',
-                                                  color: '#eee',
-                                                  border: '1px solid #ffaa00',
-                                                  borderRadius: '4px',
-                                                  padding: '2px 8px',
-                                                  fontSize: '0.85rem',
-                                                  width: '100%',
-                                                  outline: 'none'
-                                                }}
-                                                onClick={(e) => e.stopPropagation()}
-                                                onKeyDown={(e) => {
-                                                  if (e.key === 'Enter') {
-                                                    updateDealSource(deal.deal_id, editingSourceValue);
-                                                  } else if (e.key === 'Escape') {
-                                                    setEditingSourceDealId(null);
-                                                  }
-                                                }}
-                                              >
-                                                <option value="">Not Set</option>
-                                                <option value="Cold Contacting">Cold Contacting</option>
-                                                <option value="Introduction">Introduction</option>
-                                              </select>
-                                              </React.Fragment>
-                                            </div>
-                                          ) : (
-                                            <div 
-                                              style={{ 
-                                                color: '#eee',
-                                                backgroundColor: 'rgba(255, 165, 0, 0.1)',
-                                                padding: '2px 8px',
-                                                borderRadius: '4px',
-                                                fontSize: '0.85rem',
-                                                display: 'inline-block',
-                                                cursor: 'pointer'
-                                              }}
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setEditingSourceDealId(deal.deal_id);
-                                                setEditingSourceValue(deal.source_category || '');
-                                              }}
-                                            >
-                                              {deal.source_category || 'Not set'}
-                                            </div>
-                                          )}
+                                          <div style={{ 
+                                            color: '#eee',
+                                            backgroundColor: 'rgba(255, 165, 0, 0.1)',
+                                            padding: '2px 8px',
+                                            borderRadius: '4px',
+                                            fontSize: '0.85rem',
+                                            display: 'inline-block'
+                                          }}>
+                                            {deal.source_category || 'Not set'}
+                                          </div>
                                         </div>
                                         
+                                        {/* Created Date */}
+                                        <div className="deal-attribute">
+                                          <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '3px' }}>Created</div>
+                                          <div style={{ color: '#eee', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <FiCalendar size={12} />
+                                            {new Date(deal.created_at).toLocaleDateString()}
+                                          </div>
+                                        </div>
+                                        
+                                        {/* Modified Date */}
+                                        <div className="deal-attribute">
+                                          <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '3px' }}>Last Updated</div>
+                                          <div style={{ color: '#eee', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <FiCalendar size={12} />
+                                            {new Date(deal.last_modified_at).toLocaleDateString()}
+                                          </div>
+                                        </div>
                                         
                                         {/* Attachments */}
                                         <div className="deal-attribute">
@@ -13816,239 +13558,173 @@ const handleInputChange = (field, value) => {
                                         {/* Stage */}
                                         <div className="deal-attribute">
                                           <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '3px' }}>Stage</div>
-                                          {editingStageDealId === deal.deal_id ? (
-                                            <div style={{ position: 'relative' }}>
-                                              <select
-                                                value={editingStageValue}
-                                                onChange={(e) => setEditingStageValue(e.target.value)}
-                                                onBlur={() => updateDealStage(deal.deal_id, editingStageValue)}
-                                                autoFocus
-                                                style={{
-                                                  backgroundColor: '#333',
-                                                  color: editingStageValue === 'Closed Won' ? '#00ff00' : 
-                                                         editingStageValue === 'Closed Lost' ? '#ff5555' : 
-                                                         '#ffaa00',
-                                                  border: `1px solid ${
-                                                    editingStageValue === 'Closed Won' ? '#00ff00' : 
-                                                    editingStageValue === 'Closed Lost' ? '#ff5555' : 
-                                                    '#ffaa00'
-                                                  }`,
-                                                  borderRadius: '4px',
-                                                  padding: '2px 8px',
-                                                  fontSize: '0.85rem',
-                                                  width: '100%',
-                                                  outline: 'none'
-                                                }}
-                                                onClick={(e) => e.stopPropagation()}
-                                                onKeyDown={(e) => {
-                                                  if (e.key === 'Enter') {
-                                                    updateDealStage(deal.deal_id, editingStageValue);
-                                                  } else if (e.key === 'Escape') {
-                                                    setEditingStageDealId(null);
-                                                  }
-                                                }}
-                                              >
-                                                {dealStages.map(stage => (
-                                                  <option key={stage} value={stage}>{stage}</option>
-                                                ))}
-                                              </select>
-                                            </div>
-                                          ) : (
-                                            <Badge 
-                                              bg={
-                                                deal.stage === 'Closed Won' ? 'rgba(0, 255, 0, 0.2)' : 
-                                                deal.stage === 'Closed Lost' ? 'rgba(255, 0, 0, 0.2)' : 
-                                                'rgba(255, 165, 0, 0.2)'
-                                              }
-                                              color={
-                                                deal.stage === 'Closed Won' ? '#00ff00' : 
-                                                deal.stage === 'Closed Lost' ? '#ff5555' : 
-                                                '#ffaa00'
-                                              }
-                                              borderColor={
-                                                deal.stage === 'Closed Won' ? '#00ff00' : 
-                                                deal.stage === 'Closed Lost' ? '#ff5555' : 
-                                                '#ffaa00'
-                                              }
-                                              style={{ cursor: 'pointer' }}
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setEditingStageDealId(deal.deal_id);
-                                                setEditingStageValue(deal.stage || '');
-                                              }}
-                                            >
-                                              {deal.stage || 'Not set'}
-                                            </Badge>
-                                          )}
+                                          <Badge 
+                                            bg={
+                                              deal.stage === 'Closed Won' ? 'rgba(0, 255, 0, 0.2)' : 
+                                              deal.stage === 'Closed Lost' ? 'rgba(255, 0, 0, 0.2)' : 
+                                              'rgba(255, 165, 0, 0.2)'
+                                            }
+                                            color={
+                                              deal.stage === 'Closed Won' ? '#00ff00' : 
+                                              deal.stage === 'Closed Lost' ? '#ff5555' : 
+                                              '#ffaa00'
+                                            }
+                                            borderColor={
+                                              deal.stage === 'Closed Won' ? '#00ff00' : 
+                                              deal.stage === 'Closed Lost' ? '#ff5555' : 
+                                              '#ffaa00'
+                                            }
+                                          >
+                                            {deal.stage}
+                                          </Badge>
                                         </div>
                                         
                                         {/* Description - Spanning the third column grid area */}
                                         <div className="deal-attribute" style={{ 
                                           gridColumn: '3 / 4', 
-                                          gridRow: '1 / 8',
+                                          gridRow: '1 / 5',
                                           display: 'flex',
                                           flexDirection: 'column',
-                                          width: '100%',
-                                          height: '100%'
+                                          width: '100%'
                                         }}>
-                                          <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '5px' }}>Description</div>
+                                          <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '3px' }}>Description</div>
                                           <div style={{ 
                                             flex: 1,
                                             color: '#bbb',
                                             fontSize: '0.9rem',
                                             backgroundColor: 'rgba(0, 0, 0, 0.2)',
                                             borderRadius: '4px',
-                                            padding: '14px',
+                                            padding: '12px',
                                             height: '100%',
-                                            minHeight: '200px',
-                                            maxHeight: '300px',
+                                            minHeight: '120px',
                                             overflow: 'auto',
-                                            lineHeight: '1.6',
-                                            whiteSpace: 'pre-wrap',
-                                            boxShadow: 'inset 0 0 5px rgba(0, 0, 0, 0.3)',
-                                            scrollbarWidth: 'thin',
-                                            scrollbarColor: '#555 #222'
+                                            lineHeight: '1.5'
                                           }}>
                                             {deal.description || 'No description provided for this deal.'}
                                           </div>
                                         </div>
                                       </div>
                                       
-                                      {/* Tags and actions section - Two column layout */}
-                                      <div style={{ 
-                                        display: 'grid', 
-                                        gridTemplateColumns: '2fr 1fr', 
-                                        marginTop: '15px',
-                                        marginBottom: '15px',
-                                        gap: '15px'
-                                      }}>
-                                        {/* Tags on the left */}
-                                        <div>
-                                          <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '5px' }}>Tags</div>
-                                          <div style={{ 
-                                            display: 'flex', 
-                                            flexWrap: 'wrap', 
-                                            gap: '4px',
-                                            backgroundColor: 'rgba(0, 0, 0, 0.1)',
-                                            padding: '8px',
+                                      {/* Tags section */}
+                                      <div style={{ marginBottom: '15px' }}>
+                                        <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '3px' }}>Tags</div>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                          {dealTags[deal.deal_id] && dealTags[deal.deal_id].length > 0 ? (
+                                            dealTags[deal.deal_id].map(tag => (
+                                              <span 
+                                                key={tag.entry_id} 
+                                                style={{ 
+                                                  backgroundColor: `rgba(${tag.color ? tag.color : '0, 255, 255'}, 0.1)`, 
+                                                  padding: '2px 6px', 
+                                                  borderRadius: '4px', 
+                                                  fontSize: '0.8rem',
+                                                  color: tag.color || '#00ffff',
+                                                  border: `1px solid rgba(${tag.color ? tag.color : '0, 255, 255'}, 0.3)`
+                                                }}
+                                              >
+                                                {tag.name}
+                                              </span>
+                                            ))
+                                          ) : (
+                                            <span style={{ color: '#777', fontStyle: 'italic', fontSize: '0.8rem' }}>No tags</span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Simple spacer */}
+                                      <div style={{ margin: 'auto 0 15px 0' }}></div>
+                                      
+                                      {/* Edit button */}
+                                      <button 
+                                          type="button"
+                                          style={{
+                                            backgroundColor: 'rgba(0, 255, 0, 0.1)',
+                                            border: '1px solid rgba(0, 255, 0, 0.3)',
                                             borderRadius: '4px',
-                                            minHeight: '32px'
-                                          }}>
-                                            {dealTags[deal.deal_id] && dealTags[deal.deal_id].length > 0 ? (
-                                              dealTags[deal.deal_id].map(tag => (
-                                                <span 
-                                                  key={tag.entry_id} 
-                                                  style={{ 
-                                                    backgroundColor: `rgba(${tag.color ? tag.color : '0, 255, 255'}, 0.1)`, 
-                                                    padding: '3px 8px', 
-                                                    borderRadius: '4px', 
-                                                    fontSize: '0.85rem',
-                                                    color: tag.color || '#00ffff',
-                                                    border: `1px solid rgba(${tag.color ? tag.color : '0, 255, 255'}, 0.3)`
-                                                  }}
-                                                >
-                                                  {tag.name}
-                                                </span>
-                                              ))
-                                            ) : (
-                                              <span style={{ color: '#777', fontStyle: 'italic', fontSize: '0.85rem' }}>No tags</span>
-                                            )}
-                                          </div>
-                                        </div>
-                                        
-                                        {/* Edit button on the right */}
-                                        <div>
-                                          <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '5px' }}>Actions</div>
-                                          <button 
-                                            type="button"
-                                            style={{
-                                              backgroundColor: 'rgba(0, 255, 0, 0.1)',
-                                              border: '1px solid rgba(0, 255, 0, 0.3)',
-                                              borderRadius: '4px',
-                                              display: 'flex',
-                                              alignItems: 'center',
-                                              justifyContent: 'center',
-                                              cursor: 'pointer',
-                                              padding: '8px 10px',
-                                              gap: '5px',
-                                              width: '100%',
-                                              position: 'relative',
-                                              zIndex: 5,
-                                              height: '38px'
-                                            }}
-                                            onClick={(e) => {
-                                              e.preventDefault(); // Prevent any default action
-                                              e.stopPropagation(); // Stop event bubbling
-                                              
-                                              // Create a direct DOM modal instead of using React state
-                                              const modalContainer = document.createElement('div');
-                                              modalContainer.id = 'direct-edit-modal';
-                                              modalContainer.style.position = 'fixed';
-                                              modalContainer.style.zIndex = '10000';
-                                              modalContainer.style.top = '0';
-                                              modalContainer.style.left = '0';
-                                              modalContainer.style.width = '100%';
-                                              modalContainer.style.height = '100%';
-                                              modalContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.75)';
-                                              modalContainer.style.display = 'flex';
-                                              modalContainer.style.alignItems = 'center';
-                                              modalContainer.style.justifyContent = 'center';
-                                              
-                                              // Create modal content with better styling
-                                              modalContainer.innerHTML = `
-                                                <div style="background-color: #222; border-radius: 8px; padding: 20px; border: 1px solid #333; max-width: 600px; width: 90%; color: #eee; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);">
-                                                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid #333;">
-                                                    <h2 style="margin: 0; font-size: 1.4rem; color: #00ff00;">Edit Deal Working Modal</h2>
-                                                    <button id="close-modal-btn" style="background: none; border: none; color: #ccc; font-size: 1.5rem; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; transition: background-color 0.2s;">✕</button>
-                                                  </div>
-                                                  <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; min-height: 200px;">
-                                                    <h3 style="color: #00ffff; font-size: 1.5rem; text-align: center; margin: 20px 0;">Coming Soon</h3>
-                                                    <div style="margin-top: 20px; color: #bbb; font-size: 1.1rem;">Deal: <strong>${deal.opportunity}</strong></div>
-                                                  </div>
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            cursor: 'pointer',
+                                            padding: '5px 10px',
+                                            gap: '5px',
+                                            margin: '5px 0',
+                                            width: '100%',
+                                            position: 'relative',
+                                            zIndex: 5
+                                          }}
+                                          onClick={(e) => {
+                                            e.preventDefault(); // Prevent any default action
+                                            e.stopPropagation(); // Stop event bubbling - IMPORTANT for stopping expansion
+                                            
+                                            // Create a direct DOM modal instead of using React state
+                                            const modalContainer = document.createElement('div');
+                                            modalContainer.id = 'direct-edit-modal';
+                                            modalContainer.style.position = 'fixed';
+                                            modalContainer.style.zIndex = '10000';
+                                            modalContainer.style.top = '0';
+                                            modalContainer.style.left = '0';
+                                            modalContainer.style.width = '100%';
+                                            modalContainer.style.height = '100%';
+                                            modalContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.75)';
+                                            modalContainer.style.display = 'flex';
+                                            modalContainer.style.alignItems = 'center';
+                                            modalContainer.style.justifyContent = 'center';
+                                            
+                                            // Create modal content with better styling
+                                            modalContainer.innerHTML = `
+                                              <div style="background-color: #222; border-radius: 8px; padding: 20px; border: 1px solid #333; max-width: 600px; width: 90%; color: #eee; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);">
+                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid #333;">
+                                                  <h2 style="margin: 0; font-size: 1.4rem; color: #00ff00;">Edit Deal Working Modal</h2>
+                                                  <button id="close-modal-btn" style="background: none; border: none; color: #ccc; font-size: 1.5rem; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; transition: background-color 0.2s;">✕</button>
                                                 </div>
-                                              `;
+                                                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; min-height: 200px;">
+                                                  <h3 style="color: #00ffff; font-size: 1.5rem; text-align: center; margin: 20px 0;">Coming Soon</h3>
+                                                  <div style="margin-top: 20px; color: #bbb; font-size: 1.1rem;">Deal: <strong>${deal.opportunity}</strong></div>
+                                                </div>
+                                              </div>
+                                            `;
+                                            
+                                            // Add to body
+                                            document.body.appendChild(modalContainer);
+                                            
+                                            // Add event listeners for close button and escape key
+                                            setTimeout(() => {
+                                              const closeBtn = document.getElementById('close-modal-btn');
                                               
-                                              // Add to body
-                                              document.body.appendChild(modalContainer);
+                                              // Add hover effect
+                                              closeBtn.addEventListener('mouseover', () => {
+                                                closeBtn.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                                              });
                                               
-                                              // Add event listeners for close button and escape key
-                                              setTimeout(() => {
-                                                const closeBtn = document.getElementById('close-modal-btn');
-                                                
-                                                // Add hover effect
-                                                closeBtn.addEventListener('mouseover', () => {
-                                                  closeBtn.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-                                                });
-                                                
-                                                closeBtn.addEventListener('mouseout', () => {
-                                                  closeBtn.style.backgroundColor = 'transparent';
-                                                });
-                                                
-                                                // Close on button click
-                                                closeBtn.addEventListener('click', () => {
+                                              closeBtn.addEventListener('mouseout', () => {
+                                                closeBtn.style.backgroundColor = 'transparent';
+                                              });
+                                              
+                                              // Close on button click
+                                              closeBtn.addEventListener('click', () => {
+                                                document.body.removeChild(modalContainer);
+                                              });
+                                              
+                                              // Close on ESC key press
+                                              document.addEventListener('keydown', (e) => {
+                                                if (e.key === 'Escape' && document.body.contains(modalContainer)) {
                                                   document.body.removeChild(modalContainer);
-                                                });
-                                                
-                                                // Close on ESC key press
-                                                document.addEventListener('keydown', (e) => {
-                                                  if (e.key === 'Escape' && document.body.contains(modalContainer)) {
-                                                    document.body.removeChild(modalContainer);
-                                                  }
-                                                });
-                                                
-                                                // Close on background click (modal container but not modal content)
-                                                modalContainer.addEventListener('click', (e) => {
-                                                  if (e.target === modalContainer) {
-                                                    document.body.removeChild(modalContainer);
-                                                  }
-                                                });
-                                              }, 100);
-                                            }}
-                                          >
-                                            <FiEdit size={14} color="#00ff00" />
-                                            <span style={{ color: '#00ff00', fontSize: '0.85rem' }}>Edit Deal</span>
-                                          </button>
-                                        </div>
+                                                }
+                                              });
+                                              
+                                              // Close on background click (modal container but not modal content)
+                                              modalContainer.addEventListener('click', (e) => {
+                                                if (e.target === modalContainer) {
+                                                  document.body.removeChild(modalContainer);
+                                                }
+                                              });
+                                            }, 100);
+                                          }}
+                                          title="Edit deal"
+                                        >
+                                          <FiEdit size={14} color="#00ff00" />
+                                          <span style={{ color: '#00ff00', fontSize: '0.85rem' }}>Edit Deal</span>
+                                        </button>
                                       </div>
                                     </div>
                                   ))

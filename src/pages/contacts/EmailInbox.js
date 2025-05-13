@@ -790,6 +790,15 @@ const EmailInbox = () => {
       if (error) throw error;
       
       console.log(`Successfully fetched ${data?.length || 0} emails`);
+      
+      // If no emails, set empty array and finish loading immediately
+      if (!data || data.length === 0) {
+        setEmails([]);
+        setLoading(false);
+        setDataLoaded(true);
+        setShowGrid(true);
+        return;
+      }
       setEmails(data || []);
       setLoading(false);
       setDataLoaded(true);
@@ -920,9 +929,17 @@ const EmailInbox = () => {
           textAlign: 'center',
           color: '#00ff00',
           background: '#121212',
-          borderRadius: '8px'
+          borderRadius: '8px',
+          fontSize: '24px',
+          fontWeight: 'bold',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '300px'
         }}>
-          No emails found. The inbox is empty.
+          <div style={{ marginBottom: '15px' }}>All records processed :)</div>
+          <div style={{ fontSize: '48px', marginBottom: '20px' }}>✓</div>
         </div>
       ) : (
         <div 

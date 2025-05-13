@@ -1237,6 +1237,15 @@ const ContactsInbox = () => {
       if (countError) throw countError;
       console.log(`Total Inbox contacts: ${count}`);
       
+      // If count is 0, set empty array and finish loading
+      if (count === 0) {
+        setContacts([]);
+        setLoading(false);
+        setDataLoaded(true);
+        setShowGrid(true);
+        return;
+      }
+      
       // Function to fetch contacts in batches with retry
       const fetchBatch = async (from, to) => {
         console.log(`Fetching batch from ${from} to ${to}`);
@@ -1630,9 +1639,17 @@ const ContactsInbox = () => {
           textAlign: 'center',
           color: '#00ff00',
           background: '#121212',
-          borderRadius: '8px'
+          borderRadius: '8px',
+          fontSize: '24px',
+          fontWeight: 'bold',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '300px'
         }}>
-          No inbox contacts found. Try refreshing the page or check database connection.
+          <div style={{ marginBottom: '15px' }}>All records processed :)</div>
+          <div style={{ fontSize: '48px', marginBottom: '20px' }}>✓</div>
         </div>
       ) : (
         <div 
