@@ -4,15 +4,15 @@ import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { AgGridReact } from '../../ag-grid-setup';
-import { 
-  FiTrash2, 
-  FiCheck, 
-  FiX, 
-  FiAlertTriangle, 
-  FiMail, 
-  FiMessageSquare, 
-  FiPhone, 
-  FiFile, 
+import {
+  FiTrash2,
+  FiCheck,
+  FiX,
+  FiAlertTriangle,
+  FiMail,
+  FiMessageSquare,
+  FiPhone,
+  FiFile,
   FiTag,
   FiMapPin,
   FiBriefcase,
@@ -20,6 +20,7 @@ import {
   FiLink
 } from 'react-icons/fi';
 import Modal from 'react-modal';
+import AddToCrmWorkflowModal from '../../components/modals/AddToCrmWorkflowModal';
 
 // Styled components
 const Container = styled.div`
@@ -628,6 +629,8 @@ const KeepInTouchInbox = () => {
   const [showGrid, setShowGrid] = useState(false); // Flag to control grid visibility with delay
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [contactToDelete, setContactToDelete] = useState(null);
+  const [workflowModalOpen, setWorkflowModalOpen] = useState(false);
+  const [selectedContact, setSelectedContact] = useState(null);
   const [associatedData, setAssociatedData] = useState({
     chatCount: 0,
     contactChatsCount: 0,
@@ -1129,17 +1132,18 @@ const KeepInTouchInbox = () => {
   const NameCellRenderer = (props) => {
     const navigate = useNavigate();
     const value = props.valueFormatted || props.value || '';
-    
+
     const handleClick = (e) => {
       e.stopPropagation();
       if (props.data && props.data.contact_id) {
-        navigate(`/contacts/integrity/${props.data.contact_id}`);
+        // Navigate to ContactCrmWorkflow page instead of opening modal
+        navigate(`/contacts/workflow/${props.data.contact_id}`);
       }
     };
-    
+
     return (
-      <div 
-        className="name-link" 
+      <div
+        className="name-link"
         style={{ color: '#00ff00', cursor: 'pointer', textDecoration: 'underline' }}
         onClick={handleClick}
       >
@@ -1293,18 +1297,12 @@ const KeepInTouchInbox = () => {
 
   // Row clicked handler - wrapped in React.useCallback to prevent recreation
   const handleRowClicked = React.useCallback((params) => {
-    // Only navigate when clicking on the Name column
-    if (params.column && params.column.colId === 'name') {
-      console.log('Name cell clicked, navigating to integrity page', params.data);
-      
-      // Navigate to integrity page for this contact
-      if (params.data && params.data.contact_id) {
-        navigate(`/contacts/integrity/${params.data.contact_id}`);
-      }
-    } else {
-      console.log('Ignoring click on non-name column');
+    // Do nothing when row is clicked - we'll handle clicks on the name cell separately
+    if (params.data && params.data.contact_id) {
+      console.log('Row clicked, but no action taken', params.data);
+      // No modal opening here
     }
-  }, [navigate]);
+  }, []);
 
   // Fetch only contacts in specific categories with keep_in_touch_frequency set to "Not Set" or NULL
   const fetchContacts = async () => {
@@ -1374,7 +1372,8 @@ const KeepInTouchInbox = () => {
             `)
             .in('category', allowedCategories)
             .or('keep_in_touch_frequency.is.null,keep_in_touch_frequency.eq.Not Set')
-            .order('last_interaction_at', { ascending: true })
+            .not('last_interaction_at', 'is', null)  // Only include contacts with a last_interaction_at value
+            .order('last_interaction_at', { ascending: false })  // Most recent interactions first
             .range(from, to);
         });
       };
@@ -1791,6 +1790,19 @@ const KeepInTouchInbox = () => {
         </div>
       )}
       
+      {/* Workflow modal */}
+      <AddToCrmWorkflowModal
+        isOpen={workflowModalOpen}
+        onClose={() => setWorkflowModalOpen(false)}
+        contact={selectedContact}
+        onComplete={(action, contactId) => {
+          // Refresh data after completing the workflow
+          fetchContacts();
+          setWorkflowModalOpen(false);
+          setSelectedContact(null);
+        }}
+      />
+
       {/* Delete confirmation modal */}
       <Modal
         isOpen={deleteModalOpen}

@@ -1340,6 +1340,12 @@ const ContactCrmWorkflow = () => {
   const [introductionCategories] = useState(['Business', 'Personal', 'Investment', 'Other']);
   const [introductionStatuses] = useState(['Requested', 'Completed', 'Declined', 'Pending']);
   const [selectedDeal, setSelectedDeal] = useState(null);
+  const [editingCategoryDealId, setEditingCategoryDealId] = useState(null);
+  const [editingCategoryValue, setEditingCategoryValue] = useState('');
+  const [editingSourceDealId, setEditingSourceDealId] = useState(null);
+  const [editingSourceValue, setEditingSourceValue] = useState('');
+  const [editingStageDealId, setEditingStageDealId] = useState(null);
+  const [editingStageValue, setEditingStageValue] = useState('');
   const [dealSearchQuery, setDealSearchQuery] = useState('');
   const [dealNameInput, setDealNameInput] = useState('');
   const [dealSuggestions, setDealSuggestions] = useState([]);
@@ -1349,7 +1355,7 @@ const ContactCrmWorkflow = () => {
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
   // Deal stages - using the exact enum values from the database
   const [dealStages] = useState([
-    'Lead', 'Qualified', 'Evaluating', 'Negotiation', 'Closing', 'Closed Won', 'Closed Lost', 'Invested', 'Monitoring', 'Passed'
+    'Lead', 'Qualified', 'Evaluating', 'Closing', 'Negotiation', 'Closed Won', 'Invested', 'Closed Lost', 'Monitoring', 'Passed'
   ]);
   const [dealCategories] = useState([
     'Inbox', 'Startup', 'Investment', 'Fund', 'Partnership', 'Real Estate', 'Private Debt', 'Private Equity', 'Other'
@@ -2108,8 +2114,7 @@ const ContactCrmWorkflow = () => {
           tag_id,
           tags:tag_id (
             tag_id,
-            name,
-            color
+            name
           )
         `)
         .in('deal_id', dealIds);
@@ -2131,7 +2136,7 @@ const ContactCrmWorkflow = () => {
             entry_id: tagRelation.entry_id,
             tag_id: tagRelation.tag_id,
             name: tagRelation.tags.name,
-            color: tagRelation.tags.color || '#00ffff' // Default color if none set
+            color: '#00ffff' // Default color since color column doesn't exist
           });
         }
       });
@@ -2756,6 +2761,170 @@ const ContactCrmWorkflow = () => {
       setDealsLoading(false);
     }
   }, [loadContactDeals, setDealsLoading, supabase, toast]); // Add dependencies for useCallback
+  
+  // Handle updating a deal's category
+  const updateDealCategory = useCallback(async (dealId, categoryValue) => {
+    try {
+      setDealsLoading(true);
+      
+      // Validate category value against allowed values
+      if (categoryValue && !dealCategories.includes(categoryValue)) {
+        console.error(`Invalid category value: ${categoryValue}. Must be one of: ${dealCategories.join(', ')}`);
+        toast.error(`Invalid category value. Must be one of: ${dealCategories.join(', ')}`);
+        return;
+      }
+      
+      console.log(`Updating deal ${dealId} with category: "${categoryValue}"`);
+      
+      // Update the deal record with the new category
+      const { data, error } = await supabase
+        .from('deals')
+        .update({
+          category: categoryValue,
+          last_modified_at: new Date().toISOString()
+        })
+        .eq('deal_id', dealId)
+        .select();
+      
+      if (error) {
+        console.error('Supabase error details:', error);
+        throw error;
+      }
+      
+      console.log('Update successful, returned data:', data);
+      
+      // Update local state to reflect the change
+      setDeals(prevDeals => 
+        prevDeals.map(deal => 
+          deal.deal_id === dealId 
+            ? { ...deal, category: categoryValue } 
+            : deal
+        )
+      );
+      
+      // Reset editing state
+      setEditingCategoryDealId(null);
+      
+      // Show success notification
+      toast.success('Deal category updated successfully');
+    } catch (err) {
+      console.error('Error updating deal category:', err);
+      console.error('Error details:', JSON.stringify(err, null, 2));
+      toast.error(`Failed to update deal category: ${err.message || 'Unknown error'}`);
+      
+      // Reset editing state on error too
+      setEditingCategoryDealId(null);
+    } finally {
+      setDealsLoading(false);
+    }
+  }, [supabase, setDeals, setEditingCategoryDealId, setDealsLoading, toast, dealCategories]);
+  
+  // Handle updating a deal's source
+  const updateDealSource = useCallback(async (dealId, sourceValue) => {
+    try {
+      setDealsLoading(true);
+      
+      // Validate source value against allowed values
+      if (sourceValue && !dealSourceCategories.includes(sourceValue)) {
+        console.error(`Invalid source value: ${sourceValue}. Must be one of: ${dealSourceCategories.join(', ')}`);
+        toast.error(`Invalid source value. Must be one of: ${dealSourceCategories.join(', ')}`);
+        return;
+      }
+      
+      console.log(`Updating deal ${dealId} with source: "${sourceValue}"`);
+      
+      // Update the deal record with the new source
+      const { data, error } = await supabase
+        .from('deals')
+        .update({
+          source_category: sourceValue,
+          last_modified_at: new Date().toISOString()
+        })
+        .eq('deal_id', dealId)
+        .select();
+      
+      if (error) {
+        console.error('Supabase error details:', error);
+        throw error;
+      }
+      
+      console.log('Update successful, returned data:', data);
+      
+      // Update local state to reflect the change
+      setDeals(prevDeals => 
+        prevDeals.map(deal => 
+          deal.deal_id === dealId 
+            ? { ...deal, source_category: sourceValue } 
+            : deal
+        )
+      );
+      
+      // Reset editing state
+      setEditingSourceDealId(null);
+      
+      // Show success notification
+      toast.success('Deal source updated successfully');
+    } catch (err) {
+      console.error('Error updating deal source:', err);
+      console.error('Error details:', JSON.stringify(err, null, 2));
+      toast.error(`Failed to update deal source: ${err.message || 'Unknown error'}`);
+      
+      // Reset editing state on error too
+      setEditingSourceDealId(null);
+    } finally {
+      setDealsLoading(false);
+    }
+  }, [supabase, setDeals, setEditingSourceDealId, setDealsLoading, toast, dealSourceCategories]);
+  
+  // Handle updating a deal's stage
+  const updateDealStage = useCallback(async (dealId, stageValue) => {
+    try {
+      setDealsLoading(true);
+      
+      console.log(`Updating deal ${dealId} with stage: "${stageValue}"`);
+      
+      // Update the deal record with the new stage
+      const { data, error } = await supabase
+        .from('deals')
+        .update({
+          stage: stageValue,
+          last_modified_at: new Date().toISOString()
+        })
+        .eq('deal_id', dealId)
+        .select();
+      
+      if (error) {
+        console.error('Supabase error details:', error);
+        throw error;
+      }
+      
+      console.log('Update successful, returned data:', data);
+      
+      // Update local state to reflect the change
+      setDeals(prevDeals => 
+        prevDeals.map(deal => 
+          deal.deal_id === dealId 
+            ? { ...deal, stage: stageValue } 
+            : deal
+        )
+      );
+      
+      // Reset editing state
+      setEditingStageDealId(null);
+      
+      // Show success notification
+      toast.success('Deal stage updated successfully');
+    } catch (err) {
+      console.error('Error updating deal stage:', err);
+      console.error('Error details:', JSON.stringify(err, null, 2));
+      toast.error(`Failed to update deal stage: ${err.message || 'Unknown error'}`);
+      
+      // Reset editing state on error too
+      setEditingStageDealId(null);
+    } finally {
+      setDealsLoading(false);
+    }
+  }, [supabase, setDeals, setEditingStageDealId, setDealsLoading, toast]);
 
   // Load all potential duplicates for a contact from the contact_duplicates table
   const loadSupabaseDuplicates = useCallback(async () => {
@@ -13450,7 +13619,8 @@ const handleInputChange = (field, value) => {
                                             overflow: 'hidden',
                                             textOverflow: 'ellipsis',
                                             outline: 'none',
-                                            marginLeft: '0'
+                                            marginLeft: '0',
+                                            marginBottom: '5px'
                                           }}
                                           onFocus={(e) => {
                                             e.currentTarget.style.borderBottom = '1px dashed #00ffff';
@@ -13466,6 +13636,20 @@ const handleInputChange = (field, value) => {
                                           }}
                                         >
                                           {deal.opportunity}
+                                        </div>
+                                        
+                                        {/* Timestamps */}
+                                        <div style={{ fontSize: '0.75rem', color: '#999', marginBottom: '8px', display: 'flex', gap: '15px' }}>
+                                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <FiCalendar size={12} />
+                                            Created: {new Date(deal.created_at).toLocaleDateString()}
+                                          </span>
+                                          {deal.last_modified_at && 
+                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                              <FiCalendar size={12} />
+                                              Updated: {new Date(deal.last_modified_at).toLocaleDateString()}
+                                            </span>
+                                          }
                                         </div>
                                       </div>
                                     </div>
@@ -13491,16 +13675,64 @@ const handleInputChange = (field, value) => {
                                         {/* Category */}
                                         <div className="deal-attribute">
                                           <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '3px' }}>Category</div>
-                                          <div style={{ 
-                                            color: '#eee',
-                                            backgroundColor: 'rgba(0, 255, 255, 0.1)',
-                                            padding: '2px 8px',
-                                            borderRadius: '4px',
-                                            fontSize: '0.85rem',
-                                            display: 'inline-block'
-                                          }}>
-                                            {deal.category || 'Not set'}
-                                          </div>
+                                          {editingCategoryDealId === deal.deal_id ? (
+                                            <div style={{ position: 'relative' }}>
+                                              <select
+                                                value={editingCategoryValue}
+                                                onChange={(e) => setEditingCategoryValue(e.target.value)}
+                                                onBlur={() => updateDealCategory(deal.deal_id, editingCategoryValue)}
+                                                autoFocus
+                                                style={{
+                                                  backgroundColor: '#333',
+                                                  color: '#eee',
+                                                  border: '1px solid #00ffff',
+                                                  borderRadius: '4px',
+                                                  padding: '2px 8px',
+                                                  fontSize: '0.85rem',
+                                                  width: '100%',
+                                                  outline: 'none'
+                                                }}
+                                                onClick={(e) => e.stopPropagation()}
+                                                onKeyDown={(e) => {
+                                                  if (e.key === 'Enter') {
+                                                    updateDealCategory(deal.deal_id, editingCategoryValue);
+                                                  } else if (e.key === 'Escape') {
+                                                    setEditingCategoryDealId(null);
+                                                  }
+                                                }}
+                                              >
+                                                <option value="">Not set</option>
+                                                <option value="Inbox">Inbox</option>
+                                                <option value="Startup">Startup</option>
+                                                <option value="Investment">Investment</option>
+                                                <option value="Fund">Fund</option>
+                                                <option value="Partnership">Partnership</option>
+                                                <option value="Real Estate">Real Estate</option>
+                                                <option value="Private Debt">Private Debt</option>
+                                                <option value="Private Equity">Private Equity</option>
+                                                <option value="Other">Other</option>
+                                              </select>
+                                            </div>
+                                          ) : (
+                                            <div 
+                                              style={{ 
+                                                color: '#eee',
+                                                backgroundColor: 'rgba(0, 255, 255, 0.1)',
+                                                padding: '2px 8px',
+                                                borderRadius: '4px',
+                                                fontSize: '0.85rem',
+                                                display: 'inline-block',
+                                                cursor: 'pointer'
+                                              }}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setEditingCategoryDealId(deal.deal_id);
+                                                setEditingCategoryValue(deal.category || '');
+                                              }}
+                                            >
+                                              {deal.category || 'Not set'}
+                                            </div>
+                                          )}
                                         </div>
                                         
                                         {/* Relationship/Role */}
@@ -13514,35 +13746,61 @@ const handleInputChange = (field, value) => {
                                         {/* Source */}
                                         <div className="deal-attribute">
                                           <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '3px' }}>Source</div>
-                                          <div style={{ 
-                                            color: '#eee',
-                                            backgroundColor: 'rgba(255, 165, 0, 0.1)',
-                                            padding: '2px 8px',
-                                            borderRadius: '4px',
-                                            fontSize: '0.85rem',
-                                            display: 'inline-block'
-                                          }}>
-                                            {deal.source_category || 'Not set'}
-                                          </div>
+                                          {editingSourceDealId === deal.deal_id ? (
+                                            <div style={{ position: 'relative' }}>
+                                              <React.Fragment>
+                                                <select
+                                                value={editingSourceValue}
+                                                onChange={(e) => setEditingSourceValue(e.target.value)}
+                                                onBlur={() => updateDealSource(deal.deal_id, editingSourceValue)}
+                                                autoFocus
+                                                style={{
+                                                  backgroundColor: '#333',
+                                                  color: '#eee',
+                                                  border: '1px solid #ffaa00',
+                                                  borderRadius: '4px',
+                                                  padding: '2px 8px',
+                                                  fontSize: '0.85rem',
+                                                  width: '100%',
+                                                  outline: 'none'
+                                                }}
+                                                onClick={(e) => e.stopPropagation()}
+                                                onKeyDown={(e) => {
+                                                  if (e.key === 'Enter') {
+                                                    updateDealSource(deal.deal_id, editingSourceValue);
+                                                  } else if (e.key === 'Escape') {
+                                                    setEditingSourceDealId(null);
+                                                  }
+                                                }}
+                                              >
+                                                <option value="">Not Set</option>
+                                                <option value="Cold Contacting">Cold Contacting</option>
+                                                <option value="Introduction">Introduction</option>
+                                              </select>
+                                              </React.Fragment>
+                                            </div>
+                                          ) : (
+                                            <div 
+                                              style={{ 
+                                                color: '#eee',
+                                                backgroundColor: 'rgba(255, 165, 0, 0.1)',
+                                                padding: '2px 8px',
+                                                borderRadius: '4px',
+                                                fontSize: '0.85rem',
+                                                display: 'inline-block',
+                                                cursor: 'pointer'
+                                              }}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setEditingSourceDealId(deal.deal_id);
+                                                setEditingSourceValue(deal.source_category || '');
+                                              }}
+                                            >
+                                              {deal.source_category || 'Not set'}
+                                            </div>
+                                          )}
                                         </div>
                                         
-                                        {/* Created Date */}
-                                        <div className="deal-attribute">
-                                          <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '3px' }}>Created</div>
-                                          <div style={{ color: '#eee', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                            <FiCalendar size={12} />
-                                            {new Date(deal.created_at).toLocaleDateString()}
-                                          </div>
-                                        </div>
-                                        
-                                        {/* Modified Date */}
-                                        <div className="deal-attribute">
-                                          <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '3px' }}>Last Updated</div>
-                                          <div style={{ color: '#eee', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                            <FiCalendar size={12} />
-                                            {new Date(deal.last_modified_at).toLocaleDateString()}
-                                          </div>
-                                        </div>
                                         
                                         {/* Attachments */}
                                         <div className="deal-attribute">
@@ -13558,25 +13816,70 @@ const handleInputChange = (field, value) => {
                                         {/* Stage */}
                                         <div className="deal-attribute">
                                           <div style={{ color: '#999', fontSize: '0.85rem', marginBottom: '3px' }}>Stage</div>
-                                          <Badge 
-                                            bg={
-                                              deal.stage === 'Closed Won' ? 'rgba(0, 255, 0, 0.2)' : 
-                                              deal.stage === 'Closed Lost' ? 'rgba(255, 0, 0, 0.2)' : 
-                                              'rgba(255, 165, 0, 0.2)'
-                                            }
-                                            color={
-                                              deal.stage === 'Closed Won' ? '#00ff00' : 
-                                              deal.stage === 'Closed Lost' ? '#ff5555' : 
-                                              '#ffaa00'
-                                            }
-                                            borderColor={
-                                              deal.stage === 'Closed Won' ? '#00ff00' : 
-                                              deal.stage === 'Closed Lost' ? '#ff5555' : 
-                                              '#ffaa00'
-                                            }
-                                          >
-                                            {deal.stage}
-                                          </Badge>
+                                          {editingStageDealId === deal.deal_id ? (
+                                            <div style={{ position: 'relative' }}>
+                                              <select
+                                                value={editingStageValue}
+                                                onChange={(e) => setEditingStageValue(e.target.value)}
+                                                onBlur={() => updateDealStage(deal.deal_id, editingStageValue)}
+                                                autoFocus
+                                                style={{
+                                                  backgroundColor: '#333',
+                                                  color: editingStageValue === 'Closed Won' ? '#00ff00' : 
+                                                         editingStageValue === 'Closed Lost' ? '#ff5555' : 
+                                                         '#ffaa00',
+                                                  border: `1px solid ${
+                                                    editingStageValue === 'Closed Won' ? '#00ff00' : 
+                                                    editingStageValue === 'Closed Lost' ? '#ff5555' : 
+                                                    '#ffaa00'
+                                                  }`,
+                                                  borderRadius: '4px',
+                                                  padding: '2px 8px',
+                                                  fontSize: '0.85rem',
+                                                  width: '100%',
+                                                  outline: 'none'
+                                                }}
+                                                onClick={(e) => e.stopPropagation()}
+                                                onKeyDown={(e) => {
+                                                  if (e.key === 'Enter') {
+                                                    updateDealStage(deal.deal_id, editingStageValue);
+                                                  } else if (e.key === 'Escape') {
+                                                    setEditingStageDealId(null);
+                                                  }
+                                                }}
+                                              >
+                                                {dealStages.map(stage => (
+                                                  <option key={stage} value={stage}>{stage}</option>
+                                                ))}
+                                              </select>
+                                            </div>
+                                          ) : (
+                                            <Badge 
+                                              bg={
+                                                deal.stage === 'Closed Won' ? 'rgba(0, 255, 0, 0.2)' : 
+                                                deal.stage === 'Closed Lost' ? 'rgba(255, 0, 0, 0.2)' : 
+                                                'rgba(255, 165, 0, 0.2)'
+                                              }
+                                              color={
+                                                deal.stage === 'Closed Won' ? '#00ff00' : 
+                                                deal.stage === 'Closed Lost' ? '#ff5555' : 
+                                                '#ffaa00'
+                                              }
+                                              borderColor={
+                                                deal.stage === 'Closed Won' ? '#00ff00' : 
+                                                deal.stage === 'Closed Lost' ? '#ff5555' : 
+                                                '#ffaa00'
+                                              }
+                                              style={{ cursor: 'pointer' }}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setEditingStageDealId(deal.deal_id);
+                                                setEditingStageValue(deal.stage || '');
+                                              }}
+                                            >
+                                              {deal.stage || 'Not set'}
+                                            </Badge>
+                                          )}
                                         </div>
                                         
                                         {/* Description - Spanning the third column grid area */}
