@@ -1658,7 +1658,7 @@ const ContactsInbox = () => {
         <div 
           className="ag-theme-alpine" 
           style={{ 
-            height: 'calc(100vh - 110px)', /* Adjusted for increased top padding */
+            height: 'calc(100vh - 120px)', /* Adjusted for increased row height */
             width: 'calc(100% - 30px)', /* Adjusted for left/right padding */
             overflow: 'auto', /* Add scroll if content exceeds container */
             margin: '15px 15px 0 15px', /* Left and right margin */
@@ -1686,7 +1686,7 @@ const ContactsInbox = () => {
             paginationPageSize={100} /* Show more rows per page */
             suppressCellFocus={true}
             enableCellTextSelection={true}
-            rowHeight={32} /* More compact rows for maximum data display */
+            rowHeight={42} /* Increased row height for better spacing */
             domLayout="autoHeight"
             paginationAutoPageSize={true} /* Auto-adjust page size to fill available height */
           />
