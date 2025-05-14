@@ -1091,7 +1091,7 @@ const ContactsInbox = () => {
       valueGetter: formatName,
       minWidth: 200,
       filter: 'agTextColumnFilter',
-      floatingFilter: true,
+      floatingFilter: false,
       sortable: true,
       pinned: 'left'
     },
@@ -1105,7 +1105,7 @@ const ContactsInbox = () => {
       minWidth: 110,
       width: 110,
       filter: 'agDateColumnFilter',
-      floatingFilter: true,
+      floatingFilter: false,
       sortable: true,
     },
     { 
@@ -1118,7 +1118,7 @@ const ContactsInbox = () => {
       minWidth: 120,
       width: 120,
       filter: 'agTextColumnFilter',
-      floatingFilter: true,
+      floatingFilter: false,
       sortable: true,
       cellRenderer: (params) => {
         const value = params.value || '-';
@@ -1135,7 +1135,7 @@ const ContactsInbox = () => {
       },
       minWidth: 250,
       filter: 'agTextColumnFilter',
-      floatingFilter: true,
+      floatingFilter: false,
       sortable: true,
       cellRenderer: (params) => {
         const value = params.value || '-';
