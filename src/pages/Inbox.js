@@ -1,12 +1,13 @@
 import React, { useState, lazy, Suspense, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
-import { FiMail, FiUsers, FiClock, FiCopy } from 'react-icons/fi';
+import { FiMail, FiUsers, FiClock, FiCopy, FiSkipForward } from 'react-icons/fi';
 
 // Lazy load the inbox components
 const EmailInbox = lazy(() => import('./contacts/EmailInbox'));
 const ContactsInbox = lazy(() => import('./contacts/ContactsInbox'));
 const KeepInTouchInbox = lazy(() => import('./contacts/KeepInTouchInbox'));
+const SkipInbox = lazy(() => import('./contacts/SkipInbox'));
 const DuplicateManager = lazy(() => import('./contacts/DuplicateManager'));
 
 // Style for the main content
@@ -128,6 +129,7 @@ const Inbox = () => {
     { id: 'email', name: 'Email', icon: <FiMail /> },
     { id: 'category', name: 'Categories', icon: <FiUsers /> },
     { id: 'kit', name: 'Keep in Touch', icon: <FiClock /> },
+    { id: 'skip', name: 'Skip', icon: <FiSkipForward /> },
     { id: 'duplicates', name: 'Duplicates', icon: <FiCopy /> }
   ];
 
@@ -140,6 +142,8 @@ const Inbox = () => {
         return <ContactsInbox />;
       case 'kit':
         return <KeepInTouchInbox />;
+      case 'skip':
+        return <SkipInbox />;
       case 'duplicates':
         return <DuplicateManager />;
       default:

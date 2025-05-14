@@ -7,13 +7,93 @@ import { FiCheckCircle, FiXCircle, FiArrowRight, FiArrowLeft, FiMail, FiUser, Fi
 
 // Styled components
 const Container = styled.div`
-  padding: 20px 40px 20px 20px;
+  padding: 15px 25px 15px 15px;
   height: calc(100vh - 60px);
   width: 100%;
+  display: flex;
   
   .action-cell-no-click {
     z-index: 5;
   }
+`;
+
+const SidebarContainer = styled.div`
+  width: 15%;
+  padding-right: 15px;
+  border-right: 1px solid #333;
+`;
+
+const MainContainer = styled.div`
+  width: 85%;
+  padding-left: 15px;
+  overflow: hidden;
+`;
+
+const SidebarTitle = styled.h3`
+  color: #00ff00;
+  font-family: 'Courier New', monospace;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #333;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+`;
+
+const SpamList = styled.div`
+  height: calc(100vh - 120px);
+  overflow-y: auto;
+  
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: #121212;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: #333;
+    border-radius: 3px;
+  }
+`;
+
+const SpamItem = styled.div`
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  background-color: #1a1a1a;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  font-family: 'Courier New', monospace;
+  font-size: 0.75rem;
+  color: #cccccc;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  
+  &:hover {
+    border-color: #00ff00;
+    background-color: #112211;
+  }
+`;
+
+const SpamEmail = styled.span`
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 75%;
+`;
+
+const SpamCounter = styled.span`
+  background-color: #112211;
+  color: #00ff00;
+  border-radius: 10px;
+  padding: 1px 6px;
+  font-size: 0.7rem;
+  min-width: 20px;
+  text-align: center;
+  margin-left: 4px;
 `;
 
 const ErrorText = styled.div`
@@ -601,10 +681,14 @@ const EmailModal = ({ email, onClose, onSkip, onAddToCRM }) => {
 
 const EmailInbox = () => {
   const [emails, setEmails] = useState([]);
+  const [spamEmails, setSpamEmails] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [spamLoading, setSpamLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [spamError, setSpamError] = useState(null);
   const [gridApi, setGridApi] = useState(null);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [spamLoaded, setSpamLoaded] = useState(false);
   const [showGrid, setShowGrid] = useState(false);
   const [selectedEmail, setSelectedEmail] = useState(null);
   const [confirmSpam, setConfirmSpam] = useState(null);
@@ -773,6 +857,41 @@ const EmailInbox = () => {
       // You could show an error toast here
     }
   }
+  
+  // Handle click on spam email item
+  async function handleSpamEmailClick(spamEmail) {
+    console.log('Spam email clicked:', spamEmail);
+    try {
+      // Find an email in email_inbox that matches this spam email
+      const { data, error } = await supabase
+        .from('email_inbox')
+        .select('*')
+        .filter('from_email', 'eq', spamEmail.email)
+        .limit(1);
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        // If we found a matching email, show it in the modal
+        setSelectedEmail(data[0]);
+      } else {
+        // If no matching email found, create a simplified version for display
+        setSelectedEmail({
+          id: `spam-${spamEmail.id || Date.now()}`,
+          from_name: 'Spam Sender',
+          from_email: spamEmail.email,
+          to_name: 'You',
+          to_email: 'your.email@example.com',
+          subject: 'Spam Email',
+          message_text: 'This email was marked as spam.',
+          message_timestamp: spamEmail.last_modified_at || new Date().toISOString(),
+          direction: 'received'
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching email details for spam:', err);
+    }
+  }
 
   // Fetch emails from email_inbox table
   const fetchEmails = async () => {
@@ -814,6 +933,33 @@ const EmailInbox = () => {
     }
   };
 
+  // Fetch spam emails from emails_spam table
+  const fetchSpamEmails = async () => {
+    try {
+      setSpamLoading(true);
+      setSpamError(null);
+      
+      // Fetch the last 40 spam emails ordered by last_modified_at
+      const { data, error } = await supabase
+        .from('emails_spam')
+        .select('*')
+        .order('last_modified_at', { ascending: false })
+        .limit(40);
+      
+      if (error) throw error;
+      
+      console.log(`Successfully fetched ${data?.length || 0} spam emails`);
+      
+      setSpamEmails(data || []);
+      setSpamLoading(false);
+      setSpamLoaded(true);
+    } catch (err) {
+      console.error('Error fetching spam emails:', err);
+      setSpamError(err.message);
+      setSpamLoading(false);
+    }
+  };
+
   // Fetch data on component mount
   useEffect(() => {
     // Only fetch if data hasn't been loaded yet
@@ -821,7 +967,13 @@ const EmailInbox = () => {
       console.log('Initiating email inbox data fetch');
       fetchEmails();
     }
-  }, [dataLoaded]);
+    
+    // Fetch spam emails independently
+    if (!spamLoaded) {
+      console.log('Initiating spam emails fetch');
+      fetchSpamEmails();
+    }
+  }, [dataLoaded, spamLoaded]);
   
   // Handle window resize
   useEffect(() => {
@@ -843,8 +995,6 @@ const EmailInbox = () => {
 
   return (
     <Container>
-      {error && <ErrorText>Error: {error}</ErrorText>}
-      
       {/* Email details modal */}
       {selectedEmail && (
         <EmailModal 
@@ -907,77 +1057,117 @@ const EmailInbox = () => {
         </ModalOverlay>
       )}
       
-      {loading !== false ? (
-        <LoadingContainer>
-          <LoadingText>
-            {typeof loading === 'string' 
-              ? loading 
-              : 'Accessing Email Database...'}
-          </LoadingText>
-          <LoadingBar />
-          <LoadingMatrix />
-        </LoadingContainer>
-      ) : !showGrid && !error ? (
-        <LoadingContainer>
-          <LoadingText>Preparing interface...</LoadingText>
-          <LoadingBar />
-          <LoadingMatrix />
-        </LoadingContainer>
-      ) : emails.length === 0 && !error ? (
-        <div style={{ 
-          padding: '40px', 
-          textAlign: 'center',
-          color: '#00ff00',
-          background: '#121212',
-          borderRadius: '8px',
-          fontSize: '24px',
-          fontWeight: 'bold',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: '300px'
-        }}>
-          <div style={{ marginBottom: '15px' }}>All records processed :)</div>
-          <div style={{ fontSize: '48px', marginBottom: '20px' }}>✓</div>
-        </div>
-      ) : (
-        <div 
-          className="ag-theme-alpine" 
-          style={{ 
-            height: 'calc(100% - 60px)', 
-            width: 'calc(100% - 20px)',
-            opacity: showGrid ? 1 : 0,
-            transition: 'opacity 0.5s ease-in-out',
-            '--ag-background-color': '#121212',
-            '--ag-odd-row-background-color': '#1a1a1a',
-            '--ag-header-background-color': '#222222',
-            '--ag-header-foreground-color': '#00ff00',
-            '--ag-foreground-color': '#e0e0e0', 
-            '--ag-row-hover-color': '#2a2a2a',
-            '--ag-border-color': '#333333'
-          }}
-        >
-          <AgGridReact
-            rowData={emails}
-            columnDefs={columnDefs}
-            defaultColDef={defaultColDef}
-            onGridReady={onGridReady}
-            rowSelection="single"
-            animateRows={true}
-            pagination={true}
-            paginationPageSize={50}
-            suppressCellFocus={true}
-            enableCellTextSelection={true}
-            sortingOrder={['desc', 'asc', null]}
-            sortModel={[
-              { colId: 'message_timestamp', sort: 'desc' }
-            ]}
-            onRowClicked={handleRowClick}
-            rowStyle={{ cursor: 'pointer' }}
-          />
-        </div>
-      )}
+      {/* Sidebar for Spam Emails */}
+      <SidebarContainer>
+        <SidebarTitle>Spam Emails</SidebarTitle>
+        
+        {spamLoading ? (
+          <div style={{ padding: '10px', color: '#00ff00', textAlign: 'center', fontSize: '0.75rem' }}>
+            Loading...
+          </div>
+        ) : spamError ? (
+          <ErrorText style={{ fontSize: '0.75rem', padding: '8px' }}>Error: {spamError}</ErrorText>
+        ) : spamEmails.length === 0 ? (
+          <div style={{ padding: '10px', color: '#cccccc', textAlign: 'center', fontSize: '0.75rem' }}>
+            No spam emails
+          </div>
+        ) : (
+          <SpamList>
+            {spamEmails.map((spam, index) => (
+              <SpamItem 
+                key={index} 
+                onClick={() => handleSpamEmailClick(spam)}
+              >
+                <SpamEmail>
+                  {spam.email && spam.email.length > 40 
+                    ? `${spam.email.substring(0, 40)}...` 
+                    : spam.email}
+                </SpamEmail>
+                <SpamCounter>
+                  {spam.counter || 1}
+                </SpamCounter>
+              </SpamItem>
+            ))}
+          </SpamList>
+        )}
+      </SidebarContainer>
+      
+      {/* Main Content - Email Inbox */}
+      <MainContainer>
+        {error && <ErrorText>Error: {error}</ErrorText>}
+        
+        {loading !== false ? (
+          <LoadingContainer>
+            <LoadingText>
+              {typeof loading === 'string' 
+                ? loading 
+                : 'Accessing Email Database...'}
+            </LoadingText>
+            <LoadingBar />
+            <LoadingMatrix />
+          </LoadingContainer>
+        ) : !showGrid && !error ? (
+          <LoadingContainer>
+            <LoadingText>Preparing interface...</LoadingText>
+            <LoadingBar />
+            <LoadingMatrix />
+          </LoadingContainer>
+        ) : emails.length === 0 && !error ? (
+          <div style={{ 
+            padding: '40px', 
+            textAlign: 'center',
+            color: '#00ff00',
+            background: '#121212',
+            borderRadius: '8px',
+            fontSize: '24px',
+            fontWeight: 'bold',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '300px'
+          }}>
+            <div style={{ marginBottom: '15px' }}>All records processed :)</div>
+            <div style={{ fontSize: '48px', marginBottom: '20px' }}>✓</div>
+          </div>
+        ) : (
+          <div 
+            className="ag-theme-alpine" 
+            style={{ 
+              height: 'calc(100% - 60px)', 
+              width: '100%',
+              opacity: showGrid ? 1 : 0,
+              transition: 'opacity 0.5s ease-in-out',
+              '--ag-background-color': '#121212',
+              '--ag-odd-row-background-color': '#1a1a1a',
+              '--ag-header-background-color': '#222222',
+              '--ag-header-foreground-color': '#00ff00',
+              '--ag-foreground-color': '#e0e0e0', 
+              '--ag-row-hover-color': '#2a2a2a',
+              '--ag-border-color': '#333333'
+            }}
+          >
+            <AgGridReact
+              rowData={emails}
+              columnDefs={columnDefs}
+              defaultColDef={defaultColDef}
+              onGridReady={onGridReady}
+              rowSelection="single"
+              animateRows={true}
+              pagination={true}
+              paginationPageSize={50}
+              suppressCellFocus={true}
+              enableCellTextSelection={true}
+              sortingOrder={['desc', 'asc', null]}
+              sortModel={[
+                { colId: 'message_timestamp', sort: 'desc' }
+              ]}
+              onRowClicked={handleRowClick}
+              rowStyle={{ cursor: 'pointer' }}
+            />
+          </div>
+        )}
+      </MainContainer>
     </Container>
   );
 };
