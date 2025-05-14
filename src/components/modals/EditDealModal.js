@@ -88,7 +88,7 @@ const EditDealModal = ({ isOpen, onClose, deal }) => {
       style={{
         overlay: {
           backgroundColor: 'rgba(0, 0, 0, 0.75)',
-          zIndex: 9999,
+          zIndex: 1100, // Lower than the direct implementation but higher than ViewDealModal
         },
         content: {
           top: '50%',

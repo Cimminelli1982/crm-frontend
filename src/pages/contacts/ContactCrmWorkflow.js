@@ -18,6 +18,7 @@ import CompanyContactsModal from '../../components/modals/CompanyContactsModal';
 import DuplicateProcessingModal from '../../components/modals/DuplicateProcessingModal';
 import NewIntroductionModal from '../../components/modals/NewIntroductionModal';
 import ViewDealModal from '../../components/modals/ViewDealModal';
+import EditDealModal from '../../components/modals/EditDealModal';
 import { 
   FiX, 
   FiCheck, 
@@ -1011,9 +1012,9 @@ const Input = styled.input`
   border-radius: 4px;
   color: #eee;
   padding: 10px 12px;
-  width: calc(100% - 30px);
-  height: calc(100% + 2px);
+  width: 100%;
   font-size: 0.9rem;
+  box-sizing: border-box;
   
   &:focus {
     outline: none;
@@ -15432,7 +15433,8 @@ const handleInputChange = (field, value) => {
             padding: '20px'
           },
           overlay: {
-            backgroundColor: 'rgba(0, 0, 0, 0.75)'
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            zIndex: 1050
           }
         }}
       >
@@ -15697,7 +15699,8 @@ const handleInputChange = (field, value) => {
         padding: '20px'
       },
       overlay: {
-        backgroundColor: 'rgba(0, 0, 0, 0.75)'
+        backgroundColor: 'rgba(0, 0, 0, 0.75)',
+        zIndex: 1050
       }
     }}
   >
@@ -15851,7 +15854,8 @@ const handleInputChange = (field, value) => {
         padding: '20px'
       },
       overlay: {
-        backgroundColor: 'rgba(0, 0, 0, 0.75)'
+        backgroundColor: 'rgba(0, 0, 0, 0.75)',
+        zIndex: 1050
       }
     }}
   >
@@ -16083,88 +16087,15 @@ const handleInputChange = (field, value) => {
     onUpdate={loadContactDeals}
   />
   
-  {/* Simple Direct Edit Deal Modal */}
-  {showEditDealModal && (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.75)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 10000
-    }}>
-      <div style={{
-        backgroundColor: '#222',
-        borderRadius: '8px',
-        padding: '20px',
-        border: '1px solid #333',
-        maxWidth: '600px',
-        width: '90%',
-        maxHeight: '80vh',
-        overflow: 'auto',
-        color: '#eee'
-      }}>
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '20px',
-          paddingBottom: '10px',
-          borderBottom: '1px solid #333'
-        }}>
-          <h2 style={{ margin: 0, fontSize: '1.4rem', color: '#00ff00' }}>
-            Edit Deal Working Modal
-          </h2>
-          <button 
-            onClick={() => {
-              setShowEditDealModal(false);
-              setSelectedDealForEdit(null);
-            }}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#ccc',
-              fontSize: '1.5rem',
-              cursor: 'pointer',
-              padding: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
-            <FiX />
-          </button>
-        </div>
-        
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '20px',
-          minHeight: '200px'
-        }}>
-          <h3 style={{
-            color: '#00ffff',
-            fontSize: '1.5rem',
-            textAlign: 'center',
-            margin: '20px 0'
-          }}>
-            Coming Soon
-          </h3>
-          {selectedDealForEdit && (
-            <div style={{ marginTop: '20px', color: '#aaa' }}>
-              Deal: {selectedDealForEdit.opportunity}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )}
+  {/* Edit Deal Modal */}
+  <EditDealModal
+    isOpen={showEditDealModal}
+    onClose={() => {
+      setShowEditDealModal(false);
+      setSelectedDealForEdit(null);
+    }}
+    deal={selectedDealForEdit}
+  />
 };
 
 export default ContactCrmWorkflow;
