@@ -1161,7 +1161,8 @@ const KeepInTouchInbox = () => {
       headerName: 'Name', 
       field: 'name',
       valueGetter: formatName,
-      minWidth: 200,
+      minWidth: 170,
+      width: 170,
       filter: 'agTextColumnFilter',
       floatingFilter: false,
       sortable: true,
@@ -1170,16 +1171,42 @@ const KeepInTouchInbox = () => {
       cellRenderer: NameCellRenderer
     },
     { 
-      headerName: 'Last Interaction', 
-      field: 'last_interaction_at',
-      valueFormatter: (params) => {
-        if (!params.value) return '-';
-        return new Date(params.value).toLocaleDateString();
+      headerName: 'Company', 
+      field: 'company',
+      valueGetter: (params) => {
+        if (!params.data?.companies || params.data.companies.length === 0) return '-';
+        // Get primary company or first in the list
+        const primaryCompany = params.data.companies.find(c => c.is_primary) || params.data.companies[0];
+        return primaryCompany?.name || '-';
       },
-      minWidth: 140,
-      filter: 'agDateColumnFilter',
+      minWidth: 170,
+      width: 170,
+      filter: 'agTextColumnFilter',
       floatingFilter: false,
       sortable: true,
+      cellRenderer: (params) => {
+        const value = params.value || '-';
+        if (value === '-') return value;
+        return <span style={{ color: '#ffffff' }}>{value}</span>;
+      }
+    },
+    { 
+      headerName: 'Job Title', 
+      field: 'job_role',
+      valueGetter: (params) => {
+        if (!params.data) return '-';
+        return params.data.job_role || '-';
+      },
+      minWidth: 170,
+      width: 170,
+      filter: 'agTextColumnFilter',
+      floatingFilter: false,
+      sortable: true,
+      cellRenderer: (params) => {
+        const value = params.value || '-';
+        if (value === '-') return value;
+        return <span style={{ color: '#cccccc' }}>{value}</span>;
+      }
     },
     { 
       headerName: 'Category', 
@@ -1188,88 +1215,76 @@ const KeepInTouchInbox = () => {
         if (!params.data) return '';
         return params.data.category || params.data.contact_category || '-';
       },
-      minWidth: 130,
+      minWidth: 120,
+      width: 120,
       filter: 'agTextColumnFilter',
       floatingFilter: false,
       sortable: true,
     },
     { 
-      headerName: 'Mobile', 
-      field: 'mobile',
+      headerName: 'Rating', 
+      field: 'score',
       valueGetter: (params) => {
-        if (!params.data) return '';
-        return params.data.mobile || '-';
+        if (!params.data || params.data.score === null || params.data.score === undefined) return '-';
+        return params.data.score;
       },
-      minWidth: 150,
-      filter: 'agTextColumnFilter',
+      minWidth: 140,
+      width: 140,
+      filter: 'agNumberColumnFilter',
       floatingFilter: false,
       sortable: true,
       cellRenderer: (params) => {
-        const value = params.value || '-';
+        const value = params.value;
         if (value === '-') return value;
-        return <span style={{ color: '#cccccc' }}>{value}</span>;
-      }
-    },
-    { 
-      headerName: 'Email', 
-      field: 'email',
-      valueGetter: (params) => {
-        if (!params.data) return '';
-        return params.data.email || '-';
-      },
-      minWidth: 250,
-      filter: 'agTextColumnFilter',
-      floatingFilter: false,
-      sortable: true,
-      cellRenderer: (params) => {
-        const value = params.value || '-';
-        if (value === '-') return value;
-        return <span style={{ color: '#cccccc' }}>{value}</span>;
+        
+        // Handle integer score from database (0-5 scale)
+        const score = parseInt(value);
+        const maxStars = 5; // Max number of stars to display
+        
+        // For 0-5 scale, use the score directly as the number of stars
+        const fullStars = Math.min(Math.max(score, 0), 5); // Ensure between 0-5
+        
+        // Color based on rating (0-5 scale)
+        let color = '#cccccc';
+        if (score >= 4) color = '#55ff55'; // High score - green
+        else if (score >= 3) color = '#ffff55'; // Medium score - yellow
+        else if (score > 0) color = '#ff5555'; // Low score - red
+        
+        // Create star display
+        return (
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            {[...Array(maxStars)].map((_, i) => (
+              <span 
+                key={i} 
+                style={{ 
+                  color: i < fullStars ? color : '#333333',
+                  marginRight: '4px',
+                  fontSize: '18px'
+                }}
+              >
+                ★
+              </span>
+            ))}
+          </div>
+        );
       }
     },
     {
       headerName: 'Actions',
-      width: 280,
-      minWidth: 280,
+      width: 200,
+      minWidth: 200,
       field: 'actions',
       cellRenderer: (params) => {
         return (
           <div style={{ 
             display: 'flex', 
-            justifyContent: 'space-between', 
+            justifyContent: 'center', 
             alignItems: 'center'
           }}>
             <FrequencyDropdownRenderer
               {...params}
               onSetFrequency={handleSetFrequency}
             />
-            <div 
-              style={{
-                backgroundColor: 'transparent',
-                color: '#ff3333',
-                paddingTop: '8px',
-                paddingRight: '8px',
-                paddingLeft: '8px',
-                paddingBottom: '0',
-                fontSize: '0.75rem',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '4px',
-                cursor: 'pointer',
-                marginLeft: '8px',
-                whiteSpace: 'nowrap',
-                height: '24px',
-                lineHeight: '1',
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                console.log('Skip button clicked for contact:', params.data);
-              }}
-            >
-              <FiTrash2 size={12} /> Skip
-            </div>
           </div>
         );
       },
@@ -1370,6 +1385,7 @@ const KeepInTouchInbox = () => {
               category,
               keep_in_touch_frequency,
               score, 
+              job_role,
               last_interaction_at,
               created_at
             `)
@@ -1514,7 +1530,7 @@ const KeepInTouchInbox = () => {
         ] = await Promise.all([
           // 1. Fetch company relationships
           fetchRelatedDataBatch('companies', 
-            supabase.from('contact_companies').select('contact_id, company_id'), 
+            supabase.from('contact_companies').select('contact_id, company_id, is_primary'), 
             contactIds
           ),
           
@@ -1632,7 +1648,8 @@ const KeepInTouchInbox = () => {
             return company ? {
               id: company.company_id,
               name: company.name || 'Unknown',
-              website: company.website
+              website: company.website,
+              is_primary: rel.is_primary
             } : null;
           }).filter(Boolean);
           
