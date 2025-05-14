@@ -791,7 +791,14 @@ const WhatsappInbox = () => {
       if (error) throw error;
       
       // Remove the contact from the displayed list
-      setContacts(contacts.filter(contact => contact.contact_id !== contactData.contact_id));
+      const updatedContacts = contacts.filter(contact => contact.contact_id !== contactData.contact_id);
+      setContacts(updatedContacts);
+      
+      // Check if we need to refresh the data
+      if (updatedContacts.length === 0) {
+        // Trigger a refresh to get more data
+        setDataLoaded(false);
+      }
       
       // Close the confirmation dialog
       setConfirmSpam(null);
@@ -820,7 +827,14 @@ const WhatsappInbox = () => {
       if (error) throw error;
       
       // Remove the contact from the displayed list
-      setContacts(contacts.filter(contact => contact.contact_id !== contactData.contact_id));
+      const updatedContacts = contacts.filter(contact => contact.contact_id !== contactData.contact_id);
+      setContacts(updatedContacts);
+      
+      // Check if we need to refresh the data
+      if (updatedContacts.length === 0) {
+        // Trigger a refresh to get more data
+        setDataLoaded(false);
+      }
       
       console.log('Contact marked for normal CRM processing:', contactData.contact_id);
     } catch (err) {
@@ -1254,8 +1268,11 @@ const WhatsappInbox = () => {
             justifyContent: 'center',
             height: '300px'
           }}>
-            <div style={{ marginBottom: '15px' }}>All WhatsApp contacts processed 😊</div>
+            <div style={{ marginBottom: '15px' }}>No more WhatsApp contacts to process 😊</div>
             <div style={{ fontSize: '48px', marginBottom: '20px' }}>✓</div>
+            <div style={{ fontSize: '14px', color: '#aaa', marginTop: '10px' }}>
+              Click <span style={{ textDecoration: 'underline', cursor: 'pointer', color: '#00ff00' }} onClick={() => setDataLoaded(false)}>here</span> to check for new contacts
+            </div>
           </div>
         ) : (
           <div 

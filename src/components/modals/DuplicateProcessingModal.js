@@ -13,7 +13,8 @@ import {
   FiTag, 
   FiMapPin, 
   FiBriefcase, 
-  FiGitMerge
+  FiGitMerge,
+  FiExternalLink
 } from 'react-icons/fi';
 
 // Styled components
@@ -975,6 +976,28 @@ const DuplicateProcessingModal = ({
           <ButtonGroup>
             <SecondaryButton onClick={closeModal} disabled={loading}>
               <FiX /> Cancel
+            </SecondaryButton>
+            
+            <SecondaryButton 
+              onClick={() => {
+                // Store the contactIds in session storage
+                if (primaryContact && duplicateContact) {
+                  sessionStorage.setItem('workflow_contact_id', primaryContactId);
+                  
+                  // Check if both contacts have the same first and last name values
+                  if (mergeSelections.first_name === mergeSelections.last_name) {
+                    // Navigate to the ContactCrmWorkflow page
+                    window.location.href = `/contacts/workflow/${primaryContactId}`;
+                  } else {
+                    // Navigate to the ContactCrmWorkflow page
+                    window.location.href = `/contacts/workflow/${primaryContactId}`;
+                  }
+                }
+              }} 
+              disabled={loading}
+              style={{ marginRight: 'auto', color: '#00aaff', borderColor: '#00aaff' }}
+            >
+              <FiExternalLink /> Edit and Match
             </SecondaryButton>
             
             <PrimaryButton onClick={handleMerge} disabled={loading}>

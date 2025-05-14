@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
-import { FiAlertTriangle, FiRefreshCw, FiExternalLink } from 'react-icons/fi';
+import { FiAlertTriangle, FiRefreshCw, FiEdit } from 'react-icons/fi';
 
 // Styled components
 const Container = styled.div`
@@ -148,7 +148,24 @@ const DuplicateManager = () => {
         .order('detected_at', { ascending: false });
       
       if (error) throw error;
-      setDuplicates(data || []);
+      
+      // Filter duplicates to only include those with exactly matching first and last names
+      const exactMatches = data ? data.filter(duplicate => {
+        const primary = duplicate.primary_contact || {};
+        const dup = duplicate.duplicate_contact || {};
+        
+        // Check if both first_name and last_name match exactly (ignoring case)
+        return (
+          primary.first_name && 
+          dup.first_name && 
+          primary.last_name && 
+          dup.last_name && 
+          primary.first_name.toLowerCase() === dup.first_name.toLowerCase() && 
+          primary.last_name.toLowerCase() === dup.last_name.toLowerCase()
+        );
+      }) : [];
+      
+      setDuplicates(exactMatches);
       
     } catch (err) {
       console.error('Error loading duplicates:', err);
@@ -158,10 +175,13 @@ const DuplicateManager = () => {
     }
   };
   
-  // Open the integrity page for a duplicate
+  // Open the ContactCrmWorkflow page for a duplicate
   const handleDuplicateClick = (duplicate) => {
-    const url = `/contacts/integrity/${duplicate.primary_contact_id}?duplicate_id=${duplicate.duplicate_contact_id}&contact_duplicate_id=${duplicate.duplicate_id}`;
-    navigate(url);
+    // Store the contact_id in session storage for the workflow
+    sessionStorage.setItem('workflow_contact_id', duplicate.primary_contact_id);
+    
+    // Navigate to the ContactCrmWorkflow page
+    navigate(`/contacts/workflow/${duplicate.primary_contact_id}`);
   };
   
   // Format date
@@ -219,8 +239,11 @@ const DuplicateManager = () => {
                   </DuplicateNote>
                 )}
               </DuplicateDetails>
-              <ActionButton>
-                <FiExternalLink /> View
+              <ActionButton onClick={(e) => {
+                e.stopPropagation(); // Prevent triggering the parent item click
+                handleDuplicateClick(duplicate);
+              }}>
+                <FiEdit /> Edit and Match
               </ActionButton>
             </DuplicateItem>
           ))}
