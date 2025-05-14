@@ -1426,6 +1426,9 @@ const KeepInTouchInbox = () => {
       if (!contactsData || contactsData.length === 0) {
         setContacts([]);
         setLoading(false);
+        setDataLoaded(true);
+        // Set showGrid to true to show the "All records processed" message
+        setShowGrid(true);
         return;
       }
       
@@ -1436,6 +1439,9 @@ const KeepInTouchInbox = () => {
       if (contactIds.length === 0) {
         setContacts(contactsData);
         setLoading(false);
+        setDataLoaded(true);
+        // Set showGrid to true to show the "All records processed" message
+        setShowGrid(true);
         return;
       }
       
@@ -1749,9 +1755,17 @@ const KeepInTouchInbox = () => {
           textAlign: 'center',
           color: '#00ff00',
           background: '#121212',
-          borderRadius: '8px'
+          borderRadius: '8px',
+          fontSize: '24px',
+          fontWeight: 'bold',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '300px'
         }}>
-          No contacts found needing keep in touch frequency. All contacts in key categories have frequencies set.
+          <div style={{ marginBottom: '15px' }}>All records processed 😊</div>
+          <div style={{ fontSize: '48px', marginBottom: '20px' }}>✓</div>
         </div>
       ) : (
         <div 

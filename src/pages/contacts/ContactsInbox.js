@@ -24,8 +24,11 @@ import toast from 'react-hot-toast';
 
 // Styled components
 const Container = styled.div`
-  padding: 20px 40px 20px 20px;
-  height: calc(100vh - 60px);
+  padding: 10px 0 0 0; /* Add just a bit of top padding */
+  min-height: 100vh; /* Full viewport height */
+  height: auto;
+  display: flex;
+  flex-direction: column;
   width: 100%;
   
   .clickable-cell {
@@ -1648,15 +1651,18 @@ const ContactsInbox = () => {
           justifyContent: 'center',
           height: '300px'
         }}>
-          <div style={{ marginBottom: '15px' }}>All records processed :)</div>
+          <div style={{ marginBottom: '15px' }}>All records processed 😊</div>
           <div style={{ fontSize: '48px', marginBottom: '20px' }}>✓</div>
         </div>
       ) : (
         <div 
           className="ag-theme-alpine" 
           style={{ 
-            height: 'calc(100% - 60px)', 
-            width: 'calc(100% - 20px)',
+            height: 'calc(100vh - 110px)', /* Adjusted for increased top padding */
+            width: 'calc(100% - 30px)', /* Adjusted for left/right padding */
+            overflow: 'auto', /* Add scroll if content exceeds container */
+            margin: '15px 15px 0 15px', /* Left and right margin */
+            marginTop: '30px', /* Increased top margin */
             opacity: showGrid ? 1 : 0,
             transition: 'opacity 0.5s ease-in-out',
             '--ag-background-color': '#121212',
@@ -1677,9 +1683,12 @@ const ContactsInbox = () => {
             rowSelection="single"
             animateRows={true}
             pagination={true}
-            paginationPageSize={50}
+            paginationPageSize={100} /* Show more rows per page */
             suppressCellFocus={true}
             enableCellTextSelection={true}
+            rowHeight={32} /* More compact rows for maximum data display */
+            domLayout="autoHeight"
+            paginationAutoPageSize={true} /* Auto-adjust page size to fill available height */
           />
         </div>
       )}

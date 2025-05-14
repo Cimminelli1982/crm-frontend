@@ -939,12 +939,12 @@ const EmailInbox = () => {
       setSpamLoading(true);
       setSpamError(null);
       
-      // Fetch the last 40 spam emails ordered by last_modified_at
+      // Fetch the last 25 spam emails ordered by last_modified_at
       const { data, error } = await supabase
         .from('emails_spam')
         .select('*')
         .order('last_modified_at', { ascending: false })
-        .limit(40);
+        .limit(25);
       
       if (error) throw error;
       
@@ -1127,7 +1127,7 @@ const EmailInbox = () => {
             justifyContent: 'center',
             height: '300px'
           }}>
-            <div style={{ marginBottom: '15px' }}>All records processed :)</div>
+            <div style={{ marginBottom: '15px' }}>All records processed 😊</div>
             <div style={{ fontSize: '48px', marginBottom: '20px' }}>✓</div>
           </div>
         ) : (
