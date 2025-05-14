@@ -2072,10 +2072,10 @@ const ContactCrmWorkflow = () => {
       
       // Fetch introductions where this contact is included in contact_ids array
       const { data, error } = await supabase
-        .from('contact_introductions')
+        .from('introductions')
         .select('*')
-        .contains('contacts_introduced', [contactId])
-        .order('intro_date', { ascending: false });
+        .contains('contact_ids', [contactId])
+        .order('introduction_date', { ascending: false });
       
       if (error) {
         console.error('Error loading introductions:', error);
@@ -2084,8 +2084,19 @@ const ContactCrmWorkflow = () => {
         return;
       }
       
-      console.log('Fetched introductions:', data);
-      setIntroductions(data || []);
+      // Map the data from introductions table to the format expected by the component
+      const mappedData = data?.map(intro => ({
+        intro_id: intro.introduction_id,
+        contacts_introduced: intro.contact_ids,
+        intro_date: intro.introduction_date,
+        introduction_rationale: intro.category,  // Assuming category can serve as rationale
+        introduction_note: intro.text,
+        created_by: intro.created_by,
+        created_at: intro.created_at
+      })) || [];
+      
+      console.log('Fetched introductions:', mappedData);
+      setIntroductions(mappedData || []);
     } catch (err) {
       console.error('Error in loadContactIntroductions:', err);
       toast.error('Error loading introductions');

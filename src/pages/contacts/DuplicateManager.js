@@ -8,14 +8,14 @@ import { FiAlertTriangle, FiRefreshCw, FiEdit } from 'react-icons/fi';
 
 // Styled components
 const Container = styled.div`
-  padding: 20px 40px 20px 20px;
+  padding: 50px 40px 20px 20px;
   max-width: 1400px;
   margin: 0 auto;
 `;
 
 const Header = styled.div`
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
   margin-bottom: 20px;
   padding-bottom: 20px;

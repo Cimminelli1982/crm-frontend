@@ -16,16 +16,18 @@ const modalStyle = {
     marginRight: '-50%',
     transform: 'translate(-50%, -50%)',
     padding: '0',
-    border: 'none',
-    borderRadius: '0.75rem',
-    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+    border: '1px solid #333',
+    borderRadius: '8px',
+    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.6)',
+    backgroundColor: '#121212',
+    color: '#e0e0e0',
     width: '800px',
     maxWidth: '95%',
     maxHeight: '90vh',
     overflow: 'hidden'
   },
   overlay: {
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
     zIndex: 1000
   }
 };
@@ -43,13 +45,13 @@ const Header = styled.div`
   align-items: center;
   margin-bottom: 24px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #333;
   
   h2 {
     margin: 0;
     font-size: 1.5rem;
     font-weight: 600;
-    color: #111827;
+    color: #00ff00;
   }
 `;
 
@@ -58,7 +60,7 @@ const CloseButton = styled.button`
   background: none;
   border: none;
   cursor: pointer;
-  color: #6b7280;
+  color: #ffffff;
   height: 32px;
   width: 32px;
   display: flex;
@@ -68,8 +70,7 @@ const CloseButton = styled.button`
   transition: all 0.2s;
   
   &:hover {
-    background-color: #f3f4f6;
-    color: #1f2937;
+    color: #ff5555;
   }
 `;
 
@@ -117,24 +118,27 @@ const Label = styled.label`
   margin-bottom: 8px;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #374151;
+  color: #00ff00;
 `;
 
 // Date input field
 const DateInput = styled.input`
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid #444;
   border-radius: 6px;
   font-size: 0.875rem;
-  color: #111827;
-  background-color: white;
+  color: #eee;
+  background-color: #222;
   box-sizing: border-box;
   
   &:focus {
     outline: none;
-    border-color: #2563eb;
-    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+    border-color: #00ff00;
+  }
+  
+  &:hover {
+    background-color: #333;
   }
 `;
 
@@ -142,17 +146,25 @@ const DateInput = styled.input`
 const Select = styled.select`
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid #444;
   border-radius: 6px;
   font-size: 0.875rem;
-  color: #111827;
-  background-color: white;
+  color: #eee;
+  background-color: #222;
   box-sizing: border-box;
   
   &:focus {
     outline: none;
-    border-color: #2563eb;
-    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+    border-color: #00ff00;
+  }
+  
+  &:hover {
+    background-color: #333;
+  }
+  
+  option {
+    background-color: #222;
+    color: #eee;
   }
 `;
 
@@ -160,18 +172,22 @@ const Select = styled.select`
 const TextArea = styled.textarea`
   width: 100%;
   padding: 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid #444;
   border-radius: 6px;
   font-size: 0.875rem;
-  color: #111827;
+  color: #eee;
+  background-color: #222;
   min-height: 120px;
   resize: vertical;
   box-sizing: border-box;
   
   &:focus {
     outline: none;
-    border-color: #2563eb;
-    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+    border-color: #00ff00;
+  }
+  
+  &:hover {
+    background-color: #333;
   }
 `;
 
@@ -205,16 +221,21 @@ const SearchIcon = styled.div`
 const SearchInput = styled.input`
   width: 100%;
   padding: 10px 10px 10px 36px;
-  border: 1px solid #d1d5db;
+  border: 1px solid #444;
   border-radius: 6px;
   font-size: 0.875rem;
+  color: #eee;
+  background-color: #222;
   outline: none;
   transition: border-color 0.2s;
   box-sizing: border-box;
 
   &:focus {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: #00ff00;
+  }
+  
+  &:hover {
+    background-color: #333;
   }
 `;
 
@@ -224,16 +245,16 @@ const FilterButton = styled.button`
   align-items: center;
   justify-content: center;
   padding: 10px;
-  background-color: ${props => props.active ? '#e0f2fe' : 'white'};
-  color: ${props => props.active ? '#0369a1' : '#6b7280'};
-  border: 1px solid #d1d5db;
+  background-color: ${props => props.active ? '#333' : '#222'};
+  color: ${props => props.active ? '#00ff00' : '#ccc'};
+  border: 1px solid #444;
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s;
   flex-shrink: 0;
 
   &:hover {
-    background-color: ${props => props.active ? '#bae6fd' : '#f3f4f6'};
+    background-color: ${props => props.active ? '#444' : '#333'};
   }
 `;
 
@@ -242,9 +263,9 @@ const FilterOptions = styled.div`
   display: ${props => props.visible ? 'block' : 'none'};
   margin-bottom: 16px;
   padding: 16px;
-  background-color: #f9fafb;
+  background-color: #222;
   border-radius: 6px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #444;
   width: 100%;
   box-sizing: border-box;
 `;
@@ -278,11 +299,12 @@ const CheckboxOption = styled.label`
   display: flex;
   align-items: center;
   font-size: 0.8125rem;
-  color: #4b5563;
+  color: #ccc;
   cursor: pointer;
   
   input {
     margin-right: 6px;
+    accent-color: #00ff00;
   }
 `;
 
@@ -290,12 +312,12 @@ const CheckboxOption = styled.label`
 const SuggestionsContainer = styled.div`
   position: relative;
   margin-top: 4px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #444;
   border-radius: 6px;
   max-height: 200px;
   overflow-y: auto;
-  background-color: white;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  background-color: #222;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
   z-index: 10;
   width: 100%;
   box-sizing: border-box;
@@ -310,7 +332,7 @@ const SuggestionItem = styled.button`
   background: none;
   cursor: pointer;
   font-size: 0.875rem;
-  color: #374151;
+  color: #eee;
   transition: background-color 0.2s;
   display: flex;
   align-items: center;
@@ -318,11 +340,12 @@ const SuggestionItem = styled.button`
   box-sizing: border-box;
 
   &:hover {
-    background-color: #f3f4f6;
+    background-color: #333;
+    color: #00ff00;
   }
 
   &:not(:last-child) {
-    border-bottom: 1px solid #f3f4f6;
+    border-bottom: 1px solid #333;
   }
 `;
 
@@ -341,11 +364,12 @@ const ContactTag = styled.div`
   display: inline-flex;
   align-items: center;
   padding: 6px 12px;
-  background-color: #e5e7eb;
-  color: #374151;
+  background-color: #222;
+  color: #00ff00;
   border-radius: 16px;
   font-size: 0.875rem;
   gap: 6px;
+  border: 1px solid #00ff00;
 
   span {
     white-space: nowrap;
@@ -368,6 +392,7 @@ const ContactTag = styled.div`
 
     &:hover {
       opacity: 1;
+      color: #ff5555;
     }
   }
 `;
@@ -375,9 +400,9 @@ const ContactTag = styled.div`
 // Introduction history container
 const IntroHistoryContainer = styled.div`
   margin-top: 16px;
-  background-color: #f9fafb;
+  background-color: #222;
   border-radius: 6px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #444;
   padding: 16px;
   width: 100%;
   box-sizing: border-box;
@@ -392,7 +417,7 @@ const IntroHistoryHeader = styled.div`
   h4 {
     font-size: 0.9375rem;
     font-weight: 600;
-    color: #111827;
+    color: #00ff00;
     margin: 0;
     display: flex;
     align-items: center;
@@ -422,7 +447,7 @@ const IntroHistoryList = styled.div`
 // Individual history item
 const IntroHistoryItem = styled.div`
   padding: 8px 0;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #333;
   font-size: 0.8125rem;
   
   &:last-child {
@@ -430,7 +455,7 @@ const IntroHistoryItem = styled.div`
   }
   
   .intro-date {
-    color: #6b7280;
+    color: #ccc;
     font-size: 0.75rem;
     margin-bottom: 2px;
     display: flex;
@@ -447,24 +472,24 @@ const IntroHistoryItem = styled.div`
     margin-left: 8px;
     background-color: ${props => {
       switch (props.rationale) {
-        case 'Karma Points': return '#DCFCE7';
-        case 'Dealflow Related': return '#FEF3C7';
-        case 'Portfolio Company Related': return '#DBEAFE';
-        default: return '#F3F4F6';
+        case 'Karma Points': return '#143601';
+        case 'Dealflow Related': return '#2C1A00';
+        case 'Portfolio Company Related': return '#0A1C2E';
+        default: return '#222';
       }
     }};
     color: ${props => {
       switch (props.rationale) {
-        case 'Karma Points': return '#166534';
-        case 'Dealflow Related': return '#92400E';
-        case 'Portfolio Company Related': return '#1E40AF';
-        default: return '#374151';
+        case 'Karma Points': return '#00ff00';
+        case 'Dealflow Related': return '#FFBB00';
+        case 'Portfolio Company Related': return '#47A3FF';
+        default: return '#ccc';
       }
     }};
   }
   
   .intro-note {
-    color: #4b5563;
+    color: #aaa;
     margin-top: 4px;
     white-space: nowrap;
     overflow: hidden;
@@ -481,18 +506,18 @@ const RationaleBadge = styled.span`
   font-weight: 500;
   background-color: ${props => {
     switch (props.type) {
-      case 'Karma Points': return '#DCFCE7';
-      case 'Dealflow Related': return '#FEF3C7';
-      case 'Portfolio Company Related': return '#DBEAFE';
-      default: return '#F3F4F6';
+      case 'Karma Points': return '#143601';
+      case 'Dealflow Related': return '#2C1A00';
+      case 'Portfolio Company Related': return '#0A1C2E';
+      default: return '#222';
     }
   }};
   color: ${props => {
     switch (props.type) {
-      case 'Karma Points': return '#166534';
-      case 'Dealflow Related': return '#92400E';
-      case 'Portfolio Company Related': return '#1E40AF';
-      default: return '#374151';
+      case 'Karma Points': return '#00ff00';
+      case 'Dealflow Related': return '#FFBB00';
+      case 'Portfolio Company Related': return '#47A3FF';
+      default: return '#ccc';
     }
   }};
 `;
@@ -509,8 +534,8 @@ const TruncatedText = styled.div`
     position: absolute;
     left: 0;
     top: 100%;
-    background: #1f2937;
-    color: white;
+    background: #333;
+    color: #00ff00;
     padding: 8px 12px;
     border-radius: 6px;
     font-size: 0.875rem;
@@ -518,7 +543,8 @@ const TruncatedText = styled.div`
     max-width: 300px;
     word-wrap: break-word;
     z-index: 1000;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+    border: 1px solid #444;
   }
 `;
 
@@ -543,7 +569,7 @@ const ButtonContainer = styled.div`
   justify-content: flex-end;
   gap: 12px;
   padding-top: 16px;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid #333;
 `;
 
 // Base button style
@@ -561,29 +587,29 @@ const Button = styled.button`
 
 // Cancel button
 const CancelButton = styled(Button)`
-  background-color: white;
-  color: #4b5563;
-  border: 1px solid #d1d5db;
+  background-color: transparent;
+  color: #ccc;
+  border: 1px solid #555;
   
   &:hover {
-    background-color: #f9fafb;
-    border-color: #9ca3af;
+    background-color: #333;
   }
 `;
 
 // Save/create button
 const SaveButton = styled(Button)`
-  background-color: #000000;
-  color: white;
+  background-color: #00ff00;
+  color: black;
   border: none;
   white-space: nowrap;
   
   &:hover {
-    background-color: #333333;
+    background-color: #00dd00;
   }
   
   &:disabled {
-    background-color: #666666;
+    background-color: #006600;
+    color: #88ff88;
     cursor: not-allowed;
   }
 `;
@@ -637,9 +663,14 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
       if (editingIntro) {
         // If editing, populate the form with existing data
         setSelectedContacts([]);  // Will be populated after contacts are fetched
-        setRationale(editingIntro.introduction_rationale);
-        setNote(editingIntro.introduction_note);
-        setIntroDate(format(new Date(editingIntro.intro_date), 'yyyy-MM-dd'));
+        
+        // Map from the introductions table fields to the form fields
+        setRationale(editingIntro.introduction_rationale || editingIntro.category);
+        setNote(editingIntro.introduction_note || editingIntro.text);
+        
+        // Handle different date field names
+        const dateField = editingIntro.intro_date || editingIntro.introduction_date;
+        setIntroDate(format(new Date(dateField), 'yyyy-MM-dd'));
       } else if (preSelectedContact) {
         setSelectedContacts([preSelectedContact]);
         fetchPreviousIntroductions([preSelectedContact.id]);
@@ -663,16 +694,19 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
     try {
       let query = supabase
         .from('contacts')
-        .select('id, first_name, last_name, contact_category')
+        .select('contact_id, first_name, last_name, category')
         .order('first_name');
 
       // If we're in edit mode, make sure we fetch ALL contacts included in the introduction
       if (editingIntro && !search) {
         // First, fetch contacts specifically included in the introduction
+        // Handle both field names for contacts array
+        const contactsArray = editingIntro.contacts_introduced || editingIntro.contact_ids || [];
+        
         const { data: introContacts, error: introError } = await supabase
           .from('contacts')
-          .select('id, first_name, last_name, contact_category')
-          .in('id', editingIntro.contacts_introduced);
+          .select('contact_id, first_name, last_name, category')
+          .in('contact_id', contactsArray);
           
         if (introError) throw introError;
         
@@ -683,7 +717,7 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
         
         // Apply category filters if any are selected
         if (categoryFilters.length > 0) {
-          query = query.in('contact_category', categoryFilters);
+          query = query.in('category', categoryFilters);
         }
         
         const { data: otherContacts, error } = await query;
@@ -714,7 +748,7 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
       
       // Apply category filters if any are selected
       if (categoryFilters.length > 0) {
-        query = query.in('contact_category', categoryFilters);
+        query = query.in('category', categoryFilters);
       }
 
       const { data, error } = await query;
@@ -722,7 +756,7 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
 
       // Filter out already selected contacts
       const filteredContacts = data.filter(contact => 
-        !selectedContacts.some(selected => selected.id === contact.id)
+        !selectedContacts.some(selected => selected.contact_id === contact.contact_id)
       );
 
       if (search) {
@@ -742,20 +776,31 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
     setLoadingHistory(true);
     try {
       const { data, error } = await supabase
-        .from('contact_introductions')
+        .from('introductions')
         .select('*')
-        .contains('contacts_introduced', contactIds)
-        .order('intro_date', { ascending: false });
+        .contains('contact_ids', contactIds)
+        .order('introduction_date', { ascending: false });
       
       if (error) throw error;
       
       // Filter to only show intros that include all selected contacts
-      const relevantIntros = data.filter(intro => {
+      const relevantIntros = data ? data.filter(intro => {
         // Check if all selected contactIds are included in this intro
-        return contactIds.every(id => intro.contacts_introduced.includes(id));
-      });
+        return contactIds.every(id => (intro.contact_ids || []).includes(id));
+      }) : [];
       
-      setIntroHistory(relevantIntros);
+      // Map the data to match the expected format
+      const mappedIntros = relevantIntros.map(intro => ({
+        intro_id: intro.introduction_id,
+        contacts_introduced: intro.contact_ids,
+        intro_date: intro.introduction_date,
+        introduction_rationale: intro.category, // Assuming category can serve as rationale
+        introduction_note: intro.text,
+        created_by: intro.created_by,
+        created_at: intro.created_at
+      }));
+      
+      setIntroHistory(mappedIntros);
     } catch (error) {
       console.error('Error fetching introduction history:', error);
       toast.error('Failed to load introduction history');
@@ -777,7 +822,7 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
   useEffect(() => {
     // Check for previous introductions when selected contacts change
     if (selectedContacts.length >= 2) {
-      fetchPreviousIntroductions(selectedContacts.map(c => c.id));
+      fetchPreviousIntroductions(selectedContacts.map(c => c.contact_id));
     } else {
       setIntroHistory([]);
     }
@@ -793,7 +838,7 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
   };
 
   const handleRemoveContact = (contactId) => {
-    setSelectedContacts(prev => prev.filter(contact => contact.id !== contactId));
+    setSelectedContacts(prev => prev.filter(contact => contact.contact_id !== contactId));
   };
   
   const handleCategoryFilterChange = (category) => {
@@ -876,11 +921,14 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
     try {
       const { data: userData } = await supabase.auth.getUser();
       
+      // Map to the introductions table structure
       const introData = {
-        intro_date: introDate,
-        contacts_introduced: selectedContacts.map(contact => contact.id),
-        introduction_rationale: rationale,
-        introduction_note: note,
+        introduction_date: introDate,
+        contact_ids: selectedContacts.map(contact => contact.contact_id),
+        category: rationale, // Using rationale as category
+        text: note, // Using note as text
+        introduction_tool: 'Web', // Default value
+        status: 'Completed', // Default value 
         created_by: userData.user.id,
         created_at: new Date().toISOString()
       };
@@ -890,17 +938,19 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
       if (editingIntro) {
         // Update existing introduction
         const updateData = {
-          intro_date: introDate,
-          contacts_introduced: selectedContacts.map(contact => contact.id),
-          introduction_rationale: rationale,
-          introduction_note: note
+          introduction_date: introDate,
+          contact_ids: selectedContacts.map(contact => contact.contact_id),
+          category: rationale,
+          text: note,
+          last_modified_by: userData.user.id,
+          last_modified_at: new Date().toISOString()
         };
         
         console.log("Updating introduction with data:", updateData);
         const { data: updatedData, error: updateError } = await supabase
-          .from('contact_introductions')
+          .from('introductions')
           .update(updateData)
-          .eq('intro_id', editingIntro.intro_id)
+          .eq('introduction_id', editingIntro.intro_id) // Map to the correct ID field
           .select(); // Add select() to return the updated data
         
         error = updateError;
@@ -912,7 +962,7 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
       } else {
         // Create new introduction
         const { error: insertError } = await supabase
-          .from('contact_introductions')
+          .from('introductions')
           .insert(introData)
           .select();
         error = insertError;
@@ -998,9 +1048,9 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
             <Label>Select Contacts to Introduce</Label>
             <ContactsList>
               {selectedContacts.map(contact => (
-                <ContactTag key={contact.id}>
+                <ContactTag key={contact.contact_id}>
                   <span>{contact.first_name} {contact.last_name}</span>
-                  <button onClick={() => handleRemoveContact(contact.id)}>
+                  <button onClick={() => handleRemoveContact(contact.contact_id)}>
                     <FiX size={14} />
                   </button>
                 </ContactTag>
@@ -1050,12 +1100,12 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
               <SuggestionsContainer>
                 {suggestions.map(contact => (
                   <SuggestionItem
-                    key={contact.id}
+                    key={contact.contact_id}
                     onClick={() => handleContactSelect(contact)}
                   >
                     <span>{contact.first_name} {contact.last_name}</span>
-                    {contact.contact_category && (
-                      <small style={{ color: '#6b7280' }}>{contact.contact_category}</small>
+                    {contact.category && (
+                      <small style={{ color: '#6b7280' }}>{contact.category}</small>
                     )}
                   </SuggestionItem>
                 ))}
