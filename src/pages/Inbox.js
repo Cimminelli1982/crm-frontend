@@ -1,9 +1,10 @@
 import React, { useState, lazy, Suspense, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
-import { FiMail, FiUsers, FiClock, FiCopy, FiSkipForward } from 'react-icons/fi';
+import { FiMail, FiUsers, FiClock, FiCopy, FiSkipForward, FiPhone } from 'react-icons/fi';
 
 // Lazy load the inbox components
+const WhatsappInbox = lazy(() => import('./contacts/WhatsappInbox'));
 const EmailInbox = lazy(() => import('./contacts/EmailInbox'));
 const ContactsInbox = lazy(() => import('./contacts/ContactsInbox'));
 const KeepInTouchInbox = lazy(() => import('./contacts/KeepInTouchInbox'));
@@ -112,7 +113,7 @@ const Inbox = () => {
   const workflowContactId = sessionStorage.getItem('workflow_contact_id');
   
   // Set initial active tab based on source parameter
-  const [activeTab, setActiveTab] = useState(sourceTab === 'category' ? 'category' : 'email');
+  const [activeTab, setActiveTab] = useState(sourceTab === 'category' ? 'category' : 'whatsapp');
   
   // If we have a workflow contact, immediately redirect to workflow page
   useEffect(() => {
@@ -126,6 +127,7 @@ const Inbox = () => {
 
   // Define menu items
   const menuItems = [
+    { id: 'whatsapp', name: 'WhatsApp', icon: <FiPhone /> },
     { id: 'email', name: 'Email', icon: <FiMail /> },
     { id: 'category', name: 'Categories', icon: <FiUsers /> },
     { id: 'kit', name: 'Keep in Touch', icon: <FiClock /> },
@@ -136,6 +138,8 @@ const Inbox = () => {
   // Render the active component based on the selected tab
   const renderContent = () => {
     switch (activeTab) {
+      case 'whatsapp':
+        return <WhatsappInbox />;
       case 'email':
         return <EmailInbox />;
       case 'category':
