@@ -1,16 +1,34 @@
-import React, { useEffect, useState } from 'react';
-import Modal from 'react-modal';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { FiX, FiSave } from 'react-icons/fi';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
 
-// Configure Modal for React
-try {
-  Modal.setAppElement('#root');
-} catch (error) {
-  console.error('Error setting app element for Modal:', error);
-}
+// Styled components
+const ModalBackdrop = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5000;
+`;
+
+const ModalContainer = styled.div`
+  background: #222;
+  border-radius: 8px;
+  padding: 20px;
+  border: 1px solid #333;
+  width: 90%;
+  max-width: 600px;
+  max-height: 80vh;
+  overflow: auto;
+  color: #eee;
+`;
 
 const ModalHeader = styled.div`
   display: flex;
@@ -115,7 +133,8 @@ const ButtonGroup = styled.div`
   margin-top: 20px;
 `;
 
-const Button = styled.button`
+// Create two separate button components to avoid the "primary" prop warning
+const BaseButton = styled.button`
   padding: 8px 16px;
   border-radius: 4px;
   cursor: pointer;
@@ -124,12 +143,6 @@ const Button = styled.button`
   gap: 8px;
   font-size: 0.9rem;
   border: none;
-  background-color: ${props => props.primary ? '#00ff00' : '#333'};
-  color: ${props => props.primary ? '#000' : '#fff'};
-  
-  &:hover {
-    background-color: ${props => props.primary ? '#00cc00' : '#444'};
-  }
   
   &:disabled {
     opacity: 0.5;
@@ -137,16 +150,28 @@ const Button = styled.button`
   }
 `;
 
-// Main component
-const EditDealModal = ({ isOpen, onClose, deal }) => {
-  // Add debugging logs
-  console.log('EditDealModal component rendering with:', { 
-    isOpen, 
-    deal,
-    dealId: deal?.deal_id,
-    hasOnClose: !!onClose
-  });
+const SecondaryButton = styled(BaseButton)`
+  background-color: #333;
+  color: #fff;
   
+  &:hover {
+    background-color: #444;
+  }
+`;
+
+const PrimaryButton = styled(BaseButton)`
+  background-color: #00ff00;
+  color: #000;
+  
+  &:hover {
+    background-color: #00cc00;
+  }
+`;
+
+// Main component
+const DirectEditDealModal = ({ onClose, deal, onUpdate }) => {
+  console.log('DirectEditDealModal rendering with deal:', deal);
+
   // Setup form state
   const [formData, setFormData] = useState({
     name: '',
@@ -173,15 +198,6 @@ const EditDealModal = ({ isOpen, onClose, deal }) => {
   const dealSourceCategories = [
     'Not Set', 'Cold Contacting', 'Introduction'
   ];
-  
-  // Log modal open/close
-  useEffect(() => {
-    if (isOpen) {
-      console.log('EditDealModal is OPEN', { deal });
-    } else {
-      console.log('EditDealModal is CLOSED');
-    }
-  }, [isOpen, deal]);
   
   // Initialize form with deal data when the deal changes
   useEffect(() => {
@@ -248,6 +264,9 @@ const EditDealModal = ({ isOpen, onClose, deal }) => {
       console.log('Deal updated successfully:', data);
       toast.success('Deal updated successfully');
       
+      // Call onUpdate callback
+      if (onUpdate) onUpdate();
+      
       // Close the modal after successful update
       if (onClose) onClose();
     } catch (err) {
@@ -258,140 +277,123 @@ const EditDealModal = ({ isOpen, onClose, deal }) => {
     }
   };
 
-  // Handle direct close event
-  const handleClose = () => {
-    console.log('Close button clicked');
-    if (onClose) onClose();
-  };
-  
-  const modalStyles = {
-    overlay: {
-      backgroundColor: 'rgba(0, 0, 0, 0.85)',
-      zIndex: 3000,
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0
-    },
-    content: {
-      top: '50%',
-      left: '50%',
-      right: 'auto',
-      bottom: 'auto',
-      marginRight: '-50%',
-      transform: 'translate(-50%, -50%)',
-      background: '#222',
-      borderRadius: '8px',
-      padding: '20px',
-      border: '1px solid #333',
-      maxWidth: '600px',
-      width: '90%',
-      maxHeight: '80vh',
-      overflow: 'auto',
-      color: '#eee',
+  // Handle close with ESC key
+  useEffect(() => {
+    const handleEsc = (event) => {
+      if (event.key === 'Escape') {
+        if (onClose) onClose();
+      }
+    };
+    
+    window.addEventListener('keydown', handleEsc);
+    
+    return () => {
+      window.removeEventListener('keydown', handleEsc);
+    };
+  }, [onClose]);
+
+  // Handle backdrop click
+  const handleBackdropClick = (e) => {
+    if (e.target === e.currentTarget) {
+      if (onClose) onClose();
     }
   };
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onRequestClose={handleClose}
-      style={modalStyles}
-      contentLabel="Edit Deal Modal"
-      ariaHideApp={false} // Add this to prevent the warning
-    >
-      <ModalHeader>
-        <Title>Edit Deal</Title>
-        <CloseButton onClick={handleClose}>
-          <FiX />
-        </CloseButton>
-      </ModalHeader>
-      
-      <ContentContainer>
-        {!deal ? (
-          <div>No deal selected for editing</div>
-        ) : (
-          <form onSubmit={handleSubmit}>
-            <FormGroup>
-              <Label>Deal Name</Label>
-              <Input 
-                type="text" 
-                name="name" 
-                value={formData.name} 
-                onChange={handleChange}
-                required
-              />
-            </FormGroup>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+    <ModalBackdrop onClick={handleBackdropClick}>
+      <ModalContainer onClick={e => e.stopPropagation()}>
+        <ModalHeader>
+          <Title>Edit Deal</Title>
+          <CloseButton onClick={onClose}>
+            <FiX />
+          </CloseButton>
+        </ModalHeader>
+        
+        <ContentContainer>
+          {!deal ? (
+            <div>No deal selected for editing</div>
+          ) : (
+            <form onSubmit={handleSubmit}>
               <FormGroup>
-                <Label>Stage</Label>
-                <Select name="stage" value={formData.stage} onChange={handleChange}>
-                  {dealStages.map(stage => (
-                    <option key={stage} value={stage}>{stage}</option>
-                  ))}
-                </Select>
-              </FormGroup>
-              
-              <FormGroup>
-                <Label>Value</Label>
+                <Label>Deal Name</Label>
                 <Input 
-                  type="number" 
-                  name="value" 
-                  value={formData.value} 
+                  type="text" 
+                  name="name" 
+                  value={formData.name} 
                   onChange={handleChange}
-                  step="0.01"
-                  min="0"
-                  placeholder="Deal value"
+                  required
                 />
               </FormGroup>
-            </div>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-              <FormGroup>
-                <Label>Category</Label>
-                <Select name="category" value={formData.category} onChange={handleChange}>
-                  {dealCategories.map(category => (
-                    <option key={category} value={category}>{category}</option>
-                  ))}
-                </Select>
-              </FormGroup>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                <FormGroup>
+                  <Label>Stage</Label>
+                  <Select name="stage" value={formData.stage} onChange={handleChange}>
+                    {dealStages.map(stage => (
+                      <option key={stage} value={stage}>{stage}</option>
+                    ))}
+                  </Select>
+                </FormGroup>
+                
+                <FormGroup>
+                  <Label>Value</Label>
+                  <Input 
+                    type="number" 
+                    name="value" 
+                    value={formData.value} 
+                    onChange={handleChange}
+                    step="0.01"
+                    min="0"
+                    placeholder="Deal value"
+                  />
+                </FormGroup>
+              </div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                <FormGroup>
+                  <Label>Category</Label>
+                  <Select name="category" value={formData.category} onChange={handleChange}>
+                    {dealCategories.map(category => (
+                      <option key={category} value={category}>{category}</option>
+                    ))}
+                  </Select>
+                </FormGroup>
+                
+                <FormGroup>
+                  <Label>Source</Label>
+                  <Select name="source" value={formData.source} onChange={handleChange}>
+                    {dealSourceCategories.map(source => (
+                      <option key={source} value={source}>{source}</option>
+                    ))}
+                  </Select>
+                </FormGroup>
+              </div>
               
               <FormGroup>
-                <Label>Source</Label>
-                <Select name="source" value={formData.source} onChange={handleChange}>
-                  {dealSourceCategories.map(source => (
-                    <option key={source} value={source}>{source}</option>
-                  ))}
-                </Select>
+                <Label>Description</Label>
+                <TextArea 
+                  name="description" 
+                  value={formData.description} 
+                  onChange={handleChange}
+                  placeholder="Deal description"
+                />
               </FormGroup>
-            </div>
-            
-            <FormGroup>
-              <Label>Description</Label>
-              <TextArea 
-                name="description" 
-                value={formData.description} 
-                onChange={handleChange}
-                placeholder="Deal description"
-              />
-            </FormGroup>
-            
-            <ButtonGroup>
-              <Button type="button" onClick={handleClose}>
-                Cancel
-              </Button>
-              <Button type="submit" primary disabled={isLoading}>
-                <FiSave />
-                {isLoading ? 'Saving...' : 'Save Changes'}
-              </Button>
-            </ButtonGroup>
-          </form>
-        )}
-      </ContentContainer>
-    </Modal>
+              
+              <ButtonGroup>
+                <SecondaryButton type="button" onClick={onClose}>
+                  Cancel
+                </SecondaryButton>
+                <PrimaryButton type="submit" disabled={isLoading}>
+                  <FiSave />
+                  {isLoading ? 'Saving...' : 'Save Changes'}
+                </PrimaryButton>
+              </ButtonGroup>
+            </form>
+          )}
+        </ContentContainer>
+      </ModalContainer>
+    </ModalBackdrop>
   );
 };
 
-export default EditDealModal;
+export default DirectEditDealModal;

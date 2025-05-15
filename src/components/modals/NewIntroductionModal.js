@@ -771,7 +771,8 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
   };
 
   const fetchPreviousIntroductions = async (contactIds) => {
-    if (contactIds.length < 2) return;
+    // Only show introduction history when we have at least one contact
+    if (!contactIds || contactIds.length < 1) return;
     
     setLoadingHistory(true);
     try {
@@ -821,7 +822,7 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
 
   useEffect(() => {
     // Check for previous introductions when selected contacts change
-    if (selectedContacts.length >= 2) {
+    if (selectedContacts.length >= 1) {
       fetchPreviousIntroductions(selectedContacts.map(c => c.contact_id));
     } else {
       setIntroHistory([]);
@@ -852,60 +853,95 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
   };
   
   const validateForm = (field, value) => {
+    console.log(`Validating ${field || 'all fields'}`);
     const errors = {...validationErrors};
     
     switch (field) {
       case 'selectedContacts':
-        if (!value || value.length < 2) {
-          // Still check for 2+ contacts but don't display error message
-          errors.selectedContacts = '';
+        if (!value || value.length < 1) {
+          console.log(`Selected contacts validation failed: ${value?.length || 0} contacts selected, need at least 1`);
+          errors.selectedContacts = 'Please select at least one contact';
         } else {
+          console.log(`Selected contacts validation passed: ${value.length} contacts`);
           delete errors.selectedContacts;
         }
         break;
       case 'rationale':
         if (!value) {
+          console.log('Rationale validation failed: No rationale selected');
           errors.rationale = 'Please select a rationale for the introduction';
         } else {
+          console.log(`Rationale validation passed: "${value}" selected`);
           delete errors.rationale;
         }
         break;
       case 'introDate':
         if (!value) {
+          console.log('Introduction date validation failed: No date selected');
           errors.introDate = 'Please select a date for the introduction';
         } else {
+          console.log(`Introduction date validation passed: "${value}" selected`);
           delete errors.introDate;
         }
         break;
       default:
         // Validate all fields
-        if (!selectedContacts || selectedContacts.length < 2) {
-          // Still check for 2+ contacts but don't display error message
-          errors.selectedContacts = '';
+        console.log('Validating all fields at once');
+        console.log(`- Selected contacts: ${selectedContacts?.length || 0}`);
+        console.log(`- Rationale: "${rationale || ''}"`);
+        console.log(`- Intro date: "${introDate || ''}"`);
+        
+        if (!selectedContacts || selectedContacts.length < 1) {
+          console.log(`Selected contacts validation failed: ${selectedContacts?.length || 0} contacts selected, need at least 1`);
+          errors.selectedContacts = 'Please select at least one contact';
         } else {
+          console.log(`Selected contacts validation passed: ${selectedContacts.length} contacts`);
           delete errors.selectedContacts;
         }
         
         if (!rationale) {
+          console.log('Rationale validation failed: No rationale selected');
           errors.rationale = 'Please select a rationale for the introduction';
         } else {
           delete errors.rationale;
         }
         
         if (!introDate) {
+          console.log('Introduction date validation failed: No date selected');
           errors.introDate = 'Please select a date for the introduction';
         } else {
           delete errors.introDate;
         }
     }
     
-    setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
+    // Filter out any empty error messages to prevent them from blocking validation
+    const filteredErrors = {};
+    Object.entries(errors).forEach(([key, value]) => {
+      if (value !== '') {
+        filteredErrors[key] = value;
+      }
+    });
+    
+    const isValid = Object.keys(filteredErrors).length === 0;
+    console.log(`Validation result: ${isValid ? 'VALID' : 'INVALID'}, errors:`, filteredErrors);
+    
+    setValidationErrors(filteredErrors);
+    return isValid;
   };
 
   const handleSubmit = async () => {
+    console.log("Introduction form submission started");
+    console.log("Current form data:", {
+      introDate,
+      selectedContacts: selectedContacts.map(c => ({id: c.contact_id, name: `${c.first_name} ${c.last_name}`})),
+      rationale,
+      note,
+      validationErrors: Object.keys(validationErrors)
+    });
+    
     // Validate all form fields
     if (!validateForm()) {
+      console.log("Validation failed", validationErrors);
       // If there are validation errors, scroll to the first error
       if (Object.keys(validationErrors).length > 0) {
         const firstErrorField = document.getElementById(Object.keys(validationErrors)[0]);
@@ -917,9 +953,11 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
     }
 
     setIsSubmitting(true);
+    console.log("Validation passed, submitting form");
 
     try {
       const { data: userData } = await supabase.auth.getUser();
+      console.log("Authenticated user:", userData?.user?.id);
       
       // Map to the introductions table structure
       const introData = {
@@ -929,10 +967,13 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
         text: note, // Using note as text
         introduction_tool: 'Web', // Default value
         status: 'Completed', // Default value 
-        created_by: userData.user.id,
+        created_by: userData?.user?.id || 'unknown',
         created_at: new Date().toISOString()
       };
+      
+      console.log("Contact IDs to be stored:", introData.contact_ids);
 
+      console.log("Prepared introduction data:", introData);
       let error;
 
       if (editingIntro) {
@@ -942,38 +983,59 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
           contact_ids: selectedContacts.map(contact => contact.contact_id),
           category: rationale,
           text: note,
-          last_modified_by: userData.user.id,
+          last_modified_by: userData?.user?.id || 'unknown',
           last_modified_at: new Date().toISOString()
         };
         
         console.log("Updating introduction with data:", updateData);
+        console.log("Introduction ID to update:", editingIntro.intro_id || editingIntro.introduction_id);
+        
+        // Check which ID field we should use
+        const idField = editingIntro.intro_id ? 'intro_id' : 'introduction_id';
+        const idValue = editingIntro.intro_id || editingIntro.introduction_id;
+        
+        console.log(`Using ID field: ${idField} with value: ${idValue}`);
+        
         const { data: updatedData, error: updateError } = await supabase
           .from('introductions')
           .update(updateData)
-          .eq('introduction_id', editingIntro.intro_id) // Map to the correct ID field
+          .eq('introduction_id', idValue) // Use the correct ID field
           .select(); // Add select() to return the updated data
         
         error = updateError;
         
+        if (error) {
+          console.error("Update error:", error);
+        }
+        
         // If there's data returned, log it for debugging
         if (updatedData) {
-          console.log("Updated introduction:", updatedData);
+          console.log("Updated introduction returned data:", updatedData);
         }
       } else {
         // Create new introduction
-        const { error: insertError } = await supabase
+        console.log("Creating new introduction");
+        const { data: insertData, error: insertError } = await supabase
           .from('introductions')
           .insert(introData)
           .select();
+          
+        console.log("Insert result:", insertData);
         error = insertError;
+        
+        if (error) {
+          console.error("Insert error:", error);
+        }
       }
 
       if (error) throw error;
 
+      console.log("Operation completed successfully");
       toast.success(`Introduction ${editingIntro ? 'updated' : 'created'} successfully`);
       
       // Force a small delay to ensure the DB operation completes before closing
       setTimeout(() => {
+        console.log("Closing modal after successful operation");
         onRequestClose();
       }, 500);
     } catch (error) {
@@ -1120,7 +1182,7 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
           </FormGroup>
 
           {/* Only show previous introductions when NOT in edit mode */}
-          {selectedContacts.length >= 2 && introHistory.length > 0 && !editingIntro && (
+          {selectedContacts.length >= 1 && introHistory.length > 0 && !editingIntro && (
             <IntroHistoryContainer>
               <IntroHistoryHeader>
                 <h4>

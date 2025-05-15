@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+// No special imports needed for modal
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
@@ -18,7 +19,7 @@ import CompanyContactsModal from '../../components/modals/CompanyContactsModal';
 import DuplicateProcessingModal from '../../components/modals/DuplicateProcessingModal';
 import NewIntroductionModal from '../../components/modals/NewIntroductionModal';
 import ViewDealModal from '../../components/modals/ViewDealModal';
-import EditDealModal from '../../components/modals/EditDealModal';
+// Using vanilla JS for edit modal, no need for React component
 import { 
   FiX, 
   FiCheck, 
@@ -1348,12 +1349,18 @@ const ContactCrmWorkflow = () => {
   const [showDealSuggestions, setShowDealSuggestions] = useState(false);
   const [selectedDealForEdit, setSelectedDealForEdit] = useState(null);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
-  // Deal stages - using the exact enum values from the database
+  // Deal stages - using the exact enum values from the database (public schema)
   const [dealStages] = useState([
-    'Lead', 'Qualified', 'Evaluating', 'Negotiation', 'Closing', 'Closed Won', 'Closed Lost', 'Invested', 'Monitoring', 'Passed'
+    'Lead', 'Evaluating', 'Closing', 'Invested', 'Monitoring', 'Passed'
   ]);
+  // Define display values for the UI (capitalized)
+  const [dealCategoriesDisplay] = useState([
+    'Inbox', 'Startup', 'Fund', 'Real Estate', 'Private Debt', 'Private Equity', 'Other'
+  ]);
+  
+  // Define actual database enum values - the public schema values
   const [dealCategories] = useState([
-    'Inbox', 'Startup', 'Investment', 'Fund', 'Partnership', 'Real Estate', 'Private Debt', 'Private Equity', 'Other'
+    'Inbox', 'Startup', 'Fund', 'Real Estate', 'Private Debt', 'Private Equity', 'Other'
   ]);
   const [dealSourceCategories] = useState([
     'Not Set', 'Cold Contacting', 'Introduction'
@@ -2120,8 +2127,7 @@ const ContactCrmWorkflow = () => {
           tag_id,
           tags:tag_id (
             tag_id,
-            name,
-            color
+            name
           )
         `)
         .in('deal_id', dealIds);
@@ -2143,7 +2149,7 @@ const ContactCrmWorkflow = () => {
             entry_id: tagRelation.entry_id,
             tag_id: tagRelation.tag_id,
             name: tagRelation.tags.name,
-            color: tagRelation.tags.color || '#00ffff' // Default color if none set
+            color: '#00ffff' // Use default color since color column doesn't exist
           });
         }
       });
@@ -2464,16 +2470,53 @@ const ContactCrmWorkflow = () => {
           dealData.description !== selectedDealForEdit.description
         ) {
           console.log('Updating existing deal with new data');
+          
+          // Debug the incoming data
+          console.log('Deal data received for update:', {
+            name: dealData.name,
+            stage: dealData.stage,
+            value: dealData.value,
+            category: dealData.category,
+            source: dealData.source,
+            description: dealData.description
+          });
+          
+          // Validate and fix categories to ensure they match database ENUM values
+          let validatedCategory = dealData.category || 'Inbox';
+          // Make sure category is one of the valid values (case sensitive)
+          if (!['Inbox', 'Startup', 'Fund', 'Real Estate', 'Private Debt', 'Private Equity', 'Other'].includes(validatedCategory)) {
+            console.warn(`Category "${validatedCategory}" is not valid, defaulting to "Inbox"`);
+            validatedCategory = 'Inbox';
+          }
+          
+          // Validate and fix stage to ensure it matches database ENUM values
+          let validatedStage = dealData.stage || 'Lead';
+          // Make sure stage is one of the valid values
+          if (!['Lead', 'Evaluating', 'Closing', 'Invested', 'Monitoring', 'Passed'].includes(validatedStage)) {
+            console.warn(`Stage "${validatedStage}" is not valid, defaulting to "Lead"`);
+            validatedStage = 'Lead';
+          }
+          
+          // Validate and fix source to ensure it matches database ENUM values
+          let validatedSource = dealData.source || 'Not Set';
+          // Make sure source is one of the valid values
+          if (!['Not Set', 'Cold Contacting', 'Introduction'].includes(validatedSource)) {
+            console.warn(`Source "${validatedSource}" is not valid, defaulting to "Not Set"`);
+            validatedSource = 'Not Set';
+          }
+          
           const updateData = {
             opportunity: dealData.name,
-            stage: dealData.stage || 'Lead',
+            stage: validatedStage,
             total_investment: dealData.value, // Mapping value to total_investment
-            category: dealData.category || 'Inbox',
-            source_category: dealData.source || 'Not Set', // Mapping source to source_category
+            category: validatedCategory,
+            source_category: validatedSource, // Mapping source to source_category
             description: dealData.description || '',
             last_modified_at: new Date().toISOString(),
             last_modified_by: 'User'
           };
+          
+          console.log('Deal data to update after validation:', updateData);
           
           const { error: updateError } = await supabase
             .from('deals')
@@ -2490,16 +2533,51 @@ const ContactCrmWorkflow = () => {
       } else {
         // Step 1: Create a new deal record
         console.log('Creating new deal in database...');
+        
+        // Debug the incoming data
+        console.log('Deal data received from form:', {
+          name: dealData.name,
+          stage: dealData.stage,
+          value: dealData.value,
+          category: dealData.category,
+          source: dealData.source,
+          description: dealData.description
+        });
+        
+        // Validate and fix categories to ensure they match database ENUM values
+        let validatedCategory = dealData.category || 'Inbox';
+        // Make sure category is one of the valid values (case sensitive)
+        if (!['Inbox', 'Startup', 'Fund', 'Real Estate', 'Private Debt', 'Private Equity', 'Other'].includes(validatedCategory)) {
+          console.warn(`Category "${validatedCategory}" is not valid, defaulting to "Inbox"`);
+          validatedCategory = 'Inbox';
+        }
+        
+        // Validate and fix stage to ensure it matches database ENUM values
+        let validatedStage = dealData.stage || 'Lead';
+        // Make sure stage is one of the valid values
+        if (!['Lead', 'Evaluating', 'Closing', 'Invested', 'Monitoring', 'Passed'].includes(validatedStage)) {
+          console.warn(`Stage "${validatedStage}" is not valid, defaulting to "Lead"`);
+          validatedStage = 'Lead';
+        }
+        
+        // Validate and fix source to ensure it matches database ENUM values
+        let validatedSource = dealData.source || 'Not Set';
+        // Make sure source is one of the valid values
+        if (!['Not Set', 'Cold Contacting', 'Introduction'].includes(validatedSource)) {
+          console.warn(`Source "${validatedSource}" is not valid, defaulting to "Not Set"`);
+          validatedSource = 'Not Set';
+        }
+        
         const insertData = {
           opportunity: dealData.name, // Mapping name to opportunity
-          stage: dealData.stage || 'Lead',
+          stage: validatedStage,
           total_investment: dealData.value, // Mapping value to total_investment
-          category: dealData.category || 'Inbox',
-          source_category: dealData.source || 'Not Set', // Mapping source to source_category
+          category: validatedCategory,
+          source_category: validatedSource, // Mapping source to source_category
           description: dealData.description || ''
         };
         
-        console.log('Deal data to insert:', insertData);
+        console.log('Deal data to insert after validation:', insertData);
         
         const { data: newDeal, error: dealError } = await supabase
           .from('deals')
@@ -13666,71 +13744,153 @@ const handleInputChange = (field, value) => {
                                           }}
                                           onClick={(e) => {
                                             e.preventDefault(); // Prevent any default action
-                                            e.stopPropagation(); // Stop event bubbling - IMPORTANT for stopping expansion
+                                            e.stopPropagation(); // Stop event bubbling
                                             
-                                            // Create a direct DOM modal instead of using React state
-                                            const modalContainer = document.createElement('div');
-                                            modalContainer.id = 'direct-edit-modal';
-                                            modalContainer.style.position = 'fixed';
-                                            modalContainer.style.zIndex = '10000';
-                                            modalContainer.style.top = '0';
-                                            modalContainer.style.left = '0';
-                                            modalContainer.style.width = '100%';
-                                            modalContainer.style.height = '100%';
-                                            modalContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.75)';
-                                            modalContainer.style.display = 'flex';
-                                            modalContainer.style.alignItems = 'center';
-                                            modalContainer.style.justifyContent = 'center';
-                                            
-                                            // Create modal content with better styling
-                                            modalContainer.innerHTML = `
-                                              <div style="background-color: #222; border-radius: 8px; padding: 20px; border: 1px solid #333; max-width: 600px; width: 90%; color: #eee; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);">
-                                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid #333;">
-                                                  <h2 style="margin: 0; font-size: 1.4rem; color: #00ff00;">Edit Deal Working Modal</h2>
-                                                  <button id="close-modal-btn" style="background: none; border: none; color: #ccc; font-size: 1.5rem; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; transition: background-color 0.2s;">✕</button>
+                                            // Create a completely separate function to open the modal directly
+                                            function openEditDeal() {
+                                              // Create a DOM element to render our modal into
+                                              const modalContainer = document.createElement('div');
+                                              modalContainer.id = 'direct-edit-deal-modal-container';
+                                              document.body.appendChild(modalContainer);
+                                              
+                                              // Create a clean copy of the deal data
+                                              const dealCopy = JSON.parse(JSON.stringify(deal));
+                                              
+                                              // Render the modal directly into the DOM
+                                              console.log('Directly opening edit modal for deal:', deal.deal_id);
+                                              
+                                              // Use this to force an update of the deals list when done
+                                              const updateDeals = () => {
+                                                loadContactDeals();
+                                              };
+                                              
+                                              // Reference to store root for cleanup
+                                              let root = null;
+                                              
+                                              // Create a function to close and remove the modal
+                                              const closeModal = () => {
+                                                console.log('Direct modal closed');
+                                                
+                                                try {
+                                                  // Clean unmount without warnings
+                                                  if (root) {
+                                                    // Use the modern API to unmount
+                                                    root.unmount();
+                                                  }
+                                                  
+                                                  // Remove the container
+                                                  if (document.body.contains(modalContainer)) {
+                                                    document.body.removeChild(modalContainer);
+                                                  }
+                                                } catch (error) {
+                                                  console.error('Error closing modal:', error);
+                                                }
+                                              };
+                                              
+                                              // Use modern React 18 API
+                                              // Use vanilla JS to create a HTML dialog instead of React
+                                              const dialogElement = document.createElement('dialog');
+                                              dialogElement.id = 'edit-deal-dialog';
+                                              dialogElement.style.border = '1px solid #444';
+                                              dialogElement.style.borderRadius = '8px';
+                                              dialogElement.style.padding = '20px';
+                                              dialogElement.style.backgroundColor = '#222';
+                                              dialogElement.style.color = '#fff';
+                                              dialogElement.style.maxWidth = '600px';
+                                              dialogElement.style.width = '90%';
+                                              
+                                              // Create dialog content
+                                              dialogElement.innerHTML = `
+                                                <div style="display: flex; justify-content: space-between; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 10px;">
+                                                  <h2 style="color: #00ff00; margin: 0;">Edit Deal</h2>
+                                                  <button id="close-modal-btn" style="background: none; border: none; color: #fff; cursor: pointer; font-size: 20px;">×</button>
                                                 </div>
-                                                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; min-height: 200px;">
-                                                  <h3 style="color: #00ffff; font-size: 1.5rem; text-align: center; margin: 20px 0;">Coming Soon</h3>
-                                                  <div style="margin-top: 20px; color: #bbb; font-size: 1.1rem;">Deal: <strong>${deal.opportunity}</strong></div>
-                                                </div>
-                                              </div>
-                                            `;
-                                            
-                                            // Add to body
-                                            document.body.appendChild(modalContainer);
-                                            
-                                            // Add event listeners for close button and escape key
-                                            setTimeout(() => {
-                                              const closeBtn = document.getElementById('close-modal-btn');
+                                                
+                                                <form id="edit-deal-form">
+                                                  <div style="margin-bottom: 15px;">
+                                                    <label style="display: block; margin-bottom: 5px; color: #aaa;">Name</label>
+                                                    <input id="deal-name" type="text" value="${dealCopy.opportunity || ''}" style="width: 100%; padding: 8px; background: #333; color: #fff; border: 1px solid #444; border-radius: 4px;">
+                                                  </div>
+                                                  
+                                                  <div style="margin-bottom: 15px;">
+                                                    <label style="display: block; margin-bottom: 5px; color: #aaa;">Stage</label>
+                                                    <select id="deal-stage" style="width: 100%; padding: 8px; background: #333; color: #fff; border: 1px solid #444; border-radius: 4px;">
+                                                      <option value="Lead" ${dealCopy.stage === 'Lead' ? 'selected' : ''}>Lead</option>
+                                                      <option value="Evaluating" ${dealCopy.stage === 'Evaluating' ? 'selected' : ''}>Evaluating</option>
+                                                      <option value="Closing" ${dealCopy.stage === 'Closing' ? 'selected' : ''}>Closing</option>
+                                                      <option value="Invested" ${dealCopy.stage === 'Invested' ? 'selected' : ''}>Invested</option>
+                                                      <option value="Monitoring" ${dealCopy.stage === 'Monitoring' ? 'selected' : ''}>Monitoring</option>
+                                                      <option value="Passed" ${dealCopy.stage === 'Passed' ? 'selected' : ''}>Passed</option>
+                                                    </select>
+                                                  </div>
+                                                  
+                                                  <div style="margin-bottom: 15px;">
+                                                    <label style="display: block; margin-bottom: 5px; color: #aaa;">Description</label>
+                                                    <textarea id="deal-description" style="width: 100%; padding: 8px; background: #333; color: #fff; border: 1px solid #444; border-radius: 4px; min-height: 100px;">${dealCopy.description || ''}</textarea>
+                                                  </div>
+                                                  
+                                                  <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                                                    <button id="cancel-modal-btn" type="button" style="padding: 8px 16px; background: #333; color: #fff; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
+                                                    <button id="save-modal-btn" type="button" style="padding: 8px 16px; background: #00ff00; color: #000; border: none; border-radius: 4px; cursor: pointer;">Save Changes</button>
+                                                  </div>
+                                                </form>
+                                              `;
                                               
-                                              // Add hover effect
-                                              closeBtn.addEventListener('mouseover', () => {
-                                                closeBtn.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-                                              });
+                                              // Add dialog to container
+                                              modalContainer.appendChild(dialogElement);
                                               
-                                              closeBtn.addEventListener('mouseout', () => {
-                                                closeBtn.style.backgroundColor = 'transparent';
-                                              });
+                                              // Show the dialog
+                                              dialogElement.showModal();
                                               
-                                              // Close on button click
-                                              closeBtn.addEventListener('click', () => {
-                                                document.body.removeChild(modalContainer);
-                                              });
-                                              
-                                              // Close on ESC key press
-                                              document.addEventListener('keydown', (e) => {
-                                                if (e.key === 'Escape' && document.body.contains(modalContainer)) {
-                                                  document.body.removeChild(modalContainer);
+                                              // Set up event handlers
+                                              document.getElementById('close-modal-btn').addEventListener('click', closeModal);
+                                              document.getElementById('cancel-modal-btn').addEventListener('click', closeModal);
+                                              document.getElementById('save-modal-btn').addEventListener('click', async () => {
+                                                try {
+                                                  // Get form values
+                                                  const name = document.getElementById('deal-name').value;
+                                                  const stage = document.getElementById('deal-stage').value; 
+                                                  const description = document.getElementById('deal-description').value;
+                                                  
+                                                  // Create update data
+                                                  const updateData = {
+                                                    opportunity: name,
+                                                    stage: stage,
+                                                    description: description,
+                                                    last_modified_at: new Date().toISOString()
+                                                  };
+                                                  
+                                                  console.log('Updating deal with:', updateData);
+                                                  
+                                                  // Update in Supabase
+                                                  const { data, error } = await supabase
+                                                    .from('deals')
+                                                    .update(updateData)
+                                                    .eq('deal_id', dealCopy.deal_id)
+                                                    .select();
+                                                    
+                                                  if (error) throw error;
+                                                  
+                                                  console.log('Deal updated successfully:', data);
+                                                  toast.success('Deal updated successfully');
+                                                  
+                                                  // Close modal and refresh data
+                                                  closeModal();
+                                                  loadContactDeals();
+                                                } catch (err) {
+                                                  console.error('Error updating deal:', err);
+                                                  toast.error('Failed to update: ' + err.message);
                                                 }
                                               });
-                                              
-                                              // Close on background click (modal container but not modal content)
-                                              modalContainer.addEventListener('click', (e) => {
-                                                if (e.target === modalContainer) {
-                                                  document.body.removeChild(modalContainer);
-                                                }
-                                              });
-                                            }, 100);
+                                            }
+                                            
+                                            // Call the function to open the modal directly
+                                            try {
+                                              openEditDeal();
+                                            } catch (error) {
+                                              console.error('Error opening edit deal modal:', error);
+                                              alert('Failed to open edit modal. Please check console for details.');
+                                            }
                                           }}
                                           title="Edit deal"
                                         >
@@ -13777,7 +13937,10 @@ const handleInputChange = (field, value) => {
                               {/* Add introduction button */}
                               <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '20px' }}>
                                 <button
-                                  onClick={() => setShowNewIntroductionModal(true)}
+                                  onClick={() => {
+                                  console.log('Opening introduction modal from main button');
+                                  setShowNewIntroductionModal(true);
+                                }}
                                   style={{
                                     backgroundColor: '#00ff00',
                                     color: '#000',
@@ -13814,7 +13977,10 @@ const handleInputChange = (field, value) => {
                                     </div>
                                     <p>No introductions found for this contact.</p>
                                     <button
-                                      onClick={() => setShowNewIntroductionModal(true)}
+                                      onClick={() => {
+                                  console.log('Opening introduction modal from main button');
+                                  setShowNewIntroductionModal(true);
+                                }}
                                       style={{
                                         backgroundColor: 'transparent',
                                         color: '#00ff00',
@@ -13928,6 +14094,7 @@ const handleInputChange = (field, value) => {
                         <NewIntroductionModal
                           isOpen={showNewIntroductionModal}
                           onRequestClose={() => {
+                            console.log('Closing introduction modal, selected intro:', selectedIntroduction);
                             setShowNewIntroductionModal(false);
                             setSelectedIntroduction(null);
                             loadContactIntroductions(); // Reload data when modal closes
@@ -15630,8 +15797,8 @@ const handleInputChange = (field, value) => {
               <FormGroup>
                 <InputLabel>Category</InputLabel>
                 <Select name="dealCategory" defaultValue="Inbox">
-                  {dealCategories.map(category => (
-                    <option key={category} value={category}>{category}</option>
+                  {dealCategories.map((category, index) => (
+                    <option key={category} value={category}>{dealCategoriesDisplay[index]}</option>
                   ))}
                 </Select>
               </FormGroup>
@@ -15774,9 +15941,9 @@ const handleInputChange = (field, value) => {
       <FormGrid>
         <FormGroup>
           <InputLabel>Category</InputLabel>
-          <Select name="dealCategory">
-            {dealCategories.map(category => (
-              <option key={category} value={category}>{category}</option>
+          <Select name="dealCategory" defaultValue="Inbox">
+            {dealCategories.map((category, index) => (
+              <option key={category} value={category}>{dealCategoriesDisplay[index]}</option>
             ))}
           </Select>
         </FormGroup>
@@ -16087,15 +16254,7 @@ const handleInputChange = (field, value) => {
     onUpdate={loadContactDeals}
   />
   
-  {/* Edit Deal Modal */}
-  <EditDealModal
-    isOpen={showEditDealModal}
-    onClose={() => {
-      setShowEditDealModal(false);
-      setSelectedDealForEdit(null);
-    }}
-    deal={selectedDealForEdit}
-  />
+  {/* Edit Deal Modal is now rendered directly using vanilla JS */}
 };
 
 export default ContactCrmWorkflow;

@@ -273,7 +273,8 @@ const TagsModal = ({ isOpen, onRequestClose, contact, meeting, onTagAdded, onTag
     isMeetingContext, 
     entityId, 
     meetingInfo: meeting,
-    contactInfo: contact 
+    contactInfo: contact,
+    isOpen // Add isOpen state to the log to help debugging
   });
   
   // Fetch current tags for the entity (contact or meeting)
