@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { AgGridReact } from '../../ag-grid-setup';
-import { FiUser, FiCalendar } from 'react-icons/fi';
+import { FiUser, FiCalendar, FiCheckCircle, FiXCircle, FiPhone, FiMail, FiMessageCircle } from 'react-icons/fi';
 
 // Styled components
 const Container = styled.div`
@@ -24,6 +24,17 @@ const Container = styled.div`
   
   .ag-row {
     cursor: default;
+  }
+  
+  .phone-link, .email-link {
+    z-index: 100;
+    position: relative;
+  }
+  
+  .phone-link:hover, .email-link:hover {
+    color: #00ff00 !important;
+    text-decoration: underline;
+    background-color: rgba(0, 255, 0, 0.1);
   }
 `;
 
@@ -130,6 +141,101 @@ const LoadingMatrix = styled.div`
   }
 `;
 
+// Modal components for messages
+const ModalOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+`;
+
+const ModalContent = styled.div`
+  background-color: #121212;
+  border-radius: 8px;
+  border: 1px solid #333;
+  width: 90%;
+  max-width: 700px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+`;
+
+const ModalHeader = styled.div`
+  padding: 15px 20px;
+  border-bottom: 1px solid #333;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+`;
+
+const ModalTitle = styled.h3`
+  color: #00ff00;
+  margin: 0;
+  font-size: 1.2rem;
+  font-family: 'Courier New', monospace;
+  display: flex;
+  align-items: center;
+`;
+
+const ModalCloseButton = styled.button`
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
+  &:hover {
+    color: #fff;
+  }
+`;
+
+const ModalBody = styled.div`
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+  color: #cccccc;
+  font-family: 'Courier New', monospace;
+`;
+
+const MessageDate = styled.div`
+  color: #888;
+  font-size: 0.9rem;
+  margin-top: 10px;
+  text-align: right;
+`;
+
+const MessageContent = styled.div`
+  background-color: #1a1a1a;
+  border-radius: 8px;
+  padding: 15px;
+  margin-top: 15px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+`;
+
+const MessageInfo = styled.div`
+  margin-bottom: 15px;
+  display: flex;
+  align-items: center;
+  
+  & > svg {
+    margin-right: 10px;
+    color: #00ff00;
+  }
+`;
+
 const SkipInbox = () => {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -172,6 +278,690 @@ const SkipInbox = () => {
     );
   };
 
+  // Cell renderer for action buttons with improved event handling
+  const ActionCellRenderer = (props) => {
+    // Create refs to store references to the buttons
+    const spamButtonRef = React.useRef(null);
+    const crmButtonRef = React.useRef(null);
+    
+    React.useEffect(() => {
+      // Get the buttons from refs after render
+      const spamButton = spamButtonRef.current;
+      const crmButton = crmButtonRef.current;
+      
+      if (!spamButton || !crmButton) return;
+      
+      // Function to handle spam button click with complete event isolation
+      const spamClickHandler = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        
+        // Delay the actual action just to be sure all event bubbling is done
+        setTimeout(() => {
+          handleMarkAsSpam(props.data);
+        }, 10);
+        
+        return false;
+      };
+      
+      // Function to handle add to CRM button click with complete event isolation
+      const crmClickHandler = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        
+        // Delay the actual action just to be sure all event bubbling is done
+        setTimeout(() => {
+          handleAddToCRM(props.data);
+        }, 10);
+        
+        return false;
+      };
+      
+      // Add the click handlers to all buttons
+      spamButton.addEventListener('click', spamClickHandler, true);
+      crmButton.addEventListener('click', crmClickHandler, true);
+      
+      // Cleanup - remove handlers when component unmounts
+      return () => {
+        spamButton.removeEventListener('click', spamClickHandler, true);
+        crmButton.removeEventListener('click', crmClickHandler, true);
+      };
+    }, [props.data]);
+    
+    return (
+      <div
+        className="action-buttons-container"
+        style={{ 
+          display: 'flex', 
+          justifyContent: 'center',
+          alignItems: 'center',
+          paddingTop: '4px',
+          paddingBottom: '0px',
+          height: '100%'
+        }}
+        // This is critical - stop propagation at the container level too
+        onClick={(e) => { 
+          e.stopPropagation(); 
+          e.preventDefault();
+        }}
+      >
+        <div 
+          ref={spamButtonRef}
+          style={{
+            backgroundColor: '#333',
+            color: '#ff5555',
+            border: '1px solid #ff5555',
+            borderRadius: '4px',
+            padding: '5px 10px',
+            margin: '0 8px',
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontSize: '12px',
+            height: '24px'
+          }}
+        >
+          <FiXCircle /> Spam
+        </div>
+        
+        <div 
+          ref={crmButtonRef}
+          style={{
+            backgroundColor: '#333',
+            color: '#55ff55',
+            border: '1px solid #55ff55',
+            borderRadius: '4px',
+            padding: '5px 10px',
+            margin: '0 8px',
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontSize: '12px',
+            height: '24px'
+          }}
+        >
+          <FiCheckCircle /> Add to CRM
+        </div>
+      </div>
+    );
+  };
+
+  // WhatsApp Message Modal Component
+  const WhatsAppModal = ({ message, onClose }) => {
+    if (!message) return null;
+    
+    return (
+      <ModalOverlay onClick={onClose}>
+        <ModalContent onClick={(e) => e.stopPropagation()}>
+          <ModalHeader>
+            <ModalTitle>
+              <FiPhone style={{ marginRight: '10px' }} /> WhatsApp Message
+            </ModalTitle>
+            <ModalCloseButton onClick={onClose}>×</ModalCloseButton>
+          </ModalHeader>
+          <ModalBody>
+            <MessageInfo>
+              <FiPhone /> From: {message.mobile_number}
+            </MessageInfo>
+            <MessageContent>
+              {message.message}
+            </MessageContent>
+            <MessageDate>
+              Received: {new Date(message.created_at).toLocaleString()}
+            </MessageDate>
+            
+            {message.interaction_id && (
+              <div style={{ marginTop: '20px' }}>
+                <button 
+                  style={{
+                    backgroundColor: '#1a1a1a',
+                    color: '#00ff00',
+                    border: '1px solid #00ff00',
+                    borderRadius: '4px',
+                    padding: '8px 15px',
+                    cursor: 'pointer',
+                    fontFamily: 'Courier New, monospace'
+                  }}
+                  onClick={() => {
+                    if (message.contact_id) {
+                      sessionStorage.setItem('workflow_contact_id', message.contact_id);
+                      window.location.href = `/contacts/workflow/${message.contact_id}`;
+                    }
+                    onClose();
+                  }}
+                >
+                  View Full Conversation History
+                </button>
+              </div>
+            )}
+          </ModalBody>
+        </ModalContent>
+      </ModalOverlay>
+    );
+  };
+  
+  // Email Message Modal Component
+  const EmailModal = ({ email, onClose }) => {
+    if (!email) return null;
+    
+    return (
+      <ModalOverlay onClick={onClose}>
+        <ModalContent onClick={(e) => e.stopPropagation()}>
+          <ModalHeader>
+            <ModalTitle>
+              <FiMail style={{ marginRight: '10px' }} /> Email Message
+            </ModalTitle>
+            <ModalCloseButton onClick={onClose}>×</ModalCloseButton>
+          </ModalHeader>
+          <ModalBody>
+            <MessageInfo>
+              <FiMail /> From: {email.email_address}
+            </MessageInfo>
+            <div style={{ marginTop: '10px' }}>
+              <strong>Subject:</strong> {email.subject || '(No Subject)'}
+              {email.has_attachments && (
+                <span style={{ marginLeft: '10px', color: '#aaa', fontSize: '0.9em' }}>
+                  ({email.attachment_count || 1} attachment{email.attachment_count > 1 ? 's' : ''})
+                </span>
+              )}
+            </div>
+            <MessageContent>
+              {email.body}
+            </MessageContent>
+            <MessageDate>
+              {email.direction === 'outgoing' ? 'Sent: ' : 'Received: '} 
+              {new Date(email.created_at).toLocaleString()}
+            </MessageDate>
+            
+            {(email.interaction_id || email.email_id || email.email_thread_id) && (
+              <div style={{ marginTop: '20px', display: 'flex', gap: '10px' }}>
+                <button 
+                  style={{
+                    backgroundColor: '#1a1a1a',
+                    color: '#00ff00',
+                    border: '1px solid #00ff00',
+                    borderRadius: '4px',
+                    padding: '8px 15px',
+                    cursor: 'pointer',
+                    fontFamily: 'Courier New, monospace'
+                  }}
+                  onClick={() => {
+                    if (email.contact_id) {
+                      sessionStorage.setItem('workflow_contact_id', email.contact_id);
+                      window.location.href = `/contacts/workflow/${email.contact_id}`;
+                    }
+                    onClose();
+                  }}
+                >
+                  View Contact History
+                </button>
+                
+                {email.email_thread_id && (
+                  <button 
+                    style={{
+                      backgroundColor: '#1a1a1a',
+                      color: '#5599ff',
+                      border: '1px solid #5599ff',
+                      borderRadius: '4px',
+                      padding: '8px 15px',
+                      cursor: 'pointer',
+                      fontFamily: 'Courier New, monospace'
+                    }}
+                    onClick={() => {
+                      // Navigate to email thread view
+                      alert('Email thread view is not implemented yet');
+                      // Future implementation could use something like:
+                      // window.location.href = `/emails/thread/${email.email_thread_id}`;
+                    }}
+                  >
+                    View Thread
+                  </button>
+                )}
+              </div>
+            )}
+          </ModalBody>
+        </ModalContent>
+      </ModalOverlay>
+    );
+  };
+
+  // State for modals
+  const [whatsappMessage, setWhatsappMessage] = useState(null);
+  const [emailMessage, setEmailMessage] = useState(null);
+  
+  // Handler for mobile phone number click to view whatsapp messages
+  const handleViewWhatsappMessage = async (mobile, contactId) => {
+    if (!mobile || mobile === '-') return;
+    
+    try {
+      let queryContactId = contactId;
+      
+      // If no contactId was provided, look it up from mobile number
+      if (!queryContactId) {
+        const { data: mobileData, error: mobileError } = await supabase
+          .from('contact_mobiles')
+          .select('contact_id')
+          .eq('mobile', mobile)
+          .limit(1);
+        
+        if (mobileError) throw mobileError;
+        
+        if (!mobileData || mobileData.length === 0) {
+          alert(`Could not find contact associated with ${mobile}`);
+          return;
+        }
+        
+        queryContactId = mobileData[0].contact_id;
+      }
+      
+      // Find the latest WhatsApp interaction for this contact
+      // Get the chat ID first if possible
+      const { data: contactChats, error: chatError } = await supabase
+        .from('contact_chats')
+        .select('chat_id')
+        .eq('contact_id', queryContactId);
+      
+      if (chatError) throw chatError;
+      
+      let interactions = [];
+      
+      // If we found chat associations, get interactions for those chats
+      if (contactChats && contactChats.length > 0) {
+        const chatIds = contactChats.map(cc => cc.chat_id).filter(Boolean);
+        
+        if (chatIds.length > 0) {
+          // Get interactions for these chat IDs
+          const { data: chatInteractions, error: interactionsError } = await supabase
+            .from('interactions')
+            .select(`
+              interaction_id,
+              interaction_date,
+              summary,
+              chat_id,
+              contact_id,
+              interaction_type,
+              direction
+            `)
+            .eq('contact_id', queryContactId)
+            .in('chat_id', chatIds)
+            .order('interaction_date', { ascending: false })
+            .limit(10);
+          
+          if (interactionsError) throw interactionsError;
+          
+          if (chatInteractions && chatInteractions.length > 0) {
+            interactions = chatInteractions;
+          }
+        }
+      }
+      
+      // As fallback, try to get any interaction for this contact
+      if (interactions.length === 0) {
+        const { data: directInteractions, error: directError } = await supabase
+          .from('interactions')
+          .select(`
+            interaction_id,
+            interaction_date,
+            summary,
+            chat_id,
+            contact_id,
+            interaction_type,
+            direction
+          `)
+          .eq('contact_id', queryContactId)
+          .order('interaction_date', { ascending: false })
+          .limit(5);
+        
+        if (!directError && directInteractions && directInteractions.length > 0) {
+          interactions = directInteractions;
+        }
+      }
+      
+      if (interactions && interactions.length > 0) {
+        // Find the latest WhatsApp-like interaction
+        const whatsappInteraction = interactions.find(i => 
+          i.summary && (
+            i.interaction_type === 'whatsapp' || 
+            i.interaction_type === 'chat' || 
+            i.interaction_type === 'message'
+          )
+        ) || interactions[0];
+        
+        // Construct a message object for the modal
+        const messageData = {
+          mobile_number: mobile,
+          message: whatsappInteraction.summary || 'No message content available',
+          created_at: whatsappInteraction.interaction_date,
+          interaction_id: whatsappInteraction.interaction_id,
+          contact_id: queryContactId,
+          direction: whatsappInteraction.direction || 'incoming'
+        };
+        
+        setWhatsappMessage(messageData);
+      } else {
+        alert(`No WhatsApp messages found for ${mobile}`);
+      }
+    } catch (err) {
+      console.error('Error retrieving WhatsApp messages:', err);
+      alert('Failed to retrieve WhatsApp messages. Please try again.');
+    }
+  };
+  
+  // Handler for email click to view latest email
+  const handleViewEmailMessage = async (email, contactId) => {
+    if (!email || email === '-') return;
+    
+    try {
+      let queryContactId = contactId;
+      
+      // If no contactId was provided, look it up from email address
+      if (!queryContactId) {
+        const { data: emailData, error: emailError } = await supabase
+          .from('contact_emails')
+          .select('contact_id')
+          .eq('email', email)
+          .limit(1);
+        
+        if (emailError) throw emailError;
+        
+        if (!emailData || emailData.length === 0) {
+          alert(`Could not find contact associated with ${email}`);
+          return;
+        }
+        
+        queryContactId = emailData[0].contact_id;
+      }
+      
+      // Try first to get the latest email directly from the emails table
+      const { data: emails, error: emailsError } = await supabase
+        .from('emails')
+        .select(`
+          email_id,
+          email_thread_id,
+          subject,
+          body_plain,
+          body_html,
+          message_timestamp,
+          direction,
+          sender_contact_id,
+          thread_id,
+          has_attachments,
+          attachment_count
+        `)
+        .eq('sender_contact_id', queryContactId)
+        .order('message_timestamp', { ascending: false })
+        .limit(1);
+      
+      if (emailsError) throw emailsError;
+      
+      // If direct email found, use that
+      if (emails && emails.length > 0) {
+        const latestEmail = emails[0];
+        
+        // Get thread info if available
+        let threadSubject = latestEmail.subject;
+        if (latestEmail.email_thread_id) {
+          const { data: threadData } = await supabase
+            .from('email_threads')
+            .select('subject')
+            .eq('email_thread_id', latestEmail.email_thread_id)
+            .limit(1);
+            
+          if (threadData && threadData.length > 0) {
+            threadSubject = threadData[0].subject || threadSubject;
+          }
+        }
+        
+        // Construct an email object for the modal
+        const emailData = {
+          email_address: email,
+          subject: threadSubject || 'Email from ' + email,
+          body: latestEmail.body_plain || latestEmail.body_html || 'No email content available',
+          created_at: latestEmail.message_timestamp,
+          email_id: latestEmail.email_id,
+          email_thread_id: latestEmail.email_thread_id,
+          thread_id: latestEmail.thread_id,
+          contact_id: queryContactId,
+          direction: latestEmail.direction,
+          has_attachments: latestEmail.has_attachments,
+          attachment_count: latestEmail.attachment_count
+        };
+        
+        setEmailMessage(emailData);
+        return;
+      }
+      
+      // Fallback to interactions table if no direct emails found
+      const { data: interactions, error: interactionsError } = await supabase
+        .from('interactions')
+        .select(`
+          interaction_id,
+          interaction_date,
+          summary,
+          contact_id,
+          interaction_type,
+          direction,
+          email_thread_id
+        `)
+        .eq('contact_id', queryContactId)
+        .order('interaction_date', { ascending: false })
+        .limit(5);
+      
+      if (interactionsError) throw interactionsError;
+      
+      if (interactions && interactions.length > 0) {
+        // Find the latest email interaction if possible
+        const emailInteraction = interactions.find(i => 
+          i.summary && (
+            i.interaction_type === 'email' || 
+            i.email_thread_id ||
+            (i.summary && i.summary.includes('@'))
+          )
+        ) || interactions[0];
+        
+        // Construct an email object for the modal
+        const emailData = {
+          email_address: email,
+          subject: emailInteraction.email_thread_id ? 
+            `Email thread: ${emailInteraction.email_thread_id}` : 
+            'Email from ' + email,
+          body: emailInteraction.summary || 'No email content available',
+          created_at: emailInteraction.interaction_date,
+          interaction_id: emailInteraction.interaction_id,
+          contact_id: queryContactId,
+          direction: emailInteraction.direction || 'incoming'
+        };
+        
+        setEmailMessage(emailData);
+      } else {
+        alert(`No emails found for ${email}`);
+      }
+    } catch (err) {
+      console.error('Error retrieving emails:', err);
+      alert('Failed to retrieve emails. Please try again.');
+    }
+  };
+
+  // Handler for marking a contact as spam
+  const handleMarkAsSpam = async (contact) => {
+    if (!contact || !contact.contact_id) return;
+    
+    try {
+      // Update the contact record 
+      const { error } = await supabase
+        .from('contacts')
+        .update({ 
+          category: 'Spam',
+          last_modified_at: new Date().toISOString(),
+          last_modified_by: 'User'
+        })
+        .eq('contact_id', contact.contact_id);
+      
+      if (error) throw error;
+      
+      // Remove the contact from the displayed list
+      const updatedContacts = contacts.filter(c => c.contact_id !== contact.contact_id);
+      setContacts(updatedContacts);
+      
+      // Check if we need to refresh the data
+      if (updatedContacts.length === 0) {
+        // Trigger a refresh to get more data
+        setDataLoaded(false);
+      }
+    } catch (err) {
+      console.error('Error marking contact as spam:', err);
+      alert('Failed to mark contact as spam. Please try again.');
+    }
+  };
+  
+  // Handler for adding a contact to CRM
+  const handleAddToCRM = async (contact) => {
+    if (!contact || !contact.contact_id) return;
+    
+    try {
+      // Update the contact record
+      const { error } = await supabase
+        .from('contacts')
+        .update({ 
+          category: 'Inbox',
+          last_modified_at: new Date().toISOString(),
+          last_modified_by: 'User'
+        })
+        .eq('contact_id', contact.contact_id);
+      
+      if (error) throw error;
+      
+      // Remove the contact from the displayed list
+      const updatedContacts = contacts.filter(c => c.contact_id !== contact.contact_id);
+      setContacts(updatedContacts);
+      
+      // Check if we need to refresh the data
+      if (updatedContacts.length === 0) {
+        // Trigger a refresh to get more data
+        setDataLoaded(false);
+      }
+    } catch (err) {
+      console.error('Error adding contact to CRM:', err);
+      alert('Failed to add contact to CRM. Please try again.');
+    }
+  };
+  
+  // Mobile cell renderer with click functionality
+  const MobileCellRenderer = (props) => {
+    const value = props.value || '-';
+    // Create a ref to access the DOM element
+    const cellRef = React.useRef(null);
+    
+    // Add a more robust click handling on mount
+    React.useEffect(() => {
+      // Skip effect if no value or no ref element
+      if (value === '-' || !cellRef.current) return;
+      
+      const handleCellClick = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        
+        // Delay to make sure all propagation is stopped
+        setTimeout(() => {
+          handleViewWhatsappMessage(value, props.data?.contact_id);
+        }, 10);
+        
+        return false;
+      };
+      
+      // Add the event listener
+      const cell = cellRef.current;
+      cell.addEventListener('click', handleCellClick, true);
+      
+      // Cleanup
+      return () => {
+        cell.removeEventListener('click', handleCellClick, true);
+      };
+    }, [value, props.data?.contact_id]);
+    
+    // Return a simple dash for empty values
+    if (value === '-') return value;
+    
+    return (
+      <div 
+        ref={cellRef}
+        className="phone-link"
+        style={{ 
+          color: '#cccccc', 
+          cursor: 'pointer',
+          textDecoration: 'underline',
+          position: 'relative',
+          zIndex: 10
+        }}
+        title="Click to view latest WhatsApp message"
+      >
+        <FiPhone style={{ marginRight: '5px', color: '#55ff55' }} />
+        {value}
+      </div>
+    );
+  };
+  
+  // Email cell renderer with click functionality
+  const EmailCellRenderer = (props) => {
+    const value = props.value || '-';
+    // Create a ref to access the DOM element
+    const cellRef = React.useRef(null);
+    
+    // Add a more robust click handling on mount
+    React.useEffect(() => {
+      // Skip effect if no value or no ref element
+      if (value === '-' || !cellRef.current) return;
+      
+      const handleCellClick = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        
+        // Delay to make sure all propagation is stopped
+        setTimeout(() => {
+          handleViewEmailMessage(value, props.data?.contact_id);
+        }, 10);
+        
+        return false;
+      };
+      
+      // Add the event listener
+      const cell = cellRef.current;
+      cell.addEventListener('click', handleCellClick, true);
+      
+      // Cleanup
+      return () => {
+        cell.removeEventListener('click', handleCellClick, true);
+      };
+    }, [value, props.data?.contact_id]);
+    
+    // Return a simple dash for empty values
+    if (value === '-') return value;
+    
+    return (
+      <div 
+        ref={cellRef}
+        className="email-link"
+        style={{ 
+          color: '#cccccc', 
+          cursor: 'pointer',
+          textDecoration: 'underline',
+          position: 'relative',
+          zIndex: 10 
+        }}
+        title="Click to view latest email"
+      >
+        <FiMail style={{ marginRight: '5px', color: '#55ff55' }} />
+        {value}
+      </div>
+    );
+  };
+
   // Column definitions
   const columnDefs = useMemo(() => [
     { 
@@ -199,18 +989,6 @@ const SkipInbox = () => {
       sortable: true,
     },
     { 
-      headerName: 'Category', 
-      field: 'category',
-      minWidth: 120,
-      filter: 'agTextColumnFilter',
-      floatingFilter: false,
-      sortable: true,
-      cellRenderer: (params) => {
-        const value = params.value || '-';
-        return <span style={{ color: '#ff9900' }}>{value}</span>;
-      }
-    },
-    { 
       headerName: 'Mobile', 
       field: 'mobile',
       valueGetter: (params) => {
@@ -221,11 +999,7 @@ const SkipInbox = () => {
       filter: 'agTextColumnFilter',
       floatingFilter: false,
       sortable: true,
-      cellRenderer: (params) => {
-        const value = params.value || '-';
-        if (value === '-') return value;
-        return <span style={{ color: '#cccccc' }}>{value}</span>;
-      }
+      cellRenderer: MobileCellRenderer
     },
     { 
       headerName: 'Email', 
@@ -238,18 +1012,26 @@ const SkipInbox = () => {
       filter: 'agTextColumnFilter',
       floatingFilter: false,
       sortable: true,
-      cellRenderer: (params) => {
-        const value = params.value || '-';
-        if (value === '-') return value;
-        return <span style={{ color: '#cccccc' }}>{value}</span>;
-      }
+      cellRenderer: EmailCellRenderer
+    },
+    {
+      headerName: 'Actions',
+      field: 'actions',
+      minWidth: 250,
+      width: 250,
+      cellRenderer: ActionCellRenderer,
+      sortable: false,
+      filter: false,
+      suppressSizeToFit: false,
+      cellClass: 'action-cell-no-click'
     }
   ], []);
   
   // Default column properties
   const defaultColDef = useMemo(() => ({
     resizable: true,
-    cellClass: 'clickable-cell'
+    cellClass: 'clickable-cell',
+    suppressCellFocus: true
   }), []);
 
   // Grid ready event handler
@@ -265,6 +1047,13 @@ const SkipInbox = () => {
 
   // Row clicked handler
   const handleRowClicked = React.useCallback((params) => {
+    // Check if the click is on a phone or email cell
+    if (params.event && (params.event.target.closest('.phone-link') || params.event.target.closest('.email-link'))) {
+      // Prevent row click behavior for these cells
+      params.event.stopPropagation();
+      return;
+    }
+    
     if (params.data && params.data.contact_id) {
       console.log('Row clicked, navigating to workflow page', params.data);
       navigate(`/contacts/workflow/${params.data.contact_id}`);
@@ -547,6 +1336,22 @@ const SkipInbox = () => {
     <Container>
       {error && <ErrorText>Error: {error}</ErrorText>}
       
+      {/* WhatsApp Message Modal */}
+      {whatsappMessage && (
+        <WhatsAppModal 
+          message={whatsappMessage} 
+          onClose={() => setWhatsappMessage(null)} 
+        />
+      )}
+      
+      {/* Email Message Modal */}
+      {emailMessage && (
+        <EmailModal 
+          email={emailMessage} 
+          onClose={() => setEmailMessage(null)} 
+        />
+      )}
+      
       {loading !== false ? (
         <LoadingContainer>
           <LoadingText>
@@ -608,6 +1413,8 @@ const SkipInbox = () => {
             rowHeight={42} /* Increased row height for better spacing */
             domLayout="autoHeight"
             paginationAutoPageSize={true} /* Auto-adjust page size to fill available height */
+            stopEditingWhenCellsLoseFocus={false}
+            suppressRowClickSelection={false}
             sortingOrder={['asc', 'desc', null]}
             sortModel={[
               { colId: 'last_interaction_at', sort: 'desc' }
