@@ -7,7 +7,7 @@ import { FiCheckCircle, FiXCircle, FiArrowRight, FiArrowLeft, FiMail, FiUser, Fi
 
 // Styled components
 const Container = styled.div`
-  padding: 15px 25px 15px 15px;
+  padding: 15px 15px 15px 15px;
   height: calc(100vh - 60px);
   width: 100%;
   display: flex;
@@ -26,6 +26,7 @@ const SidebarContainer = styled.div`
 const MainContainer = styled.div`
   width: 85%;
   padding-left: 15px;
+  padding-right: 35px;
   overflow: hidden;
 `;
 
@@ -1135,7 +1136,7 @@ const EmailInbox = () => {
             className="ag-theme-alpine" 
             style={{ 
               height: 'calc(100vh - 120px)', /* Adjusted for increased row height */
-              width: 'calc(100% - 15px)', /* Adjusted for left/right padding */
+              width: '100%', /* Fill entire container width */
               overflow: 'auto', /* Add scroll if content exceeds container */
               margin: '15px 0 0 0', /* Top margin only */
               marginTop: '30px', /* Increased top margin */
@@ -1147,7 +1148,10 @@ const EmailInbox = () => {
               '--ag-header-foreground-color': '#00ff00',
               '--ag-foreground-color': '#e0e0e0', 
               '--ag-row-hover-color': '#2a2a2a',
-              '--ag-border-color': '#333333'
+              '--ag-border-color': '#333333',
+              '--ag-range-selection-border-color': '#00ff00',
+              '--ag-range-selection-background-color': 'rgba(0, 255, 0, 0.1)',
+              '--ag-selected-row-background-color': '#1a1a1a'
             }}
           >
             <AgGridReact

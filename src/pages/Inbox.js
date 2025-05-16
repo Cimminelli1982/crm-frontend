@@ -14,9 +14,11 @@ const DuplicateManager = lazy(() => import('./contacts/DuplicateManager'));
 // Style for the main content
 const Container = styled.div`
   padding: 0;
-  margin-top: -45px; /* Move content up to make room for the menu */
+  margin-top: 5px; /* Add margin at the top to avoid browser search bar */
   height: 100%;
   width: 100%;
+  overflow-x: hidden; /* Prevent horizontal scrolling */
+  background-color: #121212;
 `;
 
 // Style for the top menu
@@ -29,9 +31,12 @@ const TopMenuContainer = styled.div`
   scrollbar-color: #00ff00 #222;
   padding: 0;
   margin-bottom: 0;
+  margin-top: 5px;
   position: sticky;
-  top: 0;
+  top: 40px; /* Place it below the browser's search bar */
   z-index: 100;
+  border-top: 1px solid #333;
+  border-radius: 4px 4px 0 0;
   
   &::-webkit-scrollbar {
     height: 6px;
@@ -49,23 +54,27 @@ const TopMenuContainer = styled.div`
 
 // Style for the inbox content
 const InboxContent = styled.div`
-  padding: 0;
+  padding: 0 3px;
+  background-color: #121212;
+  width: 100%;
+  margin-top: 5px;
 `;
 
 // Style for the menu items
 const MenuItem = styled.div`
   display: flex;
   align-items: center;
-  padding: 14px 20px;
+  padding: 12px 16px;
   color: ${props => props.$active ? '#00ff00' : '#ccc'};
   text-decoration: none;
   border-bottom: 2px solid ${props => props.$active ? '#00ff00' : 'transparent'};
-  margin-right: 20px;
+  margin-right: 15px;
   font-family: 'Courier New', monospace;
   transition: all 0.2s ease;
   white-space: nowrap;
   cursor: pointer;
   font-size: 0.95rem;
+  font-weight: ${props => props.$active ? 'bold' : 'normal'};
   
   &:hover {
     color: #00ff00;
@@ -73,11 +82,12 @@ const MenuItem = styled.div`
   }
   
   &:first-child {
-    margin-left: 10px;
+    margin-left: 15px;
   }
   
   svg {
     margin-right: 8px;
+    font-size: 1rem;
   }
 `;
 
@@ -91,6 +101,7 @@ const Title = styled.h1`
 // Style for the content area
 const ContentArea = styled.div`
   width: 100%;
+  background-color: #121212;
 `;
 
 // Loading indicator
@@ -101,6 +112,9 @@ const LoadingFallback = styled.div`
   height: 300px;
   color: #00ff00;
   font-family: 'Courier New', monospace;
+  margin-top: 20px;
+  background-color: #121212;
+  border-radius: 4px;
 `;
 
 const Inbox = () => {

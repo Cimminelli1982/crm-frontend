@@ -2092,19 +2092,68 @@ const ContactCrmWorkflow = () => {
         return;
       }
       
-      // Map the data from introductions table to the format expected by the component
-      const mappedData = data?.map(intro => ({
-        intro_id: intro.introduction_id,
-        contacts_introduced: intro.contact_ids,
-        intro_date: intro.introduction_date,
-        introduction_rationale: intro.category,  // Assuming category can serve as rationale
-        introduction_note: intro.text,
-        created_by: intro.created_by,
-        created_at: intro.created_at
-      })) || [];
+      // Enhanced version that also fetches contact details for each introduction
+      const enhancedData = await Promise.all((data || []).map(async (intro) => {
+        // Get contact IDs from this introduction
+        const contactIds = intro.contact_ids || [];
+        
+        // Skip if no contact IDs
+        if (!contactIds || contactIds.length === 0) {
+          return {
+            intro_id: intro.introduction_id,
+            contacts_introduced: [],
+            contact_details: [],
+            contact_names: "No contacts specified",
+            intro_date: intro.introduction_date,
+            introduction_rationale: intro.category,
+            introduction_note: intro.text,
+            created_by: intro.created_by,
+            created_at: intro.created_at
+          };
+        }
+        
+        // Fetch the contact details for these IDs
+        const { data: contactsData, error: contactsError } = await supabase
+          .from('contacts')
+          .select('contact_id, first_name, last_name')
+          .in('contact_id', contactIds);
+          
+        if (contactsError) {
+          console.error('Error fetching contacts for introduction:', contactsError);
+          
+          return {
+            intro_id: intro.introduction_id,
+            contacts_introduced: intro.contact_ids,
+            contact_details: [],
+            contact_names: "Error loading contacts",
+            intro_date: intro.introduction_date,
+            introduction_rationale: intro.category,
+            introduction_note: intro.text,
+            created_by: intro.created_by,
+            created_at: intro.created_at
+          };
+        }
+        
+        // Format a display string for the contacts
+        const contactNames = contactsData && contactsData.length > 0
+          ? contactsData.map(c => `${c.first_name} ${c.last_name}`.trim()).join(' and ')
+          : "Unknown contacts";
+          
+        return {
+          intro_id: intro.introduction_id,
+          contacts_introduced: intro.contact_ids,
+          contact_details: contactsData || [],
+          contact_names: contactNames,
+          intro_date: intro.introduction_date,
+          introduction_rationale: intro.category,
+          introduction_note: intro.text,
+          created_by: intro.created_by,
+          created_at: intro.created_at
+        };
+      }));
       
-      console.log('Fetched introductions:', mappedData);
-      setIntroductions(mappedData || []);
+      console.log('Fetched and enhanced introductions:', enhancedData);
+      setIntroductions(enhancedData || []);
     } catch (err) {
       console.error('Error in loadContactIntroductions:', err);
       toast.error('Error loading introductions');
@@ -3679,8 +3728,9 @@ const handleSelectEmailThread = async (threadId) => {
       if (currentStep === 2 || !currentStep) {
         console.log("Automatically searching for duplicates");
         const nameDuplicates = await searchNameDuplicates();
-        const emailDuplicates = contact.email ? await searchEmailDuplicates() : [];
-        const mobileDuplicates = contact.mobile ? await searchMobileDuplicates() : [];
+        // Add null check for contact object before accessing email property
+        const emailDuplicates = contact && contact.email ? await searchEmailDuplicates() : [];
+        const mobileDuplicates = contact && contact.mobile ? await searchMobileDuplicates() : [];
         
         // Combine all duplicates and remove duplicates
         const allDuplicates = [...nameDuplicates, ...emailDuplicates, ...mobileDuplicates];
@@ -4148,6 +4198,12 @@ const handleSelectEmailThread = async (threadId) => {
   // Fetch data from external sources
   const fetchExternalData = async (contactData) => {
     try {
+      // Add null check for contactData
+      if (!contactData) {
+        console.error('fetchExternalData called with null contactData');
+        return;
+      }
+      
       console.log('Contact data in fetchExternalData:', contactData);
       
       // Initialize with empty data
@@ -4162,13 +4218,13 @@ const handleSelectEmailThread = async (threadId) => {
           category: null
         },
         supabase: {
-          email: contactData.email || '',
-          mobile: contactData.mobile || '',
+          email: (contactData && contactData.email) || '',
+          mobile: (contactData && contactData.mobile) || '',
           company: null,
           tags: [],
           notes: '',
-          keepInTouch: contactData.keep_in_touch_frequency || null,
-          category: contactData.category || null
+          keepInTouch: (contactData && contactData.keep_in_touch_frequency) || null,
+          category: (contactData && contactData.category) || null
         },
         airtable: {
           email: '',
@@ -4535,8 +4591,11 @@ const handleInputChange = (field, value) => {
   // Find companies that match the contact's email domains
   const findCompaniesByEmailDomains = async () => {
     try {
-      // Only proceed if we have emails in formData
-      if (!formData.emails || formData.emails.length === 0) return;
+      // Added null check for formData
+      if (!formData || !formData.emails || formData.emails.length === 0) {
+        console.log('No email data available for domain matching');
+        return;
+      }
       
       // Extract domains from the contact's email addresses
       const emailDomains = formData.emails
@@ -5160,7 +5219,9 @@ const handleInputChange = (field, value) => {
   
   // Search for duplicates by email (dedicated search function)
   const searchEmailDuplicates = async () => {
-    if (!contact || !contact.email) {
+    // Added stronger validation to prevent TypeError
+    if (!contact || contact === null || !contact.email || typeof contact.email !== 'string') {
+      console.log('No valid email found for duplicate search');
       return [];
     }
     
@@ -5226,7 +5287,9 @@ const handleInputChange = (field, value) => {
   
   // Search for duplicates by mobile (dedicated search function)
   const searchMobileDuplicates = async () => {
-    if (!contact || !contact.mobile) {
+    // Added stronger validation to prevent TypeError
+    if (!contact || contact === null || !contact.mobile || typeof contact.mobile !== 'string') {
+      console.log('No valid mobile found for duplicate search');
       return [];
     }
     
@@ -14004,7 +14067,7 @@ const handleInputChange = (field, value) => {
                                     {/* Table header */}
                                     <div style={{ 
                                       display: 'grid', 
-                                      gridTemplateColumns: '150px 1fr 150px 150px',
+                                      gridTemplateColumns: '150px 1fr 200px',
                                       padding: '12px 16px',
                                       borderBottom: '1px solid #333',
                                       backgroundColor: '#222',
@@ -14014,8 +14077,7 @@ const handleInputChange = (field, value) => {
                                     }}>
                                       <div>Date</div>
                                       <div>Contacts</div>
-                                      <div>Category</div>
-                                      <div>Status</div>
+                                      <div>Rationale</div>
                                     </div>
                                     
                                     {/* Table rows */}
@@ -14024,12 +14086,13 @@ const handleInputChange = (field, value) => {
                                         key={intro.intro_id} 
                                         style={{ 
                                           display: 'grid', 
-                                          gridTemplateColumns: '150px 1fr 150px 150px',
+                                          gridTemplateColumns: '150px 1fr 200px',
                                           padding: '16px',
                                           borderBottom: '1px solid #222',
                                           alignItems: 'center',
                                           cursor: 'pointer',
                                           transition: 'background-color 0.2s',
+                                          backgroundColor: 'transparent',
                                           '&:hover': {
                                             backgroundColor: '#1a1a1a'
                                           }
@@ -14038,45 +14101,54 @@ const handleInputChange = (field, value) => {
                                           setSelectedIntroduction(intro);
                                           setShowNewIntroductionModal(true);
                                         }}
+                                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1a1a1a'}
+                                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                       >
                                         {/* Date column */}
-                                        <div style={{ color: '#ccc' }}>
-                                          {new Date(intro.introduction_date).toLocaleDateString()}
+                                        <div style={{ color: '#ccc', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                          <span style={{ color: '#999' }}>
+                                            <FiCalendar size={14} />
+                                          </span>
+                                          {new Date(intro.intro_date).toLocaleDateString()}
                                         </div>
                                         
                                         {/* Contacts column */}
                                         <div>
-                                          {/* This would need to be enhanced to show actual contact names */}
                                           <span style={{ color: '#00ff00' }}>
-                                            {intro.contact_ids ? intro.contact_ids.length : 0} contacts
+                                            {intro.contact_names || (intro.contact_ids ? `${intro.contact_ids.length} contacts` : 'No contacts')}
                                           </span>
+                                          {intro.introduction_note && (
+                                            <div style={{ 
+                                              fontSize: '0.85rem', 
+                                              color: '#999', 
+                                              marginTop: '5px',
+                                              maxWidth: '500px',
+                                              overflow: 'hidden',
+                                              textOverflow: 'ellipsis',
+                                              whiteSpace: 'nowrap'
+                                            }}>
+                                              {intro.introduction_note}
+                                            </div>
+                                          )}
                                         </div>
                                         
-                                        {/* Category column */}
+                                        {/* Rationale column */}
                                         <div>
                                           <span style={{ 
                                             display: 'inline-block',
                                             padding: '4px 10px',
                                             borderRadius: '12px',
                                             fontSize: '0.8rem',
-                                            backgroundColor: '#2a2a2a',
-                                            color: '#ccc'
+                                            backgroundColor: 
+                                              intro.introduction_rationale === 'Karma Points' ? '#143601' :
+                                              intro.introduction_rationale === 'Dealflow' ? '#2C1A00' :
+                                              intro.introduction_rationale === 'Portfolio Company' ? '#0A1C2E' : '#2a2a2a',
+                                            color: 
+                                              intro.introduction_rationale === 'Karma Points' ? '#00ff00' :
+                                              intro.introduction_rationale === 'Dealflow' ? '#FFBB00' :
+                                              intro.introduction_rationale === 'Portfolio Company' ? '#47A3FF' : '#ccc'
                                           }}>
-                                            {intro.introduction_category || 'Other'}
-                                          </span>
-                                        </div>
-                                        
-                                        {/* Status column */}
-                                        <div>
-                                          <span style={{ 
-                                            display: 'inline-block',
-                                            padding: '4px 10px',
-                                            borderRadius: '12px',
-                                            fontSize: '0.8rem',
-                                            backgroundColor: intro.introduction_status === 'Completed' ? '#0d2b0d' : '#2b2b0d',
-                                            color: intro.introduction_status === 'Completed' ? '#00ff00' : '#ffff00'
-                                          }}>
-                                            {intro.introduction_status || 'Pending'}
+                                            {intro.introduction_rationale || 'Other'}
                                           </span>
                                         </div>
                                       </div>
