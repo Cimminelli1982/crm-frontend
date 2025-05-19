@@ -497,9 +497,11 @@ const CompanyRenderer = (props) => {
   const [showAssociateModal, setShowAssociateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState(null);
+  const [currentCompanyIndex, setCurrentCompanyIndex] = useState(0);
   
   const companies = props.value || [];
   const contactId = props.data?.contact_id;
+  const hasMultipleCompanies = companies.length > 1;
   
   // Handle associating a company
   const handleAssociateCompany = (e) => {
@@ -580,21 +582,20 @@ const CompanyRenderer = (props) => {
     }
   };
   
+  // Navigation functions for company carousel
+  const goToNextCompany = (e) => {
+    e?.stopPropagation();
+    setCurrentCompanyIndex((prevIndex) => (prevIndex + 1) % companies.length);
+  };
+  
+  const goToPrevCompany = (e) => {
+    e?.stopPropagation();
+    setCurrentCompanyIndex((prevIndex) => (prevIndex - 1 + companies.length) % companies.length);
+  };
+  
   // Prevent event propagation
   const handleContainerClick = (e) => {
     e.stopPropagation();
-  };
-  
-  // Define the plus button style once
-  const plusButtonStyle = {
-    background: 'transparent',
-    border: 'none',
-    color: '#00ff00',
-    cursor: 'pointer',
-    padding: '0',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center'
   };
 
   if (!companies.length) {
@@ -634,121 +635,165 @@ const CompanyRenderer = (props) => {
     );
   }
   
-  // Determine if we should use a horizontal or vertical layout
-  const useVerticalLayout = companies.length > 1;
+  // Current company to display
+  const currentCompany = companies[currentCompanyIndex];
   
-  // Calculate the row height based on the number of companies
-  const getCompanyRowHeight = () => {
-    // Base height plus additional height for each company beyond the first
-    if (useVerticalLayout) {
-      return 22 * companies.length + 8; // 22px per company + 8px padding
-    }
-    return 30; // Default row height
+  // Navigation button styles
+  const navButtonStyle = {
+    background: 'none',
+    border: 'none',
+    color: '#ffffff',
+    cursor: 'pointer',
+    padding: '0',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '14px',
+    height: '14px',
+    fontSize: '10px',
+    opacity: '0.8'
   };
+  
+  // Ensure consistent row height regardless of number of companies
+  const rowHeight = 36; // Fixed row height matching the grid's default
   
   return (
     <div 
       style={{
         display: 'flex',
-        flexDirection: 'column',
-        justifyContent: useVerticalLayout ? 'flex-start' : 'center',
-        gap: '4px',
-        height: '100%',
-        width: '100%'
+        alignItems: 'center',
+        height: rowHeight + 'px',
+        minHeight: rowHeight + 'px',
+        width: '100%',
+        position: 'relative'
       }}
       onClick={handleContainerClick}
     >
       <div style={{
         display: 'flex',
-        flexDirection: useVerticalLayout ? 'column' : 'row',
-        alignItems: 'flex-start',
-        gap: '4px',
-        overflow: 'hidden',
-        height: '100%',
-        width: '100%'
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        width: '100%',
+        gap: '4px'
       }}>
-        {companies.map((company) => (
-          <div 
-            key={company.id} 
-            style={{ 
-              display: 'flex', 
-              alignItems: 'center',
-              backgroundColor: '#1a1a1a',
-              color: '#ffffff',
-              padding: '0px 6px',
-              borderRadius: '4px',
-              fontSize: '11px',
-              border: '1px solid #ffffff',
-              boxShadow: '0 0 4px rgba(255, 255, 255, 0.2)',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              lineHeight: '16px',
-              width: useVerticalLayout ? '95%' : 'auto',
-              maxWidth: useVerticalLayout ? '240px' : '190px',
-              height: '18px',
-              marginBottom: useVerticalLayout ? '10px' : '0'
+        {/* Left navigation arrow (only visible for multiple companies) */}
+        {hasMultipleCompanies && (
+          <button
+            onClick={goToPrevCompany}
+            style={{
+              ...navButtonStyle,
+              marginRight: '2px'
             }}
+            title="Previous company"
           >
-            <span 
-              style={{ 
-                cursor: 'pointer',
-                maxWidth: '210px',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                display: 'inline-block'
-              }}
-              onClick={(e) => handleEditCompany(company, e)}
-              title={company.name}
-            >
-              {company.name}
-            </span>
-            <button
-              onClick={(e) => handleRemoveCompany(company.id, e)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#ffffff',
-                cursor: 'pointer',
-                padding: '0',
-                marginLeft: '4px',
-                fontSize: '10px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-              title="Remove Company Association"
-            >
-              <MdClear size={14} />
-            </button>
-          </div>
-        ))}
+            &#9664;
+          </button>
+        )}
         
-        <div style={{ 
-          alignSelf: useVerticalLayout ? 'flex-start' : 'center',
-          marginBottom: useVerticalLayout ? '2px' : '0',
-          marginLeft: useVerticalLayout ? '0' : '4px'
-        }}>
-          <button 
-            onClick={handleAssociateCompany}
+        {/* Company display */}
+        <div 
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center',
+            backgroundColor: '#1a1a1a',
+            color: '#ffffff',
+            padding: '0px 6px',
+            borderRadius: '4px',
+            fontSize: '11px',
+            border: '1px solid #ffffff',
+            boxShadow: '0 0 4px rgba(255, 255, 255, 0.2)',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            lineHeight: '16px',
+            width: '100%',
+            maxWidth: '190px',
+            height: '18px',
+            position: 'relative'
+          }}
+        >
+          <span 
+            style={{ 
+              cursor: 'pointer',
+              maxWidth: hasMultipleCompanies ? '140px' : '160px',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              display: 'inline-block'
+            }}
+            onClick={(e) => handleEditCompany(currentCompany, e)}
+            title={currentCompany.name}
+          >
+            {currentCompany.name}
+          </span>
+          
+          {/* Counter indicator for multiple companies */}
+          {hasMultipleCompanies && (
+            <div style={{
+              fontSize: '9px',
+              color: '#cccccc',
+              marginLeft: '4px',
+              padding: '0 2px',
+              borderRadius: '3px',
+              backgroundColor: '#333333'
+            }}>
+              {currentCompanyIndex + 1}/{companies.length}
+            </div>
+          )}
+          
+          <button
+            onClick={(e) => handleRemoveCompany(currentCompany.id, e)}
             style={{
               background: 'none',
               border: 'none',
               color: '#ffffff',
-              borderRadius: '4px',
-              width: '20px',
-              height: '20px',
+              cursor: 'pointer',
               padding: '0',
+              marginLeft: '4px',
+              fontSize: '10px',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              fontSize: '14px'
+              justifyContent: 'center'
             }}
-            title="Associate Company"
+            title="Remove Company Association"
           >
-            <FiPlus size={14} />
+            <MdClear size={14} />
           </button>
         </div>
+        
+        {/* Right navigation arrow (only visible for multiple companies) */}
+        {hasMultipleCompanies && (
+          <button
+            onClick={goToNextCompany}
+            style={{
+              ...navButtonStyle,
+              marginLeft: '2px'
+            }}
+            title="Next company"
+          >
+            &#9654;
+          </button>
+        )}
+        
+        {/* Add company button */}
+        <button 
+          onClick={handleAssociateCompany}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#ffffff',
+            borderRadius: '4px',
+            width: '20px',
+            height: '20px',
+            padding: '0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            fontSize: '14px'
+          }}
+          title="Associate Company"
+        >
+          <FiPlus size={14} />
+        </button>
       </div>
       
       {showAssociateModal && (
@@ -1794,21 +1839,10 @@ const ContactsListTable = ({ category }) => {
     }, 0);
   };
   
-  // Custom row height function to accommodate multiple companies
+  // Custom row height function with fixed height now that we use a carousel
   const getRowHeight = useCallback((params) => {
-    // Default row height - increased to ensure single company rows look good
-    let height = 36;
-    
-    // If the row has companies, check if we need extra height
-    if (params.data && params.data.companies) {
-      if (params.data.companies.length > 1) {
-        // Calculate the height based on number of companies
-        // Much larger height allocation per company
-        height = Math.max(height, 35 * params.data.companies.length + 24);
-      }
-    }
-    
-    return height;
+    // Fixed row height of 36px for all rows regardless of number of companies
+    return 36;
   }, []);
   
 
