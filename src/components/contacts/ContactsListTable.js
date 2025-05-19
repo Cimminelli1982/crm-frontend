@@ -468,7 +468,12 @@ const CitiesRenderer = (props) => {
 
 const RatingRenderer = (props) => {
   const score = props.value;
-  if (score === null || score === undefined) return '-';
+  const [isEditing, setIsEditing] = useState(false);
+  const [localScore, setLocalScore] = useState(score);
+  
+  useEffect(() => {
+    setLocalScore(score);
+  }, [score]);
   
   const getColor = (score) => {
     if (score >= 8) return '#00cc00';
@@ -478,6 +483,53 @@ const RatingRenderer = (props) => {
     return '#cc3300';
   };
   
+  const handleScoreChange = async (e) => {
+    e.stopPropagation();
+    const newScore = parseInt(e.target.value, 10);
+    setLocalScore(newScore);
+    
+    try {
+      // Update the score in the database
+      const { error } = await supabase
+        .from('contacts')
+        .update({ score: newScore })
+        .eq('contact_id', props.data.contact_id);
+        
+      if (error) throw error;
+      
+      // Refresh the cell
+      if (props.api) {
+        props.api.refreshCells({
+          force: true,
+          rowNodes: [props.node],
+          columns: ['score']
+        });
+      }
+      
+      // Show success notification
+      toast.success(`Rating updated for ${props.data.first_name} ${props.data.last_name}`);
+    } catch (err) {
+      console.error('Error updating score:', err);
+      toast.error(`Error updating rating: ${err.message}`);
+      // Revert to original score on error
+      setLocalScore(score);
+    }
+  };
+  
+  const handleClick = (e) => {
+    e.stopPropagation();
+    setIsEditing(true);
+  };
+  
+  const handleBlur = () => {
+    setIsEditing(false);
+  };
+  
+  // Prevent row selection when clicking on the dropdown
+  const handleSelectClick = (e) => {
+    e.stopPropagation();
+  };
+  
   return (
     <div style={{
       display: 'flex',
@@ -485,15 +537,42 @@ const RatingRenderer = (props) => {
       width: '100%',
       padding: '0',
       margin: '0'
-    }}>
-      <span style={{ 
-        color: getColor(score),
-        fontWeight: 'bold',
-        fontSize: '14px',
-        textAlign: 'center'
-      }}>
-        {score}
-      </span>
+    }} onClick={handleClick}>
+      {isEditing ? (
+        <select
+          value={localScore || 0}
+          onChange={handleScoreChange}
+          onBlur={handleBlur}
+          onClick={handleSelectClick}
+          autoFocus
+          style={{
+            backgroundColor: '#222',
+            color: getColor(localScore || 0),
+            border: `1px solid ${getColor(localScore || 0)}`,
+            borderRadius: '4px',
+            padding: '2px',
+            fontSize: '14px',
+            width: '40px',
+            textAlign: 'center',
+            fontWeight: 'bold',
+            cursor: 'pointer'
+          }}
+        >
+          {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(value => (
+            <option key={value} value={value}>{value}</option>
+          ))}
+        </select>
+      ) : (
+        <span style={{ 
+          color: getColor(localScore || 0),
+          fontWeight: 'bold',
+          fontSize: '14px',
+          textAlign: 'center',
+          cursor: 'pointer'
+        }}>
+          {localScore !== null && localScore !== undefined ? localScore : '-'}
+        </span>
+      )}
     </div>
   );
 };
@@ -679,6 +758,7 @@ const ContactsListTable = ({ category }) => {
       filter: 'agNumberColumnFilter',
       floatingFilter: true,
       sortable: true,
+      editable: false, // We're using a custom editor in the renderer
     },
     { 
       headerName: 'Keep in Touch', 
