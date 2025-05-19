@@ -16,6 +16,8 @@ import Inbox from './pages/Inbox';
 import { supabase } from './lib/supabaseClient';
 import Layout from './components/layout/Layout';
 import { Toaster } from 'react-hot-toast';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 // Import new pages for navigation
 import LastInteractions from './pages/contacts/LastInteractions';
@@ -255,6 +257,7 @@ const App = () => {
           },
         },
       }} />
+      <ToastContainer theme="dark" />
       <RouterProvider router={router} />
     </>
   );
