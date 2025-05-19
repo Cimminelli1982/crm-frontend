@@ -10,6 +10,7 @@ import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { createGlobalStyle } from 'styled-components';
 import TagsModalComponent from '../modals/TagsModal';
+import CityModal from '../modals/CityModal';
 
 // Custom toast styling
 const ToastStyle = createGlobalStyle`
@@ -448,20 +449,199 @@ const CompanyRenderer = (props) => {
 };
 
 const CitiesRenderer = (props) => {
+  const [showModal, setShowModal] = React.useState(false);
   const cities = props.value || [];
-  if (!cities.length) return '-';
+  const contact = props.data;
   
-  const cityNames = cities.map(city => city.name).join(', ');
+  if (!cities.length && !contact) return '-';
+  
+  // Get first 2 cities to display
+  const visibleCities = cities.slice(0, 2);
+  const remainingCount = cities.length - 2;
+  
+  const handleRemoveCity = async (e, cityId) => {
+    e.stopPropagation(); // Prevent row selection
+    
+    try {
+      // Find the city being removed for the notification
+      const cityToRemove = cities.find(city => city.id === cityId);
+      
+      // Delete the city relationship
+      const { error } = await supabase
+        .from('contact_cities')
+        .delete()
+        .eq('contact_id', contact.contact_id)
+        .eq('city_id', cityId);
+        
+      if (error) throw error;
+      
+      // Update the local data
+      const updatedCities = cities.filter(city => city.id !== cityId);
+      props.setValue(updatedCities);
+      
+      // Refresh the data in the grid
+      if (props.api) {
+        props.api.refreshCells({
+          force: true,
+          rowNodes: [props.node],
+          columns: ['cities']
+        });
+      }
+      
+      // Show success toast notification
+      toast.success(`City "${cityToRemove?.name || 'Unknown'}" removed from ${contact.first_name} ${contact.last_name}`, {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true
+      });
+    } catch (err) {
+      console.error('Error removing city:', err);
+      toast.error(`Error removing city: ${err.message}`, {
+        position: "top-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true
+      });
+    }
+  };
+  
+  const handleAddCityClick = (e) => {
+    e.stopPropagation(); // Prevent row selection
+    setShowModal(true);
+  };
+  
+  const handleCloseModal = () => {
+    setShowModal(false);
+    
+    // After closing the modal, refresh the entire table to show the latest changes
+    if (props.api) {
+      // First refresh the specific cell for immediate visual feedback
+      props.api.refreshCells({
+        force: true,
+        rowNodes: [props.node],
+        columns: ['cities']
+      });
+      
+      // Then initiate a full data refresh via the grid's parent component
+      setTimeout(() => {
+        if (props.context && props.context.refreshData) {
+          props.context.refreshData();
+        }
+      }, 100);
+    }
+  };
+  
+  const handleCityAdded = (city) => {
+    // Refresh the cell data after city is added
+    if (props.api) {
+      props.api.refreshCells({
+        force: true,
+        rowNodes: [props.node],
+        columns: ['cities']
+      });
+    }
+  };
+  
+  const handleCityRemoved = (city) => {
+    // Refresh the cell data after city is removed
+    if (props.api) {
+      props.api.refreshCells({
+        force: true,
+        rowNodes: [props.node],
+        columns: ['cities']
+      });
+    }
+  };
+  
+  // We'll stop event propagation on the container to prevent row selection when clicking cities
+  const handleContainerClick = (e) => {
+    e.stopPropagation();
+  };
   
   return (
     <div style={{
-      whiteSpace: 'nowrap',
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      paddingRight: '0',
-      width: '100%'
-    }} title={cityNames}>
-      {cityNames}
+      height: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}>
+    <TagContainer 
+      onClick={handleContainerClick}
+      style={{
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        paddingRight: '0',
+        width: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px'
+      }}
+    >
+      {visibleCities.map(city => (
+        <TagItem key={city.id} title={city.name}>
+          {city.name}
+          <button 
+            onClick={(e) => handleRemoveCity(e, city.id)} 
+            title="Remove city"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginLeft: '5px',
+              padding: '0',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer'
+            }}
+          >
+            <MdClear style={{ color: '#00ff00' }} size={14} />
+          </button>
+        </TagItem>
+      ))}
+      
+      {remainingCount > 0 && (
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1px 6px',
+            borderRadius: '4px',
+            fontSize: '12px',
+            color: '#00ff00',
+            cursor: 'pointer',
+            height: '20px',
+            lineHeight: '16px'
+          }}
+          onClick={handleAddCityClick}
+        >
+          +{remainingCount}
+        </div>
+      )}
+      
+      <AddTagButton 
+        onClick={handleAddCityClick}
+        title="Add or edit cities"
+      >
+        <FiPlus />
+      </AddTagButton>
+      
+      {showModal && (
+        <CityModal
+          isOpen={showModal}
+          onRequestClose={handleCloseModal}
+          contact={contact}
+          onCityAdded={handleCityAdded}
+          onCityRemoved={handleCityRemoved}
+        />
+      )}
+    </TagContainer>
     </div>
   );
 };
@@ -686,12 +866,10 @@ const ContactsListTable = ({ category }) => {
     ];
     
     const getFrequencyColor = (freq) => {
-      if (freq === 'Do not keep in touch') {
-        return '#aaaaaa'; // Grey for "Skip"
-      } else if (freq === 'Not Set') {
-        return '#aaaaaa'; // Grey for "Not Set"
+      if (freq === 'Quarterly' || freq === 'Monthly') {
+        return '#00ff00'; // Neon green for Quarterly and Monthly
       } else {
-        return '#00ff00'; // Neon green for all other options
+        return '#aaaaaa'; // Grey for all other options
       }
     };
     
