@@ -3,8 +3,8 @@
 # This script is used by Netlify to build the site
 
 # Force npm to install regardless of lockfile
-echo "Force installing ag-grid packages..."
-npm install ag-grid-community ag-grid-react --no-save
+echo "Force installing required packages..."
+npm install ag-grid-community ag-grid-react react-toastify --no-save
 
 # Run the normal build command
 echo "Running build command..."
