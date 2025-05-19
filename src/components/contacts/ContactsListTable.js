@@ -11,6 +11,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import { createGlobalStyle } from 'styled-components';
 import TagsModalComponent from '../modals/TagsModal';
 import CityModal from '../modals/CityModal';
+import LinkedInPreviewModal from '../modals/LinkedInPreviewModal';
 
 // Custom toast styling
 const ToastStyle = createGlobalStyle`
@@ -773,14 +774,13 @@ const LastInteractionRenderer = (props) => {
 
 const ActionsRenderer = (props) => {
   const data = props.data;
+  const [showLinkedInModal, setShowLinkedInModal] = useState(false);
   
   // Get primary email or first available
   const email = data.email || '';
   
   // Get primary mobile (for WhatsApp) or first available
   const mobile = data.mobile || '';
-  
-  // LinkedIn isn't available in this data, so we'll always search by name
   
   const handleEmailClick = (e) => {
     e.stopPropagation();
@@ -800,41 +800,91 @@ const ActionsRenderer = (props) => {
   
   const handleLinkedInClick = (e) => {
     e.stopPropagation();
-    if (data.first_name && data.last_name) {
-      // Search for the person on LinkedIn
+    
+    // If there's a LinkedIn URL stored in the contact data, open it directly
+    if (data.linkedin) {
+      window.open(data.linkedin, '_blank');
+    } 
+    // Otherwise, search for the person on LinkedIn using their name
+    else if (data.first_name && data.last_name) {
       const searchName = `${data.first_name} ${data.last_name}`;
       window.open(`https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(searchName)}`, '_blank');
     }
   };
   
+  const handleAButtonClick = (e) => {
+    e.stopPropagation();
+    setShowLinkedInModal(true);
+  };
+  
+  const handleModalClose = () => {
+    setShowLinkedInModal(false);
+  };
+  
+  const handleSaveLinkedInData = (linkedInData) => {
+    // This function could be used to save data from the LinkedIn modal if needed
+    // For now, we're just closing the modal
+    setShowLinkedInModal(false);
+  };
+  
   return (
-    <ActionsContainer>
-      <ActionButton 
-        className="linkedin" 
-        onClick={handleLinkedInClick}
-        title="Open LinkedIn"
-      >
-        <FiLinkedin size={16} />
-      </ActionButton>
+    <>
+      <ActionsContainer>
+        <ActionButton 
+          className="linkedin" 
+          onClick={handleLinkedInClick}
+          title="Open LinkedIn"
+        >
+          <FiLinkedin size={16} />
+        </ActionButton>
+        
+        <ActionButton 
+          className="email" 
+          onClick={handleEmailClick}
+          title={email ? `Email: ${email}` : 'No email available'}
+          disabled={!email}
+        >
+          <FiMail size={16} />
+        </ActionButton>
+        
+        <ActionButton 
+          className="whatsapp" 
+          onClick={handleWhatsAppClick}
+          title={mobile ? `WhatsApp: ${mobile}` : 'No mobile available'}
+          disabled={!mobile}
+        >
+          <FaWhatsapp size={16} />
+        </ActionButton>
+        
+        <ActionButton 
+          style={{ 
+            backgroundColor: "#00ff00", 
+            color: "#000000",
+            fontWeight: "bold",
+            width: "24px",
+            height: "24px"
+          }} 
+          onClick={handleAButtonClick}
+          title="LinkedIn Preview"
+        >
+          A
+        </ActionButton>
+      </ActionsContainer>
       
-      <ActionButton 
-        className="email" 
-        onClick={handleEmailClick}
-        title={email ? `Email: ${email}` : 'No email available'}
-        disabled={!email}
-      >
-        <FiMail size={16} />
-      </ActionButton>
-      
-      <ActionButton 
-        className="whatsapp" 
-        onClick={handleWhatsAppClick}
-        title={mobile ? `WhatsApp: ${mobile}` : 'No mobile available'}
-        disabled={!mobile}
-      >
-        <FaWhatsapp size={16} />
-      </ActionButton>
-    </ActionsContainer>
+      {showLinkedInModal && (
+        <LinkedInPreviewModal
+          isOpen={showLinkedInModal}
+          onClose={handleModalClose}
+          linkedInUrl={data.linkedin || ''}
+          contactName={`${data.first_name || ''} ${data.last_name || ''}`.trim()}
+          firstName={data.first_name || ''}
+          lastName={data.last_name || ''}
+          email={email}
+          jobRole={data.job_role || ''}
+          onSaveData={handleSaveLinkedInData}
+        />
+      )}
+    </>
   );
 };
 
@@ -1114,7 +1164,9 @@ const ContactsListTable = ({ category }) => {
             score,
             last_interaction_at,
             created_at,
-            keep_in_touch_frequency
+            keep_in_touch_frequency,
+            linkedin,
+            job_role
           `)
           .order('first_name', { ascending: true });
         
