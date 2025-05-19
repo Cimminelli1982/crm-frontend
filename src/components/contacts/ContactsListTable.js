@@ -186,16 +186,16 @@ const TagItem = styled.div`
   justify-content: center;
   background-color: #1a1a1a;
   color: #00ff00;
-  padding: 1px 6px;
+  padding: 0px 6px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 11px;
   border: 1px solid #00ff00;
   box-shadow: 0 0 4px rgba(0, 255, 0, 0.4);
   white-space: nowrap;
   overflow: visible;
   line-height: 16px;
   max-width: fit-content;
-  height: 20px;
+  height: 18px;
   
   button {
     background: none;
@@ -222,15 +222,15 @@ const CityItem = styled.div`
   justify-content: center;
   background-color: #1a1a1a;
   color: #cccccc;
-  padding: 1px 6px;
+  padding: 0px 6px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 11px;
   border: none;
   white-space: nowrap;
   overflow: visible;
   line-height: 16px;
   max-width: fit-content;
-  height: 20px;
+  height: 18px;
   
   button {
     background: none;
@@ -780,12 +780,15 @@ const CitiesRenderer = (props) => {
   
   if (!cities.length && !contact) return '';
   
-  // Get first 2 cities to display
-  const visibleCities = cities.slice(0, 2);
-  const remainingCount = cities.length - 2;
+  // Get only the first city to display
+  const visibleCities = cities.slice(0, 1);
+  const remainingCount = cities.length - 1;
   
   // If no cities, show "Add city" text instead of the plus button
   const showAddCityText = cities.length === 0;
+  
+  // Show counter and make it clickable if more than one city
+  const showCounter = remainingCount > 0;
   
   const handleRemoveCity = async (e, cityId) => {
     e.stopPropagation(); // Prevent row selection
@@ -940,15 +943,17 @@ const CitiesRenderer = (props) => {
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '1px 6px',
+            padding: '0px 6px',
             borderRadius: '4px',
-            fontSize: '12px',
-            color: '#00ff00',
+            fontSize: '11px',
+            color: '#cccccc',
             cursor: 'pointer',
-            height: '20px',
-            lineHeight: '16px'
+            height: '18px',
+            lineHeight: '16px',
+            backgroundColor: '#1a1a1a'
           }}
-          onClick={handleAddCityClick}
+          onClick={() => setShowModal(true)}
+          title={`Show all ${cities.length} cities`}
         >
           +{remainingCount}
         </div>
@@ -1636,7 +1641,7 @@ const ContactsListTable = ({ category }) => {
         );
       },
       minWidth: 150,
-      flex: 1.7,
+      flex: 1.8,
       filter: 'agTextColumnFilter',
       floatingFilter: true,
       sortable: true,
@@ -1646,8 +1651,8 @@ const ContactsListTable = ({ category }) => {
       headerName: 'Company', 
       field: 'companies', 
       cellRenderer: CompanyRenderer,
-      minWidth: 160,
-      flex: 2.0,
+      minWidth: 180,
+      flex: 2.6,
       filter: true,
       filterValueGetter: (params) => {
         if (!params.data || !params.data.companies || !params.data.companies.length) {
@@ -1664,8 +1669,8 @@ const ContactsListTable = ({ category }) => {
       headerName: 'Tags', 
       field: 'tags', 
       cellRenderer: TagsRenderer,
-      minWidth: 180,
-      flex: 2.6,
+      minWidth: 160,
+      flex: 2.4,
       filter: true,
       filterValueGetter: (params) => {
         if (!params.data || !params.data.tags || !params.data.tags.length) {
@@ -1683,7 +1688,7 @@ const ContactsListTable = ({ category }) => {
       field: 'score', 
       cellRenderer: RatingRenderer,
       minWidth: 70,
-      flex: 0.7,
+      flex: 0.5,
       filter: 'agNumberColumnFilter',
       floatingFilter: true,
       sortable: true,
@@ -1693,8 +1698,8 @@ const ContactsListTable = ({ category }) => {
       headerName: 'Keep in Touch', 
       field: 'keep_in_touch_frequency',
       cellRenderer: KeepInTouchRenderer,
-      minWidth: 120,
-      flex: 1.6,
+      minWidth: 110,
+      flex: 1.3,
       // Use true for the filter to enable text filtering
       filter: true,
       // Use the filterValueGetter approach for case-insensitive searching
@@ -1733,7 +1738,7 @@ const ContactsListTable = ({ category }) => {
       field: 'cities', 
       cellRenderer: CitiesRenderer,
       minWidth: 110,
-      flex: 1.2,
+      flex: 0.9,
       filter: true,
       filterValueGetter: (params) => {
         if (!params.data || !params.data.cities || !params.data.cities.length) {
