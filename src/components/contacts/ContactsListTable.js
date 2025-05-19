@@ -255,15 +255,15 @@ const AddTagButton = styled.button`
   background: none;
   border: none;
   color: #00ff00;
-  border-radius: 4px;
-  width: 20px;
-  height: 20px;
+  border-radius: 3px;
+  width: 16px;
+  height: 16px;
   padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 12px;
   
   &:hover {
     background-color: rgba(0, 255, 0, 0.1);
@@ -438,13 +438,15 @@ const TagsRenderer = (props) => {
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '1px 6px',
-            borderRadius: '4px',
-            fontSize: '12px',
-            color: '#00ff00',
+            padding: '0px 3px',
+            borderRadius: '3px',
+            fontSize: '9px',
+            color: '#999999',
             cursor: 'pointer',
-            height: '20px',
-            lineHeight: '16px'
+            height: '16px',
+            lineHeight: '16px',
+            backgroundColor: '#333333',
+            marginRight: '1px'
           }}
           onClick={handleAddTagClick}
         >
@@ -475,7 +477,7 @@ const TagsRenderer = (props) => {
           onClick={handleAddTagClick}
           title="Add or edit tags"
         >
-          <FiPlus />
+          <FiPlus size={10} />
         </AddTagButton>
       )}
       
@@ -957,7 +959,7 @@ const CitiesRenderer = (props) => {
         height: '100%',
         display: 'flex',
         alignItems: 'center',
-        gap: '6px'
+        gap: '2px'
       }}
     >
       {visibleCities.map(city => (
@@ -988,14 +990,15 @@ const CitiesRenderer = (props) => {
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '0px 6px',
-            borderRadius: '4px',
-            fontSize: '11px',
-            color: '#cccccc',
+            padding: '0px 3px',
+            borderRadius: '3px',
+            fontSize: '9px',
+            color: '#999999',
             cursor: 'pointer',
-            height: '18px',
+            height: '16px',
             lineHeight: '16px',
-            backgroundColor: '#1a1a1a'
+            backgroundColor: '#333333',
+            marginRight: '1px'
           }}
           onClick={() => setShowModal(true)}
           title={`Show all ${cities.length} cities`}
@@ -1026,7 +1029,7 @@ const CitiesRenderer = (props) => {
           onClick={handleAddCityClick}
           title="Add or edit cities"
         >
-          <FiPlus size={12} />
+          <FiPlus size={10} />
         </AddTagButton>
       )}
       
@@ -1744,7 +1747,7 @@ const ContactsListTable = ({ category }) => {
       field: 'keep_in_touch_frequency',
       cellRenderer: KeepInTouchRenderer,
       minWidth: 110,
-      flex: 1.3,
+      flex: 1.2,
       // Use true for the filter to enable text filtering
       filter: true,
       // Use the filterValueGetter approach for case-insensitive searching
@@ -1783,7 +1786,7 @@ const ContactsListTable = ({ category }) => {
       field: 'cities', 
       cellRenderer: CitiesRenderer,
       minWidth: 110,
-      flex: 0.9,
+      flex: 1.1,
       filter: true,
       filterValueGetter: (params) => {
         if (!params.data || !params.data.cities || !params.data.cities.length) {
@@ -1805,6 +1808,8 @@ const ContactsListTable = ({ category }) => {
       filter: 'agDateColumnFilter',
       floatingFilter: true,
       sortable: true,
+      sort: 'desc', // Set default sort to descending
+      initialSort: true,
     },
     {
       headerName: 'Actions',
@@ -1837,6 +1842,23 @@ const ContactsListTable = ({ category }) => {
     setTimeout(() => {
       params.api.sizeColumnsToFit();
     }, 0);
+    
+    // Set initial sort to last_interaction_at descending (most recent first)
+    setTimeout(() => {
+      // Using the correct method for the AG Grid version being used
+      if (params.api.setColumnState) {
+        // Newer versions of AG Grid
+        params.api.setColumnState([
+          { colId: 'last_interaction_at', sort: 'desc' }
+        ]);
+      } else if (params.api.applyColumnState) {
+        // AG Grid version 25+
+        params.api.applyColumnState({
+          state: [{ colId: 'last_interaction_at', sort: 'desc' }],
+          defaultState: { sort: null }
+        });
+      }
+    }, 100);
   };
   
   // Custom row height function with fixed height now that we use a carousel
