@@ -4,7 +4,7 @@ import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { AgGridReact } from '../../ag-grid-setup';
 import { FiMail, FiLinkedin, FiPlus, FiX } from 'react-icons/fi';
-import { FaWhatsapp, FaStar, FaRegStar } from 'react-icons/fa';
+import { FaWhatsapp, FaStar, FaRegStar, FaDollarSign, FaHandshake } from 'react-icons/fa';
 import { MdClear } from 'react-icons/md';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -1245,6 +1245,18 @@ const ActionsRenderer = (props) => {
     setShowLinkedInModal(false);
   };
   
+  const handleOpportunitiesClick = (e) => {
+    e.stopPropagation();
+    // Add functionality for Opportunities button
+    toast.info(`Opportunities feature for ${data.first_name} ${data.last_name} coming soon!`);
+  };
+
+  const handleIntrosClick = (e) => {
+    e.stopPropagation();
+    // Add functionality for Intros button
+    toast.info(`Intros feature for ${data.first_name} ${data.last_name} coming soon!`);
+  };
+
   return (
     <>
       <ActionsContainer>
@@ -1286,6 +1298,22 @@ const ActionsRenderer = (props) => {
           title="LinkedIn Preview"
         >
           A
+        </ActionButton>
+        
+        <ActionButton 
+          className="opportunities" 
+          onClick={handleOpportunitiesClick}
+          title="Opportunities"
+        >
+          <FaDollarSign size={16} />
+        </ActionButton>
+        
+        <ActionButton 
+          className="intros" 
+          onClick={handleIntrosClick}
+          title="Introductions"
+        >
+          <FaHandshake size={16} />
         </ActionButton>
       </ActionsContainer>
       
