@@ -1180,8 +1180,6 @@ const LastInteractionRenderer = (props) => {
 const ActionsRenderer = (props) => {
   const data = props.data;
   const [showLinkedInModal, setShowLinkedInModal] = useState(false);
-  const [showLinkedInMenu, setShowLinkedInMenu] = useState(false);
-  const linkedInMenuRef = useRef(null);
   
   // Get primary email or first available
   const email = data.email || '';
@@ -1189,19 +1187,7 @@ const ActionsRenderer = (props) => {
   // Get primary mobile (for WhatsApp) or first available
   const mobile = data.mobile || '';
   
-  // Close LinkedIn menu when clicked outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (linkedInMenuRef.current && !linkedInMenuRef.current.contains(event.target)) {
-        setShowLinkedInMenu(false);
-      }
-    };
-    
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
+  // No need for click outside handler
   
   const handleEmailClick = (e) => {
     e.stopPropagation();
@@ -1219,41 +1205,32 @@ const ActionsRenderer = (props) => {
     }
   };
   
-  const toggleLinkedInMenu = (e) => {
-    e.stopPropagation();
-    console.log("LinkedIn menu toggled:", !showLinkedInMenu);
-    setShowLinkedInMenu(!showLinkedInMenu);
-  };
+  // Direct handler functions for LinkedIn actions
   
+  // Open LinkedIn profile if URL exists
   const handleLinkedInOpen = (e) => {
     e.stopPropagation();
-    e.preventDefault();
-    console.log("Opening LinkedIn URL:", data.linkedin);
-    setShowLinkedInMenu(false);
-    
-    // Only available if LinkedIn URL exists
+    console.log("Opening LinkedIn URL");
     if (data.linkedin) {
       window.open(data.linkedin, '_blank');
+    } else {
+      toast.info("No LinkedIn URL available for this contact");
     }
   };
   
+  // Search for person on LinkedIn
   const handleLinkedInSearch = (e) => {
     e.stopPropagation();
-    e.preventDefault();
-    setShowLinkedInMenu(false);
-    console.log("Searching LinkedIn for:", data.first_name, data.last_name);
-    
-    // Search for the person on LinkedIn using their name
+    console.log("Searching LinkedIn");
     if (data.first_name && data.last_name) {
       const searchName = `${data.first_name} ${data.last_name}`;
       window.open(`https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(searchName)}`, '_blank');
     }
   };
   
+  // Open LinkedIn enrichment modal
   const handleLinkedInEnrich = (e) => {
     e.stopPropagation();
-    e.preventDefault();
-    setShowLinkedInMenu(false);
     console.log("Opening LinkedIn enrich modal");
     setShowLinkedInModal(true);
   };
@@ -1457,6 +1434,8 @@ const ActionsRenderer = (props) => {
     toast.info(`Intros feature for ${data.first_name} ${data.last_name} coming soon!`);
   };
 
+  // Simple approach - no button position tracking
+
   return (
     <div style={{ 
       height: '100%', 
@@ -1465,132 +1444,13 @@ const ActionsRenderer = (props) => {
       justifyContent: 'center' 
     }}>
       <ActionsContainer>
-        <div style={{ position: 'relative' }} ref={linkedInMenuRef}>
-          <ActionButton 
-            className="linkedin" 
-            onClick={toggleLinkedInMenu}
-            title="LinkedIn Options"
-          >
-            <FiLinkedin size={16} />
-            {/* Debug indicator */}
-            {showLinkedInMenu && <span style={{position: 'absolute', top: -5, right: -5, width: 6, height: 6, background: 'red', borderRadius: '50%'}}></span>}
-          </ActionButton>
-          
-          {showLinkedInMenu && (
-            <>
-              <div 
-                style={{
-                  position: 'fixed',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  zIndex: 9998,
-                  backgroundColor: 'rgba(0, 0, 0, 0.5)'
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowLinkedInMenu(false);
-                }}
-              />
-              <div 
-              style={{
-                position: 'fixed',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                zIndex: 9999,
-                backgroundColor: '#222',
-                border: '1px solid #00ff00',
-                borderRadius: '4px',
-                boxShadow: '0 2px 10px rgba(0, 255, 0, 0.3)',
-                width: '150px',
-                padding: '10px 0',
-                overflow: 'visible',
-                position: 'relative'
-              }}
-            >
-              <button 
-                style={{
-                  position: 'absolute',
-                  top: '-8px',
-                  right: '-8px',
-                  width: '18px',
-                  height: '18px',
-                  borderRadius: '50%',
-                  background: '#333',
-                  color: '#00ff00',
-                  border: '1px solid #00ff00',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '12px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  padding: 0,
-                  lineHeight: 1
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowLinkedInMenu(false);
-                }}
-              >
-                ×
-              </button>
-              <button 
-                style={{
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: '8px 15px',
-                  fontSize: '14px',
-                  color: data.linkedin ? '#00ff00' : '#555',
-                  cursor: data.linkedin ? 'pointer' : 'not-allowed',
-                  border: 'none',
-                  backgroundColor: 'transparent',
-                  display: 'block',
-                  opacity: data.linkedin ? 1 : 0.5
-                }}
-                onClick={data.linkedin ? handleLinkedInOpen : null}
-                disabled={!data.linkedin}
-              >
-                Open LinkedIn
-              </button>
-              <button 
-                style={{
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: '8px 15px',
-                  fontSize: '14px',
-                  color: '#00ff00',
-                  cursor: 'pointer',
-                  border: 'none',
-                  backgroundColor: 'transparent',
-                  display: 'block'
-                }}
-                onClick={handleLinkedInSearch}
-              >
-                Search LinkedIn
-              </button>
-              <button 
-                style={{
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: '8px 15px',
-                  fontSize: '14px',
-                  color: '#00ff00',
-                  cursor: 'pointer',
-                  border: 'none',
-                  backgroundColor: 'transparent',
-                  display: 'block'
-                }}
-                onClick={handleLinkedInEnrich}
-              >
-                Enrich Profile
-              </button>
-            </div>
-            </>
-          )}
-        </div>
+        <ActionButton 
+          className="linkedin" 
+          onClick={handleLinkedInOpen}
+          title="Open LinkedIn"
+        >
+          <FiLinkedin size={16} />
+        </ActionButton>
         
         <ActionButton 
           className="email" 
