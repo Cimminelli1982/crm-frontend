@@ -476,11 +476,8 @@ const RatingRenderer = (props) => {
   }, [score]);
   
   const getColor = (score) => {
-    if (score >= 8) return '#00cc00';
-    if (score >= 6) return '#aacc00';
-    if (score >= 4) return '#ccaa00';
-    if (score >= 2) return '#cc7700';
-    return '#cc3300';
+    if (score === 5) return '#00ff00'; // Neon green for 5
+    return '#aaaaaa'; // Grey for all other values
   };
   
   const handleScoreChange = async (e) => {
@@ -558,7 +555,7 @@ const RatingRenderer = (props) => {
             cursor: 'pointer'
           }}
         >
-          {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(value => (
+          {[0, 1, 2, 3, 4, 5].map(value => (
             <option key={value} value={value}>{value}</option>
           ))}
         </select>
@@ -671,6 +668,81 @@ const ContactsListTable = ({ category }) => {
   // Keep in Touch renderer
   const KeepInTouchRenderer = (params) => {
     const frequency = params.value || 'Not Set';
+    const [isEditing, setIsEditing] = useState(false);
+    const [localFrequency, setLocalFrequency] = useState(frequency);
+    
+    useEffect(() => {
+      setLocalFrequency(frequency);
+    }, [frequency]);
+    
+    const frequencyOptions = [
+      "Not Set",
+      "Do not keep in touch",
+      "Weekly",
+      "Monthly",
+      "Quarterly",
+      "Twice per Year",
+      "Once per Year"
+    ];
+    
+    const getFrequencyColor = (freq) => {
+      if (freq === 'Do not keep in touch') {
+        return '#aaaaaa'; // Grey for "Skip"
+      } else if (freq === 'Not Set') {
+        return '#aaaaaa'; // Grey for "Not Set"
+      } else {
+        return '#00ff00'; // Neon green for all other options
+      }
+    };
+    
+    const handleFrequencyChange = async (e) => {
+      e.stopPropagation();
+      const newFrequency = e.target.value;
+      setLocalFrequency(newFrequency === "Not Set" ? null : newFrequency);
+      
+      try {
+        // Update the frequency in the database
+        const { error } = await supabase
+          .from('contacts')
+          .update({ keep_in_touch_frequency: newFrequency === "Not Set" ? null : newFrequency })
+          .eq('contact_id', params.data.contact_id);
+          
+        if (error) throw error;
+        
+        // Refresh the cell
+        if (params.api) {
+          params.api.refreshCells({
+            force: true,
+            rowNodes: [params.node],
+            columns: ['keep_in_touch_frequency']
+          });
+        }
+        
+        // Show success notification
+        toast.success(`Keep in touch updated for ${params.data.first_name} ${params.data.last_name}`);
+      } catch (err) {
+        console.error('Error updating frequency:', err);
+        toast.error(`Error updating keep in touch: ${err.message}`);
+        // Revert to original frequency on error
+        setLocalFrequency(frequency);
+      }
+      
+      setIsEditing(false);
+    };
+    
+    const handleClick = (e) => {
+      e.stopPropagation();
+      setIsEditing(true);
+    };
+    
+    const handleBlur = () => {
+      setIsEditing(false);
+    };
+    
+    // Prevent row selection when clicking on the dropdown
+    const handleSelectClick = (e) => {
+      e.stopPropagation();
+    };
     
     return (
       <div style={{
@@ -679,9 +751,38 @@ const ContactsListTable = ({ category }) => {
         textOverflow: 'ellipsis',
         paddingRight: '0',
         width: '100%',
-        color: frequency !== 'Not Set' ? '#00ff00' : '#aaa'
-      }}>
-        {frequency}
+        color: getFrequencyColor(localFrequency),
+        cursor: 'pointer'
+      }} onClick={handleClick}>
+        {isEditing ? (
+          <select
+            value={localFrequency || "Not Set"}
+            onChange={handleFrequencyChange}
+            onBlur={handleBlur}
+            onClick={handleSelectClick}
+            autoFocus
+            style={{
+              backgroundColor: '#222',
+              color: getFrequencyColor(localFrequency),
+              border: `1px solid ${getFrequencyColor(localFrequency)}`,
+              borderRadius: '4px',
+              padding: '2px',
+              fontSize: '14px',
+              width: '100%',
+              cursor: 'pointer'
+            }}
+          >
+            {frequencyOptions.map(option => (
+              <option key={option} value={option}>
+                {option === 'Do not keep in touch' ? 'Skip' : option}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span>
+            {localFrequency === 'Do not keep in touch' ? 'Skip' : (localFrequency || 'Not Set')}
+          </span>
+        )}
       </div>
     );
   };
