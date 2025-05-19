@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { AgGridReact } from '../../ag-grid-setup';
-import { FiMail, FiLinkedin, FiPlus } from 'react-icons/fi';
+import { FiMail, FiLinkedin, FiPlus, FiX } from 'react-icons/fi';
 import { FaWhatsapp, FaStar, FaRegStar } from 'react-icons/fa';
 import { MdClear } from 'react-icons/md';
 import { toast, ToastContainer } from 'react-toastify';
@@ -12,6 +12,9 @@ import { createGlobalStyle } from 'styled-components';
 import TagsModalComponent from '../modals/TagsModal';
 import CityModal from '../modals/CityModal';
 import LinkedInPreviewModal from '../modals/LinkedInPreviewModal';
+import AddCompanyModal from '../modals/AddCompanyModal';
+import AssociateCompanyModal from '../modals/AssociateCompanyModal';
+import NewEditCompanyModal from '../modals/NewEditCompanyModal';
 
 // Custom toast styling
 const ToastStyle = createGlobalStyle`
@@ -185,6 +188,41 @@ const TagItem = styled.div`
   font-size: 12px;
   border: 1px solid #00ff00;
   box-shadow: 0 0 4px rgba(0, 255, 0, 0.4);
+  white-space: nowrap;
+  overflow: visible;
+  line-height: 16px;
+  max-width: fit-content;
+  height: 20px;
+  
+  button {
+    background: none;
+    border: none;
+    color: #00ff00;
+    cursor: pointer;
+    padding: 0;
+    margin-left: 4px;
+    font-size: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    
+    &:hover {
+      color: #33ff33;
+      transform: scale(1.2);
+    }
+  }
+`;
+
+const CityItem = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #1a1a1a;
+  color: #00ff00;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  border: none;
   white-space: nowrap;
   overflow: visible;
   line-height: 16px;
@@ -429,21 +467,225 @@ const TagsRenderer = (props) => {
 };
 
 const CompanyRenderer = (props) => {
-  const companies = props.value || [];
-  if (!companies.length) return '-';
+  const [showAssociateModal, setShowAssociateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedCompany, setSelectedCompany] = useState(null);
   
-  // Show primary company or first in the list
-  const company = companies[0];
+  const companies = props.value || [];
+  const contactId = props.data?.contact_id;
+  
+  // Handle associating a company
+  const handleAssociateCompany = (e) => {
+    e?.stopPropagation(); // Prevent row selection
+    setShowAssociateModal(true);
+  };
+  
+  // Handle editing a company
+  const handleEditCompany = (company, e) => {
+    e?.stopPropagation(); // Prevent row selection
+    setSelectedCompany(company);
+    setShowEditModal(true);
+  };
+  
+  // Handle removing a company association
+  const handleRemoveCompany = async (companyId, e) => {
+    e?.stopPropagation(); // Prevent row selection
+    
+    if (!contactId || !companyId) return;
+    
+    try {
+      const { error } = await supabase
+        .from('contact_companies')
+        .delete()
+        .eq('contact_id', contactId)
+        .eq('company_id', companyId);
+        
+      if (error) throw error;
+      
+      // Success message
+      toast.success('Company association removed');
+      
+      // Refresh the grid
+      if (props.api) {
+        props.api.refreshCells({ force: true });
+      }
+      
+      // Initiate a full data refresh via the grid's parent component
+      setTimeout(() => {
+        if (props.context && props.context.refreshData) {
+          props.context.refreshData();
+        }
+      }, 100);
+    } catch (error) {
+      console.error('Error removing company association:', error);
+      toast.error('Failed to remove company association');
+    }
+  };
+  
+  // Handle company association completion
+  const handleCompanyAssociated = (result) => {
+    setShowAssociateModal(false);
+    
+    // Refresh the grid
+    if (props.context && props.context.refreshData) {
+      setTimeout(() => {
+        props.context.refreshData();
+      }, 100);
+    }
+  };
+  
+  // Handle company update completion
+  const handleCompanyUpdated = () => {
+    setShowEditModal(false);
+    
+    // Refresh the grid
+    if (props.context && props.context.refreshData) {
+      setTimeout(() => {
+        props.context.refreshData();
+      }, 100);
+    }
+  };
+  
+  // Prevent event propagation
+  const handleContainerClick = (e) => {
+    e.stopPropagation();
+  };
+  
+  // Define the plus button style once
+  const plusButtonStyle = {
+    background: 'transparent',
+    border: 'none',
+    color: '#00ff00',
+    cursor: 'pointer',
+    padding: '0',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center'
+  };
+
+  if (!companies.length) {
+    return (
+      <div 
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '5px'
+        }}
+        onClick={handleContainerClick}
+      >
+        <span style={{ color: '#999' }}>-</span>
+        <button 
+          onClick={handleAssociateCompany}
+          style={plusButtonStyle}
+          title="Associate Company"
+        >
+          <FiPlus size={14} />
+        </button>
+        
+        {showAssociateModal && (
+          <AssociateCompanyModal 
+            isOpen={showAssociateModal}
+            onRequestClose={() => setShowAssociateModal(false)}
+            contactId={contactId}
+            onCompanyAssociated={handleCompanyAssociated}
+          />
+        )}
+      </div>
+    );
+  }
   
   return (
-    <div style={{
-      whiteSpace: 'nowrap',
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      paddingRight: '8px',
-      width: '100%'
-    }} title={company.name}>
-      {company.name}
+    <div 
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '4px'
+      }}
+      onClick={handleContainerClick}
+    >
+      {companies.map((company) => (
+        <div 
+          key={company.id} 
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: 'transparent',
+            padding: '2px 0',
+            marginBottom: '2px'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <button
+              onClick={(e) => handleRemoveCompany(company.id, e)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#00ff00',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '0',
+                marginRight: '4px'
+              }}
+              title="Remove Company Association"
+            >
+              <FiX size={12} />
+            </button>
+            <span 
+              style={{ 
+                cursor: 'pointer', 
+                color: '#ffffff',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                maxWidth: 'calc(100% - 45px)'
+              }}
+              onClick={(e) => handleEditCompany(company, e)}
+              title={company.name}
+            >
+              {company.name}
+            </span>
+          </div>
+          <button 
+            onClick={handleAssociateCompany}
+            style={plusButtonStyle}
+            title="Associate Another Company"
+          >
+            <FiPlus size={12} />
+          </button>
+        </div>
+      ))}
+      
+      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+        <button 
+          onClick={handleAssociateCompany}
+          style={plusButtonStyle}
+          title="Associate Company"
+        >
+          <FiPlus size={14} />
+        </button>
+      </div>
+      
+      {showAssociateModal && (
+        <AssociateCompanyModal 
+          isOpen={showAssociateModal}
+          onRequestClose={() => setShowAssociateModal(false)}
+          contactId={contactId}
+          onCompanyAssociated={handleCompanyAssociated}
+        />
+      )}
+      
+      {showEditModal && selectedCompany && (
+        <NewEditCompanyModal 
+          isOpen={showEditModal}
+          onRequestClose={() => setShowEditModal(false)}
+          company={selectedCompany}
+          contactId={contactId}
+          onCompanyUpdated={handleCompanyUpdated}
+        />
+      )}
     </div>
   );
 };
@@ -584,7 +826,7 @@ const CitiesRenderer = (props) => {
       }}
     >
       {visibleCities.map(city => (
-        <TagItem key={city.id} title={city.name}>
+        <CityItem key={city.id} title={city.name}>
           {city.name}
           <button 
             onClick={(e) => handleRemoveCity(e, city.id)} 
@@ -602,7 +844,7 @@ const CitiesRenderer = (props) => {
           >
             <MdClear style={{ color: '#00ff00' }} size={14} />
           </button>
-        </TagItem>
+        </CityItem>
       ))}
       
       {remainingCount > 0 && (

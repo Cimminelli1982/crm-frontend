@@ -3,6 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { AgGridReact } from '../../ag-grid-setup';
+import toast from 'react-hot-toast';
+import { FiX, FiPlus } from 'react-icons/fi';
+import NewEditCompanyModal from '../../components/modals/NewEditCompanyModal';
+import CreateCompanyModal from '../../components/modals/CreateCompanyModal';
 
 // Styled components
 const Container = styled.div`
@@ -139,9 +143,181 @@ const TagsRenderer = (props) => {
 };
 
 const CompaniesRenderer = (props) => {
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedCompany, setSelectedCompany] = useState(null);
+  
   const companies = props.value || [];
-  if (!companies.length) return '-';
-  return companies.map(company => company.name).join(', ');
+  const contactId = props.data?.contact_id;
+  
+  const handleCreateCompany = () => {
+    setShowCreateModal(true);
+  };
+  
+  const handleEditCompany = (company, e) => {
+    e.stopPropagation(); // Prevent row click event
+    setSelectedCompany(company);
+    setShowEditModal(true);
+  };
+  
+  const handleRemoveCompany = async (companyId, e) => {
+    e.stopPropagation(); // Prevent row click event
+    
+    if (!contactId || !companyId) return;
+    
+    try {
+      const { error } = await supabase
+        .from('contact_companies')
+        .delete()
+        .eq('contact_id', contactId)
+        .eq('company_id', companyId);
+        
+      if (error) throw error;
+      
+      // Success message
+      toast.success('Company association removed');
+      
+      // Refresh the grid (assuming gridApi is available)
+      if (props.api) {
+        props.api.refreshCells({ force: true });
+      }
+    } catch (error) {
+      console.error('Error removing company association:', error);
+      toast.error('Failed to remove company association');
+    }
+  };
+  
+  const handleCompanyCreated = (result) => {
+    // Refresh the grid after company creation
+    if (props.api) {
+      props.api.refreshCells({ force: true });
+    }
+  };
+  
+  const handleCompanyUpdated = () => {
+    // Refresh the grid after company update
+    if (props.api) {
+      props.api.refreshCells({ force: true });
+    }
+  };
+  
+  if (!companies.length) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <span style={{ marginRight: '10px' }}>-</span>
+        <button 
+          onClick={handleCreateCompany}
+          style={{
+            background: 'transparent',
+            border: '1px solid #00ff00',
+            color: '#00ff00',
+            borderRadius: '3px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '20px',
+            height: '20px',
+            padding: 0,
+            fontSize: '16px'
+          }}
+          title="Add Company"
+        >
+          <FiPlus size={14} />
+        </button>
+      </div>
+    );
+  }
+  
+  return (
+    <div>
+      {companies.map((company) => (
+        <div 
+          key={company.id} 
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            marginBottom: '3px',
+            justifyContent: 'space-between'
+          }}
+        >
+          <span 
+            style={{ 
+              cursor: 'pointer', 
+              color: '#00ff00',
+              textDecoration: 'underline',
+              marginRight: '5px' 
+            }}
+            onClick={(e) => handleEditCompany(company, e)}
+            title="Edit Company"
+          >
+            {company.name}
+          </span>
+          <button
+            onClick={(e) => handleRemoveCompany(company.id, e)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#ff3333',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '18px',
+              height: '18px',
+              padding: 0,
+              fontSize: '14px'
+            }}
+            title="Remove Company Association"
+          >
+            <FiX size={14} />
+          </button>
+        </div>
+      ))}
+      <button 
+        onClick={handleCreateCompany}
+        style={{
+          background: 'transparent',
+          border: '1px solid #00ff00',
+          color: '#00ff00',
+          borderRadius: '3px',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '20px',
+          height: '20px',
+          padding: 0,
+          fontSize: '16px',
+          marginTop: '5px'
+        }}
+        title="Add Company"
+      >
+        <FiPlus size={14} />
+      </button>
+      
+      {/* Create Company Modal */}
+      {showCreateModal && (
+        <CreateCompanyModal 
+          isOpen={showCreateModal}
+          onRequestClose={() => setShowCreateModal(false)}
+          contactId={contactId}
+          onCompanyCreated={handleCompanyCreated}
+        />
+      )}
+      
+      {/* Edit Company Modal */}
+      {showEditModal && selectedCompany && (
+        <NewEditCompanyModal 
+          isOpen={showEditModal}
+          onRequestClose={() => setShowEditModal(false)}
+          company={selectedCompany}
+          contactId={contactId}
+          onCompanyUpdated={handleCompanyUpdated}
+        />
+      )}
+    </div>
+  );
 };
 
 const CitiesRenderer = (props) => {
