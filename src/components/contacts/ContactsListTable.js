@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
@@ -6,6 +6,44 @@ import { AgGridReact } from '../../ag-grid-setup';
 import { FiMail, FiLinkedin, FiPlus } from 'react-icons/fi';
 import { FaWhatsapp, FaStar, FaRegStar } from 'react-icons/fa';
 import { MdClear } from 'react-icons/md';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import { createGlobalStyle } from 'styled-components';
+import TagsModalComponent from '../modals/TagsModal';
+
+// Custom toast styling
+const ToastStyle = createGlobalStyle`
+  .Toastify__toast {
+    background-color: #121212;
+    color: #00ff00;
+    border: 1px solid #00ff00;
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+  }
+  
+  .Toastify__toast-body {
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+  }
+
+  .Toastify__progress-bar {
+    background: #00ff00;
+  }
+
+  .Toastify__close-button {
+    color: #00ff00;
+  }
+  
+  .Toastify__toast--success {
+    background-color: #121212;
+    border: 1px solid #00ff00;
+  }
+  
+  .Toastify__toast--error {
+    background-color: #121212;
+    border: 1px solid #ff3333;
+    color: #ff3333;
+  }
+`;
 
 // Styled components
 const Container = styled.div`
@@ -124,66 +162,38 @@ const ActionButton = styled.button`
   }
 `;
 
-// Modal for editing tags
-const TagsModal = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.7);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-`;
-
-const TagsModalContent = styled.div`
-  background-color: #121212;
-  border: 1px solid #00ff00;
-  border-radius: 8px;
-  padding: 20px;
-  width: 500px;
-  max-width: 90%;
-  max-height: 80vh;
-  overflow-y: auto;
-  box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
-  
-  h3 {
-    color: #00ff00;
-    margin-top: 0;
-    margin-bottom: 16px;
-    font-family: 'Courier New', monospace;
-  }
-`;
+// We're using the imported TagsModalComponent instead of these styled components
 
 const TagContainer = styled.div`
   display: flex;
   gap: 1px;
   align-items: center;
+  padding-top: 4px;
+  padding-bottom: 1px;
+  height: 100%;
 `;
 
 const TagItem = styled.div`
   display: flex;
   align-items: center;
+  justify-content: center;
   background-color: #1a1a1a;
   color: #00ff00;
-  padding: 2px 6px;
+  padding: 1px 6px;
   border-radius: 4px;
   font-size: 12px;
   border: 1px solid #00ff00;
   box-shadow: 0 0 4px rgba(0, 255, 0, 0.4);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 85px;
-  line-height: 18px;
-  margin-right: 4px;
+  overflow: visible;
+  line-height: 16px;
+  max-width: fit-content;
+  height: 20px;
   
   button {
     background: none;
     border: none;
-    color: #ff3333;
+    color: #00ff00;
     cursor: pointer;
     padding: 0;
     margin-left: 4px;
@@ -193,24 +203,25 @@ const TagItem = styled.div`
     justify-content: center;
     
     &:hover {
-      color: #ff0000;
+      color: #33ff33;
+      transform: scale(1.2);
     }
   }
 `;
 
 const AddTagButton = styled.button`
   background: none;
-  border: 1px dashed #00ff00;
+  border: none;
   color: #00ff00;
   border-radius: 4px;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 10px;
+  font-size: 14px;
   
   &:hover {
     background-color: rgba(0, 255, 0, 0.1);
@@ -233,6 +244,9 @@ const TagsRenderer = (props) => {
     e.stopPropagation(); // Prevent row selection
     
     try {
+      // Find the tag being removed for the notification
+      const tagToRemove = tags.find(tag => tag.id === tagId);
+      
       // Delete the tag relationship
       const { error } = await supabase
         .from('contact_tags')
@@ -242,7 +256,11 @@ const TagsRenderer = (props) => {
         
       if (error) throw error;
       
-      // Refresh the data
+      // Update the local data
+      const updatedTags = tags.filter(tag => tag.id !== tagId);
+      props.setValue(updatedTags);
+      
+      // Refresh the data in the grid
       if (props.api) {
         props.api.refreshCells({
           force: true,
@@ -250,9 +268,26 @@ const TagsRenderer = (props) => {
           columns: ['tags']
         });
       }
+      
+      // Show success toast notification
+      toast.success(`Tag "${tagToRemove?.name || 'Unknown'}" removed from ${contact.first_name} ${contact.last_name}`, {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true
+      });
     } catch (err) {
       console.error('Error removing tag:', err);
-      // You could add a toast message here
+      toast.error(`Error removing tag: ${err.message}`, {
+        position: "top-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true
+      });
     }
   };
   
@@ -263,6 +298,45 @@ const TagsRenderer = (props) => {
   
   const handleCloseModal = () => {
     setShowModal(false);
+    
+    // After closing the modal, refresh the entire table to show the latest changes
+    if (props.api) {
+      // First refresh the specific cell for immediate visual feedback
+      props.api.refreshCells({
+        force: true,
+        rowNodes: [props.node],
+        columns: ['tags']
+      });
+      
+      // Then initiate a full data refresh via the grid's parent component
+      setTimeout(() => {
+        if (props.context && props.context.refreshData) {
+          props.context.refreshData();
+        }
+      }, 100);
+    }
+  };
+  
+  const handleTagAdded = (tag) => {
+    // Refresh the cell data after tag is added
+    if (props.api) {
+      props.api.refreshCells({
+        force: true,
+        rowNodes: [props.node],
+        columns: ['tags']
+      });
+    }
+  };
+  
+  const handleTagRemoved = (tag) => {
+    // Refresh the cell data after tag is removed
+    if (props.api) {
+      props.api.refreshCells({
+        force: true,
+        rowNodes: [props.node],
+        columns: ['tags']
+      });
+    }
   };
   
   // We'll stop event propagation on the container to prevent row selection when clicking tags
@@ -271,6 +345,12 @@ const TagsRenderer = (props) => {
   };
   
   return (
+    <div style={{
+      height: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}>
     <TagContainer 
       onClick={handleContainerClick}
       style={{
@@ -278,22 +358,52 @@ const TagsRenderer = (props) => {
         overflow: 'hidden',
         textOverflow: 'ellipsis',
         paddingRight: '0',
-        width: '100%'
+        width: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px'
       }}
     >
       {visibleTags.map(tag => (
         <TagItem key={tag.id} title={tag.name}>
           {tag.name}
-          <button onClick={(e) => handleRemoveTag(e, tag.id)} title="Remove tag">
-            <MdClear style={{ color: '#00ff00' }} />
+          <button 
+            onClick={(e) => handleRemoveTag(e, tag.id)} 
+            title="Remove tag"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginLeft: '5px',
+              padding: '0',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer'
+            }}
+          >
+            <MdClear style={{ color: '#00ff00' }} size={14} />
           </button>
         </TagItem>
       ))}
       
       {remainingCount > 0 && (
-        <TagItem title={`${remainingCount} more tags`}>
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1px 6px',
+            borderRadius: '4px',
+            fontSize: '12px',
+            color: '#00ff00',
+            cursor: 'pointer',
+            height: '20px',
+            lineHeight: '16px'
+          }}
+          onClick={handleAddTagClick}
+        >
           +{remainingCount}
-        </TagItem>
+        </div>
       )}
       
       <AddTagButton 
@@ -304,31 +414,16 @@ const TagsRenderer = (props) => {
       </AddTagButton>
       
       {showModal && (
-        <TagsModal onClick={handleCloseModal}>
-          <TagsModalContent onClick={e => e.stopPropagation()}>
-            <h3>Edit Tags for {contact.first_name} {contact.last_name}</h3>
-            {/* Tags edit form would go here */}
-            <p style={{ color: '#ccc' }}>
-              This would contain a form to add/remove tags for this contact.
-            </p>
-            <button 
-              style={{ 
-                backgroundColor: '#00ff00', 
-                color: 'black', 
-                border: 'none', 
-                padding: '8px 16px', 
-                borderRadius: '4px', 
-                cursor: 'pointer',
-                marginTop: '16px'
-              }}
-              onClick={handleCloseModal}
-            >
-              Close
-            </button>
-          </TagsModalContent>
-        </TagsModal>
+        <TagsModalComponent
+          isOpen={showModal}
+          onRequestClose={handleCloseModal}
+          contact={contact}
+          onTagAdded={handleTagAdded}
+          onTagRemoved={handleTagRemoved}
+        />
       )}
     </TagContainer>
+    </div>
   );
 };
 
@@ -526,52 +621,61 @@ const ContactsListTable = ({ category }) => {
       cellRenderer: (params) => {
         if (!params.value) return '-';
         
+        // Make name column clickable
+        const handleClick = () => {
+          if (params.data && params.data.contact_id) {
+            params.context.navigate(`/contacts/${params.data.contact_id}`);
+          }
+        };
+        
         return (
-          <div style={{
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            paddingRight: '0',
-            width: '100%'
-          }}>
+          <div 
+            style={{
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              paddingRight: '0',
+              width: '100%',
+              cursor: 'pointer'
+            }}
+            onClick={handleClick}
+          >
             {params.value}
           </div>
         );
       },
-      minWidth: 170,
-      width: 170,
+      minWidth: 150,
+      flex: 1.7,
       filter: 'agTextColumnFilter',
       floatingFilter: true,
       sortable: true,
       pinned: 'left',
-      suppressSizeToFit: true,
     },
     { 
       headerName: 'Company', 
       field: 'companies', 
       cellRenderer: CompanyRenderer,
-      minWidth: 140,
-      width: 140,
+      minWidth: 120,
+      flex: 1.4,
       filter: 'agTextColumnFilter',
       floatingFilter: true,
       sortable: true,
-      suppressSizeToFit: true,
     },
     { 
       headerName: 'Tags', 
       field: 'tags', 
       cellRenderer: TagsRenderer,
-      minWidth: 200,
-      width: 200,
+      minWidth: 180,
+      flex: 2.6,
       filter: 'agTextColumnFilter',
       floatingFilter: true,
-      suppressSizeToFit: true,
     },
     { 
       headerName: 'Rating', 
       field: 'score', 
       cellRenderer: RatingRenderer,
-      width: 80,
+      minWidth: 70,
+      flex: 0.7,
       filter: 'agNumberColumnFilter',
       floatingFilter: true,
       sortable: true,
@@ -581,42 +685,39 @@ const ContactsListTable = ({ category }) => {
       field: 'keep_in_touch_frequency',
       cellRenderer: KeepInTouchRenderer,
       minWidth: 120,
-      width: 120,
+      flex: 1.6,
       filter: 'agTextColumnFilter',
       floatingFilter: true,
       sortable: true,
-      suppressSizeToFit: true,
     },
     { 
       headerName: 'City', 
       field: 'cities', 
       cellRenderer: CitiesRenderer,
-      minWidth: 110,
-      width: 100,
+      minWidth: 90,
+      flex: 0.8,
       filter: 'agTextColumnFilter',
       floatingFilter: true,
-      suppressSizeToFit: true,
     },
     { 
       headerName: 'Last Interaction', 
       field: 'last_interaction_at',
       cellRenderer: LastInteractionRenderer,
-      minWidth: 110,
-      width: 110,
+      minWidth: 100,
+      flex: 1.1,
       filter: 'agDateColumnFilter',
       floatingFilter: true,
       sortable: true,
-      suppressSizeToFit: true,
     },
     {
       headerName: 'Actions',
       field: 'actions',
       cellRenderer: ActionsRenderer,
-      width: 110,
+      minWidth: 110,
+      flex: 1.1,
       sortable: false,
       filter: false,
       pinned: 'right',
-      suppressSizeToFit: true,
     }
   ], []);
   
@@ -635,22 +736,17 @@ const ContactsListTable = ({ category }) => {
     }, 0);
   };
 
-  // Row clicked handler
-  const handleRowClicked = (params) => {
-    if (params.data && params.data.contact_id) {
-      navigate(`/contacts/integrity/${params.data.contact_id}`);
-    }
-  };
+  // We no longer need a row click handler since we're only making the name column clickable
+  // The navigation will happen in the name column cell renderer
 
-  // Fetch contacts based on the selected category
-  useEffect(() => {
-    const fetchContacts = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        
-        // Base query to get contacts
-        let query = supabase
+  // The fetch function for getting contacts data
+  const fetchContacts = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Base query to get contacts
+      let query = supabase
           .from('contacts')
           .select(`
             contact_id, 
@@ -663,10 +759,8 @@ const ContactsListTable = ({ category }) => {
           `)
           .order('first_name', { ascending: true });
         
-        // Apply category filter if provided
-        if (category) {
-          query = query.eq('category', category);
-        }
+        // Always filter for "Founder" category, ignoring any other category parameter
+        query = query.eq('category', 'Founder');
         
         const { data: contactsData, error: contactsError } = await query;
         
@@ -826,6 +920,15 @@ const ContactsListTable = ({ category }) => {
       }
     };
     
+  // Create a refreshData function for manually refreshing data
+  const refreshData = () => {
+    if (!loading) {
+      fetchContacts();
+    }
+  };
+  
+  // Effect to fetch contacts when category changes
+  useEffect(() => {
     fetchContacts();
   }, [category]);
   
@@ -846,6 +949,22 @@ const ContactsListTable = ({ category }) => {
 
   return (
     <Container>
+      {/* Apply custom toast styling */}
+      <ToastStyle />
+      
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="dark"
+      />
+      
       {error && <ErrorText>Error: {error}</ErrorText>}
       
       {loading ? (
@@ -883,7 +1002,7 @@ const ContactsListTable = ({ category }) => {
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
             onGridReady={onGridReady}
-            onRowClicked={handleRowClicked}
+            context={{ navigate, refreshData }}
             rowSelection="single"
             animateRows={true}
             pagination={true}

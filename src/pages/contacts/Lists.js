@@ -1,31 +1,7 @@
-import React, { useState, lazy, Suspense } from 'react';
+import React, { useState } from 'react';
 import styled from 'styled-components';
 import { FiList, FiUsers, FiDollarSign, FiBriefcase, FiHeart } from 'react-icons/fi';
-
-// Placeholder for future list components
-const FoundersList = () => (
-  <div style={{ textAlign: 'center', padding: '40px', color: '#00ff00' }}>
-    Founders list will be implemented soon.
-  </div>
-);
-
-const InvestorsList = () => (
-  <div style={{ textAlign: 'center', padding: '40px', color: '#00ff00' }}>
-    Professional Investors list will be implemented soon.
-  </div>
-);
-
-const ManagersList = () => (
-  <div style={{ textAlign: 'center', padding: '40px', color: '#00ff00' }}>
-    Managers list will be implemented soon.
-  </div>
-);
-
-const CareList = () => (
-  <div style={{ textAlign: 'center', padding: '40px', color: '#00ff00' }}>
-    People I Care list will be implemented soon.
-  </div>
-);
+import ContactsListTable from '../../components/contacts/ContactsListTable';
 
 // Style for the main content
 const Container = styled.div`
@@ -65,7 +41,7 @@ const TopMenuContainer = styled.div`
 
 // Style for the content
 const ListsContent = styled.div`
-  padding: 0;
+  padding: 16px;
   width: 100%;
 `;
 
@@ -103,6 +79,15 @@ const ContentArea = styled.div`
   width: 100%;
 `;
 
+// Title style for the list
+const ListTitle = styled.h2`
+  color: #00ff00;
+  margin-top: 0;
+  margin-bottom: 16px;
+  font-family: 'Courier New', monospace;
+  font-size: 1.5rem;
+`;
+
 // Loading indicator
 const LoadingFallback = styled.div`
   display: flex;
@@ -118,31 +103,14 @@ const Lists = () => {
 
   // Define menu items
   const menuItems = [
-    { id: 'founders', name: 'Founders', icon: <FiList /> },
-    { id: 'investors', name: 'Professional Investors', icon: <FiDollarSign /> },
-    { id: 'managers', name: 'Managers', icon: <FiBriefcase /> },
-    { id: 'care', name: 'People I Care', icon: <FiHeart /> }
+    { id: 'founders', name: 'Founders', icon: <FiList />, category: 'Founder' },
+    { id: 'investors', name: 'Professional Investors', icon: <FiDollarSign />, category: 'Professional Investor' },
+    { id: 'managers', name: 'Managers', icon: <FiBriefcase />, category: 'Manager' },
+    { id: 'care', name: 'People I Care', icon: <FiHeart />, category: 'Friend and Family' }
   ];
 
-  // Render the active component based on the selected tab
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'founders':
-        return <FoundersList />;
-      case 'investors':
-        return <InvestorsList />;
-      case 'managers':
-        return <ManagersList />;
-      case 'care':
-        return <CareList />;
-      default:
-        return (
-          <div style={{ color: '#00ff00', textAlign: 'center', paddingTop: '40px' }}>
-            Select a list type from the menu above
-          </div>
-        );
-    }
-  };
+  // Find the active menu item to get the category
+  const activeMenuItem = menuItems.find(item => item.id === activeTab) || menuItems[0];
 
   return (
     <Container>
@@ -160,9 +128,8 @@ const Lists = () => {
       
       <ListsContent>
         <ContentArea>
-          <Suspense fallback={<LoadingFallback>Loading...</LoadingFallback>}>
-            {renderContent()}
-          </Suspense>
+          <ListTitle>{activeMenuItem.name}</ListTitle>
+          <ContactsListTable category={activeMenuItem.category} />
         </ContentArea>
       </ListsContent>
     </Container>
