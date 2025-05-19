@@ -133,7 +133,7 @@ const ActionsContainer = styled.div`
 `;
 
 const ActionButton = styled.button`
-  background: none;
+  background: transparent;
   border: none;
   color: #00ff00;
   cursor: pointer;
@@ -147,20 +147,19 @@ const ActionButton = styled.button`
   padding: 0;
   
   &:hover {
-    background-color: #1a1a1a;
     transform: scale(1.1);
   }
 
   &.linkedin {
-    color: #0077b5;
+    color: #00ff00;
   }
   
   &.email {
-    color: #00aeff;
+    color: #00ff00;
   }
   
   &.whatsapp {
-    color: #25D366;
+    color: #00ff00;
   }
 `;
 
@@ -821,9 +820,186 @@ const ActionsRenderer = (props) => {
     setShowLinkedInModal(false);
   };
   
-  const handleSaveLinkedInData = (linkedInData) => {
-    // This function could be used to save data from the LinkedIn modal if needed
-    // For now, we're just closing the modal
+  const handleSaveLinkedInData = async (linkedInData) => {
+    try {
+      // Update contact information
+      const contactUpdates = {
+        job_role: linkedInData.jobRole,
+        linkedin: data.linkedin, // Keep existing LinkedIn URL
+        last_modified_at: new Date().toISOString(),
+        last_modified_by: 'User'
+      };
+      
+      // Update the contact record
+      const { error: contactError } = await supabase
+        .from('contacts')
+        .update(contactUpdates)
+        .eq('contact_id', data.contact_id);
+        
+      if (contactError) throw contactError;
+      
+      // Check if we need to create or update a company
+      if (linkedInData.company) {
+        // First check if company already exists with this name
+        const { data: existingCompanies, error: companySearchError } = await supabase
+          .from('companies')
+          .select('company_id, name')
+          .ilike('name', linkedInData.company);
+          
+        if (companySearchError) throw companySearchError;
+        
+        let companyId;
+        
+        // If company exists, use it
+        if (existingCompanies && existingCompanies.length > 0) {
+          companyId = existingCompanies[0].company_id;
+          
+          // Update company information
+          const { error: companyUpdateError } = await supabase
+            .from('companies')
+            .update({
+              website: linkedInData.companyWebsite || null,
+              description: linkedInData.companyDescription || null,
+              last_modified_at: new Date().toISOString(),
+              last_modified_by: 'User'
+            })
+            .eq('company_id', companyId);
+            
+          if (companyUpdateError) throw companyUpdateError;
+        } 
+        // If company doesn't exist, create it
+        else {
+          const { data: newCompany, error: companyCreateError } = await supabase
+            .from('companies')
+            .insert({
+              name: linkedInData.company,
+              website: linkedInData.companyWebsite || null,
+              description: linkedInData.companyDescription || null,
+              created_at: new Date().toISOString(),
+              created_by: 'User',
+              last_modified_at: new Date().toISOString(),
+              last_modified_by: 'User'
+            })
+            .select();
+            
+          if (companyCreateError) throw companyCreateError;
+          
+          if (newCompany && newCompany.length > 0) {
+            companyId = newCompany[0].company_id;
+          }
+        }
+        
+        // Associate contact with company if we have a company ID
+        if (companyId) {
+          // Check if relationship already exists
+          const { data: existingRelation, error: relationCheckError } = await supabase
+            .from('contact_companies')
+            .select('contact_id, company_id')
+            .eq('contact_id', data.contact_id)
+            .eq('company_id', companyId);
+            
+          if (relationCheckError) throw relationCheckError;
+          
+          // Only create relationship if it doesn't exist
+          if (!existingRelation || existingRelation.length === 0) {
+            const { error: relationError } = await supabase
+              .from('contact_companies')
+              .insert({
+                contact_id: data.contact_id,
+                company_id: companyId
+              });
+              
+            if (relationError) throw relationError;
+          }
+        }
+      }
+      
+      // Add city if provided
+      if (linkedInData.city) {
+        // Check if city exists
+        const { data: existingCities, error: citySearchError } = await supabase
+          .from('cities')
+          .select('city_id, name')
+          .ilike('name', linkedInData.city);
+          
+        if (citySearchError) throw citySearchError;
+        
+        let cityId;
+        
+        // If city exists, use it
+        if (existingCities && existingCities.length > 0) {
+          cityId = existingCities[0].city_id;
+        } 
+        // If city doesn't exist, create it
+        else {
+          const { data: newCity, error: cityCreateError } = await supabase
+            .from('cities')
+            .insert({
+              name: linkedInData.city
+            })
+            .select();
+            
+          if (cityCreateError) throw cityCreateError;
+          
+          if (newCity && newCity.length > 0) {
+            cityId = newCity[0].city_id;
+          }
+        }
+        
+        // Associate contact with city if we have a city ID
+        if (cityId) {
+          // Check if relationship already exists
+          const { data: existingRelation, error: relationCheckError } = await supabase
+            .from('contact_cities')
+            .select('contact_id, city_id')
+            .eq('contact_id', data.contact_id)
+            .eq('city_id', cityId);
+            
+          if (relationCheckError) throw relationCheckError;
+          
+          // Only create relationship if it doesn't exist
+          if (!existingRelation || existingRelation.length === 0) {
+            const { error: relationError } = await supabase
+              .from('contact_cities')
+              .insert({
+                contact_id: data.contact_id,
+                city_id: cityId
+              });
+              
+            if (relationError) throw relationError;
+          }
+        }
+      }
+      
+      // Show success notification
+      toast.success(`Profile information updated for ${data.first_name} ${data.last_name}`, {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true
+      });
+      
+      // Refresh data in the grid
+      if (props.context && props.context.refreshData) {
+        setTimeout(() => {
+          props.context.refreshData();
+        }, 500);
+      }
+    } catch (err) {
+      console.error('Error saving LinkedIn data:', err);
+      toast.error(`Error saving profile data: ${err.message}`, {
+        position: "top-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true
+      });
+    }
+    
+    // Close the modal
     setShowLinkedInModal(false);
   };
   
@@ -858,8 +1034,8 @@ const ActionsRenderer = (props) => {
         
         <ActionButton 
           style={{ 
-            backgroundColor: "#00ff00", 
-            color: "#000000",
+            backgroundColor: "transparent", 
+            color: "#00ff00",
             fontWeight: "bold",
             width: "24px",
             height: "24px"
