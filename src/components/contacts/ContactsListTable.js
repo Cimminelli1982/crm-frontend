@@ -131,8 +131,10 @@ const ActionsContainer = styled.div`
   display: flex;
   gap: 4px;
   justify-content: center;
+  align-items: center;
   padding-right: 0;
   width: 100%;
+  height: 100%;
 `;
 
 const ActionButton = styled.button`
@@ -148,6 +150,7 @@ const ActionButton = styled.button`
   border-radius: 3px;
   transition: all 0.2s;
   padding: 0;
+  margin: 0 2px;
   
   &:hover {
     transform: scale(1.1);
@@ -218,7 +221,7 @@ const CityItem = styled.div`
   align-items: center;
   justify-content: center;
   background-color: #1a1a1a;
-  color: #00ff00;
+  color: #cccccc;
   padding: 1px 6px;
   border-radius: 4px;
   font-size: 12px;
@@ -232,7 +235,7 @@ const CityItem = styled.div`
   button {
     background: none;
     border: none;
-    color: #00ff00;
+    color: #cccccc;
     cursor: pointer;
     padding: 0;
     margin-left: 4px;
@@ -242,7 +245,7 @@ const CityItem = styled.div`
     justify-content: center;
     
     &:hover {
-      color: #33ff33;
+      color: #ffffff;
       transform: scale(1.2);
     }
   }
@@ -273,11 +276,14 @@ const TagsRenderer = (props) => {
   const tags = props.value || [];
   const contact = props.data;
   
-  if (!tags.length && !contact) return '-';
+  if (!tags.length && !contact) return '';
   
   // Get first 2 tags to display
   const visibleTags = tags.slice(0, 2);
   const remainingCount = tags.length - 2;
+  
+  // If no tags, show "Add tags" text instead of the plus button
+  const showAddTagsText = tags.length === 0;
   
   const handleRemoveTag = async (e, tagId) => {
     e.stopPropagation(); // Prevent row selection
@@ -398,6 +404,7 @@ const TagsRenderer = (props) => {
         textOverflow: 'ellipsis',
         paddingRight: '0',
         width: '100%',
+        height: '100%',
         display: 'flex',
         alignItems: 'center',
         gap: '6px'
@@ -445,12 +452,32 @@ const TagsRenderer = (props) => {
         </div>
       )}
       
-      <AddTagButton 
-        onClick={handleAddTagClick}
-        title="Add or edit tags"
-      >
-        <FiPlus />
-      </AddTagButton>
+      {showAddTagsText ? (
+        <div
+          onClick={handleAddTagClick}
+          style={{
+            color: '#00ff00',
+            fontSize: '11px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '4px',
+            width: '100%',
+            height: '100%'
+          }}
+          title="Add or edit tags"
+        >
+          Add tags
+        </div>
+      ) : (
+        <AddTagButton 
+          onClick={handleAddTagClick}
+          title="Add or edit tags"
+        >
+          <FiPlus />
+        </AddTagButton>
+      )}
       
       {showModal && (
         <TagsModalComponent
@@ -483,7 +510,14 @@ const CompanyRenderer = (props) => {
   // Handle editing a company
   const handleEditCompany = (company, e) => {
     e?.stopPropagation(); // Prevent row selection
-    setSelectedCompany(company);
+    
+    // Make sure we set the company_id property correctly to match what the modal expects
+    const companyWithCorrectId = {
+      ...company,
+      company_id: company.id  // Ensure company_id is properly set from id
+    };
+    
+    setSelectedCompany(companyWithCorrectId);
     setShowEditModal(true);
   };
   
@@ -569,18 +603,24 @@ const CompanyRenderer = (props) => {
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '5px'
+          height: '100%'
         }}
         onClick={handleContainerClick}
       >
-        <span style={{ color: '#999' }}>-</span>
-        <button 
+        <div
           onClick={handleAssociateCompany}
-          style={plusButtonStyle}
+          style={{
+            color: '#ffffff',
+            fontSize: '11px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px'
+          }}
           title="Associate Company"
         >
-          <FiPlus size={14} />
-        </button>
+          Add company
+        </div>
         
         {showAssociateModal && (
           <AssociateCompanyModal 
@@ -594,78 +634,121 @@ const CompanyRenderer = (props) => {
     );
   }
   
+  // Determine if we should use a horizontal or vertical layout
+  const useVerticalLayout = companies.length > 1;
+  
+  // Calculate the row height based on the number of companies
+  const getCompanyRowHeight = () => {
+    // Base height plus additional height for each company beyond the first
+    if (useVerticalLayout) {
+      return 22 * companies.length + 8; // 22px per company + 8px padding
+    }
+    return 30; // Default row height
+  };
+  
   return (
     <div 
       style={{
         display: 'flex',
         flexDirection: 'column',
-        gap: '4px'
+        justifyContent: useVerticalLayout ? 'flex-start' : 'center',
+        gap: '4px',
+        height: '100%',
+        width: '100%'
       }}
       onClick={handleContainerClick}
     >
-      {companies.map((company) => (
-        <div 
-          key={company.id} 
-          style={{ 
-            display: 'flex', 
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            background: 'transparent',
-            padding: '2px 0',
-            marginBottom: '2px'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <button
-              onClick={(e) => handleRemoveCompany(company.id, e)}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: '#00ff00',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '0',
-                marginRight: '4px'
-              }}
-              title="Remove Company Association"
-            >
-              <FiX size={12} />
-            </button>
+      <div style={{
+        display: 'flex',
+        flexDirection: useVerticalLayout ? 'column' : 'row',
+        alignItems: 'flex-start',
+        gap: '4px',
+        overflow: 'hidden',
+        height: '100%',
+        width: '100%'
+      }}>
+        {companies.map((company) => (
+          <div 
+            key={company.id} 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center',
+              backgroundColor: '#1a1a1a',
+              color: '#ffffff',
+              padding: '0px 6px',
+              borderRadius: '4px',
+              fontSize: '11px',
+              border: '1px solid #ffffff',
+              boxShadow: '0 0 4px rgba(255, 255, 255, 0.2)',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              lineHeight: '16px',
+              width: useVerticalLayout ? '95%' : 'auto',
+              maxWidth: useVerticalLayout ? '240px' : '190px',
+              height: '18px',
+              marginBottom: useVerticalLayout ? '10px' : '0'
+            }}
+          >
             <span 
               style={{ 
-                cursor: 'pointer', 
-                color: '#ffffff',
+                cursor: 'pointer',
+                maxWidth: '210px',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                maxWidth: 'calc(100% - 45px)'
+                display: 'inline-block'
               }}
               onClick={(e) => handleEditCompany(company, e)}
               title={company.name}
             >
               {company.name}
             </span>
+            <button
+              onClick={(e) => handleRemoveCompany(company.id, e)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#ffffff',
+                cursor: 'pointer',
+                padding: '0',
+                marginLeft: '4px',
+                fontSize: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+              title="Remove Company Association"
+            >
+              <MdClear size={14} />
+            </button>
           </div>
+        ))}
+        
+        <div style={{ 
+          alignSelf: useVerticalLayout ? 'flex-start' : 'center',
+          marginBottom: useVerticalLayout ? '2px' : '0',
+          marginLeft: useVerticalLayout ? '0' : '4px'
+        }}>
           <button 
             onClick={handleAssociateCompany}
-            style={plusButtonStyle}
-            title="Associate Another Company"
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#ffffff',
+              borderRadius: '4px',
+              width: '20px',
+              height: '20px',
+              padding: '0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              fontSize: '14px'
+            }}
+            title="Associate Company"
           >
-            <FiPlus size={12} />
+            <FiPlus size={14} />
           </button>
         </div>
-      ))}
-      
-      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-        <button 
-          onClick={handleAssociateCompany}
-          style={plusButtonStyle}
-          title="Associate Company"
-        >
-          <FiPlus size={14} />
-        </button>
       </div>
       
       {showAssociateModal && (
@@ -695,11 +778,14 @@ const CitiesRenderer = (props) => {
   const cities = props.value || [];
   const contact = props.data;
   
-  if (!cities.length && !contact) return '-';
+  if (!cities.length && !contact) return '';
   
   // Get first 2 cities to display
   const visibleCities = cities.slice(0, 2);
   const remainingCount = cities.length - 2;
+  
+  // If no cities, show "Add city" text instead of the plus button
+  const showAddCityText = cities.length === 0;
   
   const handleRemoveCity = async (e, cityId) => {
     e.stopPropagation(); // Prevent row selection
@@ -820,6 +906,7 @@ const CitiesRenderer = (props) => {
         textOverflow: 'ellipsis',
         paddingRight: '0',
         width: '100%',
+        height: '100%',
         display: 'flex',
         alignItems: 'center',
         gap: '6px'
@@ -867,12 +954,31 @@ const CitiesRenderer = (props) => {
         </div>
       )}
       
-      <AddTagButton 
-        onClick={handleAddCityClick}
-        title="Add or edit cities"
-      >
-        <FiPlus />
-      </AddTagButton>
+      {showAddCityText ? (
+        <CityItem
+          onClick={handleAddCityClick}
+          style={{
+            color: '#cccccc',
+            fontSize: '11px',
+            cursor: 'pointer',
+            border: 'none',
+            boxShadow: 'none',
+            backgroundColor: 'transparent',
+            display: 'flex',
+            justifyContent: 'center'
+          }}
+          title="Add or edit city"
+        >
+          Add city
+        </CityItem>
+      ) : (
+        <AddTagButton 
+          onClick={handleAddCityClick}
+          title="Add or edit cities"
+        >
+          <FiPlus size={12} />
+        </AddTagButton>
+      )}
       
       {showModal && (
         <CityModal
@@ -997,8 +1103,11 @@ const RatingRenderer = (props) => {
 };
 
 const LastInteractionRenderer = (props) => {
-  if (!props.value) return '-';
-  const formattedDate = new Date(props.value).toLocaleDateString();
+  if (!props.value) return '';
+  
+  const date = new Date(props.value);
+  // Format as MM/YY
+  const formattedDate = `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear().toString().slice(-2)}`;
   
   return (
     <div style={{
@@ -1006,7 +1115,9 @@ const LastInteractionRenderer = (props) => {
       overflow: 'hidden',
       textOverflow: 'ellipsis',
       paddingRight: '0',
-      width: '100%'
+      width: '100%',
+      fontSize: '12px',
+      textAlign: 'center'
     }}>
       {formattedDate}
     </div>
@@ -1258,7 +1369,12 @@ const ActionsRenderer = (props) => {
   };
 
   return (
-    <>
+    <div style={{ 
+      height: '100%', 
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'center' 
+    }}>
       <ActionsContainer>
         <ActionButton 
           className="linkedin" 
@@ -1330,7 +1446,7 @@ const ActionsRenderer = (props) => {
           onSaveData={handleSaveLinkedInData}
         />
       )}
-    </>
+    </div>
   );
 };
 
@@ -1530,8 +1646,8 @@ const ContactsListTable = ({ category }) => {
       headerName: 'Company', 
       field: 'companies', 
       cellRenderer: CompanyRenderer,
-      minWidth: 120,
-      flex: 1.4,
+      minWidth: 160,
+      flex: 2.0,
       filter: true,
       filterValueGetter: (params) => {
         if (!params.data || !params.data.companies || !params.data.companies.length) {
@@ -1542,6 +1658,7 @@ const ContactsListTable = ({ category }) => {
       },
       floatingFilter: true,
       sortable: true,
+      cellStyle: { display: 'flex', alignItems: 'center' }
     },
     { 
       headerName: 'Tags', 
@@ -1615,8 +1732,8 @@ const ContactsListTable = ({ category }) => {
       headerName: 'City', 
       field: 'cities', 
       cellRenderer: CitiesRenderer,
-      minWidth: 90,
-      flex: 0.8,
+      minWidth: 110,
+      flex: 1.2,
       filter: true,
       filterValueGetter: (params) => {
         if (!params.data || !params.data.cities || !params.data.cities.length) {
@@ -1630,11 +1747,11 @@ const ContactsListTable = ({ category }) => {
       cellStyle: { display: 'flex', alignItems: 'center' }
     },
     { 
-      headerName: 'Last Interaction', 
+      headerName: 'Last', 
       field: 'last_interaction_at',
       cellRenderer: LastInteractionRenderer,
-      minWidth: 100,
-      flex: 1.1,
+      minWidth: 65,
+      flex: 0.7,
       filter: 'agDateColumnFilter',
       floatingFilter: true,
       sortable: true,
@@ -1648,6 +1765,12 @@ const ContactsListTable = ({ category }) => {
       sortable: false,
       filter: false,
       pinned: 'right',
+      cellStyle: { 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        padding: '0'
+      }
     }
   ], []);
   
@@ -1665,6 +1788,24 @@ const ContactsListTable = ({ category }) => {
       params.api.sizeColumnsToFit();
     }, 0);
   };
+  
+  // Custom row height function to accommodate multiple companies
+  const getRowHeight = useCallback((params) => {
+    // Default row height - increased to ensure single company rows look good
+    let height = 36;
+    
+    // If the row has companies, check if we need extra height
+    if (params.data && params.data.companies) {
+      if (params.data.companies.length > 1) {
+        // Calculate the height based on number of companies
+        // Much larger height allocation per company
+        height = Math.max(height, 35 * params.data.companies.length + 24);
+      }
+    }
+    
+    return height;
+  }, []);
+  
 
   // We no longer need a row click handler since we're only making the name column clickable
   // The navigation will happen in the name column cell renderer
@@ -1928,6 +2069,7 @@ const ContactsListTable = ({ category }) => {
             paginationPageSize={50}
             suppressCellFocus={true}
             enableCellTextSelection={true}
+            getRowHeight={getRowHeight}
           />
         </div>
       )}
