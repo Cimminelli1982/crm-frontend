@@ -258,8 +258,11 @@ const AssociateCompanyModal = ({
       setRelationship('not_set');
       setIsPrimary(false);
       setNoResults(false);
+      
+      // Debug contactId
+      console.log('AssociateCompanyModal opened with contactId:', contactId);
     }
-  }, [isOpen]);
+  }, [isOpen, contactId]);
   
   // Handle search input changes
   const handleSearchChange = (e) => {
@@ -359,6 +362,9 @@ const AssociateCompanyModal = ({
       return;
     }
     
+    console.log('handleAssociateCompany - contactId:', contactId, 'type:', typeof contactId);
+    console.log('handleAssociateCompany - selectedCompany:', selectedCompany);
+    
     if (!contactId) {
       console.error('Missing contact ID when trying to associate company', { 
         contactId, 
@@ -382,10 +388,11 @@ const AssociateCompanyModal = ({
       });
       
       // Associate the company with the contact
+      // Ensure contactId is parsed as a UUID string - this is critical
       const { data, error } = await supabase
         .from('contact_companies')
         .insert({
-          contact_id: contactId,
+          contact_id: String(contactId),
           company_id: selectedCompany.company_id,
           relationship: relationship,
           is_primary: isPrimary

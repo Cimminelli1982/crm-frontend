@@ -1315,13 +1315,15 @@ const ContactsListTable = ({ category }) => {
 
   // Keep in Touch renderer
   const KeepInTouchRenderer = (params) => {
-    const frequency = params.value || 'Not Set';
+    // Ensure consistent handling of null values
+    const frequency = params.value === null ? 'Not Set' : params.value;
     const [isEditing, setIsEditing] = useState(false);
     const [localFrequency, setLocalFrequency] = useState(frequency);
     
     useEffect(() => {
-      setLocalFrequency(frequency);
-    }, [frequency]);
+      // Update state when data changes with consistent null handling
+      setLocalFrequency(params.value === null ? 'Not Set' : params.value);
+    }, [params.value]);
     
     const frequencyOptions = [
       "Not Set",
@@ -1344,24 +1346,37 @@ const ContactsListTable = ({ category }) => {
     const handleFrequencyChange = async (e) => {
       e.stopPropagation();
       const newFrequency = e.target.value;
-      setLocalFrequency(newFrequency === "Not Set" ? null : newFrequency);
+      
+      // Set display value for UI
+      setLocalFrequency(newFrequency);
+      
+      // Store null in database for "Not Set"
+      const dbValue = newFrequency === "Not Set" ? null : newFrequency;
       
       try {
         // Update the frequency in the database
         const { error } = await supabase
           .from('contacts')
-          .update({ keep_in_touch_frequency: newFrequency === "Not Set" ? null : newFrequency })
+          .update({ keep_in_touch_frequency: dbValue })
           .eq('contact_id', params.data.contact_id);
           
         if (error) throw error;
         
-        // Refresh the cell
+        // Refresh both the cell and the grid to ensure filters work correctly
         if (params.api) {
+          // Immediate refresh of the cell
           params.api.refreshCells({
             force: true,
             rowNodes: [params.node],
             columns: ['keep_in_touch_frequency']
           });
+          
+          // Also trigger full data refresh to ensure filters work
+          if (params.context && params.context.refreshData) {
+            setTimeout(() => {
+              params.context.refreshData();
+            }, 100);
+          }
         }
         
         // Show success notification
@@ -1398,11 +1413,17 @@ const ContactsListTable = ({ category }) => {
         paddingRight: '0',
         width: '100%',
         color: getFrequencyColor(localFrequency),
-        cursor: 'pointer'
-      }} onClick={handleClick}>
+        cursor: 'pointer',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center'
+      }} 
+      onClick={handleClick}
+      data-frequency={localFrequency}
+      >
         {isEditing ? (
           <select
-            value={localFrequency || "Not Set"}
+            value={localFrequency}
             onChange={handleFrequencyChange}
             onBlur={handleBlur}
             onClick={handleSelectClick}
@@ -1426,7 +1447,7 @@ const ContactsListTable = ({ category }) => {
           </select>
         ) : (
           <span>
-            {localFrequency === 'Do not keep in touch' ? 'Skip' : (localFrequency || 'Not Set')}
+            {localFrequency === 'Do not keep in touch' ? 'Skip' : localFrequency}
           </span>
         )}
       </div>
@@ -1483,7 +1504,14 @@ const ContactsListTable = ({ category }) => {
       cellRenderer: CompanyRenderer,
       minWidth: 120,
       flex: 1.4,
-      filter: 'agTextColumnFilter',
+      filter: true,
+      filterValueGetter: (params) => {
+        if (!params.data || !params.data.companies || !params.data.companies.length) {
+          return '';
+        }
+        // Convert company names to lowercase and join them for case-insensitive search
+        return params.data.companies.map(company => company.name.toLowerCase()).join(' ');
+      },
       floatingFilter: true,
       sortable: true,
     },
@@ -1493,8 +1521,17 @@ const ContactsListTable = ({ category }) => {
       cellRenderer: TagsRenderer,
       minWidth: 180,
       flex: 2.6,
-      filter: 'agTextColumnFilter',
+      filter: true,
+      filterValueGetter: (params) => {
+        if (!params.data || !params.data.tags || !params.data.tags.length) {
+          return '';
+        }
+        // Convert tag names to lowercase and join them for case-insensitive search
+        return params.data.tags.map(tag => tag.name.toLowerCase()).join(' ');
+      },
       floatingFilter: true,
+      // Add cell style for vertical alignment
+      cellStyle: { display: 'flex', alignItems: 'center' }
     },
     { 
       headerName: 'Rating', 
@@ -1513,9 +1550,38 @@ const ContactsListTable = ({ category }) => {
       cellRenderer: KeepInTouchRenderer,
       minWidth: 120,
       flex: 1.6,
-      filter: 'agTextColumnFilter',
+      // Use true for the filter to enable text filtering
+      filter: true,
+      // Use the filterValueGetter approach for case-insensitive searching
+      filterValueGetter: (params) => {
+        if (!params.data) return '';
+        
+        // Get the value and convert to lowercase for case-insensitive comparison
+        let value = params.data.keep_in_touch_frequency;
+        
+        // Handle null values
+        if (value === null || value === undefined) {
+          return 'not set';  // lowercase for case-insensitive matching
+        }
+        
+        // Add "skip" for "Do not keep in touch" to make both searchable
+        if (value === 'Do not keep in touch') {
+          return value.toLowerCase() + ' skip';
+        }
+        
+        // Return lowercase value for consistent case-insensitive matching
+        return value.toLowerCase();
+      },
+      // Enable the floating filter for search bar
       floatingFilter: true,
+      // Enable sorting
       sortable: true,
+      // Format null values consistently for display
+      valueFormatter: (params) => {
+        if (params.value === null || params.value === undefined) return 'Not Set';
+        if (params.value === 'Do not keep in touch') return 'Skip';
+        return params.value;
+      }
     },
     { 
       headerName: 'City', 
@@ -1523,8 +1589,17 @@ const ContactsListTable = ({ category }) => {
       cellRenderer: CitiesRenderer,
       minWidth: 90,
       flex: 0.8,
-      filter: 'agTextColumnFilter',
+      filter: true,
+      filterValueGetter: (params) => {
+        if (!params.data || !params.data.cities || !params.data.cities.length) {
+          return '';
+        }
+        // Convert city names to lowercase and join them for case-insensitive search
+        return params.data.cities.map(city => city.name.toLowerCase()).join(' ');
+      },
       floatingFilter: true,
+      // Add cell style for vertical alignment
+      cellStyle: { display: 'flex', alignItems: 'center' }
     },
     { 
       headerName: 'Last Interaction', 
