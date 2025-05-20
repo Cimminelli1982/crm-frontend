@@ -57,7 +57,10 @@ const ToastStyle = createGlobalStyle`
 const Container = styled.div`
   height: calc(100vh - 120px);
   width: 100%;
-  padding: 0;
+  padding: 0 20px 0 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  max-width: 100%;
 `;
 
 const ErrorText = styled.div`
@@ -132,12 +135,13 @@ const LoadingText = styled.div`
 
 const ActionsContainer = styled.div`
   display: flex;
-  gap: 4px;
+  gap: 8px;
   justify-content: center;
   align-items: center;
-  padding-right: 0;
+  padding: 0 12px;
   width: 100%;
   height: 100%;
+  background-color: #111;
 `;
 
 const ActionButton = styled.button`
@@ -1185,7 +1189,7 @@ const LastInteractionRenderer = (props) => {
           fontSize: '12px',
           textAlign: 'center',
           cursor: 'pointer',
-          color: '#00ff00'
+          color: '#aaaaaa'
         }}
       >
         {formattedDate}
@@ -1467,7 +1471,9 @@ const ActionsRenderer = (props) => {
       height: '100%', 
       display: 'flex', 
       alignItems: 'center', 
-      justifyContent: 'center' 
+      justifyContent: 'center',
+      backgroundColor: '#111',
+      width: '100%'
     }}>
       <ActionsContainer>
         <ActionButton 
@@ -1707,6 +1713,11 @@ const ContactsListTable = ({ category }) => {
     );
   };
 
+  // Set auto-resize mode for the grid
+  const onFirstDataRendered = useCallback((params) => {
+    params.api.sizeColumnsToFit();
+  }, []);
+
   // Column definitions with the requested fields
   const columnDefs = useMemo(() => [
     { 
@@ -1880,8 +1891,15 @@ const ContactsListTable = ({ category }) => {
         display: 'flex', 
         alignItems: 'center', 
         justifyContent: 'center',
-        padding: '0'
-      }
+        padding: '0 15px 0 0',
+        backgroundColor: '#111',
+        margin: '0',
+        borderRight: 'none'
+      },
+      // Set width to make sure it fits properly
+      width: 130,
+      maxWidth: 130,
+      minWidth: 130
     }
   ], []);
   
@@ -1921,6 +1939,14 @@ const ContactsListTable = ({ category }) => {
   const getRowHeight = useCallback((params) => {
     // Fixed row height of 36px for all rows regardless of number of companies
     return 36;
+  }, []);
+  
+  // Custom row style to ensure consistent background colors
+  const getRowStyle = useCallback((params) => {
+    return { 
+      background: params.node.rowIndex % 2 === 0 ? '#121212' : '#1a1a1a',
+      borderRight: 'none'
+    };
   }, []);
   
 
@@ -2164,14 +2190,20 @@ const ContactsListTable = ({ category }) => {
           className="ag-theme-alpine" 
           style={{ 
             height: '100%', 
-            width: '100%',
+            width: 'calc(100% - 20px)',
+            maxWidth: 'calc(100% - 20px)',
+            overflowX: 'hidden',
+            boxSizing: 'border-box',
+            paddingRight: '20px',
             '--ag-background-color': '#121212',
             '--ag-odd-row-background-color': '#1a1a1a',
             '--ag-header-background-color': '#222222',
             '--ag-header-foreground-color': '#00ff00',
             '--ag-foreground-color': '#e0e0e0', 
             '--ag-row-hover-color': '#2a2a2a',
-            '--ag-border-color': '#333333'
+            '--ag-border-color': '#333333',
+            '--ag-cell-horizontal-padding': '8px',
+            '--ag-borders': 'none'
           }}
         >
           <AgGridReact
@@ -2187,6 +2219,9 @@ const ContactsListTable = ({ category }) => {
             suppressCellFocus={true}
             enableCellTextSelection={true}
             getRowHeight={getRowHeight}
+            getRowStyle={getRowStyle}
+            onFirstDataRendered={onFirstDataRendered}
+            suppressHorizontalScroll={true}
           />
         </div>
       )}
