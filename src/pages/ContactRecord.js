@@ -7,18 +7,22 @@ import { FiEdit, FiPhone, FiMail, FiMapPin, FiTag, FiBriefcase, FiMessageSquare,
 
 // Styled components
 const Container = styled.div`
-  padding: 20px;
-  max-width: 1200px;
+  padding: 10px 30px 30px 20px;
+  width: calc(100% - 50px);
+  max-width: calc(100% - 50px);
   margin: 0 auto;
+  box-sizing: border-box;
+  overflow: hidden;
 `;
 
 const Header = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 30px;
   padding-bottom: 20px;
   border-bottom: 1px solid #333;
+  width: 100%;
 `;
 
 const Title = styled.h1`
@@ -31,7 +35,8 @@ const EditButton = styled.button`
   background-color: #222;
   color: #00ff00;
   border: 1px solid #00ff00;
-  padding: 8px 16px;
+  padding: 10px 20px;
+  margin-right: 15px;
   border-radius: 4px;
   cursor: pointer;
   display: flex;
@@ -44,12 +49,18 @@ const EditButton = styled.button`
 `;
 
 const ContentGrid = styled.div`
-  display: grid;
-  grid-template-columns: 350px 1fr;
-  gap: 20px;
+  display: flex;
+  width: 100%;
+  gap: 35px;
+  box-sizing: border-box;
+  margin-top: 30px;
   
   @media (max-width: 992px) {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+    
+    > div {
+      width: 100% !important;
+    }
   }
 `;
 
@@ -59,6 +70,10 @@ const Card = styled.div`
   border: 1px solid #333;
   padding: 20px;
   margin-bottom: 20px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 `;
 
 const CardTitle = styled.h2`
@@ -98,6 +113,10 @@ const RelatedItem = styled.div`
   padding: 10px;
   border-bottom: 1px solid #333;
   cursor: pointer;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-wrap: break-word;
+  word-break: break-word;
   
   &:last-child {
     border-bottom: none;
@@ -142,10 +161,13 @@ const Tabs = styled.div`
   display: flex;
   border-bottom: 1px solid #333;
   margin-bottom: 20px;
+  width: 100%;
+  padding-left: 10px;
 `;
 
 const Tab = styled.div`
-  padding: 10px 20px;
+  padding: 10px 30px;
+  margin-right: 15px;
   cursor: pointer;
   color: ${props => props.active ? '#00ff00' : '#ccc'};
   border-bottom: 2px solid ${props => props.active ? '#00ff00' : 'transparent'};
@@ -157,6 +179,18 @@ const Tab = styled.div`
 
 const TabContent = styled.div`
   display: ${props => props.active ? 'block' : 'none'};
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+`;
+
+const Breadcrumbs = styled.div`
+  display: flex;
+  align-items: center;
+  margin-bottom: 15px;
+  margin-top: -5px;
+  font-size: 0.9rem;
+  color: #999;
 `;
 
 const LoadingScreen = styled.div`
@@ -332,7 +366,7 @@ const ContactRecord = () => {
   
   // Handle edit button click
   const handleEdit = () => {
-    navigate(`/contacts/edit/${id}`);
+    navigate(`/contacts/workflow/${id}`);
   };
   
   // Format dates
@@ -384,21 +418,107 @@ const ContactRecord = () => {
   
   return (
     <Container>
+      <Breadcrumbs>
+        <span onClick={() => navigate('/contacts/lists')} style={{ cursor: 'pointer' }}>Lists</span>
+        <span style={{ margin: '0 8px' }}>/</span>
+        <span 
+          onClick={() => navigate(`/contacts/lists?category=${encodeURIComponent(contact.category || 'Uncategorized')}`)} 
+          style={{ cursor: 'pointer' }}
+        >
+          {contact.category || 'Uncategorized'}
+        </span>
+        <span style={{ margin: '0 8px' }}>/</span>
+        <span style={{ color: '#ccc' }}>{contact.first_name} {contact.last_name}</span>
+      </Breadcrumbs>
+      
       <Header>
         <div>
           <Title>{contact.first_name} {contact.last_name}</Title>
-          <div style={{ color: '#999', marginTop: '5px' }}>
-            Category: <span style={{ color: '#00ff00' }}>{contact.category || 'Not Set'}</span>
+          <div style={{ display: 'flex', alignItems: 'center', marginTop: '10px', color: '#999', fontSize: '0.85rem' }}>
+            <div style={{ marginRight: '20px' }}>
+              <span>Created: </span>
+              <span style={{ color: '#eee' }}>{formatDateTime(contact.created_at)}</span>
+            </div>
+            <div>
+              <span>Last modified: </span>
+              <span style={{ color: '#eee' }}>{formatDateTime(contact.last_modified_at)}</span>
+            </div>
           </div>
         </div>
-        <EditButton onClick={handleEdit}>
-          <FiEdit /> Edit Contact
-        </EditButton>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          {mobiles.length > 0 && (
+            <a 
+              href={`https://wa.me/${mobiles[0].mobile.replace(/\D/g, '')}`} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              style={{
+                backgroundColor: '#25D366',
+                color: 'white',
+                border: 'none',
+                padding: '10px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                textDecoration: 'none',
+              }}
+            >
+              <FiPhone style={{ marginRight: '5px' }} /> WhatsApp
+            </a>
+          )}
+          
+          {emails.length > 0 && (
+            <a 
+              href={`mailto:${emails[0].email}`}
+              style={{
+                backgroundColor: '#4285F4',
+                color: 'white',
+                border: 'none',
+                padding: '10px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                textDecoration: 'none',
+              }}
+            >
+              <FiMail style={{ marginRight: '5px' }} /> Email
+            </a>
+          )}
+          
+          {contact.linkedin && (
+            <a 
+              href={contact.linkedin.startsWith('http') ? contact.linkedin : `https://${contact.linkedin}`} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              style={{
+                backgroundColor: '#0A66C2',
+                color: 'white',
+                border: 'none',
+                padding: '10px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                textDecoration: 'none',
+              }}
+            >
+              <FiBriefcase style={{ marginRight: '5px' }} /> LinkedIn
+            </a>
+          )}
+          
+          <EditButton onClick={handleEdit}>
+            <FiEdit /> Edit
+          </EditButton>
+        </div>
       </Header>
       
       <ContentGrid>
         {/* Left Column - Contact Info */}
-        <div>
+        <div style={{ width: '20%', flexShrink: 0 }}>
           <Card>
             <CardTitle><FiMail /> Contact Information</CardTitle>
             
@@ -554,44 +674,85 @@ const ContactRecord = () => {
         </div>
         
         {/* Right Column - Interactions, Notes, etc */}
-        <div>
+        <div style={{ width: '80%', flexGrow: 1, boxSizing: 'border-box', overflow: 'hidden', paddingRight: '5px' }}>
           <Tabs>
             <Tab 
               active={activeTab === 'interactions'}
               onClick={() => setActiveTab('interactions')}
             >
-              Interactions ({interactions.length})
+              Interactions
+            </Tab>
+            <Tab 
+              active={activeTab === 'opportunities'}
+              onClick={() => setActiveTab('opportunities')}
+            >
+              Opportunities
+            </Tab>
+            <Tab 
+              active={activeTab === 'introductions'}
+              onClick={() => setActiveTab('introductions')}
+            >
+              Introductions
             </Tab>
             <Tab 
               active={activeTab === 'notes'}
               onClick={() => setActiveTab('notes')}
             >
-              Notes ({notes.length})
+              Notes
+            </Tab>
+            <Tab 
+              active={activeTab === 'related'}
+              onClick={() => setActiveTab('related')}
+            >
+              Related
             </Tab>
           </Tabs>
           
           <TabContent active={activeTab === 'interactions'}>
             <Card>
-              {interactions.length === 0 ? (
-                <div style={{ padding: '10px 0', color: '#999' }}>No interactions found</div>
-              ) : (
-                interactions.map(interaction => (
-                  <RelatedItem key={interaction.interaction_id}>
-                    <RelatedTitle>{interaction.summary}</RelatedTitle>
-                    <RelatedSubtitle>
-                      {interaction.interaction_type} · {interaction.direction} · 
-                      {formatDateTime(interaction.interaction_date)}
-                    </RelatedSubtitle>
-                  </RelatedItem>
-                ))
-              )}
+              <Tabs style={{ borderBottom: '1px solid #222', marginTop: '-10px', paddingLeft: '0' }}>
+                <Tab 
+                  active={true}
+                  onClick={() => {}}
+                  style={{ fontSize: '0.9rem', padding: '8px 20px' }}
+                >
+                  Emails
+                </Tab>
+                <Tab 
+                  active={false}
+                  onClick={() => {}}
+                  style={{ fontSize: '0.9rem', padding: '8px 20px' }}
+                >
+                  WhatsApp
+                </Tab>
+                <Tab 
+                  active={false}
+                  onClick={() => {}}
+                  style={{ fontSize: '0.9rem', padding: '8px 20px' }}
+                >
+                  Meetings
+                </Tab>
+              </Tabs>
+              <div style={{ padding: '30px 0', color: '#999', textAlign: 'center' }}>No interactions found</div>
+            </Card>
+          </TabContent>
+          
+          <TabContent active={activeTab === 'opportunities'}>
+            <Card>
+              <div style={{ padding: '30px 0', color: '#999', textAlign: 'center' }}>Coming soon</div>
+            </Card>
+          </TabContent>
+          
+          <TabContent active={activeTab === 'introductions'}>
+            <Card>
+              <div style={{ padding: '30px 0', color: '#999', textAlign: 'center' }}>Coming soon</div>
             </Card>
           </TabContent>
           
           <TabContent active={activeTab === 'notes'}>
             <Card>
               {notes.length === 0 ? (
-                <div style={{ padding: '10px 0', color: '#999' }}>No notes found</div>
+                <div style={{ padding: '30px 0', color: '#999', textAlign: 'center' }}>No notes found</div>
               ) : (
                 notes.map(note => (
                   <RelatedItem key={note.note_id}>
@@ -603,6 +764,12 @@ const ContactRecord = () => {
                   </RelatedItem>
                 ))
               )}
+            </Card>
+          </TabContent>
+          
+          <TabContent active={activeTab === 'related'}>
+            <Card>
+              <div style={{ padding: '30px 0', color: '#999', textAlign: 'center' }}>Coming soon</div>
             </Card>
           </TabContent>
         </div>
