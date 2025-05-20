@@ -11,6 +11,7 @@ import {
   FiArrowRight,
   FiArrowLeft
 } from 'react-icons/fi';
+import { RiWhatsappFill } from 'react-icons/ri';
 import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
 import { format } from 'date-fns';
@@ -20,8 +21,8 @@ const ModalHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 15px;
-  padding-bottom: 15px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
   border-bottom: 1px solid #333;
 
   h2 {
@@ -49,24 +50,26 @@ const SectionTitle = styled.h3`
   font-size: 16px;
   font-weight: bold;
   color: #00ff00;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
+  margin-top: 0;
   display: flex;
   align-items: center;
   gap: 8px;
 `;
 
 const Card = styled.div`
-  background-color: #1a1a1a;
-  border-radius: 8px;
-  border: 1px solid #333;
-  padding: 20px;
-  margin-bottom: 20px;
+  background-color: transparent;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 `;
 
 // Interactions Layout
 const InteractionsLayout = styled.div`
   display: flex;
-  height: 525px;
+  height: 500px;
   border: 1px solid #333;
   border-radius: 6px;
   overflow: hidden;
@@ -74,7 +77,7 @@ const InteractionsLayout = styled.div`
 `;
 
 const ChannelsMenu = styled.div`
-  flex: 0 0 15%;
+  flex: 0 0 180px;
   border-right: 1px solid #333;
   background-color: #111;
   overflow-y: auto;
@@ -120,10 +123,10 @@ const ChannelItem = styled.div`
 `;
 
 const InteractionsContainer = styled.div`
-  flex: 0 0 85%;
+  flex: 1;
   padding: 0;
   overflow-y: auto;
-  background-color: #1a1a1a;
+  background-color: #181818;
 `;
 
 const InteractionItem = styled.div`
@@ -214,9 +217,9 @@ const WhatsAppContainer = styled.div`
 const ChatHeader = styled.div`
   display: flex;
   align-items: center;
-  padding: 15px;
-  border-bottom: 1px solid #333;
-  background-color: #121212;
+  padding: 12px 15px;
+  border-bottom: 1px solid #272727;
+  background-color: #171717;
 `;
 
 const ChatAvatar = styled.div`
@@ -295,9 +298,9 @@ const EmailContainer = styled.div`
 `;
 
 const EmailHeader = styled.div`
-  padding: 15px;
-  border-bottom: 1px solid #333;
-  background-color: #121212;
+  padding: 12px 15px;
+  border-bottom: 1px solid #272727;
+  background-color: #171717;
 `;
 
 const EmailSubject = styled.div`
@@ -333,9 +336,9 @@ const MeetingContainer = styled.div`
 `;
 
 const MeetingHeader = styled.div`
-  padding: 15px;
-  border-bottom: 1px solid #333;
-  background-color: #121212;
+  padding: 12px 15px;
+  border-bottom: 1px solid #272727;
+  background-color: #171717;
 `;
 
 const MeetingTitle = styled.div`
@@ -1238,9 +1241,27 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     >
       <ModalHeader>
         <h2>Recent Interactions{contact ? ` - ${contact.first_name} ${contact.last_name}` : ''}</h2>
-        <button onClick={onRequestClose} aria-label="Close modal">
-          <FiX size={20} />
-        </button>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <button 
+            onClick={() => contact?.mobile && window.open(`https://wa.me/${contact.mobile.replace(/\D/g, '')}`, '_blank')}
+            aria-label="WhatsApp"
+            title="Open WhatsApp"
+            style={{ color: '#25D366' }} // Neon green for WhatsApp
+          >
+            <RiWhatsappFill size={24} />
+          </button>
+          <button 
+            onClick={() => contact?.email && window.open(`mailto:${contact.email}`, '_blank')}
+            aria-label="Email"
+            title="Send Email"
+            style={{ color: '#25D366' }} // Neon green for Email
+          >
+            <FiMail size={24} />
+          </button>
+          <button onClick={onRequestClose} aria-label="Close modal">
+            <FiX size={20} />
+          </button>
+        </div>
       </ModalHeader>
       
       {error && (
@@ -1251,9 +1272,6 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       )}
       
       <Card>
-        <SectionTitle>
-          <FiMessageSquare /> Recent Interactions
-        </SectionTitle>
         
         {loading ? (
           <LoadingContainer style={{ minHeight: '200px' }}>
@@ -1265,7 +1283,7 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
             <ChannelsMenu>
               {whatsappChats.length > 0 && (
                 <>
-                  <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold' }}>
+                  <div style={{ padding: '10px 15px', color: '#aaa', fontSize: '0.8rem', borderBottom: '1px solid #272727', fontWeight: 'bold' }}>
                     WHATSAPP
                   </div>
                   
@@ -1274,13 +1292,13 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
                     <div 
                       key={chat.chat_id || index}
                       style={{ 
-                        padding: '12px 15px', 
+                        padding: '10px 15px', 
                         cursor: 'pointer', 
-                        borderBottom: '1px solid #222',
+                        borderBottom: '1px solid #191919',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '8px',
-                        backgroundColor: selectedChat === chat.chat_id ? '#2a2a2a' : 'transparent'
+                        backgroundColor: selectedChat === chat.chat_id ? '#1e1e1e' : 'transparent'
                       }}
                       onClick={() => handleSelectChat(chat.chat_id)}
                     >
@@ -1309,7 +1327,7 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
               
               {emailThreads.length > 0 && (
                 <>
-                  <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold' }}>
+                  <div style={{ padding: '10px 15px', color: '#aaa', fontSize: '0.8rem', borderBottom: '1px solid #272727', fontWeight: 'bold' }}>
                     EMAIL
                   </div>
                   
@@ -1318,13 +1336,13 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
                     <div 
                       key={thread.thread_id}
                       style={{ 
-                        padding: '12px 15px', 
+                        padding: '10px 15px', 
                         cursor: 'pointer', 
-                        borderBottom: '1px solid #222',
+                        borderBottom: '1px solid #191919',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '8px',
-                        backgroundColor: selectedEmailThread === thread.thread_id ? '#2a2a2a' : 'transparent'
+                        backgroundColor: selectedEmailThread === thread.thread_id ? '#1e1e1e' : 'transparent'
                       }}
                       onClick={() => handleSelectEmailThread(thread.thread_id)}
                     >
@@ -1339,7 +1357,7 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
               
               {meetings.length > 0 && (
                 <>
-                  <div style={{ padding: '10px 15px', color: '#999', fontSize: '0.8rem', borderBottom: '1px solid #333', fontWeight: 'bold' }}>
+                  <div style={{ padding: '10px 15px', color: '#aaa', fontSize: '0.8rem', borderBottom: '1px solid #272727', fontWeight: 'bold' }}>
                     MEETINGS
                   </div>
                   
@@ -1348,13 +1366,13 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
                     <div 
                       key={meeting.id}
                       style={{ 
-                        padding: '12px 15px', 
+                        padding: '10px 15px', 
                         cursor: 'pointer', 
-                        borderBottom: '1px solid #222',
+                        borderBottom: '1px solid #191919',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '8px',
-                        backgroundColor: selectedMeeting === meeting.id ? '#2a2a2a' : 'transparent'
+                        backgroundColor: selectedMeeting === meeting.id ? '#1e1e1e' : 'transparent'
                       }}
                       onClick={() => handleSelectMeeting(meeting.id)}
                     >
