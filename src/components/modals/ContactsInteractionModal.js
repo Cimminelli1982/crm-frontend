@@ -257,33 +257,35 @@ const MessagesList = styled.div`
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  width: 100%;
+`;
+
+// Simple container div without styled-components
+const MessageContainer = styled.div`
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  margin-bottom: 10px;
+  justify-content: ${props => props.isSent ? 'flex-end' : 'flex-start'};
 `;
 
 const Message = styled.div`
   max-width: 80%;
   padding: 8px 12px;
-  border-radius: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 4px;
   position: relative;
   word-wrap: break-word;
+  border-radius: 8px;
   
-  &.sent {
-    align-self: flex-end;
-    background-color: #025C4C;
-    color: #fff;
-    border-top-right-radius: 0;
-  }
-  
-  &.received {
-    align-self: flex-start;
-    background-color: #222;
-    color: #eee;
-    border-top-left-radius: 0;
-  }
+  /* Sent message style */
+  background-color: ${props => props.isSent ? '#025C4C' : '#222'};
+  color: ${props => props.isSent ? '#fff' : '#eee'};
+  border-top-right-radius: ${props => props.isSent ? '0' : '8px'};
+  border-top-left-radius: ${props => props.isSent ? '8px' : '0'};
   
   .message-time {
     font-size: 0.65rem;
-    color: ${props => props.sent ? 'rgba(255, 255, 255, 0.7)' : '#999'};
+    color: ${props => props.isSent ? 'rgba(255, 255, 255, 0.7)' : '#999'};
     text-align: right;
     margin-top: 4px;
   }
@@ -690,7 +692,6 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
         .from('interactions')
         .select(`
           interaction_id,
-          meeting_id,
           interaction_date,
           summary
         `)
@@ -709,46 +710,22 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
         return; // No meeting interactions found
       }
       
-      // Extract unique meeting_ids from the interactions
-      const meetingIds = [...new Set(interactionData.map(item => item.meeting_id))].filter(Boolean);
+      // For now, we'll use interaction data directly instead of looking up meetings
+      // since the meeting_id column doesn't exist
       
-      if (meetingIds.length === 0) {
-        return; // No valid meeting IDs found
-      }
-      
-      // Get meeting details for each unique meeting_id
-      const { data: meetingData, error: meetingError } = await supabase
-        .from('meetings')
-        .select(`
-          id,
-          title,
-          start_time,
-          end_time,
-          notes,
-          created_at
-        `)
-        .in('id', meetingIds);
-      
-      if (meetingError) {
-        console.error('Error loading meetings:', meetingError);
-        return;
-      }
-      
-      console.log('Found meetings:', meetingData);
-      
-      if (meetingData && meetingData.length > 0) {
-        // Format the meetings data
-        const formattedMeetings = meetingData.map(meeting => ({
-          id: meeting.id,
-          title: meeting.title || 'Untitled Meeting',
-          start_time: meeting.start_time,
-          end_time: meeting.end_time,
-          notes: meeting.notes || '',
-          created_at: meeting.created_at
+      // Create formatted meeting objects directly from interactions
+      if (interactionData && interactionData.length > 0) {
+        const formattedMeetings = interactionData.map(interaction => ({
+          id: interaction.interaction_id, // Use interaction_id as meeting id
+          title: interaction.summary || 'Untitled Meeting',
+          start_time: interaction.interaction_date,
+          end_time: interaction.interaction_date, // We don't have end time, use same as start
+          notes: interaction.summary || '',
+          created_at: interaction.interaction_date
         }))
         .sort((a, b) => new Date(b.start_time || b.created_at) - new Date(a.start_time || a.created_at));
         
-        console.log('Setting meetings:', formattedMeetings);
+        console.log('Setting meetings from interactions:', formattedMeetings);
         setMeetings(formattedMeetings);
         
         // Set default active section if there are any meetings and no other interactions
@@ -771,40 +748,50 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     try {
       console.log('Loading messages for chat ID:', chatId);
       
-      // Query for messages in this chat
-      const { data, error } = await supabase
-        .from('messages')
+      // Since 'messages' table doesn't exist, let's create placeholder messages
+      // from interactions instead
+      const { data: interactionData, error: interactionError } = await supabase
+        .from('interactions')
         .select(`
-          id,
-          content,
-          is_from_me,
-          timestamp,
-          external_message_id
+          interaction_id,
+          summary,
+          interaction_date,
+          direction
         `)
         .eq('chat_id', chatId)
-        .order('timestamp', { ascending: true });
+        .eq('interaction_type', 'whatsapp')
+        .order('interaction_date', { ascending: true });
       
-      if (error) {
-        console.error('Error loading chat messages:', error);
+      if (interactionError) {
+        console.error('Error loading chat interactions:', interactionError);
         setChatMessages([]);
         return;
       }
       
-      console.log('Found chat messages:', data);
-      
-      if (data && data.length > 0) {
-        // Format the messages
-        const formattedMessages = data.map(message => ({
-          id: message.id,
-          content: message.content || '',
-          sent: message.is_from_me || false,
-          timestamp: message.timestamp
+      if (interactionData && interactionData.length > 0) {
+        // Format interactions as messages
+        const formattedMessages = interactionData.map(interaction => ({
+          id: interaction.interaction_id,
+          content: interaction.summary || 'No content available',
+          sent: interaction.direction === 'outbound',
+          direction: interaction.direction || 'inbound',
+          timestamp: interaction.interaction_date
         }));
         
-        console.log('Setting chat messages:', formattedMessages);
+        console.log('Setting chat messages from interactions:', formattedMessages);
         setChatMessages(formattedMessages);
       } else {
-        setChatMessages([]);
+        // If no interactions found, use placeholder message
+        const placeholderMessages = [
+          {
+            id: 'placeholder-1',
+            content: 'Chat history is not available at the moment.',
+            sent: false,
+            direction: 'inbound',
+            timestamp: new Date().toISOString()
+          }
+        ];
+        setChatMessages(placeholderMessages);
       }
     } catch (err) {
       console.error('Error loading chat messages:', err);
@@ -931,62 +918,25 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     try {
       console.log('Loading details for meeting ID:', meetingId);
       
-      // First get the meeting details
-      const { data: meetingData, error: meetingError } = await supabase
-        .from('meetings')
-        .select('*')
-        .eq('id', meetingId)
-        .single();
+      // Find meeting in already loaded meetings array
+      const meeting = meetings.find(m => m.id === meetingId);
       
-      if (meetingError) {
-        console.error('Error loading meeting details:', meetingError);
-        setMeetingDetails(null);
-        return;
-      }
-      
-      if (!meetingData) {
+      if (!meeting) {
         console.log('No meeting found with ID:', meetingId);
         setMeetingDetails(null);
         return;
       }
       
-      // Then get the attendees
-      const { data: attendeesData, error: attendeesError } = await supabase
-        .from('meeting_attendees')
-        .select(`
-          attendee_id,
-          contact_id,
-          contacts (
-            first_name,
-            last_name
-          )
-        `)
-        .eq('meeting_id', meetingId);
+      // For now, we'll use interaction data directly instead of fetching attendees
+      // since the meeting_attendees table might not exist
       
-      if (attendeesError) {
-        console.error('Error loading meeting attendees:', attendeesError);
-      }
-      
-      // Format attendees
-      const attendees = [];
-      if (attendeesData && attendeesData.length > 0) {
-        for (const attendee of attendeesData) {
-          if (attendee.contacts) {
-            const name = `${attendee.contacts.first_name || ''} ${attendee.contacts.last_name || ''}`.trim();
-            if (name) {
-              attendees.push(name);
-            }
-          }
-        }
-      }
-      
-      // Set the complete meeting details
+      // Set simplified meeting details 
       const meetingDetails = {
-        ...meetingData,
-        attendees
+        ...meeting,
+        attendees: [] // Empty array since we can't get attendees
       };
       
-      console.log('Setting meeting details:', meetingDetails);
+      console.log('Setting meeting details from interaction:', meetingDetails);
       setMeetingDetails(meetingDetails);
     } catch (err) {
       console.error('Error loading meeting details:', err);
@@ -1043,43 +993,145 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     }));
   };
   
-  // Render WhatsApp chat
+  // Render WhatsApp chat - completely reimplemented using direct HTML and inline styles
   const renderWhatsAppChat = (chatId) => {
+    console.log('Rendering WhatsApp chat ID:', chatId);
+    console.log('Chat messages:', chatMessages);
+    
     if (loadingMessages) {
-      return <LoadingContainer>Loading messages...</LoadingContainer>;
+      return (
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          height: '100%',
+          color: '#aaa',
+          fontStyle: 'italic'
+        }}>
+          Loading messages...
+        </div>
+      );
     }
     
     if (!chatMessages || chatMessages.length === 0) {
-      return <NoDataMessage>No messages available</NoDataMessage>;
+      return (
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          height: '100%',
+          color: '#aaa',
+          fontStyle: 'italic'
+        }}>
+          No messages available
+        </div>
+      );
     }
     
     const chat = whatsappChats.find(c => c.chat_id === chatId);
+    const chatName = chat?.chat_name || 'Chat';
+    const isGroupChat = chat?.is_group_chat ? 'Group Chat' : 'Direct Message';
     
+    // Create direct HTML structure for the chat with clean inline styles
     return (
-      <WhatsAppContainer>
-        <ChatHeader>
-          <ChatAvatar>
-            {(chat?.chat_name || '').charAt(0).toUpperCase()}
-          </ChatAvatar>
-          <ChatInfo>
-            <ChatName>
-              {chat?.chat_name || 'Chat'}
-            </ChatName>
-            <ChatStatus>
-              {chat?.is_group_chat ? 'Group Chat' : 'Direct Message'}
-            </ChatStatus>
-          </ChatInfo>
-        </ChatHeader>
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        backgroundColor: '#181818'
+      }}>
+        {/* Chat Header */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          padding: '12px 15px',
+          borderBottom: '1px solid #272727',
+          backgroundColor: '#171717'
+        }}>
+          {/* Avatar */}
+          <div style={{
+            width: '40px',
+            height: '40px',
+            borderRadius: '50%',
+            backgroundColor: '#25d366',
+            color: '#000',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontWeight: 'bold',
+            fontSize: '18px',
+            marginRight: '12px'
+          }}>
+            {chatName.charAt(0).toUpperCase()}
+          </div>
+          
+          {/* Chat Info */}
+          <div style={{ flex: 1 }}>
+            <div style={{
+              fontWeight: 'bold',
+              color: '#eee',
+              marginBottom: '2px'
+            }}>
+              {chatName}
+            </div>
+            <div style={{
+              fontSize: '0.75rem',
+              color: '#888'
+            }}>
+              {isGroupChat}
+            </div>
+          </div>
+        </div>
         
-        <MessagesList>
-          {chatMessages.map(message => (
-            <Message key={message.id} className={message.sent ? 'sent' : 'received'} sent={message.sent}>
-              {message.content}
-              <div className="message-time">{formatTime(message.timestamp).time}</div>
-            </Message>
-          ))}
-        </MessagesList>
-      </WhatsAppContainer>
+        {/* Messages Container */}
+        <div id="messages-container" style={{
+          flex: 1,
+          padding: '15px',
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          width: '100%'
+        }}>
+          {/* Message Items */}
+          {chatMessages.map(message => {
+            console.log('Message being rendered:', message);
+            // Determine if message is outbound
+            const isOutbound = message.direction === 'outbound';
+            const formattedTime = formatTime(message.timestamp).time;
+            
+            return (
+              <div key={message.id} style={{
+                width: '100%',
+                display: 'flex',
+                justifyContent: isOutbound ? 'flex-end' : 'flex-start',
+                marginBottom: '10px'
+              }}>
+                <div style={{
+                  maxWidth: '80%',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  position: 'relative',
+                  wordWrap: 'break-word',
+                  backgroundColor: isOutbound ? '#025C4C' : '#222',
+                  color: isOutbound ? '#fff' : '#eee',
+                  borderTopRightRadius: isOutbound ? 0 : '8px',
+                  borderTopLeftRadius: isOutbound ? '8px' : 0
+                }}>
+                  {message.content}
+                  <div style={{
+                    fontSize: '0.65rem',
+                    color: isOutbound ? 'rgba(255, 255, 255, 0.7)' : '#999',
+                    textAlign: 'right',
+                    marginTop: '4px'
+                  }}>
+                    {formattedTime}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     );
   };
   

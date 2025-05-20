@@ -326,7 +326,7 @@ const Contacts = ({ defaultFilter = null }) => {
       const { count, error } = await supabase
         .from('contacts')
         .select('*', { count: 'exact' })
-        .not('contact_category', 'eq', 'Skip');
+        .not('category', 'eq', 'Skip');
       
       if (error) throw error;
       setTotalCount(count || 0);
@@ -343,7 +343,7 @@ const Contacts = ({ defaultFilter = null }) => {
       const { count, error } = await supabase
         .from('contacts')
         .select('*', { count: 'exact' })
-        .eq('contact_category', 'Inbox');
+        .eq('category', 'Inbox');
       
       if (error) throw error;
       setInboxCount(count || 0);

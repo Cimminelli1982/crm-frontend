@@ -971,7 +971,7 @@ const RecentContactsList = forwardRef(({
     
     // Track the current sorting and filtering for debug info
     let sortDescription = 'last_modified desc, last_interaction desc';
-    let filterDescription = 'contact_category != Skip';
+    let filterDescription = 'category != Skip';
     
     try {
       setIsLoading(true);
@@ -986,19 +986,19 @@ const RecentContactsList = forwardRef(({
       if (activeFilter) {
         switch (activeFilter) {
           case 'recentlyCreated':
-            // Filter for contacts where contact_category is Inbox
+            // Filter for contacts where category is Inbox
             
             // Apply pagination to this query
             const from = currentPage * 10;
             const to = from + 9;
             
             query = query
-              .eq('contact_category', 'Inbox')
+              .eq('category', 'Inbox')
               .order('created_at', { ascending: false })
               .range(from, to);  // Add pagination
               
             sortDescription = 'created_at desc';
-            filterDescription = 'contact_category is Inbox';
+            filterDescription = 'category is Inbox';
             break;
             
           case 'lastInteraction':
