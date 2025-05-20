@@ -3191,24 +3191,22 @@ const LastInteractionModal = ({ isOpen, onRequestClose, contact }) => {
               >
                 {debugMode ? 'Hide Debug' : 'Debug Mode'}
               </button>
-              {contact?.mobile && (
-                <ActionButton 
-                  onClick={() => handleWhatsAppClick(contact.mobile)}
-                  aria-label="WhatsApp"
-                  title="Open WhatsApp"
-                >
-                  <RiWhatsappFill size={20} />
-                </ActionButton>
-              )}
-              {contact?.email && (
-                <ActionButton 
-                  onClick={() => window.open(`https://mail.superhuman.com/search/${encodeURIComponent(contact.first_name || '')}%20${encodeURIComponent(contact.last_name || '')}`, '_blank')}
-                  aria-label="Email"
-                  title="Search in Superhuman"
-                >
-                  <FiMail size={20} />
-                </ActionButton>
-              )}
+              <ActionButton 
+                onClick={() => contact?.mobile && handleWhatsAppClick(contact.mobile)}
+                aria-label="WhatsApp"
+                title="Open WhatsApp"
+                style={{ color: '#25D366' }} // Neon green for WhatsApp
+              >
+                <RiWhatsappFill size={24} />
+              </ActionButton>
+              <ActionButton 
+                onClick={() => window.open(`https://mail.superhuman.com/search/${encodeURIComponent(contact?.first_name || '')}%20${encodeURIComponent(contact?.last_name || '')}`, '_blank')}
+                aria-label="Email"
+                title="Search in Superhuman"
+                style={{ color: '#25D366' }} // Neon green for Email
+              >
+                <FiMail size={24} />
+              </ActionButton>
               {contact?.linkedin_url ? (
                 <ActionButton 
                   onClick={() => window.open(contact.linkedin_url, '_blank')}

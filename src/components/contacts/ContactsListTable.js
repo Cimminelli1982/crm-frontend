@@ -55,12 +55,13 @@ const ToastStyle = createGlobalStyle`
 
 // Styled components
 const Container = styled.div`
-  height: calc(100vh - 120px);
+  height: calc(100vh - 60px);
   width: 100%;
-  padding: 0 20px 0 0;
+  padding: 0 5px 0 0;
   overflow: hidden;
   box-sizing: border-box;
   max-width: 100%;
+  position: relative;
 `;
 
 const ErrorText = styled.div`
@@ -135,10 +136,10 @@ const LoadingText = styled.div`
 
 const ActionsContainer = styled.div`
   display: flex;
-  gap: 8px;
+  gap: 10px;
   justify-content: center;
   align-items: center;
-  padding: 0 12px;
+  padding: 0 8px;
   width: 100%;
   height: 100%;
   background-color: #111;
@@ -152,12 +153,12 @@ const ActionButton = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   border-radius: 3px;
   transition: all 0.2s;
   padding: 0;
-  margin: 0 2px;
+  margin: 0 1px;
   
   &:hover {
     transform: scale(1.1);
@@ -1473,7 +1474,8 @@ const ActionsRenderer = (props) => {
       alignItems: 'center', 
       justifyContent: 'center',
       backgroundColor: '#111',
-      width: '100%'
+      width: '100%',
+      paddingRight: '10px'
     }}>
       <ActionsContainer>
         <ActionButton 
@@ -1482,7 +1484,7 @@ const ActionsRenderer = (props) => {
           title={data.linkedin ? "Open LinkedIn" : "No LinkedIn profile"}
           style={{ color: data.linkedin ? '#00ff00' : '#888888' }}
         >
-          <FiLinkedin size={16} />
+          <FiLinkedin size={14} />
         </ActionButton>
         
         <ActionButton 
@@ -1494,7 +1496,7 @@ const ActionsRenderer = (props) => {
           title="Delete or Skip Contact"
           style={{ color: '#00ff00' }}
         >
-          <FiTrash2 size={16} />
+          <FiTrash2 size={14} />
         </ActionButton>
         
         <ActionButton 
@@ -1502,7 +1504,7 @@ const ActionsRenderer = (props) => {
           onClick={handleOpportunitiesClick}
           title="Opportunities"
         >
-          <FaDollarSign size={16} />
+          <FaDollarSign size={14} />
         </ActionButton>
         
         <ActionButton 
@@ -1510,7 +1512,7 @@ const ActionsRenderer = (props) => {
           onClick={handleIntrosClick}
           title="Introductions"
         >
-          <FaHandshake size={16} />
+          <FaHandshake size={14} />
         </ActionButton>
       </ActionsContainer>
       
@@ -1756,7 +1758,7 @@ const ContactsListTable = ({ category }) => {
         );
       },
       minWidth: 150,
-      flex: 1.8,
+      flex: 2,
       filter: 'agTextColumnFilter',
       floatingFilter: true,
       sortable: true,
@@ -1767,7 +1769,7 @@ const ContactsListTable = ({ category }) => {
       field: 'companies', 
       cellRenderer: CompanyRenderer,
       minWidth: 180,
-      flex: 2.6,
+      flex: 2.5,
       filter: true,
       filterValueGetter: (params) => {
         if (!params.data || !params.data.companies || !params.data.companies.length) {
@@ -1785,7 +1787,7 @@ const ContactsListTable = ({ category }) => {
       field: 'tags', 
       cellRenderer: TagsRenderer,
       minWidth: 160,
-      flex: 2.4,
+      flex: 2.3,
       filter: true,
       filterValueGetter: (params) => {
         if (!params.data || !params.data.tags || !params.data.tags.length) {
@@ -1803,7 +1805,7 @@ const ContactsListTable = ({ category }) => {
       field: 'score', 
       cellRenderer: RatingRenderer,
       minWidth: 70,
-      flex: 0.5,
+      flex: 0.6,
       filter: 'agNumberColumnFilter',
       floatingFilter: true,
       sortable: true,
@@ -1814,7 +1816,7 @@ const ContactsListTable = ({ category }) => {
       field: 'keep_in_touch_frequency',
       cellRenderer: KeepInTouchRenderer,
       minWidth: 110,
-      flex: 1.2,
+      flex: 1.5,
       // Use true for the filter to enable text filtering
       filter: true,
       // Use the filterValueGetter approach for case-insensitive searching
@@ -1853,7 +1855,7 @@ const ContactsListTable = ({ category }) => {
       field: 'cities', 
       cellRenderer: CitiesRenderer,
       minWidth: 110,
-      flex: 1.1,
+      flex: 1.3,
       filter: true,
       filterValueGetter: (params) => {
         if (!params.data || !params.data.cities || !params.data.cities.length) {
@@ -1871,7 +1873,7 @@ const ContactsListTable = ({ category }) => {
       field: 'last_interaction_at',
       cellRenderer: LastInteractionRenderer,
       minWidth: 65,
-      flex: 0.7,
+      flex: 0.8,
       filter: 'agDateColumnFilter',
       floatingFilter: true,
       sortable: true,
@@ -1883,7 +1885,7 @@ const ContactsListTable = ({ category }) => {
       field: 'actions',
       cellRenderer: ActionsRenderer,
       minWidth: 110,
-      flex: 1.1,
+      flex: 1,
       sortable: false,
       filter: false,
       pinned: 'right',
@@ -1891,15 +1893,15 @@ const ContactsListTable = ({ category }) => {
         display: 'flex', 
         alignItems: 'center', 
         justifyContent: 'center',
-        padding: '0 15px 0 0',
+        padding: '0 12px 0 0',
         backgroundColor: '#111',
         margin: '0',
         borderRight: 'none'
       },
       // Set width to make sure it fits properly
-      width: 130,
-      maxWidth: 130,
-      minWidth: 130
+      width: 140,
+      maxWidth: 140,
+      minWidth: 140
     }
   ], []);
   
@@ -1908,31 +1910,42 @@ const ContactsListTable = ({ category }) => {
     resizable: true,
   }), []);
 
-  // Grid ready event handler
+  // Grid ready event handler with improved initialization pattern
   const onGridReady = (params) => {
     setGridApi(params.api);
     
-    // Size columns to fit
-    setTimeout(() => {
-      params.api.sizeColumnsToFit();
-    }, 0);
-    
-    // Set initial sort to last_interaction_at descending (most recent first)
-    setTimeout(() => {
-      // Using the correct method for the AG Grid version being used
-      if (params.api.setColumnState) {
-        // Newer versions of AG Grid
-        params.api.setColumnState([
-          { colId: 'last_interaction_at', sort: 'desc' }
-        ]);
-      } else if (params.api.applyColumnState) {
-        // AG Grid version 25+
-        params.api.applyColumnState({
-          state: [{ colId: 'last_interaction_at', sort: 'desc' }],
-          defaultState: { sort: null }
-        });
-      }
-    }, 100);
+    // Use requestAnimationFrame to ensure DOM is ready
+    requestAnimationFrame(() => {
+      // Size columns to fit with a delay to ensure accurate sizing
+      setTimeout(() => {
+        try {
+          params.api.sizeColumnsToFit();
+          
+          // Set initial sort after columns are sized
+          setTimeout(() => {
+            try {
+              // Using the correct method for the AG Grid version being used
+              if (params.api.applyColumnState) {
+                // AG Grid version 25+
+                params.api.applyColumnState({
+                  state: [{ colId: 'last_interaction_at', sort: 'desc' }],
+                  defaultState: { sort: null }
+                });
+              } else if (params.api.setColumnState) {
+                // Older versions of AG Grid
+                params.api.setColumnState([
+                  { colId: 'last_interaction_at', sort: 'desc' }
+                ]);
+              }
+            } catch (e) {
+              console.warn("Error setting column state:", e);
+            }
+          }, 300);
+        } catch (e) {
+          console.warn("Error sizing columns:", e);
+        }
+      }, 200);
+    });
   };
   
   // Custom row height function with fixed height now that we use a carousel
@@ -2148,18 +2161,37 @@ const ContactsListTable = ({ category }) => {
     fetchContacts();
   }, [category]);
   
-  // Handle window resize
+  // Handle window resize with better debounce pattern to prevent ResizeObserver loop errors
   useEffect(() => {
     if (!gridApi) return;
     
+    let resizeTimer;
+    let animationFrameId;
+    
     const handleResize = () => {
-      gridApi.sizeColumnsToFit();
+      // Cancel previous timeout and animation frame
+      clearTimeout(resizeTimer);
+      cancelAnimationFrame(animationFrameId);
+      
+      // Set a high delay to ensure we're not resizing too frequently
+      resizeTimer = setTimeout(() => {
+        // Use requestAnimationFrame to ensure we're in the right render cycle
+        animationFrameId = requestAnimationFrame(() => {
+          try {
+            gridApi.sizeColumnsToFit();
+          } catch (e) {
+            console.warn("Error resizing grid:", e);
+          }
+        });
+      }, 500);
     };
     
     window.addEventListener('resize', handleResize, { passive: true });
     
     return () => {
       window.removeEventListener('resize', handleResize, { passive: true });
+      clearTimeout(resizeTimer);
+      cancelAnimationFrame(animationFrameId);
     };
   }, [gridApi]);
 
@@ -2189,12 +2221,11 @@ const ContactsListTable = ({ category }) => {
         <div 
           className="ag-theme-alpine" 
           style={{ 
-            height: '100%', 
-            width: 'calc(100% - 20px)',
-            maxWidth: 'calc(100% - 20px)',
+            height: 'calc(100% - 5px)', 
+            width: '100%',
             overflowX: 'hidden',
             boxSizing: 'border-box',
-            paddingRight: '20px',
+            marginRight: '5px',
             '--ag-background-color': '#121212',
             '--ag-odd-row-background-color': '#1a1a1a',
             '--ag-header-background-color': '#222222',
@@ -2203,7 +2234,12 @@ const ContactsListTable = ({ category }) => {
             '--ag-row-hover-color': '#2a2a2a',
             '--ag-border-color': '#333333',
             '--ag-cell-horizontal-padding': '8px',
-            '--ag-borders': 'none'
+            '--ag-borders': 'none',
+            '--ag-header-height': '32px',
+            '--ag-header-column-separator-display': 'none',
+            '--ag-font-size': '12px',
+            '--ag-paging-panel-height': '42px',
+            '--ag-row-height': '36px'
           }}
         >
           <AgGridReact
@@ -2213,15 +2249,21 @@ const ContactsListTable = ({ category }) => {
             onGridReady={onGridReady}
             context={{ navigate, refreshData }}
             rowSelection="single"
-            animateRows={true}
+            animateRows={false}
             pagination={true}
-            paginationPageSize={50}
+            paginationPageSize={100}
             suppressCellFocus={true}
             enableCellTextSelection={true}
             getRowHeight={getRowHeight}
             getRowStyle={getRowStyle}
             onFirstDataRendered={onFirstDataRendered}
             suppressHorizontalScroll={true}
+            paginationNumberFormatter={(params) => {
+              return `${params.value}`; 
+            }}
+            alwaysShowHorizontalScroll={false}
+            alwaysShowVerticalScroll={false}
+            overlayNoRowsTemplate='<span style="padding: 10px; border: 1px solid #00ff00; background: #121212; color: #00ff00;">No contacts found</span>'
           />
         </div>
       )}

@@ -23,7 +23,7 @@ const TopMenuContainer = styled.div`
   scrollbar-width: thin;
   scrollbar-color: #00ff00 #222;
   padding: 8px 0;
-  margin-bottom: 10px;
+  margin-bottom: 0;
   position: sticky;
   top: 0;
   z-index: 100;
@@ -45,7 +45,7 @@ const TopMenuContainer = styled.div`
 
 // Style for the content
 const ListsContent = styled.div`
-  padding: 0px 16px 16px 16px;
+  padding: 0px 0px 0px 0px;
   width: 100%;
   overflow: hidden;
   box-sizing: border-box;

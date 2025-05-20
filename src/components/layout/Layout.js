@@ -477,18 +477,6 @@ const Layout = ({ children }) => {
       
       {/* Main Content Area */}
       <Main>
-        <TopHeader>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <MobileMenuButton onClick={toggleSidebar}>
-              {sidebarOpen ? <FiX /> : <FiMenu />}
-            </MobileMenuButton>
-          </div>
-          
-          <HeaderActions>
-            {/* Add any global actions here */}
-          </HeaderActions>
-        </TopHeader>
-        
         <ContentContainer>
           {children}
         </ContentContainer>
