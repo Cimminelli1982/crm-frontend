@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import Modal from 'react-modal';
 import styled from 'styled-components';
-import { FiX, FiLink, FiCheck, FiEdit2, FiBriefcase, FiBuilding, FiLoader } from 'react-icons/fi';
+import { FiX, FiLink, FiCheck, FiEdit2, FiBriefcase, FiBuilding, FiLoader, FiSave } from 'react-icons/fi';
+import { supabase } from '../../lib/supabaseClient';
+import { toast } from 'react-toastify';
 
 // Styled components
 const ModalHeader = styled.div`
@@ -224,6 +226,8 @@ if (typeof window !== 'undefined') {
   Modal.setAppElement('#root');
 }
 
+// LinkedIn profile management component
+
 const LinkedinSearchOpenEnrich = ({ 
   isOpen, 
   onClose, 
@@ -234,13 +238,17 @@ const LinkedinSearchOpenEnrich = ({
   firstName,
   lastName,
   email,
+  contactId,
+  context, // Add context for refreshing the data
 }) => {
   const [extractedJobRole, setExtractedJobRole] = useState(jobRole || '');
   const [extractedCompany, setExtractedCompany] = useState('');
   const [extractedCompanyWebsite, setExtractedCompanyWebsite] = useState('');
   const [extractedCompanyDescription, setExtractedCompanyDescription] = useState('');
   const [extractedCity, setExtractedCity] = useState('');
+  const [customLinkedInUrl, setCustomLinkedInUrl] = useState(linkedInUrl || '');
   const [loading, setLoading] = useState(false);
+  const [urlSaving, setUrlSaving] = useState(false);
   const [error, setError] = useState(null);
   const [extractionAttempted, setExtractionAttempted] = useState(false);
   
@@ -289,7 +297,7 @@ const LinkedinSearchOpenEnrich = ({
           firstName: firstName || contactName.split(' ')[0] || '',
           lastName: lastName || (contactName.split(' ').length > 1 ? contactName.split(' ').slice(1).join(' ') : ''),
           email: email || null,
-          linkedinUrl: linkedInUrl || null
+          linkedinUrl: customLinkedInUrl || linkedInUrl || null
         }),
       });
       
@@ -331,13 +339,150 @@ const LinkedinSearchOpenEnrich = ({
   };
   
   // Run extraction when modal opens if we have a LinkedIn URL
+  // Also run if customLinkedInUrl changes (after saving)
   useEffect(() => {
-    if (isOpen && linkedInUrl && !extractionAttempted) {
+    if (isOpen && (linkedInUrl || customLinkedInUrl) && !extractionAttempted) {
       extractLinkedInData();
     }
-  }, [isOpen, linkedInUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, linkedInUrl, customLinkedInUrl, extractionAttempted]);
   
-  // Handle save
+  // Function to trigger Apollo enrichment API
+  const triggerApolloEnrichment = async (contactId, linkedinUrl) => {
+    try {
+      if (!contactId || !linkedinUrl) return;
+      
+      // Determine if we're in development or production
+      const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const functionUrl = isDevelopment 
+        ? 'https://your-netlify-site.netlify.app/.netlify/functions/apollo-enrich' 
+        : '/.netlify/functions/apollo-enrich';
+      
+      // Log the API call for debugging
+      console.log(`Triggering Apollo enrichment for contact ${contactId} with LinkedIn URL: ${linkedinUrl}`);
+      
+      // Skip actual API call in development if needed
+      if (isDevelopment) {
+        console.log('Development mode detected - skipping Apollo enrichment API call');
+        return;
+      }
+      
+      // Call the Apollo enrichment function
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contactId: contactId,
+          linkedinUrl: linkedinUrl
+        }),
+      });
+      
+      const result = await response.json();
+      console.log('Apollo enrichment result:', result);
+      
+      // No need to wait for this to complete - it's a background process
+    } catch (error) {
+      console.error('Error triggering Apollo enrichment:', error);
+      // Don't show an error toast - this is a background process and failures shouldn't interrupt the user
+    }
+  };
+  
+  // Save LinkedIn URL to contact
+  const saveLinkedInUrl = async () => {
+    if (!customLinkedInUrl) return;
+    
+    setUrlSaving(true);
+    try {
+      // Validate the Contact ID format and use only the numeric portion if necessary
+      // This helps prevent errors like "eq.lists:1" which is an invalid format
+      let contactIdToUse = contactId;
+      
+      // If not provided via props, try to extract from URL
+      if (!contactIdToUse) {
+        const pathParts = window.location.pathname.split('/');
+        contactIdToUse = pathParts[pathParts.length - 1];
+        
+        // If it contains a colon, extract just the number part (handle formats like "lists:1")
+        if (contactIdToUse && contactIdToUse.includes(':')) {
+          contactIdToUse = contactIdToUse.split(':')[1];
+        }
+      }
+      
+      // Double check we have a valid ID
+      if (!contactIdToUse || contactIdToUse === '' || contactIdToUse === 'undefined') {
+        throw new Error("Valid contact ID not found");
+      }
+      
+      console.log("Saving LinkedIn URL for contact ID:", contactIdToUse);
+      
+      // Using Supabase client to update the contact's LinkedIn URL
+      const { data, error } = await supabase
+        .from('contacts')
+        .update({ linkedin: customLinkedInUrl })
+        .eq('contact_id', contactIdToUse)
+        .select();
+        
+      if (error) {
+        console.error("Supabase update error:", error);
+        throw error;
+      }
+      
+      console.log("Update success, response:", data);
+      
+      // 1. Already saved the URL to contacts.linkedin in Supabase (in the code above)
+      
+      // 2. Show success toast notification immediately
+      toast.success('LinkedIn URL saved successfully to contacts.linkedin in Supabase!', {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true
+      });
+      
+      // 3. Trigger Apollo enrich function for the contact
+      // Call an Apollo enrichment API with the LinkedIn URL
+      triggerApolloEnrichment(contactIdToUse, customLinkedInUrl);
+      
+      // 4. Refresh the modal with new data
+      // Update the local state to reflect this save
+      setCustomLinkedInUrl(customLinkedInUrl);
+      
+      // Reset extraction state to trigger a refresh of data
+      setExtractionAttempted(false);
+      
+      // Re-extract the data immediately with the new URL
+      setTimeout(() => {
+        extractLinkedInData();
+      }, 1000);
+      
+      // Also refresh the parent table to show the updated LinkedIn URL
+      if (context && context.refreshData) {
+        setTimeout(() => {
+          context.refreshData();
+        }, 1500);
+      }
+    } catch (err) {
+      console.error('Failed to save LinkedIn URL:', err.message, err);
+      
+      // Show error toast notification
+      toast.error(`Failed to save URL to Supabase contacts.linkedin: ${err.message}`, {
+        position: "top-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true
+      });
+    } finally {
+      setUrlSaving(false);
+    }
+  };
+
+  // Handle save all information
   const handleSave = () => {
     if (onSaveData) {
       onSaveData({
@@ -345,7 +490,8 @@ const LinkedinSearchOpenEnrich = ({
         company: extractedCompany,
         companyWebsite: extractedCompanyWebsite,
         companyDescription: extractedCompanyDescription,
-        city: extractedCity
+        city: extractedCity,
+        linkedin: customLinkedInUrl // Include the custom URL when saving all data
       });
     }
     onClose();
@@ -380,18 +526,53 @@ const LinkedinSearchOpenEnrich = ({
               </ProfileHeadline>
               {/* Show LinkedIn URL or loading state */}
               <ProfileLocation>
-                {linkedInUrl ? 'LinkedIn Profile' : 'No LinkedIn URL'}
+                {linkedInUrl ? 'LinkedIn Profile' : 'Add LinkedIn URL below'}
               </ProfileLocation>
             </ProfileInfo>
           </ProfileHeader>
           
+          {/* LinkedIn URL input and save button */}
+          <div style={{ 
+            display: 'flex', 
+            gap: '8px', 
+            marginBottom: '10px',
+            width: '100%'
+          }}>
+            <Input 
+              type="text"
+              value={customLinkedInUrl}
+              onChange={(e) => setCustomLinkedInUrl(e.target.value)}
+              placeholder="Paste LinkedIn URL here"
+              style={{ flex: 1 }}
+            />
+            <button
+              onClick={saveLinkedInUrl}
+              disabled={urlSaving || !customLinkedInUrl}
+              style={{
+                background: '#0077b5',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '0 10px',
+                cursor: urlSaving || !customLinkedInUrl ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '5px',
+                opacity: urlSaving || !customLinkedInUrl ? 0.6 : 1,
+                fontSize: '13px'
+              }}
+            >
+              {urlSaving ? <FiLoader size={14} /> : <FiSave size={14} />} Save URL
+            </button>
+          </div>
+          
           <ProfileButton 
-            href={linkedInUrl}
+            href={customLinkedInUrl ? customLinkedInUrl : `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(contactName)}`}
             target="_blank"
             rel="noopener noreferrer"
-            disabled={!linkedInUrl}
           >
-            <FiLink size={14} /> Visit Full LinkedIn Profile
+            <FiLink size={14} /> {customLinkedInUrl ? 'Visit Full LinkedIn Profile' : 'Search on LinkedIn'}
           </ProfileButton>
         </ProfilePreview>
         

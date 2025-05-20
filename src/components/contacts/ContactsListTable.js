@@ -1510,6 +1510,8 @@ const ActionsRenderer = (props) => {
           lastName={data.last_name || ''}
           email={email}
           jobRole={data.job_role || ''}
+          contactId={data.contact_id}
+          context={props.context}
           onSaveData={handleSaveLinkedInData}
         />
       )}
