@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { AgGridReact } from '../../ag-grid-setup';
-import { FiMail, FiLinkedin, FiPlus, FiX } from 'react-icons/fi';
+import { FiMail, FiLinkedin, FiPlus, FiX, FiTrash2, FiMessageSquare } from 'react-icons/fi';
 import { FaWhatsapp, FaStar, FaRegStar, FaDollarSign, FaHandshake } from 'react-icons/fa';
 import { MdClear } from 'react-icons/md';
 import { toast, ToastContainer } from 'react-toastify';
@@ -16,6 +16,8 @@ import LinkedinSearchOpenEnrich from '../modals/Linkedin-Search-Open-Enrich';
 import AddCompanyModal from '../modals/AddCompanyModal';
 import AssociateCompanyModal from '../modals/AssociateCompanyModal';
 import NewEditCompanyModal from '../modals/NewEditCompanyModal';
+import DeleteOrSkipModal from '../modals/DeleteOrSkipModal';
+import ContactsInteractionModal from '../modals/ContactsInteractionModal';
 
 // Custom toast styling
 const ToastStyle = createGlobalStyle`
@@ -1157,24 +1159,46 @@ const RatingRenderer = (props) => {
 };
 
 const LastInteractionRenderer = (props) => {
+  const [showModal, setShowModal] = useState(false);
+  
   if (!props.value) return '';
   
   const date = new Date(props.value);
   // Format as MM/YY
   const formattedDate = `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear().toString().slice(-2)}`;
   
+  const handleClick = (e) => {
+    e.stopPropagation();
+    setShowModal(true);
+  };
+  
   return (
-    <div style={{
-      whiteSpace: 'nowrap',
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      paddingRight: '0',
-      width: '100%',
-      fontSize: '12px',
-      textAlign: 'center'
-    }}>
-      {formattedDate}
-    </div>
+    <>
+      <div 
+        onClick={handleClick}
+        style={{
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          paddingRight: '0',
+          width: '100%',
+          fontSize: '12px',
+          textAlign: 'center',
+          cursor: 'pointer',
+          color: '#00ff00'
+        }}
+      >
+        {formattedDate}
+      </div>
+      
+      {showModal && (
+        <ContactsInteractionModal
+          isOpen={showModal}
+          onRequestClose={() => setShowModal(false)}
+          contact={props.data}
+        />
+      )}
+    </>
   );
 };
 
@@ -1182,6 +1206,7 @@ const ActionsRenderer = (props) => {
   const data = props.data;
   const [showLinkedInModal, setShowLinkedInModal] = useState(false);
   const [showLinkedInSearchModal, setShowLinkedInSearchModal] = useState(false);
+  const [showInteractionModal, setShowInteractionModal] = useState(false);
   
   // Get primary email or first available
   const email = data.email || '';
@@ -1216,6 +1241,7 @@ const ActionsRenderer = (props) => {
     setShowLinkedInSearchModal(true);
   };
   
+  
   // Search for person on LinkedIn
   const handleLinkedInSearch = (e) => {
     e.stopPropagation();
@@ -1236,6 +1262,7 @@ const ActionsRenderer = (props) => {
   const handleModalClose = () => {
     setShowLinkedInModal(false);
     setShowLinkedInSearchModal(false);
+    setShowInteractionModal(false);
   };
   
   const handleSaveLinkedInData = async (linkedInData) => {
@@ -1446,27 +1473,22 @@ const ActionsRenderer = (props) => {
         <ActionButton 
           className="linkedin" 
           onClick={handleLinkedInOpen}
-          title="Open LinkedIn"
+          title={data.linkedin ? "Open LinkedIn" : "No LinkedIn profile"}
+          style={{ color: data.linkedin ? '#00ff00' : '#888888' }}
         >
           <FiLinkedin size={16} />
         </ActionButton>
         
         <ActionButton 
-          className="email" 
-          onClick={handleEmailClick}
-          title={email ? `Email: ${email}` : 'No email available'}
-          disabled={!email}
+          className="delete-contact" 
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowInteractionModal(true);
+          }}
+          title="Delete or Skip Contact"
+          style={{ color: '#00ff00' }}
         >
-          <FiMail size={16} />
-        </ActionButton>
-        
-        <ActionButton 
-          className="whatsapp" 
-          onClick={handleWhatsAppClick}
-          title={mobile ? `WhatsApp: ${mobile}` : 'No mobile available'}
-          disabled={!mobile}
-        >
-          <FaWhatsapp size={16} />
+          <FiTrash2 size={16} />
         </ActionButton>
         
         <ActionButton 
@@ -1513,6 +1535,24 @@ const ActionsRenderer = (props) => {
           contactId={data.contact_id}
           context={props.context}
           onSaveData={handleSaveLinkedInData}
+        />
+      )}
+      
+      {showInteractionModal && (
+        <DeleteOrSkipModal
+          isOpen={showInteractionModal}
+          onClose={() => setShowInteractionModal(false)}
+          contactData={data}
+          onDeleteComplete={() => {
+            if (props.context && props.context.refreshData) {
+              props.context.refreshData();
+            }
+          }}
+          onSkipComplete={() => {
+            if (props.context && props.context.refreshData) {
+              props.context.refreshData();
+            }
+          }}
         />
       )}
     </div>
