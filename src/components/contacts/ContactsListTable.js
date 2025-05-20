@@ -12,6 +12,7 @@ import { createGlobalStyle } from 'styled-components';
 import TagsModalComponent from '../modals/TagsModal';
 import CityModal from '../modals/CityModal';
 import LinkedInPreviewModal from '../modals/LinkedInPreviewModal';
+import LinkedinSearchOpenEnrich from '../modals/Linkedin-Search-Open-Enrich';
 import AddCompanyModal from '../modals/AddCompanyModal';
 import AssociateCompanyModal from '../modals/AssociateCompanyModal';
 import NewEditCompanyModal from '../modals/NewEditCompanyModal';
@@ -1180,6 +1181,7 @@ const LastInteractionRenderer = (props) => {
 const ActionsRenderer = (props) => {
   const data = props.data;
   const [showLinkedInModal, setShowLinkedInModal] = useState(false);
+  const [showLinkedInSearchModal, setShowLinkedInSearchModal] = useState(false);
   
   // Get primary email or first available
   const email = data.email || '';
@@ -1207,15 +1209,11 @@ const ActionsRenderer = (props) => {
   
   // Direct handler functions for LinkedIn actions
   
-  // Open LinkedIn profile if URL exists
+  // Open LinkedIn search & enrich modal
   const handleLinkedInOpen = (e) => {
     e.stopPropagation();
-    console.log("Opening LinkedIn URL");
-    if (data.linkedin) {
-      window.open(data.linkedin, '_blank');
-    } else {
-      toast.info("No LinkedIn URL available for this contact");
-    }
+    console.log("Opening LinkedIn search & enrich modal");
+    setShowLinkedInSearchModal(true);
   };
   
   // Search for person on LinkedIn
@@ -1237,6 +1235,7 @@ const ActionsRenderer = (props) => {
   
   const handleModalClose = () => {
     setShowLinkedInModal(false);
+    setShowLinkedInSearchModal(false);
   };
   
   const handleSaveLinkedInData = async (linkedInData) => {
@@ -1490,6 +1489,20 @@ const ActionsRenderer = (props) => {
       {showLinkedInModal && (
         <LinkedInPreviewModal
           isOpen={showLinkedInModal}
+          onClose={handleModalClose}
+          linkedInUrl={data.linkedin || ''}
+          contactName={`${data.first_name || ''} ${data.last_name || ''}`.trim()}
+          firstName={data.first_name || ''}
+          lastName={data.last_name || ''}
+          email={email}
+          jobRole={data.job_role || ''}
+          onSaveData={handleSaveLinkedInData}
+        />
+      )}
+      
+      {showLinkedInSearchModal && (
+        <LinkedinSearchOpenEnrich
+          isOpen={showLinkedInSearchModal}
           onClose={handleModalClose}
           linkedInUrl={data.linkedin || ''}
           contactName={`${data.first_name || ''} ${data.last_name || ''}`.trim()}
