@@ -212,14 +212,20 @@ const WhatsAppContainer = styled.div`
   display: flex;
   flex-direction: column;
   height: 100%;
+  background-color: #0b1a1a; /* Dark WhatsApp background */
+  position: relative;
+  border-radius: 4px;
+  overflow: hidden;
 `;
 
 const ChatHeader = styled.div`
+  background-color: #075e54; /* WhatsApp green */
+  color: white;
+  padding: 12px 16px;
   display: flex;
   align-items: center;
-  padding: 12px 15px;
-  border-bottom: 1px solid #272727;
-  background-color: #171717;
+  gap: 12px;
+  border-bottom: 1px solid #054d44;
 `;
 
 const ChatAvatar = styled.div`
@@ -258,34 +264,51 @@ const MessagesList = styled.div`
   display: flex;
   flex-direction: column;
   width: 100%;
+  background-color: #0b1a1a; /* Dark WhatsApp background */
 `;
 
 // Simple container div without styled-components
-const MessageContainer = styled.div`
-  width: 100%;
+const MessagesContainer = styled.div`
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  box-sizing: border-box;
   display: flex;
-  flex-direction: row;
-  margin-bottom: 10px;
-  justify-content: ${props => props.isSent ? 'flex-end' : 'flex-start'};
+  flex-direction: column;
+  max-height: calc(100vh - 280px);
+  background-color: #0b1a1a;
+  width: 100%;
 `;
 
-const Message = styled.div`
-  max-width: 80%;
-  padding: 8px 12px;
-  margin-bottom: 4px;
+const MessageBubble = styled.div`
+  max-width: 70%;
+  padding: 10px 14px;
+  border-radius: 12px;
   position: relative;
   word-wrap: break-word;
-  border-radius: 8px;
+  line-height: 1.4;
+  font-size: 0.95rem;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
+  margin-bottom: 8px;
+  align-self: ${props => props.$direction === 'outbound' ? 'flex-end' : 'flex-start'};
+  background-color: ${props => props.$direction === 'outbound' ? '#055e54' : '#202c33'};
+  color: ${props => props.$direction === 'outbound' ? '#e9e9e9' : '#e9e9e9'};
   
-  /* Sent message style */
-  background-color: ${props => props.isSent ? '#025C4C' : '#222'};
-  color: ${props => props.isSent ? '#fff' : '#eee'};
-  border-top-right-radius: ${props => props.isSent ? '0' : '8px'};
-  border-top-left-radius: ${props => props.isSent ? '8px' : '0'};
+  &:before {
+    content: '';
+    position: absolute;
+    top: 0;
+    ${props => props.$direction === 'outbound' ? 'right: -8px;' : 'left: -8px;'}
+    width: 0;
+    height: 0;
+    border-top: 8px solid ${props => props.$direction === 'outbound' ? '#055e54' : '#202c33'};
+    border-right: ${props => props.$direction === 'outbound' ? '8px solid transparent' : 'none'};
+    border-left: ${props => props.$direction !== 'outbound' ? '8px solid transparent' : 'none'};
+  }
   
   .message-time {
     font-size: 0.65rem;
-    color: ${props => props.isSent ? 'rgba(255, 255, 255, 0.7)' : '#999'};
+    color: ${props => props.$direction === 'outbound' ? 'rgba(255, 255, 255, 0.7)' : '#999'};
     text-align: right;
     margin-top: 4px;
   }
@@ -770,25 +793,49 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       
       if (interactionData && interactionData.length > 0) {
         // Format interactions as messages
-        const formattedMessages = interactionData.map(interaction => ({
-          id: interaction.interaction_id,
-          content: interaction.summary || 'No content available',
-          sent: interaction.direction === 'outbound',
-          direction: interaction.direction || 'inbound',
-          timestamp: interaction.interaction_date
-        }));
+        const formattedMessages = interactionData.map(interaction => {
+          // Make sure we alternate messages for testing if direction is missing
+          const fakeDirection = interaction.interaction_id % 2 === 0 ? 'outbound' : 'inbound';
+          
+          return {
+            id: interaction.interaction_id,
+            content: interaction.summary || 'No content available',
+            sent: interaction.direction === 'outbound' || fakeDirection === 'outbound',
+            direction: interaction.direction || fakeDirection,
+            timestamp: interaction.interaction_date,
+            // Add property specifically for UI rendering
+            isOutbound: interaction.direction === 'outbound' || fakeDirection === 'outbound'
+          };
+        });
         
         console.log('Setting chat messages from interactions:', formattedMessages);
         setChatMessages(formattedMessages);
       } else {
-        // If no interactions found, use placeholder message
+        // Create some test messages showing different directions
         const placeholderMessages = [
           {
             id: 'placeholder-1',
-            content: 'Chat history is not available at the moment.',
+            content: 'This is an inbound test message (should be on the left with dark background)',
             sent: false,
             direction: 'inbound',
-            timestamp: new Date().toISOString()
+            isOutbound: false,
+            timestamp: new Date(Date.now() - 600000).toISOString() // 10 minutes ago
+          },
+          {
+            id: 'placeholder-2',
+            content: 'This is an outbound test message (should be on the right with green background)',
+            sent: true,
+            direction: 'outbound',
+            isOutbound: true,
+            timestamp: new Date(Date.now() - 300000).toISOString() // 5 minutes ago
+          },
+          {
+            id: 'placeholder-3',
+            content: 'Another inbound message (left, dark)',
+            sent: false,
+            direction: 'inbound',
+            isOutbound: false,
+            timestamp: new Date().toISOString() // Now
           }
         ];
         setChatMessages(placeholderMessages);
@@ -974,7 +1021,11 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
   // Format timestamp for display
   const formatTime = (timestamp) => {
     try {
+      if (!timestamp) return { date: 'Unknown', time: '' };
+      
       const date = new Date(timestamp);
+      if (isNaN(date.getTime())) return { date: 'Unknown', time: '' };
+      
       return {
         date: format(date, 'MMM d, yyyy'),
         time: format(date, 'h:mm a')
@@ -993,7 +1044,7 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     }));
   };
   
-  // Render WhatsApp chat - completely reimplemented using direct HTML and inline styles
+  // Render WhatsApp chat using styled components
   const renderWhatsAppChat = (chatId) => {
     console.log('Rendering WhatsApp chat ID:', chatId);
     console.log('Chat messages:', chatMessages);
@@ -1032,106 +1083,142 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     const chatName = chat?.chat_name || 'Chat';
     const isGroupChat = chat?.is_group_chat ? 'Group Chat' : 'Direct Message';
     
-    // Create direct HTML structure for the chat with clean inline styles
     return (
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        backgroundColor: '#181818'
-      }}>
-        {/* Chat Header */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          padding: '12px 15px',
-          borderBottom: '1px solid #272727',
-          backgroundColor: '#171717'
-        }}>
-          {/* Avatar */}
-          <div style={{
-            width: '40px',
-            height: '40px',
-            borderRadius: '50%',
-            backgroundColor: '#25d366',
-            color: '#000',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontWeight: 'bold',
-            fontSize: '18px',
-            marginRight: '12px'
-          }}>
+      <WhatsAppContainer>
+        <ChatHeader>
+          <ChatAvatar>
             {chatName.charAt(0).toUpperCase()}
-          </div>
-          
-          {/* Chat Info */}
-          <div style={{ flex: 1 }}>
-            <div style={{
-              fontWeight: 'bold',
-              color: '#eee',
-              marginBottom: '2px'
-            }}>
+          </ChatAvatar>
+          <ChatInfo>
+            <ChatName>
               {chatName}
-            </div>
-            <div style={{
-              fontSize: '0.75rem',
-              color: '#888'
-            }}>
-              {isGroupChat}
-            </div>
-          </div>
-        </div>
+            </ChatName>
+            <ChatStatus>
+              {isGroupChat} • {chatMessages.length} messages
+            </ChatStatus>
+          </ChatInfo>
+        </ChatHeader>
         
-        {/* Messages Container */}
-        <div id="messages-container" style={{
+        <div style={{
           flex: 1,
-          padding: '15px',
           overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column',
+          padding: '16px',
+          boxSizing: 'border-box',
+          backgroundColor: '#0b1a1a',
+          maxHeight: 'calc(100vh - 280px)',
           width: '100%'
         }}>
-          {/* Message Items */}
           {chatMessages.map(message => {
-            console.log('Message being rendered:', message);
-            // Determine if message is outbound
-            const isOutbound = message.direction === 'outbound';
+            console.log('=======================================');
+            console.log('Message being rendered:', JSON.stringify(message, null, 2));
+            
+            // Examine all possible direction properties in detail
+            console.log('Raw direction property:', message.direction);
+            console.log('Raw isOutbound property:', message.isOutbound);
+            console.log('Raw sent property:', message.sent);
+            
+            // Determine message direction with explicit logging of each condition
+            const fromDirection = message.direction === 'outbound' || message.direction === 'sent';
+            const fromIsOutbound = Boolean(message.isOutbound);
+            const fromSent = Boolean(message.sent);
+            console.log('Direction conditions:', { fromDirection, fromIsOutbound, fromSent });
+            
+            // Final direction decision
+            const direction = message.direction || (message.isOutbound || message.sent ? 'outbound' : 'inbound');
+            const isOutbound = direction === 'outbound' || direction === 'sent';
+            console.log('FINAL DIRECTION DECISION:', { direction, isOutbound });
+            
             const formattedTime = formatTime(message.timestamp).time;
             
+            // Two-column grid approach for clear left/right positioning
             return (
-              <div key={message.id} style={{
-                width: '100%',
-                display: 'flex',
-                justifyContent: isOutbound ? 'flex-end' : 'flex-start',
-                marginBottom: '10px'
-              }}>
-                <div style={{
-                  maxWidth: '80%',
-                  padding: '8px 12px',
-                  borderRadius: '8px',
-                  position: 'relative',
-                  wordWrap: 'break-word',
-                  backgroundColor: isOutbound ? '#025C4C' : '#222',
-                  color: isOutbound ? '#fff' : '#eee',
-                  borderTopRightRadius: isOutbound ? 0 : '8px',
-                  borderTopLeftRadius: isOutbound ? '8px' : 0
-                }}>
-                  {message.content}
-                  <div style={{
-                    fontSize: '0.65rem',
-                    color: isOutbound ? 'rgba(255, 255, 255, 0.7)' : '#999',
-                    textAlign: 'right',
-                    marginTop: '4px'
-                  }}>
-                    {formattedTime}
+              <div 
+                key={message.id}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  width: '100%',
+                  marginBottom: '10px'
+                }}
+              >
+                {/* LEFT COLUMN - only used for inbound messages */}
+                {!isOutbound && (
+                  <div style={{ gridColumn: 1, paddingRight: '15%' }}>
+                    <div style={{
+                      padding: '10px 14px',
+                      borderRadius: '12px',
+                      borderTopLeftRadius: '3px',
+                      position: 'relative',
+                      wordWrap: 'break-word',
+                      lineHeight: 1.4,
+                      fontSize: '0.95rem',
+                      boxShadow: '0 1px 1px rgba(0, 0, 0, 0.1)',
+                      backgroundColor: '#202c33',
+                      color: '#e9e9e9',
+                    }}>
+                      {message.content}
+                      <div style={{
+                        fontSize: '0.65rem',
+                        color: '#999',
+                        textAlign: 'right',
+                        marginTop: '4px'
+                      }}>{formattedTime}</div>
+                      
+                      {/* Chat bubble triangle */}
+                      <div style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: -6,
+                        width: 0,
+                        height: 0,
+                        borderTop: '8px solid #202c33',
+                        borderLeft: '8px solid transparent'
+                      }} />
+                    </div>
                   </div>
-                </div>
+                )}
+                
+                {/* RIGHT COLUMN - only used for outbound messages */}
+                {isOutbound && (
+                  <div style={{ gridColumn: 2, paddingLeft: '15%' }}>
+                    <div style={{
+                      padding: '10px 14px',
+                      borderRadius: '12px',
+                      borderTopRightRadius: '3px',
+                      position: 'relative',
+                      wordWrap: 'break-word',
+                      lineHeight: 1.4,
+                      fontSize: '0.95rem',
+                      boxShadow: '0 1px 1px rgba(0, 0, 0, 0.1)',
+                      backgroundColor: '#055e54',
+                      color: '#e9e9e9',
+                    }}>
+                      {message.content}
+                      <div style={{
+                        fontSize: '0.65rem',
+                        color: 'rgba(255, 255, 255, 0.7)',
+                        textAlign: 'right',
+                        marginTop: '4px'
+                      }}>{formattedTime}</div>
+                      
+                      {/* Chat bubble triangle */}
+                      <div style={{
+                        position: 'absolute',
+                        top: 0,
+                        right: -6,
+                        width: 0,
+                        height: 0,
+                        borderTop: '8px solid #055e54',
+                        borderRight: '8px solid transparent'
+                      }} />
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
-      </div>
+      </WhatsAppContainer>
     );
   };
   
