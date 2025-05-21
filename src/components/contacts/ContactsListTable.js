@@ -18,8 +18,9 @@ import AssociateCompanyModal from '../modals/AssociateCompanyModal';
 import NewEditCompanyModal from '../modals/NewEditCompanyModal';
 import DeleteOrSkipModal from '../modals/DeleteOrSkipModal';
 import ContactsInteractionModal from '../modals/ContactsInteractionModal';
+import DealViewFindAddModal from '../modals/DealViewFindAddModal';
 
-// Custom toast styling
+// Custom toast styling and grid overrides
 const ToastStyle = createGlobalStyle`
   .Toastify__toast {
     background-color: #121212;
@@ -50,6 +51,26 @@ const ToastStyle = createGlobalStyle`
     background-color: #121212;
     border: 1px solid #ff3333;
     color: #ff3333;
+  }
+  
+  /* AG Grid hover and selection overrides */
+  .ag-theme-alpine .ag-row:hover {
+    background-color: inherit !important;
+  }
+  .ag-theme-alpine .ag-row-odd:hover {
+    background-color: #1a1a1a !important;
+  }
+  .ag-theme-alpine .ag-row-even:hover {
+    background-color: #121212 !important;
+  }
+  .ag-theme-alpine .ag-row-selected {
+    background-color: inherit !important;
+  }
+  .ag-theme-alpine .ag-row-odd.ag-row-selected {
+    background-color: #1a1a1a !important;
+  }
+  .ag-theme-alpine .ag-row-even.ag-row-selected {
+    background-color: #121212 !important;
   }
 `;
 
@@ -1212,6 +1233,7 @@ const ActionsRenderer = (props) => {
   const [showLinkedInModal, setShowLinkedInModal] = useState(false);
   const [showLinkedInSearchModal, setShowLinkedInSearchModal] = useState(false);
   const [showInteractionModal, setShowInteractionModal] = useState(false);
+  const [showDealModal, setShowDealModal] = useState(false);
   
   // Get primary email or first available
   const email = data.email || '';
@@ -1268,6 +1290,7 @@ const ActionsRenderer = (props) => {
     setShowLinkedInModal(false);
     setShowLinkedInSearchModal(false);
     setShowInteractionModal(false);
+    setShowDealModal(false);
   };
   
   const handleSaveLinkedInData = async (linkedInData) => {
@@ -1455,8 +1478,8 @@ const ActionsRenderer = (props) => {
   
   const handleOpportunitiesClick = (e) => {
     e.stopPropagation();
-    // Add functionality for Opportunities button
-    toast.info(`Opportunities feature for ${data.first_name} ${data.last_name} coming soon!`);
+    // Open the Deal modal
+    setShowDealModal(true);
   };
 
   const handleIntrosClick = (e) => {
@@ -1561,6 +1584,14 @@ const ActionsRenderer = (props) => {
               props.context.refreshData();
             }
           }}
+        />
+      )}
+      
+      {showDealModal && (
+        <DealViewFindAddModal
+          isOpen={showDealModal}
+          onClose={() => setShowDealModal(false)}
+          contactData={data}
         />
       )}
     </div>
@@ -1954,17 +1985,25 @@ const ContactsListTable = ({ category }) => {
     return 36;
   }, []);
   
-  // Custom row style to ensure consistent background colors
+  // Custom row style to ensure consistent background colors and no hover effect
   const getRowStyle = useCallback((params) => {
     return { 
       background: params.node.rowIndex % 2 === 0 ? '#121212' : '#1a1a1a',
-      borderRight: 'none'
+      borderRight: 'none',
+      '&:hover': {
+        background: params.node.rowIndex % 2 === 0 ? '#121212' : '#1a1a1a',
+      },
+      '&.ag-row-selected': {
+        background: params.node.rowIndex % 2 === 0 ? '#121212' : '#1a1a1a',
+      }
     };
   }, []);
   
 
   // We no longer need a row click handler since we're only making the name column clickable
   // The navigation will happen in the name column cell renderer
+  
+  // We've added the CSS overrides to the ToastStyle component above
 
   // The fetch function for getting contacts data
   const fetchContacts = async () => {
@@ -2231,7 +2270,7 @@ const ContactsListTable = ({ category }) => {
             '--ag-header-background-color': '#222222',
             '--ag-header-foreground-color': '#00ff00',
             '--ag-foreground-color': '#e0e0e0', 
-            '--ag-row-hover-color': '#2a2a2a',
+            '--ag-row-hover-color': 'transparent',
             '--ag-border-color': '#333333',
             '--ag-cell-horizontal-padding': '8px',
             '--ag-borders': 'none',
@@ -2248,7 +2287,7 @@ const ContactsListTable = ({ category }) => {
             defaultColDef={defaultColDef}
             onGridReady={onGridReady}
             context={{ navigate, refreshData }}
-            rowSelection="single"
+            rowSelection="none"
             animateRows={false}
             pagination={true}
             paginationPageSize={100}
