@@ -34,6 +34,7 @@ const TabContainer = styled.div`
   display: flex;
   border-bottom: 1px solid #333;
   margin-bottom: 20px;
+  min-height: 42px;
 `;
 
 const Tab = styled.div`
@@ -101,7 +102,10 @@ const ButtonGroup = styled.div`
   display: flex;
   justify-content: flex-end;
   gap: 15px;
-  margin-top: 30px;
+  position: absolute;
+  bottom: 25px;
+  right: 25px;
+  width: calc(100% - 50px);
 `;
 
 const ConfirmButton = styled.button`
@@ -204,7 +208,7 @@ const WarningMessage = styled.div`
   color: #ff9999;
   padding: 10px 15px;
   border-radius: 4px;
-  margin-bottom: 20px;
+  margin-bottom: 70px;
   
   svg {
     color: #ff5555;
@@ -1108,7 +1112,7 @@ const DeleteOrSkipModal = ({
               <p style={{ marginBottom: '20px' }}>
                 Are you sure you want to mark this contact as "Skip"?
               </p>
-              <p>
+              <p style={{ marginBottom: '70px' }}>
                 This will move the contact to the "Skip" category, and it will no longer appear in the main inbox.
               </p>
             </ModalContent>
@@ -1154,6 +1158,7 @@ const DeleteOrSkipModal = ({
           padding: '25px',
           maxWidth: '600px',
           width: '90%',
+          height: '600px',
           maxHeight: '80vh',
           overflowY: 'auto',
           backgroundColor: '#121212',
@@ -1161,7 +1166,9 @@ const DeleteOrSkipModal = ({
           borderRadius: '8px',
           boxShadow: '0 4px 20px rgba(0, 0, 0, 0.6)',
           color: '#e0e0e0',
-          zIndex: 1001
+          zIndex: 1001,
+          position: 'relative',
+          paddingBottom: '80px'
         },
         overlay: {
           backgroundColor: 'rgba(0, 0, 0, 0.75)',
