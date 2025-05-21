@@ -69,7 +69,7 @@ const Card = styled.div`
 // Interactions Layout
 const InteractionsLayout = styled.div`
   display: flex;
-  height: 500px;
+  height: 575px;
   border: 1px solid #333;
   border-radius: 6px;
   overflow: hidden;
@@ -275,7 +275,7 @@ const MessagesContainer = styled.div`
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 280px);
+  max-height: calc(100vh - 255px);
   background-color: #0b1a1a;
   width: 100%;
 `;
@@ -314,43 +314,129 @@ const MessageBubble = styled.div`
   }
 `;
 
-// Email specific components
-const EmailContainer = styled.div`
+// Email Thread UI Components
+const EmailThreadContainer = styled.div`
   display: flex;
   flex-direction: column;
   height: 100%;
+  background-color: #1e1e1e;
+  position: relative;
+  border-radius: 4px;
   overflow: hidden;
 `;
 
 const EmailHeader = styled.div`
-  padding: 12px 15px;
-  border-bottom: 1px solid #272727;
-  background-color: #171717;
+  background-color: #2a2a2a;
+  color: white;
+  padding: 16px;
+  border-bottom: 1px solid #444;
 `;
 
 const EmailSubject = styled.div`
+  font-size: 1.2rem;
   font-weight: bold;
-  color: #eee;
   margin-bottom: 8px;
-  font-size: 16px;
+  color: #e0e0e0;
 `;
 
-const EmailMetadata = styled.div`
+const EmailCount = styled.div`
+  font-size: 0.8rem;
+  color: #aaa;
+`;
+
+const EmailList = styled.div`
+  flex: 1;
+  overflow-y: auto;
+  max-height: calc(100vh - 280px);
+`;
+
+const EmailItem = styled.div`
+  border-bottom: 1px solid #333;
+  padding: 6px 64px 16px 0px;
+  background-color: #1a1a1a;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: #222;
+  }
+  
+  ${props => props.$expanded && `
+    background-color: #222;
+  `}
+`;
+
+const EmailHeader2 = styled.div`
+  padding: 16px;
+  cursor: pointer;
+`;
+
+const EmailMeta = styled.div`
   display: flex;
   justify-content: space-between;
-  font-size: 0.8rem;
-  color: #999;
-  margin-bottom: 5px;
+  margin-bottom: 8px;
 `;
 
-const EmailContent = styled.div`
-  flex: 1;
-  padding: 15px;
-  overflow-y: auto;
-  line-height: 1.6;
-  color: #ddd;
-  white-space: pre-wrap;
+const EmailSender = styled.div`
+  font-weight: bold;
+  color: #e0e0e0;
 `;
+
+const EmailDate = styled.div`
+  color: #999;
+  font-size: 0.8rem;
+`;
+
+const EmailPreview = styled.div`
+  color: #aaa;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.9rem;
+`;
+
+const EmailBody = styled.div`
+  padding: 0 0 16px 16px;
+  color: #e0e0e0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  
+  p {
+    margin-bottom: 8px;
+  }
+  
+  a {
+    color: #4a9eff;
+    text-decoration: none;
+    
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+`;
+
+const EmailAttachments = styled.div`
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #333;
+`;
+
+const AttachmentItem = styled.div`
+  display: flex;
+  align-items: center;
+  padding: 8px;
+  background-color: #252525;
+  border-radius: 4px;
+  margin-top: 8px;
+  
+  svg {
+    margin-right: 8px;
+    color: #999;
+  }
+`;
+
+// Keep backward compatibility
+const EmailContainer = EmailThreadContainer;
+const EmailContent = EmailList;
 
 // Meeting specific components
 const MeetingContainer = styled.div`
@@ -848,7 +934,7 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     }
   };
   
-  // Load email messages for a specific thread
+  // Load email messages for a specific thread with proper sender and recipient information
   const loadEmailMessages = async (threadId) => {
     if (!threadId) return;
     
@@ -856,7 +942,7 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     try {
       console.log('Loading emails for thread ID:', threadId);
       
-      // Get emails for this thread
+      // Get emails for this thread without the ambiguous join
       const { data, error } = await supabase
         .from('emails')
         .select(`
@@ -867,18 +953,8 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           message_timestamp,
           direction,
           sender_contact_id,
-          email_participants (
-            participant_id,
-            contact_id,
-            participant_type,
-            contacts (
-              first_name,
-              last_name,
-              contact_emails (
-                email
-              )
-            )
-          )
+          has_attachments,
+          attachment_count
         `)
         .eq('email_thread_id', threadId)
         .order('message_timestamp', { ascending: false });
@@ -892,41 +968,131 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       console.log('Found email messages:', data);
       
       if (data && data.length > 0) {
-        // Process and format emails
-        const formattedEmails = data.map(email => {
-          // Extract sender information
-          let senderName = '';
-          let senderEmail = '';
+        // Process email messages in parallel with additional sender and participant info
+        const emailsWithDetails = await Promise.all(data.map(async (email) => {
+          // Get email participants (to, cc, bcc)
+          const { data: participantsData, error: participantsError } = await supabase
+            .from('email_participants')
+            .select(`
+              participant_id,
+              participant_type,
+              contact_id
+            `)
+            .eq('email_id', email.email_id);
+            
+          if (participantsError) {
+            console.error(`Error loading participants for email ${email.email_id}:`, participantsError);
+            return { ...email, participants: [] };
+          }
           
-          if (email.email_participants && email.email_participants.length > 0) {
-            const sender = email.email_participants.find(p => p.participant_type === 'from');
-            if (sender && sender.contacts) {
-              senderName = `${sender.contacts.first_name || ''} ${sender.contacts.last_name || ''}`.trim();
-              if (sender.contacts.contact_emails && sender.contacts.contact_emails.length > 0) {
-                senderEmail = sender.contacts.contact_emails[0].email || '';
+          // Get sender contact details if sender_contact_id exists
+          let senderData = null;
+          if (email.sender_contact_id) {
+            const { data: sender, error: senderError } = await supabase
+              .from('contacts')
+              .select(`
+                contact_id,
+                first_name,
+                last_name
+              `)
+              .eq('contact_id', email.sender_contact_id)
+              .single();
+              
+            if (senderError) {
+              console.error(`Error loading sender for email ${email.email_id}:`, senderError);
+            } else {
+              senderData = sender;
+            }
+            
+            // Get sender's email address if available
+            if (senderData) {
+              const { data: senderEmails, error: senderEmailsError } = await supabase
+                .from('contact_emails')
+                .select('email')
+                .eq('contact_id', email.sender_contact_id)
+                .limit(1);
+                
+              if (!senderEmailsError && senderEmails && senderEmails.length > 0) {
+                senderData.email = senderEmails[0].email;
               }
             }
           }
           
-          // Extract all recipients
-          const recipients = [];
-          if (email.email_participants) {
-            const toParticipants = email.email_participants.filter(p => p.participant_type === 'to');
-            for (const participant of toParticipants) {
-              if (participant.contacts) {
-                const name = `${participant.contacts.first_name || ''} ${participant.contacts.last_name || ''}`.trim();
-                let participantEmail = '';
-                if (participant.contacts.contact_emails && participant.contacts.contact_emails.length > 0) {
-                  participantEmail = participant.contacts.contact_emails[0].email || '';
-                }
-                if (name || participantEmail) {
-                  recipients.push({
-                    name,
-                    email: participantEmail
-                  });
-                }
+          // For each participant, get their contact details if contact_id exists
+          const participantsWithDetails = await Promise.all((participantsData || []).map(async (participant) => {
+            if (participant.contact_id) {
+              const { data: contact, error: contactError } = await supabase
+                .from('contacts')
+                .select(`
+                  first_name,
+                  last_name
+                `)
+                .eq('contact_id', participant.contact_id)
+                .single();
+                
+              if (contactError) {
+                console.error(`Error loading contact for participant:`, contactError);
+                return participant;
               }
+              
+              // Get contact's email
+              const { data: contactEmails, error: contactEmailsError } = await supabase
+                .from('contact_emails')
+                .select('email')
+                .eq('contact_id', participant.contact_id)
+                .limit(1);
+                
+              return {
+                ...participant,
+                contact_name: contact ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() : '',
+                contact_email: contactEmails && contactEmails.length > 0 ? contactEmails[0].email : ''
+              };
             }
+            return participant;
+          }));
+          
+          return { 
+            ...email, 
+            participants: participantsWithDetails || [],
+            sender: senderData 
+          };
+        }));
+        
+        // Format emails with all participant information
+        const formattedEmails = emailsWithDetails.map(email => {
+          // Extract sender information
+          let senderName = 'Unknown Sender';
+          let senderEmail = '';
+          
+          if (email.sender) {
+            senderName = `${email.sender.first_name || ''} ${email.sender.last_name || ''}`.trim() || 'Unknown Sender';
+            senderEmail = email.sender.email || '';
+          }
+          
+          // Group participants by type
+          const toRecipients = [];
+          const ccRecipients = [];
+          const bccRecipients = [];
+          
+          if (email.participants && email.participants.length > 0) {
+            email.participants.forEach(participant => {
+              // Use contact name if available, otherwise use email from contact_emails
+              const name = participant.contact_name || '';
+              const emailAddress = participant.contact_email || '';
+              
+              const recipientInfo = {
+                name: name || 'Unknown Recipient',
+                email: emailAddress
+              };
+              
+              if (participant.participant_type === 'to') {
+                toRecipients.push(recipientInfo);
+              } else if (participant.participant_type === 'cc') {
+                ccRecipients.push(recipientInfo);
+              } else if (participant.participant_type === 'bcc') {
+                bccRecipients.push(recipientInfo);
+              }
+            });
           }
           
           return {
@@ -937,14 +1103,18 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
             timestamp: email.message_timestamp,
             direction: email.direction || 'inbound',
             sender: {
-              name: senderName || 'Unknown Sender',
-              email: senderEmail || ''
+              name: senderName,
+              email: senderEmail
             },
-            recipients
+            recipients: toRecipients,
+            ccRecipients: ccRecipients,
+            bccRecipients: bccRecipients,
+            hasAttachments: email.has_attachments || false,
+            attachmentCount: email.attachment_count || 0
           };
         });
         
-        console.log('Setting email messages:', formattedEmails);
+        console.log('Setting formatted email messages:', formattedEmails);
         setEmailMessages(formattedEmails);
       } else {
         setEmailMessages([]);
@@ -1222,7 +1392,7 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     );
   };
   
-  // Render email thread
+  // Render email thread with new UI
   const renderEmailThread = (threadId) => {
     if (loadingEmails) {
       return <LoadingContainer>Loading emails...</LoadingContainer>;
@@ -1236,72 +1406,152 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
     const threadTitle = emailMessages[0]?.subject || 'No Subject';
     
     return (
-      <EmailContainer>
+      <EmailThreadContainer>
         <EmailHeader>
           <EmailSubject>{threadTitle}</EmailSubject>
+          <EmailCount>{emailMessages.length} emails in this thread</EmailCount>
         </EmailHeader>
         
-        <EmailContent>
+        <EmailList>
           {emailMessages.map(email => {
             const isExpanded = expandedEmails[email.id] || false;
             const time = formatTime(email.timestamp);
+            
             return (
-              <InteractionItem key={email.id}>
-                <InteractionHeader direction={email.direction === 'outbound' ? 'Outbound' : 'Inbound'}>
-                  <div>
-                    <strong>{email.sender.name}</strong> {email.sender.email ? `<${email.sender.email}>` : ''}
-                    <div className="interaction-direction">
+              <EmailItem key={email.id} $expanded={isExpanded}>
+                <EmailHeader2 onClick={() => toggleEmailExpanded(email.id)}>
+                  <EmailMeta>
+                    <EmailSender>
+                      {email.sender.name} 
+                      <span style={{ fontWeight: 'normal', fontSize: '0.85rem', marginLeft: '8px', color: '#aaa' }}>
+                        {email.sender.email ? `<${email.sender.email}>` : ''}
+                      </span>
+                    </EmailSender>
+                    <EmailDate>{time.date}, {time.time}</EmailDate>
+                  </EmailMeta>
+                  
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    marginBottom: '8px' 
+                  }}>
+                    <div style={{
+                      fontSize: '0.75rem',
+                      backgroundColor: email.direction === 'outbound' ? '#2d562d' : '#333',
+                      color: email.direction === 'outbound' ? '#8aff8a' : '#ccc',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      marginRight: '8px'
+                    }}>
                       {email.direction === 'outbound' ? 'Outbound' : 'Inbound'}
                     </div>
+                    <div style={{ fontSize: '0.9rem', color: '#ddd' }}>
+                      <strong>Subject:</strong> {email.subject}
+                    </div>
                   </div>
-                  <div className="interaction-date">
-                    <div className="date">{time.date}</div>
-                    <div className="time">{time.time}</div>
-                  </div>
-                </InteractionHeader>
+                  
+                  {!isExpanded && (
+                    <EmailPreview>
+                      {email.body.length > 100
+                        ? `${email.body.substring(0, 100).replace(/\n/g, ' ')}...`
+                        : email.body.replace(/\n/g, ' ')}
+                    </EmailPreview>
+                  )}
+                </EmailHeader2>
                 
-                <div style={{ marginBottom: '10px' }}>
-                  <strong>Subject:</strong> {email.subject}
-                </div>
-                
-                {email.recipients.length > 0 && (
-                  <div style={{ marginBottom: '10px', fontSize: '0.8rem', color: '#888' }}>
-                    <strong>To:</strong> {email.recipients.map(r => r.name || r.email).join(', ')}
-                  </div>
+                {isExpanded && (
+                  <>
+                    <div style={{ padding: '0 16px 16px' }}>
+                      {/* Recipient info section */}
+                      {email.recipients && email.recipients.length > 0 && (
+                        <div style={{ 
+                          fontSize: '0.85rem', 
+                          color: '#ccc',
+                          marginBottom: '6px',
+                          display: 'flex'
+                        }}>
+                          <div style={{ minWidth: '45px', fontWeight: 'bold', color: '#999' }}>To:</div>
+                          <div>{email.recipients.map(r => 
+                            r.name !== 'Unknown Recipient' ? `${r.name}${r.email ? ` <${r.email}>` : ''}` : (r.email || 'Unknown')
+                          ).join(', ')}</div>
+                        </div>
+                      )}
+                      
+                      {/* CC Recipients */}
+                      {email.ccRecipients && email.ccRecipients.length > 0 && (
+                        <div style={{ 
+                          fontSize: '0.85rem', 
+                          color: '#ccc',
+                          marginBottom: '6px',
+                          display: 'flex'
+                        }}>
+                          <div style={{ minWidth: '45px', fontWeight: 'bold', color: '#999' }}>CC:</div>
+                          <div>{email.ccRecipients.map(r => 
+                            r.name !== 'Unknown Recipient' ? `${r.name}${r.email ? ` <${r.email}>` : ''}` : (r.email || 'Unknown')
+                          ).join(', ')}</div>
+                        </div>
+                      )}
+                      
+                      {/* BCC Recipients (only shown if there are some) */}
+                      {email.bccRecipients && email.bccRecipients.length > 0 && (
+                        <div style={{ 
+                          fontSize: '0.85rem', 
+                          color: '#ccc',
+                          marginBottom: '6px',
+                          display: 'flex' 
+                        }}>
+                          <div style={{ minWidth: '45px', fontWeight: 'bold', color: '#999' }}>BCC:</div>
+                          <div>{email.bccRecipients.map(r => 
+                            r.name !== 'Unknown Recipient' ? `${r.name}${r.email ? ` <${r.email}>` : ''}` : (r.email || 'Unknown')
+                          ).join(', ')}</div>
+                        </div>
+                      )}
+                      
+                      {/* Attachments (if any) */}
+                      {email.hasAttachments && email.attachmentCount > 0 && (
+                        <div style={{
+                          fontSize: '0.85rem',
+                          color: '#4a9eff',
+                          marginTop: '8px',
+                          borderTop: '1px solid #333',
+                          paddingTop: '8px'
+                        }}>
+                          <div style={{ fontWeight: 'bold' }}>
+                            {email.attachmentCount} Attachment{email.attachmentCount !== 1 ? 's' : ''}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <EmailBody>
+                      {email.html ? (
+                        <div dangerouslySetInnerHTML={{ __html: email.html }} />
+                      ) : (
+                        <div style={{ whiteSpace: 'pre-wrap' }}>{email.body}</div>
+                      )}
+                    </EmailBody>
+                  </>
                 )}
                 
-                <InteractionContent>
-                  {isExpanded ? (
-                    <div dangerouslySetInnerHTML={{ __html: email.html || email.body }} />
-                  ) : (
-                    <>
-                      {email.body.length > 200
-                        ? `${email.body.substring(0, 200)}...`
-                        : email.body
-                      }
-                    </>
-                  )}
-                </InteractionContent>
-                
-                {email.body.length > 200 && (
+                {email.body.length > 100 && (
                   <div 
                     style={{ 
                       textAlign: 'center', 
-                      marginTop: '10px', 
+                      padding: '8px 0', 
                       cursor: 'pointer',
-                      color: '#00ff00',
+                      color: '#4a9eff',
                       fontSize: '0.8rem'
                     }}
                     onClick={() => toggleEmailExpanded(email.id)}
                   >
-                    {isExpanded ? 'Show less' : 'Show more'}
+                    {isExpanded ? '▲ Show less' : '▼ Show more'}
                   </div>
                 )}
-              </InteractionItem>
+              </EmailItem>
             );
           })}
-        </EmailContent>
-      </EmailContainer>
+        </EmailList>
+      </EmailThreadContainer>
     );
   };
   
@@ -1362,14 +1612,14 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           marginRight: '-50%',
           transform: 'translate(-50%, -50%)',
           padding: '25px',
-          maxWidth: '800px',
-          width: '90%',
+          maxWidth: '920px',
+          width: '95%',
           backgroundColor: '#121212',
           border: '1px solid #333',
           borderRadius: '8px',
           boxShadow: '0 4px 20px rgba(0, 0, 0, 0.6)',
           color: '#e0e0e0',
-          maxHeight: '90vh',
+          maxHeight: '92vh',
           overflow: 'auto'
         },
         overlay: {
@@ -1390,10 +1640,51 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
             <RiWhatsappFill size={24} />
           </button>
           <button 
-            onClick={() => contact?.email && window.open(`mailto:${contact.email}`, '_blank')}
-            aria-label="Email"
-            title="Send Email"
-            style={{ color: '#25D366' }} // Neon green for Email
+            onClick={() => {
+              // Get primary email address from contact_emails for this contact
+              if (contact?.contact_id) {
+                // First try to use the contact email if it exists
+                if (contact.email) {
+                  window.open(`https://mail.superhuman.com/search/${encodeURIComponent(contact.email)}`, '_blank');
+                } else {
+                  // If no email directly on contact, fetch from contact_emails
+                  (async () => {
+                    try {
+                      const { data: emails, error } = await supabase
+                        .from('contact_emails')
+                        .select('email')
+                        .eq('contact_id', contact.contact_id)
+                        .eq('is_primary', true)
+                        .limit(1);
+                        
+                      if (error) throw error;
+                      
+                      if (emails && emails.length > 0) {
+                        window.open(`https://mail.superhuman.com/search/${encodeURIComponent(emails[0].email)}`, '_blank');
+                      } else {
+                        // Try any email if no primary found
+                        const { data: anyEmails, error: anyEmailError } = await supabase
+                          .from('contact_emails')
+                          .select('email')
+                          .eq('contact_id', contact.contact_id)
+                          .limit(1);
+                          
+                        if (anyEmailError) throw anyEmailError;
+                        
+                        if (anyEmails && anyEmails.length > 0) {
+                          window.open(`https://mail.superhuman.com/search/${encodeURIComponent(anyEmails[0].email)}`, '_blank');
+                        }
+                      }
+                    } catch (err) {
+                      console.error('Error fetching contact email for Superhuman link:', err);
+                    }
+                  })();
+                }
+              }
+            }}
+            aria-label="Email in Superhuman"
+            title="Open in Superhuman"
+            style={{ color: '#4a9eff' }} // Blue for Email
           >
             <FiMail size={24} />
           </button>

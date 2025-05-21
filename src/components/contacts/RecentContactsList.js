@@ -789,21 +789,21 @@ const RecentContactsList = forwardRef(({
         .from('contacts')
         .select('*', { count: 'exact', head: true })
         .gte('last_interaction', lastInteractionDate)
-        .not('contact_category', 'eq', 'Skip');
+        .not('category', 'eq', 'Skip');
         
       // Calculate count for "Missing Category" filter (now showing Inbox contacts)
       const { count: recentlyCreatedCount } = await supabase
         .from('contacts')
         .select('*', { count: 'exact', head: true })
-        .eq('contact_category', 'Inbox');
+        .eq('category', 'Inbox');
         
       // Calculate count for "Missing Keep In Touch" filter
       const { count: missingKeepInTouchCount } = await supabase
         .from('contacts')
         .select('*', { count: 'exact', head: true })
         .is('keep_in_touch_frequency', null)
-        .not('contact_category', 'eq', 'Skip')
-        .not('contact_category', 'eq', 'WhatsApp Group Contact');
+        .not('category', 'eq', 'Skip')
+        .not('category', 'eq', 'WhatsApp Group Contact');
         
       // Calculate count for "Missing Score" filter - only showing contacts with recent interactions
       const missingScoreOneWeekAgo = new Date();
@@ -813,8 +813,8 @@ const RecentContactsList = forwardRef(({
         .from('contacts')
         .select('*', { count: 'exact', head: true })
         .is('score', null)
-        .not('contact_category', 'eq', 'Skip')
-        .not('contact_category', 'eq', 'WhatsApp Group Contact')
+        .not('category', 'eq', 'Skip')
+        .not('category', 'eq', 'WhatsApp Group Contact')
         .gte('last_interaction', missingScoreDate);
         
       // Calculate count for "Missing Cities" filter using the stored procedure
@@ -980,7 +980,7 @@ const RecentContactsList = forwardRef(({
       // Build basic query
       let query = supabase
           .from('contacts')
-        .select(`*, contact_companies:contact_companies(contact_id, company_id, companies:company_id(id, name, website))`);
+        .select(`*, contact_companies:contact_companies(contact_id, company_id, companies(id, name, website))`);
 
       // Apply different filters based on activeFilter
       if (activeFilter) {
@@ -1002,7 +1002,7 @@ const RecentContactsList = forwardRef(({
             break;
             
           case 'lastInteraction':
-            // Last Interaction: last_interaction within last week where contact_category is not Skip
+            // Last Interaction: last_interaction within last week where category is not Skip
             const lastInteractionOneWeekAgo = new Date();
             lastInteractionOneWeekAgo.setDate(lastInteractionOneWeekAgo.getDate() - 7);
             const lastInteractionFormattedDate = lastInteractionOneWeekAgo.toISOString();
@@ -1013,8 +1013,8 @@ const RecentContactsList = forwardRef(({
             
             query = query
               .gte('last_interaction', lastInteractionFormattedDate)
-              .not('contact_category', 'eq', 'Skip')
-              .not('contact_category', 'eq', 'WhatsApp Group Contact')
+              .not('category', 'eq', 'Skip')
+              .not('category', 'eq', 'WhatsApp Group Contact')
               .order('last_interaction', { ascending: false })
               .range(lastInteractionFrom, lastInteractionTo);
               
@@ -1030,8 +1030,8 @@ const RecentContactsList = forwardRef(({
             
             query = query
               .is('keep_in_touch_frequency', null)
-              .not('contact_category', 'eq', 'Skip')
-              .not('contact_category', 'eq', 'WhatsApp Group Contact')
+              .not('category', 'eq', 'Skip')
+              .not('category', 'eq', 'WhatsApp Group Contact')
               .order('last_modified', { ascending: false })
               .range(missingKeepInTouchFrom, missingKeepInTouchTo);
               
@@ -1051,8 +1051,8 @@ const RecentContactsList = forwardRef(({
             
             query = query
               .is('score', null)
-              .not('contact_category', 'eq', 'Skip')
-              .not('contact_category', 'eq', 'WhatsApp Group Contact')
+              .not('category', 'eq', 'Skip')
+              .not('category', 'eq', 'WhatsApp Group Contact')
               .gte('last_interaction', missingScoreFormattedDate)
               .order('last_interaction', { ascending: false })
               .range(missingScoreFrom, missingScoreTo);
@@ -1071,7 +1071,7 @@ const RecentContactsList = forwardRef(({
             break;
             
           case 'missingInfos':
-            // Missing infos: contact_category is not Skip and one of fields is missing
+            // Missing infos: category is not Skip and one of fields is missing
             // This complex filter will be handled in post-processing
             query = query.order('last_interaction', { ascending: false });
             sortDescription = 'last_interaction desc';
@@ -1284,7 +1284,7 @@ const RecentContactsList = forwardRef(({
       let countQuery = supabase
         .from('contacts')
         .select('*', { count: 'exact', head: true })
-        .not('contact_category', 'eq', 'Skip');
+        .not('category', 'eq', 'Skip');
       
       // Run the filter counts calculation
       calculateFilterCounts();
@@ -1294,7 +1294,7 @@ const RecentContactsList = forwardRef(({
         switch (activeFilter) {
           case 'recentlyCreated':
             countQuery = countQuery
-              .eq('contact_category', 'Inbox');
+              .eq('category', 'Inbox');
             break;
             
           case 'lastInteraction':
@@ -1303,7 +1303,7 @@ const RecentContactsList = forwardRef(({
             const formattedDate = oneWeekAgo.toISOString();
             countQuery = countQuery
               .gte('last_interaction', formattedDate)
-              .not('contact_category', 'eq', 'Skip');
+              .not('category', 'eq', 'Skip');
             break;
             
           case 'keepInTouch':
@@ -1315,7 +1315,7 @@ const RecentContactsList = forwardRef(({
           case 'missingKeepInTouch':
             countQuery = countQuery
               .is('keep_in_touch_frequency', null)
-              .not('contact_category', 'eq', 'Skip');
+              .not('category', 'eq', 'Skip');
             break;
             
           case 'missingScore':
@@ -1325,7 +1325,7 @@ const RecentContactsList = forwardRef(({
             
             countQuery = countQuery
               .is('score', null)
-              .not('contact_category', 'eq', 'Skip')
+              .not('category', 'eq', 'Skip')
               .gte('last_interaction', missingScoreFormattedDate);
             break;
             
@@ -1448,7 +1448,7 @@ const RecentContactsList = forwardRef(({
           const { data: allContactsData, error: allContactsError } = await supabase
             .from('contacts')
             .select(`id, contact_companies:contact_companies(company_id, companies:company_id(name))`)
-            .not('contact_category', 'eq', 'Skip');
+            .not('category', 'eq', 'Skip');
             
           if (!allContactsError && allContactsData) {
             const allContactIds = allContactsData.map(contact => contact.id);
@@ -1510,15 +1510,15 @@ const RecentContactsList = forwardRef(({
                        !contact.last_name || 
                        !contact.city || 
                        !contact.keywords || 
-                       !contact.contact_category || 
+                       !contact.category || 
                        !contact.keep_in_touch_frequency;
               });
               
               // For missingInfos we need to calculate the total count
               const { data: allContacts, error: allContactsError } = await supabase
                 .from('contacts')
-                .select('id, first_name, last_name, city, keywords, contact_category, keep_in_touch_frequency')
-                .not('contact_category', 'eq', 'Skip');
+                .select('id, first_name, last_name, city, keywords, category, keep_in_touch_frequency')
+                .not('category', 'eq', 'Skip');
                 
               if (!allContactsError && allContacts) {
                 const missingInfoCount = allContacts.filter(contact => {
@@ -1526,7 +1526,7 @@ const RecentContactsList = forwardRef(({
                          !contact.last_name || 
                          !contact.city || 
                          !contact.keywords || 
-                         !contact.contact_category || 
+                         !contact.category || 
                          !contact.keep_in_touch_frequency;
                 }).length;
                 
@@ -1991,7 +1991,7 @@ const RecentContactsList = forwardRef(({
     try {
       const { error } = await supabase
             .from('contacts')
-        .update({ contact_category: 'Skip' })
+        .update({ category: 'Skip' })
             .eq('id', contactId);
       
       if (error) throw error;
@@ -2868,22 +2868,22 @@ const RecentContactsList = forwardRef(({
                 {/* CATEGORY COLUMN */}
                 <ClickableCell onClick={() => handleCellClick(contact, 'category')} className="category-cell">
                   <div className="cell-content" style={{ justifyContent: 'center' }}>
-                    {contact.contact_category ? (
-                      <CategoryBadge category={contact.contact_category}>
-                        {contact.contact_category === 'Professional Investor' ? '💰 Investor' :
-                         contact.contact_category === 'Friend and Family' ? '❤️ Loved one' :
-                         contact.contact_category === 'Client' ? '🤝 Client' :
-                         contact.contact_category === 'Colleague' ? '👥 Colleague' :
-                         contact.contact_category === 'Prospect' ? '🎯 Prospect' :
-                         contact.contact_category === 'Advisor' ? '🧠 Advisor' :
-                         contact.contact_category === 'Team' ? '⚽ Team' :
-                         contact.contact_category === 'Manager' ? '💼 Manager' :
-                         contact.contact_category === 'Founder' ? '💻 Founder' :
-                         contact.contact_category === 'Supplier' ? '📦 Supplier' :
-                         contact.contact_category === 'Skip' ? '❌ Skip' :
-                         contact.contact_category === 'Inbox' ? '📬 Inbox' :
-                         contact.contact_category === 'Other' ? '📌 Other' :
-                         `⚪ ${contact.contact_category}`}
+                    {contact.category ? (
+                      <CategoryBadge category={contact.category}>
+                        {contact.category === 'Professional Investor' ? '💰 Investor' :
+                         contact.category === 'Friend and Family' ? '❤️ Loved one' :
+                         contact.category === 'Client' ? '🤝 Client' :
+                         contact.category === 'Colleague' ? '👥 Colleague' :
+                         contact.category === 'Prospect' ? '🎯 Prospect' :
+                         contact.category === 'Advisor' ? '🧠 Advisor' :
+                         contact.category === 'Team' ? '⚽ Team' :
+                         contact.category === 'Manager' ? '💼 Manager' :
+                         contact.category === 'Founder' ? '💻 Founder' :
+                         contact.category === 'Supplier' ? '📦 Supplier' :
+                         contact.category === 'Skip' ? '❌ Skip' :
+                         contact.category === 'Inbox' ? '📬 Inbox' :
+                         contact.category === 'Other' ? '📌 Other' :
+                         `⚪ ${contact.category}`}
                       </CategoryBadge>
                     ) : (
                       <span style={{ color: '#444444', fontStyle: 'italic', textAlign: 'center', width: '100%' }}>Not set</span>

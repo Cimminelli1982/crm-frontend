@@ -206,7 +206,10 @@ const FilterButtonsContainer = styled.div`
   }
 `;
 
-const FilterButton = styled.button`
+const FilterButton = styled.button.attrs(props => ({
+  // Convert boolean active prop to string attribute for HTML compatibility
+  active: props.active ? 'true' : 'false'
+}))`
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -216,13 +219,13 @@ const FilterButton = styled.button`
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
-  background-color: ${props => props.active ? 'black' : 'white'};
-  color: ${props => props.active ? 'white' : 'black'};
+  background-color: ${props => props.active === 'true' ? 'black' : 'white'};
+  color: ${props => props.active === 'true' ? 'white' : 'black'};
   border: 1px solid black;
   position: relative;
   
   &:hover {
-    background-color: ${props => props.active ? '#333333' : 'rgba(0, 0, 0, 0.05)'};
+    background-color: ${props => props.active === 'true' ? '#333333' : 'rgba(0, 0, 0, 0.05)'};
   }
   
   svg {
@@ -231,7 +234,7 @@ const FilterButton = styled.button`
   
   .count {
     margin-left: 0.25rem;
-    background-color: ${props => props.active ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)'};
+    background-color: ${props => props.active === 'true' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)'};
     padding: 0.125rem 0.375rem;
     border-radius: 1rem;
     font-size: 0.75rem;
