@@ -4,6 +4,7 @@ import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { AgGridReact } from '../../ag-grid-setup';
 import Modal from 'react-modal';
+import { FiDollarSign, FiCpu, FiHome, FiBriefcase, FiGrid, FiPackage } from 'react-icons/fi';
 
 // Styled components
 const Container = styled.div`
@@ -16,6 +17,67 @@ const Title = styled.h1`
   color: #00ff00;
   margin-bottom: 20px;
   font-family: 'Courier New', monospace;
+`;
+
+const TabContainer = styled.div`
+  display: flex;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #333;
+  padding-bottom: 10px;
+`;
+
+const TabButton = styled.div`
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  margin-right: 10px;
+  cursor: pointer;
+  background-color: ${props => props.active ? '#333' : 'transparent'};
+  color: ${props => props.active ? '#00ff00' : '#e0e0e0'};
+  border-radius: 4px;
+  transition: all 0.2s;
+  font-size: 14px;
+  
+  &:hover {
+    background-color: #333;
+  }
+  
+  svg {
+    margin-right: 8px;
+  }
+`;
+
+const FilterContainer = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 20px;
+`;
+
+const FilterButton = styled.button.attrs(props => ({
+  // Convert boolean active prop to string attribute for HTML compatibility
+  active: props.active ? 'true' : 'false',
+  category: props.category || 'All'
+}))`
+  background-color: ${props => props.active === 'true' ? 
+    props.theme.categoryColors[props.category]?.bg || '#00ff00' : '#222'};
+  color: ${props => props.active === 'true' ? 
+    props.theme.categoryColors[props.category]?.color || '#000' : '#e0e0e0'};
+  border: 1px solid ${props => props.active === 'true' ? 
+    props.theme.categoryColors[props.category]?.bg || '#00ff00' : '#444'};
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: 'Courier New', monospace;
+  
+  &:hover {
+    background-color: ${props => props.active === 'true' ? 
+    props.theme.categoryColors[props.category]?.bg || '#00ff00' : '#333'};
+    border-color: ${props => props.active === 'true' ? 
+    props.theme.categoryColors[props.category]?.bg || '#00ff00' : '#00ff00'};
+  }
 `;
 
 const ErrorText = styled.div`
@@ -293,8 +355,45 @@ const InvestmentAmountRenderer = (props) => {
   }).format(amount);
 };
 
+// Define category colors outside the component to avoid initialization issues
+const categoryColorMap = {
+  'Startup': { bg: '#2d4b8e', color: '#fff' },
+  'Investment': { bg: '#3a7ca5', color: '#fff' },
+  'Fund': { bg: '#4a6c6f', color: '#fff' },
+  'Partnership': { bg: '#528f65', color: '#fff' },
+  'Real Estate': { bg: '#5d5d8c', color: '#fff' },
+  'Private Debt': { bg: '#8c5d5d', color: '#fff' },
+  'Private Equity': { bg: '#8c7a5d', color: '#fff' },
+  'Other': { bg: '#6b6b6b', color: '#fff' },
+  'All': { bg: '#00ff00', color: '#000' }
+};
+
+// Cell renderer for category
+const CategoryRenderer = (props) => {
+  const category = props.value;
+  if (!category) return <span style={{ color: '#aaa', fontStyle: 'italic' }}>-</span>;
+  
+  // Use the shared color map
+  const style = categoryColorMap[category] || { bg: '#6b6b6b', color: '#fff' };
+  
+  return (
+    <div style={{ 
+      backgroundColor: style.bg, 
+      color: style.color,
+      padding: '2px 6px',
+      borderRadius: '4px',
+      fontSize: '0.85rem',
+      display: 'inline-block',
+      textAlign: 'center'
+    }}>
+      {category}
+    </div>
+  );
+};
+
 const SimpleDeals = () => {
   const [deals, setDeals] = useState([]);
+  const [filteredDeals, setFilteredDeals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [gridApi, setGridApi] = useState(null);
@@ -303,7 +402,36 @@ const SimpleDeals = () => {
   const [showAttachmentsModal, setShowAttachmentsModal] = useState(false);
   const [selectedAttachments, setSelectedAttachments] = useState([]);
   const [dealName, setDealName] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedDealType, setSelectedDealType] = useState('All');
   const navigate = useNavigate();
+  
+  // Category colors for this component
+  const categoryColors = categoryColorMap;
+  
+  // Deal type tabs configuration
+  const dealTypeTabs = [
+    { id: 'All', label: 'Full List', icon: <FiGrid /> },
+    { id: 'Startup', label: 'Startup', icon: <FiCpu /> },
+    { id: 'Fund', label: 'Fund', icon: <FiDollarSign /> },
+    { id: 'Real Estate', label: 'Real Estate', icon: <FiHome /> },
+    { id: 'Private Debt', label: 'Private Debt', icon: <FiBriefcase /> },
+    { id: 'Private Equity', label: 'Private Equity', icon: <FiBriefcase /> },
+    { id: 'Other', label: 'Other', icon: <FiPackage /> }
+  ];
+  
+  // Deal category options
+  const dealCategories = [
+    'All',
+    'Startup',
+    'Investment',
+    'Fund',
+    'Partnership',
+    'Real Estate',
+    'Private Debt',
+    'Private Equity',
+    'Other'
+  ];
   
   // Column definitions for the deal grid
   const columnDefs = useMemo(() => [
@@ -330,9 +458,24 @@ const SimpleDeals = () => {
     { 
       headerName: 'Category', 
       field: 'category',
-      valueFormatter: (params) => params.value || '-',
-      minWidth: 120,
-      filter: 'agTextColumnFilter',
+      cellRenderer: CategoryRenderer,
+      minWidth: 140,
+      filter: 'agSetColumnFilter',
+      filterParams: {
+        values: [
+          'Startup',
+          'Investment',
+          'Fund',
+          'Partnership',
+          'Real Estate',
+          'Private Debt',
+          'Private Equity',
+          'Other'
+        ],
+        cellRenderer: params => params.value || '(Empty)',
+        cellHeight: 30,
+        sortButtons: true
+      },
       floatingFilter: true,
       sortable: true,
     },
@@ -395,8 +538,9 @@ const SimpleDeals = () => {
   const gridContext = useMemo(() => ({
     setSelectedAttachments,
     setDealName,
-    setShowAttachmentsModal
-  }), []);
+    setShowAttachmentsModal,
+    categoryColors
+  }), [categoryColors]);
 
   // Grid ready event handler
   const onGridReady = React.useCallback((params) => {
@@ -517,6 +661,33 @@ const SimpleDeals = () => {
     }
   }, [dataLoaded]);
   
+  // Filter deals when category selection or deals data changes
+  useEffect(() => {
+    if (!deals.length) {
+      setFilteredDeals([]);
+      return;
+    }
+    
+    if (selectedCategory === 'All') {
+      setFilteredDeals(deals);
+    } else {
+      const filtered = deals.filter(deal => deal.category === selectedCategory);
+      setFilteredDeals(filtered);
+    }
+    
+    // If grid API is available, refresh the data
+    if (gridApi) {
+      setTimeout(() => {
+        gridApi.setRowData(selectedCategory === 'All' ? deals : deals.filter(deal => deal.category === selectedCategory));
+      }, 0);
+    }
+  }, [selectedCategory, deals, gridApi]);
+  
+  // Handle category filter click
+  const handleCategoryClick = (category) => {
+    setSelectedCategory(category);
+  };
+  
   // Separate effect for window resize
   useEffect(() => {
     if (!gridApi) return;
@@ -534,7 +705,21 @@ const SimpleDeals = () => {
 
   return (
     <Container>
-      <Title>Deals ({deals.length})</Title>
+      <Title>Deals ({filteredDeals.length > 0 ? filteredDeals.length : deals.length})</Title>
+      
+      <FilterContainer>
+        {dealCategories.map(category => (
+          <FilterButton
+            key={category}
+            active={selectedCategory === category}
+            category={category}
+            onClick={() => handleCategoryClick(category)}
+            theme={{ categoryColors }}
+          >
+            {category}
+          </FilterButton>
+        ))}
+      </FilterContainer>
       
       {error && <ErrorText>Error: {error}</ErrorText>}
       
@@ -582,7 +767,7 @@ const SimpleDeals = () => {
           }}
         >
           <AgGridReact
-            rowData={deals}
+            rowData={selectedCategory === 'All' ? deals : filteredDeals}
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
             onGridReady={onGridReady}

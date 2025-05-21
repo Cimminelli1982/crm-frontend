@@ -130,7 +130,10 @@ const DropdownButton = styled.button`
   }
 `;
 
-const DropdownMenu = styled.div`
+const DropdownMenu = styled.div.attrs(props => ({
+  // Convert isOpen prop to data attribute
+  'data-open': props.isOpen ? 'true' : 'false'
+}))`
   position: absolute;
   top: 100%;
   left: 0;
@@ -142,7 +145,7 @@ const DropdownMenu = styled.div`
   z-index: 50;
   max-height: 250px;
   overflow-y: auto;
-  display: ${props => props.isOpen ? 'block' : 'none'};
+  display: ${props => props['data-open'] === 'true' ? 'block' : 'none'};
 `;
 
 const DropdownItem = styled.button`
