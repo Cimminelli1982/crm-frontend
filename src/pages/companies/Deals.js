@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { AgGridReact } from '../../ag-grid-setup';
+import { FiGrid, FiCpu, FiDollarSign, FiHome, FiPackage, FiBriefcase } from 'react-icons/fi';
 
 const PageContainer = styled.div`
   padding: 24px;
@@ -45,11 +46,59 @@ const LoadingContainer = styled.div`
   height: 200px;
 `;
 
+// Category filter styles
+const FilterContainer = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 20px;
+  background-color: #121212;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid #333;
+`;
+
+// Use "$" prefix to prevent props from being passed to the DOM
+const FilterButton = styled.div`
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  cursor: pointer;
+  background-color: ${props => props.$active ? '#00ff00' : 'transparent'};
+  color: ${props => props.$active ? '#000' : '#e0e0e0'};
+  border-radius: 4px;
+  border: 1px solid ${props => props.$active ? '#00ff00' : '#333'};
+  transition: all 0.2s;
+  font-size: 14px;
+  
+  &:hover {
+    background-color: ${props => props.$active ? '#00ff00' : '#333'};
+    border-color: #00ff00;
+  }
+  
+  svg {
+    margin-right: 8px;
+  }
+`;
+
 const Deals = () => {
   const gridRef = useRef();
   const [rowData, setRowData] = useState([]);
+  const [filteredData, setFilteredData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  
+  // Deal category options with icons
+  const categoryFilters = [
+    { id: 'All', label: 'Full List', icon: <FiGrid /> },
+    { id: 'Startup', label: 'Startup', icon: <FiCpu /> },
+    { id: 'Fund', label: 'Fund', icon: <FiDollarSign /> },
+    { id: 'Real Estate', label: 'Real Estate', icon: <FiHome /> },
+    { id: 'Other', label: 'Other', icon: <FiPackage /> },
+    { id: 'Private Debt', label: 'Private Debt', icon: <FiBriefcase /> },
+    { id: 'Private Equity', label: 'Private Equity', icon: <FiBriefcase /> }
+  ];
   
   // Column definitions with editable cells
   const columnDefs = useMemo(() => [
@@ -190,6 +239,7 @@ const Deals = () => {
         if (error) throw error;
         
         setRowData(data);
+        setFilteredData(data);
         setLoading(false);
       } catch (err) {
         console.error('Error fetching deals:', err);
@@ -201,11 +251,37 @@ const Deals = () => {
     fetchDeals();
   }, []);
 
+  // Filter data when category changes
+  useEffect(() => {
+    if (rowData.length === 0) return;
+    
+    if (selectedCategory === 'All') {
+      setFilteredData(rowData);
+    } else {
+      const filtered = rowData.filter(deal => deal.category === selectedCategory);
+      setFilteredData(filtered);
+    }
+    
+    // Update grid if it's ready
+    if (gridRef.current) {
+      gridRef.current.api.setRowData(
+        selectedCategory === 'All' 
+          ? rowData 
+          : rowData.filter(deal => deal.category === selectedCategory)
+      );
+    }
+  }, [selectedCategory, rowData]);
+
+  // Handle category button click
+  const handleCategoryClick = (category) => {
+    setSelectedCategory(category);
+  };
+
   // Handle window resize
   useEffect(() => {
     const handleResize = () => {
       if (gridRef.current) {
-        gridRef.current.sizeColumnsToFit();
+        gridRef.current.api.sizeColumnsToFit();
       }
     };
     
@@ -222,6 +298,20 @@ const Deals = () => {
         <p>Track active and potential business deals. Click on deal or description to edit.</p>
       </PageHeader>
       
+      {/* Category Filter Buttons */}
+      <FilterContainer>
+        {categoryFilters.map(category => (
+          <FilterButton
+            key={category.id}
+            $active={selectedCategory === category.id}
+            onClick={() => handleCategoryClick(category.id)}
+          >
+            {category.icon}
+            {category.label}
+          </FilterButton>
+        ))}
+      </FilterContainer>
+      
       {error && <ErrorMessage>Error: {error}</ErrorMessage>}
       
       {loading ? (
@@ -230,7 +320,7 @@ const Deals = () => {
         <div 
           className="ag-theme-alpine" 
           style={{ 
-            height: 'calc(100% - 60px)', 
+            height: 'calc(100% - 120px)', // Adjusted for filter buttons
             width: '100%',
             '--ag-background-color': '#121212',
             '--ag-odd-row-background-color': '#1a1a1a',
@@ -243,7 +333,7 @@ const Deals = () => {
         >
           <AgGridReact
             ref={gridRef}
-            rowData={rowData}
+            rowData={filteredData}
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
             onGridReady={onGridReady}

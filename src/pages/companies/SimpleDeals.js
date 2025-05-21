@@ -4,79 +4,80 @@ import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { AgGridReact } from '../../ag-grid-setup';
 import Modal from 'react-modal';
-import { FiDollarSign, FiCpu, FiHome, FiBriefcase, FiGrid, FiPackage } from 'react-icons/fi';
+import { FiGrid, FiCpu, FiDollarSign, FiHome, FiPackage, FiBriefcase } from 'react-icons/fi';
 
 // Styled components
 const Container = styled.div`
-  padding: 20px;
+  padding: 0;
   height: calc(100vh - 120px);
   width: 100%;
 `;
 
 const Title = styled.h1`
   color: #00ff00;
-  margin-bottom: 20px;
+  margin: 20px;
   font-family: 'Courier New', monospace;
 `;
 
-const TabContainer = styled.div`
+// Style for the top menu (matches sc-gudXTU cYeCyJ)
+const TopMenuContainer = styled.div`
   display: flex;
-  margin-bottom: 20px;
+  background-color: #111;
   border-bottom: 1px solid #333;
-  padding-bottom: 10px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #00ff00 #222;
+  padding: 8px 0;
+  margin-bottom: 0;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  width: 100%;
+  height: 48px;
+  align-items: center;
+  
+  &::-webkit-scrollbar {
+    height: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: #222;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: #00ff00;
+    border-radius: 3px;
+  }
 `;
 
-const TabButton = styled.div`
+// Style for the menu items (matches sc-cPeZqW koIfrV/gKtlSx)
+const MenuItem = styled.div`
   display: flex;
   align-items: center;
-  padding: 8px 16px;
+  padding: 10px 15px;
+  color: ${props => props.$active ? '#00ff00' : '#ccc'};
+  text-decoration: none;
+  border-bottom: ${props => props.$active ? '2px solid #00ff00' : 'none'};
   margin-right: 10px;
+  font-family: 'Courier New', monospace;
+  transition: all 0.2s ease;
+  white-space: nowrap;
   cursor: pointer;
-  background-color: ${props => props.active ? '#333' : 'transparent'};
-  color: ${props => props.active ? '#00ff00' : '#e0e0e0'};
-  border-radius: 4px;
-  transition: all 0.2s;
-  font-size: 14px;
+  font-size: 0.9rem;
+  font-weight: ${props => props.$active ? 'bold' : 'normal'};
   
   &:hover {
-    background-color: #333;
+    color: #00ff00;
+    background-color: rgba(0, 255, 0, 0.05);
+  }
+  
+  &:first-child {
+    margin-left: 10px;
   }
   
   svg {
     margin-right: 8px;
-  }
-`;
-
-const FilterContainer = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 20px;
-`;
-
-const FilterButton = styled.button.attrs(props => ({
-  // Convert boolean active prop to string attribute for HTML compatibility
-  active: props.active ? 'true' : 'false',
-  category: props.category || 'All'
-}))`
-  background-color: ${props => props.active === 'true' ? 
-    props.theme.categoryColors[props.category]?.bg || '#00ff00' : '#222'};
-  color: ${props => props.active === 'true' ? 
-    props.theme.categoryColors[props.category]?.color || '#000' : '#e0e0e0'};
-  border: 1px solid ${props => props.active === 'true' ? 
-    props.theme.categoryColors[props.category]?.bg || '#00ff00' : '#444'};
-  border-radius: 4px;
-  padding: 6px 12px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-family: 'Courier New', monospace;
-  
-  &:hover {
-    background-color: ${props => props.active === 'true' ? 
-    props.theme.categoryColors[props.category]?.bg || '#00ff00' : '#333'};
-    border-color: ${props => props.active === 'true' ? 
-    props.theme.categoryColors[props.category]?.bg || '#00ff00' : '#00ff00'};
+    font-size: 1rem;
   }
 `;
 
@@ -365,6 +366,7 @@ const categoryColorMap = {
   'Private Debt': { bg: '#8c5d5d', color: '#fff' },
   'Private Equity': { bg: '#8c7a5d', color: '#fff' },
   'Other': { bg: '#6b6b6b', color: '#fff' },
+  'Inbox': { bg: '#6a5acd', color: '#fff' },
   'All': { bg: '#00ff00', color: '#000' }
 };
 
@@ -373,27 +375,12 @@ const CategoryRenderer = (props) => {
   const category = props.value;
   if (!category) return <span style={{ color: '#aaa', fontStyle: 'italic' }}>-</span>;
   
-  // Use the shared color map
-  const style = categoryColorMap[category] || { bg: '#6b6b6b', color: '#fff' };
-  
-  return (
-    <div style={{ 
-      backgroundColor: style.bg, 
-      color: style.color,
-      padding: '2px 6px',
-      borderRadius: '4px',
-      fontSize: '0.85rem',
-      display: 'inline-block',
-      textAlign: 'center'
-    }}>
-      {category}
-    </div>
-  );
+  // Return simple text without styling
+  return <span>{category}</span>;
 };
 
 const SimpleDeals = () => {
   const [deals, setDeals] = useState([]);
-  const [filteredDeals, setFilteredDeals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [gridApi, setGridApi] = useState(null);
@@ -402,36 +389,11 @@ const SimpleDeals = () => {
   const [showAttachmentsModal, setShowAttachmentsModal] = useState(false);
   const [selectedAttachments, setSelectedAttachments] = useState([]);
   const [dealName, setDealName] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [selectedDealType, setSelectedDealType] = useState('All');
+  const [activeTab, setActiveTab] = useState('all');
   const navigate = useNavigate();
   
   // Category colors for this component
   const categoryColors = categoryColorMap;
-  
-  // Deal type tabs configuration
-  const dealTypeTabs = [
-    { id: 'All', label: 'Full List', icon: <FiGrid /> },
-    { id: 'Startup', label: 'Startup', icon: <FiCpu /> },
-    { id: 'Fund', label: 'Fund', icon: <FiDollarSign /> },
-    { id: 'Real Estate', label: 'Real Estate', icon: <FiHome /> },
-    { id: 'Private Debt', label: 'Private Debt', icon: <FiBriefcase /> },
-    { id: 'Private Equity', label: 'Private Equity', icon: <FiBriefcase /> },
-    { id: 'Other', label: 'Other', icon: <FiPackage /> }
-  ];
-  
-  // Deal category options
-  const dealCategories = [
-    'All',
-    'Startup',
-    'Investment',
-    'Fund',
-    'Partnership',
-    'Real Estate',
-    'Private Debt',
-    'Private Equity',
-    'Other'
-  ];
   
   // Column definitions for the deal grid
   const columnDefs = useMemo(() => [
@@ -443,6 +405,13 @@ const SimpleDeals = () => {
       floatingFilter: true,
       sortable: true,
       pinned: 'left',
+      editable: true,
+      cellStyle: { 
+        cursor: 'pointer', 
+        backgroundColor: 'rgba(0, 255, 0, 0.05)', 
+        textDecoration: 'underline',
+        color: '#00ff00'
+      }
     },
     { 
       headerName: 'Description', 
@@ -454,6 +423,7 @@ const SimpleDeals = () => {
       filter: 'agTextColumnFilter',
       floatingFilter: true,
       sortable: true,
+      editable: true,
     },
     { 
       headerName: 'Category', 
@@ -470,6 +440,89 @@ const SimpleDeals = () => {
           'Real Estate',
           'Private Debt',
           'Private Equity',
+          'Other',
+          'Inbox'
+        ],
+        cellRenderer: params => params.value || '(Empty)',
+        cellHeight: 30,
+        sortButtons: true
+      },
+      floatingFilter: true,
+      sortable: true,
+      editable: true,
+      cellEditor: 'agSelectCellEditor',
+      cellEditorParams: {
+        values: [
+          'Inbox',
+          'Startup',
+          'Investment',
+          'Fund',
+          'Partnership',
+          'Real Estate',
+          'Private Debt',
+          'Private Equity',
+          'Other'
+        ]
+      }
+    },
+    { 
+      headerName: 'Stage', 
+      field: 'stage',
+      valueFormatter: (params) => params.value || '-',
+      minWidth: 130,
+      filter: 'agSetColumnFilter',
+      filterParams: {
+        values: [
+          'Lead',
+          'Qualified',
+          'Evaluating',
+          'Closing',
+          'Negotiation',
+          'Closed Won',
+          'Invested',
+          'Closed Lost',
+          'Monitoring',
+          'Passed'
+        ],
+        cellRenderer: params => params.value || '(Empty)',
+        cellHeight: 30,
+        sortButtons: true
+      },
+      floatingFilter: true,
+      sortable: true,
+      editable: true,
+      cellEditor: 'agSelectCellEditor',
+      cellEditorParams: {
+        values: [
+          'Lead',
+          'Qualified',
+          'Evaluating',
+          'Closing',
+          'Negotiation',
+          'Closed Won',
+          'Invested',
+          'Closed Lost',
+          'Monitoring',
+          'Passed'
+        ]
+      }
+    },
+    { 
+      headerName: 'Source', 
+      field: 'source_category',
+      valueFormatter: (params) => params.value || '-',
+      minWidth: 120,
+      filter: 'agSetColumnFilter',
+      filterParams: {
+        values: [
+          'Inbox',
+          'Startup',
+          'Investment',
+          'Fund',
+          'Partnership',
+          'Real Estate',
+          'Private Debt',
+          'Private Equity',
           'Other'
         ],
         cellRenderer: params => params.value || '(Empty)',
@@ -478,24 +531,21 @@ const SimpleDeals = () => {
       },
       floatingFilter: true,
       sortable: true,
-    },
-    { 
-      headerName: 'Stage', 
-      field: 'stage',
-      valueFormatter: (params) => params.value || '-',
-      minWidth: 130,
-      filter: 'agTextColumnFilter',
-      floatingFilter: true,
-      sortable: true,
-    },
-    { 
-      headerName: 'Source', 
-      field: 'source_category',
-      valueFormatter: (params) => params.value || '-',
-      minWidth: 120,
-      filter: 'agTextColumnFilter',
-      floatingFilter: true,
-      sortable: true,
+      editable: true,
+      cellEditor: 'agSelectCellEditor',
+      cellEditorParams: {
+        values: [
+          'Inbox',
+          'Startup',
+          'Investment',
+          'Fund',
+          'Partnership',
+          'Real Estate',
+          'Private Debt',
+          'Private Equity',
+          'Other'
+        ]
+      }
     },
     { 
       headerName: 'Investment Amount', 
@@ -505,6 +555,8 @@ const SimpleDeals = () => {
       filter: 'agNumberColumnFilter',
       floatingFilter: true,
       sortable: true,
+      editable: true,
+      cellEditor: 'agNumberCellEditor',
     },
     { 
       headerName: 'Created', 
@@ -558,7 +610,37 @@ const SimpleDeals = () => {
     console.log('Deal clicked:', params.data);
     // In the future, this could navigate to a deal detail page
     // navigate(`/deals/${params.data.deal_id}`);
-  }, [navigate]);
+  }, []);
+  
+  // Handle edit changes when a cell value changes
+  const onCellValueChanged = React.useCallback(async (params) => {
+    const { data, colDef, newValue, oldValue } = params;
+    
+    if (newValue === oldValue) return; // Skip if no change
+    
+    console.log(`Editing ${colDef.field} from "${oldValue}" to "${newValue}"`);
+    
+    try {
+      // Create update object with only the changed field
+      const updateData = { [colDef.field]: newValue };
+      
+      // Update in Supabase
+      const { error } = await supabase
+        .from('deals')
+        .update(updateData)
+        .eq('deal_id', data.deal_id);
+      
+      if (error) {
+        console.error('Error updating deal:', error);
+        alert(`Error updating deal: ${error.message}`);
+      } else {
+        console.log(`Successfully updated ${colDef.field} for deal ${data.deal_id}`);
+      }
+    } catch (err) {
+      console.error('Error in update operation:', err);
+      alert(`Error updating deal: ${err.message}`);
+    }
+  }, []);
 
   // Fetch deals data from Supabase
   const fetchDeals = async () => {
@@ -661,33 +743,6 @@ const SimpleDeals = () => {
     }
   }, [dataLoaded]);
   
-  // Filter deals when category selection or deals data changes
-  useEffect(() => {
-    if (!deals.length) {
-      setFilteredDeals([]);
-      return;
-    }
-    
-    if (selectedCategory === 'All') {
-      setFilteredDeals(deals);
-    } else {
-      const filtered = deals.filter(deal => deal.category === selectedCategory);
-      setFilteredDeals(filtered);
-    }
-    
-    // If grid API is available, refresh the data
-    if (gridApi) {
-      setTimeout(() => {
-        gridApi.setRowData(selectedCategory === 'All' ? deals : deals.filter(deal => deal.category === selectedCategory));
-      }, 0);
-    }
-  }, [selectedCategory, deals, gridApi]);
-  
-  // Handle category filter click
-  const handleCategoryClick = (category) => {
-    setSelectedCategory(category);
-  };
-  
   // Separate effect for window resize
   useEffect(() => {
     if (!gridApi) return;
@@ -703,23 +758,35 @@ const SimpleDeals = () => {
     };
   }, [gridApi]);
 
+  // Define menu items with icons
+  const menuItems = [
+    { id: 'all', name: 'Full List', icon: <FiGrid /> },
+    { id: 'startup', name: 'Startup', icon: <FiCpu /> },
+    { id: 'fund', name: 'Fund', icon: <FiDollarSign /> },
+    { id: 'real_estate', name: 'Real Estate', icon: <FiHome /> },
+    { id: 'private_equity', name: 'Private Equity', icon: <FiBriefcase /> },
+    { id: 'private_debt', name: 'Private Debt', icon: <FiBriefcase /> },
+    { id: 'other', name: 'Other', icon: <FiPackage /> }
+  ];
+  
   return (
     <Container>
-      <Title>Deals ({filteredDeals.length > 0 ? filteredDeals.length : deals.length})</Title>
-      
-      <FilterContainer>
-        {dealCategories.map(category => (
-          <FilterButton
-            key={category}
-            active={selectedCategory === category}
-            category={category}
-            onClick={() => handleCategoryClick(category)}
-            theme={{ categoryColors }}
+      <TopMenuContainer>
+        {menuItems.map(item => (
+          <MenuItem 
+            key={item.id}
+            $active={item.id === activeTab}
+            onClick={() => setActiveTab(item.id)}
           >
-            {category}
-          </FilterButton>
+            {item.icon} {item.name}
+          </MenuItem>
         ))}
-      </FilterContainer>
+      </TopMenuContainer>
+      
+      <Title>Deals ({deals.length})</Title>
+      <div style={{ margin: '0 20px 20px', color: '#00ff00' }}>
+        Double-click on any Deal name, Description, Category, Stage, Source, or Investment Amount to edit it directly.
+      </div>
       
       {error && <ErrorText>Error: {error}</ErrorText>}
       
@@ -753,8 +820,9 @@ const SimpleDeals = () => {
         <div 
           className="ag-theme-alpine" 
           style={{ 
-            height: 'calc(100% - 60px)', 
+            height: 'calc(100% - 100px)', 
             width: '100%',
+            margin: '0 20px',
             opacity: showGrid ? 1 : 0,
             transition: 'opacity 0.5s ease-in-out',
             '--ag-background-color': '#121212',
@@ -767,18 +835,21 @@ const SimpleDeals = () => {
           }}
         >
           <AgGridReact
-            rowData={selectedCategory === 'All' ? deals : filteredDeals}
+            rowData={deals}
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
             onGridReady={onGridReady}
             onRowClicked={handleRowClicked}
+            onCellValueChanged={onCellValueChanged}
             rowSelection="single"
             animateRows={true}
             pagination={true}
             paginationPageSize={50}
-            suppressCellFocus={true}
+            suppressCellFocus={false}
             enableCellTextSelection={true}
             context={gridContext}
+            editType="cell"
+            stopEditingWhenCellsLoseFocus={true}
           />
         </div>
       )}
