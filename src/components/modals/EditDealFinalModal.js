@@ -12,7 +12,8 @@ import {
   FiList,
   FiActivity,
   FiCalendar,
-  FiPlus
+  FiPlus,
+  FiPaperclip
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -33,6 +34,50 @@ const ModalHeader = styled.div`
     margin: 0;
     font-size: 1.2rem;
     font-family: 'Courier New', monospace;
+  }
+`;
+
+const SuggestionsContainer = styled.div`
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 150px;
+  overflow-y: auto;
+  background-color: #1a1a1a;
+  border: 1px solid #333;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: #222;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: #00ff00;
+    border-radius: 3px;
+  }
+`;
+
+const SuggestionItem = styled.div`
+  padding: 8px 12px;
+  cursor: pointer;
+  color: #ccc;
+  
+  &:hover {
+    background-color: #333;
+    color: #00ff00;
+  }
+  
+  &.highlight {
+    background-color: #333;
+    color: #00ff00;
   }
 `;
 
@@ -180,7 +225,7 @@ const Tag = styled.div`
   button {
     background: none;
     border: none;
-    color: #ff5555;
+    color: #00ff00;
     font-size: 14px;
     cursor: pointer;
     padding: 0;
@@ -188,9 +233,11 @@ const Tag = styled.div`
     align-items: center;
     justify-content: center;
     margin-left: 3px;
+    text-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
     
     &:hover {
-      color: #ff0000;
+      color: #00cc00;
+      text-shadow: 0 0 8px rgba(0, 255, 0, 0.8);
     }
   }
 `;
@@ -313,7 +360,7 @@ const EditDealFinalModal = ({
   dealData,
   onSave
 }) => {
-  // Form state
+  // Form state (note: attachment is kept for UI but not stored in database yet)
   const [formData, setFormData] = useState({
     opportunity: '',
     source_category: 'Not Set',
@@ -321,6 +368,8 @@ const EditDealFinalModal = ({
     stage: 'Lead',
     description: '',
     total_investment: '',
+    attachment: 'None', // Not in database yet
+    tags: [],
   });
   
   // Validation state
@@ -329,9 +378,10 @@ const EditDealFinalModal = ({
   // Loading state
   const [isLoading, setIsLoading] = useState(false);
   
-  // Tags state (placeholder - would be populated from the database)
-  const [tags, setTags] = useState([]);
+  // State for tag input and suggestions
   const [newTag, setNewTag] = useState('');
+  const [tagSuggestions, setTagSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   
   // Deal category options
   const categoryOptions = [
@@ -361,9 +411,21 @@ const EditDealFinalModal = ({
     'Introduction'
   ];
   
-  // Load deal data into form when modal opens
+  // Attachment options
+  const attachmentOptions = [
+    'None',
+    'NDA',
+    'Term Sheet',
+    'Pitch Deck',
+    'Financial Model',
+    'Due Diligence',
+    'Contract'
+  ];
+  
+  // Load deal data into form when modal opens, including fetching tags
   useEffect(() => {
     if (dealData) {
+      // Set basic form data
       setFormData({
         opportunity: dealData.opportunity || '',
         source_category: dealData.source_category || 'Not Set',
@@ -371,7 +433,51 @@ const EditDealFinalModal = ({
         stage: dealData.stage || 'Lead',
         description: dealData.description || '',
         total_investment: dealData.total_investment ? String(dealData.total_investment) : '',
+        attachment: 'None', // This field doesn't exist in the database yet
+        tags: [], // We'll fetch tags separately
       });
+      
+      // Fetch tags for this deal and all available tags
+      const fetchTagData = async () => {
+        try {
+          const { supabase } = await import('../../lib/supabaseClient');
+          
+          // Get tags for this deal
+          const { data: dealTagsData, error: dealTagsError } = await supabase
+            .from('deal_tags')
+            .select('tags:tag_id(name)')
+            .eq('deal_id', dealData.deal_id);
+          
+          if (dealTagsError) throw dealTagsError;
+          
+          // Extract tag names and update form
+          const tagNames = dealTagsData
+            .filter(item => item.tags)
+            .map(item => item.tags.name);
+          
+          setFormData(prev => ({
+            ...prev,
+            tags: tagNames
+          }));
+          
+          // Get all available tags for suggestions
+          const { data: allTagsData, error: allTagsError } = await supabase
+            .from('tags')
+            .select('name')
+            .order('name');
+            
+          if (allTagsError) throw allTagsError;
+          
+          // Set available tags for suggestions
+          setTagSuggestions(allTagsData.map(tag => tag.name));
+          
+        } catch (error) {
+          console.error('Error fetching tags:', error);
+          toast.error('Failed to load tags');
+        }
+      };
+      
+      fetchTagData();
       
       // Reset errors
       setErrors({});
@@ -422,7 +528,7 @@ const EditDealFinalModal = ({
     setIsLoading(true);
     
     try {
-      // Prepare data for submission
+      // Prepare data for submission - removing attachment and tags fields as they're not in the deals table
       const updatedDeal = {
         ...dealData,
         opportunity: formData.opportunity,
@@ -438,6 +544,7 @@ const EditDealFinalModal = ({
       // Update deal in database
       const { supabase } = await import('../../lib/supabaseClient');
       
+      // First update the deal itself
       const { error } = await supabase
         .from('deals')
         .update(updatedDeal)
@@ -445,6 +552,83 @@ const EditDealFinalModal = ({
       
       if (error) {
         throw error;
+      }
+      
+      // Now handle tags (this would be better in a transaction, but we'll do separate operations for now)
+      try {
+        // First, get existing tags for this deal
+        const { data: existingDealTags, error: fetchTagsError } = await supabase
+          .from('deal_tags')
+          .select('tag_id, tags:tag_id(name)')
+          .eq('deal_id', dealData.deal_id);
+        
+        if (fetchTagsError) throw fetchTagsError;
+        
+        // Get existing tag names
+        const existingTagNames = existingDealTags
+          .filter(item => item.tags)
+          .map(item => item.tags.name);
+        
+        // Calculate tags to add and remove
+        const tagsToAdd = formData.tags.filter(tag => !existingTagNames.includes(tag));
+        const tagsToRemove = existingDealTags.filter(
+          tagObj => tagObj.tags && !formData.tags.includes(tagObj.tags.name)
+        ).map(tagObj => tagObj.tag_id);
+        
+        // Remove tags that are no longer associated
+        if (tagsToRemove.length > 0) {
+          const { error: removeError } = await supabase
+            .from('deal_tags')
+            .delete()
+            .eq('deal_id', dealData.deal_id)
+            .in('tag_id', tagsToRemove);
+            
+          if (removeError) throw removeError;
+        }
+        
+        // Add new tags
+        for (const tagName of tagsToAdd) {
+          // First check if the tag exists in the tags table
+          let tagId;
+          const { data: existingTag, error: tagLookupError } = await supabase
+            .from('tags')
+            .select('tag_id')
+            .eq('name', tagName)
+            .single();
+          
+          if (tagLookupError && tagLookupError.code !== 'PGRST116') { // PGRST116 is not found
+            throw tagLookupError;
+          }
+          
+          // If tag doesn't exist, create it
+          if (!existingTag) {
+            const { data: newTag, error: createTagError } = await supabase
+              .from('tags')
+              .insert({ name: tagName })
+              .select('tag_id')
+              .single();
+              
+            if (createTagError) throw createTagError;
+            tagId = newTag.tag_id;
+          } else {
+            tagId = existingTag.tag_id;
+          }
+          
+          // Now create the deal_tags association
+          const { error: linkError } = await supabase
+            .from('deal_tags')
+            .insert({
+              deal_id: dealData.deal_id,
+              tag_id: tagId
+            });
+            
+          if (linkError) throw linkError;
+        }
+      } catch (tagError) {
+        console.error('Error managing tags:', tagError);
+        // We don't throw here because we don't want to fail the whole operation
+        // if just the tag updates fail
+        toast.warning('Deal updated but there was an issue with the tags');
       }
       
       // Show success message
@@ -465,17 +649,59 @@ const EditDealFinalModal = ({
     }
   };
   
-  // Handle adding a tag
-  const handleAddTag = () => {
-    if (newTag.trim() && !tags.includes(newTag.trim())) {
-      setTags([...tags, newTag.trim()]);
+  // Filter tag suggestions based on input
+  const filterTagSuggestions = (input) => {
+    if (!input) {
+      setShowSuggestions(false);
+      return;
+    }
+    
+    const filtered = tagSuggestions.filter(tag => 
+      tag.toLowerCase().includes(input.toLowerCase()) && 
+      !formData.tags.includes(tag)
+    );
+    
+    setShowSuggestions(filtered.length > 0);
+    return filtered;
+  };
+  
+  // Handle tag input change
+  const handleTagInputChange = (e) => {
+    const value = e.target.value;
+    setNewTag(value);
+    filterTagSuggestions(value);
+  };
+  
+  // Handle tag suggestion click
+  const handleSuggestionClick = (tag) => {
+    if (!formData.tags.includes(tag)) {
+      setFormData({
+        ...formData,
+        tags: [...formData.tags, tag]
+      });
+    }
+    setNewTag('');
+    setShowSuggestions(false);
+  };
+  
+  // Handle adding a tag to the UI state (actual database update will happen in handleSubmit)
+  const handleAddTag = async () => {
+    if (newTag.trim() && !formData.tags.includes(newTag.trim())) {
+      setFormData({
+        ...formData,
+        tags: [...formData.tags, newTag.trim()]
+      });
       setNewTag('');
+      setShowSuggestions(false);
     }
   };
   
-  // Handle removing a tag
+  // Handle removing a tag from the UI state (actual database update will happen in handleSubmit)
   const handleRemoveTag = (tagToRemove) => {
-    setTags(tags.filter(tag => tag !== tagToRemove));
+    setFormData({
+      ...formData,
+      tags: formData.tags.filter(tag => tag !== tagToRemove)
+    });
   };
   
   // Handle key press in tag input
@@ -633,6 +859,77 @@ const EditDealFinalModal = ({
           </FormGroup>
         </FormRow>
         
+        <FormRow>
+          <FormGroup>
+            <FormLabel htmlFor="attachment">
+              <FiPaperclip size={14} /> Attachment
+            </FormLabel>
+            <FormSelect
+              id="attachment"
+              name="attachment"
+              value={formData.attachment}
+              onChange={handleInputChange}
+            >
+              {attachmentOptions.map(option => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </FormSelect>
+            <HelpText>Select the type of attachment for this deal</HelpText>
+          </FormGroup>
+          
+          <FormGroup>
+            <FormLabel htmlFor="tags">
+              <FiTag size={14} /> Tags
+            </FormLabel>
+            <div style={{ display: 'flex', gap: '10px', width: '100%', position: 'relative' }}>
+              <FormInput
+                id="tags"
+                placeholder="Search or add tag and press Enter"
+                value={newTag}
+                onChange={handleTagInputChange}
+                onKeyPress={handleTagKeyPress}
+                autoComplete="off"
+              />
+              {showSuggestions && newTag.trim() && (
+                <SuggestionsContainer>
+                  {tagSuggestions
+                    .filter(tag => 
+                      tag.toLowerCase().includes(newTag.toLowerCase()) && 
+                      !formData.tags.includes(tag)
+                    )
+                    .slice(0, 8) // Limit to 8 suggestions
+                    .map((tag, index) => (
+                      <SuggestionItem 
+                        key={index} 
+                        onClick={() => handleSuggestionClick(tag)}
+                      >
+                        {tag}
+                      </SuggestionItem>
+                    ))
+                  }
+                </SuggestionsContainer>
+              )}
+            </div>
+            <HelpText>Press Enter to add multiple tags</HelpText>
+            
+            {/* Display tags directly under the search bar */}
+            {formData.tags.length > 0 && (
+              <TagsContainer style={{ marginTop: '10px' }}>
+                {formData.tags.map(tag => (
+                  <Tag key={tag}>
+                    {tag}
+                    <button onClick={() => handleRemoveTag(tag)}>
+                      <FiX size={12} />
+                    </button>
+                  </Tag>
+                ))}
+              </TagsContainer>
+            )}
+          </FormGroup>
+        </FormRow>
+        
         <FormGroup>
           <FormLabel htmlFor="description">
             <FiInfo size={14} /> Description
@@ -646,37 +943,6 @@ const EditDealFinalModal = ({
           />
         </FormGroup>
         
-        <SectionTitle>
-          <FiTag size={16} /> Tags
-        </SectionTitle>
-        
-        <FormGroup>
-          <FormLabel>Deal Tags</FormLabel>
-          <TagsContainer>
-            {tags.map(tag => (
-              <Tag key={tag}>
-                {tag}
-                <button onClick={() => handleRemoveTag(tag)}>
-                  <FiX size={12} />
-                </button>
-              </Tag>
-            ))}
-            <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
-              <div style={{ flex: '1' }}>
-                <FormInput
-                  placeholder="Add new tag"
-                  value={newTag}
-                  onChange={(e) => setNewTag(e.target.value)}
-                  onKeyPress={handleTagKeyPress}
-                />
-              </div>
-              <AddTagButton onClick={handleAddTag}>
-                <PlusIcon /> Add
-              </AddTagButton>
-            </div>
-          </TagsContainer>
-          <HelpText>Press Enter to add a tag</HelpText>
-        </FormGroup>
       </FormContainer>
       
       <ButtonGroup>

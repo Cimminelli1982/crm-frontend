@@ -4,7 +4,8 @@ import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { AgGridReact } from '../../ag-grid-setup';
 import Modal from 'react-modal';
-import { FiGrid, FiCpu, FiDollarSign, FiHome, FiPackage, FiBriefcase, FiInbox, FiEdit, FiTrash2 } from 'react-icons/fi';
+import { FiGrid, FiCpu, FiDollarSign, FiHome, FiPackage, FiBriefcase, FiInbox, FiEdit, FiTrash2, FiPlus } from 'react-icons/fi';
+import DealViewFindAddModal from '../../components/modals/DealViewFindAddModal';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -492,6 +493,34 @@ const SearchInput = styled.input`
   
   &::placeholder {
     color: #666;
+  }
+`;
+
+const AddDealButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: rgba(0, 255, 0, 0.1);
+  color: #00ff00;
+  border: 1px solid #00ff00;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Courier New', monospace;
+  box-shadow: 0 0 8px rgba(0, 255, 0, 0.3);
+  margin-left: auto; /* Push to the right */
+  
+  &:hover {
+    background-color: rgba(0, 255, 0, 0.2);
+    box-shadow: 0 0 12px rgba(0, 255, 0, 0.5);
+    text-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
+  }
+  
+  svg {
+    font-size: 16px;
   }
 `;
 
@@ -1253,6 +1282,7 @@ const SimpleDeals = () => {
   const [selectedDeal, setSelectedDeal] = useState(null);
   const [availableTags, setAvailableTags] = useState([]);
   const [tagSearchTerm, setTagSearchTerm] = useState('');
+  const [showDealModal, setShowDealModal] = useState(false);
   // Keep stageFilter state but don't use it - needed for the AG Grid filter
   const [stageFilter, setStageFilter] = useState('');
   const navigate = useNavigate();
@@ -2001,8 +2031,13 @@ const SimpleDeals = () => {
   // Row clicked handler
   const handleRowClicked = React.useCallback((params) => {
     console.log('Deal clicked:', params.data);
-    // In the future, this could navigate to a deal detail page
-    // navigate(`/deals/${params.data.deal_id}`);
+    // Set the selected deal data and open the modal
+    setSelectedDeal({
+      contact_id: null, // We don't have a contact when opening from deals
+      deal: params.data,
+      companies: [] // No companies associated at this level
+    });
+    setShowDealModal(true);
   }, []);
   
   // Handle edit changes when a cell value changes
@@ -2406,8 +2441,16 @@ const SimpleDeals = () => {
         ))}
       </TopMenuContainer>
       
-      <Title>Deals ({filteredDeals.length})</Title>
-      
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '0 20px' }}>
+        <Title style={{ margin: '20px 0' }}>Deals ({filteredDeals.length})</Title>
+        <AddDealButton onClick={() => {
+          // When opening the modal from the button, we don't have a selected contact
+          setSelectedDeal(null);
+          setShowDealModal(true);
+        }}>
+          <FiPlus /> ADD NEW DEAL
+        </AddDealButton>
+      </div>
       
       {error && <ErrorText>Error: {error}</ErrorText>}
       
@@ -2769,9 +2812,18 @@ const SimpleDeals = () => {
           </TagsSection>
         </TagsModalContent>
       </Modal>
+
+      {/* Deal modal */}
+      <DealViewFindAddModal
+        isOpen={showDealModal}
+        onClose={() => setShowDealModal(false)}
+        contactData={selectedDeal}
+      />
     </Container>
   );
 };
+
+// Modal is now properly integrated as a React component
 
 // Reference to the StageFloatingFilterFinal for component registration
 // This is needed for the AG Grid components registration
