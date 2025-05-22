@@ -1,10 +1,37 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { AgGridReact } from '../../ag-grid-setup';
 import Modal from 'react-modal';
-import { FiGrid, FiCpu, FiDollarSign, FiHome, FiPackage, FiBriefcase } from 'react-icons/fi';
+import { FiGrid, FiCpu, FiDollarSign, FiHome, FiPackage, FiBriefcase, FiInbox, FiEdit, FiTrash2 } from 'react-icons/fi';
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+
+// Custom styles for neon green toast notifications
+const toastStyles = `
+  .green-toast {
+    border-color: #00ff00 !important;
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.7) !important;
+  }
+  .green-progress {
+    background-color: #00ff00 !important;
+    box-shadow: 0 0 8px #00ff00 !important;
+  }
+  .Toastify__progress-bar {
+    background-color: #00ff00 !important;
+    box-shadow: 0 0 8px #00ff00, 0 0 16px #00ff00 !important;
+    height: 4px !important;
+    opacity: 0.9 !important;
+  }
+  .Toastify__toast {
+    background-color: rgba(18, 18, 18, 0.95) !important;
+    border: 1px solid #00ff00 !important;
+  }
+  .Toastify__close-button {
+    color: #00ff00 !important;
+  }
+`;
 
 // Styled components
 const Container = styled.div`
@@ -309,6 +336,24 @@ const AttachmentLink = styled.a`
   }
 `;
 
+const AttachmentButton = styled.button`
+  color: #00ff00;
+  background: transparent;
+  padding: 6px 12px;
+  border: 1px solid #00ff00;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  margin-left: 8px;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background-color: #00ff00;
+    color: #000;
+    box-shadow: 0 0 8px rgba(0, 255, 0, 0.5);
+  }
+`;
+
 // Attachment renderer
 const AttachmentRenderer = (props) => {
   const attachments = props.value;
@@ -379,6 +424,219 @@ const CategoryRenderer = (props) => {
   return <span>{category}</span>;
 };
 
+// Cell renderer for source with custom icons
+const SourceRenderer = (props) => {
+  const source = props.value;
+  if (!source) return <span style={{ color: '#aaa', fontStyle: 'italic' }}>-</span>;
+  
+  // Return source with appropriate icon
+  if (source === 'Cold Contacting') {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+        <svg 
+          width="16" 
+          height="16" 
+          viewBox="0 0 24 24" 
+          fill="none" 
+          stroke="#00ff00" 
+          strokeWidth="1.5"
+          style={{ filter: 'drop-shadow(0 0 2px #00ff00)' }}
+        >
+          {/* Snowflake icon */}
+          <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M19.07 4.93L4.93 19.07M7 12l5-5 5 5-5 5-5-5z" />
+        </svg>
+        <span>{source}</span>
+      </div>
+    );
+  }
+  
+  return <span>{source}</span>;
+};
+
+// Cell renderer for Actions column
+const ActionsRenderer = (props) => {
+  const { data } = props;
+  
+  // Handle edit button click
+  const handleEdit = (e) => {
+    e.stopPropagation();
+    // Here you would typically show an edit form or modal
+    // For now, we'll just show a toast notification
+    toast.info(`Editing deal: ${data.opportunity}`, {
+      icon: <FiEdit style={{ color: '#00ff00' }} />
+    });
+  };
+  
+  // Handle delete button click
+  const handleDelete = (e) => {
+    e.stopPropagation();
+    
+    // Show confirmation dialog
+    if (window.confirm(`Are you sure you want to delete deal: ${data.opportunity}?`)) {
+      // Delete the deal from Supabase
+      supabase
+        .from('deals')
+        .delete()
+        .eq('deal_id', data.deal_id)
+        .then(({ error }) => {
+          if (error) {
+            toast.error(`Error deleting deal: ${error.message}`);
+            console.error('Error deleting deal:', error);
+          } else {
+            toast.success(`Deal "${data.opportunity}" deleted successfully`, {
+              icon: <FiTrash2 style={{ color: '#00ff00' }} />
+            });
+            
+            // Refresh data or remove from grid using context
+            if (props.context && props.context.removeDeal) {
+              props.context.removeDeal(data.deal_id);
+            }
+          }
+        });
+    }
+  };
+  
+  // Handle attachments button click - reused from AttachmentRenderer
+  const handleAttachments = (e) => {
+    e.stopPropagation();
+    
+    const attachments = data.attachments;
+    if (!attachments || attachments.length === 0) {
+      // Use custom toast with neon green styling
+      toast(`No attachments for deal: ${data.opportunity}`, {
+        style: {
+          borderLeft: '5px solid #00ff00',
+          color: '#ffffff',
+          textShadow: '0 0 5px rgba(255, 255, 255, 0.5)',
+        },
+        progressClassName: 'green-progress',
+        className: 'green-toast',
+        icon: () => (
+          <svg 
+            width="20" 
+            height="20" 
+            viewBox="0 0 24 24" 
+            fill="none" 
+            stroke="#00ff00" 
+            strokeWidth="2" 
+            strokeLinecap="round" 
+            strokeLinejoin="round"
+          >
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"></path>
+          </svg>
+        )
+      });
+      return;
+    }
+    
+    // Open attachments modal using context
+    if (props.context && props.context.setSelectedAttachments) {
+      props.context.setSelectedAttachments(attachments);
+      props.context.setDealName(data.opportunity);
+      props.context.setCurrentDealId(data.deal_id);
+      props.context.setShowAttachmentsModal(true);
+    }
+  };
+  
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', gap: '15px' }}>
+      {/* Attachments Button - Icon only */}
+      <button
+        onClick={handleAttachments}
+        title={`Attachments (${data.attachments?.length || 0})`}
+        style={{
+          background: 'transparent',
+          border: 'none',
+          padding: '5px',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: '50%',
+          transition: 'background-color 0.2s',
+          position: 'relative'
+        }}
+        onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.1)'}
+        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+      >
+        <svg 
+          width="20" 
+          height="20" 
+          viewBox="0 0 24 24" 
+          fill="none" 
+          stroke="#00ff00" 
+          strokeWidth="2" 
+          strokeLinecap="round" 
+          strokeLinejoin="round"
+        >
+          <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"></path>
+        </svg>
+        {data.attachments && data.attachments.length > 0 && (
+          <span style={{
+            position: 'absolute',
+            top: -3,
+            right: -3,
+            backgroundColor: '#00ff00',
+            color: '#000',
+            borderRadius: '50%',
+            width: '16px',
+            height: '16px',
+            fontSize: '11px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontWeight: 'bold'
+          }}>
+            {data.attachments.length}
+          </span>
+        )}
+      </button>
+      
+      {/* Edit Button - Icon only */}
+      <button
+        onClick={handleEdit}
+        title="Edit"
+        style={{
+          background: 'transparent',
+          border: 'none',
+          padding: '5px',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: '50%',
+          transition: 'background-color 0.2s'
+        }}
+        onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.1)'}
+        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+      >
+        <FiEdit size={18} style={{ color: '#00ff00' }} />
+      </button>
+      
+      {/* Delete Button - Icon only */}
+      <button
+        onClick={handleDelete}
+        title="Delete"
+        style={{
+          background: 'transparent',
+          border: 'none',
+          padding: '5px',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: '50%',
+          transition: 'background-color 0.2s'
+        }}
+        onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.1)'}
+        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+      >
+        <FiTrash2 size={18} style={{ color: '#00ff00' }} />
+      </button>
+    </div>
+  );
+};
+
 const SimpleDeals = () => {
   const [deals, setDeals] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -390,6 +648,8 @@ const SimpleDeals = () => {
   const [selectedAttachments, setSelectedAttachments] = useState([]);
   const [dealName, setDealName] = useState('');
   const [activeTab, setActiveTab] = useState('all');
+  const [currentDealId, setCurrentDealId] = useState(null);
+  const [uploading, setUploading] = useState(false);
   const navigate = useNavigate();
   
   // Category colors for this component
@@ -510,20 +770,13 @@ const SimpleDeals = () => {
     { 
       headerName: 'Source', 
       field: 'source_category',
-      valueFormatter: (params) => params.value || '-',
-      minWidth: 120,
+      cellRenderer: SourceRenderer,
+      minWidth: 140,
       filter: 'agSetColumnFilter',
       filterParams: {
         values: [
-          'Inbox',
-          'Startup',
-          'Investment',
-          'Fund',
-          'Partnership',
-          'Real Estate',
-          'Private Debt',
-          'Private Equity',
-          'Other'
+          'Cold Contacting',
+          'Introduction'
         ],
         cellRenderer: params => params.value || '(Empty)',
         cellHeight: 30,
@@ -535,15 +788,8 @@ const SimpleDeals = () => {
       cellEditor: 'agSelectCellEditor',
       cellEditorParams: {
         values: [
-          'Inbox',
-          'Startup',
-          'Investment',
-          'Fund',
-          'Partnership',
-          'Real Estate',
-          'Private Debt',
-          'Private Equity',
-          'Other'
+          'Cold Contacting',
+          'Introduction'
         ]
       }
     },
@@ -571,13 +817,13 @@ const SimpleDeals = () => {
       sortable: true,
     },
     {
-      headerName: 'Attachments',
-      field: 'attachments',
-      cellRenderer: AttachmentRenderer,
-      width: 120,
-      filter: 'agNumberColumnFilter',
-      floatingFilter: true,
-      sortable: true,
+      headerName: 'Actions',
+      field: 'actions',
+      cellRenderer: ActionsRenderer,
+      width: 150,
+      sortable: false,
+      filter: false,
+      suppressSizeToFit: true
     }
   ], []);
   
@@ -586,13 +832,127 @@ const SimpleDeals = () => {
     resizable: true,
   }), []);
   
+  // Function to remove a deal from the grid
+  const removeDeal = useCallback((dealId) => {
+    setDeals(prevDeals => prevDeals.filter(deal => deal.deal_id !== dealId));
+  }, []);
+  
+  // Handle file upload to Supabase
+  const handleFileUpload = useCallback(async (file) => {
+    if (!file || !currentDealId) return;
+    
+    try {
+      setUploading(true);
+      
+      // Create a unique file name
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+      const filePath = `deal-attachments/${fileName}`;
+      
+      // Upload file to Supabase Storage
+      const { data: fileData, error: uploadError } = await supabase
+        .storage
+        .from('attachments')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+      
+      if (uploadError) {
+        throw uploadError;
+      }
+      
+      // Get the public URL for the file
+      const { data: urlData } = await supabase
+        .storage
+        .from('attachments')
+        .getPublicUrl(filePath);
+      
+      const fileUrl = urlData.publicUrl;
+      
+      // Create a new attachment record
+      const { data: attachmentData, error: attachmentError } = await supabase
+        .from('attachments')
+        .insert([
+          {
+            file_name: file.name,
+            file_url: fileUrl,
+            file_type: file.type,
+            file_size: file.size,
+            processing_status: 'completed',
+            created_by: 'User'
+          }
+        ])
+        .select();
+      
+      if (attachmentError) {
+        throw attachmentError;
+      }
+      
+      // Link the attachment to the deal
+      const attachmentId = attachmentData[0].attachment_id;
+      
+      const { error: linkError } = await supabase
+        .from('deal_attachments')
+        .insert([
+          {
+            deal_id: currentDealId,
+            attachment_id: attachmentId,
+            created_by: 'User'
+          }
+        ]);
+      
+      if (linkError) {
+        throw linkError;
+      }
+      
+      // Update the attachments list
+      setSelectedAttachments(prev => [...prev, attachmentData[0]]);
+      
+      toast.success(`File "${file.name}" uploaded successfully!`, {
+        style: {
+          borderLeft: '5px solid #00ff00',
+          background: 'rgba(18, 18, 18, 0.95)',
+          color: '#ffffff',
+          boxShadow: '0 0 10px rgba(0, 255, 0, 0.3)',
+        },
+        progressClassName: 'green-progress',
+        className: 'green-toast',
+        icon: () => (
+          <svg 
+            width="20" 
+            height="20" 
+            viewBox="0 0 24 24" 
+            fill="none" 
+            stroke="#00ff00" 
+            strokeWidth="2" 
+            strokeLinecap="round" 
+            strokeLinejoin="round"
+          >
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+        )
+      });
+      
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      toast.error(`Error uploading file: ${error.message}`);
+    } finally {
+      setUploading(false);
+    }
+  }, [currentDealId]);
+  
   // Context to pass to the grid
   const gridContext = useMemo(() => ({
     setSelectedAttachments,
     setDealName,
+    setCurrentDealId,
     setShowAttachmentsModal,
-    categoryColors
-  }), [categoryColors]);
+    categoryColors,
+    removeDeal
+  }), [categoryColors, removeDeal]);
 
   // Grid ready event handler
   const onGridReady = React.useCallback((params) => {
@@ -632,13 +992,47 @@ const SimpleDeals = () => {
       
       if (error) {
         console.error('Error updating deal:', error);
-        alert(`Error updating deal: ${error.message}`);
+        toast.error(`Error updating deal: ${error.message}`);
       } else {
         console.log(`Successfully updated ${colDef.field} for deal ${data.deal_id}`);
+        
+        // Show toast notifications for dropdown fields
+        if (colDef.field === 'category') {
+          toast.success(`Deal category updated to "${newValue}"`, {
+            icon: '🏷️'
+          });
+        } else if (colDef.field === 'stage') {
+          toast.success(`Deal stage updated to "${newValue}"`, {
+            icon: '📋'
+          });
+        } else if (colDef.field === 'source_category') {
+          toast.success(`Deal source updated to "${newValue}"`, {
+            icon: '📊'
+          });
+        } else if (colDef.field === 'total_investment') {
+          const formattedValue = new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0
+          }).format(newValue);
+          
+          toast.success(`Investment amount updated to ${formattedValue}`, {
+            icon: '💰'
+          });
+        } else if (colDef.field === 'opportunity') {
+          toast.success(`Deal name updated to "${newValue}"`, {
+            icon: '✏️'
+          });
+        } else if (colDef.field === 'description') {
+          toast.success(`Description updated successfully`, {
+            icon: '📝'
+          });
+        }
       }
     } catch (err) {
       console.error('Error in update operation:', err);
-      alert(`Error updating deal: ${err.message}`);
+      toast.error(`Error updating deal: ${err.message}`);
     }
   }, []);
 
@@ -760,7 +1154,7 @@ const SimpleDeals = () => {
 
   // Define menu items with icons
   const menuItems = [
-    { id: 'all', name: 'Full List', icon: <FiGrid /> },
+    { id: 'all', name: 'Inbox', icon: <FiInbox /> },
     { id: 'startup', name: 'Startup', icon: <FiCpu /> },
     { id: 'fund', name: 'Fund', icon: <FiDollarSign /> },
     { id: 'real_estate', name: 'Real Estate', icon: <FiHome /> },
@@ -771,6 +1165,23 @@ const SimpleDeals = () => {
   
   return (
     <Container>
+      {/* Inject custom styles for toasts */}
+      <style>{toastStyles}</style>
+      
+      {/* Toast Container for notifications */}
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="dark"
+      />
+      
       <TopMenuContainer>
         {menuItems.map(item => (
           <MenuItem 
@@ -867,6 +1278,85 @@ const SimpleDeals = () => {
             <button onClick={() => setShowAttachmentsModal(false)}>✕</button>
           </ModalHeader>
           
+          {/* File Upload Section */}
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            marginBottom: '20px', 
+            borderBottom: '1px solid #333',
+            paddingBottom: '20px'
+          }}>
+            <input 
+              type="file" 
+              id="file-upload" 
+              style={{ display: 'none' }} 
+              onChange={(e) => {
+                if (e.target.files && e.target.files[0]) {
+                  handleFileUpload(e.target.files[0]);
+                }
+              }}
+            />
+            <AttachmentButton 
+              style={{ 
+                padding: '8px 16px', 
+                fontSize: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                opacity: uploading ? 0.7 : 1,
+                cursor: uploading ? 'not-allowed' : 'pointer'
+              }}
+              onClick={() => !uploading && document.getElementById('file-upload').click()}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <>
+                  <svg 
+                    width="16" 
+                    height="16" 
+                    viewBox="0 0 24 24" 
+                    fill="none" 
+                    stroke="#00ff00" 
+                    strokeWidth="2" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round"
+                    style={{ animation: 'spin 1s linear infinite' }}
+                  >
+                    <circle cx="12" cy="12" r="10" strokeWidth="4" stroke="#00ff00" strokeDasharray="32" strokeDashoffset="32">
+                      <animateTransform 
+                        attributeName="transform" 
+                        type="rotate" 
+                        from="0 12 12" 
+                        to="360 12 12" 
+                        dur="1s" 
+                        repeatCount="indefinite"
+                      />
+                    </circle>
+                  </svg>
+                  Uploading...
+                </>
+              ) : (
+                <>
+                  <svg 
+                    width="16" 
+                    height="16" 
+                    viewBox="0 0 24 24" 
+                    fill="none" 
+                    stroke="#00ff00" 
+                    strokeWidth="2" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round"
+                  >
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                  Upload New Attachment
+                </>
+              )}
+            </AttachmentButton>
+          </div>
+          
           <AttachmentList>
             {selectedAttachments.length > 0 ? (
               selectedAttachments.map((attachment) => (
@@ -884,13 +1374,22 @@ const SimpleDeals = () => {
                       {attachment.file_type} • {(attachment.file_size / 1024).toFixed(0)} KB
                     </div>
                   </AttachmentDetails>
-                  <AttachmentLink 
-                    href={attachment.permanent_url || attachment.file_url} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                  >
-                    Open
-                  </AttachmentLink>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <AttachmentLink 
+                      href={attachment.permanent_url || attachment.file_url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                    >
+                      Open
+                    </AttachmentLink>
+                    <AttachmentButton
+                      onClick={() => {
+                        document.getElementById('file-upload').click();
+                      }}
+                    >
+                      Upload
+                    </AttachmentButton>
+                  </div>
                 </AttachmentItem>
               ))
             ) : (
