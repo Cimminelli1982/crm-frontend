@@ -354,6 +354,127 @@ const AttachmentButton = styled.button`
   }
 `;
 
+// Tags modal styled components
+const TagsModalContent = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  max-width: 600px;
+`;
+
+const TagsContainer = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 15px;
+`;
+
+const TagItem = styled.div`
+  display: flex;
+  align-items: center;
+  background-color: ${props => props.$selected ? 'rgba(0, 255, 0, 0.2)' : 'rgba(0, 255, 0, 0.1)'};
+  border: 1px solid #00ff00;
+  border-radius: 12px;
+  padding: 6px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background-color: rgba(0, 255, 0, 0.2);
+    box-shadow: 0 0 8px rgba(0, 255, 0, 0.3);
+  }
+`;
+
+const TagAddButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  color: #00ff00;
+  border: 1px dashed #00ff00;
+  border-radius: 12px;
+  padding: 6px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background-color: rgba(0, 255, 0, 0.1);
+  }
+`;
+
+const TagsSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 15px;
+  border-top: 1px solid #333;
+`;
+
+const TagsInputContainer = styled.div`
+  display: flex;
+  gap: 10px;
+  margin-top: 15px;
+`;
+
+const TagsInput = styled.input`
+  flex: 1;
+  background-color: #222;
+  color: #fff;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-family: 'Courier New', monospace;
+  
+  &:focus {
+    outline: none;
+    border-color: #00ff00;
+    box-shadow: 0 0 5px rgba(0, 255, 0, 0.3);
+  }
+`;
+
+const SearchContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 15px;
+`;
+
+const SearchInput = styled.input`
+  background-color: #222;
+  color: #fff;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-family: 'Courier New', monospace;
+  width: 100%;
+  
+  &:focus {
+    outline: none;
+    border-color: #00ff00;
+    box-shadow: 0 0 5px rgba(0, 255, 0, 0.3);
+  }
+  
+  &::placeholder {
+    color: #666;
+  }
+`;
+
+const TagsTitle = styled.h3`
+  color: #00ff00;
+  font-family: 'Courier New', monospace;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  
+  svg {
+    stroke: #00ff00;
+  }
+`;
+
 // Attachment renderer
 const AttachmentRenderer = (props) => {
   const attachments = props.value;
@@ -423,6 +544,283 @@ const CategoryRenderer = (props) => {
   // Return simple text without styling
   return <span>{category}</span>;
 };
+
+// Cell renderer for tags
+const TagsRenderer = (props) => {
+  const tags = props.value;
+  
+  // Quick action buttons style
+  const actionButtonStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '24px',
+    height: '24px',
+    borderRadius: '50%',
+    backgroundColor: 'rgba(0, 255, 0, 0.1)',
+    border: '1px solid #00ff00',
+    color: '#00ff00',
+    cursor: 'pointer',
+    fontSize: '16px',
+    marginLeft: '8px',
+    transition: 'all 0.2s ease',
+  };
+  
+  // Handle add button click (opens modal)
+  const handleAddClick = (e) => {
+    e.stopPropagation(); // Prevent cell click from triggering
+    if (props.context && props.context.setSelectedDeal && props.context.setShowTagsModal) {
+      props.context.setSelectedDeal(props.data);
+      props.context.setShowTagsModal(true);
+    }
+  };
+  
+  // Handle remove button click (opens modal with focus on current tags)
+  const handleRemoveClick = (e) => {
+    e.stopPropagation(); // Prevent cell click from triggering
+    if (props.context && props.context.setSelectedDeal && props.context.setShowTagsModal) {
+      props.context.setSelectedDeal(props.data);
+      props.context.setShowTagsModal(true);
+    }
+  };
+  
+  // If no tags, show placeholder with add button
+  if (!tags || tags.length === 0) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ color: '#aaa', fontStyle: 'italic' }}>No tags</span>
+        <div 
+          style={actionButtonStyle}
+          onClick={handleAddClick}
+          title="Add tags"
+          onMouseOver={(e) => {
+            e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.2)';
+            e.currentTarget.style.boxShadow = '0 0 5px rgba(0, 255, 0, 0.3)';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.1)';
+            e.currentTarget.style.boxShadow = 'none';
+          }}
+        >
+          +
+        </div>
+      </div>
+    );
+  }
+  
+  // Display tags with styling and action buttons
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', flex: 1 }}>
+        {tags.map((tag, index) => (
+          <span 
+            key={tag.tag_id || index} 
+            style={{ 
+              backgroundColor: 'rgba(0, 255, 0, 0.1)', 
+              border: '1px solid #00ff00',
+              color: '#00ff00',
+              padding: '2px 8px',
+              borderRadius: '12px',
+              fontSize: '0.85rem'
+            }}
+          >
+            {tag.name}
+          </span>
+        ))}
+      </div>
+      
+      <div style={{ display: 'flex', gap: '5px', marginLeft: '10px' }}>
+        {/* Add tag button */}
+        <div 
+          style={actionButtonStyle}
+          onClick={handleAddClick}
+          title="Add tags"
+          onMouseOver={(e) => {
+            e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.2)';
+            e.currentTarget.style.boxShadow = '0 0 5px rgba(0, 255, 0, 0.3)';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.1)';
+            e.currentTarget.style.boxShadow = 'none';
+          }}
+        >
+          +
+        </div>
+        
+        {/* Remove tag button */}
+        <div 
+          style={actionButtonStyle}
+          onClick={handleRemoveClick}
+          title="Remove tags"
+          onMouseOver={(e) => {
+            e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.2)';
+            e.currentTarget.style.boxShadow = '0 0 5px rgba(0, 255, 0, 0.3)';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.1)';
+            e.currentTarget.style.boxShadow = 'none';
+          }}
+        >
+          ×
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+
+// Custom filter component for Stage column using the AG Grid API
+class StageFilterComponent {
+  constructor() {
+    this.filterActive = false;
+    this.value = '';
+  }
+
+  init(params) {
+    this.params = params;
+    this.eGui = document.createElement('div');
+    this.eGui.innerHTML = `
+      <select 
+        style="
+          background-color: #1a1a1a;
+          color: #00ff00;
+          border: 1px solid #00ff00;
+          border-radius: 4px;
+          padding: 5px;
+          width: 100%;
+          font-family: 'Courier New', monospace;
+          font-size: 0.85rem
+        "
+      >
+        <option value="">All Stages</option>
+        <option value="Lead">Lead</option>
+        <option value="Qualified">Qualified</option>
+        <option value="Evaluating">Evaluating</option>
+        <option value="Closing">Closing</option>
+        <option value="Negotiation">Negotiation</option>
+        <option value="Closed Won">Closed Won</option>
+        <option value="Invested">Invested</option>
+        <option value="Closed Lost">Closed Lost</option>
+        <option value="Monitoring">Monitoring</option>
+        <option value="Passed">Passed</option>
+      </select>
+    `;
+    
+    this.eSelect = this.eGui.querySelector('select');
+    this.eSelect.addEventListener('change', this.onChange.bind(this));
+  }
+
+  onChange() {
+    this.value = this.eSelect.value;
+    this.filterActive = this.value !== '';
+    this.params.filterChangedCallback();
+  }
+
+  getGui() {
+    return this.eGui;
+  }
+
+  isFilterActive() {
+    return this.filterActive;
+  }
+
+  doesFilterPass(params) {
+    return params.data.stage === this.value;
+  }
+
+  getModel() {
+    return this.filterActive ? { value: this.value } : null;
+  }
+
+  setModel(model) {
+    this.value = model ? model.value : '';
+    this.filterActive = this.value !== '';
+    this.eSelect.value = this.value;
+  }
+}
+
+// Custom floating filter component for Stage column
+class StageFloatingFilter {
+  init(params) {
+    this.params = params;
+    this.eGui = document.createElement('div');
+    
+    // Create the select element
+    this.eSelect = document.createElement('select');
+    this.eSelect.style.backgroundColor = '#1a1a1a';
+    this.eSelect.style.color = '#00ff00';
+    this.eSelect.style.border = '1px solid #00ff00';
+    this.eSelect.style.borderRadius = '4px';
+    this.eSelect.style.padding = '5px';
+    this.eSelect.style.width = '100%';
+    this.eSelect.style.fontFamily = 'Courier New, monospace';
+    this.eSelect.style.fontSize = '0.85rem';
+    this.eSelect.style.cursor = 'pointer';
+    this.eSelect.style.textShadow = '0 0 5px rgba(0, 255, 0, 0.5)';
+    
+    // Add options
+    const options = [
+      { value: '', text: 'All Stages' },
+      { value: 'Lead', text: 'Lead' },
+      { value: 'Qualified', text: 'Qualified' },
+      { value: 'Evaluating', text: 'Evaluating' },
+      { value: 'Closing', text: 'Closing' },
+      { value: 'Negotiation', text: 'Negotiation' },
+      { value: 'Closed Won', text: 'Closed Won' },
+      { value: 'Invested', text: 'Invested' },
+      { value: 'Closed Lost', text: 'Closed Lost' },
+      { value: 'Monitoring', text: 'Monitoring' },
+      { value: 'Passed', text: 'Passed' }
+    ];
+    
+    options.forEach(opt => {
+      const option = document.createElement('option');
+      option.value = opt.value;
+      option.text = opt.text;
+      this.eSelect.appendChild(option);
+    });
+    
+    // Set the current filter value (if available in the context)
+    if (params.context && typeof params.context.stageFilter !== 'undefined') {
+      this.eSelect.value = params.context.stageFilter;
+    }
+    
+    // Add change listener
+    this.eSelect.addEventListener('change', () => {
+      const value = this.eSelect.value;
+      
+      // Directly update the external filter state via context
+      if (params.context && typeof params.context.setStageFilter === 'function') {
+        params.context.setStageFilter(value);
+        
+        // Manually refresh the grid to apply the filter
+        if (params.api) {
+          params.api.onFilterChanged();
+        }
+      }
+    });
+    
+    // Add select to the container
+    this.eGui.appendChild(this.eSelect);
+  }
+  
+  // We're handling the change event directly in the init method
+  
+  getGui() {
+    return this.eGui;
+  }
+  
+  // Required method - called when filter model changes elsewhere
+  onParentModelChanged(parentModel) {
+    // We're not using this in our implementation but the method must exist
+  }
+  
+  // AG Grid will call this when the filter is destroyed
+  destroy() {
+    // Clean up any event listeners if needed
+  }
+}
 
 // Cell renderer for source with custom icons
 const SourceRenderer = (props) => {
@@ -651,6 +1049,12 @@ const SimpleDeals = () => {
   const [activeTab, setActiveTab] = useState('inbox');
   const [currentDealId, setCurrentDealId] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [showTagsModal, setShowTagsModal] = useState(false);
+  const [selectedDeal, setSelectedDeal] = useState(null);
+  const [availableTags, setAvailableTags] = useState([]);
+  const [tagSearchTerm, setTagSearchTerm] = useState('');
+  // Keep stageFilter state but don't use it - needed for the AG Grid filter
+  const [stageFilter, setStageFilter] = useState('');
   const navigate = useNavigate();
   
   // Category colors for this component
@@ -675,40 +1079,20 @@ const SimpleDeals = () => {
       }
     },
     { 
-      headerName: 'Description', 
-      field: 'description',
-      valueGetter: (params) => {
-        return params.data?.description || '-';
-      },
+      headerName: 'Tags', 
+      field: 'tags',
+      cellRenderer: TagsRenderer,
       minWidth: 300,
-      filter: 'agTextColumnFilter',
-      floatingFilter: true,
       sortable: true,
-      editable: true,
+      filter: false,
+      resizable: true,
     },
     { 
       headerName: 'Category', 
       field: 'category',
       cellRenderer: CategoryRenderer,
       minWidth: 140,
-      filter: 'agSetColumnFilter',
-      filterParams: {
-        values: [
-          'Startup',
-          'Investment',
-          'Fund',
-          'Partnership',
-          'Real Estate',
-          'Private Debt',
-          'Private Equity',
-          'Other',
-          'Inbox'
-        ],
-        cellRenderer: params => params.value || '(Empty)',
-        cellHeight: 30,
-        sortButtons: true
-      },
-      floatingFilter: true,
+      filter: false,
       sortable: true,
       editable: true,
       cellEditor: 'agSelectCellEditor',
@@ -727,29 +1111,15 @@ const SimpleDeals = () => {
       }
     },
     { 
-      headerName: 'Stage', 
+      headerName: 'Stage',
       field: 'stage',
       valueFormatter: (params) => params.value || '-',
-      minWidth: 130,
-      filter: 'agSetColumnFilter',
-      filterParams: {
-        values: [
-          'Lead',
-          'Qualified',
-          'Evaluating',
-          'Closing',
-          'Negotiation',
-          'Closed Won',
-          'Invested',
-          'Closed Lost',
-          'Monitoring',
-          'Passed'
-        ],
-        cellRenderer: params => params.value || '(Empty)',
-        cellHeight: 30,
-        sortButtons: true
-      },
+      minWidth: 150,
+      // Don't use internal filtering - we're using our own external filtering
+      filter: false,
       floatingFilter: true,
+      // Use our custom floating filter component
+      floatingFilterComponent: 'stageFloatingFilter',
       sortable: true,
       editable: true,
       cellEditor: 'agSelectCellEditor',
@@ -773,14 +1143,22 @@ const SimpleDeals = () => {
       field: 'source_category',
       cellRenderer: SourceRenderer,
       minWidth: 140,
+      // Use agSetColumnFilter to show a list of values
       filter: 'agSetColumnFilter',
       filterParams: {
+        // Exact list of values for the filter
         values: [
           'Cold Contacting',
           'Introduction'
         ],
+        // Show the values in the dropdown
         cellRenderer: params => params.value || '(Empty)',
+        // Customize the filter appearance and behavior
+        buttons: ['apply', 'reset'],
+        closeOnApply: true,
+        // Height of each value row in the dropdown
         cellHeight: 30,
+        // Enable sorting in the filter dropdown
         sortButtons: true
       },
       floatingFilter: true,
@@ -810,9 +1188,11 @@ const SimpleDeals = () => {
       field: 'created_at', 
       valueFormatter: (params) => {
         if (!params.value) return '-';
-        return new Date(params.value).toLocaleDateString();
+        const date = new Date(params.value);
+        // Format as MM/YY
+        return `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear().toString().slice(-2)}`;
       },
-      minWidth: 120,
+      minWidth: 100,
       filter: 'agDateColumnFilter',
       floatingFilter: true,
       sortable: true,
@@ -831,6 +1211,11 @@ const SimpleDeals = () => {
   // Default column properties
   const defaultColDef = useMemo(() => ({
     resizable: true,
+    // Default filter configuration
+    filterParams: {
+      buttons: ['apply', 'reset'],
+      closeOnApply: true
+    }
   }), []);
   
   // Function to remove a deal from the grid
@@ -838,6 +1223,227 @@ const SimpleDeals = () => {
     setDeals(prevDeals => prevDeals.filter(deal => deal.deal_id !== dealId));
   }, []);
   
+  // Handle tag operations for a deal
+  const handleTagOperation = useCallback(async (operation, tagId) => {
+    if (!selectedDeal || !selectedDeal.deal_id) {
+      toast.error('No deal selected for tag operation');
+      return;
+    }
+
+    try {
+      if (operation === 'add') {
+        // Check if tag already exists for this deal
+        const { data: existingTag, error: checkError } = await supabase
+          .from('deal_tags')
+          .select('*')
+          .eq('deal_id', selectedDeal.deal_id)
+          .eq('tag_id', tagId)
+          .maybeSingle();
+          
+        if (checkError) {
+          throw checkError;
+        }
+        
+        // If tag already exists, don't add it again
+        if (existingTag) {
+          toast.info('This tag is already associated with the deal');
+          return;
+        }
+        
+        // Add tag to deal
+        const { error } = await supabase
+          .from('deal_tags')
+          .insert({
+            deal_id: selectedDeal.deal_id,
+            tag_id: tagId
+          });
+          
+        if (error) {
+          throw error;
+        }
+        
+        // Get the tag name
+        const tagName = availableTags.find(tag => tag.tag_id === tagId)?.name || 'Unknown tag';
+        
+        toast.success(`Added tag "${tagName}" to deal`);
+        
+        // Update the selected deal's tags in the state
+        const newTag = availableTags.find(tag => tag.tag_id === tagId);
+        if (newTag) {
+          setSelectedDeal(prev => ({
+            ...prev,
+            tags: [...(prev.tags || []), newTag]
+          }));
+          
+          // Also update in the main deals array
+          setDeals(prevDeals => prevDeals.map(deal => 
+            deal.deal_id === selectedDeal.deal_id 
+              ? { ...deal, tags: [...(deal.tags || []), newTag] }
+              : deal
+          ));
+        }
+      } else if (operation === 'remove') {
+        // Remove tag from deal
+        const { error } = await supabase
+          .from('deal_tags')
+          .delete()
+          .eq('deal_id', selectedDeal.deal_id)
+          .eq('tag_id', tagId);
+          
+        if (error) {
+          throw error;
+        }
+        
+        // Get the tag name
+        const tagName = selectedDeal.tags?.find(tag => tag.tag_id === tagId)?.name || 'Unknown tag';
+        
+        toast.success(`Removed tag "${tagName}" from deal`);
+        
+        // Update the selected deal's tags in the state
+        setSelectedDeal(prev => ({
+          ...prev,
+          tags: prev.tags?.filter(tag => tag.tag_id !== tagId) || []
+        }));
+        
+        // Also update in the main deals array
+        setDeals(prevDeals => prevDeals.map(deal => 
+          deal.deal_id === selectedDeal.deal_id 
+            ? { ...deal, tags: deal.tags?.filter(tag => tag.tag_id !== tagId) || [] }
+            : deal
+        ));
+      }
+      
+      // Update filtered deals as well
+      setFilteredDeals(prevDeals => prevDeals.map(deal => 
+        deal.deal_id === selectedDeal.deal_id
+          ? deals.find(d => d.deal_id === selectedDeal.deal_id) || deal
+          : deal
+      ));
+      
+      // Refresh the deal's tag data to ensure synchronization
+      try {
+        // Fetch updated tag data for the deal
+        const { data: tagRefs, error: tagRefsError } = await supabase
+          .from('deal_tags')
+          .select('tag_id')
+          .eq('deal_id', selectedDeal.deal_id);
+          
+        if (tagRefsError) {
+          console.error(`Error refreshing tag refs:`, tagRefsError);
+          return;
+        }
+        
+        if (tagRefs && tagRefs.length > 0) {
+          // Get actual tag details
+          const tagIds = tagRefs.map(ref => ref.tag_id);
+          const { data: tagDetails, error: tagDetailsError } = await supabase
+            .from('tags')
+            .select('tag_id, name')
+            .in('tag_id', tagIds);
+            
+          if (tagDetailsError) {
+            console.error(`Error refreshing tag details:`, tagDetailsError);
+            return;
+          }
+          
+          // Update the selected deal with fresh tag data
+          setSelectedDeal(prev => ({
+            ...prev,
+            tags: tagDetails || []
+          }));
+          
+          // Update in the main deals array
+          setDeals(prevDeals => prevDeals.map(deal => 
+            deal.deal_id === selectedDeal.deal_id 
+              ? { ...deal, tags: tagDetails || [] }
+              : deal
+          ));
+          
+          // Update filtered deals as well
+          setFilteredDeals(prevDeals => prevDeals.map(deal => 
+            deal.deal_id === selectedDeal.deal_id
+              ? { ...deal, tags: tagDetails || [] }
+              : deal
+          ));
+        } else {
+          // If no tags, set empty array
+          setSelectedDeal(prev => ({
+            ...prev,
+            tags: []
+          }));
+          
+          // Update in the deals arrays
+          const updateDeals = deal => 
+            deal.deal_id === selectedDeal.deal_id 
+              ? { ...deal, tags: [] }
+              : deal;
+              
+          setDeals(prevDeals => prevDeals.map(updateDeals));
+          setFilteredDeals(prevDeals => prevDeals.map(updateDeals));
+        }
+      } catch (err) {
+        console.error('Error refreshing tag data:', err);
+      }
+      
+    } catch (err) {
+      console.error(`Error in tag operation (${operation}):`, err);
+      toast.error(`Error ${operation === 'add' ? 'adding' : 'removing'} tag: ${err.message}`);
+    }
+  }, [selectedDeal, availableTags, deals]);
+  
+  // Handle creating a new tag
+  const handleCreateTag = useCallback(async (tagName) => {
+    if (!tagName || tagName.trim() === '') {
+      toast.error('Tag name cannot be empty');
+      return;
+    }
+    
+    try {
+      // Check if tag already exists
+      const { data: existingTags, error: checkError } = await supabase
+        .from('tags')
+        .select('*')
+        .ilike('name', tagName.trim());
+        
+      if (checkError) {
+        throw checkError;
+      }
+      
+      if (existingTags && existingTags.length > 0) {
+        toast.info(`Tag "${tagName}" already exists`);
+        return existingTags[0].tag_id; // Return existing tag ID
+      }
+      
+      // Create new tag
+      const { data, error } = await supabase
+        .from('tags')
+        .insert({
+          name: tagName.trim()
+        })
+        .select();
+        
+      if (error) {
+        throw error;
+      }
+      
+      if (!data || data.length === 0) {
+        throw new Error('Failed to create tag: No data returned');
+      }
+      
+      const newTag = data[0];
+      toast.success(`Created new tag "${newTag.name}"`);
+      
+      // Add to available tags
+      setAvailableTags(prev => [...prev, newTag]);
+      
+      return newTag.tag_id;
+    } catch (err) {
+      console.error('Error creating tag:', err);
+      toast.error(`Error creating tag: ${err.message}`);
+      return null;
+    }
+  }, []);
+
   // Handle file upload to Supabase
   const handleFileUpload = useCallback(async (file) => {
     if (!file || !currentDealId) return;
@@ -951,9 +1557,13 @@ const SimpleDeals = () => {
     setDealName,
     setCurrentDealId,
     setShowAttachmentsModal,
+    setShowTagsModal,
+    setSelectedDeal,
     categoryColors,
-    removeDeal
-  }), [categoryColors, removeDeal]);
+    removeDeal,
+    stageFilter,
+    setStageFilter
+  }), [categoryColors, removeDeal, stageFilter]);
 
   // Grid ready event handler
   const onGridReady = React.useCallback((params) => {
@@ -1025,9 +1635,9 @@ const SimpleDeals = () => {
           toast.success(`Deal name updated to "${newValue}"`, {
             icon: '✏️'
           });
-        } else if (colDef.field === 'description') {
-          toast.success(`Description updated successfully`, {
-            icon: '📝'
+        } else if (colDef.field === 'tags') {
+          toast.success(`Tags updated successfully`, {
+            icon: '🏷️'
           });
         }
       }
@@ -1036,6 +1646,25 @@ const SimpleDeals = () => {
       toast.error(`Error updating deal: ${err.message}`);
     }
   }, []);
+
+  // Fetch all available tags
+  const fetchAllTags = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('tags')
+        .select('*')
+        .order('name');
+        
+      if (error) {
+        console.error('Error fetching tags:', error);
+        return;
+      }
+      
+      setAvailableTags(data || []);
+    } catch (err) {
+      console.error('Error fetching tags:', err);
+    }
+  };
 
   // Fetch deals data from Supabase
   const fetchDeals = async () => {
@@ -1077,8 +1706,8 @@ const SimpleDeals = () => {
       // Process the data
       console.log(`Fetched ${data.length} deals`);
       
-      // Fetch attachments for each deal
-      const dealsWithAttachments = await Promise.all(data.map(async (deal) => {
+      // Fetch attachments and tags for each deal
+      const dealsWithData = await Promise.all(data.map(async (deal) => {
         try {
           // Get attachment references
           const { data: attachmentRefs, error: refsError } = await supabase
@@ -1088,34 +1717,63 @@ const SimpleDeals = () => {
             
           if (refsError) {
             console.error(`Error fetching attachment refs for deal ${deal.deal_id}:`, refsError);
-            return { ...deal, attachments: [] };
+            return { ...deal, attachments: [], tags: [] };
           }
           
-          if (!attachmentRefs || attachmentRefs.length === 0) {
-            return { ...deal, attachments: [] };
+          let attachments = [];
+          
+          if (attachmentRefs && attachmentRefs.length > 0) {
+            // Get actual attachment details
+            const attachmentIds = attachmentRefs.map(ref => ref.attachment_id);
+            const { data: attachmentDetails, error: detailsError } = await supabase
+              .from('attachments')
+              .select('attachment_id, file_name, file_url, file_type, file_size, permanent_url')
+              .in('attachment_id', attachmentIds);
+              
+            if (detailsError) {
+              console.error(`Error fetching attachment details for deal ${deal.deal_id}:`, detailsError);
+            } else {
+              attachments = attachmentDetails || [];
+            }
           }
           
-          // Get actual attachment details
-          const attachmentIds = attachmentRefs.map(ref => ref.attachment_id);
-          const { data: attachmentDetails, error: detailsError } = await supabase
-            .from('attachments')
-            .select('attachment_id, file_name, file_url, file_type, file_size, permanent_url')
-            .in('attachment_id', attachmentIds);
+          // Get tags for the deal
+          const { data: tagRefs, error: tagRefsError } = await supabase
+            .from('deal_tags')
+            .select('tag_id')
+            .eq('deal_id', deal.deal_id);
             
-          if (detailsError) {
-            console.error(`Error fetching attachment details for deal ${deal.deal_id}:`, detailsError);
-            return { ...deal, attachments: [] };
+          if (tagRefsError) {
+            console.error(`Error fetching tag refs for deal ${deal.deal_id}:`, tagRefsError);
+            return { ...deal, attachments, tags: [] };
           }
           
-          return { ...deal, attachments: attachmentDetails || [] };
+          let tags = [];
+          
+          if (tagRefs && tagRefs.length > 0) {
+            // Get actual tag details
+            const tagIds = tagRefs.map(ref => ref.tag_id);
+            const { data: tagDetails, error: tagDetailsError } = await supabase
+              .from('tags')
+              .select('tag_id, name')
+              .in('tag_id', tagIds);
+              
+            if (tagDetailsError) {
+              console.error(`Error fetching tag details for deal ${deal.deal_id}:`, tagDetailsError);
+            } else {
+              tags = tagDetails || [];
+            }
+          }
+          
+          return { ...deal, attachments, tags };
         } catch (err) {
-          console.error(`Error processing attachments for deal ${deal.deal_id}:`, err);
-          return { ...deal, attachments: [] };
+          console.error(`Error processing data for deal ${deal.deal_id}:`, err);
+          return { ...deal, attachments: [], tags: [] };
         }
       }));
       
-      setDeals(dealsWithAttachments);
-      setFilteredDeals(dealsWithAttachments);
+      setDeals(dealsWithData);
+      setFilteredDeals(dealsWithData);
       setLoading(false);
       setDataLoaded(true);
       
@@ -1136,12 +1794,14 @@ const SimpleDeals = () => {
     if (!dataLoaded) {
       console.log('Initiating deals data fetch');
       fetchDeals();
+      fetchAllTags();
     }
   }, [dataLoaded]);
   
-  // Filter deals based on active tab
+  // Filter deals based on active tab and stage filter
   useEffect(() => {
     console.log('Filtering deals. Active tab:', activeTab);
+    console.log('Stage filter:', stageFilter);
     console.log('Total deals:', deals.length);
     
     if (deals.length > 0) {
@@ -1159,32 +1819,29 @@ const SimpleDeals = () => {
       // Get the expected category name for the active tab
       const expectedCategory = categoryMap[activeTab];
       
-      if (!expectedCategory) {
-        // If no mapping found, show all deals
-        console.log('No category mapping for tab, showing all deals');
-        setFilteredDeals(deals);
-        return;
+      // First filter by category
+      let filtered = deals;
+      
+      if (expectedCategory) {
+        console.log(`Filtering for category: ${expectedCategory}`);
+        
+        // Filter deals with matching category (case-insensitive)
+        filtered = deals.filter(deal => {
+          const dealCategory = deal.category || '';
+          // Handle case and spacing differences
+          return dealCategory.toLowerCase() === expectedCategory.toLowerCase();
+        });
       }
       
-      console.log(`Filtering for category: ${expectedCategory}`);
-      
-      // Filter deals with matching category (case-insensitive)
-      const filtered = deals.filter(deal => {
-        const dealCategory = deal.category || '';
-        // Handle case and spacing differences
-        return dealCategory.toLowerCase() === expectedCategory.toLowerCase();
-      });
-      
-      console.log(`Found ${filtered.length} deals with category '${expectedCategory}'`);
-      if (filtered.length === 0) {
-        console.log('Sample categories from all deals:', 
-          [...new Set(deals.map(d => d.category))].filter(Boolean)
-        );
+      // Then filter by stage if a stage filter is selected
+      if (stageFilter) {
+        filtered = filtered.filter(deal => deal.stage === stageFilter);
       }
       
+      console.log(`Found ${filtered.length} deals after filtering`);
       setFilteredDeals(filtered);
     }
-  }, [activeTab, deals]);
+  }, [activeTab, deals, stageFilter]);
   
   // Separate effect for window resize
   useEffect(() => {
@@ -1244,9 +1901,6 @@ const SimpleDeals = () => {
       </TopMenuContainer>
       
       <Title>Deals ({filteredDeals.length})</Title>
-      <div style={{ margin: '0 20px 20px', color: '#00ff00' }}>
-        Double-click on any Deal name, Description, Category, Stage, Source, or Investment Amount to edit it directly.
-      </div>
       
       {error && <ErrorText>Error: {error}</ErrorText>}
       
@@ -1310,6 +1964,9 @@ const SimpleDeals = () => {
             context={gridContext}
             editType="cell"
             stopEditingWhenCellsLoseFocus={true}
+            components={{
+              stageFloatingFilter: StageFloatingFilter
+            }}
           />
         </div>
       )}
@@ -1448,6 +2105,161 @@ const SimpleDeals = () => {
             )}
           </AttachmentList>
         </AttachmentsModalContent>
+      </Modal>
+
+      {/* Tags Modal */}
+      <Modal
+        isOpen={showTagsModal}
+        onRequestClose={() => {
+          setShowTagsModal(false);
+          setTagSearchTerm(''); // Clear search term when modal is closed
+        }}
+        style={modalStyles}
+        contentLabel="Manage Tags"
+      >
+        <TagsModalContent>
+          <ModalHeader>
+            <h2>Manage Tags for {selectedDeal?.opportunity || 'Deal'}</h2>
+            <button onClick={() => {
+              setShowTagsModal(false);
+              setTagSearchTerm(''); // Clear search term when modal is closed
+            }}>✕</button>
+          </ModalHeader>
+
+          {/* Current deal tags */}
+          <TagsSection style={{ paddingTop: 0, borderTop: 'none' }}>
+            <TagsTitle>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+                <line x1="7" y1="7" x2="7.01" y2="7"></line>
+              </svg>
+              CURRENT TAGS
+            </TagsTitle>
+            <TagsContainer>
+              {selectedDeal?.tags && selectedDeal.tags.length > 0 ? (
+                selectedDeal.tags.map(tag => (
+                  <TagItem 
+                    key={tag.tag_id} 
+                    $selected={true}
+                    onClick={() => handleTagOperation('remove', tag.tag_id)}
+                  >
+                    {tag.name}
+                    <span style={{ marginLeft: '6px', fontSize: '12px' }}>✕</span>
+                  </TagItem>
+                ))
+              ) : (
+                <div style={{ color: '#aaa', fontStyle: 'italic', padding: '10px 0' }}>No tags assigned to this deal</div>
+              )}
+            </TagsContainer>
+          </TagsSection>
+
+          {/* Add Tags section with search and create functionality */}
+          <TagsSection>
+            <TagsTitle>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                <line x1="11" y1="8" x2="11" y2="14"></line>
+                <line x1="8" y1="11" x2="14" y2="11"></line>
+              </svg>
+              ADD TAGS
+            </TagsTitle>
+            
+            <SearchContainer>
+              <SearchInput
+                type="text"
+                placeholder="Search for tags..."
+                value={tagSearchTerm}
+                onChange={(e) => setTagSearchTerm(e.target.value)}
+                onKeyPress={(e) => {
+                  // If Enter is pressed and there are no matching tags, create a new one
+                  if (e.key === 'Enter' && e.target.value.trim()) {
+                    const searchTerm = e.target.value.trim().toLowerCase();
+                    const hasMatch = availableTags.some(tag => 
+                      !selectedDeal?.tags?.some(t => t.tag_id === tag.tag_id) &&
+                      tag.name.toLowerCase() === searchTerm
+                    );
+                    
+                    if (!hasMatch) {
+                      handleCreateTag(searchTerm).then(tagId => {
+                        if (tagId) {
+                          handleTagOperation('add', tagId);
+                          setTagSearchTerm(''); // Clear search after creating
+                        }
+                      });
+                    }
+                  }
+                }}
+                autoFocus
+              />
+            </SearchContainer>
+            
+            <TagsContainer>
+              {/* Only show tags if there's a search term */}
+              {tagSearchTerm !== '' ? (
+                <>
+                  {availableTags
+                    .filter(tag => 
+                      // Don't show tags already assigned to the deal
+                      !selectedDeal?.tags?.some(t => t.tag_id === tag.tag_id) &&
+                      // Filter by search term
+                      tag.name.toLowerCase().includes(tagSearchTerm.toLowerCase())
+                    )
+                    .map(tag => (
+                      <TagItem 
+                        key={tag.tag_id}
+                        onClick={() => handleTagOperation('add', tag.tag_id)}
+                      >
+                        {tag.name}
+                        <span style={{ marginLeft: '6px', fontSize: '12px' }}>+</span>
+                      </TagItem>
+                    ))
+                  }
+                  
+                  {/* Show create new tag option when no exact match found */}
+                  {tagSearchTerm.trim() !== '' && 
+                   !availableTags.some(tag => 
+                    !selectedDeal?.tags?.some(t => t.tag_id === tag.tag_id) &&
+                    tag.name.toLowerCase() === tagSearchTerm.trim().toLowerCase()
+                   ) && (
+                    <TagItem 
+                      $selected={true}
+                      style={{ 
+                        backgroundColor: 'rgba(0, 255, 0, 0.15)',
+                        cursor: 'pointer',
+                        border: '1px dashed #00ff00'
+                      }}
+                      onClick={() => {
+                        handleCreateTag(tagSearchTerm).then(tagId => {
+                          if (tagId) {
+                            handleTagOperation('add', tagId);
+                            setTagSearchTerm(''); // Clear search after creating
+                          }
+                        });
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00ff00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                      </svg>
+                      Create "{tagSearchTerm}"
+                    </TagItem>
+                  )}
+                  
+                  {/* Show a message when no matching tags are found and search is empty */}
+                  {availableTags.filter(tag => 
+                    !selectedDeal?.tags?.some(t => t.tag_id === tag.tag_id) &&
+                    tag.name.toLowerCase().includes(tagSearchTerm.toLowerCase())
+                  ).length === 0 && tagSearchTerm.trim() === '' && (
+                    <div style={{ width: '100%', textAlign: 'center', padding: '10px', color: '#aaa' }}>
+                      No matching tags found.
+                    </div>
+                  )}
+                </>
+              ) : null}
+            </TagsContainer>
+          </TagsSection>
+        </TagsModalContent>
       </Modal>
     </Container>
   );
