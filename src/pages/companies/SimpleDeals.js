@@ -8,7 +8,7 @@ import { FiGrid, FiCpu, FiDollarSign, FiHome, FiPackage, FiBriefcase, FiInbox, F
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
-// Custom styles for neon green toast notifications
+// Custom styles for neon green toast notifications and dropdown filter
 const toastStyles = `
   .green-toast {
     border-color: #00ff00 !important;
@@ -30,6 +30,39 @@ const toastStyles = `
   }
   .Toastify__close-button {
     color: #00ff00 !important;
+  }
+  
+  /* Custom styles for stage filter dropdown */
+  .stage-filter-dropdown {
+    background-color: #1a1a1a !important;
+    color: #00ff00 !important;
+    border: 2px solid #00ff00 !important;
+    border-radius: 4px !important;
+    padding: 5px !important;
+    width: 95% !important;
+    font-family: 'Courier New', monospace !important;
+    font-size: 0.85rem !important;
+    cursor: pointer !important;
+    text-shadow: 0 0 5px rgba(0, 255, 0, 0.5) !important;
+    box-shadow: 0 0 8px rgba(0, 255, 0, 0.5) !important;
+    outline: none !important;
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    z-index: 100 !important;
+  }
+  
+  .stage-filter-dropdown option {
+    background-color: #1a1a1a !important;
+    color: #00ff00 !important;
+    font-family: 'Courier New', monospace !important;
+  }
+  
+  /* Target the specific filter cell */
+  .ag-header-cell.ag-floating-filter[aria-colindex="5"] {
+    position: relative !important;
+    background-color: rgba(0, 255, 0, 0.05) !important;
   }
 `;
 
@@ -671,17 +704,82 @@ const TagsRenderer = (props) => {
 
 
 // Custom filter component for Stage column using the AG Grid API
-class StageFilterComponent {
-  constructor() {
-    this.filterActive = false;
-    this.value = '';
-  }
-
+class StageFloatingFilter {
   init(params) {
     this.params = params;
     this.eGui = document.createElement('div');
+    this.eGui.style.width = '100%';
+    this.eGui.style.height = '100%';
+    
+    // Create select element
+    this.eSelect = document.createElement('select');
+    this.eSelect.style.backgroundColor = '#1a1a1a';
+    this.eSelect.style.color = '#00ff00';
+    this.eSelect.style.border = '1px solid #333';
+    this.eSelect.style.borderRadius = '4px';
+    this.eSelect.style.padding = '4px 8px';
+    this.eSelect.style.width = '100%';
+    this.eSelect.style.height = '100%';
+    this.eSelect.style.fontFamily = 'Courier New, monospace';
+    this.eSelect.style.fontSize = '0.85rem';
+    this.eSelect.style.cursor = 'pointer';
+    this.eSelect.style.outline = 'none';
+    
+    // Add options
+    const stageOptions = [
+      { value: '', label: 'All Stages' },
+      { value: 'Lead', label: 'Lead' },
+      { value: 'Qualified', label: 'Qualified' },
+      { value: 'Evaluating', label: 'Evaluating' },
+      { value: 'Closing', label: 'Closing' },
+      { value: 'Negotiation', label: 'Negotiation' },
+      { value: 'Closed Won', label: 'Closed Won' },
+      { value: 'Invested', label: 'Invested' },
+      { value: 'Closed Lost', label: 'Closed Lost' },
+      { value: 'Monitoring', label: 'Monitoring' },
+      { value: 'Passed', label: 'Passed' }
+    ];
+    
+    stageOptions.forEach(option => {
+      const optionElement = document.createElement('option');
+      optionElement.value = option.value;
+      optionElement.textContent = option.label;
+      this.eSelect.appendChild(optionElement);
+    });
+    
+    // Add change handler
+    this.eSelect.addEventListener('change', () => {
+      const stageFilterValue = this.eSelect.value;
+      
+      // Get the callback function from the context
+      if (this.params.context && this.params.context.setStageFilter) {
+        this.params.context.setStageFilter(stageFilterValue);
+      }
+    });
+    
+    // Add to DOM
+    this.eGui.appendChild(this.eSelect);
+  }
+  
+  onParentModelChanged() {
+    // Not needed for our implementation
+  }
+  
+  getGui() {
+    return this.eGui;
+  }
+}
+
+// Filter component for Stage column
+class StageFilterComponent {
+  init(params) {
+    this.params = params;
+    this.filterActive = false;
+    this.value = '';
+    
+    this.eGui = document.createElement('div');
     this.eGui.innerHTML = `
-      <select 
+      <select
         style="
           background-color: #1a1a1a;
           color: #00ff00;
@@ -690,8 +788,7 @@ class StageFilterComponent {
           padding: 5px;
           width: 100%;
           font-family: 'Courier New', monospace;
-          font-size: 0.85rem
-        "
+          font-size: 0.85rem;"
       >
         <option value="">All Stages</option>
         <option value="Lead">Lead</option>
@@ -740,24 +837,36 @@ class StageFilterComponent {
   }
 }
 
-// Custom floating filter component for Stage column
-class StageFloatingFilter {
+// Custom floating filter component for Stage column - Final Implementation
+class StageFloatingFilterFinal {
   init(params) {
     this.params = params;
+    
+    // Create main container
     this.eGui = document.createElement('div');
+    this.eGui.style.width = '100%';
+    this.eGui.style.height = '100%';
+    this.eGui.style.display = 'flex';
+    this.eGui.style.alignItems = 'center';
+    this.eGui.style.justifyContent = 'center';
     
     // Create the select element
     this.eSelect = document.createElement('select');
+    this.eSelect.className = 'stage-filter-dropdown';
+    
+    // Style the select element to match AG Grid's theme but with custom colors
     this.eSelect.style.backgroundColor = '#1a1a1a';
     this.eSelect.style.color = '#00ff00';
     this.eSelect.style.border = '1px solid #00ff00';
     this.eSelect.style.borderRadius = '4px';
     this.eSelect.style.padding = '5px';
-    this.eSelect.style.width = '100%';
+    this.eSelect.style.width = '95%'; // Leave a bit of space for better visual integration
     this.eSelect.style.fontFamily = 'Courier New, monospace';
     this.eSelect.style.fontSize = '0.85rem';
     this.eSelect.style.cursor = 'pointer';
     this.eSelect.style.textShadow = '0 0 5px rgba(0, 255, 0, 0.5)';
+    this.eSelect.style.boxShadow = '0 0 5px rgba(0, 255, 0, 0.3)';
+    this.eSelect.style.outline = 'none';
     
     // Add options
     const options = [
@@ -778,6 +887,8 @@ class StageFloatingFilter {
       const option = document.createElement('option');
       option.value = opt.value;
       option.text = opt.text;
+      option.style.backgroundColor = '#1a1a1a';
+      option.style.color = '#00ff00';
       this.eSelect.appendChild(option);
     });
     
@@ -801,7 +912,93 @@ class StageFloatingFilter {
       }
     });
     
-    // Add select to the container
+    // DOM injection approach with robust fallbacks and debugging
+    const injectDropdownIntoHeaderCell = () => {
+      try {
+        // Try different selectors to find the Stage column's filter cell
+        let targetCell = document.querySelector('.ag-header-cell.ag-floating-filter[aria-colindex="5"]');
+        
+        // Alternative selectors if the first one fails
+        if (!targetCell) {
+          // Try finding by column position (5th visible column)
+          const filterCells = document.querySelectorAll('.ag-header-cell.ag-floating-filter');
+          if (filterCells && filterCells.length >= 5) {
+            targetCell = filterCells[4]; // 0-indexed, so 4 is the 5th cell
+          }
+        }
+        
+        // Try one more approach - find by column label
+        if (!targetCell) {
+          const stageHeader = document.querySelector('.ag-header-cell[col-id="stage"]');
+          if (stageHeader) {
+            const colIndex = stageHeader.getAttribute('aria-colindex');
+            if (colIndex) {
+              targetCell = document.querySelector(`.ag-header-cell.ag-floating-filter[aria-colindex="${colIndex}"]`);
+            }
+          }
+        }
+        
+        console.log('Target cell found:', !!targetCell);
+        
+        if (targetCell) {
+          // Try to find the correct container within the cell
+          let container = targetCell.querySelector('div[role="presentation"]');
+          
+          // If that doesn't work, try other common container elements
+          if (!container) {
+            container = targetCell.querySelector('.ag-floating-filter-body');
+          }
+          
+          if (!container) {
+            container = targetCell.querySelector('.ag-floating-filter-full-body');
+          }
+          
+          // Last resort: use the cell itself
+          if (!container) {
+            container = targetCell;
+          }
+          
+          console.log('Container found:', !!container);
+          
+          if (container) {
+            // Clear existing content
+            container.innerHTML = '';
+            
+            // Move our select element into the target container
+            container.appendChild(this.eSelect);
+            
+            console.log('Successfully injected filter dropdown');
+            return true;
+          }
+        }
+        
+        return false;
+      } catch (err) {
+        console.error('Error injecting dropdown:', err);
+        return false;
+      }
+    };
+    
+    // Retry mechanism with increasing delays
+    const attemptInjection = (attempt = 1, maxAttempts = 5) => {
+      if (attempt > maxAttempts) {
+        console.log('Max injection attempts reached, using default placement');
+        return;
+      }
+      
+      setTimeout(() => {
+        const success = injectDropdownIntoHeaderCell();
+        if (!success) {
+          console.log(`Attempt ${attempt} failed, trying again...`);
+          attemptInjection(attempt + 1, maxAttempts);
+        }
+      }, 300 * attempt); // Increasing delay with each attempt
+    };
+    
+    // Start the injection attempts
+    attemptInjection();
+    
+    // Add select to our container as well (fallback)
     this.eGui.appendChild(this.eSelect);
   }
   
@@ -819,6 +1016,9 @@ class StageFloatingFilter {
   // AG Grid will call this when the filter is destroyed
   destroy() {
     // Clean up any event listeners if needed
+    if (this.eSelect) {
+      this.eSelect.removeEventListener('change');
+    }
   }
 }
 
@@ -1079,6 +1279,170 @@ const SimpleDeals = () => {
       }
     },
     { 
+      headerName: 'Contacts', 
+      field: 'contacts',
+      minWidth: 220,
+      sortable: true,
+      filter: true,
+      cellRenderer: (params) => {
+        const contacts = params.value;
+        if (!contacts || contacts.length === 0) {
+          return (
+            <div style={{ textAlign: 'center', color: '#aaa', fontStyle: 'italic' }}>No contacts</div>
+          );
+        }
+        
+        // Format for preview of first contact
+        const firstContact = contacts[0];
+        const fullName = [firstContact.first_name || '', firstContact.last_name || ''].filter(Boolean).join(' ') || 'Unnamed';
+        const jobRole = firstContact.job_role || '';
+        const hasInteraction = firstContact.last_interaction_at ? true : false;
+        const interactionDate = hasInteraction ? new Date(firstContact.last_interaction_at) : null;
+        
+        // Return formatted contacts display
+        return (
+          <div style={{ 
+            display: 'flex', 
+            flexDirection: 'column',
+            cursor: 'pointer',
+            padding: '5px 10px',
+            borderRadius: '4px',
+            transition: 'all 0.2s ease',
+            backgroundColor: 'rgba(0, 255, 0, 0.05)',
+            border: '1px solid rgba(0, 255, 0, 0.1)',
+          }}
+          onClick={() => {
+            if (params.context && params.context.showDealContacts) {
+              params.context.showDealContacts(params.data);
+            }
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.1)';
+            e.currentTarget.style.borderColor = 'rgba(0, 255, 0, 0.3)';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.05)';
+            e.currentTarget.style.borderColor = 'rgba(0, 255, 0, 0.1)';
+          }}
+          >
+            {/* Header with contact count */}
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              marginBottom: '4px',
+              borderBottom: '1px dotted rgba(0, 255, 0, 0.2)',
+              paddingBottom: '3px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00ff00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+                <span style={{ marginLeft: '6px', color: '#00ff00', fontWeight: 'bold' }}>
+                  {contacts.length} contact{contacts.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <span style={{ 
+                fontSize: '11px', 
+                color: '#00ff00', 
+                backgroundColor: 'rgba(0, 255, 0, 0.1)', 
+                padding: '2px 6px', 
+                borderRadius: '10px' 
+              }}>View all</span>
+            </div>
+            
+            {/* First contact preview */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ 
+                width: '28px', 
+                height: '28px', 
+                borderRadius: '50%', 
+                backgroundColor: '#222', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                border: '1px solid rgba(0, 255, 0, 0.2)',
+                overflow: 'hidden'
+              }}>
+                {firstContact.profile_image_url ? (
+                  <img 
+                    src={firstContact.profile_image_url} 
+                    alt={fullName} 
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                  />
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00ff00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                  </svg>
+                )}
+              </div>
+              <div style={{ flexGrow: 1, overflow: 'hidden' }}>
+                <div style={{ 
+                  color: '#00ff00', 
+                  fontWeight: 'bold', 
+                  fontSize: '13px',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
+                }}>
+                  {fullName}
+                </div>
+                {jobRole && (
+                  <div style={{ 
+                    color: '#aaa', 
+                    fontSize: '11px', 
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
+                  }}>
+                    {jobRole}
+                  </div>
+                )}
+              </div>
+              {contacts.length > 1 && (
+                <div style={{ 
+                  width: '22px', 
+                  height: '22px', 
+                  borderRadius: '50%', 
+                  backgroundColor: 'rgba(0, 255, 0, 0.1)',
+                  color: '#00ff00',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '10px',
+                  fontWeight: 'bold'
+                }}>
+                  +{contacts.length - 1}
+                </div>
+              )}
+            </div>
+            
+            {/* Last interaction indicator (if available) */}
+            {hasInteraction && (
+              <div style={{ 
+                fontSize: '10px', 
+                color: '#888', 
+                marginTop: '4px', 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '4px'
+              }}>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                Last contact: {interactionDate.toLocaleDateString()}
+              </div>
+            )}
+          </div>
+        );
+      }
+    },
+    { 
       headerName: 'Tags', 
       field: 'tags',
       cellRenderer: TagsRenderer,
@@ -1115,15 +1479,10 @@ const SimpleDeals = () => {
       field: 'stage',
       valueFormatter: (params) => params.value || '-',
       minWidth: 150,
-      // Don't use internal filtering - we're using our own external filtering
       filter: false,
       floatingFilter: true,
-      // Use our custom floating filter component
+      suppressMenu: true, // Suppress the default filter menu
       floatingFilterComponent: 'stageFloatingFilter',
-      // Hide the filter button in the header
-      floatingFilterComponentParams: {
-        suppressFilterButton: true
-      },
       sortable: true,
       editable: true,
       cellEditor: 'agSelectCellEditor',
@@ -1555,6 +1914,18 @@ const SimpleDeals = () => {
     }
   }, [currentDealId]);
   
+  // Function to show deal contacts
+  const showDealContacts = useCallback((deal) => {
+    console.log('Showing contacts for deal:', deal);
+    // You would typically implement this to show a modal or navigate to a contacts page
+    toast.info(`Showing contacts for deal: ${deal.opportunity}`, {
+      style: {
+        borderLeft: '5px solid #00ff00',
+        color: '#ffffff'
+      }
+    });
+  }, []);
+
   // Context to pass to the grid
   const gridContext = useMemo(() => ({
     setSelectedAttachments,
@@ -1563,12 +1934,42 @@ const SimpleDeals = () => {
     setShowAttachmentsModal,
     setShowTagsModal,
     setSelectedDeal,
+    showDealContacts,
     categoryColors,
     removeDeal,
     stageFilter,
     setStageFilter
-  }), [categoryColors, removeDeal, stageFilter]);
+  }), [categoryColors, removeDeal, stageFilter, showDealContacts]);
 
+  // Create a manual filter dropdown that's positioned outside AG Grid
+  const [showManualStageFilter, setShowManualStageFilter] = useState(false);
+  const [filterPosition, setFilterPosition] = useState({ top: 0, left: 0, width: 150, height: 30 });
+  
+  // Function to position the manual filter dropdown
+  const positionManualFilter = useCallback(() => {
+    try {
+      // Find the target filter cell
+      const targetCell = document.querySelector('.ag-header-cell.ag-floating-filter[aria-colindex="5"]');
+      if (!targetCell) return;
+      
+      // Get the position and dimensions of the target cell
+      const cellRect = targetCell.getBoundingClientRect();
+      
+      // Update position state for the manual filter
+      setFilterPosition({
+        top: cellRect.top + window.scrollY,
+        left: cellRect.left + window.scrollX,
+        width: cellRect.width,
+        height: cellRect.height
+      });
+      
+      // Make the filter visible
+      setShowManualStageFilter(true);
+    } catch (err) {
+      console.error('Error positioning manual filter:', err);
+    }
+  }, []);
+  
   // Grid ready event handler
   const onGridReady = React.useCallback((params) => {
     console.log('Grid is ready');
@@ -1577,8 +1978,25 @@ const SimpleDeals = () => {
     // Wait for a tick to ensure grid is properly initialized
     setTimeout(() => {
       params.api.sizeColumnsToFit();
-    }, 0);
-  }, []);
+      
+      // Debugging: log some info about the grid and the Stage column
+      console.log('Grid API object:', params.api);
+      
+      const stageColumn = params.columnApi.getColumn('stage');
+      if (stageColumn) {
+        console.log('Stage column found, ID:', stageColumn.getId());
+        console.log('Stage column props:', stageColumn.getColDef());
+      } else {
+        console.warn('Stage column not found in the grid');
+      }
+      
+      // Force refresh of the grid
+      params.api.refreshHeader();
+      
+      // Position the manual filter
+      positionManualFilter();
+    }, 300);
+  }, [positionManualFilter]);
 
   // Row clicked handler
   const handleRowClicked = React.useCallback((params) => {
@@ -1802,6 +2220,29 @@ const SimpleDeals = () => {
     }
   }, [dataLoaded]);
   
+  // Effect to handle repositioning filter on scroll/resize
+  useEffect(() => {
+    if (showManualStageFilter) {
+      const handleWindowEvents = () => {
+        positionManualFilter();
+      };
+      
+      // Add event listeners
+      window.addEventListener('scroll', handleWindowEvents);
+      window.addEventListener('resize', handleWindowEvents);
+      
+      // Set up interval to reposition (helps with dynamic grid changes)
+      const repositionInterval = setInterval(handleWindowEvents, 1000);
+      
+      // Cleanup
+      return () => {
+        window.removeEventListener('scroll', handleWindowEvents);
+        window.removeEventListener('resize', handleWindowEvents);
+        clearInterval(repositionInterval);
+      };
+    }
+  }, [showManualStageFilter, positionManualFilter]);
+  
   // Filter deals based on active tab and stage filter
   useEffect(() => {
     console.log('Filtering deals. Active tab:', activeTab);
@@ -1847,20 +2288,29 @@ const SimpleDeals = () => {
     }
   }, [activeTab, deals, stageFilter]);
   
-  // Separate effect for window resize
+  // Separate effect for window resize and grid updates
   useEffect(() => {
     if (!gridApi) return;
     
     const handleResize = () => {
       gridApi.sizeColumnsToFit();
+      
+      // Reposition our custom filter dropdown after grid resize
+      setTimeout(positionManualFilter, 100);
     };
     
     window.addEventListener('resize', handleResize, { passive: true });
     
+    // Set a timeout to position the filter after grid has fully initialized
+    const initialPositionTimeout = setTimeout(() => {
+      positionManualFilter();
+    }, 500);
+    
     return () => {
       window.removeEventListener('resize', handleResize, { passive: true });
+      clearTimeout(initialPositionTimeout);
     };
-  }, [gridApi]);
+  }, [gridApi, positionManualFilter]);
 
   // Define menu items with icons
   const menuItems = [
@@ -1892,6 +2342,58 @@ const SimpleDeals = () => {
         theme="dark"
       />
       
+      {/* Manual Filter Dropdown positioned over the AG Grid filter cell */}
+      {showManualStageFilter && (
+        <div 
+          className="manual-stage-filter-container"
+          style={{
+            position: 'absolute', 
+            top: filterPosition.top + 'px',
+            left: filterPosition.left + 'px',
+            width: filterPosition.width + 'px',
+            height: filterPosition.height + 'px',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'all'
+          }}
+        >
+          <select 
+            value={stageFilter} 
+            onChange={e => setStageFilter(e.target.value)}
+            className="stage-filter-dropdown"
+            style={{
+              width: '95%',
+              height: '75%',
+              backgroundColor: '#1a1a1a',
+              color: '#00ff00',
+              border: '2px solid #00ff00',
+              borderRadius: '4px',
+              padding: '5px',
+              fontFamily: 'Courier New, monospace',
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              textShadow: '0 0 5px rgba(0, 255, 0, 0.5)',
+              boxShadow: '0 0 8px rgba(0, 255, 0, 0.5)',
+              outline: 'none'
+            }}
+          >
+            <option value="">All Stages</option>
+            <option value="Lead">Lead</option>
+            <option value="Qualified">Qualified</option>
+            <option value="Evaluating">Evaluating</option>
+            <option value="Closing">Closing</option>
+            <option value="Negotiation">Negotiation</option>
+            <option value="Closed Won">Closed Won</option>
+            <option value="Invested">Invested</option>
+            <option value="Closed Lost">Closed Lost</option>
+            <option value="Monitoring">Monitoring</option>
+            <option value="Passed">Passed</option>
+          </select>
+        </div>
+      )}
+      
       <TopMenuContainer>
         {menuItems.map(item => (
           <MenuItem 
@@ -1905,6 +2407,7 @@ const SimpleDeals = () => {
       </TopMenuContainer>
       
       <Title>Deals ({filteredDeals.length})</Title>
+      
       
       {error && <ErrorText>Error: {error}</ErrorText>}
       
@@ -1969,7 +2472,8 @@ const SimpleDeals = () => {
             editType="cell"
             stopEditingWhenCellsLoseFocus={true}
             components={{
-              stageFloatingFilter: StageFloatingFilter
+              stageFloatingFilter: StageFloatingFilterFinal,
+              agFloatingFilterCellRenderer: StageFloatingFilterFinal // Alternative registration
             }}
           />
         </div>
@@ -2268,5 +2772,8 @@ const SimpleDeals = () => {
     </Container>
   );
 };
+
+// Reference to the StageFloatingFilterFinal for component registration
+// This is needed for the AG Grid components registration
 
 export default SimpleDeals;
