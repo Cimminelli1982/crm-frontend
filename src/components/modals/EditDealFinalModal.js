@@ -39,7 +39,7 @@ const ModalHeader = styled.div`
 const CloseButton = styled.button`
   background: none;
   border: none;
-  color: #ff5555;
+  color: #00ff00;
   font-size: 1.2rem;
   cursor: pointer;
   display: flex;
@@ -47,7 +47,7 @@ const CloseButton = styled.button`
   justify-content: center;
   
   &:hover {
-    color: #ff0000;
+    color: #00cc00;
   }
 `;
 
@@ -335,36 +335,30 @@ const EditDealFinalModal = ({
   
   // Deal category options
   const categoryOptions = [
-    'Inbox',
-    'Startup',
-    'Fund',
-    'Real Estate',
-    'Private Debt',
-    'Private Equity',
-    'Others'
+    'Inbox', 
+    'Startup', 
+    'Fund', 
+    'Real Estate', 
+    'Private Debt', 
+    'Private Equity', 
+    'Other'
   ];
   
   // Deal stage options
   const stageOptions = [
-    'Lead',
-    'Contact Made',
-    'Proposal Sent',
-    'Negotiation',
-    'Contract Sent',
-    'Closed Won',
-    'Closed Lost'
+    'Lead', 
+    'Evaluating', 
+    'Closing', 
+    'Invested', 
+    'Monitoring', 
+    'Passed'
   ];
   
   // Deal source category options
   const sourceOptions = [
     'Not Set',
-    'Direct',
-    'Referral',
-    'Conference',
-    'Cold Outreach',
-    'Website',
-    'Social Media',
-    'Other'
+    'Cold Contacting',
+    'Introduction'
   ];
   
   // Load deal data into form when modal opens
@@ -524,9 +518,18 @@ const EditDealFinalModal = ({
     >
       <ModalHeader>
         <h2>Edit Deal</h2>
-        <CloseButton onClick={onClose}>
-          <FiX />
-        </CloseButton>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <SaveButton 
+            onClick={handleSubmit}
+            disabled={isLoading}
+            style={{ padding: '5px 10px', height: 'auto' }}
+          >
+            {isLoading ? 'Saving...' : <FiSave />}
+          </SaveButton>
+          <CloseButton onClick={onClose}>
+            <FiX />
+          </CloseButton>
+        </div>
       </ModalHeader>
       
       <FormContainer>
