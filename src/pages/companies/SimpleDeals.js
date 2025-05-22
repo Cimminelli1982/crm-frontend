@@ -1166,7 +1166,7 @@ const ActionsRenderer = (props) => {
   };
   
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', gap: '15px' }}>
+    <div style={{ display: 'flex', justifyContent: 'center', gap: '5px' }}>
       {/* Attachments Button - Icon only */}
       <button
         onClick={handleAttachments}
@@ -1174,7 +1174,7 @@ const ActionsRenderer = (props) => {
         style={{
           background: 'transparent',
           border: 'none',
-          padding: '5px',
+          padding: '2px',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
@@ -1187,8 +1187,8 @@ const ActionsRenderer = (props) => {
         onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
       >
         <svg 
-          width="20" 
-          height="20" 
+          width="16" 
+          height="16" 
           viewBox="0 0 24 24" 
           fill="none" 
           stroke="#00ff00" 
@@ -1201,14 +1201,14 @@ const ActionsRenderer = (props) => {
         {data.attachments && data.attachments.length > 0 && (
           <span style={{
             position: 'absolute',
-            top: -3,
-            right: -3,
+            top: -2,
+            right: -2,
             backgroundColor: '#00ff00',
             color: '#000',
             borderRadius: '50%',
-            width: '16px',
-            height: '16px',
-            fontSize: '11px',
+            width: '12px',
+            height: '12px',
+            fontSize: '9px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -1226,7 +1226,7 @@ const ActionsRenderer = (props) => {
         style={{
           background: 'transparent',
           border: 'none',
-          padding: '5px',
+          padding: '2px',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
@@ -1237,7 +1237,7 @@ const ActionsRenderer = (props) => {
         onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.1)'}
         onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
       >
-        <FiEdit size={18} style={{ color: '#00ff00' }} />
+        <FiEdit size={14} style={{ color: '#00ff00' }} />
       </button>
       
       {/* Delete Button - Icon only */}
@@ -1247,7 +1247,7 @@ const ActionsRenderer = (props) => {
         style={{
           background: 'transparent',
           border: 'none',
-          padding: '5px',
+          padding: '2px',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
@@ -1258,7 +1258,7 @@ const ActionsRenderer = (props) => {
         onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.1)'}
         onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
       >
-        <FiTrash2 size={18} style={{ color: '#00ff00' }} />
+        <FiTrash2 size={14} style={{ color: '#00ff00' }} />
       </button>
     </div>
   );
@@ -1476,7 +1476,8 @@ const SimpleDeals = () => {
       headerName: 'Tags', 
       field: 'tags',
       cellRenderer: TagsRenderer,
-      minWidth: 300,
+      minWidth: 180,
+      width: 200,
       sortable: true,
       filter: false,
       resizable: true,
@@ -1594,7 +1595,7 @@ const SimpleDeals = () => {
       headerName: 'Actions',
       field: 'actions',
       cellRenderer: ActionsRenderer,
-      width: 150,
+      width: 100,
       sortable: false,
       filter: false,
       suppressSizeToFit: true
@@ -2031,13 +2032,13 @@ const SimpleDeals = () => {
   // Row clicked handler
   const handleRowClicked = React.useCallback((params) => {
     console.log('Deal clicked:', params.data);
-    // Set the selected deal data and open the modal
+    // Just select the deal but don't open the modal
     setSelectedDeal({
-      contact_id: null, // We don't have a contact when opening from deals
+      contact_id: null,
       deal: params.data,
-      companies: [] // No companies associated at this level
+      companies: []
     });
-    setShowDealModal(true);
+    // Note: We removed setShowDealModal(true) to prevent modal from opening on row click
   }, []);
   
   // Handle edit changes when a cell value changes
@@ -2818,6 +2819,7 @@ const SimpleDeals = () => {
         isOpen={showDealModal}
         onClose={() => setShowDealModal(false)}
         contactData={selectedDeal}
+        showOnlyCreateTab={true}
       />
     </Container>
   );
