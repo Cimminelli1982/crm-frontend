@@ -6,6 +6,7 @@ import { AgGridReact } from '../../ag-grid-setup';
 import Modal from 'react-modal';
 import { FiGrid, FiCpu, FiDollarSign, FiHome, FiPackage, FiBriefcase, FiInbox, FiEdit, FiTrash2, FiPlus } from 'react-icons/fi';
 import DealViewFindAddModal from '../../components/modals/DealViewFindAddModal';
+import DealTagsModal from '../../components/modals/DealTagsModal';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -632,8 +633,56 @@ const TagsRenderer = (props) => {
   const handleAddClick = (e) => {
     e.stopPropagation(); // Prevent cell click from triggering
     if (props.context && props.context.setSelectedDeal && props.context.setShowTagsModal) {
-      props.context.setSelectedDeal(props.data);
-      props.context.setShowTagsModal(true);
+      // Validate that we have a valid deal with either id or deal_id
+      if (!props.data || (!props.data.id && !props.data.deal_id)) {
+        console.error("Cannot add tag: Invalid deal data", props.data);
+        toast.error("Cannot add tag: Missing deal information");
+        return;
+      }
+      
+      console.log("Original deal data from grid:", {
+        id: props.data.id,
+        deal_id: props.data.deal_id,
+        opportunity: props.data.opportunity,
+        hasTags: !!props.data.tags,
+        tagCount: props.data.tags?.length
+      });
+      
+      // First ensure the deal has all needed properties
+      const dealData = { 
+        ...props.data,
+        // Ensure deal_id is present - if missing, use the id field
+        deal_id: props.data.deal_id || props.data.id,
+        // Ensure we have an id field too
+        id: props.data.id || props.data.deal_id,
+        // Ensure opportunity has a value
+        opportunity: props.data.opportunity || 'Unnamed Deal',
+        // Ensure tags array exists
+        tags: props.data.tags || []
+      };
+      
+      // Verify we have a valid ID before proceeding
+      if (!dealData.deal_id) {
+        console.error("Cannot add tag: Deal ID not available after processing", dealData);
+        toast.error("Cannot add tag: Missing deal ID");
+        return;
+      }
+      
+      // First set the selected deal
+      props.context.setSelectedDeal(dealData);
+      
+      console.log("Add tag clicked for deal:", dealData.deal_id, dealData.opportunity);
+      
+      // Then open the modal with a small delay to ensure the deal is set
+      setTimeout(() => {
+        props.context.setShowTagsModal(true);
+      }, 0);
+    } else {
+      console.error("Missing context functions for tag operations", {
+        hasContext: !!props.context,
+        hasSetSelectedDeal: !!(props.context && props.context.setSelectedDeal),
+        hasSetShowTagsModal: !!(props.context && props.context.setShowTagsModal)
+      });
     }
   };
   
@@ -641,8 +690,48 @@ const TagsRenderer = (props) => {
   const handleRemoveClick = (e) => {
     e.stopPropagation(); // Prevent cell click from triggering
     if (props.context && props.context.setSelectedDeal && props.context.setShowTagsModal) {
-      props.context.setSelectedDeal(props.data);
-      props.context.setShowTagsModal(true);
+      // Validate that we have a valid deal with either id or deal_id
+      if (!props.data || (!props.data.id && !props.data.deal_id)) {
+        console.error("Cannot remove tag: Invalid deal data", props.data);
+        toast.error("Cannot remove tag: Missing deal information");
+        return;
+      }
+      
+      // First ensure the deal has all needed properties
+      const dealData = { 
+        ...props.data,
+        // Ensure deal_id is present - if missing, use the id field
+        deal_id: props.data.deal_id || props.data.id,
+        // Ensure we have an id field too
+        id: props.data.id || props.data.deal_id,
+        // Ensure opportunity has a value
+        opportunity: props.data.opportunity || 'Unnamed Deal',
+        // Ensure tags array exists
+        tags: props.data.tags || []
+      };
+      
+      // Verify we have a valid ID before proceeding
+      if (!dealData.deal_id) {
+        console.error("Cannot remove tag: Deal ID not available after processing", dealData);
+        toast.error("Cannot remove tag: Missing deal ID");
+        return;
+      }
+      
+      // First set the selected deal
+      props.context.setSelectedDeal(dealData);
+      
+      console.log("Remove tag clicked for deal:", dealData.deal_id, dealData.opportunity);
+      
+      // Then open the modal with a small delay to ensure the deal is set
+      setTimeout(() => {
+        props.context.setShowTagsModal(true);
+      }, 0);
+    } else {
+      console.error("Missing context functions for tag operations", {
+        hasContext: !!props.context,
+        hasSetSelectedDeal: !!(props.context && props.context.setSelectedDeal),
+        hasSetShowTagsModal: !!(props.context && props.context.setShowTagsModal)
+      });
     }
   };
   
@@ -1619,18 +1708,27 @@ const SimpleDeals = () => {
   
   // Handle tag operations for a deal
   const handleTagOperation = useCallback(async (operation, tagId) => {
+    console.log('Tag operation called with:', { operation, tagId, selectedDeal });
+    
     if (!selectedDeal || !selectedDeal.deal_id) {
-      toast.error('No deal selected for tag operation');
+      console.error('Tag operation attempted but no deal was selected', { operation, tagId, selectedDeal });
+      toast.error('No deal selected for tag operation. Please try clicking the tag button again.');
       return;
     }
+    
+    // Create a local copy of the selected deal to ensure it doesn't change during the operation
+    const dealToOperate = {...selectedDeal};
+    
+    console.log('Proceeding with tag operation for deal:', dealToOperate.deal_id, dealToOperate.opportunity);
 
     try {
+      // Use dealToOperate.deal_id instead of selectedDeal.deal_id for all operations
       if (operation === 'add') {
         // Check if tag already exists for this deal
         const { data: existingTag, error: checkError } = await supabase
           .from('deal_tags')
           .select('*')
-          .eq('deal_id', selectedDeal.deal_id)
+          .eq('deal_id', dealToOperate.deal_id)
           .eq('tag_id', tagId)
           .maybeSingle();
           
@@ -1648,7 +1746,7 @@ const SimpleDeals = () => {
         const { error } = await supabase
           .from('deal_tags')
           .insert({
-            deal_id: selectedDeal.deal_id,
+            deal_id: dealToOperate.deal_id,
             tag_id: tagId
           });
           
@@ -1671,7 +1769,7 @@ const SimpleDeals = () => {
           
           // Also update in the main deals array
           setDeals(prevDeals => prevDeals.map(deal => 
-            deal.deal_id === selectedDeal.deal_id 
+            deal.deal_id === dealToOperate.deal_id 
               ? { ...deal, tags: [...(deal.tags || []), newTag] }
               : deal
           ));
@@ -1681,7 +1779,7 @@ const SimpleDeals = () => {
         const { error } = await supabase
           .from('deal_tags')
           .delete()
-          .eq('deal_id', selectedDeal.deal_id)
+          .eq('deal_id', dealToOperate.deal_id)
           .eq('tag_id', tagId);
           
         if (error) {
@@ -1701,7 +1799,7 @@ const SimpleDeals = () => {
         
         // Also update in the main deals array
         setDeals(prevDeals => prevDeals.map(deal => 
-          deal.deal_id === selectedDeal.deal_id 
+          deal.deal_id === dealToOperate.deal_id 
             ? { ...deal, tags: deal.tags?.filter(tag => tag.tag_id !== tagId) || [] }
             : deal
         ));
@@ -1709,8 +1807,8 @@ const SimpleDeals = () => {
       
       // Update filtered deals as well
       setFilteredDeals(prevDeals => prevDeals.map(deal => 
-        deal.deal_id === selectedDeal.deal_id
-          ? deals.find(d => d.deal_id === selectedDeal.deal_id) || deal
+        deal.deal_id === dealToOperate.deal_id
+          ? deals.find(d => d.deal_id === dealToOperate.deal_id) || deal
           : deal
       ));
       
@@ -1720,7 +1818,7 @@ const SimpleDeals = () => {
         const { data: tagRefs, error: tagRefsError } = await supabase
           .from('deal_tags')
           .select('tag_id')
-          .eq('deal_id', selectedDeal.deal_id);
+          .eq('deal_id', dealToOperate.deal_id);
           
         if (tagRefsError) {
           console.error(`Error refreshing tag refs:`, tagRefsError);
@@ -1748,14 +1846,14 @@ const SimpleDeals = () => {
           
           // Update in the main deals array
           setDeals(prevDeals => prevDeals.map(deal => 
-            deal.deal_id === selectedDeal.deal_id 
+            deal.deal_id === dealToOperate.deal_id 
               ? { ...deal, tags: tagDetails || [] }
               : deal
           ));
           
           // Update filtered deals as well
           setFilteredDeals(prevDeals => prevDeals.map(deal => 
-            deal.deal_id === selectedDeal.deal_id
+            deal.deal_id === dealToOperate.deal_id
               ? { ...deal, tags: tagDetails || [] }
               : deal
           ));
@@ -1768,7 +1866,7 @@ const SimpleDeals = () => {
           
           // Update in the deals arrays
           const updateDeals = deal => 
-            deal.deal_id === selectedDeal.deal_id 
+            deal.deal_id === dealToOperate.deal_id 
               ? { ...deal, tags: [] }
               : deal;
               
@@ -1969,8 +2067,9 @@ const SimpleDeals = () => {
     categoryColors,
     removeDeal,
     stageFilter,
+    selectedDeal, // Include selectedDeal in the context to ensure it's accessible
     setStageFilter
-  }), [categoryColors, removeDeal, stageFilter, showDealContacts]);
+  }), [categoryColors, removeDeal, stageFilter, showDealContacts, selectedDeal]);
 
   // Create a manual filter dropdown that's positioned outside AG Grid
   const [showManualStageFilter, setShowManualStageFilter] = useState(false);
@@ -2659,160 +2758,55 @@ const SimpleDeals = () => {
         </AttachmentsModalContent>
       </Modal>
 
-      {/* Tags Modal */}
-      <Modal
+      {/* Tags Modal - Using the new DealTagsModal component */}
+      <DealTagsModal
         isOpen={showTagsModal}
         onRequestClose={() => {
+          console.log("Closing tags modal from DealTagsModal component");
           setShowTagsModal(false);
-          setTagSearchTerm(''); // Clear search term when modal is closed
         }}
-        style={modalStyles}
-        contentLabel="Manage Tags"
-      >
-        <TagsModalContent>
-          <ModalHeader>
-            <h2>Manage Tags for {selectedDeal?.opportunity || 'Deal'}</h2>
-            <button onClick={() => {
-              setShowTagsModal(false);
-              setTagSearchTerm(''); // Clear search term when modal is closed
-            }}>✕</button>
-          </ModalHeader>
-
-          {/* Current deal tags */}
-          <TagsSection style={{ paddingTop: 0, borderTop: 'none' }}>
-            <TagsTitle>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
-                <line x1="7" y1="7" x2="7.01" y2="7"></line>
-              </svg>
-              CURRENT TAGS
-            </TagsTitle>
-            <TagsContainer>
-              {selectedDeal?.tags && selectedDeal.tags.length > 0 ? (
-                selectedDeal.tags.map(tag => (
-                  <TagItem 
-                    key={tag.tag_id} 
-                    $selected={true}
-                    onClick={() => handleTagOperation('remove', tag.tag_id)}
-                  >
-                    {tag.name}
-                    <span style={{ marginLeft: '6px', fontSize: '12px' }}>✕</span>
-                  </TagItem>
-                ))
-              ) : (
-                <div style={{ color: '#aaa', fontStyle: 'italic', padding: '10px 0' }}>No tags assigned to this deal</div>
-              )}
-            </TagsContainer>
-          </TagsSection>
-
-          {/* Add Tags section with search and create functionality */}
-          <TagsSection>
-            <TagsTitle>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                <line x1="11" y1="8" x2="11" y2="14"></line>
-                <line x1="8" y1="11" x2="14" y2="11"></line>
-              </svg>
-              ADD TAGS
-            </TagsTitle>
+        deal={selectedDeal && (selectedDeal.id || selectedDeal.deal_id) ? {
+          // Explicitly restructure the deal object to ensure all required properties
+          id: selectedDeal.id || selectedDeal.deal_id, // Use id as fallback
+          deal_id: selectedDeal.deal_id || selectedDeal.id, // Ensure deal_id is always set, fallback to id
+          opportunity: selectedDeal.opportunity || 'Unnamed Deal',
+          tags: Array.isArray(selectedDeal.tags) ? selectedDeal.tags : []
+        } : null}
+        onTagsUpdated={(updatedTags) => {
+          console.log("Tags updated:", updatedTags);
+          // Even if no tags are returned, we still need to update the deal
+          // to prevent stale state issues
+          
+          // Update the selected deal with the new tags (or empty array if none)
+          setSelectedDeal(prev => {
+            if (!prev) return prev; // No deal selected
             
-            <SearchContainer>
-              <SearchInput
-                type="text"
-                placeholder="Search for tags..."
-                value={tagSearchTerm}
-                onChange={(e) => setTagSearchTerm(e.target.value)}
-                onKeyPress={(e) => {
-                  // If Enter is pressed and there are no matching tags, create a new one
-                  if (e.key === 'Enter' && e.target.value.trim()) {
-                    const searchTerm = e.target.value.trim().toLowerCase();
-                    const hasMatch = availableTags.some(tag => 
-                      !selectedDeal?.tags?.some(t => t.tag_id === tag.tag_id) &&
-                      tag.name.toLowerCase() === searchTerm
-                    );
-                    
-                    if (!hasMatch) {
-                      handleCreateTag(searchTerm).then(tagId => {
-                        if (tagId) {
-                          handleTagOperation('add', tagId);
-                          setTagSearchTerm(''); // Clear search after creating
-                        }
-                      });
-                    }
-                  }
-                }}
-                autoFocus
-              />
-            </SearchContainer>
+            console.log("Updating selected deal tags:", prev.deal_id);
+            return {
+              ...prev,
+              tags: updatedTags || []
+            };
+          });
+          
+          // Update the deals array - safely with optional chaining
+          if (selectedDeal?.deal_id) {
+            setDeals(prevDeals => prevDeals.map(deal => 
+              deal.deal_id === selectedDeal.deal_id 
+                ? { ...deal, tags: updatedTags || [] }
+                : deal
+            ));
             
-            <TagsContainer>
-              {/* Only show tags if there's a search term */}
-              {tagSearchTerm !== '' ? (
-                <>
-                  {availableTags
-                    .filter(tag => 
-                      // Don't show tags already assigned to the deal
-                      !selectedDeal?.tags?.some(t => t.tag_id === tag.tag_id) &&
-                      // Filter by search term
-                      tag.name.toLowerCase().includes(tagSearchTerm.toLowerCase())
-                    )
-                    .map(tag => (
-                      <TagItem 
-                        key={tag.tag_id}
-                        onClick={() => handleTagOperation('add', tag.tag_id)}
-                      >
-                        {tag.name}
-                        <span style={{ marginLeft: '6px', fontSize: '12px' }}>+</span>
-                      </TagItem>
-                    ))
-                  }
-                  
-                  {/* Show create new tag option when no exact match found */}
-                  {tagSearchTerm.trim() !== '' && 
-                   !availableTags.some(tag => 
-                    !selectedDeal?.tags?.some(t => t.tag_id === tag.tag_id) &&
-                    tag.name.toLowerCase() === tagSearchTerm.trim().toLowerCase()
-                   ) && (
-                    <TagItem 
-                      $selected={true}
-                      style={{ 
-                        backgroundColor: 'rgba(0, 255, 0, 0.15)',
-                        cursor: 'pointer',
-                        border: '1px dashed #00ff00'
-                      }}
-                      onClick={() => {
-                        handleCreateTag(tagSearchTerm).then(tagId => {
-                          if (tagId) {
-                            handleTagOperation('add', tagId);
-                            setTagSearchTerm(''); // Clear search after creating
-                          }
-                        });
-                      }}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00ff00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
-                        <line x1="12" y1="5" x2="12" y2="19"></line>
-                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                      </svg>
-                      Create "{tagSearchTerm}"
-                    </TagItem>
-                  )}
-                  
-                  {/* Show a message when no matching tags are found and search is empty */}
-                  {availableTags.filter(tag => 
-                    !selectedDeal?.tags?.some(t => t.tag_id === tag.tag_id) &&
-                    tag.name.toLowerCase().includes(tagSearchTerm.toLowerCase())
-                  ).length === 0 && tagSearchTerm.trim() === '' && (
-                    <div style={{ width: '100%', textAlign: 'center', padding: '10px', color: '#aaa' }}>
-                      No matching tags found.
-                    </div>
-                  )}
-                </>
-              ) : null}
-            </TagsContainer>
-          </TagsSection>
-        </TagsModalContent>
-      </Modal>
+            // Update filtered deals as well
+            setFilteredDeals(prevDeals => prevDeals.map(deal => 
+              deal.deal_id === selectedDeal.deal_id
+                ? { ...deal, tags: updatedTags || [] }
+                : deal
+            ));
+          }
+        }}
+      />
+      
+      {/* Old Tags Modal - Removing to fix JSX errors */}
 
       {/* Deal modal */}
       <DealViewFindAddModal

@@ -256,7 +256,7 @@ const getTagColor = (tagName) => {
   return { bg: '#222', text: '#00ff00', border: '#00ff00' };
 };
 
-const TagsModal = ({ isOpen, onRequestClose, contact, meeting, onTagAdded, onTagRemoved }) => {
+const TagsModal = ({ isOpen, onRequestClose, contact, meeting, deal, onTagAdded, onTagRemoved }) => {
   const [currentTags, setCurrentTags] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState([]);

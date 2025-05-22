@@ -895,9 +895,10 @@ const CancelButton = styled.button`
 const DealViewFindAddModal = ({ 
   isOpen, 
   onClose, 
-  contactData 
+  contactData,
+  showOnlyCreateTab = false
 }) => {
-  const [activeTab, setActiveTab] = useState('addFromList');
+  const [activeTab, setActiveTab] = useState(showOnlyCreateTab ? 'createNewDeal' : 'addFromList');
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
   const [deals, setDeals] = useState([]);
@@ -1974,23 +1975,27 @@ const DealViewFindAddModal = ({
       >
       <ModalHeader>
         <h2>
-          Deal - {contactData ? `${contactData.first_name} ${contactData.last_name}` : 'Contact'}
-          {contactData && contactData.companies && contactData.companies.length > 0 && 
-            ` (${contactData.companies.map(company => company.name).join(', ')})`
-          }
-          {associatedDealIds.length > 0 && 
-            <span style={{ 
-              fontSize: '0.7rem', 
-              backgroundColor: 'rgba(0, 255, 0, 0.2)', 
-              color: '#00ff00',
-              marginLeft: '10px',
-              padding: '2px 6px',
-              borderRadius: '10px',
-              verticalAlign: 'middle'
-            }}>
-              {associatedDealIds.length} {associatedDealIds.length === 1 ? 'deal' : 'deals'}
-            </span>
-          }
+          {showOnlyCreateTab ? 'Create New Deal' : (
+            <>
+              Deal - {contactData ? `${contactData.first_name} ${contactData.last_name}` : 'Contact'}
+              {contactData && contactData.companies && contactData.companies.length > 0 && 
+                ` (${contactData.companies.map(company => company.name).join(', ')})`
+              }
+              {associatedDealIds.length > 0 && 
+                <span style={{ 
+                  fontSize: '0.7rem', 
+                  backgroundColor: 'rgba(0, 255, 0, 0.2)', 
+                  color: '#00ff00',
+                  marginLeft: '10px',
+                  padding: '2px 6px',
+                  borderRadius: '10px',
+                  verticalAlign: 'middle'
+                }}>
+                  {associatedDealIds.length} {associatedDealIds.length === 1 ? 'deal' : 'deals'}
+                </span>
+              }
+            </>
+          )}
         </h2>
         <CloseButton onClick={onClose}>
           <FiX />
@@ -1998,44 +2003,48 @@ const DealViewFindAddModal = ({
       </ModalHeader>
       
       <ContentContainer>
-        <TabContainer>
-          <Tab 
-            $isActive={activeTab === 'addFromList'} 
-            onClick={() => setActiveTab('addFromList')}
-          >
-            Add from List
-          </Tab>
+        <TabContainer style={showOnlyCreateTab ? { display: 'none' } : {}}>
+          {!showOnlyCreateTab && (
+            <>
+              <Tab 
+                $isActive={activeTab === 'addFromList'} 
+                onClick={() => setActiveTab('addFromList')}
+              >
+                Add from List
+              </Tab>
+              <Tab 
+                $isActive={activeTab === 'associatedDeals'} 
+                onClick={() => setActiveTab('associatedDeals')}
+              >
+                Associated Deals
+                {associatedDealIds.length > 0 && (
+                  <span style={{
+                    marginLeft: '5px',
+                    backgroundColor: 'rgba(0, 255, 0, 0.2)',
+                    color: '#00ff00',
+                    fontSize: '0.7rem',
+                    padding: '1px 5px',
+                    borderRadius: '10px',
+                    fontWeight: 'normal'
+                  }}>
+                    {associatedDealIds.length}
+                  </span>
+                )}
+              </Tab>
+            </>
+          )}
           <Tab 
             $isActive={activeTab === 'createNewDeal'} 
             onClick={() => setActiveTab('createNewDeal')}
           >
             Create New Deal
           </Tab>
-          <Tab 
-            $isActive={activeTab === 'associatedDeals'} 
-            onClick={() => setActiveTab('associatedDeals')}
-          >
-            Associated Deals
-            {associatedDealIds.length > 0 && (
-              <span style={{
-                marginLeft: '5px',
-                backgroundColor: 'rgba(0, 255, 0, 0.2)',
-                color: '#00ff00',
-                fontSize: '0.7rem',
-                padding: '1px 5px',
-                borderRadius: '10px',
-                fontWeight: 'normal'
-              }}>
-                {associatedDealIds.length}
-              </span>
-            )}
-          </Tab>
         </TabContainer>
         
-        <ContentArea>
-          {activeTab === 'addFromList' && renderAddFromListTab()}
+        <ContentArea style={showOnlyCreateTab ? { width: '100%' } : {}}>
+          {!showOnlyCreateTab && activeTab === 'addFromList' && renderAddFromListTab()}
           {activeTab === 'createNewDeal' && renderCreateNewDealTab()}
-          {activeTab === 'associatedDeals' && renderAssociatedDealsTab()}
+          {!showOnlyCreateTab && activeTab === 'associatedDeals' && renderAssociatedDealsTab()}
         </ContentArea>
       </ContentContainer>
       
