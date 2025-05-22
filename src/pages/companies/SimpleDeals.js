@@ -639,6 +639,7 @@ const ActionsRenderer = (props) => {
 
 const SimpleDeals = () => {
   const [deals, setDeals] = useState([]);
+  const [filteredDeals, setFilteredDeals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [gridApi, setGridApi] = useState(null);
@@ -647,7 +648,7 @@ const SimpleDeals = () => {
   const [showAttachmentsModal, setShowAttachmentsModal] = useState(false);
   const [selectedAttachments, setSelectedAttachments] = useState([]);
   const [dealName, setDealName] = useState('');
-  const [activeTab, setActiveTab] = useState('all');
+  const [activeTab, setActiveTab] = useState('inbox');
   const [currentDealId, setCurrentDealId] = useState(null);
   const [uploading, setUploading] = useState(false);
   const navigate = useNavigate();
@@ -1114,6 +1115,7 @@ const SimpleDeals = () => {
       }));
       
       setDeals(dealsWithAttachments);
+      setFilteredDeals(dealsWithAttachments);
       setLoading(false);
       setDataLoaded(true);
       
@@ -1137,6 +1139,53 @@ const SimpleDeals = () => {
     }
   }, [dataLoaded]);
   
+  // Filter deals based on active tab
+  useEffect(() => {
+    console.log('Filtering deals. Active tab:', activeTab);
+    console.log('Total deals:', deals.length);
+    
+    if (deals.length > 0) {
+      // Define the category name mapping (from tab ID to category name)
+      const categoryMap = {
+        'inbox': 'Inbox',
+        'startup': 'Startup',
+        'fund': 'Fund',
+        'real_estate': 'Real Estate',
+        'private_equity': 'Private Equity',
+        'private_debt': 'Private Debt',
+        'other': 'Other'
+      };
+      
+      // Get the expected category name for the active tab
+      const expectedCategory = categoryMap[activeTab];
+      
+      if (!expectedCategory) {
+        // If no mapping found, show all deals
+        console.log('No category mapping for tab, showing all deals');
+        setFilteredDeals(deals);
+        return;
+      }
+      
+      console.log(`Filtering for category: ${expectedCategory}`);
+      
+      // Filter deals with matching category (case-insensitive)
+      const filtered = deals.filter(deal => {
+        const dealCategory = deal.category || '';
+        // Handle case and spacing differences
+        return dealCategory.toLowerCase() === expectedCategory.toLowerCase();
+      });
+      
+      console.log(`Found ${filtered.length} deals with category '${expectedCategory}'`);
+      if (filtered.length === 0) {
+        console.log('Sample categories from all deals:', 
+          [...new Set(deals.map(d => d.category))].filter(Boolean)
+        );
+      }
+      
+      setFilteredDeals(filtered);
+    }
+  }, [activeTab, deals]);
+  
   // Separate effect for window resize
   useEffect(() => {
     if (!gridApi) return;
@@ -1154,7 +1203,7 @@ const SimpleDeals = () => {
 
   // Define menu items with icons
   const menuItems = [
-    { id: 'all', name: 'Inbox', icon: <FiInbox /> },
+    { id: 'inbox', name: 'Inbox', icon: <FiInbox /> },
     { id: 'startup', name: 'Startup', icon: <FiCpu /> },
     { id: 'fund', name: 'Fund', icon: <FiDollarSign /> },
     { id: 'real_estate', name: 'Real Estate', icon: <FiHome /> },
@@ -1194,7 +1243,7 @@ const SimpleDeals = () => {
         ))}
       </TopMenuContainer>
       
-      <Title>Deals ({deals.length})</Title>
+      <Title>Deals ({filteredDeals.length})</Title>
       <div style={{ margin: '0 20px 20px', color: '#00ff00' }}>
         Double-click on any Deal name, Description, Category, Stage, Source, or Investment Amount to edit it directly.
       </div>
@@ -1246,7 +1295,7 @@ const SimpleDeals = () => {
           }}
         >
           <AgGridReact
-            rowData={deals}
+            rowData={filteredDeals}
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
             onGridReady={onGridReady}
