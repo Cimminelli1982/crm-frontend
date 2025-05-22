@@ -1120,6 +1120,10 @@ const SimpleDeals = () => {
       floatingFilter: true,
       // Use our custom floating filter component
       floatingFilterComponent: 'stageFloatingFilter',
+      // Hide the filter button in the header
+      floatingFilterComponentParams: {
+        suppressFilterButton: true
+      },
       sortable: true,
       editable: true,
       cellEditor: 'agSelectCellEditor',
