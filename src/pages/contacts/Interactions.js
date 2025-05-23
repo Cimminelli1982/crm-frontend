@@ -1,6 +1,6 @@
 import React, { useState, lazy, Suspense } from 'react';
 import styled from 'styled-components';
-import { FiClock, FiUserCheck, FiUsers } from 'react-icons/fi';
+import { FiClock, FiUserCheck, FiUsers, FiGift, FiCalendar } from 'react-icons/fi';
 import ContactsListTable from '../../components/contacts/ContactsListTable';
 
 // Lazy load the components
@@ -114,7 +114,9 @@ const Interactions = () => {
   const menuItems = [
     { id: 'recent', name: 'Recent', icon: <FiUserCheck /> },
     { id: 'keepintouch', name: 'Keep in Touch', icon: <FiClock /> },
-    { id: 'introductions', name: 'Introductions', icon: <FiUsers /> }
+    { id: 'introductions', name: 'Introductions', icon: <FiUsers /> },
+    { id: 'celebrations', name: 'Celebrations', icon: <FiGift /> },
+    { id: 'planner', name: 'Planner', icon: <FiCalendar /> }
   ];
 
   // Render the active component based on the selected tab
@@ -126,6 +128,30 @@ const Interactions = () => {
         return <KeepInTouch />;
       case 'introductions':
         return <IntroductionsComponent />;
+      case 'celebrations':
+        return (
+          <div style={{ 
+            color: '#00ff00', 
+            textAlign: 'center', 
+            paddingTop: '100px',
+            fontSize: '20px',
+            fontFamily: 'Courier New, monospace'
+          }}>
+            Celebrations - Coming Soon
+          </div>
+        );
+      case 'planner':
+        return (
+          <div style={{ 
+            color: '#00ff00', 
+            textAlign: 'center', 
+            paddingTop: '100px',
+            fontSize: '20px',
+            fontFamily: 'Courier New, monospace'
+          }}>
+            Planner - Coming Soon
+          </div>
+        );
       default:
         return (
           <div style={{ color: '#00ff00', textAlign: 'center', paddingTop: '40px' }}>

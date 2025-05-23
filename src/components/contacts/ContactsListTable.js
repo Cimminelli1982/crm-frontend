@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { AgGridReact } from '../../ag-grid-setup';
-import { FiMail, FiLinkedin, FiPlus, FiX, FiTrash2, FiMessageSquare } from 'react-icons/fi';
+import { FiMail, FiLinkedin, FiPlus, FiX, FiTrash2, FiMessageSquare, FiEdit2 } from 'react-icons/fi';
 import { FaWhatsapp, FaStar, FaRegStar, FaDollarSign, FaHandshake } from 'react-icons/fa';
 import { MdClear } from 'react-icons/md';
 import { toast, ToastContainer } from 'react-toastify';
@@ -629,11 +629,6 @@ const CompanyRenderer = (props) => {
     setCurrentCompanyIndex((prevIndex) => (prevIndex + 1) % companies.length);
   };
   
-  const goToPrevCompany = (e) => {
-    e?.stopPropagation();
-    setCurrentCompanyIndex((prevIndex) => (prevIndex - 1 + companies.length) % companies.length);
-  };
-  
   // Prevent event propagation
   const handleContainerClick = (e) => {
     e.stopPropagation();
@@ -717,20 +712,6 @@ const CompanyRenderer = (props) => {
         width: '100%',
         gap: '4px'
       }}>
-        {/* Left navigation arrow (only visible for multiple companies) */}
-        {hasMultipleCompanies && (
-          <button
-            onClick={goToPrevCompany}
-            style={{
-              ...navButtonStyle,
-              marginRight: '2px'
-            }}
-            title="Previous company"
-          >
-            &#9664;
-          </button>
-        )}
-        
         {/* Company display */}
         <div 
           style={{ 
@@ -747,7 +728,7 @@ const CompanyRenderer = (props) => {
             overflow: 'hidden',
             lineHeight: '16px',
             width: '100%',
-            maxWidth: '190px',
+            maxWidth: hasMultipleCompanies ? '170px' : '190px',
             height: '18px',
             position: 'relative'
           }}
@@ -755,7 +736,7 @@ const CompanyRenderer = (props) => {
           <span 
             style={{ 
               cursor: 'pointer',
-              maxWidth: hasMultipleCompanies ? '140px' : '160px',
+              maxWidth: hasMultipleCompanies ? '120px' : '160px',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               display: 'inline-block'
@@ -1800,19 +1781,56 @@ const ContactsListTable = ({ category }) => {
           }
         };
         
+        // Handle edit icon click
+        const handleEditClick = (e) => {
+          e.stopPropagation(); // Prevent triggering the name click
+          if (params.data && params.data.contact_id) {
+            params.context.navigate(`/contacts/workflow/${params.data.contact_id}?step=2`);
+          }
+        };
+        
         return (
           <div 
             style={{
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              paddingRight: '0',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
               width: '100%',
-              cursor: 'pointer'
+              height: '100%'
             }}
-            onClick={handleClick}
           >
-            {params.value}
+            <div 
+              style={{
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                cursor: 'pointer',
+                flex: 1
+              }}
+              onClick={handleClick}
+            >
+              {params.value}
+            </div>
+            <button
+              onClick={handleEditClick}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#ffffff',
+                cursor: 'pointer',
+                padding: '2px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: '0.6',
+                transition: 'opacity 0.2s'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+              onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
+              title="Edit Contact"
+            >
+              <FiEdit2 size={12} />
+            </button>
           </div>
         );
       },
