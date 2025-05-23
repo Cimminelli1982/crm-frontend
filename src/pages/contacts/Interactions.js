@@ -1,18 +1,21 @@
 import React, { useState, lazy, Suspense } from 'react';
 import styled from 'styled-components';
 import { FiClock, FiUserCheck, FiUsers } from 'react-icons/fi';
+import ContactsListTable from '../../components/contacts/ContactsListTable';
 
 // Lazy load the components
-const RecentInteractions = lazy(() => import('./SimpleContacts')); // This is the existing page for recent interactions
 const KeepInTouch = lazy(() => import('./SimpleKeepInTouch')); // This is the existing keep in touch page
 const IntroductionsComponent = lazy(() => import('./Introductions')); // This is the existing introductions page
 
 // Style for the main content
 const Container = styled.div`
   padding: 0;
-  margin-top: -45px; /* Move content up to make room for the menu */
+  margin-top: 0; /* Reset the negative margin */
   height: 100%;
   width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+  max-width: 100%;
 `;
 
 // Style for the top menu
@@ -23,11 +26,12 @@ const TopMenuContainer = styled.div`
   overflow-x: auto;
   scrollbar-width: thin;
   scrollbar-color: #00ff00 #222;
-  padding: 0;
+  padding: 8px 0;
   margin-bottom: 0;
   position: sticky;
   top: 0;
   z-index: 100;
+  width: 100%;
   
   &::-webkit-scrollbar {
     height: 6px;
@@ -45,24 +49,30 @@ const TopMenuContainer = styled.div`
 
 // Style for the content
 const InteractionsContent = styled.div`
-  padding: 0;
+  padding: 0px 0px 0px 0px;
   width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+  max-width: 100%;
 `;
 
 // Style for the menu items
 const MenuItem = styled.div`
   display: flex;
   align-items: center;
-  padding: 14px 20px;
+  padding: 10px 20px;
   color: ${props => props.$active ? '#00ff00' : '#ccc'};
   text-decoration: none;
-  border-bottom: 2px solid ${props => props.$active ? '#00ff00' : 'transparent'};
+  border-bottom: 3px solid ${props => props.$active ? '#00ff00' : 'transparent'};
   margin-right: 20px;
   font-family: 'Courier New', monospace;
   transition: all 0.2s ease;
   white-space: nowrap;
   cursor: pointer;
-  font-size: 0.95rem;
+  font-size: 1rem;
+  font-weight: ${props => props.$active ? 'bold' : 'normal'};
+  background-color: ${props => props.$active ? 'rgba(0, 255, 0, 0.05)' : 'transparent'};
+  border-radius: 4px 4px 0 0;
   
   &:hover {
     color: #00ff00;
@@ -74,13 +84,17 @@ const MenuItem = styled.div`
   }
   
   svg {
-    margin-right: 8px;
+    margin-right: 10px;
+    font-size: 1.1rem;
   }
 `;
 
 // Style for the content area
 const ContentArea = styled.div`
   width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+  max-width: 100%;
 `;
 
 // Loading indicator
@@ -107,7 +121,7 @@ const Interactions = () => {
   const renderContent = () => {
     switch (activeTab) {
       case 'recent':
-        return <RecentInteractions />;
+        return <ContactsListTable category="recent-30-days" />;
       case 'keepintouch':
         return <KeepInTouch />;
       case 'introductions':

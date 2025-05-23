@@ -9,7 +9,6 @@ import {
   Outlet 
 } from 'react-router-dom';
 import Login from './pages/Login';
-import Contacts from './pages/Contacts';
 import Dashboard from './pages/Dashboard';
 import NewContacts from './pages/NewContacts';
 import Inbox from './pages/Inbox';
@@ -119,7 +118,7 @@ const App = () => {
           // Contacts section
           {
             path: "contacts",
-            element: <Contacts />
+            element: <Navigate to="/contacts/interactions" />
           },
           {
             path: "contacts/simple",

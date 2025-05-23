@@ -2070,6 +2070,74 @@ const ContactsListTable = ({ category }) => {
           query = query
             .eq('category', 'Inbox')
             .not('last_interaction_at', 'is', null);
+        } else if (category === 'recent-30-days') {
+          // Show contacts with last_interaction_at within the last 30 days AND exclude Skip category
+          const thirtyDaysAgo = new Date();
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+          query = supabase
+            .from('contacts')
+            .select(`
+              contact_id, 
+              first_name, 
+              last_name, 
+              score,
+              last_interaction_at,
+              created_at,
+              keep_in_touch_frequency,
+              linkedin,
+              job_role,
+              category
+            `)
+            .gte('last_interaction_at', thirtyDaysAgo.toISOString())
+            .not('last_interaction_at', 'is', null)
+            .neq('category', 'Skip')  // Also exclude Skip category
+            .order('last_interaction_at', { ascending: false })
+            .limit(1000);
+        } else if (category === 'recent-created') {
+          // Show contacts created in the last 10 days, ordered by created_at descending, excluding Skip
+          const tenDaysAgo = new Date();
+          tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
+          query = supabase
+            .from('contacts')
+            .select(`
+              contact_id, 
+              first_name, 
+              last_name, 
+              score,
+              last_interaction_at,
+              created_at,
+              keep_in_touch_frequency,
+              linkedin,
+              job_role,
+              category
+            `)
+            .gte('created_at', tenDaysAgo.toISOString())
+            .neq('category', 'Skip')
+            .order('created_at', { ascending: false })
+            .limit(1000);
+        } else if (category === 'recent-edited') {
+          // Show contacts edited in the last 10 days, ordered by last_modified_at descending, excluding Skip
+          const tenDaysAgo = new Date();
+          tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
+          query = supabase
+            .from('contacts')
+            .select(`
+              contact_id, 
+              first_name, 
+              last_name, 
+              score,
+              last_interaction_at,
+              created_at,
+              last_modified_at,
+              keep_in_touch_frequency,
+              linkedin,
+              job_role,
+              category
+            `)
+            .gte('last_modified_at', tenDaysAgo.toISOString())
+            .neq('category', 'Skip')
+            .order('last_modified_at', { ascending: false })
+            .limit(1000);
         } else if (category) {
           // Regular category filter
           query = query.eq('category', category);

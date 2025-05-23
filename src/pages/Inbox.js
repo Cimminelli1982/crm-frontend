@@ -1,7 +1,7 @@
 import React, { useState, lazy, Suspense, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
-import { FiMail, FiUsers, FiClock, FiCopy, FiSkipForward, FiPhone } from 'react-icons/fi';
+import { FiMail, FiUsers, FiClock, FiCopy, FiSkipForward, FiPhone, FiActivity } from 'react-icons/fi';
 
 // Lazy load the inbox components
 const WhatsappInbox = lazy(() => import('./contacts/WhatsappInbox'));
@@ -10,15 +10,19 @@ const ContactsInbox = lazy(() => import('./contacts/ContactsInbox'));
 const KeepInTouchInbox = lazy(() => import('./contacts/KeepInTouchInbox'));
 const SkipInbox = lazy(() => import('./contacts/SkipInbox'));
 const DuplicateManager = lazy(() => import('./contacts/DuplicateManager'));
+const RecentInbox = lazy(() => import('./contacts/RecentInbox'));
 
 // Style for the main content
 const Container = styled.div`
   padding: 0;
-  margin-top: 5px; /* Add margin at the top to avoid browser search bar */
+  margin: 0;
+  margin-top: -1px; /* Pull content to the very top */
   height: 100%;
   width: 100%;
-  overflow-x: hidden; /* Prevent horizontal scrolling */
-  background-color: #121212;
+  overflow: hidden;
+  box-sizing: border-box;
+  max-width: 100%;
+  position: relative;
 `;
 
 // Style for the top menu
@@ -29,14 +33,12 @@ const TopMenuContainer = styled.div`
   overflow-x: auto;
   scrollbar-width: thin;
   scrollbar-color: #00ff00 #222;
-  padding: 0;
+  padding: 8px 0;
   margin-bottom: 0;
-  margin-top: 5px;
   position: sticky;
-  top: 40px; /* Place it below the browser's search bar */
+  top: 0;
   z-index: 100;
-  border-top: 1px solid #333;
-  border-radius: 4px 4px 0 0;
+  width: 100%;
   
   &::-webkit-scrollbar {
     height: 6px;
@@ -54,27 +56,30 @@ const TopMenuContainer = styled.div`
 
 // Style for the inbox content
 const InboxContent = styled.div`
-  padding: 0 3px;
-  background-color: #121212;
+  padding: 0px 0px 0px 0px;
   width: 100%;
-  margin-top: 5px;
+  overflow: hidden;
+  box-sizing: border-box;
+  max-width: 100%;
 `;
 
 // Style for the menu items
 const MenuItem = styled.div`
   display: flex;
   align-items: center;
-  padding: 12px 16px;
+  padding: 10px 20px;
   color: ${props => props.$active ? '#00ff00' : '#ccc'};
   text-decoration: none;
-  border-bottom: 2px solid ${props => props.$active ? '#00ff00' : 'transparent'};
-  margin-right: 15px;
+  border-bottom: 3px solid ${props => props.$active ? '#00ff00' : 'transparent'};
+  margin-right: 20px;
   font-family: 'Courier New', monospace;
   transition: all 0.2s ease;
   white-space: nowrap;
   cursor: pointer;
-  font-size: 0.95rem;
+  font-size: 1rem;
   font-weight: ${props => props.$active ? 'bold' : 'normal'};
+  background-color: ${props => props.$active ? 'rgba(0, 255, 0, 0.05)' : 'transparent'};
+  border-radius: 4px 4px 0 0;
   
   &:hover {
     color: #00ff00;
@@ -82,26 +87,21 @@ const MenuItem = styled.div`
   }
   
   &:first-child {
-    margin-left: 15px;
+    margin-left: 10px;
   }
   
   svg {
-    margin-right: 8px;
-    font-size: 1rem;
+    margin-right: 10px;
+    font-size: 1.1rem;
   }
-`;
-
-// Style for the title
-const Title = styled.h1`
-  color: #00ff00;
-  margin-bottom: 30px;
-  font-family: 'Courier New', monospace;
 `;
 
 // Style for the content area
 const ContentArea = styled.div`
   width: 100%;
-  background-color: #121212;
+  overflow: hidden;
+  box-sizing: border-box;
+  max-width: 100%;
 `;
 
 // Loading indicator
@@ -112,9 +112,6 @@ const LoadingFallback = styled.div`
   height: 300px;
   color: #00ff00;
   font-family: 'Courier New', monospace;
-  margin-top: 20px;
-  background-color: #121212;
-  border-radius: 4px;
 `;
 
 const Inbox = () => {
@@ -143,6 +140,7 @@ const Inbox = () => {
   const menuItems = [
     { id: 'whatsapp', name: 'WhatsApp', icon: <FiPhone /> },
     { id: 'email', name: 'Email', icon: <FiMail /> },
+    { id: 'recent', name: 'Recent', icon: <FiActivity /> },
     { id: 'category', name: 'Categories', icon: <FiUsers /> },
     { id: 'kit', name: 'Keep in Touch', icon: <FiClock /> },
     { id: 'skip', name: 'Skip', icon: <FiSkipForward /> },
@@ -156,6 +154,8 @@ const Inbox = () => {
         return <WhatsappInbox />;
       case 'email':
         return <EmailInbox />;
+      case 'recent':
+        return <RecentInbox />;
       case 'category':
         return <ContactsInbox />;
       case 'kit':
