@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
-import { FiList, FiUsers, FiDollarSign, FiBriefcase, FiHeart } from 'react-icons/fi';
+import { FiList, FiUsers, FiDollarSign, FiBriefcase, FiHeart, FiInbox } from 'react-icons/fi';
+import { FaStar } from 'react-icons/fa';
 import ContactsListTable from '../../components/contacts/ContactsListTable';
 
 // Style for the main content
@@ -113,10 +114,13 @@ const LoadingFallback = styled.div`
 `;
 
 const Lists = () => {
-  const [activeTab, setActiveTab] = useState('founders');
+  const [activeTab, setActiveTab] = useState('full-list');
 
   // Define menu items
   const menuItems = [
+    { id: 'full-list', name: 'Full List', icon: <FiUsers />, category: 'all-except-skip' },
+    { id: 'inbox', name: 'Inbox', icon: <FiInbox />, category: 'Inbox' },
+    { id: 'rockstars', name: 'Rockstars', icon: <FaStar />, category: 'rockstars-score-5' },
     { id: 'founders', name: 'Founders', icon: <FiList />, category: 'Founder' },
     { id: 'investors', name: 'Professional Investors', icon: <FiDollarSign />, category: 'Professional Investor' },
     { id: 'managers', name: 'Managers', icon: <FiBriefcase />, category: 'Manager' },

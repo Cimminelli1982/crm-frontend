@@ -19,6 +19,16 @@ import NewEditCompanyModal from '../modals/NewEditCompanyModal';
 import DeleteOrSkipModal from '../modals/DeleteOrSkipModal';
 import ContactsInteractionModal from '../modals/ContactsInteractionModal';
 import DealViewFindAddModal from '../modals/DealViewFindAddModal';
+import NewIntroductionModal from '../modals/NewIntroductionModal';
+
+// Helper function to batch arrays into chunks
+const batchArray = (array, batchSize = 50) => {
+  const batches = [];
+  for (let i = 0; i < array.length; i += batchSize) {
+    batches.push(array.slice(i, i + batchSize));
+  }
+  return batches;
+};
 
 // Custom toast styling and grid overrides
 const ToastStyle = createGlobalStyle`
@@ -1234,6 +1244,7 @@ const ActionsRenderer = (props) => {
   const [showLinkedInSearchModal, setShowLinkedInSearchModal] = useState(false);
   const [showInteractionModal, setShowInteractionModal] = useState(false);
   const [showDealModal, setShowDealModal] = useState(false);
+  const [showIntroductionModal, setShowIntroductionModal] = useState(false);
   
   // Get primary email or first available
   const email = data.email || '';
@@ -1291,6 +1302,7 @@ const ActionsRenderer = (props) => {
     setShowLinkedInSearchModal(false);
     setShowInteractionModal(false);
     setShowDealModal(false);
+    setShowIntroductionModal(false);
   };
   
   const handleSaveLinkedInData = async (linkedInData) => {
@@ -1484,8 +1496,8 @@ const ActionsRenderer = (props) => {
 
   const handleIntrosClick = (e) => {
     e.stopPropagation();
-    // Add functionality for Intros button
-    toast.info(`Intros feature for ${data.first_name} ${data.last_name} coming soon!`);
+    // Open the Introduction modal
+    setShowIntroductionModal(true);
   };
 
   // Simple approach - no button position tracking
@@ -1592,6 +1604,22 @@ const ActionsRenderer = (props) => {
           isOpen={showDealModal}
           onClose={() => setShowDealModal(false)}
           contactData={data}
+        />
+      )}
+      
+      {showIntroductionModal && (
+        <NewIntroductionModal
+          isOpen={showIntroductionModal}
+          onRequestClose={() => {
+            setShowIntroductionModal(false);
+            // Refresh data after closing modal to show any updates
+            if (props.context && props.context.refreshData) {
+              setTimeout(() => {
+                props.context.refreshData();
+              }, 500);
+            }
+          }}
+          preSelectedContact={data}
         />
       )}
     </div>
@@ -2023,12 +2051,29 @@ const ContactsListTable = ({ category }) => {
             created_at,
             keep_in_touch_frequency,
             linkedin,
-            job_role
+            job_role,
+            category
           `)
-          .order('first_name', { ascending: true });
+          .order('first_name', { ascending: true })
+          .limit(1000);  // Limit to prevent overwhelming the browser
         
-        // Always filter for "Founder" category, ignoring any other category parameter
-        query = query.eq('category', 'Founder');
+        // Handle special category filters
+        if (category === 'all-except-skip') {
+          // Show all contacts except those with category 'Skip'
+          // Note: 'Skip' is a contact category, not the same as "Do not keep in touch" frequency
+          query = query.neq('category', 'Skip');
+        } else if (category === 'rockstars-score-5') {
+          // Show contacts with score = 5
+          query = query.eq('score', 5);
+        } else if (category === 'Inbox') {
+          // For Inbox: show contacts with category 'Inbox' AND last_interaction_at is not null
+          query = query
+            .eq('category', 'Inbox')
+            .not('last_interaction_at', 'is', null);
+        } else if (category) {
+          // Regular category filter
+          query = query.eq('category', category);
+        }
         
         const { data: contactsData, error: contactsError } = await query;
         
@@ -2044,86 +2089,124 @@ const ContactsListTable = ({ category }) => {
         // Get all contact IDs to fetch related data
         const contactIds = contactsData.map(contact => contact.contact_id);
         
-        // Fetch related data in parallel
-        const [
-          companyRelationsData,
-          tagRelationsData,
-          cityRelationsData,
-          emailsData,
-          mobilesData
-        ] = await Promise.all([
-          // Get company relations
-          supabase
-            .from('contact_companies')
-            .select('contact_id, company_id')
-            .in('contact_id', contactIds),
-            
-          // Get tag relations
-          supabase
-            .from('contact_tags')
-            .select('contact_id, tag_id')
-            .in('contact_id', contactIds),
-            
-          // Get city relations
-          supabase
-            .from('contact_cities')
-            .select('contact_id, city_id')
-            .in('contact_id', contactIds),
-            
-          // Get emails
-          supabase
-            .from('contact_emails')
-            .select('contact_id, email, is_primary')
-            .in('contact_id', contactIds),
-            
-          // Get mobile numbers
-          supabase
-            .from('contact_mobiles')
-            .select('contact_id, mobile, is_primary')
-            .in('contact_id', contactIds)
-        ]);
+        // Batch contact IDs to avoid URL length limits
+        const contactIdBatches = batchArray(contactIds, 30);
         
-        // Check for errors from all parallel requests
-        if (companyRelationsData.error) throw companyRelationsData.error;
-        if (tagRelationsData.error) throw tagRelationsData.error;
-        if (cityRelationsData.error) throw cityRelationsData.error;
-        if (emailsData.error) throw emailsData.error;
-        if (mobilesData.error) throw mobilesData.error;
+        // Fetch related data in batches
+        const companyRelationsData = { data: [] };
+        const tagRelationsData = { data: [] };
+        const cityRelationsData = { data: [] };
+        const emailsData = { data: [] };
+        const mobilesData = { data: [] };
+        
+        // Process each batch
+        for (const batch of contactIdBatches) {
+          const [
+            batchCompanyRelations,
+            batchTagRelations,
+            batchCityRelations,
+            batchEmails,
+            batchMobiles
+          ] = await Promise.all([
+            // Get company relations
+            supabase
+              .from('contact_companies')
+              .select('contact_id, company_id')
+              .in('contact_id', batch),
+              
+            // Get tag relations
+            supabase
+              .from('contact_tags')
+              .select('contact_id, tag_id')
+              .in('contact_id', batch),
+              
+            // Get city relations
+            supabase
+              .from('contact_cities')
+              .select('contact_id, city_id')
+              .in('contact_id', batch),
+              
+            // Get emails
+            supabase
+              .from('contact_emails')
+              .select('contact_id, email, is_primary')
+              .in('contact_id', batch),
+              
+            // Get mobile numbers
+            supabase
+              .from('contact_mobiles')
+              .select('contact_id, mobile, is_primary')
+              .in('contact_id', batch)
+          ]);
+          
+          // Check for errors from batch requests
+          if (batchCompanyRelations.error) throw batchCompanyRelations.error;
+          if (batchTagRelations.error) throw batchTagRelations.error;
+          if (batchCityRelations.error) throw batchCityRelations.error;
+          if (batchEmails.error) throw batchEmails.error;
+          if (batchMobiles.error) throw batchMobiles.error;
+          
+          // Accumulate results
+          companyRelationsData.data.push(...(batchCompanyRelations.data || []));
+          tagRelationsData.data.push(...(batchTagRelations.data || []));
+          cityRelationsData.data.push(...(batchCityRelations.data || []));
+          emailsData.data.push(...(batchEmails.data || []));
+          mobilesData.data.push(...(batchMobiles.data || []));
+        }
         
         // Extract unique IDs for companies, tags, and cities
         const companyIds = [...new Set(companyRelationsData.data.map(rel => rel.company_id))];
         const tagIds = [...new Set(tagRelationsData.data.map(rel => rel.tag_id))];
         const cityIds = [...new Set(cityRelationsData.data.map(rel => rel.city_id))];
         
-        // Fetch details for companies, tags, and cities in parallel
-        const [
-          companiesData,
-          tagsData,
-          citiesData
-        ] = await Promise.all([
-          // Get company details
-          supabase
-            .from('companies')
-            .select('company_id, name, website')
-            .in('company_id', companyIds),
-            
-          // Get tag details
-          supabase
-            .from('tags')
-            .select('tag_id, name')
-            .in('tag_id', tagIds),
-            
-          // Get city details
-          supabase
-            .from('cities')
-            .select('city_id, name')
-            .in('city_id', cityIds)
-        ]);
+        // Batch IDs for fetching details
+        const companyIdBatches = batchArray(companyIds, 30);
+        const tagIdBatches = batchArray(tagIds, 30);
+        const cityIdBatches = batchArray(cityIds, 30);
         
-        // Check for errors from all parallel requests
-        if (companiesData.error) throw companiesData.error;
-        if (tagsData.error) throw tagsData.error;
-        if (citiesData.error) throw citiesData.error;
+        // Fetch details for companies, tags, and cities in batches
+        const companiesData = { data: [] };
+        const tagsData = { data: [] };
+        const citiesData = { data: [] };
+        
+        // Fetch company details in batches (only if there are companies)
+        if (companyIds.length > 0) {
+          for (const batch of companyIdBatches) {
+            const { data, error } = await supabase
+              .from('companies')
+              .select('company_id, name, website')
+              .in('company_id', batch);
+              
+            if (error) throw error;
+            companiesData.data.push(...(data || []));
+          }
+        }
+        
+        // Fetch tag details in batches (only if there are tags)
+        if (tagIds.length > 0) {
+          for (const batch of tagIdBatches) {
+            const { data, error } = await supabase
+              .from('tags')
+              .select('tag_id, name')
+              .in('tag_id', batch);
+              
+            if (error) throw error;
+            tagsData.data.push(...(data || []));
+          }
+        }
+        
+        // Fetch city details in batches (only if there are cities)
+        if (cityIds.length > 0) {
+          for (const batch of cityIdBatches) {
+            const { data, error } = await supabase
+              .from('cities')
+              .select('city_id, name')
+              .in('city_id', batch);
+              
+            if (error) throw error;
+            citiesData.data.push(...(data || []));
+          }
+        }
         
         // Map related data to each contact
         const contactsWithRelations = contactsData.map(contact => {

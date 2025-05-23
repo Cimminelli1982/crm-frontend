@@ -473,16 +473,16 @@ const IntroHistoryItem = styled.div`
     background-color: ${props => {
       switch (props.rationale) {
         case 'Karma Points': return '#143601';
-        case 'Dealflow Related': return '#2C1A00';
-        case 'Portfolio Company Related': return '#0A1C2E';
+        case 'Dealflow': return '#2C1A00';
+        case 'Portfolio Company': return '#0A1C2E';
         default: return '#222';
       }
     }};
     color: ${props => {
       switch (props.rationale) {
         case 'Karma Points': return '#00ff00';
-        case 'Dealflow Related': return '#FFBB00';
-        case 'Portfolio Company Related': return '#47A3FF';
+        case 'Dealflow': return '#FFBB00';
+        case 'Portfolio Company': return '#47A3FF';
         default: return '#ccc';
       }
     }};
@@ -507,16 +507,16 @@ const RationaleBadge = styled.span`
   background-color: ${props => {
     switch (props.type) {
       case 'Karma Points': return '#143601';
-      case 'Dealflow Related': return '#2C1A00';
-      case 'Portfolio Company Related': return '#0A1C2E';
+      case 'Dealflow': return '#2C1A00';
+      case 'Portfolio Company': return '#0A1C2E';
       default: return '#222';
     }
   }};
   color: ${props => {
     switch (props.type) {
       case 'Karma Points': return '#00ff00';
-      case 'Dealflow Related': return '#FFBB00';
-      case 'Portfolio Company Related': return '#47A3FF';
+      case 'Dealflow': return '#FFBB00';
+      case 'Portfolio Company': return '#47A3FF';
       default: return '#ccc';
     }
   }};
@@ -965,10 +965,9 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
         contact_ids: selectedContacts.map(contact => contact.contact_id),
         category: rationale, // Using rationale as category
         text: note, // Using note as text
-        introduction_tool: 'Web', // Default value
-        status: 'Completed', // Default value 
-        created_by: userData?.user?.id || 'unknown',
-        created_at: new Date().toISOString()
+        introduction_tool: 'email', // Changed from 'Web' to match enum
+        status: 'Done & Dust', // Changed from 'Completed' to match enum
+        created_by: 'User' // Use the enum value, not user ID
       };
       
       console.log("Contact IDs to be stored:", introData.contact_ids);
@@ -983,8 +982,7 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
           contact_ids: selectedContacts.map(contact => contact.contact_id),
           category: rationale,
           text: note,
-          last_modified_by: userData?.user?.id || 'unknown',
-          last_modified_at: new Date().toISOString()
+          last_modified_by: 'User' // Use the enum value, not user ID
         };
         
         console.log("Updating introduction with data:", updateData);
@@ -1094,8 +1092,8 @@ const NewIntroductionModal = ({ isOpen, onRequestClose, preSelectedContact, edit
               >
                 <option value="">Select a rationale...</option>
                 <option value="Karma Points">Karma Points</option>
-                <option value="Dealflow Related">Dealflow Related</option>
-                <option value="Portfolio Company Related">Portfolio Company Related</option>
+                <option value="Dealflow">Dealflow</option>
+                <option value="Portfolio Company">Portfolio Company</option>
               </Select>
               {validationErrors.rationale && (
                 <ValidationMessage type="error">
