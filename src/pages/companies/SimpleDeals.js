@@ -7,6 +7,7 @@ import Modal from 'react-modal';
 import { FiGrid, FiCpu, FiDollarSign, FiHome, FiPackage, FiBriefcase, FiInbox, FiEdit, FiTrash2, FiPlus } from 'react-icons/fi';
 import DealViewFindAddModal from '../../components/modals/DealViewFindAddModal';
 import DealTagsModal from '../../components/modals/DealTagsModal';
+import EditDealFinalModal from '../../components/modals/EditDealFinalModal';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -501,8 +502,8 @@ const AddDealButton = styled.button`
   display: flex;
   align-items: center;
   gap: 8px;
-  background-color: rgba(0, 255, 0, 0.1);
-  color: #00ff00;
+  background-color: #00ff00;
+  color: #000000;
   border: 1px solid #00ff00;
   border-radius: 4px;
   padding: 8px 16px;
@@ -515,7 +516,7 @@ const AddDealButton = styled.button`
   margin-left: auto; /* Push to the right */
   
   &:hover {
-    background-color: rgba(0, 255, 0, 0.2);
+    background-color: rgba(0, 255, 0, 0.9);
     box-shadow: 0 0 12px rgba(0, 255, 0, 0.5);
     text-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
   }
@@ -602,10 +603,10 @@ const categoryColorMap = {
 // Cell renderer for category
 const CategoryRenderer = (props) => {
   const category = props.value;
-  if (!category) return <span style={{ color: '#aaa', fontStyle: 'italic' }}>-</span>;
+  if (!category) return <span style={{ color: '#aaa', fontStyle: 'italic', display: 'block', textAlign: 'center' }}>-</span>;
   
-  // Return simple text without styling
-  return <span>{category}</span>;
+  // Return text with centered styling
+  return <span style={{ display: 'block', textAlign: 'center' }}>{category}</span>;
 };
 
 // Cell renderer for tags
@@ -1176,11 +1177,17 @@ const ActionsRenderer = (props) => {
   // Handle edit button click
   const handleEdit = (e) => {
     e.stopPropagation();
-    // Here you would typically show an edit form or modal
-    // For now, we'll just show a toast notification
-    toast.info(`Editing deal: ${data.opportunity}`, {
-      icon: <FiEdit style={{ color: '#00ff00' }} />
-    });
+    
+    // Open the EditDealFinalModal with this deal's data
+    if (props.context && props.context.setDealToEdit && props.context.setShowEditDealModal) {
+      props.context.setDealToEdit(data);
+      props.context.setShowEditDealModal(true);
+    } else {
+      // Fallback if context is not available
+      toast.info(`Editing deal: ${data.opportunity}`, {
+        icon: <FiEdit style={{ color: '#00ff00' }} />
+      });
+    }
   };
   
   // Handle delete button click
@@ -1255,7 +1262,13 @@ const ActionsRenderer = (props) => {
   };
   
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', gap: '5px' }}>
+    <div style={{ 
+      display: 'flex', 
+      justifyContent: 'center', 
+      alignItems: 'center',
+      gap: '5px',
+      height: '100%' // Fill the entire cell height
+    }}>
       {/* Attachments Button - Icon only */}
       <button
         onClick={handleAttachments}
@@ -1372,6 +1385,8 @@ const SimpleDeals = () => {
   const [availableTags, setAvailableTags] = useState([]);
   const [tagSearchTerm, setTagSearchTerm] = useState('');
   const [showDealModal, setShowDealModal] = useState(false);
+  const [showEditDealModal, setShowEditDealModal] = useState(false);
+  const [dealToEdit, setDealToEdit] = useState(null);
   // Keep stageFilter state but don't use it - needed for the AG Grid filter
   const [stageFilter, setStageFilter] = useState('');
   const navigate = useNavigate();
@@ -1571,56 +1586,9 @@ const SimpleDeals = () => {
       filter: false,
       resizable: true,
     },
-    { 
-      headerName: 'Category', 
-      field: 'category',
-      cellRenderer: CategoryRenderer,
-      minWidth: 140,
-      filter: false,
-      sortable: true,
-      editable: true,
-      cellEditor: 'agSelectCellEditor',
-      cellEditorParams: {
-        values: [
-          'Inbox',
-          'Startup',
-          'Investment',
-          'Fund',
-          'Partnership',
-          'Real Estate',
-          'Private Debt',
-          'Private Equity',
-          'Other'
-        ]
-      }
-    },
-    { 
-      headerName: 'Stage',
-      field: 'stage',
-      valueFormatter: (params) => params.value || '-',
-      minWidth: 150,
-      filter: false,
-      floatingFilter: true,
-      suppressMenu: true, // Suppress the default filter menu
-      floatingFilterComponent: 'stageFloatingFilter',
-      sortable: true,
-      editable: true,
-      cellEditor: 'agSelectCellEditor',
-      cellEditorParams: {
-        values: [
-          'Lead',
-          'Qualified',
-          'Evaluating',
-          'Closing',
-          'Negotiation',
-          'Closed Won',
-          'Invested',
-          'Closed Lost',
-          'Monitoring',
-          'Passed'
-        ]
-      }
-    },
+    // Category column removed per request
+    // Stage column removed - now using filter buttons at the top instead
+
     { 
       headerName: 'Source', 
       field: 'source_category',
@@ -1687,7 +1655,9 @@ const SimpleDeals = () => {
       width: 100,
       sortable: false,
       filter: false,
-      suppressSizeToFit: true
+      suppressSizeToFit: true,
+      cellClass: 'centered-cell',
+      headerClass: 'centered-header'
     }
   ], []);
   
@@ -2068,36 +2038,20 @@ const SimpleDeals = () => {
     removeDeal,
     stageFilter,
     selectedDeal, // Include selectedDeal in the context to ensure it's accessible
-    setStageFilter
+    setStageFilter,
+    // Add EditDealFinalModal controls
+    setDealToEdit,
+    setShowEditDealModal
   }), [categoryColors, removeDeal, stageFilter, showDealContacts, selectedDeal]);
 
   // Create a manual filter dropdown that's positioned outside AG Grid
   const [showManualStageFilter, setShowManualStageFilter] = useState(false);
   const [filterPosition, setFilterPosition] = useState({ top: 0, left: 0, width: 150, height: 30 });
   
-  // Function to position the manual filter dropdown
+  // We no longer need to position the manual filter since we're using buttons
   const positionManualFilter = useCallback(() => {
-    try {
-      // Find the target filter cell
-      const targetCell = document.querySelector('.ag-header-cell.ag-floating-filter[aria-colindex="5"]');
-      if (!targetCell) return;
-      
-      // Get the position and dimensions of the target cell
-      const cellRect = targetCell.getBoundingClientRect();
-      
-      // Update position state for the manual filter
-      setFilterPosition({
-        top: cellRect.top + window.scrollY,
-        left: cellRect.left + window.scrollX,
-        width: cellRect.width,
-        height: cellRect.height
-      });
-      
-      // Make the filter visible
-      setShowManualStageFilter(true);
-    } catch (err) {
-      console.error('Error positioning manual filter:', err);
-    }
+    // Function kept for compatibility but no longer needed
+    setShowManualStageFilter(false);
   }, []);
   
   // Grid ready event handler
@@ -2355,27 +2309,10 @@ const SimpleDeals = () => {
     }
   }, [dataLoaded]);
   
-  // Effect to handle repositioning filter on scroll/resize
+  // We no longer need this effect since we're using buttons instead of floating filter
+  // Effect is kept as a no-op for compatibility
   useEffect(() => {
-    if (showManualStageFilter) {
-      const handleWindowEvents = () => {
-        positionManualFilter();
-      };
-      
-      // Add event listeners
-      window.addEventListener('scroll', handleWindowEvents);
-      window.addEventListener('resize', handleWindowEvents);
-      
-      // Set up interval to reposition (helps with dynamic grid changes)
-      const repositionInterval = setInterval(handleWindowEvents, 1000);
-      
-      // Cleanup
-      return () => {
-        window.removeEventListener('scroll', handleWindowEvents);
-        window.removeEventListener('resize', handleWindowEvents);
-        clearInterval(repositionInterval);
-      };
-    }
+    // No-op - filter positioning no longer needed
   }, [showManualStageFilter, positionManualFilter]);
   
   // Filter deals based on active tab and stage filter
@@ -2461,7 +2398,30 @@ const SimpleDeals = () => {
   return (
     <Container>
       {/* Inject custom styles for toasts */}
-      <style>{toastStyles}</style>
+      <style>{toastStyles + `
+  .centered-header .ag-header-cell-label {
+    justify-content: center;
+  }
+  
+  .centered-cell {
+    text-align: center;
+  }
+  
+  /* Ensure cells are vertically centered */
+  .ag-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  /* Specific styling for Actions column */
+  .ag-header-cell[col-id="actions"] .ag-header-cell-label,
+  .ag-cell[col-id="actions"] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+`}</style>
       
       {/* Toast Container for notifications */}
       <ToastContainer
@@ -2477,57 +2437,7 @@ const SimpleDeals = () => {
         theme="dark"
       />
       
-      {/* Manual Filter Dropdown positioned over the AG Grid filter cell */}
-      {showManualStageFilter && (
-        <div 
-          className="manual-stage-filter-container"
-          style={{
-            position: 'absolute', 
-            top: filterPosition.top + 'px',
-            left: filterPosition.left + 'px',
-            width: filterPosition.width + 'px',
-            height: filterPosition.height + 'px',
-            zIndex: 1000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            pointerEvents: 'all'
-          }}
-        >
-          <select 
-            value={stageFilter} 
-            onChange={e => setStageFilter(e.target.value)}
-            className="stage-filter-dropdown"
-            style={{
-              width: '95%',
-              height: '75%',
-              backgroundColor: '#1a1a1a',
-              color: '#00ff00',
-              border: '2px solid #00ff00',
-              borderRadius: '4px',
-              padding: '5px',
-              fontFamily: 'Courier New, monospace',
-              fontSize: '0.85rem',
-              cursor: 'pointer',
-              textShadow: '0 0 5px rgba(0, 255, 0, 0.5)',
-              boxShadow: '0 0 8px rgba(0, 255, 0, 0.5)',
-              outline: 'none'
-            }}
-          >
-            <option value="">All Stages</option>
-            <option value="Lead">Lead</option>
-            <option value="Qualified">Qualified</option>
-            <option value="Evaluating">Evaluating</option>
-            <option value="Closing">Closing</option>
-            <option value="Negotiation">Negotiation</option>
-            <option value="Closed Won">Closed Won</option>
-            <option value="Invested">Invested</option>
-            <option value="Closed Lost">Closed Lost</option>
-            <option value="Monitoring">Monitoring</option>
-            <option value="Passed">Passed</option>
-          </select>
-        </div>
-      )}
+      {/* Removed manual filter dropdown */}
       
       <TopMenuContainer>
         {menuItems.map(item => (
@@ -2542,7 +2452,180 @@ const SimpleDeals = () => {
       </TopMenuContainer>
       
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '0 20px' }}>
-        <Title style={{ margin: '20px 0' }}>Deals ({filteredDeals.length})</Title>
+        <div style={{ display: 'flex', alignItems: 'center', margin: '20px 0' }}>
+          {['Lead', 'Evaluating', 'Closing', 'Invested', 'Monitoring', 'Passed', 'Lost'].map((stage, index, arr) => {
+            // Check if the stage is Passed or Lost to apply red styling
+            const isNegativeStage = stage === 'Passed' || stage === 'Lost';
+            const isInvested = stage === 'Invested';
+            const isMonitoring = stage === 'Monitoring';
+            
+            // Style for negative stages (red) or invested (green like ADD NEW DEAL) or other stages
+            const baseColor = isNegativeStage ? '#ff5555' : '#00ff00';
+            const baseColorRgba = isNegativeStage ? 'rgba(255, 0, 0,' : 'rgba(0, 255, 0,';
+            
+            // Determine if we need to show a greater than sign after this button
+            const showGreaterThan = index < arr.length - 1 && 
+              !isInvested && !isMonitoring && !isNegativeStage && 
+              !['Monitoring', 'Invested', 'Passed', 'Lost'].includes(arr[index + 1]);
+              
+            // Determine if we need extra spacing between certain stages
+            const needsExtraSpacing = 
+              (stage === 'Closing' && arr[index + 1] === 'Invested') || 
+              (stage === 'Monitoring' && arr[index + 1] === 'Passed');
+              
+            // Minimal spacing for Invested and Monitoring, and Passed and Lost  
+            const needsMinimalSpacing = 
+              (stage === 'Invested' && arr[index + 1] === 'Monitoring') ||
+              (stage === 'Passed' && arr[index + 1] === 'Lost');
+            
+            // Special styling for Invested button
+            if (isInvested) {
+              return (
+                <>
+                  <button
+                    key={stage}
+                    onClick={() => setStageFilter(stageFilter === stage ? '' : stage)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    backgroundColor: stageFilter === stage ? '#00ff00' : 'rgba(0, 255, 0, 0.2)',
+                    color: stageFilter === stage ? '#000000' : '#00ff00',
+                    border: '1px solid #00ff00',
+                    borderRadius: '4px',
+                    padding: '8px 16px',
+                    fontSize: '0.9rem',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    fontFamily: 'Courier New, monospace',
+                    boxShadow: '0 0 8px rgba(0, 255, 0, 0.3)'
+                  }}
+                  onMouseOver={(e) => {
+                    if (stageFilter !== stage) {
+                      e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.3)';
+                      e.currentTarget.style.boxShadow = '0 0 12px rgba(0, 255, 0, 0.5)';
+                    }
+                  }}
+                  onMouseOut={(e) => {
+                    if (stageFilter !== stage) {
+                      e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.2)';
+                      e.currentTarget.style.boxShadow = '0 0 8px rgba(0, 255, 0, 0.3)';
+                    }
+                  }}
+                >
+                    <span role="img" aria-label="Thumbs Up" style={{ fontSize: '14px' }}>👍</span>
+                    {stage}
+                  </button>
+                  {needsExtraSpacing && index < arr.length - 1 && (
+                    <div style={{ width: '40px' }} />
+                  )}
+                  {needsMinimalSpacing && index < arr.length - 1 && (
+                    <div style={{ width: '10px' }} />
+                  )}
+                </>
+              );
+            }
+            
+            // Special styling for Monitoring button
+            if (isMonitoring) {
+              return (
+                <>
+                  <button
+                    key={stage}
+                    onClick={() => setStageFilter(stageFilter === stage ? '' : stage)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    backgroundColor: stageFilter === stage ? '#00ff00' : 'rgba(0, 255, 0, 0.2)',
+                    color: stageFilter === stage ? '#000000' : '#00ff00',
+                    border: '1px solid #00ff00',
+                    borderRadius: '4px',
+                    padding: '8px 16px',
+                    fontSize: '0.9rem',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    fontFamily: 'Courier New, monospace',
+                    boxShadow: '0 0 8px rgba(0, 255, 0, 0.3)'
+                  }}
+                  onMouseOver={(e) => {
+                    if (stageFilter !== stage) {
+                      e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.3)';
+                      e.currentTarget.style.boxShadow = '0 0 12px rgba(0, 255, 0, 0.5)';
+                    }
+                  }}
+                  onMouseOut={(e) => {
+                    if (stageFilter !== stage) {
+                      e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.2)';
+                      e.currentTarget.style.boxShadow = '0 0 8px rgba(0, 255, 0, 0.3)';
+                    }
+                  }}
+                >
+                    <span role="img" aria-label="Monitor" style={{ fontSize: '14px' }}>📊</span>
+                    {stage}
+                  </button>
+                  {needsExtraSpacing && index < arr.length - 1 && (
+                    <div style={{ width: '40px' }} />
+                  )}
+                  {needsMinimalSpacing && index < arr.length - 1 && (
+                    <div style={{ width: '10px' }} />
+                  )}
+                </>
+              );
+            }
+            
+            // Regular button styling for other stages
+            return (
+              <>
+                <button
+                  key={stage}
+                  onClick={() => setStageFilter(stageFilter === stage ? '' : stage)}
+                  style={{
+                    padding: '8px 12px',
+                    backgroundColor: stageFilter === stage 
+                      ? `${baseColorRgba} 0.2)` 
+                      : `${baseColorRgba} 0.05)`,
+                    color: baseColor,
+                    border: `1px solid ${baseColor}`,
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontFamily: 'Courier New, monospace',
+                    fontSize: '0.9rem',
+                    transition: 'all 0.2s ease',
+                    boxShadow: stageFilter === stage ? `0 0 10px ${baseColorRgba} 0.3)` : 'none'
+                  }}
+                  onMouseOver={(e) => {
+                    if (stageFilter !== stage) {
+                      e.currentTarget.style.backgroundColor = `${baseColorRgba} 0.1)`;
+                      e.currentTarget.style.boxShadow = `0 0 5px ${baseColorRgba} 0.2)`;
+                    }
+                  }}
+                  onMouseOut={(e) => {
+                    if (stageFilter !== stage) {
+                      e.currentTarget.style.backgroundColor = `${baseColorRgba} 0.05)`;
+                      e.currentTarget.style.boxShadow = 'none';
+                    }
+                  }}
+                >
+                  {stage}
+                </button>
+                {showGreaterThan && (
+                  <div style={{ margin: '0 5px', color: '#00ff00', fontSize: '14px' }}>
+                    &gt;
+                  </div>
+                )}
+                {needsExtraSpacing && index < arr.length - 1 && (
+                  <div style={{ width: '20px' }} />
+                )}
+                {needsMinimalSpacing && index < arr.length - 1 && (
+                  <div style={{ width: '10px' }} />
+                )}
+              </>
+            );
+          })}
+        </div>
         <AddDealButton onClick={() => {
           // When opening the modal from the button, we don't have a selected contact
           setSelectedDeal(null);
@@ -2814,6 +2897,31 @@ const SimpleDeals = () => {
         onClose={() => setShowDealModal(false)}
         contactData={selectedDeal}
         showOnlyCreateTab={true}
+      />
+      
+      {/* Edit Deal Modal */}
+      <EditDealFinalModal
+        isOpen={showEditDealModal}
+        onClose={() => setShowEditDealModal(false)}
+        dealData={dealToEdit}
+        onSave={(updatedDeal) => {
+          // Update deals in our state
+          if (updatedDeal && updatedDeal.deal_id) {
+            setDeals(prevDeals => prevDeals.map(deal => 
+              deal.deal_id === updatedDeal.deal_id ? updatedDeal : deal
+            ));
+            
+            // Update filtered deals as well
+            setFilteredDeals(prevDeals => prevDeals.map(deal => 
+              deal.deal_id === updatedDeal.deal_id ? updatedDeal : deal
+            ));
+            
+            toast.success(`Deal "${updatedDeal.opportunity}" updated successfully`);
+          }
+          
+          // Close the modal
+          setShowEditDealModal(false);
+        }}
       />
     </Container>
   );

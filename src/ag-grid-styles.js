@@ -184,6 +184,28 @@ export const embedAgGridStyles = () => {
       border: 1px solid var(--ag-border-color);
       padding: 3px 6px;
     }
+    
+    /* Aggressively hide all floating filter elements */
+    .ag-floating-filter,
+    .ag-header-cell.ag-floating-filter,
+    .ag-floating-filter-body,
+    .ag-floating-filter-button,
+    .ag-floating-filter-button-button,
+    .ag-header-row.ag-header-row-floating-filter,
+    div[class*="ag-floating-filter"],
+    div[role="gridcell"][class*="ag-floating-filter"] {
+      display: none !important;
+      visibility: hidden !important;
+      height: 0 !important;
+      max-height: 0 !important;
+      opacity: 0 !important;
+    }
+    
+    /* Target the specific cell you mentioned */
+    .ag-header-cell.ag-floating-filter.ag-focus-managed[role="gridcell"][aria-colindex="5"] {
+      display: none !important;
+      visibility: hidden !important;
+    }
   `;
   
   // Add the style to the document head
