@@ -317,7 +317,7 @@ const AssociateDealContactModal = ({
       const { data, error } = await supabase
         .from('contacts')
         .select('*')
-        .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%`)
+        .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%`)
         .order('last_name', { ascending: true })
         .limit(20);
         
@@ -462,7 +462,7 @@ const AssociateDealContactModal = ({
             value={searchTerm}
             onChange={handleSearchChange}
             onKeyDown={handleSearchKeyDown}
-            placeholder="Search for a contact by name or email..."
+            placeholder="Search for a contact by name..."
           />
           <SearchIcon>
             <FiSearch size={16} />
@@ -482,7 +482,7 @@ const AssociateDealContactModal = ({
                     <ResultInfo>
                       <ResultName>{contact.first_name} {contact.last_name}</ResultName>
                       <ResultDetail>
-                        {contact.email || 'No email'} • {contact.mobile || 'No mobile'}
+                        {contact.job_role || 'No job role'} • {contact.mobile || 'No mobile'}
                       </ResultDetail>
                     </ResultInfo>
                     <ActionButton title="View details">
@@ -494,7 +494,7 @@ const AssociateDealContactModal = ({
             ) : noResults ? (
               <ResultsContainer>
                 <EmptyMessage>
-                  No contacts found with that name or email.
+                  No contacts found with that name.
                   <div style={{ marginTop: '10px' }}>
                     <Button className="primary" onClick={handleCreateNewContact}>
                       <FiPlus size={14} /> Create New Contact

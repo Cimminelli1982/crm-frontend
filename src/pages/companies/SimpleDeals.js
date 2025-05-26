@@ -4,10 +4,11 @@ import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { AgGridReact } from '../../ag-grid-setup';
 import Modal from 'react-modal';
-import { FiGrid, FiCpu, FiDollarSign, FiHome, FiPackage, FiBriefcase, FiInbox, FiEdit, FiTrash2, FiPlus } from 'react-icons/fi';
+import { FiGrid, FiCpu, FiDollarSign, FiHome, FiPackage, FiBriefcase, FiInbox, FiEdit, FiTrash2, FiPlus, FiSearch } from 'react-icons/fi';
 import DealViewFindAddModal from '../../components/modals/DealViewFindAddModal';
 import DealTagsModal from '../../components/modals/DealTagsModal';
 import EditDealFinalModal from '../../components/modals/EditDealFinalModal';
+import AssociateDealContactModal from '../../components/modals/AssociateDealContactModal';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -524,6 +525,53 @@ const AddDealButton = styled.button`
   svg {
     font-size: 16px;
   }
+`;
+
+const SearchBarContainer = styled.div`
+  display: flex;
+  align-items: center;
+  margin: 20px;
+  gap: 10px;
+`;
+
+const DealSearchInput = styled.input`
+  background-color: #222;
+  color: #fff;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 8px 12px 8px 40px;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  width: 300px;
+  transition: all 0.2s ease;
+  
+  &:focus {
+    outline: none;
+    border-color: #666;
+  }
+  
+  &::placeholder {
+    color: #666;
+    font-style: normal;
+    text-transform: uppercase;
+  }
+`;
+
+const SearchInputContainer = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+`;
+
+const SearchIconInside = styled.div`
+  position: absolute;
+  left: 12px;
+  color: #00ff00;
+  display: flex;
+  align-items: center;
+  font-size: 16px;
+  pointer-events: none;
+  z-index: 1;
 `;
 
 const TagsTitle = styled.h3`
@@ -1366,6 +1414,276 @@ const ActionsRenderer = (props) => {
   );
 };
 
+// Cell renderer for contacts with navigation and management
+const ContactsRenderer = (params) => {
+  const [currentContactIndex, setCurrentContactIndex] = React.useState(0);
+  const [showAssociateModal, setShowAssociateModal] = React.useState(false);
+  
+  const contacts = params.value || [];
+  const dealId = params.data?.deal_id;
+  const hasMultipleContacts = contacts.length > 1;
+  
+  // Handle associating a contact
+  const handleAssociateContact = (e) => {
+    e?.stopPropagation(); // Prevent row selection
+    setShowAssociateModal(true);
+  };
+  
+  // Navigation function for contact carousel
+  const goToNextContact = (e) => {
+    e?.stopPropagation();
+    setCurrentContactIndex((prevIndex) => (prevIndex + 1) % contacts.length);
+  };
+  
+  // Handle removing a contact association
+  const handleRemoveContact = async (contactId, e) => {
+    e?.stopPropagation(); // Prevent row selection
+    
+    if (!dealId || !contactId) return;
+    
+    try {
+      const { error } = await supabase
+        .from('deals_contacts')
+        .delete()
+        .eq('deal_id', dealId)
+        .eq('contact_id', contactId);
+        
+      if (error) throw error;
+      
+      // Success message
+      toast.success('Contact association removed');
+      
+      // Refresh the grid
+      if (params.api) {
+        params.api.refreshCells({ force: true });
+      }
+      
+      // Initiate a full data refresh
+      setTimeout(() => {
+        if (params.context && params.context.refreshData) {
+          params.context.refreshData();
+        }
+      }, 100);
+    } catch (error) {
+      console.error('Error removing contact association:', error);
+      toast.error('Failed to remove contact association');
+    }
+  };
+  
+  // Handle contact association completion
+  const handleContactAssociated = (result) => {
+    setShowAssociateModal(false);
+    
+    // Refresh the grid
+    if (params.context && params.context.refreshData) {
+      setTimeout(() => {
+        params.context.refreshData();
+      }, 100);
+    }
+  };
+  
+  // Prevent event propagation
+  const handleContainerClick = (e) => {
+    e.stopPropagation();
+  };
+
+  if (!contacts.length) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        height: '100%'
+      }}
+      onClick={handleContainerClick}
+      >
+        <div
+          onClick={handleAssociateContact}
+          style={{
+            color: '#ffffff',
+            fontSize: '11px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px'
+          }}
+          title="Associate Contact"
+        >
+          Add contacts
+        </div>
+        
+        {showAssociateModal && (
+          <AssociateDealContactModal 
+            isOpen={showAssociateModal}
+            onRequestClose={() => setShowAssociateModal(false)}
+            dealId={dealId}
+            onContactAssociated={handleContactAssociated}
+          />
+        )}
+      </div>
+    );
+  }
+  
+  // Current contact to display
+  const currentContact = contacts[currentContactIndex];
+  const fullName = [currentContact.first_name || '', currentContact.last_name || ''].filter(Boolean).join(' ') || 'Unnamed';
+  
+  // Navigation button styles
+  const navButtonStyle = {
+    background: 'none',
+    border: 'none',
+    color: '#ffffff',
+    cursor: 'pointer',
+    padding: '0',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '14px',
+    height: '14px',
+    fontSize: '10px',
+    opacity: '0.8'
+  };
+  
+  // Fixed row height
+  const rowHeight = 36;
+  
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      height: rowHeight + 'px',
+      minHeight: rowHeight + 'px',
+      width: '100%',
+      position: 'relative'
+    }}
+    onClick={handleContainerClick}
+    >
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        width: '100%',
+        gap: '4px'
+      }}>
+        {/* Contact display */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          backgroundColor: '#1a1a1a',
+          color: '#ffffff',
+          padding: '0px 6px',
+          borderRadius: '4px',
+          fontSize: '11px',
+          border: '1px solid #ffffff',
+          boxShadow: '0 0 4px rgba(255, 255, 255, 0.2)',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          lineHeight: '16px',
+          width: '100%',
+          maxWidth: hasMultipleContacts ? '170px' : '190px',
+          height: '18px',
+          position: 'relative'
+        }}>
+          <span style={{
+            cursor: 'pointer',
+            maxWidth: hasMultipleContacts ? '120px' : '160px',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            display: 'inline-block'
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (params.context && params.context.showDealContacts) {
+              params.context.showDealContacts(params.data);
+            }
+          }}
+          title={`${fullName}${currentContact.job_role ? ` - ${currentContact.job_role}` : ''}`}
+          >
+            {fullName}
+          </span>
+          
+          {/* Counter indicator for multiple contacts */}
+          {hasMultipleContacts && (
+            <div style={{
+              fontSize: '9px',
+              color: '#cccccc',
+              marginLeft: '4px',
+              padding: '0 2px',
+              borderRadius: '3px',
+              backgroundColor: '#333333'
+            }}>
+              {currentContactIndex + 1}/{contacts.length}
+            </div>
+          )}
+          
+          <button
+            onClick={(e) => handleRemoveContact(currentContact.contact_id, e)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#ffffff',
+              cursor: 'pointer',
+              padding: '0',
+              marginLeft: '4px',
+              fontSize: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+            title="Remove Contact Association"
+          >
+            ✕
+          </button>
+        </div>
+        
+        {/* Right navigation arrow (only visible for multiple contacts) */}
+        {hasMultipleContacts && (
+          <button
+            onClick={goToNextContact}
+            style={{
+              ...navButtonStyle,
+              marginLeft: '2px'
+            }}
+            title="Next contact"
+          >
+            &#9654;
+          </button>
+        )}
+        
+        {/* Add contact button */}
+        <button 
+          onClick={handleAssociateContact}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#ffffff',
+            borderRadius: '4px',
+            width: '20px',
+            height: '20px',
+            padding: '0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            fontSize: '14px'
+          }}
+          title="Associate Contact"
+        >
+          <FiPlus size={14} />
+        </button>
+      </div>
+      
+      {showAssociateModal && (
+        <AssociateDealContactModal 
+          isOpen={showAssociateModal}
+          onRequestClose={() => setShowAssociateModal(false)}
+          dealId={dealId}
+          onContactAssociated={handleContactAssociated}
+        />
+      )}
+    </div>
+  );
+};
+
 const SimpleDeals = () => {
   const [deals, setDeals] = useState([]);
   const [filteredDeals, setFilteredDeals] = useState([]);
@@ -1389,6 +1707,7 @@ const SimpleDeals = () => {
   const [dealToEdit, setDealToEdit] = useState(null);
   // Keep stageFilter state but don't use it - needed for the AG Grid filter
   const [stageFilter, setStageFilter] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
   const navigate = useNavigate();
   
   // Category colors for this component
@@ -1397,11 +1716,10 @@ const SimpleDeals = () => {
   // Column definitions for the deal grid
   const columnDefs = useMemo(() => [
     { 
-      headerName: 'Deal 😊', 
+      headerName: 'Deals', 
       field: 'opportunity',
       minWidth: 200,
       filter: 'agTextColumnFilter',
-      floatingFilter: true,
       sortable: true,
       pinned: 'left',
       editable: true,
@@ -1418,163 +1736,7 @@ const SimpleDeals = () => {
       minWidth: 220,
       sortable: true,
       filter: true,
-      cellRenderer: (params) => {
-        const contacts = params.value;
-        if (!contacts || contacts.length === 0) {
-          return (
-            <div style={{ textAlign: 'center', color: '#aaa', fontStyle: 'italic' }}>No contacts</div>
-          );
-        }
-        
-        // Format for preview of first contact
-        const firstContact = contacts[0];
-        const fullName = [firstContact.first_name || '', firstContact.last_name || ''].filter(Boolean).join(' ') || 'Unnamed';
-        const jobRole = firstContact.job_role || '';
-        const hasInteraction = firstContact.last_interaction_at ? true : false;
-        const interactionDate = hasInteraction ? new Date(firstContact.last_interaction_at) : null;
-        
-        // Return formatted contacts display
-        return (
-          <div style={{ 
-            display: 'flex', 
-            flexDirection: 'column',
-            cursor: 'pointer',
-            padding: '5px 10px',
-            borderRadius: '4px',
-            transition: 'all 0.2s ease',
-            backgroundColor: 'rgba(0, 255, 0, 0.05)',
-            border: '1px solid rgba(0, 255, 0, 0.1)',
-          }}
-          onClick={() => {
-            if (params.context && params.context.showDealContacts) {
-              params.context.showDealContacts(params.data);
-            }
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.1)';
-            e.currentTarget.style.borderColor = 'rgba(0, 255, 0, 0.3)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.05)';
-            e.currentTarget.style.borderColor = 'rgba(0, 255, 0, 0.1)';
-          }}
-          >
-            {/* Header with contact count */}
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center', 
-              marginBottom: '4px',
-              borderBottom: '1px dotted rgba(0, 255, 0, 0.2)',
-              paddingBottom: '3px'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00ff00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                  <circle cx="9" cy="7" r="4"></circle>
-                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                </svg>
-                <span style={{ marginLeft: '6px', color: '#00ff00', fontWeight: 'bold' }}>
-                  {contacts.length} contact{contacts.length !== 1 ? 's' : ''}
-                </span>
-              </div>
-              <span style={{ 
-                fontSize: '11px', 
-                color: '#00ff00', 
-                backgroundColor: 'rgba(0, 255, 0, 0.1)', 
-                padding: '2px 6px', 
-                borderRadius: '10px' 
-              }}>View all</span>
-            </div>
-            
-            {/* First contact preview */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ 
-                width: '28px', 
-                height: '28px', 
-                borderRadius: '50%', 
-                backgroundColor: '#222', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center', 
-                border: '1px solid rgba(0, 255, 0, 0.2)',
-                overflow: 'hidden'
-              }}>
-                {firstContact.profile_image_url ? (
-                  <img 
-                    src={firstContact.profile_image_url} 
-                    alt={fullName} 
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                  />
-                ) : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00ff00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                    <circle cx="12" cy="7" r="4"></circle>
-                  </svg>
-                )}
-              </div>
-              <div style={{ flexGrow: 1, overflow: 'hidden' }}>
-                <div style={{ 
-                  color: '#00ff00', 
-                  fontWeight: 'bold', 
-                  fontSize: '13px',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis'
-                }}>
-                  {fullName}
-                </div>
-                {jobRole && (
-                  <div style={{ 
-                    color: '#aaa', 
-                    fontSize: '11px', 
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis'
-                  }}>
-                    {jobRole}
-                  </div>
-                )}
-              </div>
-              {contacts.length > 1 && (
-                <div style={{ 
-                  width: '22px', 
-                  height: '22px', 
-                  borderRadius: '50%', 
-                  backgroundColor: 'rgba(0, 255, 0, 0.1)',
-                  color: '#00ff00',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '10px',
-                  fontWeight: 'bold'
-                }}>
-                  +{contacts.length - 1}
-                </div>
-              )}
-            </div>
-            
-            {/* Last interaction indicator (if available) */}
-            {hasInteraction && (
-              <div style={{ 
-                fontSize: '10px', 
-                color: '#888', 
-                marginTop: '4px', 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '4px'
-              }}>
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <polyline points="12 6 12 12 16 14"></polyline>
-                </svg>
-                Last contact: {interactionDate.toLocaleDateString()}
-              </div>
-            )}
-          </div>
-        );
-      }
+      cellRenderer: ContactsRenderer,
     },
     { 
       headerName: 'Tags', 
@@ -1612,7 +1774,6 @@ const SimpleDeals = () => {
         // Enable sorting in the filter dropdown
         sortButtons: true
       },
-      floatingFilter: true,
       sortable: true,
       editable: true,
       cellEditor: 'agSelectCellEditor',
@@ -1629,7 +1790,6 @@ const SimpleDeals = () => {
       cellRenderer: InvestmentAmountRenderer,
       minWidth: 150,
       filter: 'agNumberColumnFilter',
-      floatingFilter: true,
       sortable: true,
       editable: true,
       cellEditor: 'agNumberCellEditor',
@@ -1645,7 +1805,6 @@ const SimpleDeals = () => {
       },
       minWidth: 100,
       filter: 'agDateColumnFilter',
-      floatingFilter: true,
       sortable: true,
     },
     {
@@ -1674,6 +1833,12 @@ const SimpleDeals = () => {
   // Function to remove a deal from the grid
   const removeDeal = useCallback((dealId) => {
     setDeals(prevDeals => prevDeals.filter(deal => deal.deal_id !== dealId));
+  }, []);
+  
+  // Function to refresh data
+  const refreshData = useCallback(() => {
+    console.log('Refreshing deals data...');
+    fetchDeals();
   }, []);
   
   // Handle tag operations for a deal
@@ -2041,7 +2206,8 @@ const SimpleDeals = () => {
     setStageFilter,
     // Add EditDealFinalModal controls
     setDealToEdit,
-    setShowEditDealModal
+    setShowEditDealModal,
+    refreshData
   }), [categoryColors, removeDeal, stageFilter, showDealContacts, selectedDeal]);
 
   // Create a manual filter dropdown that's positioned outside AG Grid
@@ -2228,7 +2394,7 @@ const SimpleDeals = () => {
             
           if (refsError) {
             console.error(`Error fetching attachment refs for deal ${deal.deal_id}:`, refsError);
-            return { ...deal, attachments: [], tags: [] };
+            return { ...deal, attachments: [], tags: [], contacts: [] };
           }
           
           let attachments = [];
@@ -2256,7 +2422,7 @@ const SimpleDeals = () => {
             
           if (tagRefsError) {
             console.error(`Error fetching tag refs for deal ${deal.deal_id}:`, tagRefsError);
-            return { ...deal, attachments, tags: [] };
+            return { ...deal, attachments, tags: [], contacts: [] };
           }
           
           let tags = [];
@@ -2276,10 +2442,45 @@ const SimpleDeals = () => {
             }
           }
           
-          return { ...deal, attachments, tags };
+          // Get contacts for the deal
+          const { data: contactRefs, error: contactRefsError } = await supabase
+            .from('deals_contacts')
+            .select('contact_id, relationship')
+            .eq('deal_id', deal.deal_id);
+            
+          if (contactRefsError) {
+            console.error(`Error fetching contact refs for deal ${deal.deal_id}:`, contactRefsError);
+            return { ...deal, attachments, tags, contacts: [] };
+          }
+          
+          let contacts = [];
+          
+          if (contactRefs && contactRefs.length > 0) {
+            // Get actual contact details
+            const contactIds = contactRefs.map(ref => ref.contact_id);
+            const { data: contactDetails, error: contactDetailsError } = await supabase
+              .from('contacts')
+              .select('contact_id, first_name, last_name, job_role, profile_image_url, last_interaction_at')
+              .in('contact_id', contactIds);
+              
+            if (contactDetailsError) {
+              console.error(`Error fetching contact details for deal ${deal.deal_id}:`, contactDetailsError);
+            } else {
+              // Merge contact details with relationship info
+              contacts = (contactDetails || []).map(contact => {
+                const contactRef = contactRefs.find(ref => ref.contact_id === contact.contact_id);
+                return {
+                  ...contact,
+                  relationship: contactRef?.relationship || 'Unknown'
+                };
+              });
+            }
+          }
+          
+          return { ...deal, attachments, tags, contacts };
         } catch (err) {
           console.error(`Error processing data for deal ${deal.deal_id}:`, err);
-          return { ...deal, attachments: [], tags: [] };
+          return { ...deal, attachments: [], tags: [], contacts: [] };
         }
       }));
       
@@ -2319,6 +2520,7 @@ const SimpleDeals = () => {
   useEffect(() => {
     console.log('Filtering deals. Active tab:', activeTab);
     console.log('Stage filter:', stageFilter);
+    console.log('Search term:', searchTerm);
     console.log('Total deals:', deals.length);
     
     if (deals.length > 0) {
@@ -2355,10 +2557,18 @@ const SimpleDeals = () => {
         filtered = filtered.filter(deal => deal.stage === stageFilter);
       }
       
+      // Finally filter by search term if provided
+      if (searchTerm) {
+        filtered = filtered.filter(deal => {
+          const dealName = deal.opportunity || '';
+          return dealName.toLowerCase().includes(searchTerm.toLowerCase());
+        });
+      }
+      
       console.log(`Found ${filtered.length} deals after filtering`);
       setFilteredDeals(filtered);
     }
-  }, [activeTab, deals, stageFilter]);
+  }, [activeTab, deals, stageFilter, searchTerm]);
   
   // Separate effect for window resize and grid updates
   useEffect(() => {
@@ -2450,6 +2660,37 @@ const SimpleDeals = () => {
           </MenuItem>
         ))}
       </TopMenuContainer>
+      
+      {/* Search Bar */}
+      <SearchBarContainer>
+        <SearchInputContainer>
+          <SearchIconInside>
+            <FiSearch />
+          </SearchIconInside>
+          <DealSearchInput
+            type="text"
+            placeholder="SEARCH..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </SearchInputContainer>
+        {searchTerm && (
+          <button
+            onClick={() => setSearchTerm('')}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#00ff00',
+              cursor: 'pointer',
+              fontSize: '16px',
+              padding: '4px'
+            }}
+            title="Clear search"
+          >
+            ✕
+          </button>
+        )}
+      </SearchBarContainer>
       
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '0 20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', margin: '20px 0' }}>
