@@ -1397,7 +1397,7 @@ const SimpleDeals = () => {
   // Column definitions for the deal grid
   const columnDefs = useMemo(() => [
     { 
-      headerName: 'Deal', 
+      headerName: 'Deal 😊', 
       field: 'opportunity',
       minWidth: 200,
       filter: 'agTextColumnFilter',
