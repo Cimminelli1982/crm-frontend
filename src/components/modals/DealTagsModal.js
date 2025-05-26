@@ -10,199 +10,287 @@ if (typeof window !== 'undefined') {
   Modal.setAppElement('#root');
 }
 
-// Styled components
-const ModalContent = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-  max-width: 600px;
-`;
-
+// Styled components matching TagsModal
 const ModalHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 15px;
+  padding-bottom: 15px;
   border-bottom: 1px solid #333;
-  padding-bottom: 10px;
-  
+
   h2 {
     margin: 0;
+    font-size: 1.25rem;
     color: #00ff00;
-    font-family: 'Courier New', monospace;
+    font-weight: 600;
   }
-  
+
   button {
     background: none;
     border: none;
-    color: #00ff00;
-    font-size: 18px;
     cursor: pointer;
+    color: #ffffff;
+    padding: 4px;
+    border-radius: 4px;
     
     &:hover {
-      color: #fff;
+      color: #ff5555;
     }
   }
 `;
 
-const TagsContainer = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 15px;
-`;
-
-const TagItem = styled.div`
-  display: flex;
-  align-items: center;
-  background-color: ${props => props.$selected ? 'rgba(0, 255, 0, 0.2)' : 'rgba(0, 255, 0, 0.1)'};
-  border: 1px solid #00ff00;
-  border-radius: 12px;
-  padding: 6px 12px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  
-  &:hover {
-    background-color: rgba(0, 255, 0, 0.2);
-    box-shadow: 0 0 8px rgba(0, 255, 0, 0.3);
-  }
-`;
-
-const TagsSection = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 10px;
-  padding-top: 15px;
-  border-top: 1px solid #333;
-`;
-
-const SearchContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+const Section = styled.div`
   margin-bottom: 15px;
 `;
 
-const SearchInput = styled.input`
+const SectionTitle = styled.h3`
+  font-size: 16px;
+  font-weight: bold;
+  color: #00ff00;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const TagsList = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 5px 0;
+  min-height: 32px;
+`;
+
+const Tag = styled.div`
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  border-radius: 4px;
   background-color: #222;
-  color: #fff;
+  color: #00ff00;
+  font-weight: 500;
+  margin-right: 0.25rem;
+  margin-bottom: 0.25rem;
+  border: 1px solid #00ff00;
+  gap: 6px;
+  max-width: 200px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background-color: rgba(0, 255, 0, 0.1);
+  }
+
+  span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 150px;
+  }
+
+  button {
+    background: none;
+    border: none;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 0.25rem;
+    color: #00ff00;
+    cursor: pointer;
+    
+    &:hover { 
+      color: #ff5555; 
+    }
+  }
+`;
+
+const SearchContainer = styled.div`
+  position: relative;
+  margin-bottom: 16px;
+  width: 90%;
+`;
+
+const SearchInput = styled.input`
+  width: 100%;
+  padding: 10px;
+  padding-left: 36px;
   border: 1px solid #444;
   border-radius: 4px;
-  padding: 8px 12px;
-  font-family: 'Courier New', monospace;
-  width: 100%;
-  
+  font-size: 14px;
+  color: #eee;
+  background-color: #222;
+  transition: all 0.2s;
+
   &:focus {
     outline: none;
     border-color: #00ff00;
-    box-shadow: 0 0 5px rgba(0, 255, 0, 0.3);
   }
-  
+
+  &:hover {
+    background-color: #333;
+  }
+
   &::placeholder {
     color: #666;
   }
 `;
 
-const TagsTitle = styled.h3`
-  color: #00ff00;
-  font-family: 'Courier New', monospace;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  
-  svg {
-    stroke: #00ff00;
-  }
+const SearchIcon = styled.div`
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #999;
 `;
 
 const SuggestionsContainer = styled.div`
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  max-height: 150px;
+  margin-top: 8px;
+  border: 1px solid #444;
+  border-radius: 4px;
+  max-height: 200px;
   overflow-y: auto;
-  background-color: #1a1a1a;
-  border: 1px solid #333;
-  border-top: none;
-  border-radius: 0 0 4px 4px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-  z-index: 1000;
-  
-  &::-webkit-scrollbar {
-    width: 6px;
-  }
-  
-  &::-webkit-scrollbar-track {
-    background: #222;
-  }
-  
-  &::-webkit-scrollbar-thumb {
-    background-color: #00ff00;
-    border-radius: 3px;
-  }
+  background-color: #222;
 `;
 
-const SuggestionItem = styled.div`
+const SuggestionItem = styled.button`
+  width: 100%;
+  text-align: left;
   padding: 8px 12px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid #333;
   cursor: pointer;
-  color: #ccc;
-  
+  font-size: 0.875rem;
+  color: #eee;
+  transition: background-color 0.2s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
   &:hover {
     background-color: #333;
     color: #00ff00;
   }
-  
-  &.highlight {
-    background-color: #333;
-    color: #00ff00;
+`;
+
+const NewTagButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background-color: #333;
+  color: #00ff00;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 100%;
+  text-align: left;
+
+  &:hover {
+    background-color: #444;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 `;
 
-// Modal styles
-const modalStyles = {
-  content: {
-    top: '50%',
-    left: '50%',
-    right: 'auto',
-    bottom: 'auto',
-    marginRight: '-50%',
-    transform: 'translate(-50%, -50%)',
-    backgroundColor: '#121212',
-    color: '#00ff00',
-    border: '1px solid #00ff00',
-    borderRadius: '4px',
-    padding: '20px',
-    maxWidth: '80%',
-    maxHeight: '80%',
-    overflow: 'auto'
-  },
-  overlay: {
-    backgroundColor: 'rgba(0, 0, 0, 0.75)'
+const Message = styled.div`
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  margin-top: 12px;
+  
+  &.success {
+    background-color: rgba(0, 255, 0, 0.1);
+    color: #00ff00;
   }
-};
+  
+  &.error {
+    background-color: rgba(255, 70, 70, 0.2);
+    color: #ff9999;
+  }
+`;
+
+const ButtonGroup = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 15px;
+`;
+
+const Button = styled.button`
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  
+  &.primary {
+    background-color: #00ff00;
+    color: black;
+    border: none;
+    
+    &:hover {
+      background-color: #00dd00;
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+  
+  &.secondary {
+    background-color: transparent;
+    color: #ccc;
+    border: 1px solid #555;
+    
+    &:hover {
+      background-color: #333;
+    }
+  }
+`;
 
 const DealTagsModal = ({ isOpen, onRequestClose, deal, onTagsUpdated }) => {
+  const [currentTags, setCurrentTags] = useState([]);
   const [availableTags, setAvailableTags] = useState([]);
-  const [tagSearchTerm, setTagSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
   const [showSuggestions, setShowSuggestions] = useState(false);
 
   useEffect(() => {
     if (isOpen && deal) {
       const effectiveDealId = deal.deal_id || deal.id;
       console.log("DealTagsModal opened with deal:", effectiveDealId, deal.opportunity);
+      console.log("Full deal object received:", deal);
       
       if (!effectiveDealId) {
         console.error("DealTagsModal opened with deal missing ID:", deal);
       }
       
+      fetchCurrentTags();
       fetchAvailableTags();
     } else if (isOpen && !deal) {
       console.error("DealTagsModal opened but no deal was provided!");
+      console.log("isOpen:", isOpen, "deal:", deal);
     }
   }, [isOpen, deal]);
 
@@ -211,7 +299,8 @@ const DealTagsModal = ({ isOpen, onRequestClose, deal, onTagsUpdated }) => {
   
   // Update local deal when prop changes
   useEffect(() => {
-    if (deal) {
+    // Only process deal data when the modal is actually open
+    if (isOpen && deal) {
       // Ensure deal_id is available - use id as fallback
       const effectiveDealId = deal.deal_id || deal.id;
       
@@ -233,25 +322,71 @@ const DealTagsModal = ({ isOpen, onRequestClose, deal, onTagsUpdated }) => {
       };
       
       setLocalDeal(dealWithTags);
+      setCurrentTags(dealWithTags.tags || []);
+    } else if (!isOpen) {
+      // Clear local state when modal is closed
+      setLocalDeal(null);
+      setCurrentTags([]);
+      setSearchTerm('');
+      setMessage({ type: '', text: '' });
     }
-  }, [deal]);
+  }, [deal, isOpen]);
+
+  // Fetch current tags for the deal
+  const fetchCurrentTags = async () => {
+    const dealToUse = deal || localDeal;
+    const effectiveDealId = dealToUse?.deal_id || dealToUse?.id;
+    
+    if (!effectiveDealId) {
+      console.error("Cannot fetch current tags: No deal ID available");
+      return;
+    }
+
+    try {
+      console.log("Fetching current tags for deal:", effectiveDealId);
+      
+      // Get tag connections for this deal
+      const { data: tagConnections, error: connectionsError } = await supabase
+        .from('deal_tags')
+        .select('tag_id')
+        .eq('deal_id', effectiveDealId);
+        
+      if (connectionsError) throw connectionsError;
+      
+      if (!tagConnections || tagConnections.length === 0) {
+        setCurrentTags([]);
+        return;
+      }
+      
+      // Get tag details
+      const tagIds = tagConnections.map(tc => tc.tag_id);
+      const { data: tagDetails, error: detailsError } = await supabase
+        .from('tags')
+        .select('tag_id, name')
+        .in('tag_id', tagIds);
+        
+      if (detailsError) throw detailsError;
+      
+      setCurrentTags(tagDetails || []);
+    } catch (error) {
+      console.error('Error fetching current tags:', error);
+      setMessage({ type: 'error', text: 'Failed to load current tags' });
+    }
+  };
 
   // Fetch all available tags from the database
   const fetchAvailableTags = async () => {
-    // Continue even if deal is missing - we'll just show available tags
-    
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from('tags')
-        .select('tag_id, name')  // Explicitly select the fields we need
+        .select('tag_id, name')
         .order('name');
         
       if (error) throw error;
       
       console.log("Available tags fetched:", data?.length);
       
-      // Verify that each tag has tag_id
       const validTags = data?.filter(tag => {
         if (!tag.tag_id) {
           console.warn("Found tag without tag_id:", tag);
@@ -263,65 +398,45 @@ const DealTagsModal = ({ isOpen, onRequestClose, deal, onTagsUpdated }) => {
       setAvailableTags(validTags);
     } catch (error) {
       console.error('Error fetching tags:', error);
-      toast.error('Failed to load tags');
+      setMessage({ type: 'error', text: 'Failed to load tags' });
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle creating a new tag
-  const handleCreateTag = async (tagName) => {
-    if (!deal || !tagName.trim()) return null;
-    
+  // Fetch tag suggestions based on search term
+  const fetchTagSuggestions = async (search) => {
     try {
-      setLoading(true);
+      let query = supabase.from('tags').select('tag_id, name');
       
-      // Check if tag already exists (case insensitive)
-      const { data: existingTags, error: checkError } = await supabase
-        .from('tags')
-        .select('tag_id, name')
-        .ilike('name', tagName.trim());
-        
-      if (checkError) throw checkError;
-      
-      if (existingTags && existingTags.length > 0) {
-        // Tag already exists, use it
-        const existingTag = existingTags[0];
-        console.log("Using existing tag:", existingTag);
-        
-        // Try to add this tag to the deal
-        await addTagToDeal(existingTag.tag_id);
-        
-        return existingTag.tag_id;
+      if (search) {
+        query = query.ilike('name', `%${search}%`);
       }
-      
-      // Create new tag
-      const { data, error } = await supabase
-        .from('tags')
-        .insert({ name: tagName.trim() })
-        .select('tag_id, name')
-        .single();
-        
+
+      const { data, error } = await query.limit(10);
+
       if (error) throw error;
       
-      console.log("New tag created:", data);
-      
-      // Add this new tag to the deal
-      await addTagToDeal(data.tag_id);
-      
-      // Refresh available tags
-      fetchAvailableTags();
-      
-      toast.success(`Created new tag "${tagName.trim()}"`);
-      return data.tag_id;
+      // Filter out tags that are already assigned
+      const filteredSuggestions = data.filter(tag => 
+        !currentTags.some(currentTag => currentTag.tag_id === tag.tag_id)
+      );
+
+      setSuggestions(filteredSuggestions);
     } catch (error) {
-      console.error('Error creating tag:', error);
-      toast.error('Failed to create tag');
-      return null;
-    } finally {
-      setLoading(false);
+      console.error('Error fetching suggestions:', error);
     }
   };
+
+  useEffect(() => {
+    if (searchTerm.length >= 2) {
+      fetchTagSuggestions(searchTerm);
+      setShowSuggestions(true);
+    } else {
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  }, [searchTerm, currentTags]);
 
   // Helper function to check if a string is a valid UUID
   const isValidUUID = (id) => {
@@ -330,57 +445,27 @@ const DealTagsModal = ({ isOpen, onRequestClose, deal, onTagsUpdated }) => {
   };
 
   // Add a tag to the current deal
-  const addTagToDeal = async (tagId) => {
-    // Use localDeal as a fallback if deal prop changes
+  const handleAddTag = async (tagToAdd) => {
     const dealToUse = deal || localDeal;
+    const effectiveDealId = dealToUse?.deal_id || dealToUse?.id;
     
-    // Debug what we actually have
-    console.log("addTagToDeal called with:", {
-      tagId,
-      dealProp: deal ? {
-        id: deal.id,
-        deal_id: deal.deal_id,
-        opportunity: deal.opportunity
-      } : null,
-      localDealState: localDeal ? {
-        id: localDeal.id,
-        deal_id: localDeal.deal_id, 
-        opportunity: localDeal.opportunity
-      } : null
-    });
-    
-    if (!dealToUse) {
+    if (!dealToUse || !effectiveDealId) {
       console.error("Cannot add tag: No deal object available");
-      toast.error("Cannot add tag: No deal selected");
+      setMessage({ type: 'error', text: "Cannot add tag: No deal selected" });
       return false;
     }
     
-    // Check if we're missing both id and deal_id
-    if (!dealToUse.deal_id && !dealToUse.id) {
-      console.error("Cannot add tag: Deal is missing both id and deal_id", dealToUse);
-      toast.error("Cannot add tag: Deal missing ID information");
-      return false;
-    }
-    
-    // Ensure we have a deal_id even if it's not directly available
-    const effectiveDealId = dealToUse.deal_id || dealToUse.id;
-    
-    // Validate the deal ID is a proper UUID before proceeding
     if (!isValidUUID(effectiveDealId)) {
       console.error("Cannot add tag: Deal ID is not a valid UUID", effectiveDealId);
-      toast.error("Cannot add tag: Invalid deal ID format");
+      setMessage({ type: 'error', text: "Cannot add tag: Invalid deal ID format" });
       return false;
     }
     
-    if (!effectiveDealId || !tagId) {
-      console.error("Cannot add tag: Missing deal or tag ID", { 
-        hasDeal: !!dealToUse, 
-        hasId: dealToUse?.id,
-        dealId: dealToUse?.deal_id,
-        effectiveDealId,
-        tagId 
-      });
-      toast.error("Cannot add tag: Missing deal information");
+    const tagId = tagToAdd.tag_id || tagToAdd.id;
+    
+    if (!tagId) {
+      console.error("Cannot add tag: Missing tag ID", tagToAdd);
+      setMessage({ type: 'error', text: "Cannot add tag: Missing tag information" });
       return false;
     }
     
@@ -401,7 +486,7 @@ const DealTagsModal = ({ isOpen, onRequestClose, deal, onTagsUpdated }) => {
       
       if (existingTag) {
         console.log("Tag already exists on this deal");
-        toast.info("This tag is already on the deal");
+        setMessage({ type: 'success', text: "This tag is already on the deal" });
         return true;
       }
       
@@ -415,48 +500,25 @@ const DealTagsModal = ({ isOpen, onRequestClose, deal, onTagsUpdated }) => {
         
       if (error) throw error;
       
-      toast.success("Tag added successfully");
+      setMessage({ type: 'success', text: "Tag added successfully" });
+      
+      // Refresh current tags
+      await fetchCurrentTags();
       
       // Notify parent component about the change
       if (onTagsUpdated) {
-        // Fetch the updated deal tags
-        // Get all tags for this deal
-        const { data: tagConnections, error: fetchError } = await supabase
-          .from('deal_tags')
-          .select('tag_id')
-          .eq('deal_id', effectiveDealId);
-          
-        if (fetchError) {
-          console.error("Error fetching updated tags:", fetchError);
-          return true; // Still consider the operation successful
-        }
-        
-        // If no tags, return empty array
-        if (!tagConnections || tagConnections.length === 0) {
-          onTagsUpdated([]);
-          return true;
-        }
-        
-        // Now fetch the tag details
-        const tagIds = tagConnections.map(tc => tc.tag_id);
-        const { data: tagDetails, error: tagDetailsError } = await supabase
-          .from('tags')
-          .select('tag_id, name')
-          .in('tag_id', tagIds);
-          
-        if (tagDetailsError) {
-          console.error("Error fetching tag details:", tagDetailsError);
-          return true; // Still consider the operation successful
-        }
-        
-        // Send the tag details back to the parent
-        onTagsUpdated(tagDetails || []);
+        const updatedTags = [...currentTags, tagToAdd];
+        onTagsUpdated(updatedTags);
       }
+      
+      // Clear search
+      setSearchTerm('');
+      setShowSuggestions(false);
       
       return true;
     } catch (error) {
       console.error('Error adding tag to deal:', error);
-      toast.error('Failed to add tag to deal');
+      setMessage({ type: 'error', text: 'Failed to add tag to deal' });
       return false;
     } finally {
       setLoading(false);
@@ -464,29 +526,27 @@ const DealTagsModal = ({ isOpen, onRequestClose, deal, onTagsUpdated }) => {
   };
 
   // Remove a tag from the current deal
-  const removeTagFromDeal = async (tagId) => {
-    // Use localDeal as a fallback if deal prop changes
+  const handleRemoveTag = async (tagToRemove) => {
     const dealToUse = deal || localDeal;
-    
-    // Ensure we have a deal_id even if it's not directly available
     const effectiveDealId = dealToUse?.deal_id || dealToUse?.id;
     
-    if (!dealToUse || !effectiveDealId || !tagId) {
-      console.error("Cannot remove tag: Missing deal or tag ID", {
-        hasDeal: !!dealToUse,
-        hasId: dealToUse?.id,
-        dealId: dealToUse?.deal_id,
-        effectiveDealId,
-        tagId
-      });
-      toast.error("Cannot remove tag: Missing deal information");
+    if (!dealToUse || !effectiveDealId) {
+      console.error("Cannot remove tag: No deal object available");
+      setMessage({ type: 'error', text: "Cannot remove tag: No deal selected" });
       return false;
     }
     
-    // Validate the deal ID is a proper UUID before proceeding
     if (!isValidUUID(effectiveDealId)) {
       console.error("Cannot remove tag: Deal ID is not a valid UUID", effectiveDealId);
-      toast.error("Cannot remove tag: Invalid deal ID format");
+      setMessage({ type: 'error', text: "Cannot remove tag: Invalid deal ID format" });
+      return false;
+    }
+    
+    const tagId = tagToRemove.tag_id;
+    
+    if (!tagId) {
+      console.error("Cannot remove tag: Missing tag ID", tagToRemove);
+      setMessage({ type: 'error', text: "Cannot remove tag: Missing tag information" });
       return false;
     }
     
@@ -504,49 +564,73 @@ const DealTagsModal = ({ isOpen, onRequestClose, deal, onTagsUpdated }) => {
         
       if (error) throw error;
       
-      toast.success("Tag removed successfully");
+      setMessage({ type: 'success', text: "Tag removed successfully" });
+      
+      // Refresh current tags
+      await fetchCurrentTags();
       
       // Notify parent component about the change
       if (onTagsUpdated) {
-        // Fetch the updated deal tags
-        // Get all tags for this deal
-        const { data: tagConnections, error: fetchError } = await supabase
-          .from('deal_tags')
-          .select('tag_id')
-          .eq('deal_id', effectiveDealId);
-          
-        if (fetchError) {
-          console.error("Error fetching updated tags:", fetchError);
-          return true; // Still consider the operation successful
-        }
-        
-        // If no tags, return empty array
-        if (!tagConnections || tagConnections.length === 0) {
-          onTagsUpdated([]);
-          return true;
-        }
-        
-        // Now fetch the tag details
-        const tagIds = tagConnections.map(tc => tc.tag_id);
-        const { data: tagDetails, error: tagDetailsError } = await supabase
-          .from('tags')
-          .select('tag_id, name')
-          .in('tag_id', tagIds);
-          
-        if (tagDetailsError) {
-          console.error("Error fetching tag details:", tagDetailsError);
-          return true; // Still consider the operation successful
-        }
-        
-        // Send the tag details back to the parent
-        onTagsUpdated(tagDetails || []);
+        const updatedTags = currentTags.filter(tag => tag.tag_id !== tagId);
+        onTagsUpdated(updatedTags);
       }
       
       return true;
     } catch (error) {
       console.error('Error removing tag from deal:', error);
-      toast.error('Failed to remove tag from deal');
+      setMessage({ type: 'error', text: 'Failed to remove tag from deal' });
       return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle creating a new tag
+  const handleCreateTag = async () => {
+    if (!searchTerm.trim()) return;
+    
+    try {
+      setLoading(true);
+      
+      // Check if tag already exists (case insensitive)
+      const { data: existingTags, error: checkError } = await supabase
+        .from('tags')
+        .select('tag_id, name')
+        .ilike('name', searchTerm.trim());
+        
+      if (checkError) throw checkError;
+      
+      if (existingTags && existingTags.length > 0) {
+        // Tag already exists, use it
+        const existingTag = existingTags[0];
+        console.log("Using existing tag:", existingTag);
+        
+        // Try to add this tag to the deal
+        await handleAddTag(existingTag);
+        return;
+      }
+      
+      // Create new tag
+      const { data, error } = await supabase
+        .from('tags')
+        .insert({ name: searchTerm.trim() })
+        .select('tag_id, name')
+        .single();
+        
+      if (error) throw error;
+      
+      console.log("New tag created:", data);
+      
+      // Add this new tag to the deal
+      await handleAddTag(data);
+      
+      // Refresh available tags
+      fetchAvailableTags();
+      
+      setMessage({ type: 'success', text: `Created new tag "${searchTerm.trim()}"` });
+    } catch (error) {
+      console.error('Error creating tag:', error);
+      setMessage({ type: 'error', text: 'Failed to create tag' });
     } finally {
       setLoading(false);
     }
@@ -555,106 +639,7 @@ const DealTagsModal = ({ isOpen, onRequestClose, deal, onTagsUpdated }) => {
   // Handle input change in search field
   const handleSearchChange = (e) => {
     const value = e.target.value;
-    setTagSearchTerm(value);
-    setShowSuggestions(value.trim().length > 0);
-  };
-
-  // Filter available tags based on search term
-  const filteredTags = tagSearchTerm.trim() === '' 
-    ? availableTags 
-    : availableTags.filter(tag => 
-        tag.name.toLowerCase().includes(tagSearchTerm.toLowerCase())
-      );
-
-  // Check if we need to show the "Create New Tag" option
-  const showCreateOption = tagSearchTerm.trim() !== '' && 
-    !filteredTags.some(tag => tag.name.toLowerCase() === tagSearchTerm.toLowerCase());
-
-  // Handle tag click for adding
-  const handleTagClick = (tagId) => {
-    // Use localDeal as a fallback if deal prop is null or undefined
-    const currentDeal = deal || localDeal;
-    
-    // Attempt to determine a valid deal ID, with robust error handling
-    let effectiveDealId;
-    try {
-      if (!currentDeal) {
-        console.warn("No deal selected for tag operation");
-        toast.error("Cannot add tag: No deal selected");
-        return;
-      } 
-      
-      effectiveDealId = currentDeal.deal_id || currentDeal.id;
-      
-      // Validate the deal ID is a proper UUID
-      if (!effectiveDealId || !isValidUUID(effectiveDealId)) {
-        console.error("Invalid deal ID format:", effectiveDealId);
-        toast.error("Cannot add tag: Invalid deal format");
-        return;
-      }
-      
-      console.log("Tag click - using deal:", effectiveDealId, "tag:", tagId);
-      
-      // Check if tagId is properly formatted before proceeding
-      if (!tagId) {
-        console.error("Invalid tag ID:", tagId);
-        toast.error("Invalid tag selected");
-        return;
-      }
-      
-      addTagToDeal(tagId);
-    } catch (err) {
-      console.error("Error in handleTagClick:", err);
-      toast.error("An error occurred while processing the tag");
-    }
-  };
-
-  // Handle tag click for removing
-  const handleTagRemoveClick = (tagId) => {
-    // Use localDeal as a fallback if deal prop is null or undefined
-    const currentDeal = deal || localDeal;
-    
-    // Attempt to determine a valid deal ID, with robust error handling
-    let effectiveDealId;
-    try {
-      if (!currentDeal) {
-        console.warn("No deal selected for tag removal");
-        toast.error("Cannot remove tag: No deal selected");
-        return;
-      } 
-      
-      effectiveDealId = currentDeal.deal_id || currentDeal.id;
-      
-      // Validate the deal ID is a proper UUID
-      if (!effectiveDealId || !isValidUUID(effectiveDealId)) {
-        console.error("Invalid deal ID format for removal:", effectiveDealId);
-        toast.error("Cannot remove tag: Invalid deal format");
-        return;
-      }
-      
-      console.log("Tag removal - using deal:", effectiveDealId, "tag:", tagId);
-      
-      // Check if tagId is properly formatted before proceeding
-      if (!tagId) {
-        console.error("Invalid tag ID:", tagId);
-        toast.error("Invalid tag selected");
-        return;
-      }
-      
-      removeTagFromDeal(tagId);
-    } catch (err) {
-      console.error("Error in handleTagRemoveClick:", err);
-      toast.error("An error occurred while processing the tag removal");
-    }
-  };
-
-  // Handle creating and adding a new tag
-  const handleCreateAndAddTag = () => {
-    if (!tagSearchTerm.trim()) return;
-    
-    handleCreateTag(tagSearchTerm.trim());
-    setTagSearchTerm('');
-    setShowSuggestions(false);
+    setSearchTerm(value);
   };
 
   // If no deal is provided, show an error message instead of the regular UI
@@ -666,38 +651,48 @@ const DealTagsModal = ({ isOpen, onRequestClose, deal, onTagsUpdated }) => {
         <Modal
           isOpen={isOpen}
           onRequestClose={onRequestClose}
-          style={modalStyles}
-          contentLabel="Manage Tags"
+          style={{
+            content: {
+              top: '50%',
+              left: '50%',
+              right: 'auto',
+              bottom: 'auto',
+              marginRight: '-50%',
+              transform: 'translate(-50%, -50%)',
+              padding: '20px',
+              border: '1px solid #333',
+              backgroundColor: '#121212',
+              color: '#e0e0e0',
+              borderRadius: '8px',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.6)',
+              maxWidth: '500px',
+              width: '90%',
+              minHeight: '360px'
+            },
+            overlay: {
+              backgroundColor: 'rgba(0, 0, 0, 0.75)',
+              zIndex: 1000
+            }
+          }}
         >
-          <ModalContent>
+          <div style={{ padding: '1rem' }}>
             <ModalHeader>
               <h2>Cannot Manage Tags</h2>
-              <button onClick={onRequestClose}>✕</button>
+              <button onClick={onRequestClose}>
+                <FiX size={20} />
+              </button>
             </ModalHeader>
             <div style={{ padding: '20px', color: '#ff6666', textAlign: 'center' }}>
               <p>No valid deal was selected. Please try again by selecting a deal first.</p>
-              <button 
-                onClick={onRequestClose}
-                style={{ 
-                  marginTop: '20px', 
-                  padding: '8px 16px', 
-                  background: 'transparent',
-                  border: '1px solid #00ff00',
-                  color: '#00ff00',
-                  cursor: 'pointer'
-                }}
-              >
+              <Button className="primary" onClick={onRequestClose} style={{ marginTop: '20px' }}>
                 Close
-              </button>
+              </Button>
             </div>
-          </ModalContent>
+          </div>
         </Modal>
       );
     }
     return null;
-  } else if (!deal.id && !deal.deal_id) {
-    console.warn("DealTagsModal received deal without id or deal_id", deal);
-    // Continue to render, the validation in the tag operations will prevent API calls
   }
 
   return (
@@ -706,107 +701,144 @@ const DealTagsModal = ({ isOpen, onRequestClose, deal, onTagsUpdated }) => {
       onRequestClose={() => {
         console.log("Closing DealTagsModal for deal:", deal?.deal_id);
         onRequestClose();
-        setTagSearchTerm(''); // Clear search term when modal is closed
+        setSearchTerm(''); // Clear search term when modal is closed
+        setMessage({ type: '', text: '' }); // Clear messages
       }}
-      style={modalStyles}
-      contentLabel="Manage Tags"
+      style={{
+        content: {
+          top: '50%',
+          left: '50%',
+          right: 'auto',
+          bottom: 'auto',
+          marginRight: '-50%',
+          transform: 'translate(-50%, -50%)',
+          padding: '20px',
+          border: '1px solid #333',
+          backgroundColor: '#121212',
+          color: '#e0e0e0',
+          borderRadius: '8px',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.6)',
+          maxWidth: '500px',
+          width: '90%',
+          minHeight: '360px'
+        },
+        overlay: {
+          backgroundColor: 'rgba(0, 0, 0, 0.75)',
+          zIndex: 1000
+        }
+      }}
     >
-      <ModalContent>
+      <div style={{ padding: '1rem' }}>
         <ModalHeader>
-          <h2>Manage Tags for {deal?.opportunity || 'Deal'}</h2>
-          <button onClick={onRequestClose}>✕</button>
+          <h2>Manage Tags</h2>
+          <button onClick={onRequestClose} aria-label="Close modal">
+            <FiX size={20} />
+          </button>
         </ModalHeader>
 
-        {/* Current deal tags */}
-        <div>
-          <TagsTitle>
-            <FiTag size={16} />
-            CURRENT TAGS
-          </TagsTitle>
-          <TagsContainer>
-            {deal?.tags && Array.isArray(deal.tags) && deal.tags.length > 0 ? (
-              deal.tags.map((tag, index) => (
-                <TagItem 
-                  key={tag.tag_id || `tag-${index}`} 
-                  $selected={true}
-                  onClick={() => tag.tag_id ? handleTagRemoveClick(tag.tag_id) : null}
+        <Section>
+          <SectionTitle>Current Tags</SectionTitle>
+          <TagsList>
+            {currentTags.map(tag => (
+              <Tag 
+                key={tag.tag_id} 
+                onClick={() => handleRemoveTag(tag)}
+              >
+                <span title={tag.name}>{tag.name.length > 25 ? `${tag.name.substring(0, 25)}...` : tag.name}</span>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRemoveTag(tag);
+                  }}
+                  disabled={loading}
                 >
-                  {tag.name || 'Unnamed Tag'}
-                  <span style={{ marginLeft: '6px', fontSize: '12px' }}>✕</span>
-                </TagItem>
-              ))
-            ) : (
-              <div style={{ color: '#888', fontStyle: 'italic' }}>No tags yet</div>
+                  <FiX size={14} />
+                </button>
+              </Tag>
+            ))}
+            {currentTags.length === 0 && (
+              <span style={{ color: '#6c757d', fontStyle: 'italic', padding: '4px' }}>
+                No tags assigned
+              </span>
             )}
-          </TagsContainer>
-        </div>
+          </TagsList>
+        </Section>
 
-        {/* Search for tags */}
-        <TagsSection>
-          <TagsTitle>
-            <FiSearch size={16} />
-            ADD TAGS
-          </TagsTitle>
+        <Section>
+          <SectionTitle>Add Tags</SectionTitle>
           <SearchContainer>
-            <div style={{ position: 'relative' }}>
-              <SearchInput
-                type="text"
-                placeholder="Search or type new tag name..."
-                value={tagSearchTerm}
-                onChange={handleSearchChange}
-              />
-              {showSuggestions && (
-                <SuggestionsContainer>
-                  {filteredTags.length > 0 ? (
-                    filteredTags
-                      .filter(tag => {
-                        // Safely filter existing tags
-                        if (!deal?.tags || !Array.isArray(deal.tags)) return true;
-                        return !deal.tags.some(t => t && t.tag_id && t.tag_id === tag.tag_id);
-                      })
-                      .map(tag => (
-                        <SuggestionItem 
-                          key={tag.tag_id || `suggestion-${tag.name}`}
-                          onClick={() => tag.tag_id ? handleTagClick(tag.tag_id) : null}
-                        >
-                          {tag.name || 'Unnamed Tag'}
-                          <span style={{ marginLeft: '6px', fontSize: '12px' }}>+</span>
-                        </SuggestionItem>
-                      ))
-                  ) : (
-                    <SuggestionItem style={{ fontStyle: 'italic', color: '#888' }}>
-                      No matching tags found
-                    </SuggestionItem>
-                  )}
-                  
-                  {showCreateOption && (
-                    <SuggestionItem 
-                      style={{ 
-                        color: '#00ff00', 
-                        borderTop: '1px solid #333',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '5px'
-                      }}
-                      onClick={handleCreateAndAddTag}
-                    >
-                      <FiPlus size={14} /> Create "{tagSearchTerm}"
-                    </SuggestionItem>
-                  )}
-                </SuggestionsContainer>
-              )}
-            </div>
+            <SearchIcon>
+              <FiSearch size={16} />
+            </SearchIcon>
+            <SearchInput
+              type="text"
+              value={searchTerm}
+              onChange={handleSearchChange}
+              placeholder="Search or create new tag..."
+            />
           </SearchContainer>
-        </TagsSection>
-        
+
+          {showSuggestions && (
+            <SuggestionsContainer>
+              {suggestions.map(suggestion => (
+                <SuggestionItem
+                  key={suggestion.tag_id}
+                  onClick={() => handleAddTag(suggestion)}
+                  disabled={loading}
+                >
+                  {suggestion.name}
+                </SuggestionItem>
+              ))}
+              {searchTerm.trim() && !suggestions.find(s => s.name.toLowerCase() === searchTerm.toLowerCase()) && (
+                <NewTagButton
+                  onClick={handleCreateTag}
+                  disabled={loading}
+                >
+                  <FiPlus size={14} />
+                  Create "{searchTerm}"
+                </NewTagButton>
+              )}
+            </SuggestionsContainer>
+          )}
+        </Section>
+
+        {message && message.text && (
+          <Message className={message.type}>
+            {message.text}
+          </Message>
+        )}
+
+        <ButtonGroup>
+          <Button className="primary" onClick={onRequestClose}>
+            Done
+          </Button>
+        </ButtonGroup>
+
         {loading && (
-          <div style={{ textAlign: 'center', marginTop: '20px', color: '#888' }}>
-            Loading...
+          <div style={{ textAlign: 'center', marginTop: '10px' }}>
+            <div className="spinner" style={{ 
+              width: '20px', 
+              height: '20px', 
+              border: '3px solid #222', 
+              borderTop: '3px solid #00ff00', 
+              borderRadius: '50%', 
+              animation: 'spin 1s linear infinite' 
+            }}></div>
           </div>
         )}
-      </ModalContent>
+      </div>
     </Modal>
   );
 };
 
 export default DealTagsModal;
+
+// Add CSS for spinner
+const style = document.createElement('style');
+style.innerHTML = `
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`;
+document.head.appendChild(style);

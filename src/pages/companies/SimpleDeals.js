@@ -625,10 +625,13 @@ const InvestmentAmountRenderer = (props) => {
   const amount = props.value;
   if (!amount) return '-';
   
+  // Get currency from deal data, default to USD if not specified
+  const currency = props.data?.deal_currency || 'USD';
+  
   // Format as currency with commas for thousands
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'USD',
+    currency: currency,
     minimumFractionDigits: 0,
     maximumFractionDigits: 0
   }).format(amount);
@@ -661,6 +664,13 @@ const CategoryRenderer = (props) => {
 const TagsRenderer = (props) => {
   const tags = props.value;
   
+  // Get first 2 tags to display (matching ContactsListTable pattern)
+  const visibleTags = tags ? tags.slice(0, 2) : [];
+  const remainingCount = tags ? tags.length - 2 : 0;
+  
+  // If no tags, show "Add tags" text
+  const showAddTagsText = !tags || tags.length === 0;
+  
   // Quick action buttons style
   const actionButtonStyle = {
     display: 'flex',
@@ -676,6 +686,43 @@ const TagsRenderer = (props) => {
     fontSize: '16px',
     marginLeft: '8px',
     transition: 'all 0.2s ease',
+  };
+  
+  // Handle remove tag button click
+  const handleRemoveTag = async (e, tagId) => {
+    e.stopPropagation(); // Prevent cell click from triggering
+    
+    if (!props.data || !props.data.deal_id) {
+      console.error("Cannot remove tag: Invalid deal data", props.data);
+      toast.error("Cannot remove tag: Missing deal information");
+      return;
+    }
+    
+    try {
+      // Remove tag from deal
+      const { error } = await supabase
+        .from('deal_tags')
+        .delete()
+        .eq('deal_id', props.data.deal_id)
+        .eq('tag_id', tagId);
+        
+      if (error) throw error;
+      
+      // Get the tag name for notification
+      const tagName = tags?.find(tag => tag.tag_id === tagId)?.name || 'Unknown tag';
+      
+      toast.success(`Removed tag "${tagName}" from deal`);
+      
+      // Refresh the grid
+      if (props.context && props.context.refreshData) {
+        setTimeout(() => {
+          props.context.refreshData();
+        }, 100);
+      }
+    } catch (err) {
+      console.error('Error removing tag:', err);
+      toast.error(`Error removing tag: ${err.message}`);
+    }
   };
   
   // Handle add button click (opens modal)
@@ -721,6 +768,7 @@ const TagsRenderer = (props) => {
       props.context.setSelectedDeal(dealData);
       
       console.log("Add tag clicked for deal:", dealData.deal_id, dealData.opportunity);
+      console.log("Setting selectedDeal to:", dealData);
       
       // Then open the modal with a small delay to ensure the deal is set
       setTimeout(() => {
@@ -784,85 +832,149 @@ const TagsRenderer = (props) => {
     }
   };
   
-  // If no tags, show placeholder with add button
-  if (!tags || tags.length === 0) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ color: '#aaa', fontStyle: 'italic' }}>No tags</span>
-        <div 
-          style={actionButtonStyle}
-          onClick={handleAddClick}
-          title="Add tags"
-          onMouseOver={(e) => {
-            e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.2)';
-            e.currentTarget.style.boxShadow = '0 0 5px rgba(0, 255, 0, 0.3)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.1)';
-            e.currentTarget.style.boxShadow = 'none';
-          }}
-        >
-          +
-        </div>
-      </div>
-    );
-  }
-  
-  // Display tags with styling and action buttons
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', flex: 1 }}>
-        {tags.map((tag, index) => (
-          <span 
-            key={tag.tag_id || index} 
-            style={{ 
-              backgroundColor: 'rgba(0, 255, 0, 0.1)', 
-              border: '1px solid #00ff00',
+    <div style={{
+      height: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}>
+      <div 
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          paddingRight: '0',
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          paddingTop: '4px',
+          paddingBottom: '1px'
+        }}
+      >
+        {visibleTags.map(tag => (
+          <div 
+            key={tag.tag_id} 
+            title={tag.name}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: '#1a1a1a',
               color: '#00ff00',
-              padding: '2px 8px',
-              borderRadius: '12px',
-              fontSize: '0.85rem'
+              padding: '0px 6px',
+              borderRadius: '4px',
+              fontSize: '11px',
+              border: '1px solid #00ff00',
+              boxShadow: '0 0 4px rgba(0, 255, 0, 0.4)',
+              whiteSpace: 'nowrap',
+              overflow: 'visible',
+              lineHeight: '16px',
+              maxWidth: 'fit-content',
+              height: '18px'
             }}
           >
             {tag.name}
-          </span>
+            <button 
+              onClick={(e) => handleRemoveTag(e, tag.tag_id)} 
+              title="Remove tag"
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#00ff00',
+                cursor: 'pointer',
+                padding: '0',
+                marginLeft: '4px',
+                fontSize: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.color = '#33ff33';
+                e.currentTarget.style.transform = 'scale(1.2)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.color = '#00ff00';
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+            >
+              ✕
+            </button>
+          </div>
         ))}
-      </div>
-      
-      <div style={{ display: 'flex', gap: '5px', marginLeft: '10px' }}>
-        {/* Add tag button */}
-        <div 
-          style={actionButtonStyle}
-          onClick={handleAddClick}
-          title="Add tags"
-          onMouseOver={(e) => {
-            e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.2)';
-            e.currentTarget.style.boxShadow = '0 0 5px rgba(0, 255, 0, 0.3)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.1)';
-            e.currentTarget.style.boxShadow = 'none';
-          }}
-        >
-          +
-        </div>
         
-        {/* Remove tag button */}
-        <div 
-          style={actionButtonStyle}
-          onClick={handleRemoveClick}
-          title="Remove tags"
-          onMouseOver={(e) => {
-            e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.2)';
-            e.currentTarget.style.boxShadow = '0 0 5px rgba(0, 255, 0, 0.3)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.1)';
-            e.currentTarget.style.boxShadow = 'none';
-          }}
-        >
-          ×
-        </div>
+        {remainingCount > 0 && (
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '0px 3px',
+              borderRadius: '3px',
+              fontSize: '9px',
+              color: '#999999',
+              cursor: 'pointer',
+              height: '16px',
+              lineHeight: '16px',
+              backgroundColor: '#333333',
+              marginRight: '1px'
+            }}
+            onClick={handleAddClick}
+          >
+            +{remainingCount}
+          </div>
+        )}
+        
+        {showAddTagsText ? (
+          <div
+            onClick={handleAddClick}
+            style={{
+              color: '#00ff00',
+              fontSize: '11px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              width: '100%',
+              height: '100%'
+            }}
+            title="Add or edit tags"
+          >
+            Add tags
+          </div>
+        ) : (
+          <button 
+            onClick={handleAddClick}
+            title="Add or edit tags"
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#00ff00',
+              borderRadius: '3px',
+              width: '16px',
+              height: '16px',
+              padding: '0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              fontSize: '12px'
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.1)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+          >
+            +
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1189,33 +1301,137 @@ class StageFloatingFilterFinal {
   }
 }
 
-// Cell renderer for source with custom icons
-const SourceRenderer = (props) => {
-  const source = props.value;
-  if (!source) return <span style={{ color: '#aaa', fontStyle: 'italic' }}>-</span>;
+// Cell renderer for source with custom dropdown (matching Keep in Touch UX)
+const SourceRenderer = (params) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [localSource, setLocalSource] = useState(params.value || 'Introduction');
   
-  // Return source with appropriate icon
-  if (source === 'Cold Contacting') {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-        <svg 
-          width="16" 
-          height="16" 
-          viewBox="0 0 24 24" 
-          fill="none" 
-          stroke="#00ff00" 
-          strokeWidth="1.5"
-          style={{ filter: 'drop-shadow(0 0 2px #00ff00)' }}
+  useEffect(() => {
+    setLocalSource(params.value || 'Introduction');
+  }, [params.value]);
+  
+  const sourceOptions = [
+    { value: 'Cold Contacting', label: '❄️', emoji: '❄️' },
+    { value: 'Introduction', label: '🔥', emoji: '🔥' }
+  ];
+  
+  const getSourceColor = (source) => {
+    if (source === 'Cold Contacting') {
+      return '#00ff00'; // Neon green for Cold Contacting
+    } else {
+      return '#aaaaaa'; // Grey for Introduction
+    }
+  };
+  
+  const getSourceDisplay = (source) => {
+    const option = sourceOptions.find(opt => opt.value === source);
+    return option ? option.emoji : source;
+  };
+  
+  const handleSourceChange = async (e) => {
+    e.stopPropagation();
+    const newSource = e.target.value;
+    
+    setLocalSource(newSource);
+    
+    try {
+      // Update the source in the database
+      const { error } = await supabase
+        .from('deals')
+        .update({ source_category: newSource })
+        .eq('deal_id', params.data.deal_id);
+        
+      if (error) throw error;
+      
+      // Refresh the cell
+      if (params.api) {
+        params.api.refreshCells({
+          force: true,
+          rowNodes: [params.node],
+          columns: ['source_category']
+        });
+        
+        // Also trigger full data refresh
+        if (params.context && params.context.refreshData) {
+          setTimeout(() => {
+            params.context.refreshData();
+          }, 100);
+        }
+      }
+      
+      // Show success notification
+      toast.success(`Source updated for deal "${params.data.opportunity}"`);
+    } catch (err) {
+      console.error('Error updating source:', err);
+      toast.error(`Error updating source: ${err.message}`);
+      // Revert to original source on error
+      setLocalSource(params.value || 'Introduction');
+    }
+    
+    setIsEditing(false);
+  };
+  
+  const handleClick = (e) => {
+    e.stopPropagation();
+    setIsEditing(true);
+  };
+  
+  const handleBlur = () => {
+    setIsEditing(false);
+  };
+  
+  // Prevent row selection when clicking on the dropdown
+  const handleSelectClick = (e) => {
+    e.stopPropagation();
+  };
+  
+  return (
+    <div style={{
+      whiteSpace: 'nowrap',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      paddingRight: '0',
+      width: '100%',
+      color: getSourceColor(localSource),
+      cursor: 'pointer',
+      height: '100%',
+      display: 'flex',
+      alignItems: 'center'
+    }} 
+    onClick={handleClick}
+    data-source={localSource}
+    >
+      {isEditing ? (
+        <select
+          value={localSource}
+          onChange={handleSourceChange}
+          onBlur={handleBlur}
+          onClick={handleSelectClick}
+          autoFocus
+          style={{
+            backgroundColor: '#222',
+            color: getSourceColor(localSource),
+            border: `1px solid ${getSourceColor(localSource)}`,
+            borderRadius: '4px',
+            padding: '2px',
+            fontSize: '14px',
+            width: '100%',
+            cursor: 'pointer'
+          }}
         >
-          {/* Snowflake icon */}
-          <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M19.07 4.93L4.93 19.07M7 12l5-5 5 5-5 5-5-5z" />
-        </svg>
-        <span>{source}</span>
-      </div>
-    );
-  }
-  
-  return <span>{source}</span>;
+          {sourceOptions.map(option => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <span>
+          {getSourceDisplay(localSource)}
+        </span>
+      )}
+    </div>
+  );
 };
 
 // Cell renderer for Actions column
@@ -1243,24 +1459,29 @@ const ActionsRenderer = (props) => {
     e.stopPropagation();
     
     // Show confirmation dialog
-    if (window.confirm(`Are you sure you want to delete deal: ${data.opportunity}?`)) {
-      // Delete the deal from Supabase
+    if (window.confirm(`Are you sure you want to mark deal "${data.opportunity}" as deleted?`)) {
+      // Update the deal stage to DELETE instead of deleting the record
       supabase
         .from('deals')
-        .delete()
+        .update({ stage: 'DELETE' })
         .eq('deal_id', data.deal_id)
         .then(({ error }) => {
           if (error) {
-            toast.error(`Error deleting deal: ${error.message}`);
-            console.error('Error deleting deal:', error);
+            toast.error(`Error updating deal: ${error.message}`);
+            console.error('Error updating deal stage:', error);
           } else {
-            toast.success(`Deal "${data.opportunity}" deleted successfully`, {
+            toast.success(`Deal "${data.opportunity}" marked as deleted`, {
               icon: <FiTrash2 style={{ color: '#00ff00' }} />
             });
             
-            // Refresh data or remove from grid using context
-            if (props.context && props.context.removeDeal) {
-              props.context.removeDeal(data.deal_id);
+            // Clear selectedDeal to prevent DealTagsModal from receiving stale data
+            if (props.context && props.context.setSelectedDeal) {
+              props.context.setSelectedDeal(null);
+            }
+            
+            // Refresh data to update the grid
+            if (props.context && props.context.refreshData) {
+              props.context.refreshData();
             }
           }
         });
@@ -1710,6 +1931,15 @@ const SimpleDeals = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const navigate = useNavigate();
   
+  // Debug state changes
+  useEffect(() => {
+    console.log('showTagsModal changed to:', showTagsModal);
+  }, [showTagsModal]);
+  
+  useEffect(() => {
+    console.log('selectedDeal changed to:', selectedDeal);
+  }, [selectedDeal]);
+  
   // Category colors for this component
   const categoryColors = categoryColorMap;
   
@@ -1756,33 +1986,9 @@ const SimpleDeals = () => {
       field: 'source_category',
       cellRenderer: SourceRenderer,
       minWidth: 140,
-      // Use agSetColumnFilter to show a list of values
-      filter: 'agSetColumnFilter',
-      filterParams: {
-        // Exact list of values for the filter
-        values: [
-          'Cold Contacting',
-          'Introduction'
-        ],
-        // Show the values in the dropdown
-        cellRenderer: params => params.value || '(Empty)',
-        // Customize the filter appearance and behavior
-        buttons: ['apply', 'reset'],
-        closeOnApply: true,
-        // Height of each value row in the dropdown
-        cellHeight: 30,
-        // Enable sorting in the filter dropdown
-        sortButtons: true
-      },
       sortable: true,
-      editable: true,
-      cellEditor: 'agSelectCellEditor',
-      cellEditorParams: {
-        values: [
-          'Cold Contacting',
-          'Introduction'
-        ]
-      }
+      filter: false, // Disable filter since we have custom dropdown
+      editable: false, // Disable editing since we handle it in the renderer
     },
     { 
       headerName: 'Investment Amount', 
@@ -2251,14 +2457,39 @@ const SimpleDeals = () => {
   // Row clicked handler
   const handleRowClicked = React.useCallback((params) => {
     console.log('Deal clicked:', params.data);
-    // Just select the deal but don't open the modal
-    setSelectedDeal({
-      contact_id: null,
-      deal: params.data,
-      companies: []
-    });
+    console.log('showTagsModal state:', showTagsModal);
+    
+    // Don't interfere with selectedDeal if tags modal is open or about to open
+    // Also check if the click target is within a tag-related element or action button
+    const clickTarget = params.event?.target;
+    const isTagRelatedClick = clickTarget && (
+      clickTarget.closest('[title*="tag"]') ||
+      clickTarget.closest('[title*="Add"]') ||
+      clickTarget.closest('[title*="Remove"]') ||
+      clickTarget.textContent?.includes('Add tags') ||
+      clickTarget.textContent?.includes('+')
+    );
+    
+    // Check if the click is on an action button (Edit, Delete, Attachments)
+    const isActionButtonClick = clickTarget && (
+      clickTarget.closest('[title="Edit"]') ||
+      clickTarget.closest('[title="Delete"]') ||
+      clickTarget.closest('[title*="Attachments"]') ||
+      clickTarget.closest('button') // Any button within the actions column
+    );
+    
+    if (!showTagsModal && !isTagRelatedClick && !isActionButtonClick) {
+      console.log('Setting selectedDeal from row click');
+      setSelectedDeal({
+        contact_id: null,
+        deal: params.data,
+        companies: []
+      });
+    } else {
+      console.log('Skipping selectedDeal update - tags modal open, tag-related click, or action button click');
+    }
     // Note: We removed setShowDealModal(true) to prevent modal from opening on row click
-  }, []);
+  }, [showTagsModal]);
   
   // Handle edit changes when a cell value changes
   const onCellValueChanged = React.useCallback(async (params) => {
@@ -2604,6 +2835,11 @@ const SimpleDeals = () => {
     { id: 'private_debt', name: 'Private Debt', icon: <FiBriefcase /> },
     { id: 'other', name: 'Other', icon: <FiPackage /> }
   ];
+  
+  // Debug showTagsModal state changes
+  useEffect(() => {
+    console.log('showTagsModal changed to:', showTagsModal);
+  }, [showTagsModal]);
   
   return (
     <Container>
@@ -3089,40 +3325,82 @@ const SimpleDeals = () => {
           console.log("Closing tags modal from DealTagsModal component");
           setShowTagsModal(false);
         }}
-        deal={selectedDeal && (selectedDeal.id || selectedDeal.deal_id) ? {
-          // Explicitly restructure the deal object to ensure all required properties
-          id: selectedDeal.id || selectedDeal.deal_id, // Use id as fallback
-          deal_id: selectedDeal.deal_id || selectedDeal.id, // Ensure deal_id is always set, fallback to id
-          opportunity: selectedDeal.opportunity || 'Unnamed Deal',
-          tags: Array.isArray(selectedDeal.tags) ? selectedDeal.tags : []
-        } : null}
+        deal={selectedDeal ? (() => {
+          // Handle both direct deal object and nested structure from row clicks
+          let dealObject;
+          
+          if (selectedDeal.deal && typeof selectedDeal.deal === 'object') {
+            // This is the structure from row clicks: {contact_id: null, deal: {...}, companies: []}
+            dealObject = selectedDeal.deal;
+          } else if (selectedDeal.deal_id || selectedDeal.id) {
+            // This is the direct deal object from tag operations
+            dealObject = selectedDeal;
+          } else {
+            console.warn("selectedDeal has unexpected structure:", selectedDeal);
+            return null;
+          }
+          
+          return {
+            id: dealObject.id || dealObject.deal_id,
+            deal_id: dealObject.deal_id || dealObject.id,
+            opportunity: dealObject.opportunity || 'Unnamed Deal',
+            tags: Array.isArray(dealObject.tags) ? dealObject.tags : []
+          };
+        })() : null}
         onTagsUpdated={(updatedTags) => {
           console.log("Tags updated:", updatedTags);
           // Even if no tags are returned, we still need to update the deal
           // to prevent stale state issues
           
+          // Get the deal ID from the current selectedDeal structure
+          let dealId;
+          if (selectedDeal?.deal && typeof selectedDeal.deal === 'object') {
+            dealId = selectedDeal.deal.deal_id || selectedDeal.deal.id;
+          } else if (selectedDeal?.deal_id || selectedDeal?.id) {
+            dealId = selectedDeal.deal_id || selectedDeal.id;
+          }
+          
+          if (!dealId) {
+            console.error("Cannot update tags: No deal ID found in selectedDeal", selectedDeal);
+            return;
+          }
+          
           // Update the selected deal with the new tags (or empty array if none)
           setSelectedDeal(prev => {
             if (!prev) return prev; // No deal selected
             
-            console.log("Updating selected deal tags:", prev.deal_id);
-            return {
-              ...prev,
-              tags: updatedTags || []
-            };
+            console.log("Updating selected deal tags:", dealId);
+            
+            // Handle both structures when updating
+            if (prev.deal && typeof prev.deal === 'object') {
+              // Nested structure from row clicks
+              return {
+                ...prev,
+                deal: {
+                  ...prev.deal,
+                  tags: updatedTags || []
+                }
+              };
+            } else {
+              // Direct deal object
+              return {
+                ...prev,
+                tags: updatedTags || []
+              };
+            }
           });
           
-          // Update the deals array - safely with optional chaining
-          if (selectedDeal?.deal_id) {
+          // Update the deals array
+          if (dealId) {
             setDeals(prevDeals => prevDeals.map(deal => 
-              deal.deal_id === selectedDeal.deal_id 
+              deal.deal_id === dealId 
                 ? { ...deal, tags: updatedTags || [] }
                 : deal
             ));
             
             // Update filtered deals as well
             setFilteredDeals(prevDeals => prevDeals.map(deal => 
-              deal.deal_id === selectedDeal.deal_id
+              deal.deal_id === dealId
                 ? { ...deal, tags: updatedTags || [] }
                 : deal
             ));
