@@ -662,177 +662,102 @@ const CategoryRenderer = (props) => {
 
 // Cell renderer for tags
 const TagsRenderer = (props) => {
-  const tags = props.value;
+  const [showModal, setShowModal] = React.useState(false);
+  const tags = props.value || [];
+  const deal = props.data;
   
-  // Get first 2 tags to display (matching ContactsListTable pattern)
-  const visibleTags = tags ? tags.slice(0, 2) : [];
-  const remainingCount = tags ? tags.length - 2 : 0;
+  if (!tags.length && !deal) return '';
   
-  // If no tags, show "Add tags" text
-  const showAddTagsText = !tags || tags.length === 0;
+  // Get first 2 tags to display
+  const visibleTags = tags.slice(0, 2);
+  const remainingCount = tags.length - 2;
   
-  // Quick action buttons style
-  const actionButtonStyle = {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '24px',
-    height: '24px',
-    borderRadius: '50%',
-    backgroundColor: 'rgba(0, 255, 0, 0.1)',
-    border: '1px solid #00ff00',
-    color: '#00ff00',
-    cursor: 'pointer',
-    fontSize: '16px',
-    marginLeft: '8px',
-    transition: 'all 0.2s ease',
-  };
+  // If no tags, show "Add tags" text instead of the plus button
+  const showAddTagsText = tags.length === 0;
   
-  // Handle remove tag button click
   const handleRemoveTag = async (e, tagId) => {
-    e.stopPropagation(); // Prevent cell click from triggering
-    
-    if (!props.data || !props.data.deal_id) {
-      console.error("Cannot remove tag: Invalid deal data", props.data);
-      toast.error("Cannot remove tag: Missing deal information");
-      return;
-    }
+    e.stopPropagation(); // Prevent row selection
     
     try {
-      // Remove tag from deal
+      // Find the tag being removed for the notification
+      const tagToRemove = tags.find(tag => tag.tag_id === tagId);
+      
+      // Delete the tag relationship
       const { error } = await supabase
         .from('deal_tags')
         .delete()
-        .eq('deal_id', props.data.deal_id)
+        .eq('deal_id', deal.deal_id)
         .eq('tag_id', tagId);
         
       if (error) throw error;
       
-      // Get the tag name for notification
-      const tagName = tags?.find(tag => tag.tag_id === tagId)?.name || 'Unknown tag';
+      // Update the local data
+      const updatedTags = tags.filter(tag => tag.tag_id !== tagId);
+      props.setValue(updatedTags);
       
-      toast.success(`Removed tag "${tagName}" from deal`);
-      
-      // Refresh the grid
-      if (props.context && props.context.refreshData) {
-        setTimeout(() => {
-          props.context.refreshData();
-        }, 100);
+      // Refresh the data in the grid
+      if (props.api) {
+        props.api.refreshCells({
+          force: true,
+          rowNodes: [props.node],
+          columns: ['tags']
+        });
       }
+      
+      // Show success toast notification
+      toast.success(`Tag "${tagToRemove?.name || 'Unknown'}" removed from ${deal.opportunity}`, {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true
+      });
     } catch (err) {
       console.error('Error removing tag:', err);
-      toast.error(`Error removing tag: ${err.message}`);
+      toast.error(`Error removing tag: ${err.message}`, {
+        position: "top-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true
+      });
     }
   };
   
-  // Handle add button click (opens modal)
-  const handleAddClick = (e) => {
-    e.stopPropagation(); // Prevent cell click from triggering
-    if (props.context && props.context.setSelectedDeal && props.context.setShowTagsModal) {
-      // Validate that we have a valid deal with either id or deal_id
-      if (!props.data || (!props.data.id && !props.data.deal_id)) {
-        console.error("Cannot add tag: Invalid deal data", props.data);
-        toast.error("Cannot add tag: Missing deal information");
-        return;
-      }
-      
-      console.log("Original deal data from grid:", {
-        id: props.data.id,
-        deal_id: props.data.deal_id,
-        opportunity: props.data.opportunity,
-        hasTags: !!props.data.tags,
-        tagCount: props.data.tags?.length
+  const handleAddTagClick = (e) => {
+    e.stopPropagation(); // Prevent row selection
+    setShowModal(true);
+  };
+  
+  const handleCloseModal = () => {
+    setShowModal(false);
+    
+    // After closing the modal, refresh the entire table to show the latest changes
+    if (props.api) {
+      // First refresh the specific cell for immediate visual feedback
+      props.api.refreshCells({
+        force: true,
+        rowNodes: [props.node],
+        columns: ['tags']
       });
       
-      // First ensure the deal has all needed properties
-      const dealData = { 
-        ...props.data,
-        // Ensure deal_id is present - if missing, use the id field
-        deal_id: props.data.deal_id || props.data.id,
-        // Ensure we have an id field too
-        id: props.data.id || props.data.deal_id,
-        // Ensure opportunity has a value
-        opportunity: props.data.opportunity || 'Unnamed Deal',
-        // Ensure tags array exists
-        tags: props.data.tags || []
-      };
-      
-      // Verify we have a valid ID before proceeding
-      if (!dealData.deal_id) {
-        console.error("Cannot add tag: Deal ID not available after processing", dealData);
-        toast.error("Cannot add tag: Missing deal ID");
-        return;
-      }
-      
-      // First set the selected deal
-      props.context.setSelectedDeal(dealData);
-      
-      console.log("Add tag clicked for deal:", dealData.deal_id, dealData.opportunity);
-      console.log("Setting selectedDeal to:", dealData);
-      
-      // Then open the modal with a small delay to ensure the deal is set
+      // Then initiate a full data refresh via the grid's parent component
       setTimeout(() => {
-        props.context.setShowTagsModal(true);
-      }, 0);
-    } else {
-      console.error("Missing context functions for tag operations", {
-        hasContext: !!props.context,
-        hasSetSelectedDeal: !!(props.context && props.context.setSelectedDeal),
-        hasSetShowTagsModal: !!(props.context && props.context.setShowTagsModal)
-      });
+        if (props.context && props.context.refreshData) {
+          props.context.refreshData();
+        }
+      }, 100);
     }
   };
   
-  // Handle remove button click (opens modal with focus on current tags)
-  const handleRemoveClick = (e) => {
-    e.stopPropagation(); // Prevent cell click from triggering
-    if (props.context && props.context.setSelectedDeal && props.context.setShowTagsModal) {
-      // Validate that we have a valid deal with either id or deal_id
-      if (!props.data || (!props.data.id && !props.data.deal_id)) {
-        console.error("Cannot remove tag: Invalid deal data", props.data);
-        toast.error("Cannot remove tag: Missing deal information");
-        return;
-      }
-      
-      // First ensure the deal has all needed properties
-      const dealData = { 
-        ...props.data,
-        // Ensure deal_id is present - if missing, use the id field
-        deal_id: props.data.deal_id || props.data.id,
-        // Ensure we have an id field too
-        id: props.data.id || props.data.deal_id,
-        // Ensure opportunity has a value
-        opportunity: props.data.opportunity || 'Unnamed Deal',
-        // Ensure tags array exists
-        tags: props.data.tags || []
-      };
-      
-      // Verify we have a valid ID before proceeding
-      if (!dealData.deal_id) {
-        console.error("Cannot remove tag: Deal ID not available after processing", dealData);
-        toast.error("Cannot remove tag: Missing deal ID");
-        return;
-      }
-      
-      // First set the selected deal
-      props.context.setSelectedDeal(dealData);
-      
-      console.log("Remove tag clicked for deal:", dealData.deal_id, dealData.opportunity);
-      
-      // Then open the modal with a small delay to ensure the deal is set
-      setTimeout(() => {
-        props.context.setShowTagsModal(true);
-      }, 0);
-    } else {
-      console.error("Missing context functions for tag operations", {
-        hasContext: !!props.context,
-        hasSetSelectedDeal: !!(props.context && props.context.setSelectedDeal),
-        hasSetShowTagsModal: !!(props.context && props.context.setShowTagsModal)
-      });
-    }
+  // We'll stop event propagation on the container to prevent row selection when clicking tags
+  const handleContainerClick = (e) => {
+    e.stopPropagation();
   };
   
-    return (
+  return (
     <div style={{
       height: '100%',
       display: 'flex',
@@ -840,7 +765,7 @@ const TagsRenderer = (props) => {
       justifyContent: 'center'
     }}>
       <div 
-        onClick={(e) => e.stopPropagation()}
+        onClick={handleContainerClick}
         style={{
           whiteSpace: 'nowrap',
           overflow: 'hidden',
@@ -850,9 +775,7 @@ const TagsRenderer = (props) => {
           height: '100%',
           display: 'flex',
           alignItems: 'center',
-          gap: '6px',
-          paddingTop: '4px',
-          paddingBottom: '1px'
+          gap: '6px'
         }}
       >
         {visibleTags.map(tag => (
@@ -877,39 +800,32 @@ const TagsRenderer = (props) => {
               height: '18px'
             }}
           >
-            {tag.name}
+            {tag.name.length > 15 ? `${tag.name.substring(0, 15)}...` : tag.name}
             <button 
               onClick={(e) => handleRemoveTag(e, tag.tag_id)} 
               title="Remove tag"
               style={{
-                background: 'none',
-                border: 'none',
-                color: '#00ff00',
-                cursor: 'pointer',
-                padding: '0',
-                marginLeft: '4px',
-                fontSize: '10px',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center'
+                justifyContent: 'center',
+                marginLeft: '5px',
+                padding: '0',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: '#00ff00',
+                fontSize: '12px',
+                fontWeight: 'bold'
               }}
-          onMouseOver={(e) => {
-                e.currentTarget.style.color = '#33ff33';
-                e.currentTarget.style.transform = 'scale(1.2)';
-          }}
-          onMouseOut={(e) => {
-                e.currentTarget.style.color = '#00ff00';
-                e.currentTarget.style.transform = 'scale(1)';
-          }}
-        >
+            >
               ✕
             </button>
-        </div>
+          </div>
         ))}
-  
+        
         {remainingCount > 0 && (
           <div
-            style={{ 
+            style={{
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -923,15 +839,15 @@ const TagsRenderer = (props) => {
               backgroundColor: '#333333',
               marginRight: '1px'
             }}
-            onClick={handleAddClick}
+            onClick={handleAddTagClick}
           >
             +{remainingCount}
-      </div>
+          </div>
         )}
-      
+        
         {showAddTagsText ? (
-        <div 
-          onClick={handleAddClick}
+          <div
+            onClick={handleAddTagClick}
             style={{
               color: '#00ff00',
               fontSize: '11px',
@@ -946,10 +862,10 @@ const TagsRenderer = (props) => {
             title="Add or edit tags"
           >
             Add tags
-        </div>
+          </div>
         ) : (
           <button 
-            onClick={handleAddClick}
+            onClick={handleAddTagClick}
             title="Add or edit tags"
             style={{
               background: 'none',
@@ -965,22 +881,25 @@ const TagsRenderer = (props) => {
               cursor: 'pointer',
               fontSize: '12px'
             }}
-          onMouseOver={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.1)';
-          }}
-          onMouseOut={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-          }}
-        >
+          >
             +
           </button>
+        )}
+        
+        {showModal && (
+          <DealTagsModal
+            isOpen={showModal}
+            onRequestClose={handleCloseModal}
+            deal={{
+              ...deal,
+              id: deal.deal_id // Map deal_id to id for the modal
+            }}
+          />
         )}
       </div>
     </div>
   );
 };
-
-
 
 // Custom filter component for Stage column using the AG Grid API
 class StageFloatingFilter {
@@ -2439,16 +2358,11 @@ const SimpleDeals = () => {
     setTimeout(() => {
       params.api.sizeColumnsToFit();
       
-      // Debugging: log some info about the grid and the Stage column
+      // Debugging: log some info about the grid
       console.log('Grid API object:', params.api);
       
-      const stageColumn = params.columnApi.getColumn('stage');
-      if (stageColumn) {
-        console.log('Stage column found, ID:', stageColumn.getId());
-        console.log('Stage column props:', stageColumn.getColDef());
-      } else {
-        console.warn('Stage column not found in the grid');
-      }
+      // Note: Stage column was removed from column definitions
+      // No longer looking for stage column
       
       // Force refresh of the grid
       params.api.refreshHeader();
@@ -2503,6 +2417,24 @@ const SimpleDeals = () => {
     
     console.log(`Editing ${colDef.field} from "${oldValue}" to "${newValue}"`);
     
+    // Skip database update for tags field since tags are stored in deal_tags table
+    if (colDef.field === 'tags') {
+      console.log('Skipping database update for tags field - handled separately');
+      return;
+    }
+    
+    // Skip database update for contacts field since contacts are stored in deals_contacts table
+    if (colDef.field === 'contacts') {
+      console.log('Skipping database update for contacts field - handled separately');
+      return;
+    }
+    
+    // Skip database update for actions field since it's not a real data field
+    if (colDef.field === 'actions') {
+      console.log('Skipping database update for actions field - not a data field');
+      return;
+    }
+    
     try {
       // Create update object with only the changed field
       const updateData = { [colDef.field]: newValue };
@@ -2546,10 +2478,6 @@ const SimpleDeals = () => {
         } else if (colDef.field === 'opportunity') {
           toast.success(`Deal name updated to "${newValue}"`, {
             icon: '✏️'
-          });
-        } else if (colDef.field === 'tags') {
-          toast.success(`Tags updated successfully`, {
-            icon: '🏷️'
           });
         }
       }
@@ -3324,7 +3252,7 @@ const SimpleDeals = () => {
 
       {/* Tags Modal - Using the new DealTagsModal component */}
       <DealTagsModal
-        isOpen={showTagsModal}
+        isOpen={showTagsModal && selectedDeal !== null}
         onRequestClose={() => {
           console.log("Closing tags modal from DealTagsModal component");
           setShowTagsModal(false);

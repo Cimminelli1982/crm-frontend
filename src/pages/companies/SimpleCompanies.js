@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { AgGridReact } from '../../ag-grid-setup';
-import { FiList, FiInbox, FiCpu, FiDollarSign, FiBriefcase, FiUser, FiPackage, FiEdit2, FiPlus } from 'react-icons/fi';
+import { FiList, FiInbox, FiCpu, FiDollarSign, FiBriefcase, FiUser, FiPackage, FiEdit2, FiPlus, FiTrash2, FiPaperclip } from 'react-icons/fi';
+import { MdClear } from 'react-icons/md';
 import NewEditCompanyModal from '../../components/modals/NewEditCompanyModal';
+import CompanyTagsModal from '../../components/modals/CompanyTagsModal';
 import toast from 'react-hot-toast';
 import AssociateContactModal from '../../components/modals/AssociateContactModal';
 
@@ -185,20 +187,434 @@ const MenuItem = styled.div`
   }
 `;
 
-// Simple tags renderer
-const TagsRenderer = (props) => {
-  const tags = props.value || [];
-  if (!tags.length) return '-';
+// Tag styled components (matching ContactsListTable)
+const TagContainer = styled.div`
+  display: flex;
+  gap: 1px;
+  align-items: center;
+  padding-top: 4px;
+  padding-bottom: 1px;
+  height: 100%;
+`;
+
+const TagItem = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #1a1a1a;
+  color: #00ff00;
+  padding: 0px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  border: 1px solid #00ff00;
+  box-shadow: 0 0 4px rgba(0, 255, 0, 0.4);
+  white-space: nowrap;
+  overflow: visible;
+  line-height: 16px;
+  max-width: fit-content;
+  height: 18px;
   
-  return tags.join(', ');
+  button {
+    background: none;
+    border: none;
+    color: #00ff00;
+    cursor: pointer;
+    padding: 0;
+    margin-left: 4px;
+    font-size: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    
+    &:hover {
+      color: #33ff33;
+      transform: scale(1.2);
+    }
+  }
+`;
+
+const AddTagButton = styled.button`
+  background: none;
+  border: none;
+  color: #00ff00;
+  border-radius: 3px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 12px;
+  
+  &:hover {
+    background-color: rgba(0, 255, 0, 0.1);
+  }
+`;
+
+// Tags renderer (matching ContactsListTable UX/UI exactly)
+const TagsRenderer = (props) => {
+  const [showModal, setShowModal] = React.useState(false);
+  const tags = props.value || [];
+  const company = props.data;
+  
+  if (!tags.length && !company) return '';
+  
+  // Get first 2 tags to display
+  const visibleTags = tags.slice(0, 2);
+  const remainingCount = tags.length - 2;
+  
+  // If no tags, show "Add tags" text instead of the plus button
+  const showAddTagsText = tags.length === 0;
+  
+  const handleRemoveTag = async (e, tagId) => {
+    e.stopPropagation(); // Prevent row selection
+    
+    try {
+      // Find the tag being removed for the notification
+      const tagToRemove = tags.find(tag => tag.id === tagId);
+      
+      // Delete the tag relationship
+      const { error } = await supabase
+        .from('company_tags')
+        .delete()
+        .eq('company_id', company.company_id)
+        .eq('tag_id', tagId);
+        
+      if (error) throw error;
+      
+      // Update the local data
+      const updatedTags = tags.filter(tag => tag.id !== tagId);
+      props.setValue(updatedTags);
+      
+      // Refresh the data in the grid
+      if (props.api) {
+        props.api.refreshCells({
+          force: true,
+          rowNodes: [props.node],
+          columns: ['tags']
+        });
+      }
+      
+      // Show success toast notification
+      toast.success(`Tag "${tagToRemove?.name || 'Unknown'}" removed from ${company.name}`, {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true
+      });
+    } catch (err) {
+      console.error('Error removing tag:', err);
+      toast.error(`Error removing tag: ${err.message}`, {
+        position: "top-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true
+      });
+    }
+  };
+  
+  const handleAddTagClick = (e) => {
+    e.stopPropagation(); // Prevent row selection
+    setShowModal(true);
+  };
+  
+  const handleCloseModal = () => {
+    setShowModal(false);
+    
+    // After closing the modal, refresh the entire table to show the latest changes
+    if (props.api) {
+      // First refresh the specific cell for immediate visual feedback
+      props.api.refreshCells({
+        force: true,
+        rowNodes: [props.node],
+        columns: ['tags']
+      });
+      
+      // Then initiate a full data refresh via the grid's parent component
+      setTimeout(() => {
+        if (props.context && props.context.refreshData) {
+          props.context.refreshData();
+        }
+      }, 100);
+    }
+  };
+  
+  const handleTagAdded = (tag) => {
+    // Refresh the cell data after tag is added
+    if (props.api) {
+      props.api.refreshCells({
+        force: true,
+        rowNodes: [props.node],
+        columns: ['tags']
+      });
+    }
+  };
+  
+  const handleTagRemoved = (tag) => {
+    // Refresh the cell data after tag is removed
+    if (props.api) {
+      props.api.refreshCells({
+        force: true,
+        rowNodes: [props.node],
+        columns: ['tags']
+      });
+    }
+  };
+  
+  // We'll stop event propagation on the container to prevent row selection when clicking tags
+  const handleContainerClick = (e) => {
+    e.stopPropagation();
+  };
+  
+  return (
+    <div style={{
+      height: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}>
+    <TagContainer 
+      onClick={handleContainerClick}
+      style={{
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        paddingRight: '0',
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px'
+      }}
+    >
+      {visibleTags.map(tag => (
+        <TagItem key={tag.id} title={tag.name}>
+          {tag.name.length > 15 ? `${tag.name.substring(0, 15)}...` : tag.name}
+          <button 
+            onClick={(e) => handleRemoveTag(e, tag.id)} 
+            title="Remove tag"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginLeft: '5px',
+              padding: '0',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer'
+            }}
+          >
+            <MdClear style={{ color: '#00ff00' }} size={14} />
+          </button>
+        </TagItem>
+      ))}
+      
+      {remainingCount > 0 && (
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '0px 3px',
+            borderRadius: '3px',
+            fontSize: '9px',
+            color: '#999999',
+            cursor: 'pointer',
+            height: '16px',
+            lineHeight: '16px',
+            backgroundColor: '#333333',
+            marginRight: '1px'
+          }}
+          onClick={handleAddTagClick}
+        >
+          +{remainingCount}
+        </div>
+      )}
+      
+      {showAddTagsText ? (
+        <div
+          onClick={handleAddTagClick}
+          style={{
+            color: '#00ff00',
+            fontSize: '11px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '4px',
+            width: '100%',
+            height: '100%'
+          }}
+          title="Add or edit tags"
+        >
+          Add tags
+        </div>
+      ) : (
+        <AddTagButton 
+          onClick={handleAddTagClick}
+          title="Add or edit tags"
+        >
+          <FiPlus size={10} />
+        </AddTagButton>
+      )}
+      
+      {showModal && (
+        <CompanyTagsModal
+          isOpen={showModal}
+          onRequestClose={handleCloseModal}
+          company={{
+            ...company,
+            id: company.company_id // Map company_id to id for the modal
+          }}
+        />
+      )}
+    </TagContainer>
+    </div>
+  );
 };
 
-// Simple cities renderer
-const CitiesRenderer = (props) => {
-  const cities = props.value || [];
-  if (!cities.length) return '-';
+// Deals renderer - shows number of deals for the company
+const DealsRenderer = (props) => {
+  const deals = props.value || [];
+  const dealCount = deals.length;
   
-  return cities.join(', ');
+  if (dealCount === 0) {
+    return (
+      <div style={{ 
+        color: '#888',
+        fontSize: '13px'
+      }}>
+        No deals
+      </div>
+    );
+  }
+  
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: '4px',
+      color: '#00ff00',
+      fontSize: '13px',
+      cursor: 'pointer'
+    }}
+    onClick={(e) => {
+      e.stopPropagation();
+      // TODO: Navigate to deals for this company
+      console.log('View deals for company:', props.data?.name);
+    }}
+    title={`View ${dealCount} deal${dealCount !== 1 ? 's' : ''}`}
+    >
+      <FiDollarSign size={14} />
+      <span>{dealCount} deal{dealCount !== 1 ? 's' : ''}</span>
+    </div>
+  );
+};
+
+// Actions renderer - shows action buttons for each company
+const ActionsRenderer = (props) => {
+  const handleEdit = (e) => {
+    e.stopPropagation();
+    if (props.data && props.data.company_id) {
+      props.context.setSelectedCompany(props.data);
+      props.context.setShowEditModal(true);
+    }
+  };
+  
+  const handleDelete = (e) => {
+    e.stopPropagation();
+    if (props.data && props.data.company_id) {
+      if (window.confirm(`Are you sure you want to delete ${props.data.name}?`)) {
+        // TODO: Implement delete functionality
+        console.log('Delete company:', props.data.name);
+      }
+    }
+  };
+  
+  const handleAttachments = (e) => {
+    e.stopPropagation();
+    if (props.data && props.data.company_id) {
+      // TODO: Open attachments modal
+      console.log('View attachments for company:', props.data.name);
+    }
+  };
+  
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      height: '100%'
+    }}>
+      <button
+        onClick={handleEdit}
+        style={{
+          background: 'none',
+          border: 'none',
+          color: '#ffffff',
+          cursor: 'pointer',
+          padding: '4px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          opacity: '0.7',
+          transition: 'opacity 0.2s'
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+        title="Edit Company"
+      >
+        <FiEdit2 size={14} />
+      </button>
+      
+      <button
+        onClick={handleAttachments}
+        style={{
+          background: 'none',
+          border: 'none',
+          color: '#ffffff',
+          cursor: 'pointer',
+          padding: '4px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          opacity: '0.7',
+          transition: 'opacity 0.2s'
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+        title="Attachments"
+      >
+        <FiPaperclip size={14} />
+      </button>
+      
+      <button
+        onClick={handleDelete}
+        style={{
+          background: 'none',
+          border: 'none',
+          color: '#ff6b6b',
+          cursor: 'pointer',
+          padding: '4px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          opacity: '0.7',
+          transition: 'opacity 0.2s'
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+        title="Delete Company"
+      >
+        <FiTrash2 size={14} />
+      </button>
+    </div>
+  );
 };
 
 // Simple contacts renderer
@@ -372,22 +788,22 @@ const ContactsRenderer = (props) => {
           alignItems: 'center',
           backgroundColor: '#1a1a1a',
           color: '#ffffff',
-          padding: '0px 6px',
-          borderRadius: '4px',
-          fontSize: '11px',
+          padding: '1px 4px',
+          borderRadius: '3px',
+          fontSize: '10px',
           border: '1px solid #ffffff',
-          boxShadow: '0 0 4px rgba(255, 255, 255, 0.2)',
+          boxShadow: '0 0 2px rgba(255, 255, 255, 0.1)',
           whiteSpace: 'nowrap',
           overflow: 'hidden',
-          lineHeight: '16px',
-          width: '100%',
-          maxWidth: hasMultipleContacts ? '170px' : '190px',
-          height: '18px',
+          lineHeight: '14px',
+          width: 'fit-content',
+          maxWidth: hasMultipleContacts ? '140px' : '160px',
+          height: '16px',
           position: 'relative'
         }}>
           <span style={{
             cursor: 'pointer',
-            maxWidth: hasMultipleContacts ? '120px' : '160px',
+            maxWidth: hasMultipleContacts ? '100px' : '130px',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             display: 'inline-block'
@@ -405,11 +821,11 @@ const ContactsRenderer = (props) => {
           {/* Counter indicator for multiple contacts */}
           {hasMultipleContacts && (
             <div style={{
-              fontSize: '9px',
+              fontSize: '8px',
               color: '#cccccc',
-              marginLeft: '4px',
-              padding: '0 2px',
-              borderRadius: '3px',
+              marginLeft: '3px',
+              padding: '0 1px',
+              borderRadius: '2px',
               backgroundColor: '#333333'
             }}>
               {currentContactIndex + 1}/{contacts.length}
@@ -424,15 +840,17 @@ const ContactsRenderer = (props) => {
               color: '#ffffff',
               cursor: 'pointer',
               padding: '0',
-              marginLeft: '4px',
-              fontSize: '10px',
+              marginLeft: '3px',
+              fontSize: '8px',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              width: '12px',
+              height: '12px'
             }}
             title="Remove Contact Association"
           >
-            ✕
+            <MdClear size={10} />
           </button>
         </div>
         
@@ -449,9 +867,9 @@ const ContactsRenderer = (props) => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: '14px',
-              height: '14px',
-              fontSize: '10px',
+              width: '12px',
+              height: '12px',
+              fontSize: '8px',
               opacity: '0.8',
               marginLeft: '2px'
             }}
@@ -468,19 +886,19 @@ const ContactsRenderer = (props) => {
             background: 'none',
             border: 'none',
             color: '#ffffff',
-            borderRadius: '4px',
-            width: '20px',
-            height: '20px',
+            borderRadius: '3px',
+            width: '16px',
+            height: '16px',
             padding: '0',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             cursor: 'pointer',
-            fontSize: '14px'
+            fontSize: '12px'
           }}
           title="Associate Contact"
         >
-          <FiPlus size={14} />
+          <FiPlus size={12} />
         </button>
       </div>
       
@@ -641,7 +1059,27 @@ const SimpleCompanies = () => {
       headerName: 'Associated Contacts', 
       field: 'contacts',
       cellRenderer: ContactsRenderer,
-      minWidth: 200,
+      minWidth: 180,
+      filter: 'agTextColumnFilter',
+      floatingFilter: true,
+      sortable: false,
+    },
+    { 
+      headerName: 'Tags', 
+      field: 'tags',
+      cellRenderer: TagsRenderer,
+      minWidth: 220,
+      width: 250,
+      filter: 'agTextColumnFilter',
+      floatingFilter: true,
+      sortable: false,
+    },
+    { 
+      headerName: 'Deals', 
+      field: 'deals',
+      cellRenderer: DealsRenderer,
+      minWidth: 80,
+      width: 100,
       filter: 'agTextColumnFilter',
       floatingFilter: true,
       sortable: false,
@@ -651,40 +1089,20 @@ const SimpleCompanies = () => {
       field: 'category',
       valueFormatter: (params) => params.value || '-',
       minWidth: 120,
-      filter: 'agTextColumnFilter',
-      floatingFilter: true,
-      sortable: true,
-    },
-    { 
-      headerName: 'Tags', 
-      field: 'tags',
-      cellRenderer: TagsRenderer,
-      minWidth: 180,
-      filter: 'agTextColumnFilter',
-      floatingFilter: true,
-      sortable: false,
-    },
-    { 
-      headerName: 'Cities', 
-      field: 'cities',
-      cellRenderer: CitiesRenderer,
-      minWidth: 150,
-      filter: 'agTextColumnFilter',
-      floatingFilter: true,
-      sortable: false,
-    },
-    { 
-      headerName: 'Created', 
-      field: 'created_at', 
-      valueFormatter: (params) => {
-        if (!params.value) return '-';
-        return new Date(params.value).toLocaleDateString();
-      },
-      minWidth: 140,
       width: 140,
-      filter: 'agDateColumnFilter',
+      filter: 'agTextColumnFilter',
       floatingFilter: true,
       sortable: true,
+    },
+    { 
+      headerName: 'Actions', 
+      field: 'actions',
+      cellRenderer: ActionsRenderer,
+      minWidth: 120,
+      width: 120,
+      sortable: false,
+      filter: false,
+      pinned: 'right'
     }
   ], []);
   
@@ -773,14 +1191,6 @@ const SimpleCompanies = () => {
       
       const companiesData = allCompanies;
       
-      // Debug: Check if Calzedonia is in the list
-      const calzedonia = companiesData.find(c => c.name === 'Calzedonia');
-      if (calzedonia) {
-        console.log('Calzedonia found in companies list:', calzedonia.company_id);
-      } else {
-        console.log('Calzedonia NOT found in companies list');
-      }
-      
       // Check which ID field to use
       const idField = companiesData[0]?.company_id ? 'company_id' : 'id';
       
@@ -799,18 +1209,12 @@ const SimpleCompanies = () => {
         // Get current batch of IDs
         const batchIds = companyIds.slice(i, i + batchSize);
         
-        // Fetch tags, cities, and contact associations for each company
-        const [tagsResult, citiesResult, contactsResult] = await Promise.all([
+        // Fetch tags and contact associations for each company
+        const [tagsResult, contactsResult] = await Promise.all([
           // Get tags
           supabase
             .from('company_tags')
             .select('company_id, tag_id, tags:tag_id(name)')
-            .in('company_id', batchIds),
-            
-          // Get cities
-          supabase
-            .from('company_cities')
-            .select('company_id, city_id, cities:city_id(name)')
             .in('company_id', batchIds),
             
           // Get contact associations
@@ -820,9 +1224,12 @@ const SimpleCompanies = () => {
             .in('company_id', batchIds)
         ]);
         
+        // NOTE: Deals table doesn't have company_id column, so we skip deals for now
+        // TODO: Implement proper company-deals relationship through contacts
+        let dealsResult = { data: [], error: null };
+        
         // Log any errors but continue processing
         if (tagsResult.error) console.error('Error fetching tags:', tagsResult.error);
-        if (citiesResult.error) console.error('Error fetching cities:', citiesResult.error);
         if (contactsResult.error) console.error('Error fetching contacts:', contactsResult.error);
         
         // Get all unique contact IDs for this batch
@@ -832,8 +1239,8 @@ const SimpleCompanies = () => {
         let batchContactsData = [];
         if (batchContactIds.length > 0) {
           const { data: contactDetails, error: contactDetailsError } = await retrySupabaseRequest(async () => {
-            return supabase
-              .from('contacts')
+        return supabase
+          .from('contacts')
               .select('contact_id, first_name, last_name, job_role, category, linkedin, description, score')
               .in('contact_id', batchContactIds);
           });
@@ -851,39 +1258,35 @@ const SimpleCompanies = () => {
           batchContactsMap[contact.contact_id] = contact;
         });
         
-        // Debug: Log if we found contacts in this batch
-        if (batchContactsData.length > 0) {
-          console.log(`Batch ${Math.floor(i/batchSize) + 1}: Found ${batchContactsData.length} contacts`);
-        }
-        
         // Map data to companies
         const batchCompanies = companiesData.filter(company => batchIds.includes(company[idField])).map(company => {
-          // Get tags for this company
-          const companyTags = tagsResult.data
+          // Get tags for this company - create objects with id and name like ContactsListTable
+          const companyTags = (tagsResult.data || [])
             .filter(tag => tag.company_id === company.company_id)
-            .map(tag => tag.tags?.name)
-            .filter(Boolean);
+            .map(tag => ({
+              id: tag.tag_id,
+              name: tag.tags?.name
+            }))
+            .filter(tag => tag.name); // Filter out tags without names
             
-          // Get cities for this company
-          const companyCities = citiesResult.data
-            .filter(city => city.company_id === company.company_id)
-            .map(city => city.cities?.name)
-            .filter(Boolean);
+          // Get deals for this company (with null safety)
+          const companyDeals = (dealsResult.data || [])
+            .filter(deal => deal.company_id === company.company_id);
             
           // Get contacts for this company
-          const contactIds = contactsResult.data
+          const contactIds = (contactsResult.data || [])
             .filter(relation => relation.company_id === company.company_id)
             .map(relation => relation.contact_id);
-            
+          
           // Get contact details for this company
           const companyContacts = contactIds
             .map(id => batchContactsMap[id])
             .filter(Boolean);
-          
+            
           return {
             ...company,
             tags: companyTags,
-            cities: companyCities,
+            deals: companyDeals,
             contacts: companyContacts
           };
         });

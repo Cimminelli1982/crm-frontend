@@ -292,6 +292,7 @@ const DealTagsModal = ({ isOpen, onRequestClose, deal, onTagsUpdated }) => {
       console.error("DealTagsModal opened but no deal was provided!");
       console.log("isOpen:", isOpen, "deal:", deal);
     }
+    // If modal is closed (isOpen is false), we don't need to do anything
   }, [isOpen, deal]);
 
   // Store deal in local state to prevent issues if parent component's state changes
@@ -299,7 +300,7 @@ const DealTagsModal = ({ isOpen, onRequestClose, deal, onTagsUpdated }) => {
   
   // Update local deal when prop changes
   useEffect(() => {
-    // Only process deal data when the modal is actually open
+    // Only process deal data when the modal is actually open AND deal is provided
     if (isOpen && deal) {
       // Ensure deal_id is available - use id as fallback
       const effectiveDealId = deal.deal_id || deal.id;
@@ -330,6 +331,8 @@ const DealTagsModal = ({ isOpen, onRequestClose, deal, onTagsUpdated }) => {
       setSearchTerm('');
       setMessage({ type: '', text: '' });
     }
+    // If modal is open but no deal provided, we don't update local state
+    // This prevents clearing valid data if deal prop temporarily becomes null
   }, [deal, isOpen]);
 
   // Fetch current tags for the deal
@@ -644,7 +647,10 @@ const DealTagsModal = ({ isOpen, onRequestClose, deal, onTagsUpdated }) => {
 
   // If no deal is provided, show an error message instead of the regular UI
   if (!deal) {
-    console.warn("DealTagsModal received null deal");
+    // Only log warning if modal is actually open
+    if (isOpen) {
+      console.warn("DealTagsModal received null deal");
+    }
     
     if (isOpen) {
       return (

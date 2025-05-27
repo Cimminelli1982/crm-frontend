@@ -641,9 +641,7 @@ const CompanyTagsModal = ({ isOpen, onRequestClose, company }) => {
               const color = getTagColor(tag.name);
               return (
                 <Tag 
-                  key={tag.id} 
-                  color={color.bg}
-                  textColor={color.text}
+                  key={tag.id}
                 >
                   <span title={tag.name}>{tag.name.length > 25 ? `${tag.name.substring(0, 25)}...` : tag.name}</span>
                   <button 
