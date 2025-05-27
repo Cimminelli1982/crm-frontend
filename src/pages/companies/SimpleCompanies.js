@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { AgGridReact } from '../../ag-grid-setup';
-import { FiList, FiInbox, FiCpu, FiDollarSign, FiBriefcase, FiUser, FiPackage, FiEdit2, FiPlus, FiTrash2, FiPaperclip } from 'react-icons/fi';
+import { FiList, FiInbox, FiCpu, FiDollarSign, FiBriefcase, FiUser, FiPackage, FiEdit2, FiPlus, FiTrash2, FiPaperclip, FiLinkedin, FiFileText } from 'react-icons/fi';
 import { MdClear } from 'react-icons/md';
 import NewEditCompanyModal from '../../components/modals/NewEditCompanyModal';
 import CompanyTagsModal from '../../components/modals/CompanyTagsModal';
+import CompanyNotesModal from '../../components/modals/CompanyNotesModal';
 import toast from 'react-hot-toast';
 import AssociateContactModal from '../../components/modals/AssociateContactModal';
 
@@ -489,7 +490,7 @@ const DealsRenderer = (props) => {
         color: '#888',
         fontSize: '13px'
       }}>
-        No deals
+        0
       </div>
     );
   }
@@ -498,10 +499,12 @@ const DealsRenderer = (props) => {
     <div style={{
       display: 'flex',
       alignItems: 'center',
-      gap: '4px',
+      justifyContent: 'center',
       color: '#00ff00',
       fontSize: '13px',
-      cursor: 'pointer'
+      cursor: 'pointer',
+      width: '100%',
+      height: '100%'
     }}
     onClick={(e) => {
       e.stopPropagation();
@@ -510,8 +513,7 @@ const DealsRenderer = (props) => {
     }}
     title={`View ${dealCount} deal${dealCount !== 1 ? 's' : ''}`}
     >
-      <FiDollarSign size={14} />
-      <span>{dealCount} deal{dealCount !== 1 ? 's' : ''}</span>
+      {dealCount}
     </div>
   );
 };
@@ -536,12 +538,48 @@ const ActionsRenderer = (props) => {
     }
   };
   
-  const handleAttachments = (e) => {
+  const handleLinkedIn = (e) => {
     e.stopPropagation();
-    if (props.data && props.data.company_id) {
-      // TODO: Open attachments modal
-      console.log('View attachments for company:', props.data.name);
+    const company = props.data;
+    
+    if (company.linkedin) {
+      // Case 1: LinkedIn URL exists - open it directly
+      const linkedinUrl = company.linkedin.startsWith('http') 
+        ? company.linkedin 
+        : `https://${company.linkedin}`;
+      window.open(linkedinUrl, '_blank');
+    } else {
+      // Case 2: No LinkedIn URL - search for company on LinkedIn
+      const companyName = company.name || '';
+      const encodedCompanyName = encodeURIComponent(companyName);
+      const linkedinSearchUrl = `https://www.linkedin.com/search/results/companies/?keywords=${encodedCompanyName}`;
+      window.open(linkedinSearchUrl, '_blank');
     }
+  };
+  
+  const handleNotes = (e) => {
+    e.stopPropagation();
+    const company = props.data;
+    
+    if (company && company.company_id) {
+      // Set the selected company and open the notes modal
+      props.context.setSelectedCompany(company);
+      props.context.setShowNotesModal(true);
+    }
+  };
+  
+  // Check if company has notes (either in description field or notes_companies table)
+  const hasNotes = () => {
+    const company = props.data;
+    if (!company) return false;
+    
+    // Check if description field has content
+    const hasDescription = company.description && company.description.trim().length > 0;
+    
+    // Check if company has associated notes (this would be populated during data fetch)
+    const hasAssociatedNotes = company.notes_count && company.notes_count > 0;
+    
+    return hasDescription || hasAssociatedNotes;
   };
   
   return (
@@ -556,7 +594,7 @@ const ActionsRenderer = (props) => {
         style={{
           background: 'none',
           border: 'none',
-          color: '#ffffff',
+          color: '#00ff00',
           cursor: 'pointer',
           padding: '4px',
           display: 'flex',
@@ -573,11 +611,11 @@ const ActionsRenderer = (props) => {
       </button>
       
       <button
-        onClick={handleAttachments}
+        onClick={handleLinkedIn}
         style={{
           background: 'none',
           border: 'none',
-          color: '#ffffff',
+          color: props.data?.linkedin ? '#00ff00' : '#888888',
           cursor: 'pointer',
           padding: '4px',
           display: 'flex',
@@ -588,9 +626,30 @@ const ActionsRenderer = (props) => {
         }}
         onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
         onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-        title="Attachments"
+        title={props.data?.linkedin ? "Open LinkedIn page" : "Search on LinkedIn"}
       >
-        <FiPaperclip size={14} />
+        <FiLinkedin size={14} />
+      </button>
+      
+      <button
+        onClick={handleNotes}
+        style={{
+          background: 'none',
+          border: 'none',
+          color: hasNotes() ? '#00ff00' : '#888888',
+          cursor: 'pointer',
+          padding: '4px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          opacity: '0.7',
+          transition: 'opacity 0.2s'
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+        title={hasNotes() ? "View Notes" : "Add Notes"}
+      >
+        <FiFileText size={14} />
       </button>
       
       <button
@@ -598,7 +657,7 @@ const ActionsRenderer = (props) => {
         style={{
           background: 'none',
           border: 'none',
-          color: '#ff6b6b',
+          color: '#00ff00',
           cursor: 'pointer',
           padding: '4px',
           display: 'flex',
@@ -1029,6 +1088,7 @@ const SimpleCompanies = () => {
   
   // Modal state
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showNotesModal, setShowNotesModal] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState(null);
   
   // Define menu items with icons
@@ -1083,6 +1143,7 @@ const SimpleCompanies = () => {
       filter: 'agTextColumnFilter',
       floatingFilter: true,
       sortable: false,
+      cellStyle: { textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }
     },
     { 
       headerName: 'Category', 
@@ -1210,7 +1271,7 @@ const SimpleCompanies = () => {
         const batchIds = companyIds.slice(i, i + batchSize);
         
         // Fetch tags and contact associations for each company
-        const [tagsResult, contactsResult] = await Promise.all([
+        const [tagsResult, contactsResult, notesResult] = await Promise.all([
           // Get tags
           supabase
             .from('company_tags')
@@ -1221,26 +1282,46 @@ const SimpleCompanies = () => {
           supabase
             .from('contact_companies')
             .select('company_id, contact_id')
+            .in('company_id', batchIds),
+            
+          // Get notes count for each company
+          supabase
+            .from('notes_companies')
+            .select('company_id, note_id')
             .in('company_id', batchIds)
         ]);
         
-        // NOTE: Deals table doesn't have company_id column, so we skip deals for now
-        // TODO: Implement proper company-deals relationship through contacts
+        // Get deals for companies through the contact relationship chain
         let dealsResult = { data: [], error: null };
+        
+        // Get all unique contact IDs for this batch to find their deals
+        const batchContactIds = [...new Set(contactsResult.data?.map(item => item.contact_id) || [])];
+        
+        if (batchContactIds.length > 0) {
+          // Fetch deals associated with these contacts
+          const { data: dealsData, error: dealsError } = await supabase
+            .from('deals_contacts')
+            .select('contact_id, deal_id')
+            .in('contact_id', batchContactIds);
+            
+          if (dealsError) {
+            console.error('Error fetching deals through contacts:', dealsError);
+          } else {
+            dealsResult = { data: dealsData || [], error: null };
+          }
+        }
         
         // Log any errors but continue processing
         if (tagsResult.error) console.error('Error fetching tags:', tagsResult.error);
         if (contactsResult.error) console.error('Error fetching contacts:', contactsResult.error);
-        
-        // Get all unique contact IDs for this batch
-        const batchContactIds = [...new Set(contactsResult.data?.map(item => item.contact_id) || [])];
+        if (notesResult.error) console.error('Error fetching notes:', notesResult.error);
         
         // Fetch contact details for this batch
         let batchContactsData = [];
         if (batchContactIds.length > 0) {
           const { data: contactDetails, error: contactDetailsError } = await retrySupabaseRequest(async () => {
-        return supabase
-          .from('contacts')
+            return supabase
+              .from('contacts')
               .select('contact_id, first_name, last_name, job_role, category, linkedin, description, score')
               .in('contact_id', batchContactIds);
           });
@@ -1269,10 +1350,6 @@ const SimpleCompanies = () => {
             }))
             .filter(tag => tag.name); // Filter out tags without names
             
-          // Get deals for this company (with null safety)
-          const companyDeals = (dealsResult.data || [])
-            .filter(deal => deal.company_id === company.company_id);
-            
           // Get contacts for this company
           const contactIds = (contactsResult.data || [])
             .filter(relation => relation.company_id === company.company_id)
@@ -1283,11 +1360,28 @@ const SimpleCompanies = () => {
             .map(id => batchContactsMap[id])
             .filter(Boolean);
             
+          // Count deals for this company through its contacts
+          const companyDealIds = new Set();
+          contactIds.forEach(contactId => {
+            (dealsResult.data || [])
+              .filter(dealContact => dealContact.contact_id === contactId)
+              .forEach(dealContact => companyDealIds.add(dealContact.deal_id));
+          });
+          
+          // Create deals array with count information
+          const companyDeals = Array.from(companyDealIds).map(dealId => ({ deal_id: dealId }));
+          
+          // Count notes for this company
+          const companyNotesCount = (notesResult.data || [])
+            .filter(note => note.company_id === company.company_id)
+            .length;
+            
           return {
             ...company,
             tags: companyTags,
             deals: companyDeals,
-            contacts: companyContacts
+            contacts: companyContacts,
+            notes_count: companyNotesCount
           };
         });
         
@@ -1424,6 +1518,7 @@ const SimpleCompanies = () => {
             context={{
               setSelectedCompany,
               setShowEditModal,
+              setShowNotesModal,
               refreshData
             }}
             rowSelection="single"
@@ -1446,6 +1541,18 @@ const SimpleCompanies = () => {
           }}
           company={selectedCompany}
           onCompanyUpdated={handleCompanyUpdated}
+        />
+      )}
+      
+      {/* Company Notes Modal */}
+      {showNotesModal && selectedCompany && (
+        <CompanyNotesModal 
+          isOpen={showNotesModal}
+          onRequestClose={() => {
+            setShowNotesModal(false);
+            setSelectedCompany(null);
+          }}
+          company={selectedCompany}
         />
       )}
     </Container>
