@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { AgGridReact } from '../../ag-grid-setup';
-import { FiList, FiInbox, FiCpu, FiDollarSign, FiBriefcase, FiUser, FiPackage, FiEdit2 } from 'react-icons/fi';
+import { FiList, FiInbox, FiCpu, FiDollarSign, FiBriefcase, FiUser, FiPackage, FiEdit2, FiPlus } from 'react-icons/fi';
 import NewEditCompanyModal from '../../components/modals/NewEditCompanyModal';
+import toast from 'react-hot-toast';
+import AssociateContactModal from '../../components/modals/AssociateContactModal';
 
 // Styled components
 const Container = styled.div`
@@ -201,10 +203,297 @@ const CitiesRenderer = (props) => {
 
 // Simple contacts renderer
 const ContactsRenderer = (props) => {
-  const contacts = props.value || [];
-  if (!contacts.length) return '-';
+  const [currentContactIndex, setCurrentContactIndex] = React.useState(0);
+  const [showAssociateModal, setShowAssociateModal] = React.useState(false);
   
-  return contacts.join(', ');
+  const contacts = props.value || [];
+  const companyId = props.data?.company_id;
+  const hasMultipleContacts = contacts.length > 1;
+  
+  // Debug logging for multiple contacts
+  if (contacts.length > 0) {
+    console.log(`Company ${props.data?.name}: ${contacts.length} contacts, hasMultipleContacts: ${hasMultipleContacts}`);
+  }
+  
+  // Handle associating a contact
+  const handleAssociateContact = (e) => {
+    e?.stopPropagation(); // Prevent row selection
+    setShowAssociateModal(true);
+  };
+  
+  // Navigation function for contact carousel
+  const goToNextContact = (e) => {
+    e?.stopPropagation();
+    setCurrentContactIndex((prevIndex) => (prevIndex + 1) % contacts.length);
+  };
+  
+  // Handle removing a contact association
+  const handleRemoveContact = async (contactId, e) => {
+    e?.stopPropagation(); // Prevent row selection
+    
+    if (!companyId || !contactId) return;
+    
+    try {
+      const { error } = await supabase
+        .from('contact_companies')
+        .delete()
+        .eq('company_id', companyId)
+        .eq('contact_id', contactId);
+        
+      if (error) throw error;
+      
+      // Success message
+      toast.success('Contact association removed');
+      
+      // Refresh the grid
+      if (props.api) {
+        props.api.refreshCells({ force: true });
+      }
+      
+      // Initiate a full data refresh
+      setTimeout(() => {
+        if (props.context && props.context.refreshData) {
+          props.context.refreshData();
+        }
+      }, 100);
+    } catch (error) {
+      console.error('Error removing contact association:', error);
+      toast.error('Failed to remove contact association');
+    }
+  };
+  
+  // Handle contact association completion
+  const handleContactAssociated = (result) => {
+    console.log('handleContactAssociated called with result:', result);
+    setShowAssociateModal(false);
+    
+    // Immediate grid refresh
+    if (props.api) {
+      console.log('Refreshing grid cells immediately');
+      props.api.refreshCells({ force: true });
+    }
+    
+    // Full data refresh
+    if (props.context && props.context.refreshData) {
+      console.log('Calling refreshData after contact association');
+      setTimeout(() => {
+        props.context.refreshData();
+      }, 500); // Increased delay to allow for database propagation
+    } else {
+      console.error('refreshData not available in context:', props.context);
+    }
+  };
+  
+  // Prevent event propagation
+  const handleContainerClick = (e) => {
+    e.stopPropagation();
+  };
+
+  if (!contacts.length) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        height: '100%'
+      }}
+      onClick={handleContainerClick}
+      >
+        <div
+          onClick={handleAssociateContact}
+          style={{
+            color: '#ffffff',
+            fontSize: '11px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px'
+          }}
+          title="Associate Contact"
+        >
+          Add contacts
+        </div>
+        
+        {showAssociateModal && (
+          <AssociateContactModal 
+            isOpen={showAssociateModal}
+            onRequestClose={() => setShowAssociateModal(false)}
+            companyId={companyId}
+            onContactAssociated={handleContactAssociated}
+          />
+        )}
+      </div>
+    );
+  }
+  
+  // Current contact to display
+  const currentContact = contacts[currentContactIndex];
+  const fullName = [currentContact.first_name || '', currentContact.last_name || ''].filter(Boolean).join(' ') || 'Unnamed';
+  
+  // Navigation button styles
+  const navButtonStyle = {
+    background: 'none',
+    border: 'none',
+    color: '#ffffff',
+    cursor: 'pointer',
+    padding: '0',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '14px',
+    height: '14px',
+    fontSize: '10px',
+    opacity: '0.8'
+  };
+  
+  // Fixed row height
+  const rowHeight = 36;
+  
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      height: rowHeight + 'px',
+      minHeight: rowHeight + 'px',
+      width: '100%',
+      position: 'relative'
+    }}
+    onClick={handleContainerClick}
+    >
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        width: '100%',
+        gap: '4px'
+      }}>
+        {/* Contact display */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          backgroundColor: '#1a1a1a',
+          color: '#ffffff',
+          padding: '0px 6px',
+          borderRadius: '4px',
+          fontSize: '11px',
+          border: '1px solid #ffffff',
+          boxShadow: '0 0 4px rgba(255, 255, 255, 0.2)',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          lineHeight: '16px',
+          width: '100%',
+          maxWidth: hasMultipleContacts ? '170px' : '190px',
+          height: '18px',
+          position: 'relative'
+        }}>
+          <span style={{
+            cursor: 'pointer',
+            maxWidth: hasMultipleContacts ? '120px' : '160px',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            display: 'inline-block'
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            // Could add navigation to contact details here
+            console.log('Contact clicked:', currentContact);
+          }}
+          title={`${fullName}${currentContact.job_role ? ` - ${currentContact.job_role}` : ''}`}
+          >
+            {fullName}
+          </span>
+          
+          {/* Counter indicator for multiple contacts */}
+          {hasMultipleContacts && (
+            <div style={{
+              fontSize: '9px',
+              color: '#cccccc',
+              marginLeft: '4px',
+              padding: '0 2px',
+              borderRadius: '3px',
+              backgroundColor: '#333333'
+            }}>
+              {currentContactIndex + 1}/{contacts.length}
+            </div>
+          )}
+          
+          <button
+            onClick={(e) => handleRemoveContact(currentContact.contact_id, e)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#ffffff',
+              cursor: 'pointer',
+              padding: '0',
+              marginLeft: '4px',
+              fontSize: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+            title="Remove Contact Association"
+          >
+            ✕
+          </button>
+        </div>
+        
+        {/* Right navigation arrow (only visible for multiple contacts) */}
+        {hasMultipleContacts && (
+          <button
+            onClick={goToNextContact}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#ffffff',
+              cursor: 'pointer',
+              padding: '0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '14px',
+              height: '14px',
+              fontSize: '10px',
+              opacity: '0.8',
+              marginLeft: '2px'
+            }}
+            title="Next contact"
+          >
+            &#9654;
+          </button>
+        )}
+        
+        {/* Add contact button */}
+        <button 
+          onClick={handleAssociateContact}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#ffffff',
+            borderRadius: '4px',
+            width: '20px',
+            height: '20px',
+            padding: '0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            fontSize: '14px'
+          }}
+          title="Associate Contact"
+        >
+          <FiPlus size={14} />
+        </button>
+      </div>
+      
+      {showAssociateModal && (
+        <AssociateContactModal 
+          isOpen={showAssociateModal}
+          onRequestClose={() => setShowAssociateModal(false)}
+          companyId={companyId}
+          onContactAssociated={handleContactAssociated}
+        />
+      )}
+    </div>
+  );
 };
 
 // Website link renderer
@@ -437,7 +726,6 @@ const SimpleCompanies = () => {
           try {
             return await request();
           } catch (err) {
-            console.log(`Attempt ${attempt + 1} failed, retrying in ${delay}ms...`, err);
             lastError = err;
             // Wait before retrying
             await new Promise(resolve => setTimeout(resolve, delay));
@@ -473,7 +761,6 @@ const SimpleCompanies = () => {
         if (pageData && pageData.length > 0) {
           allCompanies = [...allCompanies, ...pageData];
           page++;
-          console.log(`Loaded page ${page} with ${pageData.length} companies, total so far: ${allCompanies.length}`);
           
           // If we got fewer results than the page size, we've reached the end
           if (pageData.length < pageSize) {
@@ -486,112 +773,113 @@ const SimpleCompanies = () => {
       
       const companiesData = allCompanies;
       
-      console.log(`Fetched ${companiesData.length} companies`);
-      
-      // Log a few companies to debug
-      console.log('Sample companies:', companiesData.slice(0, 3));
+      // Debug: Check if Calzedonia is in the list
+      const calzedonia = companiesData.find(c => c.name === 'Calzedonia');
+      if (calzedonia) {
+        console.log('Calzedonia found in companies list:', calzedonia.company_id);
+      } else {
+        console.log('Calzedonia NOT found in companies list');
+      }
       
       // Check which ID field to use
       const idField = companiesData[0]?.company_id ? 'company_id' : 'id';
-      console.log(`Using company ID field: ${idField}`);
       
       // Get all company IDs
       const companyIds = companiesData.map(company => company[idField]);
       
+      // We'll fetch contact associations in batches during company processing
+      // to avoid overwhelming the database with a single large query
+      
       // Batch processing for performance
       const batchSize = 50;
-      const processBatch = async (ids) => {
-        // Fetch tags, cities, and contact counts for each company
-        const [tagsResult, citiesResult, contactsResult] = await Promise.all([
-          // Get tags
-          supabase
-            .from('company_tags')
-            .select('company_id, tag_id, tags:tag_id(name)')
-            .in('company_id', ids),
-            
-          // Get cities
-          supabase
-            .from('company_cities')
-            .select('company_id, city_id, cities:city_id(name)')
-            .in('company_id', ids),
-            
-          // Get contact counts
-          supabase
-            .from('contact_companies')
-            .select('company_id, contact_id')
-            .in('company_id', ids)
-        ]);
-        
-        return {
-          tags: tagsResult.data || [],
-          tagsError: tagsResult.error,
-          cities: citiesResult.data || [],
-          citiesError: citiesResult.error,
-          contacts: contactsResult.data || [],
-          contactsError: contactsResult.error
-        };
-      };
-      
-      // First fetch all contacts linked to any company we're displaying
-      const { data: contactsData, error: contactsFetchError } = await retrySupabaseRequest(async () => {
-        return supabase
-          .from('contacts')
-          .select('contact_id, first_name, last_name');
-      });
-      
-      if (contactsFetchError) {
-        console.error('Error fetching contacts:', contactsFetchError);
-      }
-      
-      // Create a lookup map for contacts
-      const contactsMap = {};
-      contactsData?.forEach(contact => {
-        contactsMap[contact.contact_id] = `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
-      });
-      
-      console.log(`Created contacts map with ${Object.keys(contactsMap).length} entries`);
-      
-      // Process all companies in batches
       const processedCompanies = [];
       for (let i = 0; i < companyIds.length; i += batchSize) {
         setLoading(`Loading companies data... ${Math.min(i + batchSize, companyIds.length)}/${companyIds.length}`);
         
         // Get current batch of IDs
         const batchIds = companyIds.slice(i, i + batchSize);
-        const batchResults = await processBatch(batchIds);
+        
+        // Fetch tags, cities, and contact associations for each company
+        const [tagsResult, citiesResult, contactsResult] = await Promise.all([
+          // Get tags
+          supabase
+            .from('company_tags')
+            .select('company_id, tag_id, tags:tag_id(name)')
+            .in('company_id', batchIds),
+            
+          // Get cities
+          supabase
+            .from('company_cities')
+            .select('company_id, city_id, cities:city_id(name)')
+            .in('company_id', batchIds),
+            
+          // Get contact associations
+          supabase
+            .from('contact_companies')
+            .select('company_id, contact_id')
+            .in('company_id', batchIds)
+        ]);
         
         // Log any errors but continue processing
-        if (batchResults.tagsError) console.error('Error fetching tags:', batchResults.tagsError);
-        if (batchResults.citiesError) console.error('Error fetching cities:', batchResults.citiesError);
-        if (batchResults.contactsError) console.error('Error fetching contacts:', batchResults.contactsError);
+        if (tagsResult.error) console.error('Error fetching tags:', tagsResult.error);
+        if (citiesResult.error) console.error('Error fetching cities:', citiesResult.error);
+        if (contactsResult.error) console.error('Error fetching contacts:', contactsResult.error);
+        
+        // Get all unique contact IDs for this batch
+        const batchContactIds = [...new Set(contactsResult.data?.map(item => item.contact_id) || [])];
+        
+        // Fetch contact details for this batch
+        let batchContactsData = [];
+        if (batchContactIds.length > 0) {
+          const { data: contactDetails, error: contactDetailsError } = await retrySupabaseRequest(async () => {
+            return supabase
+              .from('contacts')
+              .select('contact_id, first_name, last_name, job_role, category, linkedin, description, score')
+              .in('contact_id', batchContactIds);
+          });
+          
+          if (contactDetailsError) {
+            console.error('Error fetching contact details:', contactDetailsError);
+          } else {
+            batchContactsData = contactDetails || [];
+          }
+        }
+        
+        // Create a lookup map for this batch's contacts
+        const batchContactsMap = {};
+        batchContactsData.forEach(contact => {
+          batchContactsMap[contact.contact_id] = contact;
+        });
+        
+        // Debug: Log if we found contacts in this batch
+        if (batchContactsData.length > 0) {
+          console.log(`Batch ${Math.floor(i/batchSize) + 1}: Found ${batchContactsData.length} contacts`);
+        }
         
         // Map data to companies
         const batchCompanies = companiesData.filter(company => batchIds.includes(company[idField])).map(company => {
           // Get tags for this company
-          const companyTags = batchResults.tags
+          const companyTags = tagsResult.data
             .filter(tag => tag.company_id === company.company_id)
             .map(tag => tag.tags?.name)
             .filter(Boolean);
             
           // Get cities for this company
-          const companyCities = batchResults.cities
+          const companyCities = citiesResult.data
             .filter(city => city.company_id === company.company_id)
             .map(city => city.cities?.name)
             .filter(Boolean);
             
           // Get contacts for this company
-          const contactIds = batchResults.contacts
+          const contactIds = contactsResult.data
             .filter(relation => relation.company_id === company.company_id)
             .map(relation => relation.contact_id);
-          
-          console.log(`Company ${company.name}: Found ${contactIds.length} contact IDs`);
             
+          // Get contact details for this company
           const companyContacts = contactIds
-            .map(id => contactsMap[id])
+            .map(id => batchContactsMap[id])
             .filter(Boolean);
-            
-          console.log(`Company ${company.name}: Mapped to ${companyContacts.length} contact names`);
-            
+          
           return {
             ...company,
             tags: companyTags,
@@ -605,6 +893,7 @@ const SimpleCompanies = () => {
       }
       
       setCompanies(processedCompanies);
+      
       setLoading(false);
       setDataLoaded(true);
       
@@ -623,7 +912,6 @@ const SimpleCompanies = () => {
   // Fetch data on component mount
   useEffect(() => {
     if (!dataLoaded) {
-      console.log('Initiating companies data fetch');
       fetchCompanies();
     }
   }, [dataLoaded]);
@@ -657,6 +945,12 @@ const SimpleCompanies = () => {
     setTimeout(() => {
       fetchCompanies();
     }, 100);
+  };
+
+  // Function to refresh data
+  const refreshData = () => {
+    setDataLoaded(false); // Force a complete refresh
+    fetchCompanies();
   };
 
   return (
@@ -726,7 +1020,8 @@ const SimpleCompanies = () => {
             onRowClicked={handleRowClicked}
             context={{
               setSelectedCompany,
-              setShowEditModal
+              setShowEditModal,
+              refreshData
             }}
             rowSelection="single"
             animateRows={true}
