@@ -832,7 +832,7 @@ const TagsRenderer = (props) => {
     }
   };
   
-  return (
+    return (
     <div style={{
       height: '100%',
       display: 'flex',
@@ -893,23 +893,23 @@ const TagsRenderer = (props) => {
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
-              onMouseOver={(e) => {
+          onMouseOver={(e) => {
                 e.currentTarget.style.color = '#33ff33';
                 e.currentTarget.style.transform = 'scale(1.2)';
-              }}
-              onMouseOut={(e) => {
+          }}
+          onMouseOut={(e) => {
                 e.currentTarget.style.color = '#00ff00';
                 e.currentTarget.style.transform = 'scale(1)';
-              }}
-            >
+          }}
+        >
               ✕
             </button>
-          </div>
+        </div>
         ))}
-        
+  
         {remainingCount > 0 && (
           <div
-            style={{
+            style={{ 
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -926,12 +926,12 @@ const TagsRenderer = (props) => {
             onClick={handleAddClick}
           >
             +{remainingCount}
-          </div>
+      </div>
         )}
-        
+      
         {showAddTagsText ? (
-          <div
-            onClick={handleAddClick}
+        <div 
+          onClick={handleAddClick}
             style={{
               color: '#00ff00',
               fontSize: '11px',
@@ -946,7 +946,7 @@ const TagsRenderer = (props) => {
             title="Add or edit tags"
           >
             Add tags
-          </div>
+        </div>
         ) : (
           <button 
             onClick={handleAddClick}
@@ -965,13 +965,13 @@ const TagsRenderer = (props) => {
               cursor: 'pointer',
               fontSize: '12px'
             }}
-            onMouseOver={(e) => {
+          onMouseOver={(e) => {
               e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.1)';
-            }}
-            onMouseOut={(e) => {
+          }}
+          onMouseOut={(e) => {
               e.currentTarget.style.backgroundColor = 'transparent';
-            }}
-          >
+          }}
+        >
             +
           </button>
         )}
@@ -1316,7 +1316,7 @@ const SourceRenderer = (params) => {
   ];
   
   const getSourceColor = (source) => {
-    if (source === 'Cold Contacting') {
+  if (source === 'Cold Contacting') {
       return '#00ff00'; // Neon green for Cold Contacting
     } else {
       return '#aaaaaa'; // Grey for Introduction
@@ -1385,7 +1385,7 @@ const SourceRenderer = (params) => {
     e.stopPropagation();
   };
   
-  return (
+    return (
     <div style={{
       whiteSpace: 'nowrap',
       overflow: 'hidden',
@@ -1430,8 +1430,8 @@ const SourceRenderer = (params) => {
           {getSourceDisplay(localSource)}
         </span>
       )}
-    </div>
-  );
+      </div>
+    );
 };
 
 // Cell renderer for Actions column
@@ -1572,18 +1572,20 @@ const ActionsRenderer = (props) => {
         {data.attachments && data.attachments.length > 0 && (
           <span style={{
             position: 'absolute',
-            top: -2,
-            right: -2,
+            top: -1,
+            right: -3,
             backgroundColor: '#00ff00',
             color: '#000',
             borderRadius: '50%',
             width: '12px',
             height: '12px',
-            fontSize: '9px',
+            fontSize: '8px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontWeight: 'bold'
+            fontWeight: 'bold',
+            lineHeight: '1',
+            border: '1px solid #000'
           }}>
             {data.attachments.length}
           </span>
@@ -1972,8 +1974,8 @@ const SimpleDeals = () => {
       headerName: 'Tags', 
       field: 'tags',
       cellRenderer: TagsRenderer,
-      minWidth: 180,
-      width: 200,
+      minWidth: 140,
+      width: 150,
       sortable: true,
       filter: false,
       resizable: true,
@@ -1985,7 +1987,8 @@ const SimpleDeals = () => {
       headerName: 'Source', 
       field: 'source_category',
       cellRenderer: SourceRenderer,
-      minWidth: 140,
+      minWidth: 80,
+      width: 80,
       sortable: true,
       filter: false, // Disable filter since we have custom dropdown
       editable: false, // Disable editing since we handle it in the renderer
@@ -2009,7 +2012,8 @@ const SimpleDeals = () => {
         // Format as MM/YY
         return `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear().toString().slice(-2)}`;
       },
-      minWidth: 100,
+      minWidth: 70,
+      width: 70,
       filter: 'agDateColumnFilter',
       sortable: true,
     },
@@ -2017,7 +2021,7 @@ const SimpleDeals = () => {
       headerName: 'Actions',
       field: 'actions',
       cellRenderer: ActionsRenderer,
-      width: 100,
+      width: 120,
       sortable: false,
       filter: false,
       suppressSizeToFit: true,
@@ -2480,11 +2484,11 @@ const SimpleDeals = () => {
     
     if (!showTagsModal && !isTagRelatedClick && !isActionButtonClick) {
       console.log('Setting selectedDeal from row click');
-      setSelectedDeal({
-        contact_id: null,
-        deal: params.data,
-        companies: []
-      });
+    setSelectedDeal({
+      contact_id: null,
+      deal: params.data,
+      companies: []
+    });
     } else {
       console.log('Skipping selectedDeal update - tags modal open, tag-related click, or action button click');
     }
@@ -3374,11 +3378,11 @@ const SimpleDeals = () => {
             // Handle both structures when updating
             if (prev.deal && typeof prev.deal === 'object') {
               // Nested structure from row clicks
-              return {
-                ...prev,
+            return {
+              ...prev,
                 deal: {
                   ...prev.deal,
-                  tags: updatedTags || []
+              tags: updatedTags || []
                 }
               };
             } else {
@@ -3386,7 +3390,7 @@ const SimpleDeals = () => {
               return {
                 ...prev,
                 tags: updatedTags || []
-              };
+            };
             }
           });
           

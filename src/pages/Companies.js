@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { supabase } from '../lib/supabaseClient';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { FiFilter, FiSearch, FiPlus, FiChevronDown, FiClock, FiAlertCircle, FiRefreshCw, FiGlobe, FiMapPin, FiEdit, FiTag, FiLinkedin, FiUser } from 'react-icons/fi';
+import { FiFilter, FiSearch, FiPlus, FiChevronDown, FiClock, FiAlertCircle, FiRefreshCw, FiGlobe, FiMapPin, FiEdit, FiTag, FiLinkedin, FiUser, FiInbox, FiCpu, FiDollarSign, FiBriefcase, FiPackage, FiList } from 'react-icons/fi';
 import { FaBuilding, FaEllipsisH, FaTimesCircle } from 'react-icons/fa';
 import Modal from 'react-modal';
 import Select from 'react-select';
@@ -139,6 +139,67 @@ const ContentSection = styled.div`
   padding: 0 1.5rem 1.5rem 1.5rem;
 `;
 
+// Style for the top menu (matches SimpleDeals.js)
+const TopMenuContainer = styled.div`
+  display: flex;
+  background-color: #111;
+  border-bottom: 1px solid #333;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #00ff00 #222;
+  padding: 8px 0;
+  margin-bottom: 0;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  width: 100%;
+  height: 48px;
+  align-items: center;
+  
+  &::-webkit-scrollbar {
+    height: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: #222;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: #00ff00;
+    border-radius: 3px;
+  }
+`;
+
+// Style for the menu items (matches SimpleDeals.js)
+const MenuItem = styled.div`
+  display: flex;
+  align-items: center;
+  padding: 10px 15px;
+  color: ${props => props.$active ? '#00ff00' : '#ccc'};
+  text-decoration: none;
+  border-bottom: ${props => props.$active ? '2px solid #00ff00' : 'none'};
+  margin-right: 10px;
+  font-family: 'Courier New', monospace;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: ${props => props.$active ? 'bold' : 'normal'};
+  
+  &:hover {
+    color: #00ff00;
+    background-color: rgba(0, 255, 0, 0.05);
+  }
+  
+  &:first-child {
+    margin-left: 10px;
+  }
+  
+  svg {
+    margin-right: 8px;
+    font-size: 1rem;
+  }
+`;
 
 // Company Card Styled Components
 const CompaniesGrid = styled.div`
@@ -576,6 +637,20 @@ const [showAddCompanyModal, setShowAddCompanyModal] = useState(false);
     recentlyEdited: 0,
     lastInteracted: 0
   });
+  
+  // Menu tab state
+  const [activeTab, setActiveTab] = useState('full_list');
+  
+  // Define menu items with icons
+  const menuItems = [
+    { id: 'full_list', name: 'Full List', icon: <FiList /> },
+    { id: 'inbox', name: 'Inbox', icon: <FiInbox /> },
+    { id: 'startup', name: 'Startup', icon: <FiCpu /> },
+    { id: 'investors', name: 'Investors', icon: <FiDollarSign /> },
+    { id: 'institutions', name: 'Institutions', icon: <FiBriefcase /> },
+    { id: 'advisor', name: 'Advisor', icon: <FiUser /> },
+    { id: 'others', name: 'Others', icon: <FiPackage /> }
+  ];
   
   // Search field options
   const searchFields = [
@@ -2236,6 +2311,18 @@ const [showAddCompanyModal, setShowAddCompanyModal] = useState(false);
           </SearchIcon>
         </SearchContainer>
       </PageHeader>
+      
+      <TopMenuContainer>
+        {menuItems.map(item => (
+          <MenuItem 
+            key={item.id}
+            $active={item.id === activeTab}
+            onClick={() => setActiveTab(item.id)}
+          >
+            {item.icon} {item.name}
+          </MenuItem>
+        ))}
+      </TopMenuContainer>
       
       <ContentSection>
         {/* Quick Test Debug Element */}

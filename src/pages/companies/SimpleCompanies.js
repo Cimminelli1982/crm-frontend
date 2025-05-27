@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { AgGridReact } from '../../ag-grid-setup';
+import { FiList, FiInbox, FiCpu, FiDollarSign, FiBriefcase, FiUser, FiPackage, FiEdit2 } from 'react-icons/fi';
+import NewEditCompanyModal from '../../components/modals/NewEditCompanyModal';
 
 // Styled components
 const Container = styled.div`
-  padding: 20px;
+  padding: 0 20px 20px 20px;
   height: calc(100vh - 120px);
   width: 100%;
 `;
@@ -120,6 +122,67 @@ const LoadingMatrix = styled.div`
   }
 `;
 
+// Style for the top menu (matches SimpleDeals.js)
+const TopMenuContainer = styled.div`
+  display: flex;
+  background-color: #111;
+  border-bottom: 1px solid #333;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #00ff00 #222;
+  padding: 8px 0;
+  margin-bottom: 0;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  width: 100%;
+  height: 48px;
+  align-items: center;
+  
+  &::-webkit-scrollbar {
+    height: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: #222;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: #00ff00;
+    border-radius: 3px;
+  }
+`;
+
+// Style for the menu items (matches SimpleDeals.js)
+const MenuItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  color: ${props => props.$active ? '#00ff00' : '#888'};
+  background-color: ${props => props.$active ? '#1a1a1a' : 'transparent'};
+  border: ${props => props.$active ? '1px solid #00ff00' : '1px solid transparent'};
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: ${props => props.$active ? '600' : '400'};
+  white-space: nowrap;
+  margin: 0 4px;
+  transition: all 0.2s ease;
+  min-width: fit-content;
+  
+  &:hover {
+    color: #00ff00;
+    background-color: #1a1a1a;
+    border-color: #00ff00;
+  }
+  
+  svg {
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+`;
+
 // Simple tags renderer
 const TagsRenderer = (props) => {
   const tags = props.value || [];
@@ -175,6 +238,76 @@ const WebsiteRenderer = (props) => {
   );
 };
 
+// Company name renderer (matches Name column UX from ContactsListTable)
+// Updated: 2024-12-19 - Force cache refresh
+const CompanyRenderer = (props) => {
+  const companyName = props.value;
+  if (!companyName) return '-';
+  
+  // Make company name clickable (placeholder for future navigation)
+  const handleClick = () => {
+    if (props.data && props.data.company_id) {
+      // navigate(`/companies/${props.data.company_id}`);
+      console.log('Company clicked:', props.data);
+    }
+  };
+  
+  // Handle edit icon click
+  const handleEditClick = (e) => {
+    e.stopPropagation(); // Prevent triggering the name click
+    if (props.data && props.data.company_id) {
+      // Set the selected company and open the modal
+      props.context.setSelectedCompany(props.data);
+      props.context.setShowEditModal(true);
+    }
+  };
+  
+  return (
+    <div 
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        width: '100%',
+        height: '100%'
+      }}
+    >
+      <div 
+        style={{
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          cursor: 'pointer',
+          flex: 1
+        }}
+        onClick={handleClick}
+      >
+        {companyName}
+      </div>
+      <button
+        onClick={handleEditClick}
+        style={{
+          background: 'none',
+          border: 'none',
+          color: '#ffffff',
+          cursor: 'pointer',
+          padding: '2px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          opacity: '0.6',
+          transition: 'opacity 0.2s'
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
+        title="Edit Company"
+      >
+        <FiEdit2 size={12} />
+      </button>
+    </div>
+  );
+};
+
 const SimpleCompanies = () => {
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -184,25 +317,45 @@ const SimpleCompanies = () => {
   const [showGrid, setShowGrid] = useState(false);
   const navigate = useNavigate();
   
+  // Menu tab state
+  const [activeTab, setActiveTab] = useState('full_list');
+  
+  // Modal state
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedCompany, setSelectedCompany] = useState(null);
+  
+  // Define menu items with icons
+  const menuItems = [
+    { id: 'full_list', name: 'Full List', icon: <FiList /> },
+    { id: 'inbox', name: 'Inbox', icon: <FiInbox /> },
+    { id: 'startup', name: 'Startup', icon: <FiCpu /> },
+    { id: 'investors', name: 'Investors', icon: <FiDollarSign /> },
+    { id: 'institutions', name: 'Institutions', icon: <FiBriefcase /> },
+    { id: 'advisor', name: 'Advisor', icon: <FiUser /> },
+    { id: 'others', name: 'Others', icon: <FiPackage /> }
+  ];
+  
   // Column definitions
   const columnDefs = useMemo(() => [
     { 
       headerName: 'Company', 
       field: 'name',
+      cellRenderer: CompanyRenderer,
+      minWidth: 150,
+      flex: 2,
+      filter: 'agTextColumnFilter',
+      floatingFilter: true,
+      sortable: true,
+      pinned: 'left'
+    },
+    { 
+      headerName: 'Associated Contacts', 
+      field: 'contacts',
+      cellRenderer: ContactsRenderer,
       minWidth: 200,
       filter: 'agTextColumnFilter',
       floatingFilter: true,
-      sortable: true,
-      pinned: 'left',
-    },
-    { 
-      headerName: 'Website', 
-      field: 'website',
-      cellRenderer: WebsiteRenderer,
-      minWidth: 150,
-      filter: 'agTextColumnFilter',
-      floatingFilter: true,
-      sortable: true,
+      sortable: false,
     },
     { 
       headerName: 'Category', 
@@ -232,22 +385,14 @@ const SimpleCompanies = () => {
       sortable: false,
     },
     { 
-      headerName: 'Contacts', 
-      field: 'contacts',
-      cellRenderer: ContactsRenderer,
-      minWidth: 220,
-      filter: 'agTextColumnFilter',
-      floatingFilter: true,
-      sortable: false,
-    },
-    { 
       headerName: 'Created', 
       field: 'created_at', 
       valueFormatter: (params) => {
         if (!params.value) return '-';
         return new Date(params.value).toLocaleDateString();
       },
-      minWidth: 120,
+      minWidth: 140,
+      width: 140,
       filter: 'agDateColumnFilter',
       floatingFilter: true,
       sortable: true,
@@ -498,9 +643,35 @@ const SimpleCompanies = () => {
     };
   }, [gridApi]);
 
+  // Handle company update completion
+  const handleCompanyUpdated = () => {
+    setShowEditModal(false);
+    setSelectedCompany(null);
+    
+    // Refresh the grid data
+    if (gridApi) {
+      gridApi.refreshCells({ force: true });
+    }
+    
+    // Optionally refresh the entire data
+    setTimeout(() => {
+      fetchCompanies();
+    }, 100);
+  };
+
   return (
     <Container>
-      <Title>Companies ({companies.length})</Title>
+      <TopMenuContainer>
+        {menuItems.map(item => (
+          <MenuItem 
+            key={item.id}
+            $active={item.id === activeTab}
+            onClick={() => setActiveTab(item.id)}
+          >
+            {item.icon} {item.name}
+          </MenuItem>
+        ))}
+      </TopMenuContainer>
       
       {error && <ErrorText>Error: {error}</ErrorText>}
       
@@ -534,7 +705,7 @@ const SimpleCompanies = () => {
         <div 
           className="ag-theme-alpine" 
           style={{ 
-            height: 'calc(100% - 60px)', 
+            height: 'calc(100% - 10px)', 
             width: '100%',
             opacity: showGrid ? 1 : 0,
             transition: 'opacity 0.5s ease-in-out',
@@ -553,6 +724,10 @@ const SimpleCompanies = () => {
             defaultColDef={defaultColDef}
             onGridReady={onGridReady}
             onRowClicked={handleRowClicked}
+            context={{
+              setSelectedCompany,
+              setShowEditModal
+            }}
             rowSelection="single"
             animateRows={true}
             pagination={true}
@@ -561,6 +736,19 @@ const SimpleCompanies = () => {
             enableCellTextSelection={true}
           />
         </div>
+      )}
+      
+      {/* Edit Company Modal */}
+      {showEditModal && selectedCompany && (
+        <NewEditCompanyModal 
+          isOpen={showEditModal}
+          onRequestClose={() => {
+            setShowEditModal(false);
+            setSelectedCompany(null);
+          }}
+          company={selectedCompany}
+          onCompanyUpdated={handleCompanyUpdated}
+        />
       )}
     </Container>
   );
