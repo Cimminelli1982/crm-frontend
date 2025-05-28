@@ -457,6 +457,13 @@ const Layout = ({ children }) => {
               >
                 Companies
               </SubMenuItem>
+              
+              <SubMenuItem 
+                to="/introductions" 
+                $active={isPathActive('/introductions')}
+              >
+                Introfuckingductions
+              </SubMenuItem>
             </SubMenu>
           </MenuItem>
         </SidebarContent>
