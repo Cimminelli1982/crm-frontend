@@ -16,6 +16,11 @@ const Container = styled.div`
   padding: 0 20px 20px 20px;
   height: calc(100vh - 120px);
   width: 100%;
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
 `;
 
 const Title = styled.h1`
@@ -528,12 +533,91 @@ const ActionsRenderer = (props) => {
     }
   };
   
-  const handleDelete = (e) => {
+  const handleDelete = async (e) => {
     e.stopPropagation();
     if (props.data && props.data.company_id) {
-      if (window.confirm(`Are you sure you want to delete ${props.data.name}?`)) {
-        // TODO: Implement delete functionality
-        console.log('Delete company:', props.data.name);
+      const companyName = props.data.name || 'this company';
+      if (window.confirm(`Are you sure you want to delete ${companyName}? This action cannot be undone.`)) {
+        // Disable the button during deletion
+        const button = e.currentTarget;
+        const originalContent = button.innerHTML;
+        button.disabled = true;
+        button.style.opacity = '0.5';
+        button.innerHTML = '<div style="width: 14px; height: 14px; border: 2px solid #00ff00; border-top: 2px solid transparent; border-radius: 50%; animation: spin 1s linear infinite;"></div>';
+        
+        try {
+          const companyId = props.data.company_id;
+          console.log(`Starting deletion process for company ${companyId}`);
+          
+          // STEP 1: Delete company-tag relationships (junction table)
+          console.log(`Deleting company tags for company ${companyId}`);
+          const { error: tagsError } = await supabase
+            .from('company_tags')
+            .delete()
+            .eq('company_id', companyId);
+            
+          if (tagsError) {
+            console.error('Error deleting company tags:', tagsError);
+            throw new Error(`Failed to delete company tags: ${tagsError.message}`);
+          }
+          
+          // STEP 2: Delete company-city relationships (junction table)
+          console.log(`Deleting company cities for company ${companyId}`);
+          const { error: citiesError } = await supabase
+            .from('company_cities')
+            .delete()
+            .eq('company_id', companyId);
+            
+          if (citiesError) {
+            console.error('Error deleting company cities:', citiesError);
+            throw new Error(`Failed to delete company cities: ${citiesError.message}`);
+          }
+          
+          // STEP 3: Delete company-contact relationships (junction table)
+          console.log(`Deleting company-contact relationships for company ${companyId}`);
+          const { error: contactsError } = await supabase
+            .from('contact_companies')
+            .delete()
+            .eq('company_id', companyId);
+            
+          if (contactsError) {
+            console.error('Error deleting company contacts:', contactsError);
+            throw new Error(`Failed to delete company contacts: ${contactsError.message}`);
+          }
+          
+          // STEP 4: Finally, delete the company record itself
+          console.log(`Deleting company ${companyId}`);
+          const { error: companyError } = await supabase
+            .from('companies')
+            .delete()
+            .eq('company_id', companyId);
+            
+          if (companyError) {
+            console.error('Error deleting company record:', companyError);
+            throw new Error(`Failed to delete company: ${companyError.message}`);
+          }
+          
+          console.log(`Company ${companyId} successfully deleted`);
+          
+          // Refresh the grid to remove the deleted company
+          if (props.context && props.context.refreshData) {
+            props.context.refreshData();
+          } else if (props.api) {
+            props.api.refreshInfiniteCache();
+          }
+          
+          // Show success message
+          alert(`Company "${companyName}" has been successfully deleted.`);
+          
+        } catch (error) {
+          console.error('Error deleting company:', error);
+          alert(`Failed to delete company: ${error.message}`);
+          
+          // Restore button state on error
+          button.disabled = false;
+          button.style.opacity = '0.7';
+          button.innerHTML = originalContent;
+        }
       }
     }
   };
@@ -573,13 +657,42 @@ const ActionsRenderer = (props) => {
     const company = props.data;
     if (!company) return false;
     
-    // Check if description field has content
+    // Only check if description field has content
+    // The modal will handle checking for actual notes existence
     const hasDescription = company.description && company.description.trim().length > 0;
     
-    // Check if company has associated notes (this would be populated during data fetch)
-    const hasAssociatedNotes = company.notes_count && company.notes_count > 0;
+    // Exclude placeholder/empty descriptions that don't contain real information
+    if (hasDescription) {
+      const description = company.description.trim().toLowerCase();
+      const placeholderTexts = [
+        'no specific information found',
+        'no information found',
+        'no description available',
+        'description not available',
+        'no details available',
+        'information not available',
+        'no data available',
+        'not specified',
+        'n/a',
+        'tbd',
+        'to be determined',
+        'unknown',
+        'no description',
+        'no info'
+      ];
+      
+      // Check if description is just a placeholder
+      const isPlaceholder = placeholderTexts.some(placeholder => 
+        description === placeholder || 
+        description.includes(placeholder)
+      );
+      
+      if (isPlaceholder) {
+        return false;
+      }
+    }
     
-    return hasDescription || hasAssociatedNotes;
+    return hasDescription;
   };
   
   return (
@@ -647,7 +760,7 @@ const ActionsRenderer = (props) => {
         }}
         onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
         onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
-        title={hasNotes() ? "View Notes" : "Add Notes"}
+        title={hasNotes() ? "View Company Description & Notes" : "Add Notes"}
       >
         <FiFileText size={14} />
       </button>

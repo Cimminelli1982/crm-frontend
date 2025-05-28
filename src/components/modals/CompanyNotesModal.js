@@ -186,37 +186,6 @@ const EmptyState = styled.div`
   color: #888;
 `;
 
-const DescriptionSection = styled.div`
-  margin-bottom: 24px;
-  padding: 16px;
-  border: 1px solid #333;
-  border-radius: 8px;
-  background-color: #1a1a1a;
-`;
-
-const DescriptionHeader = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #333;
-`;
-
-const DescriptionTitle = styled.h4`
-  margin: 0;
-  font-size: 14px;
-  font-weight: 500;
-  color: #00ff00;
-`;
-
-const DescriptionContent = styled.div`
-  font-size: 14px;
-  color: #e0e0e0;
-  line-height: 1.5;
-  white-space: pre-wrap;
-`;
-
 const CompanyNotesModal = ({ isOpen, onRequestClose, company }) => {
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -224,9 +193,44 @@ const CompanyNotesModal = ({ isOpen, onRequestClose, company }) => {
   const [isEditingNote, setIsEditingNote] = useState(null);
   const [noteTitle, setNoteTitle] = useState('');
   const [noteContent, setNoteContent] = useState('');
+  
+  // State for editing company description
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [editedDescription, setEditedDescription] = useState('');
 
   // Check if company has description
   const hasDescription = company?.description && company.description.trim().length > 0;
+  
+  // Check if description is meaningful (not just placeholder text)
+  const hasMeaningfulDescription = () => {
+    if (!hasDescription) return false;
+    
+    const description = company.description.trim().toLowerCase();
+    const placeholderTexts = [
+      'no specific information found',
+      'no information found',
+      'no description available',
+      'description not available',
+      'no details available',
+      'information not available',
+      'no data available',
+      'not specified',
+      'n/a',
+      'tbd',
+      'to be determined',
+      'unknown',
+      'no description',
+      'no info'
+    ];
+    
+    // Check if description is just a placeholder
+    const isPlaceholder = placeholderTexts.some(placeholder => 
+      description === placeholder || 
+      description.includes(placeholder)
+    );
+    
+    return !isPlaceholder;
+  };
 
   // Fetch notes for the company
   const fetchNotes = async () => {
@@ -296,10 +300,31 @@ const CompanyNotesModal = ({ isOpen, onRequestClose, company }) => {
         content: note.content || note.text || ''
       }));
       
+      // Check for orphaned references and clean them up
+      const foundNoteIds = normalizedNotes.map(note => note.id);
+      const orphanedIds = ids.filter(id => !foundNoteIds.includes(id));
+      
+      if (orphanedIds.length > 0) {
+        console.log(`Found ${orphanedIds.length} orphaned note references for company ${company.company_id}, cleaning up...`);
+        
+        // Clean up orphaned references (optional - you might want to skip this)
+        try {
+          await supabase
+            .from('notes_companies')
+            .delete()
+            .eq('company_id', company.company_id)
+            .in('note_id', orphanedIds);
+        } catch (cleanupError) {
+          console.error('Error cleaning up orphaned note references:', cleanupError);
+          // Don't throw here, just log the error
+        }
+      }
+      
       setNotes(normalizedNotes);
     } catch (error) {
       console.error('Error fetching notes:', error);
       toast.error('Failed to load notes');
+      setNotes([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
@@ -507,6 +532,43 @@ const CompanyNotesModal = ({ isOpen, onRequestClose, company }) => {
     setNoteTitle(note.title);
     setNoteContent(note.content);
   };
+  
+  // Handle editing company description
+  const handleEditDescription = () => {
+    setIsEditingDescription(true);
+    setEditedDescription(company.description || '');
+  };
+  
+  // Handle saving company description
+  const handleSaveDescription = async () => {
+    if (!company?.company_id) return;
+    
+    try {
+      const { error } = await supabase
+        .from('companies')
+        .update({ description: editedDescription.trim() })
+        .eq('company_id', company.company_id);
+        
+      if (error) throw error;
+      
+      // Update the local company object
+      company.description = editedDescription.trim();
+      
+      setIsEditingDescription(false);
+      setEditedDescription('');
+      
+      toast.success('Company description updated successfully');
+    } catch (error) {
+      console.error('Error updating company description:', error);
+      toast.error('Failed to update company description');
+    }
+  };
+  
+  // Handle canceling description edit
+  const handleCancelDescriptionEdit = () => {
+    setIsEditingDescription(false);
+    setEditedDescription('');
+  };
 
   // Cancel adding/editing a note
   const handleCancel = () => {
@@ -545,6 +607,8 @@ const CompanyNotesModal = ({ isOpen, onRequestClose, company }) => {
       setNoteTitle('');
       setNoteContent('');
       setLoading(false);
+      setIsEditingDescription(false);
+      setEditedDescription('');
     }
   }, [isOpen]);
 
@@ -592,20 +656,70 @@ const CompanyNotesModal = ({ isOpen, onRequestClose, company }) => {
           </div>
         ) : (
           <>
-            {/* Company Description Section */}
-            {hasDescription && (
-              <DescriptionSection>
-                <DescriptionHeader>
-                  <FiInfo size={14} style={{ color: '#00ff00' }} />
-                  <DescriptionTitle>Company Description</DescriptionTitle>
-                </DescriptionHeader>
-                <DescriptionContent>{company.description}</DescriptionContent>
-              </DescriptionSection>
-            )}
-
-            {/* Notes List */}
-            {notes.length > 0 ? (
+            {/* Unified Notes List - includes company description as first item if it exists */}
+            {(hasMeaningfulDescription() || notes.length > 0) ? (
               <NotesList>
+                {/* Company Description as first note if it exists */}
+                {hasMeaningfulDescription() && (
+                  <NoteCard>
+                    <NoteHeader>
+                      <NoteTitle>Company Description</NoteTitle>
+                      <NoteDate>
+                        <FiInfo size={12} />
+                        Built-in field
+                      </NoteDate>
+                    </NoteHeader>
+                    {isEditingDescription ? (
+                      <>
+                        <ContentTextarea
+                          value={editedDescription}
+                          onChange={(e) => setEditedDescription(e.target.value)}
+                          placeholder="Enter company description..."
+                          style={{ minHeight: '100px', marginBottom: '12px' }}
+                        />
+                        <NoteActions>
+                          <ActionButton onClick={handleCancelDescriptionEdit} title="Cancel">
+                            <FiX size={14} />
+                          </ActionButton>
+                          <ActionButton onClick={handleSaveDescription} title="Save Description">
+                            <FiSave size={14} />
+                          </ActionButton>
+                        </NoteActions>
+                      </>
+                    ) : (
+                      <>
+                        <NoteContent 
+                          onClick={handleEditDescription}
+                          style={{ 
+                            cursor: 'pointer',
+                            transition: 'background-color 0.2s ease',
+                            padding: '8px',
+                            borderRadius: '4px'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.target.style.backgroundColor = '#2a2a2a';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.backgroundColor = 'transparent';
+                          }}
+                          title="Click to edit company description"
+                        >
+                          {company.description}
+                        </NoteContent>
+                        <NoteActions>
+                          <ActionButton 
+                            onClick={handleEditDescription} 
+                            title="Edit Company Description"
+                          >
+                            <FiEdit2 size={14} />
+                          </ActionButton>
+                        </NoteActions>
+                      </>
+                    )}
+                  </NoteCard>
+                )}
+                
+                {/* Regular notes */}
                 {notes.map(note => (
                   <NoteCard key={note.id}>
                     <NoteHeader>
@@ -615,7 +729,24 @@ const CompanyNotesModal = ({ isOpen, onRequestClose, company }) => {
                         {formatDate(note.created_at)}
                       </NoteDate>
                     </NoteHeader>
-                    <NoteContent>{note.content}</NoteContent>
+                    <NoteContent 
+                      onClick={() => handleEditNote(note)}
+                      style={{ 
+                        cursor: 'pointer',
+                        transition: 'background-color 0.2s ease',
+                        padding: '8px',
+                        borderRadius: '4px'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.target.style.backgroundColor = '#2a2a2a';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.backgroundColor = 'transparent';
+                      }}
+                      title="Click to edit this note"
+                    >
+                      {note.content}
+                    </NoteContent>
                     <NoteActions>
                       <ActionButton onClick={() => handleEditNote(note)} title="Edit Note">
                         <FiEdit2 size={14} />
@@ -627,7 +758,7 @@ const CompanyNotesModal = ({ isOpen, onRequestClose, company }) => {
                   </NoteCard>
                 ))}
               </NotesList>
-            ) : !isAddingNote && !isEditingNote && !hasDescription ? (
+            ) : !isAddingNote && !isEditingNote ? (
               <EmptyState>
                 <FiFileText size={48} style={{ marginBottom: '16px', opacity: 0.5 }} />
                 <p>No notes found for this company.</p>
