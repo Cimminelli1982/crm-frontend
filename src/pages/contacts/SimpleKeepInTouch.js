@@ -4,6 +4,7 @@ import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { AgGridReact } from '../../ag-grid-setup';
 import ContactsInteractionModal from '../../components/modals/ContactsInteractionModal';
+import DealViewFindAddModal from '../../components/modals/DealViewFindAddModal';
 import { FiMail, FiLinkedin, FiDollarSign } from 'react-icons/fi';
 import { FaWhatsapp } from 'react-icons/fa';
 
@@ -116,6 +117,8 @@ const SimpleKeepInTouch = () => {
   const [showInteractionModal, setShowInteractionModal] = useState(false);
   const [selectedContactForModal, setSelectedContactForModal] = useState(null);
   const [showFrequencyDropdown, setShowFrequencyDropdown] = useState({});
+  const [showDealModal, setShowDealModal] = useState(false);
+  const [selectedContactForDeal, setSelectedContactForDeal] = useState(null);
   const navigate = useNavigate();
   
   // Frequency Renderer with dropdown functionality
@@ -293,7 +296,8 @@ const SnoozeDaysRenderer = (props) => {
     
     const handleDealClick = (e) => {
       e.stopPropagation();
-      console.log('Deal button clicked - no action implemented yet');
+      setSelectedContactForDeal(data);
+      setShowDealModal(true);
     };
     
     return (
@@ -337,7 +341,7 @@ const SnoozeDaysRenderer = (props) => {
           style={{
             background: 'transparent',
             border: 'none',
-            color: mobile ? '#25D366' : '#666',
+            color: mobile ? '#00ff00' : '#666',
             cursor: mobile ? 'pointer' : 'not-allowed',
             display: 'flex',
             alignItems: 'center',
@@ -386,7 +390,7 @@ const SnoozeDaysRenderer = (props) => {
           style={{
             background: 'transparent',
             border: 'none',
-            color: email ? '#4a9eff' : '#666',
+            color: email ? '#00ff00' : '#666',
             cursor: email ? 'pointer' : 'not-allowed',
             display: 'flex',
             alignItems: 'center',
@@ -541,7 +545,7 @@ const SnoozeDaysRenderer = (props) => {
       fetchContacts();
     }
   }, [dataLoaded]);
-
+  
   // Default column properties
   const defaultColDef = useMemo(() => ({
     resizable: true,
@@ -591,8 +595,8 @@ const SnoozeDaysRenderer = (props) => {
       
       setLoading('Accessing Keep in Touch data...');
       
-      // Fetch data from v_keep_in_touch
-      const { data, error } = await retrySupabaseRequest(async () => {
+      // Fetch data from v_keep_in_touch with LinkedIn data
+      const { data: keepInTouchData, error: keepInTouchError } = await retrySupabaseRequest(async () => {
         return supabase
           .from('v_keep_in_touch')
           .select(`
@@ -602,13 +606,71 @@ const SnoozeDaysRenderer = (props) => {
           .order('next_interaction_date', { ascending: true });
       });
       
-      if (error) {
-        console.error('Error fetching contacts:', error);
-        throw error;
+      if (keepInTouchError) {
+        console.error('Error fetching keep in touch data:', keepInTouchError);
+        throw keepInTouchError;
+      }
+
+      // Extract contact IDs to fetch mobile data
+      const contactIds = keepInTouchData?.map(contact => contact.contact_id) || [];
+      
+      // Fetch mobile and email data for these contacts
+      let mobilesData = [];
+      let emailsData = [];
+      
+      if (contactIds.length > 0) {
+        // Fetch mobile data
+        const { data: mobiles, error: mobilesError } = await retrySupabaseRequest(async () => {
+          return supabase
+            .from('contact_mobiles')
+            .select('contact_id, mobile, is_primary')
+            .in('contact_id', contactIds);
+        });
+        
+        if (mobilesError) {
+          console.error('Error fetching mobile data:', mobilesError);
+          // Don't throw error, just log it - mobile data is not critical
+        } else {
+          mobilesData = mobiles || [];
+        }
+
+        // Fetch email data
+        const { data: emails, error: emailsError } = await retrySupabaseRequest(async () => {
+          return supabase
+            .from('contact_emails')
+            .select('contact_id, email, is_primary')
+            .in('contact_id', contactIds);
+        });
+        
+        if (emailsError) {
+          console.error('Error fetching email data:', emailsError);
+          // Don't throw error, just log it - email data is not critical
+        } else {
+          emailsData = emails || [];
+        }
       }
       
-      console.log('Fetched contacts:', data);
-      setContacts(data || []);
+      // Merge mobile and email data with contacts
+      const contactsWithMobilesAndEmails = keepInTouchData?.map(contact => {
+        // Find mobiles for this contact
+        const contactMobiles = mobilesData.filter(mobile => mobile.contact_id === contact.contact_id);
+        const primaryMobile = contactMobiles.find(mobile => mobile.is_primary);
+        const mobile = primaryMobile?.mobile || (contactMobiles.length > 0 ? contactMobiles[0].mobile : null);
+        
+        // Find emails for this contact
+        const contactEmails = emailsData.filter(email => email.contact_id === contact.contact_id);
+        const primaryEmail = contactEmails.find(email => email.is_primary);
+        const email = primaryEmail?.email || (contactEmails.length > 0 ? contactEmails[0].email : null);
+        
+        return {
+          ...contact,
+          mobile: mobile,
+          email: email
+        };
+      }) || [];
+      
+      console.log('Fetched contacts with mobile and email data:', contactsWithMobilesAndEmails);
+      setContacts(contactsWithMobilesAndEmails);
       setDataLoaded(true);
     } catch (err) {
       console.error('Failed to fetch contacts:', err);
@@ -628,8 +690,8 @@ const SnoozeDaysRenderer = (props) => {
   }
 
   if (loading) {
-    return (
-      <Container>
+  return (
+    <Container>
         <Title>Keep in Touch Contacts</Title>
         <LoadingContainer>
           <LoadingText>
@@ -710,6 +772,18 @@ const SnoozeDaysRenderer = (props) => {
             setSelectedContactForModal(null);
           }}
           contact={selectedContactForModal}
+        />
+      )}
+      
+      {/* Deal Modal */}
+      {showDealModal && selectedContactForDeal && (
+        <DealViewFindAddModal
+          isOpen={showDealModal}
+          onClose={() => {
+            setShowDealModal(false);
+            setSelectedContactForDeal(null);
+          }}
+          contactData={selectedContactForDeal}
         />
       )}
     </Container>

@@ -1215,6 +1215,142 @@ const DealViewFindAddModal = ({
     }
   };
 
+  // Handle creating a new deal
+  const handleCreateDeal = async (dealFormData) => {
+    if (!contactData?.contact_id || isProcessing) return;
+    
+    setIsProcessing(true);
+    
+    try {
+      const { supabase } = await import('../../lib/supabaseClient');
+      
+      // Validate required fields
+      if (!dealFormData.opportunity?.trim()) {
+        toast.error('Deal name is required');
+        return;
+      }
+      
+      // Show loading state
+      toast.loading('Creating deal...', { id: 'create-deal' });
+      
+      // Prepare deal data for database
+      const dealData = {
+        opportunity: dealFormData.opportunity.trim(),
+        category: dealFormData.category || 'Inbox',
+        stage: dealFormData.stage || 'Lead',
+        source_category: dealFormData.source_category || 'Not Set',
+        description: dealFormData.description?.trim() || null,
+        total_investment: dealFormData.total_investment ? parseFloat(dealFormData.total_investment) : null,
+        created_at: new Date().toISOString(),
+        last_modified_at: new Date().toISOString(),
+        created_by: 'User',
+        last_modified_by: 'User'
+      };
+      
+      console.log('Creating deal with data:', dealData);
+      
+      // Create the deal in the database
+      const { data: newDeal, error: dealError } = await supabase
+        .from('deals')
+        .insert(dealData)
+        .select()
+        .single();
+        
+      if (dealError) {
+        console.error('Error creating deal:', dealError);
+        throw dealError;
+      }
+      
+      console.log('Deal created successfully:', newDeal);
+      
+      // Associate the contact with the new deal
+      const { error: associationError } = await supabase
+        .from('deals_contacts')
+        .insert({
+          deal_id: newDeal.deal_id,
+          contact_id: contactData.contact_id,
+          relationship: 'proposer',
+          created_at: new Date().toISOString()
+        });
+        
+      if (associationError) {
+        console.error('Error creating deal association:', associationError);
+        throw associationError;
+      }
+      
+      // Handle tags if any
+      if (dealFormData.tags && dealFormData.tags.length > 0) {
+        for (const tagName of dealFormData.tags) {
+          try {
+            // First, ensure the tag exists in the tags table
+            let { data: existingTag, error: tagSearchError } = await supabase
+              .from('tags')
+              .select('tag_id')
+              .eq('name', tagName)
+              .single();
+              
+            if (tagSearchError && tagSearchError.code !== 'PGRST116') {
+              console.error('Error searching for tag:', tagSearchError);
+              continue;
+            }
+            
+            let tagId;
+            if (!existingTag) {
+              // Create the tag if it doesn't exist
+              const { data: newTag, error: tagCreateError } = await supabase
+                .from('tags')
+                .insert({ name: tagName })
+                .select('tag_id')
+                .single();
+                
+              if (tagCreateError) {
+                console.error('Error creating tag:', tagCreateError);
+                continue;
+              }
+              tagId = newTag.tag_id;
+            } else {
+              tagId = existingTag.tag_id;
+            }
+            
+            // Associate the tag with the deal
+            await supabase
+              .from('deal_tags')
+              .insert({
+                deal_id: newDeal.deal_id,
+                tag_id: tagId
+              });
+              
+          } catch (tagError) {
+            console.error(`Error processing tag "${tagName}":`, tagError);
+            // Continue processing other tags even if one fails
+          }
+        }
+      }
+      
+      // Update local state
+      setDeals(prev => [newDeal, ...prev]);
+      setAssociatedDealIds(prev => [...prev, newDeal.deal_id]);
+      setRelationshipMap(prev => ({
+        ...prev,
+        [newDeal.deal_id]: 'proposer'
+      }));
+      
+      // Dismiss loading toast and show success
+      toast.dismiss('create-deal');
+      toast.success(`Deal "${newDeal.opportunity}" created and associated successfully`);
+      
+      // Switch to associated deals tab to show the new deal
+      setActiveTab('associatedDeals');
+      
+    } catch (err) {
+      console.error('Error creating deal:', err);
+      toast.dismiss('create-deal');
+      toast.error(`Failed to create deal: ${err.message || 'Unknown error'}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // Define the tab content components
   const renderAddFromListTab = () => (
     <ModalContent style={{ alignItems: 'flex-start', padding: '0 10px' }}>
@@ -1505,198 +1641,203 @@ const DealViewFindAddModal = ({
     return (
       <ModalContent style={{ alignItems: 'flex-start', overflowY: 'auto', padding: '10px 20px' }}>
         <FormContainer>
-          <SectionTitle>
-            <FiInfo size={16} /> Basic Information
-          </SectionTitle>
-          
-          <FormGroup>
-            <FormLabel htmlFor="opportunity">
-              <FiInfo size={14} /> Deal Name
-            </FormLabel>
-            <FormInput
-              id="opportunity"
-              name="opportunity"
-              value={dealFormData.opportunity}
-              onChange={handleDealInputChange}
-              placeholder="Enter deal name"
-            />
-            {dealErrors.opportunity && (
-              <ErrorMessage>
-                <FiAlertTriangle size={12} /> {dealErrors.opportunity}
-              </ErrorMessage>
-            )}
-          </FormGroup>
-          
-          <FormRow>
-            <FormGroup>
-              <FormLabel htmlFor="category">
-                <FiList size={14} /> Category
-              </FormLabel>
-              <FormSelect
-                id="category"
-                name="category"
-                value={dealFormData.category}
-                onChange={handleDealInputChange}
-              >
-                {categoryOptions.map(option => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </FormSelect>
-            </FormGroup>
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            handleCreateDeal(dealFormData);
+          }}>
+            <SectionTitle>
+              <FiInfo size={16} /> Basic Information
+            </SectionTitle>
             
             <FormGroup>
-              <FormLabel htmlFor="stage">
-                <FiActivity size={14} /> Stage
-              </FormLabel>
-              <FormSelect
-                id="stage"
-                name="stage"
-                value={dealFormData.stage}
-                onChange={handleDealInputChange}
-              >
-                {stageOptions.map(option => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </FormSelect>
-            </FormGroup>
-          </FormRow>
-          
-          <FormRow>
-            <FormGroup>
-              <FormLabel htmlFor="source_category">
-                <FiCalendar size={14} /> Source
-              </FormLabel>
-              <FormSelect
-                id="source_category"
-                name="source_category"
-                value={dealFormData.source_category}
-                onChange={handleDealInputChange}
-              >
-                {sourceOptions.map(option => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </FormSelect>
-            </FormGroup>
-            
-            <FormGroup>
-              <FormLabel htmlFor="total_investment">
-                <FiDollarSign size={14} /> Investment Amount
+              <FormLabel htmlFor="opportunity">
+                <FiInfo size={14} /> Deal Name
               </FormLabel>
               <FormInput
-                id="total_investment"
-                name="total_investment"
-                value={dealFormData.total_investment}
+                id="opportunity"
+                name="opportunity"
+                value={dealFormData.opportunity}
                 onChange={handleDealInputChange}
-                placeholder="Enter investment amount"
-                type="text"
+                placeholder="Enter deal name"
+                required
               />
-              {dealErrors.total_investment && (
+              {dealErrors.opportunity && (
                 <ErrorMessage>
-                  <FiAlertTriangle size={12} /> {dealErrors.total_investment}
+                  <FiAlertTriangle size={12} /> {dealErrors.opportunity}
                 </ErrorMessage>
               )}
-              <HelpText>Enter numeric value only (no currency symbols)</HelpText>
-            </FormGroup>
-          </FormRow>
-          
-          <FormRow>
-            <FormGroup>
-              <FormLabel htmlFor="attachment">
-                <FiPaperclip size={14} /> Attachment
-              </FormLabel>
-              <FormSelect
-                id="attachment"
-                name="attachment"
-                value={dealFormData.attachment}
-                onChange={handleDealInputChange}
-              >
-                {attachmentOptions.map(option => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </FormSelect>
-              <HelpText>Select the type of attachment for this deal</HelpText>
             </FormGroup>
             
-            <FormGroup>
-              <FormLabel htmlFor="deal_tags">
-                <FiTag size={14} /> Tags
-              </FormLabel>
-              <div style={{ display: 'flex', gap: '10px', width: '100%', position: 'relative' }}>
-                <FormInput
-                  id="deal_tags"
-                  placeholder="Search or add tag and press Enter"
-                  value={newDealTag}
-                  onChange={handleDealTagInputChange}
-                  onKeyPress={handleDealTagKeyPress}
-                  autoComplete="off"
-                />
-                {showDealTagSuggestions && newDealTag.trim() && (
-                  <SuggestionsContainer>
-                    {availableTags
-                      .filter(tag => 
-                        tag.toLowerCase().includes(newDealTag.toLowerCase()) && 
-                        !dealFormData.tags.includes(tag)
-                      )
-                      .slice(0, 8) // Limit to 8 suggestions
-                      .map((tag, index) => (
-                        <SuggestionItem 
-                          key={index} 
-                          onClick={() => handleDealSuggestionClick(tag)}
-                        >
-                          {tag}
-                        </SuggestionItem>
-                      ))
-                    }
-                  </SuggestionsContainer>
-                )}
-              </div>
-              <HelpText>Press Enter to add multiple tags</HelpText>
-              
-              {/* Display tags directly under the search bar */}
-              {dealFormData.tags.length > 0 && (
-                <TagsContainer style={{ marginTop: '10px' }}>
-                  {dealFormData.tags.map(tag => (
-                    <Tag key={tag}>
-                      {tag}
-                      <button onClick={() => handleRemoveDealTag(tag)}>
-                        <FiX size={12} />
-                      </button>
-                    </Tag>
+            <FormRow>
+              <FormGroup>
+                <FormLabel htmlFor="category">
+                  <FiList size={14} /> Category
+                </FormLabel>
+                <FormSelect
+                  id="category"
+                  name="category"
+                  value={dealFormData.category}
+                  onChange={handleDealInputChange}
+                >
+                  {categoryOptions.map(option => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
                   ))}
-                </TagsContainer>
-              )}
+                </FormSelect>
+              </FormGroup>
+              
+              <FormGroup>
+                <FormLabel htmlFor="stage">
+                  <FiActivity size={14} /> Stage
+                </FormLabel>
+                <FormSelect
+                  id="stage"
+                  name="stage"
+                  value={dealFormData.stage}
+                  onChange={handleDealInputChange}
+                >
+                  {stageOptions.map(option => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </FormSelect>
+              </FormGroup>
+            </FormRow>
+            
+            <FormRow>
+              <FormGroup>
+                <FormLabel htmlFor="source_category">
+                  <FiSearch size={14} /> Source
+                </FormLabel>
+                <FormSelect
+                  id="source_category"
+                  name="source_category"
+                  value={dealFormData.source_category}
+                  onChange={handleDealInputChange}
+                >
+                  {sourceOptions.map(option => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </FormSelect>
+              </FormGroup>
+              
+              <FormGroup>
+                <FormLabel htmlFor="total_investment">
+                  <FiDollarSign size={14} /> Investment Amount
+                </FormLabel>
+                <FormInput
+                  id="total_investment"
+                  name="total_investment"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={dealFormData.total_investment}
+                  onChange={handleDealInputChange}
+                  placeholder="Enter investment amount"
+                />
+                {dealErrors.total_investment && (
+                  <ErrorMessage>
+                    <FiAlertTriangle size={12} /> {dealErrors.total_investment}
+                  </ErrorMessage>
+                )}
+                <HelpText>Enter numeric value only (no currency symbols)</HelpText>
+              </FormGroup>
+            </FormRow>
+            
+            <FormRow>
+              <FormGroup>
+                <FormLabel htmlFor="attachment">
+                  <FiPaperclip size={14} /> Attachment
+                </FormLabel>
+                <FormSelect
+                  id="attachment"
+                  name="attachment"
+                  value={dealFormData.attachment}
+                  onChange={handleDealInputChange}
+                >
+                  {attachmentOptions.map(option => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </FormSelect>
+                <HelpText>Select the type of attachment for this deal</HelpText>
+              </FormGroup>
+              
+              <FormGroup>
+                <FormLabel htmlFor="deal_tags">
+                  <FiTag size={14} /> Tags
+                </FormLabel>
+                <div style={{ display: 'flex', gap: '10px', width: '100%', position: 'relative' }}>
+                  <FormInput
+                    id="deal_tags"
+                    placeholder="Search or add tag and press Enter"
+                    value={newDealTag}
+                    onChange={handleDealTagInputChange}
+                    onKeyPress={handleDealTagKeyPress}
+                    autoComplete="off"
+                  />
+                  {showDealTagSuggestions && newDealTag.trim() && (
+                    <SuggestionsContainer>
+                      {availableTags
+                        .filter(tag => 
+                          tag.toLowerCase().includes(newDealTag.toLowerCase()) && 
+                          !dealFormData.tags.includes(tag)
+                        )
+                        .slice(0, 8) // Limit to 8 suggestions
+                        .map((tag, index) => (
+                          <SuggestionItem 
+                            key={index} 
+                            onClick={() => handleDealSuggestionClick(tag)}
+                          >
+                            {tag}
+                          </SuggestionItem>
+                        ))
+                      }
+                    </SuggestionsContainer>
+                  )}
+                </div>
+                <HelpText>Press Enter to add multiple tags</HelpText>
+                
+                {/* Display tags directly under the search bar */}
+                {dealFormData.tags.length > 0 && (
+                  <TagsContainer style={{ marginTop: '10px' }}>
+                    {dealFormData.tags.map(tag => (
+                      <Tag key={tag}>
+                        {tag}
+                        <button type="button" onClick={() => handleRemoveDealTag(tag)}>
+                          <FiX size={12} />
+                        </button>
+                      </Tag>
+                    ))}
+                  </TagsContainer>
+                )}
+              </FormGroup>
+            </FormRow>
+            
+            <FormGroup>
+              <FormLabel htmlFor="description">
+                <FiInfo size={14} /> Description
+              </FormLabel>
+              <FormTextarea
+                id="description"
+                name="description"
+                value={dealFormData.description}
+                onChange={handleDealInputChange}
+                placeholder="Enter description"
+              />
             </FormGroup>
-          </FormRow>
-          
-          <FormGroup>
-            <FormLabel htmlFor="description">
-              <FiInfo size={14} /> Description
-            </FormLabel>
-            <FormTextarea
-              id="description"
-              name="description"
-              value={dealFormData.description}
-              onChange={handleDealInputChange}
-              placeholder="Enter description"
-            />
-          </FormGroup>
-          
-          <ButtonGroup style={{ marginTop: '20px', justifyContent: 'flex-end', gap: '15px' }}>
-            <SaveButton>
-              <FiPlus /> Create Deal
-            </SaveButton>
-            <SaveButton>
-              <FiSave /> Save Deal
-            </SaveButton>
-          </ButtonGroup>
+            
+            <ButtonGroup style={{ marginTop: '20px', justifyContent: 'flex-end', gap: '15px' }}>
+              <SaveButton type="submit" disabled={isProcessing}>
+                <FiPlus /> Create Deal
+              </SaveButton>
+            </ButtonGroup>
+          </form>
         </FormContainer>
       </ModalContent>
     );
