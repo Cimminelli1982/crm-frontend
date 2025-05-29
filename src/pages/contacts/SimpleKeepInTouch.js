@@ -365,7 +365,7 @@ const SnoozeDaysRenderer = (props) => {
           style={{
             background: 'transparent',
             border: 'none',
-            color: '#ffc107',
+            color: '#00ff00',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',

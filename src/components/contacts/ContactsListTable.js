@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { AgGridReact } from '../../ag-grid-setup';
-import { FiMail, FiLinkedin, FiPlus, FiX, FiTrash2, FiMessageSquare, FiEdit2 } from 'react-icons/fi';
-import { FaWhatsapp, FaStar, FaRegStar, FaDollarSign, FaHandshake } from 'react-icons/fa';
+import { FiMail, FiLinkedin, FiPlus, FiX, FiTrash2, FiMessageSquare, FiEdit2, FiDollarSign } from 'react-icons/fi';
+import { FaWhatsapp, FaStar, FaRegStar, FaHandshake } from 'react-icons/fa';
 import { MdClear } from 'react-icons/md';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -1519,8 +1519,14 @@ const ActionsRenderer = (props) => {
           className="opportunities" 
           onClick={handleOpportunitiesClick}
           title="Opportunities"
+          style={{
+            width: '24px',
+            height: '24px'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
+          onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
         >
-          <FaDollarSign size={14} />
+          <FiDollarSign size={16} />
         </ActionButton>
         
         <ActionButton 
