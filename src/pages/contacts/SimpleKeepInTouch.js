@@ -1,20 +1,29 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { AgGridReact } from '../../ag-grid-setup';
+import ContactsInteractionModal from '../../components/modals/ContactsInteractionModal';
+import { FiMail, FiLinkedin, FiDollarSign } from 'react-icons/fi';
+import { FaWhatsapp } from 'react-icons/fa';
 
-// Styled components
+// Styled components - Updated to match ContactsListTable
 const Container = styled.div`
-  padding: 20px 40px 20px 20px;
   height: calc(100vh - 60px);
   width: 100%;
+  padding: 0 5px 0 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  max-width: 100%;
+  position: relative;
 `;
 
 const Title = styled.h1`
   color: #00ff00;
   margin-bottom: 20px;
   font-family: 'Courier New', monospace;
+  font-size: 24px;
+  padding: 20px;
 `;
 
 const ErrorText = styled.div`
@@ -87,39 +96,6 @@ const LoadingText = styled.div`
   }
 `;
 
-const LoadingMatrix = styled.div`
-  font-family: 'Courier New', monospace;
-  font-size: 14px;
-  color: #00ff00;
-  text-align: center;
-  margin-top: 30px;
-  height: 100px;
-  width: 300px;
-  overflow: hidden;
-  position: relative;
-  
-  &:after {
-    content: "01001100 01101111 01100001 01100100 01101001 01101110 01100111 00100000 01000011 01101111 01101110 01110100 01100001 01100011 01110100 01110011 00101110 00101110 00101110";
-    position: absolute;
-    top: 0;
-    left: 0;
-    height: 100%;
-    width: 100%;
-    background: linear-gradient(to bottom, transparent, #000 80%);
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    opacity: 0.7;
-    text-shadow: 0 0 5px #00ff00;
-    animation: matrix 5s linear infinite;
-  }
-  
-  @keyframes matrix {
-    0% { transform: translateY(-60px); }
-    100% { transform: translateY(60px); }
-  }
-`;
-
 const Badge = styled.span`
   display: inline-block;
   background-color: ${props => props.bg || '#222'};
@@ -131,13 +107,130 @@ const Badge = styled.span`
   font-size: 11px;
 `;
 
-// Simple frequency renderer
-const FrequencyRenderer = (props) => {
-  const frequency = props.value;
-  if (!frequency) return '-';
-  return frequency;
-};
-
+const SimpleKeepInTouch = () => {
+  const [contacts, setContacts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [gridApi, setGridApi] = useState(null);
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const [showInteractionModal, setShowInteractionModal] = useState(false);
+  const [selectedContactForModal, setSelectedContactForModal] = useState(null);
+  const [showFrequencyDropdown, setShowFrequencyDropdown] = useState({});
+  const navigate = useNavigate();
+  
+  // Frequency Renderer with dropdown functionality
+  const FrequencyRenderer = useCallback((props) => {
+    const contactId = props.data?.contact_id;
+    const currentFrequency = props.value || '';
+    const isDropdownOpen = showFrequencyDropdown[contactId] || false;
+    
+    const frequencyOptions = [
+      { value: 'Do not keep in touch', label: 'Do not keep in touch' },
+      { value: 'Weekly', label: 'Weekly' },
+      { value: 'Monthly', label: 'Monthly' },
+      { value: 'Quarterly', label: 'Quarterly' },
+      { value: 'Twice per Year', label: 'Twice per Year' },
+      { value: 'Once per Year', label: 'Once per Year' }
+    ];
+    
+    const handleFrequencyChange = async (newFrequency) => {
+      try {
+        // Update the database
+        const { error } = await supabase
+          .from('contacts')
+          .update({ keep_in_touch_frequency: newFrequency })
+          .eq('contact_id', contactId);
+          
+        if (error) throw error;
+        
+        // Update the local data
+        setContacts(prevContacts => 
+          prevContacts.map(contact => 
+            contact.contact_id === contactId 
+              ? { ...contact, frequency: newFrequency }
+              : contact
+          )
+        );
+        
+        // Close the dropdown
+        setShowFrequencyDropdown(prev => ({
+          ...prev,
+          [contactId]: false
+        }));
+        
+        console.log(`Updated frequency for contact ${contactId} to ${newFrequency}`);
+      } catch (err) {
+        console.error('Error updating frequency:', err);
+        alert('Failed to update frequency. Please try again.');
+      }
+    };
+    
+    const handleClick = (e) => {
+      e.stopPropagation();
+      setShowFrequencyDropdown(prev => ({
+        ...prev,
+        [contactId]: !prev[contactId]
+      }));
+    };
+    
+    const handleBlur = () => {
+      // Delay closing to allow click on dropdown options
+      setTimeout(() => {
+        setShowFrequencyDropdown(prev => ({
+          ...prev,
+          [contactId]: false
+        }));
+      }, 150);
+    };
+    
+    if (isDropdownOpen) {
+      return (
+        <div style={{ position: 'relative', width: '100%' }}>
+          <select
+            value={currentFrequency}
+            onChange={(e) => handleFrequencyChange(e.target.value)}
+            onBlur={handleBlur}
+            autoFocus
+            style={{
+              width: '100%',
+              padding: '4px',
+              fontSize: '12px',
+              backgroundColor: '#222',
+              color: '#fff',
+              border: '1px solid #555',
+              borderRadius: '4px'
+            }}
+          >
+            {frequencyOptions.map(option => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+    
+    return (
+      <div 
+        onClick={handleClick}
+        style={{
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          cursor: 'pointer',
+          width: '100%',
+          fontSize: '12px',
+          textAlign: 'center',
+          color: currentFrequency ? '#00ff00' : '#aaaaaa', // Green for all values, gray for empty
+          padding: '4px',
+          borderRadius: '4px'
+        }}
+      >
+        {currentFrequency || 'Not set'}
+      </div>
+    );
+  }, [showFrequencyDropdown, setContacts, setShowFrequencyDropdown]);
 
 // Renderer for the snooze days
 const SnoozeDaysRenderer = (props) => {
@@ -157,20 +250,230 @@ const SnoozeDaysRenderer = (props) => {
   );
 };
 
-const SimpleKeepInTouch = () => {
-  const [contacts, setContacts] = useState([]);
-  const [loading, setLoading] = useState(true); // Can be true/false or a string message
-  const [error, setError] = useState(null);
-  const [gridApi, setGridApi] = useState(null);
-  const [dataLoaded, setDataLoaded] = useState(false); // Flag to prevent multiple data loads
-  const [showGrid, setShowGrid] = useState(false); // Flag to control grid visibility with delay
-  const navigate = useNavigate();
+  // Actions Renderer with LinkedIn, WhatsApp, Deal, and Email buttons - Updated to use icons
+  const ActionsRenderer = (props) => {
+    const data = props.data;
+    
+    // Get contact data from nested structure
+    const contactData = data.contacts || {};
+    
+    // Get primary email or first available
+    const email = data.email || '';
+    
+    // Get primary mobile (for WhatsApp)
+    const mobile = data.mobile || '';
+    
+    // Get LinkedIn URL from joined contacts table
+    const linkedin = contactData.linkedin || '';
+    
+    const handleLinkedInClick = (e) => {
+      e.stopPropagation();
+      if (linkedin) {
+        window.open(linkedin, '_blank');
+      } else if (data.full_name || (data.first_name && data.last_name)) {
+        const searchName = data.full_name || `${data.first_name} ${data.last_name}`;
+        window.open(`https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(searchName)}`, '_blank');
+      }
+    };
+    
+    const handleWhatsAppClick = (e) => {
+      e.stopPropagation();
+      if (mobile) {
+        const formattedNumber = mobile.replace(/\D/g, '');
+        window.open(`https://wa.me/${formattedNumber}`, '_blank');
+      }
+    };
+    
+    const handleEmailClick = (e) => {
+      e.stopPropagation();
+      if (email) {
+        window.location.href = `mailto:${email}`;
+      }
+    };
+    
+    const handleDealClick = (e) => {
+      e.stopPropagation();
+      console.log('Deal button clicked - no action implemented yet');
+    };
+    
+    return (
+      <div style={{
+        display: 'flex',
+        gap: '8px',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: '4px',
+        width: '100%',
+        height: '100%'
+      }}>
+        {/* LinkedIn Button */}
+        <button
+          onClick={handleLinkedInClick}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: linkedin ? '#00ff00' : '#666',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '24px',
+            height: '24px',
+            borderRadius: '3px',
+            transition: 'all 0.2s',
+            padding: '0'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
+          onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          title="LinkedIn"
+        >
+          <FiLinkedin size={16} />
+        </button>
+        
+        {/* WhatsApp Button */}
+        <button
+          onClick={handleWhatsAppClick}
+          disabled={!mobile}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: mobile ? '#25D366' : '#666',
+            cursor: mobile ? 'pointer' : 'not-allowed',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '24px',
+            height: '24px',
+            borderRadius: '3px',
+            transition: 'all 0.2s',
+            padding: '0'
+          }}
+          onMouseEnter={(e) => mobile && (e.currentTarget.style.transform = 'scale(1.1)')}
+          onMouseLeave={(e) => mobile && (e.currentTarget.style.transform = 'scale(1)')}
+          title="WhatsApp"
+        >
+          <FaWhatsapp size={16} />
+        </button>
+        
+        {/* Deal Button */}
+        <button
+          onClick={handleDealClick}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: '#ffc107',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '24px',
+            height: '24px',
+            borderRadius: '3px',
+            transition: 'all 0.2s',
+            padding: '0'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
+          onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          title="Deal (Coming Soon)"
+        >
+          <FiDollarSign size={16} />
+        </button>
+        
+        {/* Email Button */}
+        <button
+          onClick={handleEmailClick}
+          disabled={!email}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: email ? '#4a9eff' : '#666',
+            cursor: email ? 'pointer' : 'not-allowed',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '24px',
+            height: '24px',
+            borderRadius: '3px',
+            transition: 'all 0.2s',
+            padding: '0'
+          }}
+          onMouseEnter={(e) => email && (e.currentTarget.style.transform = 'scale(1.1)')}
+          onMouseLeave={(e) => email && (e.currentTarget.style.transform = 'scale(1)')}
+          title="Email"
+        >
+          <FiMail size={16} />
+        </button>
+      </div>
+    );
+  };
+  
+  // Last Interaction Renderer with modal functionality
+  const LastInteractionRenderer = (props) => {
+    if (!props.value) return '';
+    
+    const date = new Date(props.value);
+    // Format as MM/YY
+    const formattedDate = `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear().toString().slice(-2)}`;
+    
+    const handleClick = (e) => {
+      e.stopPropagation();
+      setSelectedContactForModal(props.data);
+      setShowInteractionModal(true);
+    };
+    
+    return (
+      <div 
+        onClick={handleClick}
+        style={{
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          paddingRight: '0',
+          width: '100%',
+          fontSize: '12px',
+          textAlign: 'center',
+          cursor: 'pointer',
+          color: '#aaaaaa'
+        }}
+      >
+        {formattedDate}
+      </div>
+    );
+  };
   
   // Column definitions with improved display of related data
   const columnDefs = useMemo(() => [
     { 
       headerName: 'Contact', 
       field: 'full_name',
+      cellRenderer: (params) => {
+        if (!params.value) return '-';
+        
+        // Make contact name clickable
+        const handleClick = () => {
+          if (params.data && params.data.contact_id) {
+            navigate(`/contacts/${params.data.contact_id}`);
+          }
+        };
+        
+        return (
+          <div 
+            style={{
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              cursor: 'pointer',
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center'
+            }}
+            onClick={handleClick}
+          >
+            {params.value}
+          </div>
+        );
+      },
       minWidth: 180,
       filter: 'agTextColumnFilter',
       floatingFilter: true,
@@ -178,23 +481,9 @@ const SimpleKeepInTouch = () => {
       pinned: 'left',
     },
     { 
-      headerName: 'Why Keep in Touch', 
-      field: 'why_keeping_in_touch',
-      valueGetter: (params) => {
-        return params.data?.why_keeping_in_touch || '-';
-      },
-      minWidth: 180,
-      filter: 'agTextColumnFilter',
-      floatingFilter: true,
-      sortable: true,
-    },
-    { 
       headerName: 'Last Interaction', 
       field: 'last_interaction_at',
-      valueFormatter: (params) => {
-        if (!params.value) return '-';
-        return new Date(params.value).toLocaleDateString();
-      },
+      cellRenderer: LastInteractionRenderer,
       minWidth: 150,
       filter: 'agDateColumnFilter',
       floatingFilter: true,
@@ -203,7 +492,7 @@ const SimpleKeepInTouch = () => {
     { 
       headerName: 'Frequency', 
       field: 'frequency',
-      valueFormatter: (params) => params.value || '-',
+      cellRenderer: FrequencyRenderer,
       minWidth: 130,
       filter: 'agTextColumnFilter',
       floatingFilter: true,
@@ -235,51 +524,43 @@ const SimpleKeepInTouch = () => {
       filter: 'agDateColumnFilter',
       floatingFilter: true,
       sortable: true,
-      cellStyle: params => {
-        if (!params.value) return { color: '#cccccc' };
-        
-        const date = new Date(params.value);
-        const today = new Date();
-        const daysUntil = Math.floor((date - today) / (1000 * 60 * 60 * 24));
-        
-        if (daysUntil < 0) return { color: '#ff4444', fontWeight: 'bold' }; // Overdue
-        if (daysUntil <= 7) return { color: '#00ff00', fontWeight: 'bold' }; // Coming soon
-        return { color: '#cccccc' }; // Normal
-      }
     },
     { 
-      headerName: 'Next Follow-up Notes', 
-      field: 'next_follow_up_notes', 
-      valueGetter: (params) => {
-        return params.data?.next_follow_up_notes || '-';
-      },
-      minWidth: 180,
-      filter: 'agTextColumnFilter',
-      floatingFilter: true,
-      sortable: true,
+      headerName: 'Actions', 
+      field: 'actions',
+      cellRenderer: ActionsRenderer,
+      minWidth: 140,
+      sortable: false,
+      filter: false,
     }
-  ], []);
+  ], [navigate, FrequencyRenderer]);
   
+  // Load data on component mount
+  useEffect(() => {
+    if (!dataLoaded) {
+      fetchContacts();
+    }
+  }, [dataLoaded]);
+
   // Default column properties
   const defaultColDef = useMemo(() => ({
     resizable: true,
+    sortable: true,
+    filter: true,
   }), []);
 
-  // Grid ready event handler - wrapped in React.useCallback to prevent recreation
+  // Grid ready event handler
   const onGridReady = React.useCallback((params) => {
     console.log('Grid is ready');
     setGridApi(params.api);
     
-    // Wait for a tick to ensure grid is properly initialized
     setTimeout(() => {
       params.api.sizeColumnsToFit();
     }, 0);
   }, []);
 
-  // Row clicked handler - wrapped in React.useCallback to prevent recreation
+  // Row clicked handler
   const handleRowClicked = React.useCallback((params) => {
-    // We don't have contact_id in the view, so we need to implement a different approach
-    // For now, just log the clicked row
     console.log('Row clicked:', params.data);
   }, [navigate]);
 
@@ -314,79 +595,55 @@ const SimpleKeepInTouch = () => {
       const { data, error } = await retrySupabaseRequest(async () => {
         return supabase
           .from('v_keep_in_touch')
-          .select('*')
-          .order('days_until_next', { ascending: true });
+          .select(`
+            *,
+            contacts!inner(linkedin)
+          `)
+          .order('next_interaction_date', { ascending: true });
       });
       
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching contacts:', error);
+        throw error;
+      }
       
-      // Process the data
-      console.log(`Fetched ${data.length} contacts from v_keep_in_touch`);
-      
-      setContacts(data);
-      setLoading(false);
+      console.log('Fetched contacts:', data);
+      setContacts(data || []);
       setDataLoaded(true);
-      
-      // Delay showing the grid to avoid abrupt transitions
-      setTimeout(() => {
-        setShowGrid(true);
-      }, 800);
-      
     } catch (err) {
-      console.error('Error fetching keep in touch data:', err);
-      setError(err.message);
+      console.error('Failed to fetch contacts:', err);
+      setError(`Failed to load contacts: ${err.message}`);
+    } finally {
       setLoading(false);
     }
   };
 
-  // Fetch data ONLY on component mount (empty dependency array)
-  useEffect(() => {
-    // Only fetch if data hasn't been loaded yet
-    if (!dataLoaded) {
-      console.log('Initiating data fetch');
-      fetchContacts();
-    }
-  }, [dataLoaded]);
-  
-  // Separate effect for window resize
-  useEffect(() => {
-    // Only add resize handler if gridApi exists
-    if (!gridApi) return;
-    
-    const handleResize = () => {
-      gridApi.sizeColumnsToFit();
-    };
-    
-    // Use the resize event with options object (passive: true)
-    window.addEventListener('resize', handleResize, { passive: true });
-    
-    // Clean up event listener
-    return () => {
-      window.removeEventListener('resize', handleResize, { passive: true });
-    };
-  }, [gridApi]);
+  if (error) {
+    return (
+      <Container>
+        <Title>Keep in Touch Contacts</Title>
+        <ErrorText>{error}</ErrorText>
+      </Container>
+    );
+  }
+
+  if (loading) {
+    return (
+      <Container>
+        <Title>Keep in Touch Contacts</Title>
+        <LoadingContainer>
+          <LoadingText>
+            {typeof loading === 'string' ? loading : 'Loading contacts...'}
+          </LoadingText>
+          <LoadingBar />
+        </LoadingContainer>
+      </Container>
+    );
+  }
 
   return (
     <Container>
-      {error && <ErrorText>Error: {error}</ErrorText>}
-      
-      {loading !== false ? (
-        <LoadingContainer>
-          <LoadingText>
-            {typeof loading === 'string' 
-              ? loading.replace(/Loading .+ \d+\/\d+/, 'Initializing Matrix') 
-              : 'Accessing Keep in Touch Database...'}
-          </LoadingText>
-          <LoadingBar />
-          <LoadingMatrix />
-        </LoadingContainer>
-      ) : !showGrid && !error ? (
-        <LoadingContainer>
-          <LoadingText>Preparing interface...</LoadingText>
-          <LoadingBar />
-          <LoadingMatrix />
-        </LoadingContainer>
-      ) : contacts.length === 0 && !error ? (
+      {contacts.length === 0 ? (
         <div style={{ 
           padding: '40px', 
           textAlign: 'center',
@@ -394,23 +651,31 @@ const SimpleKeepInTouch = () => {
           background: '#121212',
           borderRadius: '8px'
         }}>
-          No keep in touch data found. Try refreshing the page or check database connection.
+          No contacts found for this category.
         </div>
       ) : (
         <div 
           className="ag-theme-alpine" 
           style={{ 
-            height: 'calc(100% - 60px)', 
-            width: 'calc(100% - 20px)',
-            opacity: showGrid ? 1 : 0,
-            transition: 'opacity 0.5s ease-in-out',
+            height: 'calc(100% - 80px)', 
+            width: '100%',
+            overflowX: 'hidden',
+            boxSizing: 'border-box',
+            marginRight: '5px',
             '--ag-background-color': '#121212',
             '--ag-odd-row-background-color': '#1a1a1a',
             '--ag-header-background-color': '#222222',
             '--ag-header-foreground-color': '#00ff00',
             '--ag-foreground-color': '#e0e0e0', 
-            '--ag-row-hover-color': '#2a2a2a',
-            '--ag-border-color': '#333333'
+            '--ag-row-hover-color': 'transparent',
+            '--ag-border-color': '#333333',
+            '--ag-cell-horizontal-padding': '8px',
+            '--ag-borders': 'none',
+            '--ag-header-height': '32px',
+            '--ag-header-column-separator-display': 'none',
+            '--ag-font-size': '12px',
+            '--ag-paging-panel-height': '42px',
+            '--ag-row-height': '36px'
           }}
         >
           <AgGridReact
@@ -419,14 +684,33 @@ const SimpleKeepInTouch = () => {
             defaultColDef={defaultColDef}
             onGridReady={onGridReady}
             onRowClicked={handleRowClicked}
-            rowSelection="single"
-            animateRows={true}
+            animateRows={false}
+            suppressRowClickSelection={true}
+            enableCellTextSelection={true}
             pagination={true}
             paginationPageSize={50}
+            domLayout="normal"
+            suppressColumnVirtualisation={true}
+            suppressRowVirtualisation={false}
             suppressCellFocus={true}
-            enableCellTextSelection={true}
+            suppressHorizontalScroll={true}
+            alwaysShowHorizontalScroll={false}
+            alwaysShowVerticalScroll={false}
+            overlayNoRowsTemplate='<span style="padding: 10px; border: 1px solid #00ff00; background: #121212; color: #00ff00;">No contacts found</span>'
           />
         </div>
+      )}
+      
+      {/* Interaction Modal */}
+      {showInteractionModal && selectedContactForModal && (
+        <ContactsInteractionModal
+          isOpen={showInteractionModal}
+          onRequestClose={() => {
+            setShowInteractionModal(false);
+            setSelectedContactForModal(null);
+          }}
+          contact={selectedContactForModal}
+        />
       )}
     </Container>
   );
