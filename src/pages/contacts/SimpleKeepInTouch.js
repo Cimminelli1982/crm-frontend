@@ -146,10 +146,143 @@ const SimpleKeepInTouch = () => {
         
       if (contactError) throw contactError;
       
-      // Refresh the data to show updates
+      // Check if we need to create or update a company
+      if (linkedInData.company) {
+        // First check if company already exists with this name
+        const { data: existingCompanies, error: companySearchError } = await supabase
+          .from('companies')
+          .select('company_id, name')
+          .ilike('name', linkedInData.company);
+          
+        if (companySearchError) throw companySearchError;
+        
+        let companyId;
+        
+        // If company exists, use it
+        if (existingCompanies && existingCompanies.length > 0) {
+          companyId = existingCompanies[0].company_id;
+          
+          // Update company information
+          const { error: companyUpdateError } = await supabase
+            .from('companies')
+            .update({
+              website: linkedInData.companyWebsite || null,
+              description: linkedInData.companyDescription || null,
+              last_modified_at: new Date().toISOString(),
+              last_modified_by: 'User'
+            })
+            .eq('company_id', companyId);
+            
+          if (companyUpdateError) throw companyUpdateError;
+        } 
+        // If company doesn't exist, create it
+        else {
+          const { data: newCompany, error: companyCreateError } = await supabase
+            .from('companies')
+            .insert({
+              name: linkedInData.company,
+              website: linkedInData.companyWebsite || null,
+              description: linkedInData.companyDescription || null,
+              created_at: new Date().toISOString(),
+              created_by: 'User',
+              last_modified_at: new Date().toISOString(),
+              last_modified_by: 'User'
+            })
+            .select();
+            
+          if (companyCreateError) throw companyCreateError;
+          
+          if (newCompany && newCompany.length > 0) {
+            companyId = newCompany[0].company_id;
+          }
+        }
+        
+        // Associate contact with company if we have a company ID
+        if (companyId) {
+          // Check if relationship already exists
+          const { data: existingRelation, error: relationCheckError } = await supabase
+            .from('contact_companies')
+            .select('contact_id, company_id')
+            .eq('contact_id', selectedContactForLinkedIn.contact_id)
+            .eq('company_id', companyId);
+            
+          if (relationCheckError) throw relationCheckError;
+          
+          // Only create relationship if it doesn't exist
+          if (!existingRelation || existingRelation.length === 0) {
+            const { error: relationError } = await supabase
+              .from('contact_companies')
+              .insert({
+                contact_id: selectedContactForLinkedIn.contact_id,
+                company_id: companyId
+              });
+              
+            if (relationError) throw relationError;
+          }
+        }
+      }
+      
+      // Add city if provided
+      if (linkedInData.city) {
+        // Check if city exists
+        const { data: existingCities, error: citySearchError } = await supabase
+          .from('cities')
+          .select('city_id, name')
+          .ilike('name', linkedInData.city);
+          
+        if (citySearchError) throw citySearchError;
+        
+        let cityId;
+        
+        // If city exists, use it
+        if (existingCities && existingCities.length > 0) {
+          cityId = existingCities[0].city_id;
+        } 
+        // If city doesn't exist, create it
+        else {
+          const { data: newCity, error: cityCreateError } = await supabase
+            .from('cities')
+            .insert({
+              name: linkedInData.city
+            })
+            .select();
+            
+          if (cityCreateError) throw cityCreateError;
+          
+          if (newCity && newCity.length > 0) {
+            cityId = newCity[0].city_id;
+          }
+        }
+        
+        // Associate contact with city if we have a city ID
+        if (cityId) {
+          // Check if relationship already exists
+          const { data: existingRelation, error: relationCheckError } = await supabase
+            .from('contact_cities')
+            .select('contact_id, city_id')
+            .eq('contact_id', selectedContactForLinkedIn.contact_id)
+            .eq('city_id', cityId);
+            
+          if (relationCheckError) throw relationCheckError;
+          
+          // Only create relationship if it doesn't exist
+          if (!existingRelation || existingRelation.length === 0) {
+            const { error: relationError } = await supabase
+              .from('contact_cities')
+              .insert({
+                contact_id: selectedContactForLinkedIn.contact_id,
+                city_id: cityId
+              });
+              
+            if (relationError) throw relationError;
+          }
+        }
+      }
+      
+      // Refresh the entire table to get the latest data
       await fetchContacts();
       
-      console.log('LinkedIn data saved successfully');
+      console.log('LinkedIn data saved successfully and table refreshed');
     } catch (err) {
       console.error('Error saving LinkedIn data:', err);
     }
@@ -442,6 +575,10 @@ const SimpleKeepInTouch = () => {
     
     const handleLinkedInClick = (e) => {
       e.stopPropagation();
+      console.log("Opening LinkedIn search & enrich modal");
+      console.log("Contact data:", data);
+      console.log("LinkedIn URL from contacts:", data.contacts?.linkedin);
+      console.log("LinkedIn URL direct:", data.linkedin);
       setSelectedContactForLinkedIn(data);
       setShowLinkedInSearchModal(true);
     };
@@ -915,6 +1052,16 @@ const SimpleKeepInTouch = () => {
     }
   };
 
+  // Create refreshData function for context
+  const refreshData = () => {
+    if (!loading) {
+      fetchContacts();
+    }
+  };
+
+  // Create context object to pass to grid
+  const gridContext = { navigate, refreshData };
+
   if (error) {
     return (
       <Container>
@@ -981,6 +1128,7 @@ const SimpleKeepInTouch = () => {
             defaultColDef={defaultColDef}
             onGridReady={onGridReady}
             onRowClicked={handleRowClicked}
+            context={gridContext}
             animateRows={false}
             suppressRowClickSelection={true}
             enableCellTextSelection={true}
@@ -1030,13 +1178,59 @@ const SimpleKeepInTouch = () => {
             setShowLinkedInSearchModal(false);
             setSelectedContactForLinkedIn(null);
           }}
-          linkedInUrl={selectedContactForLinkedIn.contacts?.linkedin || selectedContactForLinkedIn.linkedin || ''}
-          contactName={`${selectedContactForLinkedIn.first_name || ''} ${selectedContactForLinkedIn.last_name || ''}`.trim()}
-          firstName={selectedContactForLinkedIn.first_name || ''}
-          lastName={selectedContactForLinkedIn.last_name || ''}
+          linkedInUrl={(() => {
+            const contactData = selectedContactForLinkedIn.contacts || {};
+            let linkedinUrl = contactData.linkedin || '';
+            
+            // Ensure LinkedIn URL is properly formatted
+            if (linkedinUrl && !linkedinUrl.startsWith('http')) {
+              // If it's a relative URL or just a username, make it absolute
+              if (linkedinUrl.startsWith('linkedin.com') || linkedinUrl.startsWith('www.linkedin.com')) {
+                linkedinUrl = `https://${linkedinUrl}`;
+              } else if (linkedinUrl.includes('linkedin.com')) {
+                linkedinUrl = `https://${linkedinUrl}`;
+              } else {
+                // If it's just a username or path, construct the full URL
+                linkedinUrl = `https://www.linkedin.com/in/${linkedinUrl.replace(/^\/+/, '')}`;
+              }
+            }
+            
+            console.log("LinkedIn URL being passed to modal:", linkedinUrl);
+            console.log("Original LinkedIn data:", contactData.linkedin);
+            console.log("Selected contact data:", selectedContactForLinkedIn);
+            console.log("Contact data object:", contactData);
+            return linkedinUrl;
+          })()}
+          contactName={(() => {
+            // Try multiple ways to get the contact name from v_keep_in_touch data
+            let firstName = selectedContactForLinkedIn.first_name || '';
+            let lastName = selectedContactForLinkedIn.last_name || '';
+            let fullName = selectedContactForLinkedIn.full_name || '';
+            
+            // If we don't have first_name/last_name, try to extract from full_name
+            if (!firstName && !lastName && fullName) {
+              const nameParts = fullName.trim().split(' ');
+              firstName = nameParts[0] || '';
+              lastName = nameParts.slice(1).join(' ') || '';
+            }
+            
+            const name = `${firstName} ${lastName}`.trim() || fullName.trim();
+            
+            console.log("Contact name debugging:");
+            console.log("- first_name:", selectedContactForLinkedIn.first_name);
+            console.log("- last_name:", selectedContactForLinkedIn.last_name);
+            console.log("- full_name:", selectedContactForLinkedIn.full_name);
+            console.log("- Final contact name being passed to modal:", name);
+            console.log("- Full selected contact data:", selectedContactForLinkedIn);
+            
+            return name;
+          })()}
+          firstName={selectedContactForLinkedIn.first_name || selectedContactForLinkedIn.full_name?.split(' ')[0] || ''}
+          lastName={selectedContactForLinkedIn.last_name || selectedContactForLinkedIn.full_name?.split(' ').slice(1).join(' ') || ''}
           email={selectedContactForLinkedIn.email || ''}
           jobRole={selectedContactForLinkedIn.job_role || ''}
           contactId={selectedContactForLinkedIn.contact_id}
+          context={gridContext}
           onSaveData={handleSaveLinkedInData}
         />
       )}
