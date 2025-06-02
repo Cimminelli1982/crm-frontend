@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { AgGridReact } from '../../ag-grid-setup';
 import ContactsInteractionModal from '../../components/modals/ContactsInteractionModal';
 import DealViewFindAddModal from '../../components/modals/DealViewFindAddModal';
+import LinkedinSearchOpenEnrich from '../../components/modals/Linkedin-Search-Open-Enrich';
 import { FiMail, FiLinkedin, FiDollarSign } from 'react-icons/fi';
 import { FaWhatsapp } from 'react-icons/fa';
 
@@ -119,8 +120,41 @@ const SimpleKeepInTouch = () => {
   const [showFrequencyDropdown, setShowFrequencyDropdown] = useState({});
   const [showDealModal, setShowDealModal] = useState(false);
   const [selectedContactForDeal, setSelectedContactForDeal] = useState(null);
+  const [showLinkedInSearchModal, setShowLinkedInSearchModal] = useState(false);
+  const [selectedContactForLinkedIn, setSelectedContactForLinkedIn] = useState(null);
+  const [showSnoozeDaysInput, setShowSnoozeDaysInput] = useState({});
   const navigate = useNavigate();
   
+  // Handler for saving LinkedIn data from the modal
+  const handleSaveLinkedInData = async (linkedInData) => {
+    try {
+      if (!selectedContactForLinkedIn) return;
+      
+      // Update contact information
+      const contactUpdates = {
+        job_role: linkedInData.jobRole,
+        linkedin: selectedContactForLinkedIn.linkedin || linkedInData.linkedinUrl,
+        last_modified_at: new Date().toISOString(),
+        last_modified_by: 'User'
+      };
+      
+      // Update the contact record
+      const { error: contactError } = await supabase
+        .from('contacts')
+        .update(contactUpdates)
+        .eq('contact_id', selectedContactForLinkedIn.contact_id);
+        
+      if (contactError) throw contactError;
+      
+      // Refresh the data to show updates
+      await fetchContacts();
+      
+      console.log('LinkedIn data saved successfully');
+    } catch (err) {
+      console.error('Error saving LinkedIn data:', err);
+    }
+  };
+
   // Frequency Renderer with dropdown functionality
   const FrequencyRenderer = useCallback((props) => {
     const contactId = props.data?.contact_id;
@@ -235,23 +269,160 @@ const SimpleKeepInTouch = () => {
     );
   }, [showFrequencyDropdown, setContacts, setShowFrequencyDropdown]);
 
-// Renderer for the snooze days
-const SnoozeDaysRenderer = (props) => {
-  const days = props.value || 0;
-  if (days <= 0) return '-';
-  
-  return (
-    <span style={{ 
-      color: '#00ff00',
-      backgroundColor: '#222',
-      padding: '2px 6px',
-      borderRadius: '4px',
-      fontSize: '11px'
-    }}>
-      +{days} days
-    </span>
-  );
-};
+  // Renderer for the snooze days - now editable
+  const SnoozeDaysRenderer = useCallback((props) => {
+    const contactId = props.data?.contact_id;
+    const currentSnoozeDays = props.value || 0;
+    const isEditing = showSnoozeDaysInput[contactId] || false;
+    
+    console.log('SnoozeDaysRenderer debug:', { contactId, currentSnoozeDays, isEditing, showSnoozeDaysInput });
+    
+    const handleSnoozeDaysChange = async (newSnoozeDays) => {
+      try {
+        // Update the database
+        const { error } = await supabase
+          .from('keep_in_touch')
+          .update({ snooze_days: newSnoozeDays })
+          .eq('contact_id', contactId);
+          
+        if (error) throw error;
+        
+        // Close the input first
+        setShowSnoozeDaysInput(prev => ({
+          ...prev,
+          [contactId]: false
+        }));
+        
+        // Refresh the entire table to get the latest data
+        await fetchContacts();
+        
+        console.log(`Updated snooze days for contact ${contactId} to ${newSnoozeDays} and refreshed table`);
+      } catch (err) {
+        console.error('Error updating snooze days:', err);
+        alert('Failed to update snooze days. Please try again.');
+      }
+    };
+    
+    const handleClick = (e) => {
+      e.stopPropagation();
+      console.log('Snooze days clicked for contact:', contactId);
+      setShowSnoozeDaysInput(prev => ({
+        ...prev,
+        [contactId]: !prev[contactId]
+      }));
+    };
+    
+    const handleBlur = () => {
+      // Delay closing to allow click on input or buttons
+      setTimeout(() => {
+        setShowSnoozeDaysInput(prev => ({
+          ...prev,
+          [contactId]: false
+        }));
+      }, 150);
+    };
+    
+    const handleKeyPress = (e) => {
+      if (e.key === 'Enter') {
+        const newValue = parseInt(e.target.value) || 0;
+        handleSnoozeDaysChange(newValue);
+      }
+    };
+    
+    const handleResetToZero = (e) => {
+      e.stopPropagation();
+      console.log('Reset to zero clicked for contact:', contactId);
+      handleSnoozeDaysChange(0);
+    };
+    
+    if (isEditing) {
+      return (
+        <div style={{ 
+          position: 'relative', 
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px'
+        }}>
+          <input
+            type="number"
+            min="0"
+            max="365"
+            defaultValue={currentSnoozeDays}
+            onBlur={handleBlur}
+            onKeyPress={handleKeyPress}
+            autoFocus
+            style={{
+              width: '60px',
+              padding: '2px 4px',
+              fontSize: '11px',
+              backgroundColor: '#222',
+              color: '#00ff00',
+              border: '1px solid #00ff00',
+              borderRadius: '4px',
+              textAlign: 'center'
+            }}
+          />
+          <button
+            onClick={handleResetToZero}
+            style={{
+              background: '#ff5555',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '2px',
+              width: '16px',
+              height: '16px',
+              fontSize: '10px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+            title="Reset to 0"
+          >
+            ×
+          </button>
+        </div>
+      );
+    }
+    
+    if (!currentSnoozeDays || currentSnoozeDays <= 0) {
+      return (
+        <div 
+          onClick={handleClick}
+          style={{
+            cursor: 'pointer',
+            padding: '2px 6px',
+            borderRadius: '4px',
+            fontSize: '11px',
+            color: '#666',
+            textAlign: 'center'
+          }}
+          title="Click to set snooze days"
+        >
+          -
+        </div>
+      );
+    }
+    
+    return (
+      <span 
+        onClick={handleClick}
+        style={{ 
+          color: '#00ff00',
+          backgroundColor: '#222',
+          padding: '2px 6px',
+          borderRadius: '4px',
+          fontSize: '11px',
+          cursor: 'pointer',
+          display: 'inline-block'
+        }}
+        title="Click to edit snooze days"
+      >
+        +{currentSnoozeDays} days
+      </span>
+    );
+  }, [showSnoozeDaysInput, setContacts, setShowSnoozeDaysInput]);
 
   // Actions Renderer with LinkedIn, WhatsApp, Deal, and Email buttons - Updated to use icons
   const ActionsRenderer = (props) => {
@@ -271,12 +442,8 @@ const SnoozeDaysRenderer = (props) => {
     
     const handleLinkedInClick = (e) => {
       e.stopPropagation();
-      if (linkedin) {
-        window.open(linkedin, '_blank');
-      } else if (data.full_name || (data.first_name && data.last_name)) {
-        const searchName = data.full_name || `${data.first_name} ${data.last_name}`;
-        window.open(`https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(searchName)}`, '_blank');
-      }
+      setSelectedContactForLinkedIn(data);
+      setShowLinkedInSearchModal(true);
     };
     
     const handleWhatsAppClick = (e) => {
@@ -289,8 +456,77 @@ const SnoozeDaysRenderer = (props) => {
     
     const handleEmailClick = (e) => {
       e.stopPropagation();
+      
       if (email) {
-        window.location.href = `mailto:${email}`;
+        // Green button: Contact has email - directly open email compose
+        // Try Gmail first as it's most reliable, fallback to mailto
+        try {
+          window.open(`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(email)}`, '_blank');
+        } catch (error) {
+          // Fallback to mailto if Gmail fails
+          window.location.href = `mailto:${email}`;
+        }
+      } else {
+        // Grey button: No email - search on Superhuman using contact's name
+        // Debug: log the data structure to see available fields
+        console.log('Data structure for grey button:', data);
+        
+        // Try multiple ways to get the name
+        const firstName = data.first_name || data.firstName || '';
+        const lastName = data.last_name || data.lastName || '';
+        const fullName = data.full_name || data.fullName || '';
+        
+        console.log('Name fields found:', { firstName, lastName, fullName });
+        
+        if (firstName && lastName) {
+          // Open Superhuman search with the correct schema: first_name%20last_name
+          console.log('Using first + last names:', `${firstName}%20${lastName}`);
+          window.open(`https://mail.superhuman.com/search/${firstName}%20${lastName}`, '_blank');
+        } else if (fullName) {
+          // If we have full_name, split it and use the parts
+          const nameParts = fullName.trim().split(' ');
+          if (nameParts.length >= 2) {
+            const first = nameParts[0];
+            const last = nameParts[nameParts.length - 1]; // Get last part in case of middle names
+            console.log('Using split full name:', `${first}%20${last}`);
+            window.open(`https://mail.superhuman.com/search/${first}%20${last}`, '_blank');
+          } else if (nameParts.length === 1) {
+            // Just one name
+            console.log('Using single name:', nameParts[0]);
+            window.open(`https://mail.superhuman.com/search/${nameParts[0]}`, '_blank');
+          }
+        } else if (firstName || lastName) {
+          // If only one name is available, use just that
+          const availableName = firstName || lastName;
+          console.log('Using single available name:', availableName);
+          window.open(`https://mail.superhuman.com/search/${availableName}`, '_blank');
+        } else {
+          // Show a brief notification if no name is available
+          console.log('No names found in data:', data);
+          const notification = document.createElement('div');
+          notification.innerHTML = `
+            <div style="
+              position: fixed;
+              top: 20px;
+              right: 20px;
+              background: #331100;
+              color: #ff9900;
+              border: 1px solid #ff9900;
+              padding: 15px;
+              border-radius: 6px;
+              z-index: 10000;
+              font-family: 'Courier New', monospace;
+            ">
+              ⚠️ No contact name available for Superhuman search
+            </div>
+          `;
+          document.body.appendChild(notification);
+          setTimeout(() => {
+            if (notification.parentElement) {
+              notification.parentElement.removeChild(notification);
+            }
+          }, 3000);
+        }
       }
     };
     
@@ -386,12 +622,11 @@ const SnoozeDaysRenderer = (props) => {
         {/* Email Button */}
         <button
           onClick={handleEmailClick}
-          disabled={!email}
           style={{
             background: 'transparent',
             border: 'none',
             color: email ? '#00ff00' : '#666',
-            cursor: email ? 'pointer' : 'not-allowed',
+            cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -401,9 +636,9 @@ const SnoozeDaysRenderer = (props) => {
             transition: 'all 0.2s',
             padding: '0'
           }}
-          onMouseEnter={(e) => email && (e.currentTarget.style.transform = 'scale(1.1)')}
-          onMouseLeave={(e) => email && (e.currentTarget.style.transform = 'scale(1)')}
-          title="Email"
+          onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
+          onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          title={email ? "Email" : "Search on Superhuman"}
         >
           <FiMail size={16} />
         </button>
@@ -504,7 +739,7 @@ const SnoozeDaysRenderer = (props) => {
     },
     { 
       headerName: 'Snooze Days', 
-      field: 'snooze_days', 
+      field: 'snooze_days',
       cellRenderer: SnoozeDaysRenderer,
       width: 120,
       filter: 'agNumberColumnFilter',
@@ -537,7 +772,7 @@ const SnoozeDaysRenderer = (props) => {
       sortable: false,
       filter: false,
     }
-  ], [navigate, FrequencyRenderer]);
+  ], [navigate, FrequencyRenderer, SnoozeDaysRenderer]);
   
   // Load data on component mount
   useEffect(() => {
@@ -595,7 +830,7 @@ const SnoozeDaysRenderer = (props) => {
       
       setLoading('Accessing Keep in Touch data...');
       
-      // Fetch data from v_keep_in_touch with LinkedIn data
+      // Fetch data from v_keep_in_touch with LinkedIn data and snooze_days
       const { data: keepInTouchData, error: keepInTouchError } = await retrySupabaseRequest(async () => {
         return supabase
           .from('v_keep_in_touch')
@@ -784,6 +1019,25 @@ const SnoozeDaysRenderer = (props) => {
             setSelectedContactForDeal(null);
           }}
           contactData={selectedContactForDeal}
+        />
+      )}
+      
+      {/* LinkedIn Search & Enrich Modal */}
+      {showLinkedInSearchModal && selectedContactForLinkedIn && (
+        <LinkedinSearchOpenEnrich
+          isOpen={showLinkedInSearchModal}
+          onClose={() => {
+            setShowLinkedInSearchModal(false);
+            setSelectedContactForLinkedIn(null);
+          }}
+          linkedInUrl={selectedContactForLinkedIn.contacts?.linkedin || selectedContactForLinkedIn.linkedin || ''}
+          contactName={`${selectedContactForLinkedIn.first_name || ''} ${selectedContactForLinkedIn.last_name || ''}`.trim()}
+          firstName={selectedContactForLinkedIn.first_name || ''}
+          lastName={selectedContactForLinkedIn.last_name || ''}
+          email={selectedContactForLinkedIn.email || ''}
+          jobRole={selectedContactForLinkedIn.job_role || ''}
+          contactId={selectedContactForLinkedIn.contact_id}
+          onSaveData={handleSaveLinkedInData}
         />
       )}
     </Container>
