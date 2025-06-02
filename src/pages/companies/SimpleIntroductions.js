@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { AgGridReact } from '../../ag-grid-setup';
 import { FiEdit2, FiFileText, FiSearch, FiPlus } from 'react-icons/fi';
 import { createGlobalStyle } from 'styled-components';
+import { supabase } from '../../lib/supabaseClient';
 
 // Custom toast styling and grid overrides - exact same as ContactsListTable
 const ToastStyle = createGlobalStyle`
@@ -201,9 +202,10 @@ const LoadingText = styled.div`
 // Status renderer with color-coded dropdowns
 const StatusRenderer = (props) => {
   const [isEditing, setIsEditing] = useState(false);
-  const [currentStatus, setCurrentStatus] = useState(props.value || 'Pending');
+  const [currentStatus, setCurrentStatus] = useState(props.value || 'Requested');
 
   const statusOptions = [
+    'Requested',
     'Pending',
     'Scheduled', 
     'Completed',
@@ -212,22 +214,47 @@ const StatusRenderer = (props) => {
   ];
 
   const getStatusColor = (status) => {
-    switch (status) {
-      case 'Completed': return '#00ff00';
-      case 'Scheduled': return '#00bfff';
-      case 'Pending': return '#ffaa00';
-      case 'Follow-up Required': return '#ff6600';
-      case 'Cancelled': return '#ff3333';
-      default: return '#666';
+    switch (status?.toLowerCase()) {
+      case 'completed': return '#00ff00';
+      case 'scheduled': return '#ffaa00';
+      case 'pending': return '#ffff00';
+      case 'follow-up required': return '#ff6600';
+      case 'cancelled': return '#ff3333';
+      default: return '#aaaaaa';
     }
   };
 
   const handleStatusChange = async (e) => {
     const newStatus = e.target.value;
-    setCurrentStatus(newStatus);
-    setIsEditing(false);
-    // TODO: Update database
-    console.log('Status changed to:', newStatus);
+    const contactId = props.data?.id;
+    
+    if (!contactId) return;
+    
+    try {
+      // Update local state first
+      setCurrentStatus(newStatus);
+      setIsEditing(false);
+      
+      // Update the database
+      const { error } = await supabase
+        .from('introductions')
+        .update({ status: newStatus })
+        .eq('introduction_id', contactId);
+        
+      if (error) throw error;
+      
+      // Refresh the data to show the update
+      if (window.refreshIntroductionsData) {
+        window.refreshIntroductionsData();
+      }
+      
+      console.log(`Updated status for introduction ${contactId} to ${newStatus}`);
+    } catch (err) {
+      console.error('Error updating status:', err);
+      alert('Failed to update status. Please try again.');
+      // Reset to original value on error
+      setCurrentStatus(props.value || 'Requested');
+    }
   };
 
   const handleClick = (e) => {
@@ -332,10 +359,49 @@ const EditableTextRenderer = (props) => {
     setCurrentValue(e.target.value);
   };
 
-  const handleBlur = () => {
+  const handleBlur = async () => {
     setIsEditing(false);
-    // TODO: Update database
-    console.log('Field updated:', props.colDef.field, currentValue);
+    
+    if (currentValue !== (props.value || '')) {
+      const contactId = props.data?.id;
+      const fieldName = props.colDef.field;
+      
+      if (!contactId || !fieldName) return;
+      
+      try {
+        // Map frontend field names to database field names
+        const fieldMapping = {
+          'peopleIntroduced': null, // Contact IDs - will need special handling
+          'relatedCompanies': null, // Not available in schema
+          'notes': null, // Not available as direct field
+          'intro': 'text',
+          'rationale': 'category'
+        };
+        
+        const dbFieldName = fieldMapping[fieldName];
+        
+        // Skip fields that don't have direct database mapping
+        if (!dbFieldName) {
+          console.log(`Field ${fieldName} cannot be directly updated - no database mapping`);
+          return;
+        }
+        
+        // Update the database
+        const { error } = await supabase
+          .from('introductions')
+          .update({ [dbFieldName]: currentValue })
+          .eq('introduction_id', contactId);
+          
+        if (error) throw error;
+        
+        console.log(`Updated ${fieldName} (${dbFieldName}) for introduction ${contactId} to ${currentValue}`);
+      } catch (err) {
+        console.error('Error updating field:', err);
+        alert('Failed to update field. Please try again.');
+        // Reset to original value on error
+        setCurrentValue(props.value || '');
+      }
+    }
   };
 
   const handleKeyPress = (e) => {
@@ -425,60 +491,110 @@ const SimpleIntroductions = () => {
   const [error, setError] = useState(null);
   const [gridApi, setGridApi] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeCategory, setActiveCategory] = useState(null); // New state for category filter
 
-  // Sample data for introductions
-  const sampleData = [
-    {
-      id: 1,
-      date: '2024-01-15',
-      peopleIntroduced: 'John Smith → Sarah Johnson',
-      relatedCompanies: 'TechCorp, InnovateLabs',
-      notes: 'Both interested in AI collaboration',
-      intro: 'Connecting two AI experts for potential partnership',
-      rationale: 'Complementary expertise in ML and data science',
-      status: 'Completed'
-    },
-    {
-      id: 2,
-      date: '2024-01-20',
-      peopleIntroduced: 'Mike Chen → Lisa Rodriguez',
-      relatedCompanies: 'StartupX, VentureCapital Inc',
-      notes: '',
-      intro: 'Investor meeting for Series A funding',
-      rationale: 'Perfect match for startup funding needs',
-      status: 'Scheduled'
-    },
-    {
-      id: 3,
-      date: '2024-01-22',
-      peopleIntroduced: 'David Wilson → Emma Thompson',
-      relatedCompanies: 'DesignStudio, TechFlow',
-      notes: 'Follow up needed on design requirements',
-      intro: 'UX designer for mobile app project',
-      rationale: 'Emma has experience with similar projects',
-      status: 'Follow-up Required'
-    },
-    {
-      id: 4,
-      date: '2024-01-25',
-      peopleIntroduced: 'Alex Kumar → Rachel Green',
-      relatedCompanies: 'CloudTech, DataSystems',
-      notes: 'Meeting scheduled for next week',
-      intro: 'Cloud infrastructure consultation',
-      rationale: 'Rachel is expert in cloud migration',
-      status: 'Pending'
-    },
-    {
-      id: 5,
-      date: '2024-01-28',
-      peopleIntroduced: 'Tom Anderson → Maria Garcia',
-      relatedCompanies: 'FinanceFlow, CryptoVentures',
-      notes: 'Project cancelled due to budget constraints',
-      intro: 'Blockchain development partnership',
-      rationale: 'Both companies working on similar blockchain solutions',
-      status: 'Cancelled'
+  // Fetch data from Supabase introductions table
+  const fetchIntroductions = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const { data, error: fetchError } = await supabase
+        .from('introductions')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (fetchError) throw fetchError;
+      
+      // Debug: Log the raw data to see actual column names
+      console.log('Raw introductions data from Supabase:', data);
+      if (data && data.length > 0) {
+        console.log('First row keys:', Object.keys(data[0]));
+        console.log('First row sample:', data[0]);
+      }
+      
+      // Get all unique contact IDs from the introductions
+      const allContactIds = new Set();
+      data?.forEach(intro => {
+        if (intro.contact_ids && Array.isArray(intro.contact_ids)) {
+          intro.contact_ids.forEach(id => allContactIds.add(id));
+        }
+      });
+      
+      // Fetch contact names for the contact IDs
+      let contactsMap = {};
+      if (allContactIds.size > 0) {
+        console.log('Fetching contacts for IDs:', Array.from(allContactIds));
+        
+        const { data: contactsData, error: contactsError } = await supabase
+          .from('contacts')
+          .select('contact_id, first_name, last_name')
+          .in('contact_id', Array.from(allContactIds));
+        
+        if (contactsError) {
+          console.error('Error fetching contacts:', contactsError);
+        } else {
+          console.log('Fetched contacts data:', contactsData);
+          
+          // Create a map of contact_id to full name
+          contactsData?.forEach(contact => {
+            const fullName = `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+            console.log(`Contact ${contact.contact_id}: first_name="${contact.first_name}", last_name="${contact.last_name}", combined="${fullName}"`);
+            contactsMap[contact.contact_id] = fullName || 'Unknown Contact';
+          });
+          
+          console.log('Final contacts map:', contactsMap);
+          
+          // Check for missing contacts
+          const fetchedIds = new Set(contactsData?.map(c => c.contact_id) || []);
+          const missingIds = Array.from(allContactIds).filter(id => !fetchedIds.has(id));
+          if (missingIds.length > 0) {
+            console.warn('Contact IDs not found in database:', missingIds);
+          }
+        }
+      }
+      
+      // Transform the data to match the expected format
+      const transformedData = data?.map((item, index) => {
+        // Build people introduced string from contact_ids
+        let peopleIntroduced = '';
+        if (item.contact_ids && Array.isArray(item.contact_ids)) {
+          const contactNames = item.contact_ids.map(id => {
+            if (contactsMap[id]) {
+              return contactsMap[id];
+            } else {
+              // Contact not found in database - likely deleted
+              return `🚫 Deleted Contact`;
+            }
+          });
+          peopleIntroduced = contactNames.join(' → ');
+        }
+        
+        return {
+          id: item.introduction_id || index + 1,
+          date: item.introduction_date || (item.created_at ? new Date(item.created_at).toISOString().split('T')[0] : ''),
+          peopleIntroduced: peopleIntroduced,
+          relatedCompanies: '', // Not available in current schema, will be empty
+          notes: '', // Will use the notes field for additional info
+          intro: item.text || '',
+          rationale: item.category || '',
+          status: item.status || 'Requested'
+        };
+      }) || [];
+      
+      console.log('Transformed data:', transformedData);
+      
+      setIntroductions(transformedData);
+      setFilteredIntroductions(transformedData);
+    } catch (err) {
+      console.error('Error fetching introductions:', err);
+      setError(`Failed to load introductions: ${err.message}`);
+      setIntroductions([]);
+      setFilteredIntroductions([]);
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
 
   // Column definitions with the requested fields
   const columnDefs = useMemo(() => [
@@ -506,12 +622,22 @@ const SimpleIntroductions = () => {
     { 
       headerName: 'Related Companies', 
       field: 'relatedCompanies',
-      cellRenderer: EditableTextRenderer,
+      cellRenderer: (props) => (
+        <div style={{
+          padding: '2px 4px',
+          color: '#666',
+          fontStyle: 'italic',
+          display: 'flex',
+          alignItems: 'center'
+        }}>
+          Not available
+        </div>
+      ),
       minWidth: 180,
       flex: 2,
-      filter: 'agTextColumnFilter',
-      floatingFilter: true,
-      sortable: true,
+      filter: false,
+      floatingFilter: false,
+      sortable: false,
     },
     { 
       headerName: 'Notes', 
@@ -538,7 +664,7 @@ const SimpleIntroductions = () => {
       sortable: true,
     },
     { 
-      headerName: 'Rationale', 
+      headerName: 'Category', 
       field: 'rationale',
       cellRenderer: EditableTextRenderer,
       minWidth: 200,
@@ -606,43 +732,43 @@ const SimpleIntroductions = () => {
   const getRowStyle = useCallback((params) => {
     return { 
       background: params.node.rowIndex % 2 === 0 ? '#121212' : '#1a1a1a',
-      borderRight: 'none',
-      '&:hover': {
-        background: params.node.rowIndex % 2 === 0 ? '#121212' : '#1a1a1a',
-      },
-      '&.ag-row-selected': {
-        background: params.node.rowIndex % 2 === 0 ? '#121212' : '#1a1a1a',
-      }
+      borderRight: 'none'
     };
   }, []);
 
-  // Load sample data
+  // Load data and expose refresh function
   useEffect(() => {
-    const loadData = () => {
-      setLoading(true);
-      setTimeout(() => {
-        setIntroductions(sampleData);
-        setFilteredIntroductions(sampleData);
-        setLoading(false);
-      }, 500);
+    fetchIntroductions();
+    
+    // Expose refresh function globally for status updates
+    window.refreshIntroductionsData = refreshData;
+    
+    // Cleanup
+    return () => {
+      delete window.refreshIntroductionsData;
     };
-
-    loadData();
   }, []);
 
-  // Filter data based on search term
+  // Filter data based on search term and category
   useEffect(() => {
-    if (!searchTerm.trim()) {
-      setFilteredIntroductions(introductions);
-    } else {
-      const filtered = introductions.filter(intro => 
+    let filtered = introductions;
+    
+    // Apply category filter first
+    if (activeCategory !== null) {
+      filtered = filtered.filter(intro => intro.rationale === activeCategory);
+    }
+    
+    // Then apply search filter
+    if (searchTerm.trim()) {
+      filtered = filtered.filter(intro => 
         Object.values(intro).some(value => 
           value && value.toString().toLowerCase().includes(searchTerm.toLowerCase())
         )
       );
-      setFilteredIntroductions(filtered);
     }
-  }, [searchTerm, introductions]);
+    
+    setFilteredIntroductions(filtered);
+  }, [searchTerm, introductions, activeCategory]);
 
   // Handle window resize
   useEffect(() => {
@@ -674,6 +800,31 @@ const SimpleIntroductions = () => {
       cancelAnimationFrame(animationFrameId);
     };
   }, [gridApi]);
+
+  // Refresh data function
+  const refreshData = () => {
+    fetchIntroductions();
+  };
+
+  // Handle adding new introduction
+  const handleAddNew = () => {
+    console.log('Add new introduction clicked');
+    // TODO: Open modal or form for creating new introduction
+    // For now, we'll just refresh to show any new data
+    refreshData();
+  };
+
+  // Handle category filter
+  const handleCategoryFilter = (category) => {
+    // Toggle: if the same category is clicked, deselect it (show all)
+    if (activeCategory === category) {
+      setActiveCategory(null);
+      console.log('Deselecting category, showing all results');
+    } else {
+      setActiveCategory(category);
+      console.log('Filtering by category:', category);
+    }
+  };
 
   return (
     <Container>
@@ -713,14 +864,14 @@ const SimpleIntroductions = () => {
       {/* Filter Buttons - exact same styling as Invested/Monitoring buttons */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '0 20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', margin: '20px 0', gap: '10px' }}>
-          {/* First Filter Button */}
+          {/* Dealflow Filter Button */}
           <button
-            onClick={() => console.log('Filter per category 1 clicked')}
+            onClick={() => handleCategoryFilter('Dealflow')}
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              backgroundColor: 'rgba(0, 255, 0, 0.2)',
+              backgroundColor: activeCategory === 'Dealflow' ? 'rgba(0, 255, 0, 0.4)' : 'rgba(0, 255, 0, 0.2)',
               color: '#00ff00',
               border: '1px solid #00ff00',
               borderRadius: '4px',
@@ -730,28 +881,32 @@ const SimpleIntroductions = () => {
               cursor: 'pointer',
               transition: 'all 0.2s ease',
               fontFamily: 'Courier New, monospace',
-              boxShadow: '0 0 8px rgba(0, 255, 0, 0.3)'
+              boxShadow: activeCategory === 'Dealflow' ? '0 0 12px rgba(0, 255, 0, 0.5)' : '0 0 8px rgba(0, 255, 0, 0.3)'
             }}
             onMouseOver={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.3)';
-              e.currentTarget.style.boxShadow = '0 0 12px rgba(0, 255, 0, 0.5)';
+              if (activeCategory !== 'Dealflow') {
+                e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.3)';
+                e.currentTarget.style.boxShadow = '0 0 12px rgba(0, 255, 0, 0.5)';
+              }
             }}
             onMouseOut={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.2)';
-              e.currentTarget.style.boxShadow = '0 0 8px rgba(0, 255, 0, 0.3)';
+              if (activeCategory !== 'Dealflow') {
+                e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.2)';
+                e.currentTarget.style.boxShadow = '0 0 8px rgba(0, 255, 0, 0.3)';
+              }
             }}
           >
-            Filter per category
+            Dealflow
           </button>
 
-          {/* Second Filter Button */}
+          {/* Portfolio Company Filter Button */}
           <button
-            onClick={() => console.log('Filter per category 2 clicked')}
+            onClick={() => handleCategoryFilter('Portfolio Company')}
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              backgroundColor: 'rgba(0, 255, 0, 0.2)',
+              backgroundColor: activeCategory === 'Portfolio Company' ? 'rgba(0, 255, 0, 0.4)' : 'rgba(0, 255, 0, 0.2)',
               color: '#00ff00',
               border: '1px solid #00ff00',
               borderRadius: '4px',
@@ -761,28 +916,32 @@ const SimpleIntroductions = () => {
               cursor: 'pointer',
               transition: 'all 0.2s ease',
               fontFamily: 'Courier New, monospace',
-              boxShadow: '0 0 8px rgba(0, 255, 0, 0.3)'
+              boxShadow: activeCategory === 'Portfolio Company' ? '0 0 12px rgba(0, 255, 0, 0.5)' : '0 0 8px rgba(0, 255, 0, 0.3)'
             }}
             onMouseOver={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.3)';
-              e.currentTarget.style.boxShadow = '0 0 12px rgba(0, 255, 0, 0.5)';
+              if (activeCategory !== 'Portfolio Company') {
+                e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.3)';
+                e.currentTarget.style.boxShadow = '0 0 12px rgba(0, 255, 0, 0.5)';
+              }
             }}
             onMouseOut={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.2)';
-              e.currentTarget.style.boxShadow = '0 0 8px rgba(0, 255, 0, 0.3)';
+              if (activeCategory !== 'Portfolio Company') {
+                e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.2)';
+                e.currentTarget.style.boxShadow = '0 0 8px rgba(0, 255, 0, 0.3)';
+              }
             }}
           >
-            Filter per category
+            Portfolio Company
           </button>
 
-          {/* Third Filter Button */}
+          {/* Karma Points Filter Button */}
           <button
-            onClick={() => console.log('Filter per category 3 clicked')}
+            onClick={() => handleCategoryFilter('Karma Points')}
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              backgroundColor: 'rgba(0, 255, 0, 0.2)',
+              backgroundColor: activeCategory === 'Karma Points' ? 'rgba(0, 255, 0, 0.4)' : 'rgba(0, 255, 0, 0.2)',
               color: '#00ff00',
               border: '1px solid #00ff00',
               borderRadius: '4px',
@@ -792,23 +951,25 @@ const SimpleIntroductions = () => {
               cursor: 'pointer',
               transition: 'all 0.2s ease',
               fontFamily: 'Courier New, monospace',
-              boxShadow: '0 0 8px rgba(0, 255, 0, 0.3)'
+              boxShadow: activeCategory === 'Karma Points' ? '0 0 12px rgba(0, 255, 0, 0.5)' : '0 0 8px rgba(0, 255, 0, 0.3)'
             }}
             onMouseOver={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.3)';
-              e.currentTarget.style.boxShadow = '0 0 12px rgba(0, 255, 0, 0.5)';
+              if (activeCategory !== 'Karma Points') {
+                e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.3)';
+                e.currentTarget.style.boxShadow = '0 0 12px rgba(0, 255, 0, 0.5)';
+              }
             }}
             onMouseOut={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.2)';
-              e.currentTarget.style.boxShadow = '0 0 8px rgba(0, 255, 0, 0.3)';
+              if (activeCategory !== 'Karma Points') {
+                e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.2)';
+                e.currentTarget.style.boxShadow = '0 0 8px rgba(0, 255, 0, 0.3)';
+              }
             }}
           >
-            Filter per category
+            Karma Points
           </button>
         </div>
-        <AddNewButton onClick={() => {
-          console.log('Add new introduction clicked');
-        }}>
+        <AddNewButton onClick={handleAddNew}>
           <FiPlus /> ADD NEW
         </AddNewButton>
       </div>
