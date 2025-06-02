@@ -1086,6 +1086,126 @@ const ContactsRenderer = (props) => {
   );
 };
 
+// Category dropdown renderer for editing company categories
+const CategoryRenderer = (props) => {
+  // Get the actual category value from the correct field
+  const actualValue = props.value || props.data?.category || 'Not Set';
+  
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [selectedValue, setSelectedValue] = React.useState(actualValue);
+  
+  // Available category options from the database
+  const categoryOptions = [
+    'Inbox', 
+    'Professional Investor', 
+    'Institution', 
+    'Advisory', 
+    'Startup', 
+    'SME', 
+    'Corporation', 
+    'Media', 
+    'Corporate', 
+    'Not Set'
+  ];
+  
+  const handleClick = (e) => {
+    e.stopPropagation();
+    setIsEditing(true);
+  };
+  
+  const handleSave = async (newValue) => {
+    if (newValue === selectedValue) {
+      setIsEditing(false);
+      return;
+    }
+    
+    try {
+      // Update the database - use 'category' field
+      const { error } = await supabase
+        .from('companies')
+        .update({ category: newValue })
+        .eq('company_id', props.data.company_id);
+        
+      if (error) throw error;
+      
+      // Update local state
+      setSelectedValue(newValue);
+      props.setValue(newValue);
+      
+      // Update the data object
+      props.data.category = newValue;
+      
+      // Refresh the grid
+      if (props.api) {
+        props.api.refreshCells({
+          force: true,
+          rowNodes: [props.node],
+          columns: ['category']
+        });
+      }
+      
+      setIsEditing(false);
+      
+      // Show success message
+      toast.success(`Category updated to "${newValue}" for ${props.data.name}`);
+      
+    } catch (error) {
+      console.error('Error updating category:', error);
+      toast.error(`Failed to update category: ${error.message}`);
+      setIsEditing(false);
+    }
+  };
+  
+  const handleCancel = () => {
+    setIsEditing(false);
+  };
+  
+  if (isEditing) {
+    return (
+      <select
+        value={selectedValue}
+        onChange={(e) => handleSave(e.target.value)}
+        onBlur={handleCancel}
+        autoFocus
+        style={{
+          background: '#1a1a1a',
+          color: '#00ff00',
+          border: '1px solid #00ff00',
+          borderRadius: '4px',
+          padding: '4px',
+          fontSize: '13px',
+          width: '100%',
+          height: '100%'
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {categoryOptions.map(option => (
+          <option key={option} value={option} style={{ background: '#1a1a1a', color: '#00ff00' }}>
+            {option}
+          </option>
+        ))}
+      </select>
+    );
+  }
+  
+  return (
+    <div
+      onClick={handleClick}
+      style={{
+        cursor: 'pointer',
+        padding: '4px',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        color: selectedValue === 'Not Set' ? '#888' : '#e0e0e0'
+      }}
+      title="Click to edit category"
+    >
+      {selectedValue || 'Not Set'}
+    </div>
+  );
+};
+
 // Website link renderer
 const WebsiteRenderer = (props) => {
   const website = props.value;
@@ -1131,58 +1251,21 @@ const CompanyRenderer = (props) => {
     }
   };
   
-  // Handle edit icon click
-  const handleEditClick = (e) => {
-    e.stopPropagation(); // Prevent triggering the name click
-    if (props.data && props.data.company_id) {
-      // Set the selected company and open the modal
-      props.context.setSelectedCompany(props.data);
-      props.context.setShowEditModal(true);
-    }
-  };
-  
   return (
     <div 
       style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        cursor: 'pointer',
         width: '100%',
-        height: '100%'
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center'
       }}
+      onClick={handleClick}
     >
-      <div 
-        style={{
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          cursor: 'pointer',
-          flex: 1
-        }}
-        onClick={handleClick}
-      >
-        {companyName}
-      </div>
-      <button
-        onClick={handleEditClick}
-        style={{
-          background: 'none',
-          border: 'none',
-          color: '#ffffff',
-          cursor: 'pointer',
-          padding: '2px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          opacity: '0.6',
-          transition: 'opacity 0.2s'
-        }}
-        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
-        title="Edit Company"
-      >
-        <FiEdit2 size={12} />
-      </button>
+      {companyName}
     </div>
   );
 };
@@ -1215,6 +1298,44 @@ const SimpleCompanies = () => {
     { id: 'others', name: 'Others', icon: <FiPackage /> }
   ];
   
+  // Function to get filtered companies based on active tab
+  const getFilteredCompanies = useMemo(() => {
+    if (activeTab === 'full_list') {
+      return companies;
+    }
+    
+    // Map filter tabs to database category values
+    const categoryMapping = {
+      'investors': 'Professional Investor',
+      'advisor': 'Advisory', 
+      'inbox': 'Inbox',
+      'startup': 'Startup',
+      'institutions': 'Institution'
+    };
+    
+    if (activeTab === 'others') {
+      // Show companies that don't match any of the defined categories
+      const definedCategories = Object.values(categoryMapping);
+      const filtered = companies.filter(company => {
+        const category = company.category;
+        return !definedCategories.includes(category);
+      });
+      return filtered;
+    }
+    
+    // Filter by specific category
+    const targetCategory = categoryMapping[activeTab];
+    if (targetCategory) {
+      const filtered = companies.filter(company => {
+        const category = company.category;
+        return category === targetCategory;
+      });
+      return filtered;
+    }
+    
+    return companies;
+  }, [companies, activeTab]);
+
   // Column definitions
   const columnDefs = useMemo(() => [
     { 
@@ -1261,7 +1382,7 @@ const SimpleCompanies = () => {
     { 
       headerName: 'Category', 
       field: 'category',
-      valueFormatter: (params) => params.value || '-',
+      cellRenderer: CategoryRenderer,
       minWidth: 120,
       width: 140,
       filter: 'agTextColumnFilter',
@@ -1595,7 +1716,7 @@ const SimpleCompanies = () => {
           <LoadingBar />
           <LoadingMatrix />
         </LoadingContainer>
-      ) : companies.length === 0 && !error ? (
+      ) : getFilteredCompanies.length === 0 && !error ? (
         <div style={{ 
           padding: '40px', 
           textAlign: 'center',
@@ -1603,7 +1724,10 @@ const SimpleCompanies = () => {
           background: '#121212',
           borderRadius: '8px'
         }}>
-          No companies found. Try refreshing the page or check database connection.
+          {activeTab === 'full_list' 
+            ? 'No companies found. Try refreshing the page or check database connection.'
+            : `No companies found in "${menuItems.find(item => item.id === activeTab)?.name}" category.`
+          }
         </div>
       ) : (
         <div 
@@ -1623,7 +1747,7 @@ const SimpleCompanies = () => {
           }}
         >
           <AgGridReact
-            rowData={companies}
+            rowData={getFilteredCompanies}
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
             onGridReady={onGridReady}
