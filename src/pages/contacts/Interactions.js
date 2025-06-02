@@ -5,7 +5,7 @@ import ContactsListTable from '../../components/contacts/ContactsListTable';
 
 // Lazy load the components
 const KeepInTouch = lazy(() => import('./SimpleKeepInTouch')); // This is the existing keep in touch page
-const IntroductionsComponent = lazy(() => import('./Introductions')); // This is the existing introductions page
+const SimpleIntroductions = lazy(() => import('../companies/SimpleIntroductions')); // New introductions table
 
 // Style for the main content
 const Container = styled.div`
@@ -127,7 +127,7 @@ const Interactions = () => {
       case 'keepintouch':
         return <KeepInTouch />;
       case 'introductions':
-        return <IntroductionsComponent />;
+        return <SimpleIntroductions />;
       case 'celebrations':
         return (
           <div style={{ 

@@ -40,7 +40,6 @@ import Deals from './pages/companies/Deals';
 import SimpleDeals from './pages/companies/SimpleDeals';
 import Startups from './pages/companies/Startups';
 import Investors from './pages/companies/Investors';
-import IntroductionsPage from './pages/companies/SimpleIntroductions';
 import Planner from './pages/Planner';
 import ContactEnrichment from './pages/ContactEnrichment';
 import HubSpotMigrationTest from './components/HubSpotMigrationTest';
@@ -193,10 +192,6 @@ const App = () => {
           {
             path: "companies/investors",
             element: <Investors />
-          },
-          {
-            path: "introductions",
-            element: <IntroductionsPage />
           },
           // Other sections
           {
