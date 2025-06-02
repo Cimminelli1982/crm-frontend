@@ -313,22 +313,16 @@ const SimpleKeepInTouch = () => {
           
         if (error) throw error;
         
-        // Update the local data
-        setContacts(prevContacts => 
-          prevContacts.map(contact => 
-            contact.contact_id === contactId 
-              ? { ...contact, frequency: newFrequency }
-              : contact
-          )
-        );
-        
-        // Close the dropdown
+        // Close the dropdown first
         setShowFrequencyDropdown(prev => ({
           ...prev,
           [contactId]: false
         }));
         
-        console.log(`Updated frequency for contact ${contactId} to ${newFrequency}`);
+        // Refresh the entire table to get the latest data
+        await fetchContacts();
+        
+        console.log(`Updated frequency for contact ${contactId} to ${newFrequency} and refreshed table`);
       } catch (err) {
         console.error('Error updating frequency:', err);
         alert('Failed to update frequency. Please try again.');
@@ -575,10 +569,13 @@ const SimpleKeepInTouch = () => {
     
     const handleLinkedInClick = (e) => {
       e.stopPropagation();
-      console.log("Opening LinkedIn search & enrich modal");
-      console.log("Contact data:", data);
+      console.log("=== Opening LinkedIn search & enrich modal ===");
+      console.log("Full data object:", data);
+      console.log("Contacts nested data:", data.contacts);
+      console.log("Data keys:", Object.keys(data));
       console.log("LinkedIn URL from contacts:", data.contacts?.linkedin);
       console.log("LinkedIn URL direct:", data.linkedin);
+      console.log("=== Setting selected contact for LinkedIn ===");
       setSelectedContactForLinkedIn(data);
       setShowLinkedInSearchModal(true);
     };

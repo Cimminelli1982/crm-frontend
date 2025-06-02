@@ -1645,198 +1645,198 @@ const DealViewFindAddModal = ({
             e.preventDefault();
             handleCreateDeal(dealFormData);
           }}>
-            <SectionTitle>
-              <FiInfo size={16} /> Basic Information
-            </SectionTitle>
-            
-            <FormGroup>
-              <FormLabel htmlFor="opportunity">
-                <FiInfo size={14} /> Deal Name
-              </FormLabel>
-              <FormInput
-                id="opportunity"
-                name="opportunity"
-                value={dealFormData.opportunity}
-                onChange={handleDealInputChange}
-                placeholder="Enter deal name"
+          <SectionTitle>
+            <FiInfo size={16} /> Basic Information
+          </SectionTitle>
+          
+          <FormGroup>
+            <FormLabel htmlFor="opportunity">
+              <FiInfo size={14} /> Deal Name
+            </FormLabel>
+            <FormInput
+              id="opportunity"
+              name="opportunity"
+              value={dealFormData.opportunity}
+              onChange={handleDealInputChange}
+              placeholder="Enter deal name"
                 required
-              />
-              {dealErrors.opportunity && (
-                <ErrorMessage>
-                  <FiAlertTriangle size={12} /> {dealErrors.opportunity}
-                </ErrorMessage>
-              )}
+            />
+            {dealErrors.opportunity && (
+              <ErrorMessage>
+                <FiAlertTriangle size={12} /> {dealErrors.opportunity}
+              </ErrorMessage>
+            )}
+          </FormGroup>
+          
+          <FormRow>
+            <FormGroup>
+              <FormLabel htmlFor="category">
+                <FiList size={14} /> Category
+              </FormLabel>
+              <FormSelect
+                id="category"
+                name="category"
+                value={dealFormData.category}
+                onChange={handleDealInputChange}
+              >
+                {categoryOptions.map(option => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </FormSelect>
             </FormGroup>
             
-            <FormRow>
-              <FormGroup>
-                <FormLabel htmlFor="category">
-                  <FiList size={14} /> Category
-                </FormLabel>
-                <FormSelect
-                  id="category"
-                  name="category"
-                  value={dealFormData.category}
-                  onChange={handleDealInputChange}
-                >
-                  {categoryOptions.map(option => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </FormSelect>
-              </FormGroup>
-              
-              <FormGroup>
-                <FormLabel htmlFor="stage">
-                  <FiActivity size={14} /> Stage
-                </FormLabel>
-                <FormSelect
-                  id="stage"
-                  name="stage"
-                  value={dealFormData.stage}
-                  onChange={handleDealInputChange}
-                >
-                  {stageOptions.map(option => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </FormSelect>
-              </FormGroup>
-            </FormRow>
-            
-            <FormRow>
-              <FormGroup>
-                <FormLabel htmlFor="source_category">
+            <FormGroup>
+              <FormLabel htmlFor="stage">
+                <FiActivity size={14} /> Stage
+              </FormLabel>
+              <FormSelect
+                id="stage"
+                name="stage"
+                value={dealFormData.stage}
+                onChange={handleDealInputChange}
+              >
+                {stageOptions.map(option => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </FormSelect>
+            </FormGroup>
+          </FormRow>
+          
+          <FormRow>
+            <FormGroup>
+              <FormLabel htmlFor="source_category">
                   <FiSearch size={14} /> Source
-                </FormLabel>
-                <FormSelect
-                  id="source_category"
-                  name="source_category"
-                  value={dealFormData.source_category}
-                  onChange={handleDealInputChange}
-                >
-                  {sourceOptions.map(option => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </FormSelect>
-              </FormGroup>
-              
-              <FormGroup>
-                <FormLabel htmlFor="total_investment">
-                  <FiDollarSign size={14} /> Investment Amount
-                </FormLabel>
-                <FormInput
-                  id="total_investment"
-                  name="total_investment"
+              </FormLabel>
+              <FormSelect
+                id="source_category"
+                name="source_category"
+                value={dealFormData.source_category}
+                onChange={handleDealInputChange}
+              >
+                {sourceOptions.map(option => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </FormSelect>
+            </FormGroup>
+            
+            <FormGroup>
+              <FormLabel htmlFor="total_investment">
+                <FiDollarSign size={14} /> Investment Amount
+              </FormLabel>
+              <FormInput
+                id="total_investment"
+                name="total_investment"
                   type="number"
                   step="0.01"
                   min="0"
-                  value={dealFormData.total_investment}
-                  onChange={handleDealInputChange}
-                  placeholder="Enter investment amount"
-                />
-                {dealErrors.total_investment && (
-                  <ErrorMessage>
-                    <FiAlertTriangle size={12} /> {dealErrors.total_investment}
-                  </ErrorMessage>
-                )}
-                <HelpText>Enter numeric value only (no currency symbols)</HelpText>
-              </FormGroup>
-            </FormRow>
-            
-            <FormRow>
-              <FormGroup>
-                <FormLabel htmlFor="attachment">
-                  <FiPaperclip size={14} /> Attachment
-                </FormLabel>
-                <FormSelect
-                  id="attachment"
-                  name="attachment"
-                  value={dealFormData.attachment}
-                  onChange={handleDealInputChange}
-                >
-                  {attachmentOptions.map(option => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </FormSelect>
-                <HelpText>Select the type of attachment for this deal</HelpText>
-              </FormGroup>
-              
-              <FormGroup>
-                <FormLabel htmlFor="deal_tags">
-                  <FiTag size={14} /> Tags
-                </FormLabel>
-                <div style={{ display: 'flex', gap: '10px', width: '100%', position: 'relative' }}>
-                  <FormInput
-                    id="deal_tags"
-                    placeholder="Search or add tag and press Enter"
-                    value={newDealTag}
-                    onChange={handleDealTagInputChange}
-                    onKeyPress={handleDealTagKeyPress}
-                    autoComplete="off"
-                  />
-                  {showDealTagSuggestions && newDealTag.trim() && (
-                    <SuggestionsContainer>
-                      {availableTags
-                        .filter(tag => 
-                          tag.toLowerCase().includes(newDealTag.toLowerCase()) && 
-                          !dealFormData.tags.includes(tag)
-                        )
-                        .slice(0, 8) // Limit to 8 suggestions
-                        .map((tag, index) => (
-                          <SuggestionItem 
-                            key={index} 
-                            onClick={() => handleDealSuggestionClick(tag)}
-                          >
-                            {tag}
-                          </SuggestionItem>
-                        ))
-                      }
-                    </SuggestionsContainer>
-                  )}
-                </div>
-                <HelpText>Press Enter to add multiple tags</HelpText>
-                
-                {/* Display tags directly under the search bar */}
-                {dealFormData.tags.length > 0 && (
-                  <TagsContainer style={{ marginTop: '10px' }}>
-                    {dealFormData.tags.map(tag => (
-                      <Tag key={tag}>
-                        {tag}
-                        <button type="button" onClick={() => handleRemoveDealTag(tag)}>
-                          <FiX size={12} />
-                        </button>
-                      </Tag>
-                    ))}
-                  </TagsContainer>
-                )}
-              </FormGroup>
-            </FormRow>
-            
-            <FormGroup>
-              <FormLabel htmlFor="description">
-                <FiInfo size={14} /> Description
-              </FormLabel>
-              <FormTextarea
-                id="description"
-                name="description"
-                value={dealFormData.description}
+                value={dealFormData.total_investment}
                 onChange={handleDealInputChange}
-                placeholder="Enter description"
+                placeholder="Enter investment amount"
               />
+              {dealErrors.total_investment && (
+                <ErrorMessage>
+                  <FiAlertTriangle size={12} /> {dealErrors.total_investment}
+                </ErrorMessage>
+              )}
+              <HelpText>Enter numeric value only (no currency symbols)</HelpText>
+            </FormGroup>
+          </FormRow>
+          
+          <FormRow>
+            <FormGroup>
+              <FormLabel htmlFor="attachment">
+                <FiPaperclip size={14} /> Attachment
+              </FormLabel>
+              <FormSelect
+                id="attachment"
+                name="attachment"
+                value={dealFormData.attachment}
+                onChange={handleDealInputChange}
+              >
+                {attachmentOptions.map(option => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </FormSelect>
+              <HelpText>Select the type of attachment for this deal</HelpText>
             </FormGroup>
             
-            <ButtonGroup style={{ marginTop: '20px', justifyContent: 'flex-end', gap: '15px' }}>
+            <FormGroup>
+              <FormLabel htmlFor="deal_tags">
+                <FiTag size={14} /> Tags
+              </FormLabel>
+              <div style={{ display: 'flex', gap: '10px', width: '100%', position: 'relative' }}>
+                <FormInput
+                  id="deal_tags"
+                  placeholder="Search or add tag and press Enter"
+                  value={newDealTag}
+                  onChange={handleDealTagInputChange}
+                  onKeyPress={handleDealTagKeyPress}
+                  autoComplete="off"
+                />
+                {showDealTagSuggestions && newDealTag.trim() && (
+                  <SuggestionsContainer>
+                    {availableTags
+                      .filter(tag => 
+                        tag.toLowerCase().includes(newDealTag.toLowerCase()) && 
+                        !dealFormData.tags.includes(tag)
+                      )
+                      .slice(0, 8) // Limit to 8 suggestions
+                      .map((tag, index) => (
+                        <SuggestionItem 
+                          key={index} 
+                          onClick={() => handleDealSuggestionClick(tag)}
+                        >
+                          {tag}
+                        </SuggestionItem>
+                      ))
+                    }
+                  </SuggestionsContainer>
+                )}
+              </div>
+              <HelpText>Press Enter to add multiple tags</HelpText>
+              
+              {/* Display tags directly under the search bar */}
+              {dealFormData.tags.length > 0 && (
+                <TagsContainer style={{ marginTop: '10px' }}>
+                  {dealFormData.tags.map(tag => (
+                    <Tag key={tag}>
+                      {tag}
+                        <button type="button" onClick={() => handleRemoveDealTag(tag)}>
+                        <FiX size={12} />
+                      </button>
+                    </Tag>
+                  ))}
+                </TagsContainer>
+              )}
+            </FormGroup>
+          </FormRow>
+          
+          <FormGroup>
+            <FormLabel htmlFor="description">
+              <FiInfo size={14} /> Description
+            </FormLabel>
+            <FormTextarea
+              id="description"
+              name="description"
+              value={dealFormData.description}
+              onChange={handleDealInputChange}
+              placeholder="Enter description"
+            />
+          </FormGroup>
+          
+          <ButtonGroup style={{ marginTop: '20px', justifyContent: 'flex-end', gap: '15px' }}>
               <SaveButton type="submit" disabled={isProcessing}>
-                <FiPlus /> Create Deal
-              </SaveButton>
-            </ButtonGroup>
+              <FiPlus /> Create Deal
+            </SaveButton>
+          </ButtonGroup>
           </form>
         </FormContainer>
       </ModalContent>
