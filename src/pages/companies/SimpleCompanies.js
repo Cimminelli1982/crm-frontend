@@ -198,8 +198,6 @@ const TagContainer = styled.div`
   display: flex;
   gap: 1px;
   align-items: center;
-  padding-top: 4px;
-  padding-bottom: 1px;
   height: 100%;
 `;
 
@@ -1364,6 +1362,12 @@ const SimpleCompanies = () => {
       filter: 'agTextColumnFilter',
       floatingFilter: true,
       sortable: false,
+      cellStyle: { 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        padding: '0'
+      }
     },
     { 
       headerName: 'Deals', 

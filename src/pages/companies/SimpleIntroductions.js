@@ -4,6 +4,8 @@ import { AgGridReact } from '../../ag-grid-setup';
 import { FiEdit2, FiFileText, FiSearch, FiPlus } from 'react-icons/fi';
 import { createGlobalStyle } from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
+import { toast } from 'react-toastify';
+import IntroductionAddModal from '../../components/modals/IntroductionAddModal';
 
 // Custom toast styling and grid overrides - exact same as ContactsListTable
 const ToastStyle = createGlobalStyle`
@@ -202,58 +204,24 @@ const LoadingText = styled.div`
 // Status renderer with color-coded dropdowns
 const StatusRenderer = (props) => {
   const [isEditing, setIsEditing] = useState(false);
-  const [currentStatus, setCurrentStatus] = useState(props.value || 'Requested');
+  const [selectedValue, setSelectedValue] = useState(props.value || 'Requested');
 
   const statusOptions = [
+    'Promised',
     'Requested',
-    'Pending',
-    'Scheduled', 
-    'Completed',
-    'Cancelled',
-    'Follow-up Required'
+    'Done and Dusted',
+    'Aborted',
+    'Done, but need monitoring'
   ];
 
   const getStatusColor = (status) => {
     switch (status?.toLowerCase()) {
-      case 'completed': return '#00ff00';
-      case 'scheduled': return '#ffaa00';
-      case 'pending': return '#ffff00';
-      case 'follow-up required': return '#ff6600';
-      case 'cancelled': return '#ff3333';
+      case 'done and dusted': return '#00ff00';
+      case 'done, but need monitoring': return '#ffaa00';
+      case 'promised': return '#ffff00';
+      case 'requested': return '#aaaaaa';
+      case 'aborted': return '#ff3333';
       default: return '#aaaaaa';
-    }
-  };
-
-  const handleStatusChange = async (e) => {
-    const newStatus = e.target.value;
-    const contactId = props.data?.id;
-    
-    if (!contactId) return;
-    
-    try {
-      // Update local state first
-      setCurrentStatus(newStatus);
-      setIsEditing(false);
-      
-      // Update the database
-      const { error } = await supabase
-        .from('introductions')
-        .update({ status: newStatus })
-        .eq('introduction_id', contactId);
-        
-      if (error) throw error;
-      
-      // Refresh the data to show the update
-      if (window.refreshIntroductionsData) {
-        window.refreshIntroductionsData();
-      }
-      
-      console.log(`Updated status for introduction ${contactId} to ${newStatus}`);
-    } catch (err) {
-      console.error('Error updating status:', err);
-      alert('Failed to update status. Please try again.');
-      // Reset to original value on error
-      setCurrentStatus(props.value || 'Requested');
     }
   };
 
@@ -262,30 +230,72 @@ const StatusRenderer = (props) => {
     setIsEditing(true);
   };
 
-  const handleBlur = () => {
+  const handleSave = async (newValue) => {
+    if (newValue === selectedValue) {
+      setIsEditing(false);
+      return;
+    }
+    
+    try {
+      // Update the database
+      const { error } = await supabase
+        .from('introductions')
+        .update({ status: newValue })
+        .eq('introduction_id', props.data.id);
+        
+      if (error) throw error;
+      
+      // Update local state
+      setSelectedValue(newValue);
+      props.setValue(newValue);
+      
+      // Update the data object
+      props.data.status = newValue;
+      
+      // Refresh the grid
+      if (props.api) {
+        props.api.refreshCells({
+          force: true,
+          rowNodes: [props.node],
+          columns: ['status']
+        });
+      }
+      
+      setIsEditing(false);
+      toast.success(`Status updated to "${newValue}"`);
+      
+    } catch (error) {
+      console.error('Error updating status:', error);
+      toast.error(`Failed to update status: ${error.message}`);
+      setIsEditing(false);
+    }
+  };
+
+  const handleCancel = () => {
     setIsEditing(false);
   };
 
   if (isEditing) {
     return (
       <select
-        value={currentStatus}
-        onChange={handleStatusChange}
-        onBlur={handleBlur}
+        value={selectedValue}
+        onChange={(e) => handleSave(e.target.value)}
+        onBlur={handleCancel}
         autoFocus
         style={{
-          background: '#222',
-          color: getStatusColor(currentStatus),
-          border: `1px solid ${getStatusColor(currentStatus)}`,
+          background: '#1a1a1a',
+          color: '#00ff00',
+          border: '1px solid #00ff00',
           borderRadius: '4px',
-          padding: '2px 4px',
-          fontSize: '12px',
+          padding: '4px',
+          fontSize: '13px',
           width: '100%',
-          outline: 'none'
+          height: '100%'
         }}
+        onClick={(e) => e.stopPropagation()}
       >
         {statusOptions.map(option => (
-          <option key={option} value={option} style={{ background: '#222', color: getStatusColor(option) }}>
+          <option key={option} value={option} style={{ background: '#1a1a1a', color: '#00ff00' }}>
             {option}
           </option>
         ))}
@@ -297,17 +307,17 @@ const StatusRenderer = (props) => {
     <div
       onClick={handleClick}
       style={{
-        color: '#ffffff',
         cursor: 'pointer',
-        padding: '2px 4px',
-        fontSize: '12px',
-        textAlign: 'center',
-        whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis'
+        padding: '4px',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        color: getStatusColor(selectedValue),
+        justifyContent: 'center'
       }}
+      title="Click to edit status"
     >
-      {currentStatus}
+      {selectedValue || 'Select status'}
     </div>
   );
 };
@@ -483,6 +493,114 @@ const AddNewButton = styled.button`
   }
 `;
 
+// Category dropdown renderer for editing introduction categories
+const CategoryDropdownRenderer = (props) => {
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [selectedValue, setSelectedValue] = React.useState(props.value || '');
+  
+  // Available category options for introductions
+  const categoryOptions = [
+    'Dealflow',
+    'Portfolio Company', 
+    'Karma Points'
+  ];
+  
+  const handleClick = (e) => {
+    e.stopPropagation();
+    setIsEditing(true);
+  };
+  
+  const handleSave = async (newValue) => {
+    if (newValue === selectedValue) {
+      setIsEditing(false);
+      return;
+    }
+    
+    try {
+      // Update the database
+      const { error } = await supabase
+        .from('introductions')
+        .update({ category: newValue })
+        .eq('introduction_id', props.data.id);
+        
+      if (error) throw error;
+      
+      // Update local state
+      setSelectedValue(newValue);
+      props.setValue(newValue);
+      
+      // Update the data object
+      props.data.rationale = newValue;
+      
+      // Refresh the grid
+      if (props.api) {
+        props.api.refreshCells({
+          force: true,
+          rowNodes: [props.node],
+          columns: ['rationale']
+        });
+      }
+      
+      setIsEditing(false);
+      toast.success(`Category updated to "${newValue}"`);
+      
+    } catch (error) {
+      console.error('Error updating category:', error);
+      toast.error(`Failed to update category: ${error.message}`);
+      setIsEditing(false);
+    }
+  };
+  
+  const handleCancel = () => {
+    setIsEditing(false);
+  };
+  
+  if (isEditing) {
+    return (
+      <select
+        value={selectedValue}
+        onChange={(e) => handleSave(e.target.value)}
+        onBlur={handleCancel}
+        autoFocus
+        style={{
+          background: '#1a1a1a',
+          color: '#00ff00',
+          border: '1px solid #00ff00',
+          borderRadius: '4px',
+          padding: '4px',
+          fontSize: '13px',
+          width: '100%',
+          height: '100%'
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {categoryOptions.map(option => (
+          <option key={option} value={option} style={{ background: '#1a1a1a', color: '#00ff00' }}>
+            {option}
+          </option>
+        ))}
+      </select>
+    );
+  }
+  
+  return (
+    <div
+      onClick={handleClick}
+      style={{
+        cursor: 'pointer',
+        padding: '4px',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        color: selectedValue ? '#e0e0e0' : '#888'
+      }}
+      title="Click to edit category"
+    >
+      {selectedValue || 'Select category'}
+    </div>
+  );
+};
+
 // Main component
 const SimpleIntroductions = () => {
   const [introductions, setIntroductions] = useState([]);
@@ -492,6 +610,7 @@ const SimpleIntroductions = () => {
   const [gridApi, setGridApi] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState(null); // New state for category filter
+  const [showAddModal, setShowAddModal] = useState(false);
 
   // Fetch data from Supabase introductions table
   const fetchIntroductions = async () => {
@@ -523,6 +642,7 @@ const SimpleIntroductions = () => {
       
       // Fetch contact names for the contact IDs
       let contactsMap = {};
+      let companiesMap = {};
       if (allContactIds.size > 0) {
         console.log('Fetching contacts for IDs:', Array.from(allContactIds));
         
@@ -552,6 +672,42 @@ const SimpleIntroductions = () => {
             console.warn('Contact IDs not found in database:', missingIds);
           }
         }
+        
+        // Fetch companies for the contacts
+        console.log('Fetching companies for contact IDs:', Array.from(allContactIds));
+        
+        const { data: contactCompaniesData, error: contactCompaniesError } = await supabase
+          .from('contact_companies')
+          .select(`
+            contact_id,
+            company_id,
+            companies!inner(
+              company_id,
+              name
+            )
+          `)
+          .in('contact_id', Array.from(allContactIds));
+          
+        if (contactCompaniesError) {
+          console.error('Error fetching contact companies:', contactCompaniesError);
+        } else {
+          console.log('Fetched contact companies data:', contactCompaniesData);
+          
+          // Create a map of contact_id to array of company names
+          contactCompaniesData?.forEach(contactCompany => {
+            const contactId = contactCompany.contact_id;
+            const companyName = contactCompany.companies?.name;
+            
+            if (companyName) {
+              if (!companiesMap[contactId]) {
+                companiesMap[contactId] = [];
+              }
+              companiesMap[contactId].push(companyName);
+            }
+          });
+          
+          console.log('Final companies map:', companiesMap);
+        }
       }
       
       // Transform the data to match the expected format
@@ -570,11 +726,25 @@ const SimpleIntroductions = () => {
           peopleIntroduced = contactNames.join(' → ');
         }
         
+        // Build related companies string from contact_ids
+        let relatedCompanies = '';
+        if (item.contact_ids && Array.isArray(item.contact_ids)) {
+          const allCompanies = new Set();
+          item.contact_ids.forEach(contactId => {
+            if (companiesMap[contactId]) {
+              companiesMap[contactId].forEach(companyName => {
+                allCompanies.add(companyName);
+              });
+            }
+          });
+          relatedCompanies = Array.from(allCompanies).join(', ');
+        }
+        
         return {
           id: item.introduction_id || index + 1,
           date: item.introduction_date || (item.created_at ? new Date(item.created_at).toISOString().split('T')[0] : ''),
           peopleIntroduced: peopleIntroduced,
-          relatedCompanies: '', // Not available in current schema, will be empty
+          relatedCompanies: relatedCompanies,
           notes: '', // Will use the notes field for additional info
           intro: item.text || '',
           rationale: item.category || '',
@@ -625,36 +795,25 @@ const SimpleIntroductions = () => {
       cellRenderer: (props) => (
         <div style={{
           padding: '2px 4px',
-          color: '#666',
-          fontStyle: 'italic',
+          color: props.value ? '#e0e0e0' : '#666',
+          fontStyle: props.value ? 'normal' : 'italic',
           display: 'flex',
-          alignItems: 'center'
+          alignItems: 'center',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis'
         }}>
-          Not available
+          {props.value || 'No companies'}
         </div>
       ),
       minWidth: 180,
       flex: 2,
-      filter: false,
-      floatingFilter: false,
-      sortable: false,
+      filter: 'agTextColumnFilter',
+      floatingFilter: true,
+      sortable: true,
     },
     { 
       headerName: 'Notes', 
-      field: 'notes',
-      cellRenderer: NotesRenderer,
-      minWidth: 70,
-      flex: 0.8,
-      sortable: false,
-      filter: false,
-      cellStyle: { 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center'
-      }
-    },
-    { 
-      headerName: 'Intro', 
       field: 'intro',
       cellRenderer: EditableTextRenderer,
       minWidth: 200,
@@ -666,7 +825,7 @@ const SimpleIntroductions = () => {
     { 
       headerName: 'Category', 
       field: 'rationale',
-      cellRenderer: EditableTextRenderer,
+      cellRenderer: CategoryDropdownRenderer,
       minWidth: 200,
       flex: 2.5,
       filter: 'agTextColumnFilter',
@@ -809,9 +968,7 @@ const SimpleIntroductions = () => {
   // Handle adding new introduction
   const handleAddNew = () => {
     console.log('Add new introduction clicked');
-    // TODO: Open modal or form for creating new introduction
-    // For now, we'll just refresh to show any new data
-    refreshData();
+    setShowAddModal(true);
   };
 
   // Handle category filter
@@ -885,14 +1042,14 @@ const SimpleIntroductions = () => {
             }}
             onMouseOver={(e) => {
               if (activeCategory !== 'Dealflow') {
-                e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.3)';
-                e.currentTarget.style.boxShadow = '0 0 12px rgba(0, 255, 0, 0.5)';
+              e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.3)';
+              e.currentTarget.style.boxShadow = '0 0 12px rgba(0, 255, 0, 0.5)';
               }
             }}
             onMouseOut={(e) => {
               if (activeCategory !== 'Dealflow') {
-                e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.2)';
-                e.currentTarget.style.boxShadow = '0 0 8px rgba(0, 255, 0, 0.3)';
+              e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.2)';
+              e.currentTarget.style.boxShadow = '0 0 8px rgba(0, 255, 0, 0.3)';
               }
             }}
           >
@@ -920,14 +1077,14 @@ const SimpleIntroductions = () => {
             }}
             onMouseOver={(e) => {
               if (activeCategory !== 'Portfolio Company') {
-                e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.3)';
-                e.currentTarget.style.boxShadow = '0 0 12px rgba(0, 255, 0, 0.5)';
+              e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.3)';
+              e.currentTarget.style.boxShadow = '0 0 12px rgba(0, 255, 0, 0.5)';
               }
             }}
             onMouseOut={(e) => {
               if (activeCategory !== 'Portfolio Company') {
-                e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.2)';
-                e.currentTarget.style.boxShadow = '0 0 8px rgba(0, 255, 0, 0.3)';
+              e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.2)';
+              e.currentTarget.style.boxShadow = '0 0 8px rgba(0, 255, 0, 0.3)';
               }
             }}
           >
@@ -955,14 +1112,14 @@ const SimpleIntroductions = () => {
             }}
             onMouseOver={(e) => {
               if (activeCategory !== 'Karma Points') {
-                e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.3)';
-                e.currentTarget.style.boxShadow = '0 0 12px rgba(0, 255, 0, 0.5)';
+              e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.3)';
+              e.currentTarget.style.boxShadow = '0 0 12px rgba(0, 255, 0, 0.5)';
               }
             }}
             onMouseOut={(e) => {
               if (activeCategory !== 'Karma Points') {
-                e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.2)';
-                e.currentTarget.style.boxShadow = '0 0 8px rgba(0, 255, 0, 0.3)';
+              e.currentTarget.style.backgroundColor = 'rgba(0, 255, 0, 0.2)';
+              e.currentTarget.style.boxShadow = '0 0 8px rgba(0, 255, 0, 0.3)';
               }
             }}
           >
@@ -1041,6 +1198,14 @@ const SimpleIntroductions = () => {
           </div>
         )}
       </TableContainer>
+
+      {showAddModal && (
+        <IntroductionAddModal
+          isOpen={showAddModal}
+          onClose={() => setShowAddModal(false)}
+          onSave={refreshData}
+        />
+      )}
     </Container>
   );
 };
