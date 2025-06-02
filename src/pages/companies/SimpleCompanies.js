@@ -950,9 +950,9 @@ const ContactsRenderer = (props) => {
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
+        justifyContent: 'flex-start',
         width: '100%',
-        gap: '4px'
+        gap: '2px'
       }}>
         {/* Contact display */}
         <div style={{
@@ -960,22 +960,22 @@ const ContactsRenderer = (props) => {
           alignItems: 'center',
           backgroundColor: '#1a1a1a',
           color: '#ffffff',
-          padding: '1px 4px',
-          borderRadius: '3px',
-          fontSize: '10px',
+          padding: '0px 6px',
+          borderRadius: '4px',
+          fontSize: '11px',
           border: '1px solid #ffffff',
-          boxShadow: '0 0 2px rgba(255, 255, 255, 0.1)',
+          boxShadow: '0 0 4px rgba(255, 255, 255, 0.2)',
           whiteSpace: 'nowrap',
           overflow: 'hidden',
-          lineHeight: '14px',
+          lineHeight: '16px',
           width: 'fit-content',
           maxWidth: hasMultipleContacts ? '140px' : '160px',
-          height: '16px',
+          height: '18px',
           position: 'relative'
         }}>
           <span style={{
             cursor: 'pointer',
-            maxWidth: hasMultipleContacts ? '100px' : '130px',
+            maxWidth: hasMultipleContacts ? '120px' : '160px',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             display: 'inline-block'
@@ -993,11 +993,11 @@ const ContactsRenderer = (props) => {
           {/* Counter indicator for multiple contacts */}
           {hasMultipleContacts && (
             <div style={{
-              fontSize: '8px',
+              fontSize: '9px',
               color: '#cccccc',
-              marginLeft: '3px',
-              padding: '0 1px',
-              borderRadius: '2px',
+              marginLeft: '4px',
+              padding: '0 2px',
+              borderRadius: '3px',
               backgroundColor: '#333333'
             }}>
               {currentContactIndex + 1}/{contacts.length}
@@ -1012,17 +1012,15 @@ const ContactsRenderer = (props) => {
               color: '#ffffff',
               cursor: 'pointer',
               padding: '0',
-              marginLeft: '3px',
-              fontSize: '8px',
+              marginLeft: '4px',
+              fontSize: '10px',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              width: '12px',
-              height: '12px'
+              justifyContent: 'center'
             }}
             title="Remove Contact Association"
           >
-            <MdClear size={10} />
+            <MdClear size={14} />
           </button>
         </div>
         
@@ -1039,11 +1037,10 @@ const ContactsRenderer = (props) => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: '12px',
-              height: '12px',
-              fontSize: '8px',
-              opacity: '0.8',
-              marginLeft: '2px'
+              width: '14px',
+              height: '14px',
+              fontSize: '10px',
+              opacity: '0.8'
             }}
             title="Next contact"
           >
@@ -1058,19 +1055,19 @@ const ContactsRenderer = (props) => {
             background: 'none',
             border: 'none',
             color: '#ffffff',
-            borderRadius: '3px',
-            width: '16px',
-            height: '16px',
+            borderRadius: '4px',
+            width: '20px',
+            height: '20px',
             padding: '0',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             cursor: 'pointer',
-            fontSize: '12px'
+            fontSize: '14px'
           }}
           title="Associate Contact"
         >
-          <FiPlus size={12} />
+          <FiPlus size={14} />
         </button>
       </div>
       
