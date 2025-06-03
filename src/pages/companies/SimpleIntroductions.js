@@ -600,88 +600,223 @@ const CategoryDropdownRenderer = (props) => {
 // Actions renderer - shows delete button for each introduction
 const ActionsRenderer = (props) => {
   const handleDelete = async (e) => {
-    e.stopPropagation();
+    e?.stopPropagation(); // Prevent row selection
     
-    const introduction = props.data;
-    if (!introduction || !introduction.id) return;
-    
+    if (!props.data || !props.data.id) {
+      console.error('No introduction ID found');
+      return;
+    }
+
+    const introductionId = props.data.id;
     const confirmDelete = window.confirm(
-      `Are you sure you want to delete this introduction? This action cannot be undone.`
+      'Are you sure you want to delete this introduction?\n\n' +
+      'This action cannot be undone.'
     );
-    
-    if (!confirmDelete) return;
-    
+
+    if (!confirmDelete) {
+      return;
+    }
+
     try {
-      // Show loading state
-      const button = e.currentTarget;
-      const originalContent = button.innerHTML;
-      button.disabled = true;
-      button.style.opacity = '0.5';
-      button.innerHTML = '<div style="width: 14px; height: 14px; border: 2px solid #00ff00; border-top: 2px solid transparent; border-radius: 50%; animation: spin 1s linear infinite;"></div>';
-      
-      console.log('Deleting introduction with ID:', introduction.id);
-      
-      // Delete from the introductions table
       const { error } = await supabase
         .from('introductions')
         .delete()
-        .eq('introduction_id', introduction.id);
-      
+        .eq('introduction_id', introductionId);
+
       if (error) throw error;
+
+      toast.success('Introduction deleted successfully!');
       
-      console.log('Introduction deleted successfully');
-      
-      // Refresh the grid data
-      if (props.api) {
-        // Refresh via the parent component
-        if (window.refreshIntroductionsData) {
-          window.refreshIntroductionsData();
-        }
+      // Refresh the data
+      if (props.context && props.context.refreshData) {
+        props.context.refreshData();
       }
-      
-      toast.success('Introduction deleted successfully');
-      
     } catch (error) {
       console.error('Error deleting introduction:', error);
       toast.error(`Failed to delete introduction: ${error.message}`);
-      
-      // Restore button state on error
-      const button = e.currentTarget;
-      if (button) {
-        button.disabled = false;
-        button.style.opacity = '0.7';
-        button.innerHTML = '<svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" height="14" width="14"><polyline points="3,6 5,6 21,6"></polyline><path d="m19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"></path></svg>';
-      }
     }
   };
-  
+
   return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      height: '100%'
-    }}>
+    <div 
+      style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100%'
+      }}
+    >
       <button
         onClick={handleDelete}
         style={{
-          background: 'none',
+          background: 'transparent',
           border: 'none',
-          color: '#00ff00',
+          color: '#ff6b6b',
           cursor: 'pointer',
-          padding: '4px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          opacity: '0.7',
-          transition: 'opacity 0.2s'
+          width: '20px',
+          height: '20px',
+          borderRadius: '3px',
+          transition: 'all 0.2s',
+          padding: '0',
+          margin: '0'
         }}
-        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
         title="Delete Introduction"
+        onMouseEnter={(e) => {
+          e.target.style.transform = 'scale(1.1)';
+          e.target.style.color = '#ff5555';
+        }}
+        onMouseLeave={(e) => {
+          e.target.style.transform = 'scale(1)';
+          e.target.style.color = '#ff6b6b';
+        }}
       >
         <FiTrash2 size={14} />
       </button>
+    </div>
+  );
+};
+
+// RelatedCompaniesRenderer - styled similar to CompanyRenderer but without X and plus buttons
+const RelatedCompaniesRenderer = (props) => {
+  const [currentCompanyIndex, setCurrentCompanyIndex] = useState(0);
+  
+  // Parse companies from the relatedCompanies string (comma-separated)
+  const companiesString = props.value || '';
+  const companies = companiesString ? companiesString.split(', ').filter(name => name.trim()) : [];
+  const hasMultipleCompanies = companies.length > 1;
+  
+  // Navigation functions for company carousel
+  const goToNextCompany = (e) => {
+    e?.stopPropagation();
+    setCurrentCompanyIndex((prevIndex) => (prevIndex + 1) % companies.length);
+  };
+  
+  // Prevent event propagation
+  const handleContainerClick = (e) => {
+    e.stopPropagation();
+  };
+
+  if (!companies.length) {
+    return (
+      <div style={{
+        padding: '2px 4px',
+        color: '#666',
+        fontStyle: 'italic',
+        display: 'flex',
+        alignItems: 'center',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis'
+      }}>
+        No companies
+      </div>
+    );
+  }
+  
+  // Current company to display
+  const currentCompany = companies[currentCompanyIndex];
+  
+  // Navigation button styles
+  const navButtonStyle = {
+    background: 'none',
+    border: 'none',
+    color: '#ffffff',
+    cursor: 'pointer',
+    padding: '0',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '14px',
+    height: '14px',
+    fontSize: '10px',
+    opacity: '0.8'
+  };
+  
+  // Ensure consistent row height
+  const rowHeight = 36;
+  
+  return (
+    <div 
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        height: rowHeight + 'px',
+        minHeight: rowHeight + 'px',
+        width: '100%',
+        position: 'relative'
+      }}
+      onClick={handleContainerClick}
+    >
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '4px'
+      }}>
+        {/* Company display with white outline box - tight around content */}
+        <div 
+          style={{ 
+            display: 'inline-flex', 
+            alignItems: 'center',
+            backgroundColor: '#1a1a1a',
+            color: '#ffffff',
+            padding: '0px 6px',
+            borderRadius: '4px',
+            fontSize: '11px',
+            border: '1px solid #ffffff',
+            boxShadow: '0 0 4px rgba(255, 255, 255, 0.2)',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            lineHeight: '16px',
+            height: '18px',
+            position: 'relative',
+            maxWidth: '200px' // Prevent extremely long names from breaking layout
+          }}
+        >
+          <span 
+            style={{ 
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              display: 'inline-block',
+              maxWidth: hasMultipleCompanies ? '120px' : '160px'
+            }}
+            title={currentCompany}
+          >
+            {currentCompany}
+          </span>
+          
+          {/* Counter indicator for multiple companies */}
+          {hasMultipleCompanies && (
+            <div style={{
+              fontSize: '9px',
+              color: '#cccccc',
+              marginLeft: '4px',
+              padding: '0 2px',
+              borderRadius: '3px',
+              backgroundColor: '#333333',
+              flexShrink: 0
+            }}>
+              {currentCompanyIndex + 1}/{companies.length}
+            </div>
+          )}
+        </div>
+        
+        {/* Right navigation arrow (only visible for multiple companies) */}
+        {hasMultipleCompanies && (
+          <button
+            onClick={goToNextCompany}
+            style={{
+              ...navButtonStyle,
+              marginLeft: '2px'
+            }}
+            title="Next company"
+          >
+            &#9654;
+          </button>
+        )}
+      </div>
     </div>
   );
 };
@@ -856,6 +991,18 @@ const SimpleIntroductions = () => {
     { 
       headerName: 'Date', 
       field: 'date',
+      valueFormatter: (params) => {
+        if (!params.value) return '';
+        try {
+          const date = new Date(params.value);
+          const day = String(date.getDate()).padStart(2, '0');
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const year = String(date.getFullYear()).slice(-2);
+          return `${day}/${month}/${year}`;
+        } catch (error) {
+          return params.value;
+        }
+      },
       minWidth: 100,
       flex: 1,
       filter: 'agDateColumnFilter',
@@ -869,7 +1016,7 @@ const SimpleIntroductions = () => {
       field: 'peopleIntroduced',
       cellRenderer: EditableTextRenderer,
       minWidth: 200,
-      flex: 2.5,
+      flex: 3,
       filter: 'agTextColumnFilter',
       floatingFilter: true,
       sortable: true,
@@ -877,20 +1024,7 @@ const SimpleIntroductions = () => {
     { 
       headerName: 'Related Companies', 
       field: 'relatedCompanies',
-      cellRenderer: (props) => (
-        <div style={{
-          padding: '2px 4px',
-          color: props.value ? '#e0e0e0' : '#666',
-          fontStyle: props.value ? 'normal' : 'italic',
-          display: 'flex',
-          alignItems: 'center',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis'
-        }}>
-          {props.value || 'No companies'}
-        </div>
-      ),
+      cellRenderer: RelatedCompaniesRenderer,
       minWidth: 180,
       flex: 2,
       filter: 'agTextColumnFilter',
@@ -911,8 +1045,8 @@ const SimpleIntroductions = () => {
       headerName: 'Category', 
       field: 'rationale',
       cellRenderer: CategoryDropdownRenderer,
-      minWidth: 200,
-      flex: 2.5,
+      minWidth: 150,
+      flex: 1.8,
       filter: 'agTextColumnFilter',
       floatingFilter: true,
       sortable: true,
@@ -936,8 +1070,8 @@ const SimpleIntroductions = () => {
       headerName: 'Actions',
       field: 'actions',
       cellRenderer: ActionsRenderer,
-      minWidth: 100,
-      flex: 1,
+      minWidth: 80,
+      flex: 0.6,
       filter: false,
       floatingFilter: false,
       sortable: false,
