@@ -1378,18 +1378,20 @@ const ActionsRenderer = (props) => {
     e.stopPropagation();
     
     // Show confirmation dialog
-    if (window.confirm(`Are you sure you want to mark deal "${data.opportunity}" as deleted?`)) {
-      // Update the deal stage to DELETE instead of deleting the record
+    const confirmed = window.confirm(`Are you sure you want to permanently delete deal "${data.opportunity}"? This action cannot be undone.`);
+    
+    if (confirmed) {
+      // Permanently delete the deal record from the database
       supabase
         .from('deals')
-        .update({ stage: 'DELETE' })
+        .delete()
         .eq('deal_id', data.deal_id)
         .then(({ error }) => {
           if (error) {
-            toast.error(`Error updating deal: ${error.message}`);
-            console.error('Error updating deal stage:', error);
+            console.error('Error deleting deal:', error);
+            toast.error(`Error deleting deal: ${error.message}`);
           } else {
-            toast.success(`Deal "${data.opportunity}" marked as deleted`, {
+            toast.success(`Deal "${data.opportunity}" permanently deleted`, {
               icon: <FiTrash2 style={{ color: '#00ff00' }} />
             });
             
@@ -2701,14 +2703,14 @@ const SimpleDeals = () => {
       // Get the expected category name for the active tab
       const expectedCategory = categoryMap[activeTab];
       
-      // First filter by category
+      // Filter by category
       let filtered = deals;
       
       if (expectedCategory) {
         console.log(`Filtering for category: ${expectedCategory}`);
         
         // Filter deals with matching category (case-insensitive)
-        filtered = deals.filter(deal => {
+        filtered = filtered.filter(deal => {
           const dealCategory = deal.category || '';
           // Handle case and spacing differences
           return dealCategory.toLowerCase() === expectedCategory.toLowerCase();
@@ -3348,6 +3350,17 @@ const SimpleDeals = () => {
         onClose={() => setShowDealModal(false)}
         contactData={selectedDeal}
         showOnlyCreateTab={true}
+        onSave={(newDeal) => {
+          // Add the new deal to our state
+          if (newDeal && newDeal.deal_id) {
+            setDeals(prevDeals => [newDeal, ...prevDeals]);
+            
+            // Update filtered deals as well
+            setFilteredDeals(prevDeals => [newDeal, ...prevDeals]);
+            
+            console.log('New deal added to SimpleDeals state:', newDeal);
+          }
+        }}
       />
       
       {/* Edit Deal Modal */}

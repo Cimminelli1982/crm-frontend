@@ -30,7 +30,7 @@ Modal.setAppElement('#root');
 const FormContainer = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 30px;
   width: 100%;
   max-height: 100%;
   overflow-y: auto;
@@ -153,8 +153,8 @@ const FormRow = styled.div`
 const SectionTitle = styled.div`
   font-size: 15px;
   color: #00ff00;
-  margin: 15px 0 10px 0;
-  padding-bottom: 5px;
+  margin: 25px 0 15px 0;
+  padding-bottom: 8px;
   border-bottom: 1px solid #333;
   display: flex;
   align-items: center;
@@ -204,7 +204,7 @@ const ModalHeader = styled.div`
   justify-content: space-between;
   align-items: center;
   padding-bottom: 15px;
-  margin-bottom: 20px;
+  margin-bottom: 10px;
   border-bottom: 1px solid #333;
 
   h2 {
@@ -274,6 +274,7 @@ const ModalContent = styled.div`
   justify-content: center;
   align-items: center;
   flex-direction: column;
+  padding: 20px;
 `;
 
 // Coming soon message for tabs not yet implemented
@@ -896,7 +897,8 @@ const DealViewFindAddModal = ({
   isOpen, 
   onClose, 
   contactData,
-  showOnlyCreateTab = false
+  showOnlyCreateTab = false,
+  onSave
 }) => {
   const [activeTab, setActiveTab] = useState(showOnlyCreateTab ? 'createNewDeal' : 'addFromList');
   const [searchTerm, setSearchTerm] = useState('');
@@ -1217,7 +1219,18 @@ const DealViewFindAddModal = ({
 
   // Handle creating a new deal
   const handleCreateDeal = async (dealFormData) => {
-    if (!contactData?.contact_id || isProcessing) return;
+    console.log('=== DEAL CREATION DEBUG START ===');
+    console.log('Form data received:', dealFormData);
+    
+    // For showOnlyCreateTab mode, we don't need a contact
+    if (!showOnlyCreateTab && (!contactData?.contact_id || isProcessing)) {
+      return;
+    }
+    
+    // For showOnlyCreateTab mode, just check if we're already processing
+    if (showOnlyCreateTab && isProcessing) {
+      return;
+    }
     
     setIsProcessing(true);
     
@@ -1227,6 +1240,7 @@ const DealViewFindAddModal = ({
       // Validate required fields
       if (!dealFormData.opportunity?.trim()) {
         toast.error('Deal name is required');
+        setIsProcessing(false); // Reset processing state
         return;
       }
       
@@ -1261,27 +1275,152 @@ const DealViewFindAddModal = ({
         throw dealError;
       }
       
-      console.log('Deal created successfully:', newDeal);
+      console.log('✅ Deal created successfully:', newDeal);
       
-      // Associate the contact with the new deal
-      const { error: associationError } = await supabase
-        .from('deals_contacts')
-        .insert({
-          deal_id: newDeal.deal_id,
-          contact_id: contactData.contact_id,
-          relationship: 'proposer',
-          created_at: new Date().toISOString()
-        });
-        
-      if (associationError) {
-        console.error('Error creating deal association:', associationError);
-        throw associationError;
+      // Only associate with contact if we have contact data (not in showOnlyCreateTab mode)
+      if (!showOnlyCreateTab && contactData?.contact_id) {
+        console.log('Associating deal with contact:', contactData.contact_id);
+        // Associate the contact with the new deal
+        const { error: associationError } = await supabase
+          .from('deals_contacts')
+          .insert({
+            deal_id: newDeal.deal_id,
+            contact_id: contactData.contact_id,
+            relationship: 'proposer',
+            created_at: new Date().toISOString()
+          });
+          
+        if (associationError) {
+          console.error('Error creating deal association:', associationError);
+          throw associationError;
+        }
+        console.log('✅ Deal-contact association created');
       }
       
-      // Handle tags if any
+      // Handle attachment if provided (file upload)
+      if (dealFormData.attachment && dealFormData.attachment instanceof File) {
+        console.log('🔗 ATTACHMENT UPLOAD DEBUG START');
+        console.log('📁 File details:', {
+          name: dealFormData.attachment.name,
+          size: dealFormData.attachment.size,
+          type: dealFormData.attachment.type
+        });
+        
+        try {
+          // Create a unique file name
+          const fileExt = dealFormData.attachment.name.split('.').pop();
+          const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+          const filePath = `deal-attachments/${fileName}`;
+          
+          console.log('📂 Upload path:', filePath);
+          
+          // Upload file to Supabase Storage
+          console.log('⬆️ Starting file upload to Supabase Storage...');
+          const { data: fileData, error: uploadError } = await supabase
+            .storage
+            .from('attachments')
+            .upload(filePath, dealFormData.attachment, {
+              cacheControl: '3600',
+              upsert: false
+            });
+          
+          if (uploadError) {
+            console.error('❌ Error uploading file to storage:', uploadError);
+            console.error('Upload error details:', {
+              message: uploadError.message,
+              statusCode: uploadError.statusCode,
+              error: uploadError.error
+            });
+            // Don't throw - attachment failure shouldn't fail the whole deal creation
+          } else {
+            console.log('✅ File uploaded to storage successfully:', fileData);
+            
+            // Get the public URL for the file
+            console.log('🔗 Getting public URL...');
+            const { data: urlData } = await supabase
+              .storage
+              .from('attachments')
+              .getPublicUrl(filePath);
+            
+            const fileUrl = urlData.publicUrl;
+            console.log('📎 Public URL:', fileUrl);
+            
+            // Create a new attachment record
+            console.log('💾 Creating attachment record in database...');
+            const attachmentRecord = {
+              file_name: dealFormData.attachment.name,
+              file_url: fileUrl,
+              file_type: dealFormData.attachment.type,
+              file_size: dealFormData.attachment.size,
+              processing_status: 'completed',
+              created_by: 'User'
+            };
+            console.log('📋 Attachment record data:', attachmentRecord);
+            
+            const { data: attachmentData, error: attachmentError } = await supabase
+              .from('attachments')
+              .insert(attachmentRecord)
+              .select()
+              .single();
+            
+            if (attachmentError) {
+              console.error('❌ Error creating attachment record:', attachmentError);
+              console.error('Attachment error details:', {
+                message: attachmentError.message,
+                code: attachmentError.code,
+                details: attachmentError.details
+              });
+              // Don't throw - attachment failure shouldn't fail the whole deal creation
+            } else {
+              console.log('✅ Attachment record created successfully:', attachmentData);
+              
+              // Link the attachment to the deal
+              console.log('🔗 Linking attachment to deal...');
+              const linkRecord = {
+                deal_id: newDeal.deal_id,
+                attachment_id: attachmentData.attachment_id,
+                created_by: 'User'
+              };
+              console.log('🔗 Link record data:', linkRecord);
+              
+              const { error: linkError } = await supabase
+                .from('deal_attachments')
+                .insert(linkRecord);
+                
+              if (linkError) {
+                console.error('❌ Error linking attachment to deal:', linkError);
+                console.error('Link error details:', {
+                  message: linkError.message,
+                  code: linkError.code,
+                  details: linkError.details
+                });
+                // Don't throw - attachment linking failure shouldn't fail the deal creation
+              } else {
+                console.log('✅ Attachment linked to deal successfully');
+                console.log('🎉 ATTACHMENT UPLOAD COMPLETE');
+              }
+            }
+          }
+        } catch (attachmentErr) {
+          console.error('❌ Error processing attachment:', attachmentErr);
+          console.error('Attachment processing error details:', attachmentErr);
+          // Continue with deal creation even if attachment fails
+        }
+      } else if (dealFormData.attachment) {
+        console.log('⚠️ Attachment field is not empty but not a File object:', typeof dealFormData.attachment, dealFormData.attachment);
+      } else {
+        console.log('ℹ️ No attachment provided');
+      }
+      
+      // Handle tags if any (non-blocking)
       if (dealFormData.tags && dealFormData.tags.length > 0) {
+        console.log('Processing tags:', dealFormData.tags);
+        console.log('⚠️  NOTE: Using tables "tags" and "deal_tags" - please verify these are correct!');
+        
         for (const tagName of dealFormData.tags) {
           try {
+            console.log(`Processing tag: "${tagName}"`);
+            
             // First, ensure the tag exists in the tags table
             let { data: existingTag, error: tagSearchError } = await supabase
               .from('tags')
@@ -1290,12 +1429,13 @@ const DealViewFindAddModal = ({
               .single();
               
             if (tagSearchError && tagSearchError.code !== 'PGRST116') {
-              console.error('Error searching for tag:', tagSearchError);
+              console.error(`❌ Error searching for tag "${tagName}":`, tagSearchError);
               continue;
             }
             
             let tagId;
             if (!existingTag) {
+              console.log(`Tag "${tagName}" doesn't exist, creating it...`);
               // Create the tag if it doesn't exist
               const { data: newTag, error: tagCreateError } = await supabase
                 .from('tags')
@@ -1304,24 +1444,32 @@ const DealViewFindAddModal = ({
                 .single();
                 
               if (tagCreateError) {
-                console.error('Error creating tag:', tagCreateError);
+                console.error(`❌ Error creating tag "${tagName}":`, tagCreateError);
                 continue;
               }
               tagId = newTag.tag_id;
+              console.log(`✅ Created new tag "${tagName}" with ID:`, tagId);
             } else {
               tagId = existingTag.tag_id;
+              console.log(`✅ Found existing tag "${tagName}" with ID:`, tagId);
             }
             
             // Associate the tag with the deal
-            await supabase
+            const { error: tagLinkError } = await supabase
               .from('deal_tags')
               .insert({
                 deal_id: newDeal.deal_id,
                 tag_id: tagId
               });
               
+            if (tagLinkError) {
+              console.error(`❌ Error linking tag "${tagName}" to deal:`, tagLinkError);
+            } else {
+              console.log(`✅ Linked tag "${tagName}" to deal`);
+            }
+              
           } catch (tagError) {
-            console.error(`Error processing tag "${tagName}":`, tagError);
+            console.error(`❌ Error processing tag "${tagName}":`, tagError);
             // Continue processing other tags even if one fails
           }
         }
@@ -1329,18 +1477,114 @@ const DealViewFindAddModal = ({
       
       // Update local state
       setDeals(prev => [newDeal, ...prev]);
-      setAssociatedDealIds(prev => [...prev, newDeal.deal_id]);
-      setRelationshipMap(prev => ({
-        ...prev,
-        [newDeal.deal_id]: 'proposer'
-      }));
+      
+      // Only update contact-related state if we have contact data
+      if (!showOnlyCreateTab && contactData?.contact_id) {
+        setAssociatedDealIds(prev => [...prev, newDeal.deal_id]);
+        setRelationshipMap(prev => ({
+          ...prev,
+          [newDeal.deal_id]: 'proposer'
+        }));
+      }
       
       // Dismiss loading toast and show success
       toast.dismiss('create-deal');
-      toast.success(`Deal "${newDeal.opportunity}" created and associated successfully`);
       
-      // Switch to associated deals tab to show the new deal
-      setActiveTab('associatedDeals');
+      if (showOnlyCreateTab) {
+        // Fetch the complete deal data with all related information before notifying parent
+        let completeNewDeal = { ...newDeal };
+        
+        try {
+          // Fetch attachments
+          const { data: attachmentRefs } = await supabase
+            .from('deal_attachments')
+            .select('attachment_id')
+            .eq('deal_id', newDeal.deal_id);
+            
+          let attachments = [];
+          if (attachmentRefs && attachmentRefs.length > 0) {
+            const attachmentIds = attachmentRefs.map(ref => ref.attachment_id);
+            const { data: attachmentDetails } = await supabase
+              .from('attachments')
+              .select('attachment_id, file_name, file_url, file_type, file_size, permanent_url')
+              .in('attachment_id', attachmentIds);
+            attachments = attachmentDetails || [];
+          }
+          
+          // Fetch tags
+          const { data: tagRefs } = await supabase
+            .from('deal_tags')
+            .select('tag_id')
+            .eq('deal_id', newDeal.deal_id);
+            
+          let tags = [];
+          if (tagRefs && tagRefs.length > 0) {
+            const tagIds = tagRefs.map(ref => ref.tag_id);
+            const { data: tagDetails } = await supabase
+              .from('tags')
+              .select('tag_id, name')
+              .in('tag_id', tagIds);
+            tags = tagDetails || [];
+          }
+          
+          // Fetch contacts (will be empty for showOnlyCreateTab but needed for table structure)
+          const { data: contactRefs } = await supabase
+            .from('deals_contacts')
+            .select('contact_id, relationship')
+            .eq('deal_id', newDeal.deal_id);
+            
+          let contacts = [];
+          if (contactRefs && contactRefs.length > 0) {
+            const contactIds = contactRefs.map(ref => ref.contact_id);
+            const { data: contactDetails } = await supabase
+              .from('contacts')
+              .select('contact_id, first_name, last_name, job_role, profile_image_url, last_interaction_at')
+              .in('contact_id', contactIds);
+            
+            if (contactDetails) {
+              contacts = contactDetails.map(contact => {
+                const contactRef = contactRefs.find(ref => ref.contact_id === contact.contact_id);
+                return {
+                  ...contact,
+                  relationship: contactRef?.relationship || 'Unknown'
+                };
+              });
+            }
+          }
+          
+          // Create complete deal object with all related data
+          completeNewDeal = {
+            ...newDeal,
+            attachments,
+            tags,
+            contacts
+          };
+          
+        } catch (fetchError) {
+          console.error('Error fetching complete deal data:', fetchError);
+          // Fall back to basic deal object with empty arrays
+          completeNewDeal = {
+            ...newDeal,
+            attachments: [],
+            tags: [],
+            contacts: []
+          };
+        }
+        
+        toast.success(`Deal "${newDeal.opportunity}" created successfully`);
+        
+        // Notify parent component about the complete new deal
+        if (onSave) {
+          onSave(completeNewDeal);
+        }
+        
+        // Close the modal after successful creation
+        onClose();
+      } else {
+        toast.success(`Deal "${newDeal.opportunity}" created and associated successfully`);
+        // Switch to associated deals tab to show the new deal
+        setActiveTab('associatedDeals');
+      }
       
     } catch (err) {
       console.error('Error creating deal:', err);
@@ -1530,24 +1774,22 @@ const DealViewFindAddModal = ({
       'Introduction'
     ];
     
-    // Attachment options
-    const attachmentOptions = [
-      'None',
-      'NDA',
-      'Term Sheet',
-      'Pitch Deck',
-      'Financial Model',
-      'Due Diligence',
-      'Contract'
-    ];
-    
     // Handle input change for the create deal form
     const handleDealInputChange = (e) => {
-      const { name, value } = e.target;
-      setDealFormData(prev => ({
-        ...prev,
-        [name]: value
-      }));
+      const { name, value, type, files } = e.target;
+      
+      // Handle file inputs differently
+      if (type === 'file') {
+        setDealFormData(prev => ({
+          ...prev,
+          [name]: files && files.length > 0 ? files[0] : null
+        }));
+      } else {
+        setDealFormData(prev => ({
+          ...prev,
+          [name]: value
+        }));
+      }
       
       // Clear errors for this field
       if (dealErrors[name]) {
@@ -1639,15 +1881,12 @@ const DealViewFindAddModal = ({
     }, []);
     
     return (
-      <ModalContent style={{ alignItems: 'flex-start', overflowY: 'auto', padding: '10px 20px' }}>
+      <ModalContent style={{ alignItems: 'flex-start', overflowY: 'auto', padding: '5px 20px' }}>
         <FormContainer>
           <form onSubmit={(e) => {
             e.preventDefault();
             handleCreateDeal(dealFormData);
           }}>
-          <SectionTitle>
-            <FiInfo size={16} /> Basic Information
-          </SectionTitle>
           
           <FormGroup>
             <FormLabel htmlFor="opportunity">
@@ -1668,7 +1907,7 @@ const DealViewFindAddModal = ({
             )}
           </FormGroup>
           
-          <FormRow>
+          <FormRow style={{ marginTop: '35px' }}>
             <FormGroup>
               <FormLabel htmlFor="category">
                 <FiList size={14} /> Category
@@ -1706,7 +1945,7 @@ const DealViewFindAddModal = ({
             </FormGroup>
           </FormRow>
           
-          <FormRow>
+          <FormRow style={{ marginTop: '35px' }}>
             <FormGroup>
               <FormLabel htmlFor="source_category">
                   <FiSearch size={14} /> Source
@@ -1748,24 +1987,19 @@ const DealViewFindAddModal = ({
             </FormGroup>
           </FormRow>
           
-          <FormRow>
+          <FormRow style={{ marginTop: '35px' }}>
             <FormGroup>
               <FormLabel htmlFor="attachment">
                 <FiPaperclip size={14} /> Attachment
               </FormLabel>
-              <FormSelect
+              <FormInput
                 id="attachment"
                 name="attachment"
-                value={dealFormData.attachment}
+                type="file"
                 onChange={handleDealInputChange}
-              >
-                {attachmentOptions.map(option => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </FormSelect>
-              <HelpText>Select the type of attachment for this deal</HelpText>
+                accept="*/*"
+              />
+              <HelpText>Upload a file to attach to this deal</HelpText>
             </FormGroup>
             
             <FormGroup>
@@ -1819,7 +2053,7 @@ const DealViewFindAddModal = ({
             </FormGroup>
           </FormRow>
           
-          <FormGroup>
+          <FormGroup style={{ marginTop: '40px' }}>
             <FormLabel htmlFor="description">
               <FiInfo size={14} /> Description
             </FormLabel>
@@ -1833,7 +2067,10 @@ const DealViewFindAddModal = ({
           </FormGroup>
           
           <ButtonGroup style={{ marginTop: '20px', justifyContent: 'flex-end', gap: '15px' }}>
-              <SaveButton type="submit" disabled={isProcessing}>
+              <SaveButton 
+                type="submit" 
+                disabled={isProcessing}
+              >
               <FiPlus /> Create Deal
             </SaveButton>
           </ButtonGroup>
@@ -2094,9 +2331,9 @@ const DealViewFindAddModal = ({
             bottom: 'auto',
             marginRight: '-50%',
             transform: 'translate(-50%, -50%)',
-            padding: '25px',
-            width: '65%',
-            height: '661px', /* 575px increased by another 15% */
+            padding: '20px',
+            width: '55%',
+            height: '580px',
             maxHeight: '80vh',
             overflowY: 'auto',
             backgroundColor: '#121212',

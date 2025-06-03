@@ -348,14 +348,104 @@ const PeopleIntroducedRenderer = (props) => {
   );
 };
 
-// Simple display-only renderer for Notes column
-const NotesRenderer = (props) => {
-  const displayValue = props.value || '';
+// Editable Notes renderer with cleaner UI
+const NotesEditableRenderer = (props) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [currentValue, setCurrentValue] = useState(props.value || '');
+
+  const handleClick = (e) => {
+    e.stopPropagation();
+    setIsEditing(true);
+  };
+
+  const handleChange = (e) => {
+    setCurrentValue(e.target.value);
+  };
+
+  const handleBlur = async () => {
+    setIsEditing(false);
+    
+    if (currentValue !== (props.value || '')) {
+      const contactId = props.data?.id;
+      
+      if (!contactId) return;
+      
+      try {
+        // Update the database with the notes (text field)
+        const { error } = await supabase
+          .from('introductions')
+          .update({ text: currentValue })
+          .eq('introduction_id', contactId);
+          
+        if (error) throw error;
+        
+        toast.success('Note updated successfully');
+        props.setValue(currentValue);
+        
+      } catch (err) {
+        console.error('Error updating note:', err);
+        toast.error('Failed to update note');
+        // Reset to original value on error
+        setCurrentValue(props.value || '');
+      }
+    }
+  };
+
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter') {
+      handleBlur();
+    }
+    if (e.key === 'Escape') {
+      setCurrentValue(props.value || '');
+      setIsEditing(false);
+    }
+  };
+
+  if (isEditing) {
+    return (
+      <div style={{
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        padding: '1px'
+      }}>
+        <input
+          type="text"
+          value={currentValue}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          onKeyDown={handleKeyPress}
+          autoFocus
+          style={{
+            width: '100%',
+            height: '24px',
+            background: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)',
+            color: '#ffffff',
+            border: '1px solid #00ff00',
+            borderRadius: '4px',
+            padding: '2px 6px',
+            fontSize: '12px',
+            fontFamily: 'Courier New, monospace',
+            outline: 'none',
+            boxShadow: '0 0 4px rgba(0, 255, 0, 0.3)',
+            transition: 'all 0.2s ease',
+            boxSizing: 'border-box'
+          }}
+          placeholder="Enter note..."
+        />
+      </div>
+    );
+  }
+
+  const displayValue = currentValue || props.value || '';
   const isEmpty = !displayValue.trim();
 
   return (
     <div
+      onClick={handleClick}
       style={{
+        cursor: 'pointer',
         padding: '2px 6px',
         whiteSpace: 'nowrap',
         overflow: 'hidden',
@@ -367,9 +457,9 @@ const NotesRenderer = (props) => {
         color: isEmpty ? '#666' : '#e0e0e0',
         fontStyle: isEmpty ? 'italic' : 'normal'
       }}
-      title={displayValue || 'Notes'}
+      title={displayValue || 'Click to add note'}
     >
-      {isEmpty ? 'No notes' : displayValue}
+      {isEmpty ? 'Add note' : displayValue}
     </div>
   );
 };
@@ -1098,7 +1188,7 @@ const SimpleIntroductions = () => {
     { 
       headerName: 'Notes', 
       field: 'intro',
-      cellRenderer: NotesRenderer,
+      cellRenderer: NotesEditableRenderer,
       minWidth: 150,
       flex: 1.8,
       filter: 'agTextColumnFilter',
