@@ -318,40 +318,63 @@ const StatusRenderer = (props) => {
   );
 };
 
-// Notes renderer with icon that changes color based on content
-const NotesRenderer = (props) => {
-  const hasNotes = props.value && props.value.trim().length > 0;
-  
-  const handleClick = (e) => {
-    e.stopPropagation();
-    // TODO: Open notes modal
-    console.log('Open notes for:', props.data);
-  };
+// Simple display-only renderer for People Introduced column
+const PeopleIntroducedRenderer = (props) => {
+  const displayValue = props.value || '';
+  const isEmpty = !displayValue.trim();
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-      <button
-        onClick={handleClick}
-        style={{
-          background: 'none',
-          border: 'none',
-          color: hasNotes ? '#00ff00' : '#666',
-          cursor: 'pointer',
-          padding: '2px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          transition: 'color 0.2s'
-        }}
-        title={hasNotes ? 'View notes' : 'Add notes'}
-      >
-        <FiFileText size={14} />
-      </button>
+    <div
+      style={{
+        padding: '2px 6px',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'flex-start',
+        color: isEmpty ? '#666' : '#e0e0e0',
+        fontStyle: isEmpty ? 'italic' : 'normal',
+        textAlign: 'left',
+        fontSize: '16px',
+        fontWeight: '500'
+      }}
+      title={displayValue || 'People introduced'}
+    >
+      {isEmpty ? 'No people' : displayValue}
     </div>
   );
 };
 
-// Simple text renderer for editable fields
+// Simple display-only renderer for Notes column
+const NotesRenderer = (props) => {
+  const displayValue = props.value || '';
+  const isEmpty = !displayValue.trim();
+
+  return (
+    <div
+      style={{
+        padding: '2px 6px',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        color: isEmpty ? '#666' : '#e0e0e0',
+        fontStyle: isEmpty ? 'italic' : 'normal'
+      }}
+      title={displayValue || 'Notes'}
+    >
+      {isEmpty ? 'No notes' : displayValue}
+    </div>
+  );
+};
+
+// Enhanced general text renderer with improved styling
 const EditableTextRenderer = (props) => {
   const [isEditing, setIsEditing] = useState(false);
   const [currentValue, setCurrentValue] = useState(props.value || '');
@@ -400,10 +423,12 @@ const EditableTextRenderer = (props) => {
           
         if (error) throw error;
         
-        console.log(`Updated ${fieldName} (${dbFieldName}) for introduction ${contactId} to ${currentValue}`);
+        toast.success('Updated successfully');
+        props.setValue(currentValue);
+        
       } catch (err) {
         console.error('Error updating field:', err);
-        alert('Failed to update field. Please try again.');
+        toast.error('Failed to update field');
         // Reset to original value on error
         setCurrentValue(props.value || '');
       }
@@ -414,48 +439,87 @@ const EditableTextRenderer = (props) => {
     if (e.key === 'Enter') {
       handleBlur();
     }
+    if (e.key === 'Escape') {
+      setCurrentValue(props.value || '');
+      setIsEditing(false);
+    }
   };
 
   if (isEditing) {
     return (
-      <input
-        type="text"
-        value={currentValue}
-        onChange={handleChange}
-        onBlur={handleBlur}
-        onKeyPress={handleKeyPress}
-        autoFocus
-        style={{
-          background: '#222',
-          color: '#fff',
-          border: '1px solid #00ff00',
-          borderRadius: '4px',
-          padding: '2px 4px',
-          fontSize: '12px',
-          fontFamily: 'Courier New, monospace',
-          width: '100%',
-          outline: 'none'
-        }}
-      />
+      <div style={{
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        padding: '2px'
+      }}>
+        <input
+          type="text"
+          value={currentValue}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          onKeyDown={handleKeyPress}
+          autoFocus
+          style={{
+            width: '100%',
+            height: '28px',
+            background: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)',
+            color: '#ffffff',
+            border: '2px solid #00ff00',
+            borderRadius: '6px',
+            padding: '4px 8px',
+            fontSize: '12px',
+            fontFamily: 'Courier New, monospace',
+            outline: 'none',
+            boxShadow: '0 0 8px rgba(0, 255, 0, 0.3), inset 0 2px 4px rgba(0, 0, 0, 0.2)',
+            transition: 'all 0.2s ease',
+            backdropFilter: 'blur(5px)'
+          }}
+          placeholder="Enter text..."
+        />
+      </div>
     );
   }
+
+  const displayValue = currentValue || props.value || '';
+  const isEmpty = !displayValue.trim();
 
   return (
     <div
       onClick={handleClick}
       style={{
         cursor: 'pointer',
-        padding: '2px 4px',
+        padding: '2px 6px',
+        margin: '2px',
         whiteSpace: 'nowrap',
         overflow: 'hidden',
         textOverflow: 'ellipsis',
-        width: '100%',
-        height: '100%',
+        width: 'calc(100% - 4px)',
+        height: 'calc(100% - 4px)',
         display: 'flex',
-        alignItems: 'center'
+        alignItems: 'center',
+        borderRadius: '3px',
+        background: isEmpty ? 'rgba(255, 255, 255, 0.02)' : 'transparent',
+        border: '1px solid transparent',
+        transition: 'all 0.2s ease',
+        color: isEmpty ? '#666' : '#e0e0e0',
+        fontStyle: isEmpty ? 'italic' : 'normal',
+        boxSizing: 'border-box'
       }}
+      onMouseEnter={(e) => {
+        e.target.style.background = 'rgba(0, 255, 0, 0.08)';
+        e.target.style.border = '1px solid rgba(0, 255, 0, 0.4)';
+        e.target.style.boxShadow = 'inset 0 0 4px rgba(0, 255, 0, 0.2)';
+      }}
+      onMouseLeave={(e) => {
+        e.target.style.background = isEmpty ? 'rgba(255, 255, 255, 0.02)' : 'transparent';
+        e.target.style.border = '1px solid transparent';
+        e.target.style.boxShadow = 'none';
+      }}
+      title={displayValue || 'Click to edit'}
     >
-      {currentValue || '-'}
+      {isEmpty ? 'Click to add' : displayValue}
     </div>
   );
 };
@@ -1003,8 +1067,8 @@ const SimpleIntroductions = () => {
           return params.value;
         }
       },
-      minWidth: 100,
-      flex: 1,
+      minWidth: 80,
+      flex: 0.7,
       filter: 'agDateColumnFilter',
       floatingFilter: true,
       sortable: true,
@@ -1014,9 +1078,9 @@ const SimpleIntroductions = () => {
     { 
       headerName: 'People Introduced', 
       field: 'peopleIntroduced',
-      cellRenderer: EditableTextRenderer,
-      minWidth: 200,
-      flex: 3,
+      cellRenderer: PeopleIntroducedRenderer,
+      minWidth: 250,
+      flex: 4,
       filter: 'agTextColumnFilter',
       floatingFilter: true,
       sortable: true,
@@ -1025,8 +1089,8 @@ const SimpleIntroductions = () => {
       headerName: 'Related Companies', 
       field: 'relatedCompanies',
       cellRenderer: RelatedCompaniesRenderer,
-      minWidth: 180,
-      flex: 2,
+      minWidth: 200,
+      flex: 2.5,
       filter: 'agTextColumnFilter',
       floatingFilter: true,
       sortable: true,
@@ -1034,9 +1098,9 @@ const SimpleIntroductions = () => {
     { 
       headerName: 'Notes', 
       field: 'intro',
-      cellRenderer: EditableTextRenderer,
-      minWidth: 200,
-      flex: 2.5,
+      cellRenderer: NotesRenderer,
+      minWidth: 150,
+      flex: 1.8,
       filter: 'agTextColumnFilter',
       floatingFilter: true,
       sortable: true,
@@ -1055,8 +1119,8 @@ const SimpleIntroductions = () => {
       headerName: 'Status',
       field: 'status',
       cellRenderer: StatusRenderer,
-      minWidth: 120,
-      flex: 1.2,
+      minWidth: 100,
+      flex: 0.9,
       filter: true,
       floatingFilter: true,
       sortable: true,
@@ -1070,8 +1134,8 @@ const SimpleIntroductions = () => {
       headerName: 'Actions',
       field: 'actions',
       cellRenderer: ActionsRenderer,
-      minWidth: 80,
-      flex: 0.6,
+      minWidth: 70,
+      flex: 0.4,
       filter: false,
       floatingFilter: false,
       sortable: false,
