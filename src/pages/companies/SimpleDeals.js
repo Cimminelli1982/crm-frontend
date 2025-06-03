@@ -1378,19 +1378,65 @@ const ActionsRenderer = (props) => {
     e.stopPropagation();
     
     // Show confirmation dialog
-    const confirmed = window.confirm(`Are you sure you want to permanently delete deal "${data.opportunity}"? This action cannot be undone.`);
+    const confirmed = window.confirm(`Are you sure you want to permanently delete deal "${data.opportunity}"? This action cannot be undone and will remove all associated data.`);
     
     if (confirmed) {
-      // Permanently delete the deal record from the database
-      supabase
-        .from('deals')
-        .delete()
-        .eq('deal_id', data.deal_id)
-        .then(({ error }) => {
-          if (error) {
-            console.error('Error deleting deal:', error);
-            toast.error(`Error deleting deal: ${error.message}`);
+      // Perform cascading delete: remove all related records first, then the deal
+      const performCascadingDelete = async () => {
+        try {
+          console.log('🗑️ Starting cascading delete for deal:', data.deal_id);
+          
+          // Step 1: Delete deal_attachments records
+          console.log('🔗 Deleting deal attachments...');
+          const { error: attachmentsError } = await supabase
+            .from('deal_attachments')
+            .delete()
+            .eq('deal_id', data.deal_id);
+            
+          if (attachmentsError) {
+            console.error('Error deleting deal attachments:', attachmentsError);
           } else {
+            console.log('✅ Deal attachments deleted');
+          }
+          
+          // Step 2: Delete deal_tags records
+          console.log('🏷️ Deleting deal tags...');
+          const { error: tagsError } = await supabase
+            .from('deal_tags')
+            .delete()
+            .eq('deal_id', data.deal_id);
+            
+          if (tagsError) {
+            console.error('Error deleting deal tags:', tagsError);
+          } else {
+            console.log('✅ Deal tags deleted');
+          }
+          
+          // Step 3: Delete deals_contacts records
+          console.log('👥 Deleting deal contacts...');
+          const { error: contactsError } = await supabase
+            .from('deals_contacts')
+            .delete()
+            .eq('deal_id', data.deal_id);
+            
+          if (contactsError) {
+            console.error('Error deleting deal contacts:', contactsError);
+          } else {
+            console.log('✅ Deal contacts deleted');
+          }
+          
+          // Step 4: Finally delete the deal itself
+          console.log('🎯 Deleting deal...');
+          const { error: dealError } = await supabase
+            .from('deals')
+            .delete()
+            .eq('deal_id', data.deal_id);
+            
+          if (dealError) {
+            console.error('Error deleting deal:', dealError);
+            toast.error(`Error deleting deal: ${dealError.message}`);
+          } else {
+            console.log('✅ Deal deleted successfully');
             toast.success(`Deal "${data.opportunity}" permanently deleted`, {
               icon: <FiTrash2 style={{ color: '#00ff00' }} />
             });
@@ -1405,7 +1451,15 @@ const ActionsRenderer = (props) => {
               props.context.refreshData();
             }
           }
-        });
+          
+        } catch (error) {
+          console.error('Error in cascading delete:', error);
+          toast.error(`Error deleting deal: ${error.message}`);
+        }
+      };
+      
+      // Execute the cascading delete
+      performCascadingDelete();
     }
   };
   
