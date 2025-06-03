@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import styled from 'styled-components';
 import { AgGridReact } from '../../ag-grid-setup';
-import { FiEdit2, FiFileText, FiSearch, FiPlus } from 'react-icons/fi';
+import { FiEdit2, FiFileText, FiSearch, FiPlus, FiTrash2 } from 'react-icons/fi';
 import { createGlobalStyle } from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
 import { toast } from 'react-toastify';
@@ -209,19 +209,15 @@ const StatusRenderer = (props) => {
   const statusOptions = [
     'Promised',
     'Requested',
-    'Done and Dusted',
+    'Done & Dust',
     'Aborted',
-    'Done, but need monitoring'
+    'Done, but need to monitor'
   ];
 
   const getStatusColor = (status) => {
     switch (status?.toLowerCase()) {
-      case 'done and dusted': return '#00ff00';
-      case 'done, but need monitoring': return '#ffaa00';
-      case 'promised': return '#ffff00';
-      case 'requested': return '#aaaaaa';
-      case 'aborted': return '#ff3333';
-      default: return '#aaaaaa';
+      case 'aborted': return '#ff0000';
+      default: return '#00ff00';
     }
   };
 
@@ -601,6 +597,95 @@ const CategoryDropdownRenderer = (props) => {
   );
 };
 
+// Actions renderer - shows delete button for each introduction
+const ActionsRenderer = (props) => {
+  const handleDelete = async (e) => {
+    e.stopPropagation();
+    
+    const introduction = props.data;
+    if (!introduction || !introduction.id) return;
+    
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete this introduction? This action cannot be undone.`
+    );
+    
+    if (!confirmDelete) return;
+    
+    try {
+      // Show loading state
+      const button = e.currentTarget;
+      const originalContent = button.innerHTML;
+      button.disabled = true;
+      button.style.opacity = '0.5';
+      button.innerHTML = '<div style="width: 14px; height: 14px; border: 2px solid #00ff00; border-top: 2px solid transparent; border-radius: 50%; animation: spin 1s linear infinite;"></div>';
+      
+      console.log('Deleting introduction with ID:', introduction.id);
+      
+      // Delete from the introductions table
+      const { error } = await supabase
+        .from('introductions')
+        .delete()
+        .eq('introduction_id', introduction.id);
+      
+      if (error) throw error;
+      
+      console.log('Introduction deleted successfully');
+      
+      // Refresh the grid data
+      if (props.api) {
+        // Refresh via the parent component
+        if (window.refreshIntroductionsData) {
+          window.refreshIntroductionsData();
+        }
+      }
+      
+      toast.success('Introduction deleted successfully');
+      
+    } catch (error) {
+      console.error('Error deleting introduction:', error);
+      toast.error(`Failed to delete introduction: ${error.message}`);
+      
+      // Restore button state on error
+      const button = e.currentTarget;
+      if (button) {
+        button.disabled = false;
+        button.style.opacity = '0.7';
+        button.innerHTML = '<svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" height="14" width="14"><polyline points="3,6 5,6 21,6"></polyline><path d="m19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"></path></svg>';
+      }
+    }
+  };
+  
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: '100%'
+    }}>
+      <button
+        onClick={handleDelete}
+        style={{
+          background: 'none',
+          border: 'none',
+          color: '#00ff00',
+          cursor: 'pointer',
+          padding: '4px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          opacity: '0.7',
+          transition: 'opacity 0.2s'
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+        onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+        title="Delete Introduction"
+      >
+        <FiTrash2 size={14} />
+      </button>
+    </div>
+  );
+};
+
 // Main component
 const SimpleIntroductions = () => {
   const [introductions, setIntroductions] = useState([]);
@@ -723,7 +808,7 @@ const SimpleIntroductions = () => {
               return `🚫 Deleted Contact`;
             }
           });
-          peopleIntroduced = contactNames.join(' → ');
+          peopleIntroduced = contactNames.join(' ↔ ');
         }
         
         // Build related companies string from contact_ids
@@ -841,6 +926,21 @@ const SimpleIntroductions = () => {
       filter: true,
       floatingFilter: true,
       sortable: true,
+      cellStyle: { 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center'
+      }
+    },
+    {
+      headerName: 'Actions',
+      field: 'actions',
+      cellRenderer: ActionsRenderer,
+      minWidth: 100,
+      flex: 1,
+      filter: false,
+      floatingFilter: false,
+      sortable: false,
       cellStyle: { 
         display: 'flex', 
         alignItems: 'center', 

@@ -308,7 +308,6 @@ const NoSuggestions = styled.div`
 const IntroductionAddModal = ({ isOpen, onClose, onSave }) => {
   const [formData, setFormData] = useState({
     peopleIntroduced: '',
-    relatedCompanies: '',
     notes: '',
     category: '',
     status: 'Requested'
@@ -319,9 +318,9 @@ const IntroductionAddModal = ({ isOpen, onClose, onSave }) => {
   const [contactSuggestions, setContactSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [searchTimeout, setSearchTimeout] = useState(null);
-  const [companySuggestions, setCompanySuggestions] = useState([]);
-  const [showCompanySuggestions, setShowCompanySuggestions] = useState(false);
-  const [companySearchTimeout, setCompanySearchTimeout] = useState(null);
+  
+  // Track selected contact IDs for database relationships
+  const [selectedContactIds, setSelectedContactIds] = useState([]);
 
   // Category options from SimpleIntroductions
   const categoryOptions = [
@@ -330,13 +329,13 @@ const IntroductionAddModal = ({ isOpen, onClose, onSave }) => {
     'Karma Points'
   ];
 
-  // Status options from SimpleIntroductions
+  // Status options from SimpleIntroductions - updated to match database enum
   const statusOptions = [
     'Promised',
     'Requested',
-    'Done and Dusted',
+    'Done & Dust',
     'Aborted',
-    'Done, but need monitoring'
+    'Done, but need to monitor'
   ];
 
   // Reset form when modal opens/closes
@@ -344,7 +343,6 @@ const IntroductionAddModal = ({ isOpen, onClose, onSave }) => {
     if (isOpen) {
       setFormData({
         peopleIntroduced: '',
-        relatedCompanies: '',
         notes: '',
         category: '',
         status: 'Requested'
@@ -352,8 +350,7 @@ const IntroductionAddModal = ({ isOpen, onClose, onSave }) => {
       setErrors({});
       setContactSuggestions([]);
       setShowSuggestions(false);
-      setCompanySuggestions([]);
-      setShowCompanySuggestions(false);
+      setSelectedContactIds([]);
     }
   }, [isOpen]);
 
@@ -405,52 +402,6 @@ const IntroductionAddModal = ({ isOpen, onClose, onSave }) => {
     }
   };
 
-  // Fetch company suggestions based on search term
-  const fetchCompanySuggestions = async (searchTerm) => {
-    if (!searchTerm || searchTerm.length < 2) {
-      setCompanySuggestions([]);
-      setShowCompanySuggestions(false);
-      return;
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from('companies')
-        .select('company_id, name')
-        .ilike('name', `%${searchTerm}%`)
-        .limit(10);
-
-      if (error) throw error;
-
-      const suggestions = data.map(company => ({
-        id: company.company_id,
-        name: company.name,
-        isExisting: true
-      })).filter(company => company.name); // Filter out companies with no name
-
-      // If no exact matches and searchTerm looks like a company name, add "Create new company" option
-      const hasExactMatch = suggestions.some(s => 
-        s.name.toLowerCase() === searchTerm.toLowerCase()
-      );
-      
-      if (!hasExactMatch && searchTerm.trim() && searchTerm.trim().length >= 2) {
-        suggestions.push({
-          id: 'create-new-company',
-          name: searchTerm.trim(),
-          isExisting: false,
-          isCreateNew: true
-        });
-      }
-
-      setCompanySuggestions(suggestions);
-      setShowCompanySuggestions(true);
-    } catch (error) {
-      console.error('Error fetching company suggestions:', error);
-      setCompanySuggestions([]);
-      setShowCompanySuggestions(false);
-    }
-  };
-
   // Create new contact in database
   const createNewContact = async (fullName) => {
     try {
@@ -490,37 +441,6 @@ const IntroductionAddModal = ({ isOpen, onClose, onSave }) => {
     }
   };
 
-  // Create new company in database
-  const createNewCompany = async (companyName) => {
-    try {
-      const companyData = {
-        name: companyName.trim(),
-        created_at: new Date().toISOString(),
-        category: 'Inbox' // Default category
-      };
-
-      const { data, error } = await supabase
-        .from('companies')
-        .insert([companyData])
-        .select('company_id, name')
-        .single();
-
-      if (error) throw error;
-
-      toast.success(`New company "${companyName}" created successfully!`);
-      
-      return {
-        id: data.company_id,
-        name: data.name,
-        isExisting: true
-      };
-    } catch (error) {
-      console.error('Error creating new company:', error);
-      toast.error(`Failed to create company: ${error.message}`);
-      return null;
-    }
-  };
-
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({
@@ -555,32 +475,11 @@ const IntroductionAddModal = ({ isOpen, onClose, onSave }) => {
 
       setSearchTimeout(newTimeout);
     }
-
-    // Handle company suggestions for relatedCompanies field
-    if (name === 'relatedCompanies') {
-      // Clear existing timeout
-      if (companySearchTimeout) {
-        clearTimeout(companySearchTimeout);
-      }
-
-      // Set new timeout to debounce search
-      const newTimeout = setTimeout(() => {
-        const words = value.split(/[,\s]+/);
-        const lastWord = words[words.length - 1];
-        
-        fetchCompanySuggestions(lastWord);
-      }, 300);
-
-      setCompanySearchTimeout(newTimeout);
-    }
   };
 
   // Handle suggestion selection
   const handleSuggestionClick = async (suggestion) => {
     const currentValue = formData.peopleIntroduced;
-    const lines = currentValue.split('\n');
-    const currentLine = lines[lines.length - 1];
-    const words = currentLine.split(/([,\s]+)/); // Keep separators
     
     let finalSuggestion = suggestion;
     
@@ -595,12 +494,35 @@ const IntroductionAddModal = ({ isOpen, onClose, onSave }) => {
       }
     }
     
-    // Replace the last word with the selected suggestion
-    if (words.length > 0) {
-      words[words.length - 1] = finalSuggestion.name;
+    // Simple replacement logic: find the last word being typed and replace it
+    const lines = currentValue.split('\n');
+    const currentLine = lines[lines.length - 1];
+    
+    // Split by word boundaries but keep the separators
+    const parts = currentLine.split(/(\s+|,\s*)/);
+    
+    // Find the last non-separator part (the word being typed)
+    let lastWordIndex = -1;
+    for (let i = parts.length - 1; i >= 0; i--) {
+      if (parts[i] && !parts[i].match(/^\s*,?\s*$/)) {
+        lastWordIndex = i;
+        break;
+      }
     }
     
-    lines[lines.length - 1] = words.join('');
+    if (lastWordIndex >= 0) {
+      // Replace the last word with the selected suggestion
+      parts[lastWordIndex] = finalSuggestion.name;
+      lines[lines.length - 1] = parts.join('');
+    } else {
+      // If no word found, just append the suggestion
+      if (currentLine.trim()) {
+        lines[lines.length - 1] = currentLine + ', ' + finalSuggestion.name;
+      } else {
+        lines[lines.length - 1] = finalSuggestion.name;
+      }
+    }
+    
     const newValue = lines.join('\n');
     
     setFormData(prev => ({
@@ -608,42 +530,18 @@ const IntroductionAddModal = ({ isOpen, onClose, onSave }) => {
       peopleIntroduced: newValue
     }));
     
+    // Track the contact ID if this is an existing or newly created contact
+    if (finalSuggestion.isExisting && finalSuggestion.id) {
+      setSelectedContactIds(prev => {
+        if (!prev.includes(finalSuggestion.id)) {
+          return [...prev, finalSuggestion.id];
+        }
+        return prev;
+      });
+    }
+    
     setShowSuggestions(false);
     setContactSuggestions([]);
-  };
-
-  // Handle company suggestion selection
-  const handleCompanySuggestionClick = async (suggestion) => {
-    const currentValue = formData.relatedCompanies;
-    const words = currentValue.split(/([,\s]+)/); // Keep separators
-    
-    let finalSuggestion = suggestion;
-    
-    // If this is a "create new company" suggestion, create the company first
-    if (suggestion.isCreateNew) {
-      const newCompany = await createNewCompany(suggestion.name);
-      if (newCompany) {
-        finalSuggestion = newCompany;
-      } else {
-        // If creation failed, still use the name but don't treat it as a company
-        finalSuggestion = suggestion;
-      }
-    }
-    
-    // Replace the last word with the selected suggestion
-    if (words.length > 0) {
-      words[words.length - 1] = finalSuggestion.name;
-    }
-    
-    const newValue = words.join('');
-    
-    setFormData(prev => ({
-      ...prev,
-      relatedCompanies: newValue
-    }));
-    
-    setShowCompanySuggestions(false);
-    setCompanySuggestions([]);
   };
 
   // Handle clicking outside suggestions
@@ -654,25 +552,14 @@ const IntroductionAddModal = ({ isOpen, onClose, onSave }) => {
     }, 150);
   };
 
-  // Handle clicking outside company suggestions
-  const handleCompanyFieldBlur = () => {
-    // Delay hiding suggestions to allow for clicks
-    setTimeout(() => {
-      setShowCompanySuggestions(false);
-    }, 150);
-  };
-
   // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
       if (searchTimeout) {
         clearTimeout(searchTimeout);
       }
-      if (companySearchTimeout) {
-        clearTimeout(companySearchTimeout);
-      }
     };
-  }, [searchTimeout, companySearchTimeout]);
+  }, [searchTimeout]);
 
   const validateForm = () => {
     const newErrors = {};
@@ -697,15 +584,15 @@ const IntroductionAddModal = ({ isOpen, onClose, onSave }) => {
     setSaving(true);
     
     try {
-      // For now, we'll create a basic introduction record
-      // Note: This assumes the database schema - you may need to adjust based on actual schema
+      // Prepare the introduction data with all required fields
       const introductionData = {
-        text: formData.notes,
+        text: formData.notes || '',
         category: formData.category,
         status: formData.status,
         introduction_date: new Date().toISOString().split('T')[0],
-        created_at: new Date().toISOString()
-        // TODO: Handle contact_ids and company relationships properly
+        created_at: new Date().toISOString(),
+        contact_ids: selectedContactIds.length > 0 ? selectedContactIds : [],
+        introduction_tool: 'email'
       };
 
       const { data, error } = await supabase
@@ -818,61 +705,6 @@ const IntroductionAddModal = ({ isOpen, onClose, onSave }) => {
             {errors.peopleIntroduced && (
               <ErrorMessage>{errors.peopleIntroduced}</ErrorMessage>
             )}
-          </FormGroup>
-
-          <FormGroup>
-            <FormLabel>
-              <FiBriefcase />
-              Related Companies
-            </FormLabel>
-            <AutocompleteContainer>
-              <FormInput
-                name="relatedCompanies"
-                value={formData.relatedCompanies}
-                onChange={handleInputChange}
-                onBlur={handleCompanyFieldBlur}
-                onFocus={() => {
-                  // Re-trigger search if there's existing text
-                  if (formData.relatedCompanies) {
-                    const words = formData.relatedCompanies.split(/[,\s]+/);
-                    const lastWord = words[words.length - 1];
-                    if (lastWord.length >= 2) {
-                      fetchCompanySuggestions(lastWord);
-                    }
-                  }
-                }}
-                placeholder="Start typing company names to see suggestions..."
-              />
-              {showCompanySuggestions && (
-                <SuggestionsDropdown>
-                  {companySuggestions.length > 0 ? (
-                    companySuggestions.map((suggestion) => {
-                      if (suggestion.isCreateNew) {
-                        return (
-                          <CreateContactSuggestion
-                            key={suggestion.id}
-                            onClick={() => handleCompanySuggestionClick(suggestion)}
-                          >
-                            Create new company: {suggestion.name}
-                          </CreateContactSuggestion>
-                        );
-                      } else {
-                        return (
-                          <SuggestionItem
-                            key={suggestion.id}
-                            onClick={() => handleCompanySuggestionClick(suggestion)}
-                          >
-                            {suggestion.name}
-                          </SuggestionItem>
-                        );
-                      }
-                    })
-                  ) : (
-                    <NoSuggestions>No companies found</NoSuggestions>
-                  )}
-                </SuggestionsDropdown>
-              )}
-            </AutocompleteContainer>
           </FormGroup>
 
           <FormGroup>

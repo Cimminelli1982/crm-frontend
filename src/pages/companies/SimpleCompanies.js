@@ -1318,6 +1318,15 @@ const SimpleCompanies = () => {
       return filtered;
     }
     
+    // Special handling for inbox tab to include both "Inbox" and "Not Set"
+    if (activeTab === 'inbox') {
+      const filtered = companies.filter(company => {
+        const category = company.category;
+        return category === 'Inbox' || category === 'Not Set' || !category;
+      });
+      return filtered;
+    }
+    
     // Filter by specific category
     const targetCategory = categoryMapping[activeTab];
     if (targetCategory) {
