@@ -678,6 +678,65 @@ const InnerRectangle = styled.div`
   background-color: #1a1a1a;
 `;
 
+const FilterableTag = styled.div`
+  background-color: ${props => props.selected ? '#00ff00' : '#222'};
+  color: ${props => props.selected ? '#000' : '#00ff00'};
+  border: 1px solid #00ff00;
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 0.7rem;
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  white-space: nowrap;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background-color: ${props => props.selected ? '#00cc00' : '#333'};
+  }
+`;
+
+const ResultItem = styled.div`
+  padding: 12px;
+  border-bottom: 1px solid #333;
+  cursor: pointer;
+  
+  &:last-child {
+    border-bottom: none;
+  }
+  
+  &:hover {
+    background-color: #222;
+  }
+`;
+
+const ResultTitle = styled.div`
+  font-weight: bold;
+  color: #eee;
+  margin-bottom: 4px;
+`;
+
+const ResultSubtitle = styled.div`
+  font-size: 0.85rem;
+  color: #999;
+`;
+
+const LoadingSpinner = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: #00ff00;
+`;
+
+const ResultsContainer = styled.div`
+  flex: 1;
+  overflow-y: auto;
+  max-height: 400px;
+`;
+
 const ContactRecord = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -746,6 +805,11 @@ const ContactRecord = () => {
   // Tags modal state
   const [isTagsModalOpen, setIsTagsModalOpen] = useState(false);
   const [activeTagFilter, setActiveTagFilter] = useState('contacts');
+  
+  // Add new state for tag filtering
+  const [selectedTags, setSelectedTags] = useState([]);
+  const [filteredResults, setFilteredResults] = useState([]);
+  const [isLoadingResults, setIsLoadingResults] = useState(false);
   
   // Ref for click outside detection
   const mobileInputRef = useRef(null);
@@ -1627,14 +1691,159 @@ const ContactRecord = () => {
   // Tags modal handlers
   const handleOpenTagsModal = () => {
     setIsTagsModalOpen(true);
+    // Reset state when opening modal
+    setSelectedTags([]);
+    setFilteredResults([]);
+    setActiveTagFilter('contacts');
   };
 
   const handleCloseTagsModal = () => {
     setIsTagsModalOpen(false);
+    // Reset state when closing modal
+    setSelectedTags([]);
+    setFilteredResults([]);
   };
 
   const handleFilterChange = (filter) => {
     setActiveTagFilter(filter);
+  };
+  
+  // Add new filtering handlers
+  const handleTagToggle = (tagId) => {
+    setSelectedTags(prev => {
+      const newSelected = prev.includes(tagId) 
+        ? prev.filter(id => id !== tagId)
+        : [...prev, tagId];
+      
+      // Fetch results when tags change
+      if (newSelected.length > 0) {
+        fetchFilteredResults(newSelected, activeTagFilter);
+      } else {
+        setFilteredResults([]);
+      }
+      
+      return newSelected;
+    });
+  };
+
+  const handleEntityTypeChange = (entityType) => {
+    setActiveTagFilter(entityType);
+    if (selectedTags.length > 0) {
+      fetchFilteredResults(selectedTags, entityType);
+    }
+  };
+
+  const fetchFilteredResults = async (tagIds, entityType) => {
+    if (tagIds.length === 0) {
+      setFilteredResults([]);
+      return;
+    }
+
+    setIsLoadingResults(true);
+    
+    try {
+      let query;
+      let entityField;
+      let entityTable;
+      let selectFields;
+      
+      if (entityType === 'contacts') {
+        entityField = 'contact_id';
+        entityTable = 'contact_tags';
+        selectFields = `
+          contacts (
+            contact_id,
+            first_name,
+            last_name,
+            job_role,
+            score,
+            category
+          )
+        `;
+      } else if (entityType === 'companies') {
+        entityField = 'company_id';
+        entityTable = 'company_tags';
+        selectFields = `
+          companies (
+            company_id,
+            name,
+            website,
+            category,
+            description
+          )
+        `;
+      } else if (entityType === 'deals') {
+        entityField = 'deal_id';
+        entityTable = 'deal_tags';
+        selectFields = `
+          deals (
+            deal_id,
+            name,
+            amount,
+            status,
+            stage
+          )
+        `;
+      }
+
+      // Get all tag associations for the selected tags
+      const { data: tagAssociations, error } = await supabase
+        .from(entityTable)
+        .select(`${entityField}, tag_id`)
+        .in('tag_id', tagIds);
+        
+      if (error) throw error;
+      
+      // Group by entity and count matching tags
+      const entityTagCounts = {};
+      tagAssociations.forEach(association => {
+        const entityId = association[entityField];
+        if (!entityTagCounts[entityId]) {
+          entityTagCounts[entityId] = 0;
+        }
+        entityTagCounts[entityId]++;
+      });
+      
+      // Filter entities that have ALL selected tags
+      const entityIdsWithAllTags = Object.keys(entityTagCounts)
+        .filter(entityId => entityTagCounts[entityId] === tagIds.length);
+      
+      if (entityIdsWithAllTags.length === 0) {
+        setFilteredResults([]);
+        return;
+      }
+      
+      // Now fetch the actual entity data for those IDs
+      const { data: entities, error: entitiesError } = await supabase
+        .from(entityTable)
+        .select(selectFields)
+        .in(entityField, entityIdsWithAllTags);
+      
+      if (entitiesError) throw entitiesError;
+      
+      // Extract the nested data and remove duplicates
+      const results = entities?.map(item => 
+        entityType === 'contacts' ? item.contacts :
+        entityType === 'companies' ? item.companies :
+        item.deals
+      ).filter(Boolean) || [];
+      
+      // Remove duplicates based on ID
+      const uniqueResults = results.filter((item, index, arr) => {
+        const idField = entityType === 'contacts' ? 'contact_id' : 
+                       entityType === 'companies' ? 'company_id' : 'deal_id';
+        return arr.findIndex(other => other[idField] === item[idField]) === index;
+      });
+      
+      setFilteredResults(uniqueResults);
+      
+    } catch (err) {
+      console.error('Error fetching filtered results:', err);
+      toast.error('Failed to fetch filtered results');
+      setFilteredResults([]);
+    } finally {
+      setIsLoadingResults(false);
+    }
   };
   
   if (loading) {
@@ -2513,19 +2722,19 @@ const ContactRecord = () => {
             <ModalSidebar>
               <FilterButton 
                 active={activeTagFilter === 'contacts'}
-                onClick={() => handleFilterChange('contacts')}
+                onClick={() => handleEntityTypeChange('contacts')}
               >
                 Related contacts
               </FilterButton>
               <FilterButton 
                 active={activeTagFilter === 'companies'}
-                onClick={() => handleFilterChange('companies')}
+                onClick={() => handleEntityTypeChange('companies')}
               >
                 Related Companies
               </FilterButton>
               <FilterButton 
                 active={activeTagFilter === 'deals'}
-                onClick={() => handleFilterChange('deals')}
+                onClick={() => handleEntityTypeChange('deals')}
               >
                 Related Deals
               </FilterButton>
@@ -2533,29 +2742,23 @@ const ContactRecord = () => {
               {/* Tags display in sidebar */}
               <div style={{ marginTop: '20px' }}>
                 <div style={{ color: '#00ff00', marginBottom: '10px', fontSize: '0.9rem', fontWeight: 'bold' }}>
-                  Contact Tags
+                  Filter by Tags
+                  {selectedTags.length > 0 && (
+                    <span style={{ color: '#999', fontSize: '0.8rem', marginLeft: '8px' }}>
+                      ({selectedTags.length} selected)
+                    </span>
+                  )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   {tags.length > 0 ? (
                     tags.map(tag => (
-                      <div
+                      <FilterableTag
                         key={tag.tag_id}
-                        style={{
-                          backgroundColor: '#222',
-                          color: '#00ff00',
-                          border: '1px solid #00ff00',
-                          borderRadius: '8px',
-                          padding: '4px 8px',
-                          fontSize: '0.7rem',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          width: 'fit-content',
-                          whiteSpace: 'nowrap',
-                          boxSizing: 'border-box'
-                        }}
+                        selected={selectedTags.includes(tag.tag_id)}
+                        onClick={() => handleTagToggle(tag.tag_id)}
                       >
                         {tag.name}
-                      </div>
+                      </FilterableTag>
                     ))
                   ) : (
                     <span style={{ color: '#666', fontStyle: 'italic', fontSize: '0.8rem' }}>
@@ -2574,25 +2777,92 @@ const ContactRecord = () => {
                 </CloseButton>
               </ModalHeader>
               
-              <div style={{ flex: 1, padding: '20px' }}>
-                {activeTagFilter === 'contacts' && (
-                  <div style={{ color: '#999', textAlign: 'center', marginTop: '50px' }}>
-                    Related contacts functionality coming soon...
+              <ResultsContainer>
+                {selectedTags.length === 0 ? (
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    height: '200px',
+                    color: '#999',
+                    textAlign: 'center'
+                  }}>
+                    Select one or more tags to see related {activeTagFilter}
+                  </div>
+                ) : isLoadingResults ? (
+                  <LoadingSpinner>
+                    Loading {activeTagFilter}...
+                  </LoadingSpinner>
+                ) : filteredResults.length === 0 ? (
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    height: '200px',
+                    color: '#999',
+                    textAlign: 'center'
+                  }}>
+                    No {activeTagFilter} found with selected tags
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ 
+                      padding: '15px 20px 10px 20px', 
+                      borderBottom: '1px solid #333',
+                      color: '#00ff00',
+                      fontSize: '1.1rem',
+                      fontWeight: 'bold'
+                    }}>
+                      {filteredResults.length} {activeTagFilter} found
+                    </div>
+                    {filteredResults.map(item => {
+                      if (activeTagFilter === 'contacts') {
+                        return (
+                          <ResultItem 
+                            key={item.contact_id}
+                            onClick={() => {
+                              if (item.contact_id !== id) {
+                                navigate(`/contacts/record/${item.contact_id}`);
+                                handleCloseTagsModal();
+                              }
+                            }}
+                          >
+                            <ResultTitle>
+                              {item.first_name} {item.last_name}
+                            </ResultTitle>
+                            <ResultSubtitle>
+                              {item.job_role && `${item.job_role} • `}
+                              {item.category || 'Uncategorized'}
+                              {item.score && ` • Score: ${item.score}/5`}
+                            </ResultSubtitle>
+                          </ResultItem>
+                        );
+                      } else if (activeTagFilter === 'companies') {
+                        return (
+                          <ResultItem key={item.company_id}>
+                            <ResultTitle>{item.name}</ResultTitle>
+                            <ResultSubtitle>
+                              {item.category && `${item.category} • `}
+                              {item.website && `${item.website} • `}
+                              {item.description || 'No description'}
+                            </ResultSubtitle>
+                          </ResultItem>
+                        );
+                      } else if (activeTagFilter === 'deals') {
+                        return (
+                          <ResultItem key={item.deal_id}>
+                            <ResultTitle>{item.name}</ResultTitle>
+                            <ResultSubtitle>
+                              {item.amount && `$${item.amount.toLocaleString()} • `}
+                              {item.stage || item.status}
+                            </ResultSubtitle>
+                          </ResultItem>
+                        );
+                      }
+                    })}
                   </div>
                 )}
-                
-                {activeTagFilter === 'companies' && (
-                  <div style={{ color: '#999', textAlign: 'center', marginTop: '50px' }}>
-                    Related companies functionality coming soon...
-                  </div>
-                )}
-                
-                {activeTagFilter === 'deals' && (
-                  <div style={{ color: '#999', textAlign: 'center', marginTop: '50px' }}>
-                    Related deals functionality coming soon...
-                  </div>
-                )}
-              </div>
+              </ResultsContainer>
             </ModalContent>
           </ModalContainer>
         </ModalOverlay>
