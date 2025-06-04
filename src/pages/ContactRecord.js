@@ -458,6 +458,28 @@ const EmailInput = styled.input`
   }
 `;
 
+const FrequencySelect = styled.select`
+  background-color: #222;
+  color: #eee;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.95rem;
+  width: auto;
+  min-width: 120px;
+  max-width: 100%;
+  
+  &:focus {
+    outline: none;
+    border-color: #00ff00;
+  }
+  
+  option {
+    background-color: #222;
+    color: #eee;
+  }
+`;
+
 const ContactRecord = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -508,6 +530,11 @@ const ContactRecord = () => {
   const [editingEmailId, setEditingEmailId] = useState(null);
   const [editEmailValue, setEditEmailValue] = useState('');
   const [isSavingEditEmail, setIsSavingEditEmail] = useState(false);
+  
+  // Frequency editing state
+  const [isEditingFrequency, setIsEditingFrequency] = useState(false);
+  const [editFrequencyValue, setEditFrequencyValue] = useState('');
+  const [isSavingFrequency, setIsSavingFrequency] = useState(false);
   
   // Ref for click outside detection
   const mobileInputRef = useRef(null);
@@ -751,6 +778,15 @@ const ContactRecord = () => {
     if (!dateTimeString) return '-';
     const date = new Date(dateTimeString);
     return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+  };
+
+  // Format date as MM/YY
+  const formatMonthYear = (dateTimeString) => {
+    if (!dateTimeString) return '-';
+    const date = new Date(dateTimeString);
+    const month = String(date.getMonth() + 1).padStart(2, '0'); // +1 because getMonth() is 0-indexed
+    const year = String(date.getFullYear()).slice(-2); // Get last 2 digits of year
+    return `${month}/${year}`;
   };
 
   // Birthday editing handlers
@@ -1124,6 +1160,56 @@ const ContactRecord = () => {
   const handleCancelEditEmail = () => {
     setEditingEmailId(null);
     setEditEmailValue('');
+  };
+
+  // Frequency editing handlers
+  const frequencyOptions = [
+    { value: 'Do not keep in touch', label: 'Do not keep in touch' },
+    { value: 'Weekly', label: 'Weekly' },
+    { value: 'Monthly', label: 'Monthly' },
+    { value: 'Quarterly', label: 'Quarterly' },
+    { value: 'Twice per Year', label: 'Twice per Year' },
+    { value: 'Once per Year', label: 'Once per Year' }
+  ];
+
+  const handleEditFrequency = () => {
+    setEditFrequencyValue(keepInTouch?.frequency || '');
+    setIsEditingFrequency(true);
+  };
+
+  const handleSaveFrequency = async (newFrequency) => {
+    if (isSavingFrequency) return;
+    
+    setIsSavingFrequency(true);
+    
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .update({ keep_in_touch_frequency: newFrequency })
+        .eq('contact_id', id);
+        
+      if (error) throw error;
+      
+      // Update local state
+      setKeepInTouch(prev => ({
+        ...prev,
+        frequency: newFrequency
+      }));
+      
+      setIsEditingFrequency(false);
+      toast.success('Frequency updated successfully');
+      
+    } catch (err) {
+      console.error('Error updating frequency:', err);
+      toast.error('Failed to update frequency');
+    } finally {
+      setIsSavingFrequency(false);
+    }
+  };
+
+  const handleCancelFrequency = () => {
+    setIsEditingFrequency(false);
+    setEditFrequencyValue('');
   };
   
   if (loading) {
@@ -1645,12 +1731,42 @@ const ContactRecord = () => {
               
               <InfoItem>
                 <InfoLabel>Frequency</InfoLabel>
-                <InfoValue>{keepInTouch.frequency}</InfoValue>
+                {isEditingFrequency ? (
+                  <EditableField>
+                    <FrequencySelect
+                      value={editFrequencyValue}
+                      onChange={(e) => handleSaveFrequency(e.target.value)}
+                      disabled={isSavingFrequency}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          handleCancelFrequency();
+                        }
+                      }}
+                      autoFocus
+                    >
+                      {frequencyOptions.map(option => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </FrequencySelect>
+                  </EditableField>
+                ) : (
+                  <InfoValue 
+                    onClick={handleEditFrequency}
+                    style={{ 
+                      cursor: 'pointer'
+                    }}
+                    title="Click to edit frequency"
+                  >
+                    {keepInTouch.frequency || 'Not set'}
+                  </InfoValue>
+                )}
               </InfoItem>
               
               <InfoItem>
                 <InfoLabel>Last Interaction</InfoLabel>
-                <InfoValue>{formatDateTime(contact.last_interaction_at || '-')}</InfoValue>
+                <InfoValue>{formatMonthYear(contact.last_interaction_at || '-')}</InfoValue>
               </InfoItem>
               
               <InfoItem>
