@@ -116,6 +116,22 @@ const EmailValue = styled(InfoValue)`
   line-height: 1.3;
 `;
 
+const NumberInput = styled.input`
+  background-color: #222;
+  color: #eee;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.95rem;
+  width: 60px;
+  text-align: center;
+  
+  &:focus {
+    outline: none;
+    border-color: #00ff00;
+  }
+`;
+
 const RelatedItem = styled.div`
   padding: 10px;
   border-bottom: 1px solid #333;
@@ -378,6 +394,70 @@ const DeleteButton = styled.button`
   }
 `;
 
+const EmailActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  margin-left: 6px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+`;
+
+const EmailContainer = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  
+  &:hover ${EmailActions} {
+    opacity: 1;
+  }
+`;
+
+const SmallEditButton = styled.button`
+  background: none;
+  border: none;
+  color: #00ff00;
+  cursor: pointer;
+  padding: 1px;
+  display: flex;
+  align-items: center;
+  font-size: 10px;
+  
+  &:hover {
+    color: #00cc00;
+  }
+`;
+
+const SmallDeleteButton = styled.button`
+  background: none;
+  border: none;
+  color: #ff5555;
+  cursor: pointer;
+  padding: 1px;
+  display: flex;
+  align-items: center;
+  font-size: 10px;
+  
+  &:hover {
+    color: #ff3333;
+  }
+`;
+
+const EmailInput = styled.input`
+  background-color: #222;
+  color: #eee;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  width: 140px;
+  
+  &:focus {
+    outline: none;
+    border-color: #00ff00;
+  }
+`;
+
 const ContactRecord = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -416,8 +496,24 @@ const ContactRecord = () => {
   const [editMobileValue, setEditMobileValue] = useState('');
   const [isSavingEditMobile, setIsSavingEditMobile] = useState(false);
   
+  // Snooze days editing state
+  const [isEditingSnoozeDays, setIsEditingSnoozeDays] = useState(false);
+  const [editSnoozeDaysValue, setEditSnoozeDaysValue] = useState(0);
+  const [isSavingSnoozeDays, setIsSavingSnoozeDays] = useState(false);
+  
+  // Email editing state
+  const [isAddingEmail, setIsAddingEmail] = useState(false);
+  const [newEmailValue, setNewEmailValue] = useState('');
+  const [isSavingEmail, setIsSavingEmail] = useState(false);
+  const [editingEmailId, setEditingEmailId] = useState(null);
+  const [editEmailValue, setEditEmailValue] = useState('');
+  const [isSavingEditEmail, setIsSavingEditEmail] = useState(false);
+  
   // Ref for click outside detection
   const mobileInputRef = useRef(null);
+  const emailInputRef = useRef(null);
+  const emailEditRef = useRef(null);
+  const birthdayEditRef = useRef(null);
   
   // Handle click outside for mobile input
   useEffect(() => {
@@ -439,6 +535,69 @@ const ContactRecord = () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isAddingMobile, newMobileValue]);
+  
+  // Handle click outside for email input
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (isAddingEmail && emailInputRef.current && !emailInputRef.current.contains(event.target)) {
+        if (newEmailValue.trim()) {
+          handleSaveEmail();
+        } else {
+          handleCancelEmail();
+        }
+      }
+    };
+
+    if (isAddingEmail) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isAddingEmail, newEmailValue]);
+  
+  // Handle click outside for email editing
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (editingEmailId && emailEditRef.current && !emailEditRef.current.contains(event.target)) {
+        if (editEmailValue.trim()) {
+          handleSaveEditEmail();
+        } else {
+          handleCancelEditEmail();
+        }
+      }
+    };
+
+    if (editingEmailId) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [editingEmailId, editEmailValue]);
+  
+  // Handle click outside for birthday editing
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (isEditingBirthday && birthdayEditRef.current && !birthdayEditRef.current.contains(event.target)) {
+        if (editBirthdayValue.trim()) {
+          handleSaveBirthday();
+        } else {
+          handleCancelBirthday();
+        }
+      }
+    };
+
+    if (isEditingBirthday) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isEditingBirthday, editBirthdayValue]);
   
   // Fetch contact data and related info
   useEffect(() => {
@@ -819,6 +978,153 @@ const ContactRecord = () => {
     setEditingMobileId(null);
     setEditMobileValue('');
   };
+
+  // Snooze days editing handlers
+  const handleEditSnoozeDays = () => {
+    setEditSnoozeDaysValue(keepInTouch?.snooze_days || 0);
+    setIsEditingSnoozeDays(true);
+  };
+
+  const handleSaveSnoozeDays = async () => {
+    if (isSavingSnoozeDays) return;
+    
+    setIsSavingSnoozeDays(true);
+    
+    try {
+      const { error } = await supabase
+        .from('keep_in_touch')
+        .update({ 
+          snooze_days: parseInt(editSnoozeDaysValue) || 0
+        })
+        .eq('contact_id', id);
+        
+      if (error) throw error;
+      
+      // Update local state
+      setKeepInTouch(prev => ({
+        ...prev,
+        snooze_days: parseInt(editSnoozeDaysValue) || 0
+      }));
+      
+      setIsEditingSnoozeDays(false);
+      toast.success('Snooze days updated successfully');
+      
+    } catch (err) {
+      console.error('Error updating snooze days:', err);
+      toast.error('Failed to update snooze days');
+    } finally {
+      setIsSavingSnoozeDays(false);
+    }
+  };
+
+  const handleCancelSnoozeDays = () => {
+    setIsEditingSnoozeDays(false);
+    setEditSnoozeDaysValue(0);
+  };
+
+  // Email handlers
+  const handleAddEmail = () => {
+    setNewEmailValue('');
+    setIsAddingEmail(true);
+  };
+
+  const handleSaveEmail = async () => {
+    if (isSavingEmail || !newEmailValue.trim()) return;
+    
+    setIsSavingEmail(true);
+    
+    try {
+      const { data, error } = await supabase
+        .from('contact_emails')
+        .insert({
+          contact_id: id,
+          email: newEmailValue.trim(),
+          is_primary: emails.length === 0 // First email becomes primary
+        })
+        .select()
+        .single();
+        
+      if (error) throw error;
+      
+      // Update local state
+      setEmails(prev => [...prev, data]);
+      setIsAddingEmail(false);
+      setNewEmailValue('');
+      toast.success('Email added successfully');
+      
+    } catch (err) {
+      console.error('Error adding email:', err);
+      toast.error('Failed to add email');
+    } finally {
+      setIsSavingEmail(false);
+    }
+  };
+
+  const handleCancelEmail = () => {
+    setIsAddingEmail(false);
+    setNewEmailValue('');
+  };
+
+  const handleEditExistingEmail = (email) => {
+    setEditingEmailId(email.email_id);
+    setEditEmailValue(email.email);
+  };
+
+  const handleSaveEditEmail = async () => {
+    if (isSavingEditEmail || !editEmailValue.trim()) return;
+    
+    setIsSavingEditEmail(true);
+    
+    try {
+      const { error } = await supabase
+        .from('contact_emails')
+        .update({ email: editEmailValue.trim() })
+        .eq('email_id', editingEmailId);
+        
+      if (error) throw error;
+      
+      // Update local state
+      setEmails(prev => prev.map(email => 
+        email.email_id === editingEmailId 
+          ? { ...email, email: editEmailValue.trim() }
+          : email
+      ));
+      
+      setEditingEmailId(null);
+      setEditEmailValue('');
+      toast.success('Email updated successfully');
+      
+    } catch (err) {
+      console.error('Error updating email:', err);
+      toast.error('Failed to update email');
+    } finally {
+      setIsSavingEditEmail(false);
+    }
+  };
+
+  const handleDeleteEmail = async (emailId) => {
+    try {
+      const { error } = await supabase
+        .from('contact_emails')
+        .delete()
+        .eq('email_id', emailId);
+        
+      if (error) throw error;
+      
+      // Update local state
+      setEmails(prev => prev.filter(email => email.email_id !== emailId));
+      toast.success('Email deleted successfully');
+      
+    } catch (err) {
+      console.error('Error deleting email:', err);
+      toast.error('Failed to delete email');
+    }
+  };
+
+  const handleCancelEditEmail = () => {
+    setEditingEmailId(null);
+    setEditEmailValue('');
+  };
   
   if (loading) {
     return (
@@ -960,62 +1266,173 @@ const ContactRecord = () => {
           <Card>
             <CardTitle><FiMail /> Contact Information</CardTitle>
             
-            {emails.length > 0 && (
-              <InfoItem>
+            <InfoItem>
+              <SectionHeader>
                 <InfoLabel>Emails</InfoLabel>
-                {emails.map((email, index) => (
-                  <EmailValue key={email.email_id}>
-                    {email.email}
-                  </EmailValue>
-                ))}
-              </InfoItem>
-            )}
+                <AddButton onClick={handleAddEmail} title="Add email">
+                  <FiPlus size={14} />
+                </AddButton>
+              </SectionHeader>
+              {emails.length > 0 && emails.map((email, index) => (
+                <EmailContainer key={email.email_id}>
+                  {editingEmailId === email.email_id ? (
+                    <EditableField ref={emailEditRef}>
+                      <EmailInput
+                        type="email"
+                        value={editEmailValue}
+                        onChange={(e) => setEditEmailValue(e.target.value)}
+                        disabled={isSavingEditEmail}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleSaveEditEmail();
+                          } else if (e.key === 'Escape') {
+                            handleCancelEditEmail();
+                          }
+                        }}
+                        autoFocus
+                      />
+                      <SaveButton 
+                        onClick={handleSaveEditEmail}
+                        disabled={isSavingEditEmail || !editEmailValue.trim()}
+                        title="Save changes"
+                      >
+                        <FiCheck size={14} />
+                      </SaveButton>
+                      <CancelButton 
+                        onClick={handleCancelEditEmail}
+                        disabled={isSavingEditEmail}
+                        title="Cancel"
+                      >
+                        <FiX size={14} />
+                      </CancelButton>
+                    </EditableField>
+                  ) : (
+                    <>
+                      <EmailValue 
+                        onClick={() => handleEditExistingEmail(email)}
+                        style={{ 
+                          cursor: 'pointer'
+                        }}
+                        title="Click to edit email"
+                      >
+                        {email.email}
+                      </EmailValue>
+                      <EmailActions>
+                        <SmallEditButton 
+                          onClick={() => handleEditExistingEmail(email)}
+                          title="Edit email"
+                        >
+                          <FiEdit size={10} />
+                        </SmallEditButton>
+                        <SmallDeleteButton 
+                          onClick={() => handleDeleteEmail(email.email_id)}
+                          title="Delete email"
+                        >
+                          <FiTrash size={10} />
+                        </SmallDeleteButton>
+                      </EmailActions>
+                    </>
+                  )}
+                </EmailContainer>
+              ))}
+              {emails.length === 0 && !isAddingEmail && (
+                <InfoValue style={{ color: '#666', fontStyle: 'italic' }}>
+                  No emails
+                </InfoValue>
+              )}
+              {isAddingEmail && (
+                <EditableField ref={emailInputRef} style={{ marginTop: '8px' }}>
+                  <EmailInput
+                    type="email"
+                    value={newEmailValue}
+                    onChange={(e) => setNewEmailValue(e.target.value)}
+                    disabled={isSavingEmail}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newEmailValue.trim()) {
+                        handleSaveEmail();
+                      } else if (e.key === 'Escape') {
+                        handleCancelEmail();
+                      }
+                    }}
+                    onBlur={() => {
+                      if (newEmailValue.trim()) {
+                        handleSaveEmail();
+                      } else {
+                        handleCancelEmail();
+                      }
+                    }}
+                    autoFocus
+                  />
+                  <CancelButton 
+                    onClick={handleCancelEmail}
+                    disabled={isSavingEmail}
+                    title="Cancel"
+                  >
+                    <FiX size={14} />
+                  </CancelButton>
+                </EditableField>
+              )}
+            </InfoItem>
             
-            {mobiles.length > 0 && (
-              <InfoItem>
-                <SectionHeader>
-                  <InfoLabel>Mobile Numbers</InfoLabel>
-                  <AddButton onClick={handleAddMobile} title="Add mobile number">
-                    <FiPlus size={14} />
-                  </AddButton>
-                </SectionHeader>
-                {mobiles.map((mobile, index) => (
-                  <MobileContainer key={mobile.mobile_id}>
-                    {editingMobileId === mobile.mobile_id ? (
-                      <EditableField>
-                        <MobileInput
-                          type="tel"
-                          value={editMobileValue}
-                          onChange={(e) => setEditMobileValue(e.target.value)}
-                          disabled={isSavingEditMobile}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              handleSaveEditMobile();
-                            } else if (e.key === 'Escape') {
-                              handleCancelEditMobile();
+            <InfoItem>
+              <SectionHeader>
+                <InfoLabel>Mobile Numbers</InfoLabel>
+                <AddButton onClick={handleAddMobile} title="Add mobile number">
+                  <FiPlus size={14} />
+                </AddButton>
+              </SectionHeader>
+              {mobiles.length > 0 && mobiles.map((mobile, index) => (
+                <MobileContainer key={mobile.mobile_id}>
+                  {editingMobileId === mobile.mobile_id ? (
+                    <EditableField>
+                      <MobileInput
+                        type="tel"
+                        value={editMobileValue}
+                        onChange={(e) => setEditMobileValue(e.target.value)}
+                        disabled={isSavingEditMobile}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleSaveEditMobile();
+                          } else if (e.key === 'Escape') {
+                            handleCancelEditMobile();
+                          }
+                        }}
+                        autoFocus
+                      />
+                      <SaveButton 
+                        onClick={handleSaveEditMobile}
+                        disabled={isSavingEditMobile || !editMobileValue.trim()}
+                        title="Save changes"
+                      >
+                        <FiCheck size={14} />
+                      </SaveButton>
+                      <CancelButton 
+                        onClick={handleCancelEditMobile}
+                        disabled={isSavingEditMobile}
+                        title="Cancel"
+                      >
+                        <FiX size={14} />
+                      </CancelButton>
+                    </EditableField>
+                  ) : (
+                    <>
+                      <InfoValue 
+                        onClick={() => {
+                          try {
+                            const formattedNumber = mobile.mobile.replace(/\D/g, '');
+                            if (formattedNumber) {
+                              window.open(`https://wa.me/${formattedNumber}`, '_blank', 'noopener,noreferrer');
+                            } else {
+                              toast.error('Invalid phone number format');
                             }
-                          }}
-                          autoFocus
-                        />
-                        <SaveButton 
-                          onClick={handleSaveEditMobile}
-                          disabled={isSavingEditMobile || !editMobileValue.trim()}
-                          title="Save changes"
-                        >
-                          <FiCheck size={14} />
-                        </SaveButton>
-                        <CancelButton 
-                          onClick={handleCancelEditMobile}
-                          disabled={isSavingEditMobile}
-                          title="Cancel"
-                        >
-                          <FiX size={14} />
-                        </CancelButton>
-                      </EditableField>
-                    ) : (
-                      <>
-                        <InfoValue 
-                          onClick={() => {
+                          } catch (error) {
+                            console.error('Error opening WhatsApp:', error);
+                            toast.error('Failed to open WhatsApp');
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
                             try {
                               const formattedNumber = mobile.mobile.replace(/\D/g, '');
                               if (formattedNumber) {
@@ -1027,88 +1444,72 @@ const ContactRecord = () => {
                               console.error('Error opening WhatsApp:', error);
                               toast.error('Failed to open WhatsApp');
                             }
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              try {
-                                const formattedNumber = mobile.mobile.replace(/\D/g, '');
-                                if (formattedNumber) {
-                                  window.open(`https://wa.me/${formattedNumber}`, '_blank', 'noopener,noreferrer');
-                                } else {
-                                  toast.error('Invalid phone number format');
-                                }
-                              } catch (error) {
-                                console.error('Error opening WhatsApp:', error);
-                                toast.error('Failed to open WhatsApp');
-                              }
-                            }
-                          }}
-                          tabIndex={0}
-                          style={{ 
-                            cursor: 'pointer'
-                          }}
-                          title="Click to open WhatsApp chat"
+                          }
+                        }}
+                        tabIndex={0}
+                        style={{ 
+                          cursor: 'pointer'
+                        }}
+                        title="Click to open WhatsApp chat"
+                      >
+                        {mobile.mobile}
+                      </InfoValue>
+                      <MobileActions>
+                        <SaveButton 
+                          onClick={() => handleEditExistingMobile(mobile)}
+                          title="Edit mobile number"
                         >
-                          {mobile.mobile}
-                        </InfoValue>
-                        <MobileActions>
-                          <SaveButton 
-                            onClick={() => handleEditExistingMobile(mobile)}
-                            title="Edit mobile number"
-                          >
-                            <FiEdit size={12} />
-                          </SaveButton>
-                          <DeleteButton 
-                            onClick={() => handleDeleteMobile(mobile.mobile_id)}
-                            title="Delete mobile number"
-                          >
-                            <FiTrash size={12} />
-                          </DeleteButton>
-                        </MobileActions>
-                      </>
-                    )}
-                  </MobileContainer>
-                ))}
-                {mobiles.length === 0 && !isAddingMobile && (
-                  <InfoValue style={{ color: '#666', fontStyle: 'italic' }}>
-                    No mobile numbers
-                  </InfoValue>
-                )}
-                {isAddingMobile && (
-                  <EditableField ref={mobileInputRef} style={{ marginTop: '8px' }}>
-                    <MobileInput
-                      type="tel"
-                      value={newMobileValue}
-                      onChange={(e) => setNewMobileValue(e.target.value)}
-                      disabled={isSavingMobile}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && newMobileValue.trim()) {
-                          handleSaveMobile();
-                        } else if (e.key === 'Escape') {
-                          handleCancelMobile();
-                        }
-                      }}
-                      onBlur={() => {
-                        if (newMobileValue.trim()) {
-                          handleSaveMobile();
-                        } else {
-                          handleCancelMobile();
-                        }
-                      }}
-                      autoFocus
-                    />
-                    <CancelButton 
-                      onClick={handleCancelMobile}
-                      disabled={isSavingMobile}
-                      title="Cancel"
-                    >
-                      <FiX size={14} />
-                    </CancelButton>
-                  </EditableField>
-                )}
-              </InfoItem>
-            )}
+                          <FiEdit size={12} />
+                        </SaveButton>
+                        <DeleteButton 
+                          onClick={() => handleDeleteMobile(mobile.mobile_id)}
+                          title="Delete mobile number"
+                        >
+                          <FiTrash size={12} />
+                        </DeleteButton>
+                      </MobileActions>
+                    </>
+                  )}
+                </MobileContainer>
+              ))}
+              {mobiles.length === 0 && !isAddingMobile && (
+                <InfoValue style={{ color: '#666', fontStyle: 'italic' }}>
+                  No mobile numbers
+                </InfoValue>
+              )}
+              {isAddingMobile && (
+                <EditableField ref={mobileInputRef} style={{ marginTop: '8px' }}>
+                  <MobileInput
+                    type="tel"
+                    value={newMobileValue}
+                    onChange={(e) => setNewMobileValue(e.target.value)}
+                    disabled={isSavingMobile}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newMobileValue.trim()) {
+                        handleSaveMobile();
+                      } else if (e.key === 'Escape') {
+                        handleCancelMobile();
+                      }
+                    }}
+                    onBlur={() => {
+                      if (newMobileValue.trim()) {
+                        handleSaveMobile();
+                      } else {
+                        handleCancelMobile();
+                      }
+                    }}
+                    autoFocus
+                  />
+                  <CancelButton 
+                    onClick={handleCancelMobile}
+                    disabled={isSavingMobile}
+                    title="Cancel"
+                  >
+                    <FiX size={14} />
+                  </CancelButton>
+                </EditableField>
+              )}
+            </InfoItem>
             
             <InfoItem>
               <InfoLabel>LinkedIn</InfoLabel>
@@ -1208,7 +1609,7 @@ const ContactRecord = () => {
             <InfoItem>
               <InfoLabel>Birthday</InfoLabel>
               {isEditingBirthday ? (
-                <EditableField>
+                <EditableField ref={birthdayEditRef}>
                   <DateInput
                     type="date"
                     value={editBirthdayValue}
@@ -1223,20 +1624,6 @@ const ContactRecord = () => {
                     }}
                     autoFocus
                   />
-                  <SaveButton 
-                    onClick={handleSaveBirthday}
-                    disabled={isSavingBirthday}
-                    title="Save birthday"
-                  >
-                    <FiCheck size={14} />
-                  </SaveButton>
-                  <CancelButton 
-                    onClick={handleCancelBirthday}
-                    disabled={isSavingBirthday}
-                    title="Cancel"
-                  >
-                    <FiX size={14} />
-                  </CancelButton>
                 </EditableField>
               ) : (
                 <InfoValue 
@@ -1301,20 +1688,49 @@ const ContactRecord = () => {
               
               <InfoItem>
                 <InfoLabel>Snooze Days</InfoLabel>
-                <InfoValue>{keepInTouch.snooze_days || 0}</InfoValue>
-              </InfoItem>
-              
-              <InfoItem>
-                <InfoLabel>Special Occasions</InfoLabel>
-                <InfoValue>
-                  {keepInTouch.christmas !== 'no wishes set' && (
-                    <Badge style={{ marginRight: '8px' }}>Christmas: {keepInTouch.christmas}</Badge>
-                  )}
-                  {keepInTouch.easter !== 'no wishes set' && (
-                    <Badge>Easter: {keepInTouch.easter}</Badge>
-                  )}
-                  {keepInTouch.christmas === 'no wishes set' && keepInTouch.easter === 'no wishes set' && '-'}
-                </InfoValue>
+                {isEditingSnoozeDays ? (
+                  <EditableField>
+                    <NumberInput
+                      type="number"
+                      min="0"
+                      value={editSnoozeDaysValue}
+                      onChange={(e) => setEditSnoozeDaysValue(e.target.value)}
+                      disabled={isSavingSnoozeDays}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleSaveSnoozeDays();
+                        } else if (e.key === 'Escape') {
+                          handleCancelSnoozeDays();
+                        }
+                      }}
+                      autoFocus
+                    />
+                    <SaveButton 
+                      onClick={handleSaveSnoozeDays}
+                      disabled={isSavingSnoozeDays}
+                      title="Save snooze days"
+                    >
+                      <FiCheck size={14} />
+                    </SaveButton>
+                    <CancelButton 
+                      onClick={handleCancelSnoozeDays}
+                      disabled={isSavingSnoozeDays}
+                      title="Cancel"
+                    >
+                      <FiX size={14} />
+                    </CancelButton>
+                  </EditableField>
+                ) : (
+                  <InfoValue 
+                    onClick={handleEditSnoozeDays}
+                    style={{ 
+                      cursor: 'pointer'
+                    }}
+                    title="Click to edit snooze days"
+                  >
+                    {keepInTouch.snooze_days || 0}
+                  </InfoValue>
+                )}
               </InfoItem>
             </Card>
           )}
