@@ -480,6 +480,204 @@ const FrequencySelect = styled.select`
   }
 `;
 
+const TagInput = styled.input`
+  background-color: #222;
+  color: #eee;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  width: 100px;
+  
+  &:focus {
+    outline: none;
+    border-color: #00ff00;
+  }
+`;
+
+const EditableTag = styled.div`
+  background-color: #222;
+  color: #00ff00;
+  border: 1px solid #00ff00;
+  border-radius: 8px;
+  padding: 5px;
+  font-size: 0.7rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  position: relative;
+  width: fit-content;
+  white-space: nowrap;
+  box-sizing: border-box;
+`;
+
+const TagActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+`;
+
+const TagEditButton = styled.button`
+  background: none;
+  border: none;
+  color: #00ff00;
+  cursor: pointer;
+  padding: 1px;
+  display: flex;
+  align-items: center;
+  font-size: 10px;
+  
+  &:hover {
+    color: #00cc00;
+  }
+`;
+
+const TagDeleteButton = styled.button`
+  background: none;
+  border: none;
+  color: #ff5555;
+  cursor: pointer;
+  padding: 1px;
+  display: flex;
+  align-items: center;
+  font-size: 10px;
+  
+  &:hover {
+    color: #ff3333;
+  }
+`;
+
+const TagsHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 15px;
+`;
+
+const TagEditContainer = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 2px;
+`;
+
+const TagWithActions = styled.div`
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  margin: 2px;
+  
+  &:hover .tag-actions {
+    opacity: 1;
+  }
+`;
+
+// Tags Modal Styled Components
+const ModalOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+`;
+
+const ModalContainer = styled.div`
+  background-color: #1a1a1a;
+  border-radius: 8px;
+  border: 1px solid #333;
+  width: 80%;
+  max-width: 1000px;
+  height: 70%;
+  max-height: 600px;
+  display: flex;
+  overflow: hidden;
+`;
+
+const ModalSidebar = styled.div`
+  width: 200px;
+  background-color: #222;
+  border-right: 1px solid #333;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+`;
+
+const ModalContent = styled.div`
+  flex: 1;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+`;
+
+const ModalHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+`;
+
+const ModalTitle = styled.h2`
+  color: #00ff00;
+  margin: 0;
+  font-size: 1.5rem;
+`;
+
+const CloseButton = styled.button`
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  padding: 5px;
+  
+  &:hover {
+    color: #fff;
+  }
+`;
+
+const FilterButton = styled.button`
+  background-color: ${props => props.active ? '#00ff00' : '#333'};
+  color: ${props => props.active ? '#000' : '#fff'};
+  border: 1px solid ${props => props.active ? '#00ff00' : '#555'};
+  padding: 10px 15px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background-color: ${props => props.active ? '#00cc00' : '#444'};
+  }
+`;
+
+const ContentArea = styled.div`
+  flex: 1;
+  border: 2px solid #333;
+  border-radius: 4px;
+  position: relative;
+  background-color: #111;
+`;
+
+const InnerRectangle = styled.div`
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  right: 20px;
+  bottom: 20px;
+  border: 1px solid #555;
+  border-radius: 4px;
+  background-color: #1a1a1a;
+`;
+
 const ContactRecord = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -536,11 +734,26 @@ const ContactRecord = () => {
   const [editFrequencyValue, setEditFrequencyValue] = useState('');
   const [isSavingFrequency, setIsSavingFrequency] = useState(false);
   
+  // Tag editing state
+  const [isEditingTags, setIsEditingTags] = useState(false);
+  const [editingTagId, setEditingTagId] = useState(null);
+  const [editTagValue, setEditTagValue] = useState('');
+  const [isAddingTag, setIsAddingTag] = useState(false);
+  const [newTagValue, setNewTagValue] = useState('');
+  const [isSavingTag, setIsSavingTag] = useState(false);
+  const [availableTags, setAvailableTags] = useState([]);
+  
+  // Tags modal state
+  const [isTagsModalOpen, setIsTagsModalOpen] = useState(false);
+  const [activeTagFilter, setActiveTagFilter] = useState('contacts');
+  
   // Ref for click outside detection
   const mobileInputRef = useRef(null);
   const emailInputRef = useRef(null);
   const emailEditRef = useRef(null);
   const birthdayEditRef = useRef(null);
+  const tagEditRef = useRef(null);
+  const tagAddRef = useRef(null);
   
   // Handle click outside for mobile input
   useEffect(() => {
@@ -625,6 +838,48 @@ const ContactRecord = () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isEditingBirthday, editBirthdayValue]);
+  
+  // Handle click outside for tag editing
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (editingTagId && tagEditRef.current && !tagEditRef.current.contains(event.target)) {
+        if (editTagValue.trim()) {
+          handleSaveEditTag();
+        } else {
+          handleCancelTag();
+        }
+      }
+    };
+
+    if (editingTagId) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [editingTagId, editTagValue]);
+  
+  // Handle click outside for tag adding
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (isAddingTag && tagAddRef.current && !tagAddRef.current.contains(event.target)) {
+        if (newTagValue.trim()) {
+          handleSaveNewTag();
+        } else {
+          handleCancelTag();
+        }
+      }
+    };
+
+    if (isAddingTag) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isAddingTag, newTagValue]);
   
   // Fetch contact data and related info
   useEffect(() => {
@@ -1211,6 +1466,176 @@ const ContactRecord = () => {
     setIsEditingFrequency(false);
     setEditFrequencyValue('');
   };
+
+  // Tag editing handlers
+  const fetchAvailableTags = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('tags')
+        .select('*')
+        .order('name');
+        
+      if (error) throw error;
+      setAvailableTags(data || []);
+    } catch (err) {
+      console.error('Error fetching tags:', err);
+    }
+  };
+
+  const handleEditTags = () => {
+    setIsEditingTags(true);
+    fetchAvailableTags();
+  };
+
+  const handleEditTag = (tag) => {
+    setEditingTagId(tag.tag_id);
+    setEditTagValue(tag.name);
+  };
+
+  const handleSaveEditTag = async () => {
+    if (isSavingTag || !editTagValue.trim()) return;
+    
+    setIsSavingTag(true);
+    
+    try {
+      const { error } = await supabase
+        .from('tags')
+        .update({ name: editTagValue.trim() })
+        .eq('tag_id', editingTagId);
+        
+      if (error) throw error;
+      
+      // Update local state
+      setTags(prev => prev.map(tag => 
+        tag.tag_id === editingTagId 
+          ? { ...tag, name: editTagValue.trim() }
+          : tag
+      ));
+      
+      setEditingTagId(null);
+      setEditTagValue('');
+      toast.success('Tag updated successfully');
+      
+    } catch (err) {
+      console.error('Error updating tag:', err);
+      toast.error('Failed to update tag');
+    } finally {
+      setIsSavingTag(false);
+    }
+  };
+
+  const handleDeleteTagAssociation = async (tagId) => {
+    try {
+      const { error } = await supabase
+        .from('contact_tags')
+        .delete()
+        .eq('contact_id', id)
+        .eq('tag_id', tagId);
+        
+      if (error) throw error;
+      
+      // Update local state
+      setTags(prev => prev.filter(tag => tag.tag_id !== tagId));
+      toast.success('Tag removed from contact');
+      
+    } catch (err) {
+      console.error('Error removing tag:', err);
+      toast.error('Failed to remove tag');
+    }
+  };
+
+  const handleAddTag = () => {
+    setNewTagValue('');
+    setIsAddingTag(true);
+    fetchAvailableTags();
+  };
+
+  const handleSaveNewTag = async () => {
+    if (isSavingTag || !newTagValue.trim()) return;
+    
+    setIsSavingTag(true);
+    
+    try {
+      // First, check if tag exists
+      let tagId;
+      const existingTag = availableTags.find(tag => 
+        tag.name.toLowerCase() === newTagValue.trim().toLowerCase()
+      );
+      
+      if (existingTag) {
+        tagId = existingTag.tag_id;
+      } else {
+        // Create new tag
+        const { data: newTag, error: tagError } = await supabase
+          .from('tags')
+          .insert({ name: newTagValue.trim() })
+          .select()
+          .single();
+          
+        if (tagError) throw tagError;
+        tagId = newTag.tag_id;
+      }
+      
+      // Check if association already exists
+      const { data: existingAssociation } = await supabase
+        .from('contact_tags')
+        .select('entry_id')
+        .eq('contact_id', id)
+        .eq('tag_id', tagId)
+        .single();
+        
+      if (existingAssociation) {
+        toast.info('Tag is already associated with this contact');
+        setIsAddingTag(false);
+        setNewTagValue('');
+        return;
+      }
+      
+      // Create association
+      const { error: associationError } = await supabase
+        .from('contact_tags')
+        .insert({
+          contact_id: id,
+          tag_id: tagId
+        });
+        
+      if (associationError) throw associationError;
+      
+      // Update local state
+      const tagToAdd = existingTag || { tag_id: tagId, name: newTagValue.trim() };
+      setTags(prev => [...prev, tagToAdd]);
+      
+      setIsAddingTag(false);
+      setNewTagValue('');
+      toast.success('Tag added successfully');
+      
+    } catch (err) {
+      console.error('Error adding tag:', err);
+      toast.error('Failed to add tag');
+    } finally {
+      setIsSavingTag(false);
+    }
+  };
+
+  const handleCancelTag = () => {
+    setIsAddingTag(false);
+    setNewTagValue('');
+    setEditingTagId(null);
+    setEditTagValue('');
+  };
+
+  // Tags modal handlers
+  const handleOpenTagsModal = () => {
+    setIsTagsModalOpen(true);
+  };
+
+  const handleCloseTagsModal = () => {
+    setIsTagsModalOpen(false);
+  };
+
+  const handleFilterChange = (filter) => {
+    setActiveTagFilter(filter);
+  };
   
   if (loading) {
     return (
@@ -1352,7 +1777,7 @@ const ContactRecord = () => {
           <Card>
             <CardTitle><FiMail /> Contact Information</CardTitle>
             
-            <InfoItem>
+              <InfoItem>
               <SectionHeader>
                 <InfoLabel>Emails</InfoLabel>
                 <AddButton onClick={handleAddEmail} title="Add email">
@@ -1460,7 +1885,7 @@ const ContactRecord = () => {
               )}
             </InfoItem>
             
-            <InfoItem>
+              <InfoItem>
               <SectionHeader>
                 <InfoLabel>Mobile Numbers</InfoLabel>
                 <AddButton onClick={handleAddMobile} title="Add mobile number">
@@ -1539,7 +1964,7 @@ const ContactRecord = () => {
                         title="Click to open WhatsApp chat"
                       >
                         {mobile.mobile}
-                      </InfoValue>
+                  </InfoValue>
                       <MobileActions>
                         <SaveButton 
                           onClick={() => handleEditExistingMobile(mobile)}
@@ -1845,22 +2270,109 @@ const ContactRecord = () => {
                     title="Click to edit snooze days"
                   >
                     {keepInTouch.snooze_days || 0}
-                  </InfoValue>
+                </InfoValue>
                 )}
               </InfoItem>
             </Card>
           )}
           
-          {tags.length > 0 && (
             <Card>
-              <CardTitle><FiTag /> Tags</CardTitle>
+            <TagsHeader>
+              <CardTitle 
+                onClick={handleOpenTagsModal}
+                style={{ cursor: 'pointer' }}
+                title="Click to view tag relationships"
+              >
+                <FiTag /> Tags
+              </CardTitle>
+              <AddButton onClick={handleAddTag} title="Add tag">
+                <FiPlus size={14} />
+              </AddButton>
+            </TagsHeader>
+            
               <BadgeContainer>
                 {tags.map(tag => (
-                  <Badge key={tag.tag_id}>{tag.name}</Badge>
-                ))}
+                editingTagId === tag.tag_id ? (
+                  <TagEditContainer key={tag.tag_id} ref={tagEditRef}>
+                    <TagInput
+                      value={editTagValue}
+                      onChange={(e) => setEditTagValue(e.target.value)}
+                      disabled={isSavingTag}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleSaveEditTag();
+                        } else if (e.key === 'Escape') {
+                          handleCancelTag();
+                        }
+                      }}
+                      autoFocus
+                    />
+                  </TagEditContainer>
+                ) : (
+                  <TagWithActions key={tag.tag_id}>
+                    <EditableTag
+                      onClick={() => handleEditTag(tag)}
+                      style={{ cursor: 'pointer' }}
+                      title="Click to edit tag"
+                    >
+                      {tag.name}
+                    </EditableTag>
+                    <TagActions className="tag-actions">
+                      <TagEditButton 
+                        onClick={() => handleEditTag(tag)}
+                        title="Edit tag"
+                      >
+                        <FiEdit size={10} />
+                      </TagEditButton>
+                      <TagDeleteButton 
+                        onClick={() => handleDeleteTagAssociation(tag.tag_id)}
+                        title="Remove tag from contact"
+                      >
+                        <FiTrash size={10} />
+                      </TagDeleteButton>
+                    </TagActions>
+                  </TagWithActions>
+                )
+              ))}
+              
+              {isAddingTag && (
+                <TagEditContainer ref={tagAddRef}>
+                  <TagInput
+                    value={newTagValue}
+                    onChange={(e) => setNewTagValue(e.target.value)}
+                    disabled={isSavingTag}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newTagValue.trim()) {
+                        handleSaveNewTag();
+                      } else if (e.key === 'Escape') {
+                        handleCancelTag();
+                      }
+                    }}
+                    placeholder="Enter tag name"
+                    autoFocus
+                  />
+                  <SaveButton 
+                    onClick={handleSaveNewTag}
+                    disabled={isSavingTag || !newTagValue.trim()}
+                    title="Add tag"
+                  >
+                    <FiCheck size={10} />
+                  </SaveButton>
+                  <CancelButton 
+                    onClick={handleCancelTag}
+                    disabled={isSavingTag}
+                    title="Cancel"
+                  >
+                    <FiX size={10} />
+                  </CancelButton>
+                </TagEditContainer>
+              )}
+              
+              {tags.length === 0 && !isAddingTag && (
+                <span style={{ color: '#666', fontStyle: 'italic' }}>No tags</span>
+              )}
               </BadgeContainer>
             </Card>
-          )}
           
           {cities.length > 0 && (
             <Card>
@@ -1993,6 +2505,98 @@ const ContactRecord = () => {
           </TabContent>
         </div>
       </ContentGrid>
+      
+      {/* Tags Modal */}
+      {isTagsModalOpen && (
+        <ModalOverlay onClick={handleCloseTagsModal}>
+          <ModalContainer onClick={(e) => e.stopPropagation()}>
+            <ModalSidebar>
+              <FilterButton 
+                active={activeTagFilter === 'contacts'}
+                onClick={() => handleFilterChange('contacts')}
+              >
+                Related contacts
+              </FilterButton>
+              <FilterButton 
+                active={activeTagFilter === 'companies'}
+                onClick={() => handleFilterChange('companies')}
+              >
+                Related Companies
+              </FilterButton>
+              <FilterButton 
+                active={activeTagFilter === 'deals'}
+                onClick={() => handleFilterChange('deals')}
+              >
+                Related Deals
+              </FilterButton>
+              
+              {/* Tags display in sidebar */}
+              <div style={{ marginTop: '20px' }}>
+                <div style={{ color: '#00ff00', marginBottom: '10px', fontSize: '0.9rem', fontWeight: 'bold' }}>
+                  Contact Tags
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {tags.length > 0 ? (
+                    tags.map(tag => (
+                      <div
+                        key={tag.tag_id}
+                        style={{
+                          backgroundColor: '#222',
+                          color: '#00ff00',
+                          border: '1px solid #00ff00',
+                          borderRadius: '8px',
+                          padding: '4px 8px',
+                          fontSize: '0.7rem',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          width: 'fit-content',
+                          whiteSpace: 'nowrap',
+                          boxSizing: 'border-box'
+                        }}
+                      >
+                        {tag.name}
+                      </div>
+                    ))
+                  ) : (
+                    <span style={{ color: '#666', fontStyle: 'italic', fontSize: '0.8rem' }}>
+                      No tags
+                    </span>
+                  )}
+                </div>
+              </div>
+            </ModalSidebar>
+            
+            <ModalContent>
+              <ModalHeader>
+                <ModalTitle>Tag Relationships</ModalTitle>
+                <CloseButton onClick={handleCloseTagsModal}>
+                  <FiX size={20} />
+                </CloseButton>
+              </ModalHeader>
+              
+              <div style={{ flex: 1, padding: '20px' }}>
+                {activeTagFilter === 'contacts' && (
+                  <div style={{ color: '#999', textAlign: 'center', marginTop: '50px' }}>
+                    Related contacts functionality coming soon...
+                  </div>
+                )}
+                
+                {activeTagFilter === 'companies' && (
+                  <div style={{ color: '#999', textAlign: 'center', marginTop: '50px' }}>
+                    Related companies functionality coming soon...
+                  </div>
+                )}
+                
+                {activeTagFilter === 'deals' && (
+                  <div style={{ color: '#999', textAlign: 'center', marginTop: '50px' }}>
+                    Related deals functionality coming soon...
+                  </div>
+                )}
+              </div>
+            </ModalContent>
+          </ModalContainer>
+        </ModalOverlay>
+      )}
     </Container>
   );
 };
