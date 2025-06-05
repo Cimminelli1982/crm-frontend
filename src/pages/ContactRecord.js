@@ -6,6 +6,8 @@ import { supabase } from '../lib/supabaseClient';
 import { FiEdit, FiPhone, FiMail, FiMapPin, FiTag, FiBriefcase, FiMessageSquare, FiCalendar, FiClock, FiCheck, FiX, FiStar, FiLinkedin, FiPlus, FiTrash } from 'react-icons/fi';
 import { toast } from 'react-toastify';
 import DealViewFindAddModal from '../components/modals/DealViewFindAddModal';
+import TagsModalComponent from '../components/modals/TagsModal';
+import CityModal from '../components/modals/CityModal';
 
 // Styled components
 const Container = styled.div`
@@ -806,6 +808,19 @@ const ContactRecord = () => {
   // Tags modal state
   const [isTagsModalOpen, setIsTagsModalOpen] = useState(false);
   const [activeTagFilter, setActiveTagFilter] = useState('contacts');
+  
+  // Location Relationships modal state
+  const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+  const [activeLocationFilter, setActiveLocationFilter] = useState('contacts');
+  const [selectedCities, setSelectedCities] = useState([]);
+  const [locationFilteredResults, setLocationFilteredResults] = useState([]);
+  const [isLoadingLocationResults, setIsLoadingLocationResults] = useState(false);
+  
+  // TagsModalComponent state
+  const [isTagsManagerModalOpen, setIsTagsManagerModalOpen] = useState(false);
+  
+  // CityModal state
+  const [isCityModalOpen, setIsCityModalOpen] = useState(false);
   
   // Deal modal state
   const [isDealModalOpen, setIsDealModalOpen] = useState(false);
@@ -1693,6 +1708,31 @@ const ContactRecord = () => {
     setEditTagValue('');
   };
 
+  // TagsModalComponent handlers
+  const handleOpenTagsManagerModal = () => {
+    setIsTagsManagerModalOpen(true);
+  };
+
+  const handleCloseTagsManagerModal = () => {
+    setIsTagsManagerModalOpen(false);
+  };
+
+  const handleTagAdded = (newTag) => {
+    // Refresh tags when a tag is added
+    setTags(prev => {
+      const exists = prev.some(tag => tag.tag_id === newTag.tag_id);
+      if (!exists) {
+        return [...prev, newTag];
+      }
+      return prev;
+    });
+  };
+
+  const handleTagRemoved = (removedTag) => {
+    // Refresh tags when a tag is removed
+    setTags(prev => prev.filter(tag => tag.tag_id !== removedTag.tag_id));
+  };
+
   // Tags modal handlers
   const handleOpenTagsModal = () => {
     setIsTagsModalOpen(true);
@@ -1846,6 +1886,167 @@ const ContactRecord = () => {
   const handleCloseDealModal = () => {
     setIsDealModalOpen(false);
     setSelectedDeal(null);
+  };
+
+  // CityModal handlers
+  const handleOpenCityModal = () => {
+    setIsCityModalOpen(true);
+  };
+
+  const handleCloseCityModal = () => {
+    setIsCityModalOpen(false);
+  };
+
+  const handleCityAdded = (newCity) => {
+    // Refresh cities when a city is added
+    setCities(prev => {
+      const exists = prev.some(city => city.city_id === newCity.id);
+      if (!exists) {
+        return [...prev, { city_id: newCity.id, name: newCity.name, country: newCity.country }];
+      }
+      return prev;
+    });
+  };
+
+  const handleCityRemoved = (removedCity) => {
+    // Refresh cities when a city is removed
+    setCities(prev => prev.filter(city => city.city_id !== removedCity.id));
+  };
+  
+  // Location Relationships modal handlers
+  const handleOpenLocationModal = () => {
+    setIsLocationModalOpen(true);
+    // Reset state when opening modal
+    setSelectedCities([]);
+    setLocationFilteredResults([]);
+    setActiveLocationFilter('contacts');
+  };
+
+  const handleCloseLocationModal = () => {
+    setIsLocationModalOpen(false);
+    // Reset state when closing modal
+    setSelectedCities([]);
+    setLocationFilteredResults([]);
+  };
+
+  const handleLocationFilterChange = (filter) => {
+    setActiveLocationFilter(filter);
+  };
+  
+  // Add new filtering handlers
+  const handleLocationToggle = (cityId) => {
+    setSelectedCities(prev => {
+      const newSelected = prev.includes(cityId) 
+        ? prev.filter(id => id !== cityId)
+        : [...prev, cityId];
+      
+      // Fetch results when cities change
+      if (newSelected.length > 0) {
+        fetchLocationFilteredResults(newSelected, activeLocationFilter);
+      } else {
+        setLocationFilteredResults([]);
+      }
+      
+      return newSelected;
+    });
+  };
+
+  const handleLocationEntityTypeChange = (entityType) => {
+    setActiveLocationFilter(entityType);
+    if (selectedCities.length > 0) {
+      fetchLocationFilteredResults(selectedCities, entityType);
+    }
+  };
+
+  const fetchLocationFilteredResults = async (cityIds, entityType) => {
+    if (cityIds.length === 0) {
+      setLocationFilteredResults([]);
+      return;
+    }
+
+    setIsLoadingLocationResults(true);
+    
+    try {
+      let entityField;
+      let entityTable;
+      let mainTable;
+      let selectFields;
+      
+      if (entityType === 'contacts') {
+        entityField = 'contact_id';
+        entityTable = 'contact_cities';
+        mainTable = 'contacts';
+        selectFields = `
+          contact_id,
+          first_name,
+          last_name,
+          job_role,
+          score,
+          category
+        `;
+      } else if (entityType === 'companies') {
+        entityField = 'company_id';
+        entityTable = 'company_cities';
+        mainTable = 'companies';
+        selectFields = `
+          company_id,
+          name,
+          website,
+          category,
+          description
+        `;
+      } else if (entityType === 'deals') {
+        // Deals not implemented yet - no deal_cities table
+        setLocationFilteredResults([]);
+        setIsLoadingLocationResults(false);
+        return;
+      }
+
+      // Get all city associations for the selected cities
+      const { data: cityAssociations, error } = await supabase
+        .from(entityTable)
+        .select(`${entityField}, city_id`)
+        .in('city_id', cityIds);
+        
+      if (error) throw error;
+      
+      // Group by entity and count matching cities
+      const entityCityCounts = {};
+      cityAssociations.forEach(association => {
+        const entityId = association[entityField];
+        if (!entityCityCounts[entityId]) {
+          entityCityCounts[entityId] = 0;
+        }
+        entityCityCounts[entityId]++;
+      });
+      
+      // Filter entities that have ALL selected cities
+      const entityIdsWithAllCities = Object.keys(entityCityCounts)
+        .filter(entityId => entityCityCounts[entityId] === cityIds.length);
+      
+      if (entityIdsWithAllCities.length === 0) {
+        setLocationFilteredResults([]);
+        return;
+      }
+      
+      // Now fetch the actual entity data directly from main table
+      const { data: entities, error: entitiesError } = await supabase
+        .from(mainTable)
+        .select(selectFields)
+        .in(entityField, entityIdsWithAllCities);
+      
+      if (entitiesError) throw entitiesError;
+      
+      // The results are already the direct entity data, no need to extract nested data
+      setLocationFilteredResults(entities || []);
+      
+    } catch (err) {
+      console.error('Error fetching filtered results:', err);
+      toast.error('Failed to fetch filtered results');
+      setLocationFilteredResults([]);
+    } finally {
+      setIsLoadingLocationResults(false);
+    }
   };
   
   if (loading) {
@@ -2496,105 +2697,71 @@ const ContactRecord = () => {
               >
                 <FiTag /> Tags
               </CardTitle>
-              <AddButton onClick={handleAddTag} title="Add tag">
-                <FiPlus size={14} />
-              </AddButton>
             </TagsHeader>
             
               <BadgeContainer>
-                {tags.map(tag => (
-                editingTagId === tag.tag_id ? (
-                  <TagEditContainer key={tag.tag_id} ref={tagEditRef}>
-                    <TagInput
-                      value={editTagValue}
-                      onChange={(e) => setEditTagValue(e.target.value)}
-                      disabled={isSavingTag}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          handleSaveEditTag();
-                        } else if (e.key === 'Escape') {
-                          handleCancelTag();
-                        }
-                      }}
-                      autoFocus
-                    />
-                  </TagEditContainer>
-                ) : (
-                  <TagWithActions key={tag.tag_id}>
-                    <EditableTag
-                      onClick={() => handleEditTag(tag)}
+                {tags.length > 0 ? (
+                  tags.map(tag => (
+                    <Badge 
+                      key={tag.tag_id}
+                      onClick={handleOpenTagsManagerModal}
                       style={{ cursor: 'pointer' }}
-                      title="Click to edit tag"
+                      title="Click to manage tags"
                     >
                       {tag.name}
-                    </EditableTag>
-                    <TagActions className="tag-actions">
-                      <TagEditButton 
-                        onClick={() => handleEditTag(tag)}
-                        title="Edit tag"
-                      >
-                        <FiEdit size={10} />
-                      </TagEditButton>
-                      <TagDeleteButton 
-                        onClick={() => handleDeleteTagAssociation(tag.tag_id)}
-                        title="Remove tag from contact"
-                      >
-                        <FiTrash size={10} />
-                      </TagDeleteButton>
-                    </TagActions>
-                  </TagWithActions>
-                )
-              ))}
-              
-              {isAddingTag && (
-                <TagEditContainer ref={tagAddRef}>
-                  <TagInput
-                    value={newTagValue}
-                    onChange={(e) => setNewTagValue(e.target.value)}
-                    disabled={isSavingTag}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && newTagValue.trim()) {
-                        handleSaveNewTag();
-                      } else if (e.key === 'Escape') {
-                        handleCancelTag();
-                      }
+                    </Badge>
+                  ))
+                ) : (
+                  <span 
+                    style={{ 
+                      color: '#00ff00', 
+                      cursor: 'pointer',
+                      fontSize: '0.9rem'
                     }}
-                    placeholder="Enter tag name"
-                    autoFocus
-                  />
-                  <SaveButton 
-                    onClick={handleSaveNewTag}
-                    disabled={isSavingTag || !newTagValue.trim()}
-                    title="Add tag"
+                    onClick={handleOpenTagsManagerModal}
+                    title="Click to add tags"
                   >
-                    <FiCheck size={10} />
-                  </SaveButton>
-                  <CancelButton 
-                    onClick={handleCancelTag}
-                    disabled={isSavingTag}
-                    title="Cancel"
-                  >
-                    <FiX size={10} />
-                  </CancelButton>
-                </TagEditContainer>
-              )}
-              
-              {tags.length === 0 && !isAddingTag && (
-                <span style={{ color: '#666', fontStyle: 'italic' }}>No tags</span>
-              )}
+                    Add Tags
+                  </span>
+                )}
               </BadgeContainer>
             </Card>
           
-          {cities.length > 0 && (
-            <Card>
-              <CardTitle><FiMapPin /> Locations</CardTitle>
-              <BadgeContainer>
-                {cities.map(city => (
-                  <Badge key={city.city_id}>{city.name}, {city.country}</Badge>
-                ))}
-              </BadgeContainer>
-            </Card>
-          )}
+          <Card>
+            <CardTitle
+              onClick={handleOpenLocationModal}
+              style={{ cursor: 'pointer' }}
+              title="Click to view location relationships"
+            >
+              <FiMapPin /> Locations
+            </CardTitle>
+            <BadgeContainer>
+              {cities.length > 0 ? (
+                cities.map(city => (
+                  <Badge 
+                    key={city.city_id}
+                    onClick={handleOpenCityModal}
+                    style={{ cursor: 'pointer' }}
+                    title="Click to manage locations"
+                  >
+                    {city.name}, {city.country}
+                  </Badge>
+                ))
+              ) : (
+                <span 
+                  style={{ 
+                    color: '#00ff00', 
+                    cursor: 'pointer',
+                    fontSize: '0.9rem'
+                  }}
+                  onClick={handleOpenCityModal}
+                  title="Click to add locations"
+                >
+                  Add Location
+                </span>
+              )}
+            </BadgeContainer>
+          </Card>
           
           {companies.length > 0 && (
             <Card>
@@ -2892,6 +3059,197 @@ const ContactRecord = () => {
           contactData={contact}
           showOnlyCreateTab={false}
         />
+      )}
+
+      {/* TagsModalComponent */}
+      {isTagsManagerModalOpen && (
+        <TagsModalComponent
+          isOpen={isTagsManagerModalOpen}
+          onRequestClose={handleCloseTagsManagerModal}
+          contact={contact}
+          onTagAdded={handleTagAdded}
+          onTagRemoved={handleTagRemoved}
+        />
+      )}
+
+      {/* CityModal */}
+      {isCityModalOpen && (
+        <CityModal
+          isOpen={isCityModalOpen}
+          onRequestClose={handleCloseCityModal}
+          contact={contact}
+          onCityAdded={handleCityAdded}
+          onCityRemoved={handleCityRemoved}
+        />
+      )}
+
+      {/* Location Relationships Modal */}
+      {isLocationModalOpen && (
+        <ModalOverlay onClick={handleCloseLocationModal}>
+          <ModalContainer onClick={(e) => e.stopPropagation()}>
+            <ModalSidebar>
+              <FilterButton 
+                active={activeLocationFilter === 'contacts'}
+                onClick={() => handleLocationEntityTypeChange('contacts')}
+              >
+                Related contacts
+              </FilterButton>
+              <FilterButton 
+                active={activeLocationFilter === 'companies'}
+                onClick={() => handleLocationEntityTypeChange('companies')}
+              >
+                Related Companies
+              </FilterButton>
+              <FilterButton 
+                active={false}
+                onClick={() => {}}
+                style={{ opacity: 0.5, cursor: 'not-allowed' }}
+                title="Coming soon - no deal_cities table yet"
+              >
+                Related Deals
+              </FilterButton>
+              
+              {/* Cities display in sidebar */}
+              <div style={{ marginTop: '20px' }}>
+                <div style={{ color: '#00ff00', marginBottom: '10px', fontSize: '0.9rem', fontWeight: 'bold' }}>
+                  Filter by Cities
+                  {selectedCities.length > 0 && (
+                    <span style={{ color: '#999', fontSize: '0.8rem', marginLeft: '8px' }}>
+                      ({selectedCities.length} selected)
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {cities.length > 0 ? (
+                    cities.map(city => (
+                      <FilterableTag
+                        key={city.city_id}
+                        selected={selectedCities.includes(city.city_id)}
+                        onClick={() => handleLocationToggle(city.city_id)}
+                      >
+                        {city.name}
+                      </FilterableTag>
+                    ))
+                  ) : (
+                    <span style={{ color: '#666', fontStyle: 'italic', fontSize: '0.8rem' }}>
+                      No cities
+                    </span>
+                  )}
+                </div>
+              </div>
+            </ModalSidebar>
+            
+            <ModalContent>
+              <ModalHeader>
+                <ModalTitle>City Relationships</ModalTitle>
+                <CloseButton onClick={handleCloseLocationModal}>
+                  <FiX size={20} />
+                </CloseButton>
+              </ModalHeader>
+              
+              <ResultsContainer>
+                {selectedCities.length === 0 ? (
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    height: '200px',
+                    color: '#999',
+                    textAlign: 'center'
+                  }}>
+                    Select one or more cities to see related {activeLocationFilter}
+                  </div>
+                ) : isLoadingLocationResults ? (
+                  <LoadingSpinner>
+                    Loading {activeLocationFilter}...
+                  </LoadingSpinner>
+                ) : locationFilteredResults.length === 0 ? (
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    height: '200px',
+                    color: '#999',
+                    textAlign: 'center'
+                  }}>
+                    No {activeLocationFilter} found with selected cities
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ 
+                      padding: '15px 20px 10px 20px', 
+                      borderBottom: '1px solid #333',
+                      color: '#00ff00',
+                      fontSize: '1.1rem',
+                      fontWeight: 'bold'
+                    }}>
+                      {locationFilteredResults.length} {activeLocationFilter} found
+                    </div>
+                    {locationFilteredResults.map(item => {
+                      if (activeLocationFilter === 'contacts') {
+                        return (
+                          <ResultItem 
+                            key={item.contact_id}
+                            onClick={() => {
+                              if (item.contact_id !== id) {
+                                navigate(`/contacts/${item.contact_id}`);
+                                handleCloseLocationModal();
+                              }
+                            }}
+                          >
+                            <ResultTitle>
+                              {item.first_name} {item.last_name}
+                            </ResultTitle>
+                            <ResultSubtitle>
+                              {item.job_role && `${item.job_role} • `}
+                              {item.category || 'Uncategorized'}
+                              {item.score && ` • Score: ${item.score}/5`}
+                            </ResultSubtitle>
+                          </ResultItem>
+                        );
+                      } else if (activeLocationFilter === 'companies') {
+                        return (
+                          <ResultItem 
+                            key={item.company_id}
+                            onClick={() => {
+                              // Navigate to companies page with search parameter
+                              navigate(`/companies?search=${encodeURIComponent(item.name)}`);
+                              handleCloseLocationModal();
+                            }}
+                          >
+                            <ResultTitle>{item.name}</ResultTitle>
+                            <ResultSubtitle>
+                              {item.category && `${item.category} • `}
+                              {item.website && `${item.website} • `}
+                              {item.description || 'No description'}
+                            </ResultSubtitle>
+                          </ResultItem>
+                        );
+                      } else if (activeLocationFilter === 'deals') {
+                        return (
+                          <ResultItem 
+                            key={item.deal_id}
+                            onClick={() => {
+                              handleOpenDealModal(item);
+                              handleCloseLocationModal();
+                            }}
+                          >
+                            <ResultTitle>{item.opportunity}</ResultTitle>
+                            <ResultSubtitle>
+                              {item.total_investment && `$${item.total_investment.toLocaleString()} • `}
+                              {item.category && `${item.category} • `}
+                              {item.stage}
+                            </ResultSubtitle>
+                          </ResultItem>
+                        );
+                      }
+                    })}
+                  </div>
+                )}
+              </ResultsContainer>
+            </ModalContent>
+          </ModalContainer>
+        </ModalOverlay>
       )}
     </Container>
   );
