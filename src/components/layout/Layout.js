@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
+import ContactsIcon from '../icons/ContactsIcon';
+import OpportunitiesIcon from '../icons/OpportunitiesIcon';
 import { 
   FiUsers, FiBriefcase, FiLink, FiCalendar, 
   FiLogOut, FiMenu, FiX, FiClock, FiPlusCircle, 
@@ -19,7 +21,7 @@ const LayoutContainer = styled.div`
 
 // Sidebar styling
 const SidebarContainer = styled.aside`
-  width: 260px;
+  width: ${props => props.$isOpen ? '260px' : '60px'};
   background-color: #000000;
   color: #ffffff;
   display: flex;
@@ -28,6 +30,7 @@ const SidebarContainer = styled.aside`
   position: fixed;
   height: 100vh;
   z-index: 50;
+  overflow: hidden;
   
   @media (max-width: 768px) {
     width: ${props => (props.$isOpen ? '260px' : '0')};
@@ -39,13 +42,38 @@ const SidebarHeader = styled.div`
   padding: 1.25rem;
   border-bottom: 1px solid #333333;
   display: flex;
-  justify-content: center;
+  justify-content: ${props => props.$isOpen ? 'center' : 'center'};
+  align-items: center;
+  position: relative;
+`;
+
+const ToggleButton = styled.button`
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  color: #ffffff;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background-color: #333333;
+    color: #00ff00;
+  }
+  
+  @media (max-width: 768px) {
+    display: none;
+  }
 `;
 
 const Logo = styled.div`
   img {
-    max-width: 180px;
+    max-width: ${props => props.$isOpen ? '180px' : '40px'};
     height: auto;
+    transition: all 0.3s ease;
   }
 `;
 
@@ -78,25 +106,19 @@ const MenuItem = styled.div`
 const MenuItemHeader = styled.div`
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1.5rem 0.75rem 2.25rem;
+  justify-content: ${props => props.$isOpen ? 'space-between' : 'flex-start'};
+  padding: ${props => props.$isOpen ? '0.75rem 1.5rem 0.75rem 2.25rem' : '0.75rem 0.5rem'};
   color: ${props => (props.$active ? '#00ff00' : '#ffffff')};
   background-color: ${props => (props.$active ? '#333333' : 'transparent')};
   border-left: 3px solid ${props => (props.$active ? '#444444' : 'transparent')};
   text-decoration: none;
-  transition: all 0.2s;
+  transition: all 0.3s ease;
   cursor: pointer;
   font-family: 'Courier New', Courier, monospace;
   letter-spacing: 0.5px;
   position: relative;
-  
-  &:before {
-    content: ${props => props.$active ? '"> "' : '"$ "'};
-    font-family: monospace;
-    color: ${props => (props.$active ? '#00ff00' : '#86c786')};
-    position: absolute;
-    left: 12px;
-  }
+  white-space: nowrap;
+  overflow: hidden;
   
   &:hover {
     background-color: ${props => (props.$active ? '#333333' : '#222222')};
@@ -107,11 +129,30 @@ const MenuItemHeader = styled.div`
 const MenuItemLink = styled(Link)`
   display: flex;
   align-items: center;
+  justify-content: ${props => props.$isOpen ? 'flex-start' : 'center'};
   color: inherit;
   text-decoration: none;
   flex: 1;
   font-family: 'Courier New', Courier, monospace;
   letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  width: 100%;
+`;
+
+const MenuText = styled.span`
+  opacity: ${props => props.$isOpen ? '1' : '0'};
+  width: ${props => props.$isOpen ? 'auto' : '0'};
+  transition: all 0.3s ease;
+  overflow: hidden;
+  white-space: nowrap;
+`;
+
+const MenuIcon = styled.span`
+  font-size: 1.2rem;
+  margin-right: ${props => props.$isOpen ? '0.5rem' : '0'};
+  transition: all 0.3s ease;
 `;
 
 // Submenu container
@@ -158,14 +199,6 @@ const SubMenuItem = styled(Link)`
   transition: all 0.2s;
   position: relative;
   
-  &:before {
-    content: ${props => props.$active ? '">" ' : '"$ "'};
-    position: absolute;
-    left: 1rem;
-    color: ${props => props.$active ? '#00ff00' : '#86c786'};
-    font-size: 0.8rem;
-  }
-  
   &:hover {
     background-color: #222222;
     color: #00ff00;
@@ -174,14 +207,16 @@ const SubMenuItem = styled(Link)`
 `;
 
 const SidebarFooter = styled.div`
-  padding: 1rem 1.5rem;
+  padding: 1rem ${props => props.$isOpen ? '1.5rem' : '0.5rem'};
   border-top: 1px solid #333333;
   background-color: #111111;
+  transition: all 0.3s ease;
 `;
 
 const UserInfo = styled.div`
   display: flex;
   align-items: center;
+  justify-content: ${props => props.$isOpen ? 'flex-start' : 'center'};
 `;
 
 const UserAvatar = styled.div`
@@ -192,13 +227,18 @@ const UserAvatar = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 0.75rem;
+  margin-right: ${props => props.$isOpen ? '0.75rem' : '0'};
   font-weight: bold;
   color: #ffffff;
+  transition: all 0.3s ease;
 `;
 
 const UserDetails = styled.div`
   flex: 1;
+  opacity: ${props => props.$isOpen ? '1' : '0'};
+  width: ${props => props.$isOpen ? 'auto' : '0'};
+  overflow: hidden;
+  transition: all 0.3s ease;
 `;
 
 const UserName = styled.div`
@@ -214,9 +254,9 @@ const UserRole = styled.div`
 // Main content area
 const Main = styled.main`
   flex: 1;
-  margin-left: 260px;
+  margin-left: ${props => props.$sidebarOpen ? '260px' : '60px'};
   transition: all 0.3s ease;
-  width: calc(100% - 260px);
+  width: ${props => props.$sidebarOpen ? 'calc(100% - 260px)' : 'calc(100% - 60px)'};
   padding-left: 0;
   
   @media (max-width: 768px) {
@@ -279,29 +319,20 @@ const MobileMenuButton = styled(ActionButton)`
 `;
 
 const SignOutButton = styled.button`
-  display: flex;
-  align-items: center;
-  background-color: transparent;
+  background: none;
   border: none;
   color: #86c786;
-  padding: 0.75rem 0;
   cursor: pointer;
-  width: 100%;
-  text-align: left;
-  transition: all 0.2s;
+  padding: 0.5rem 0;
   font-family: 'Courier New', Courier, monospace;
-  position: relative;
-  padding-left: 1.25rem;
-  
-  &:before {
-    content: "$ ";
-    position: absolute;
-    left: 0;
-  }
+  letter-spacing: 0.5px;
+  transition: all 0.2s ease;
+  opacity: ${props => props.$isOpen ? '1' : '0'};
+  width: ${props => props.$isOpen ? 'auto' : '0'};
+  overflow: hidden;
   
   &:hover {
     color: #00ff00;
-    text-shadow: 0 0 2px rgba(0, 255, 0, 0.4);
   }
 `;
 
@@ -312,6 +343,18 @@ const ContentContainer = styled.div`
   margin: 0;
   background-color: #000000;
   color: white;
+`;
+
+const MenuExpandIcon = styled.div`
+  color: #666666;
+  transition: all 0.2s ease;
+  font-size: 0.9rem;
+  opacity: 0.7;
+  
+  &:hover {
+    color: #00ff00;
+    opacity: 1;
+  }
 `;
 
 const Layout = ({ children }) => {
@@ -385,8 +428,11 @@ const Layout = ({ children }) => {
     <LayoutContainer>
       {/* Sidebar Navigation */}
       <SidebarContainer $isOpen={sidebarOpen}>
-        <SidebarHeader>
-          <Logo>
+        <SidebarHeader $isOpen={sidebarOpen}>
+          <ToggleButton onClick={toggleSidebar}>
+            {sidebarOpen ? <FiX /> : <FiMenu />}
+          </ToggleButton>
+          <Logo $isOpen={sidebarOpen}>
             <img 
               src="https://assets.softr-files.com/applications/4612f2ab-9299-411a-b90c-78cfdc9b1a1b/assets/9f11c75a-a815-4686-9092-c9f8af95a4e1.jpeg" 
               alt="CRM Dashboard Logo" 
@@ -399,84 +445,104 @@ const Layout = ({ children }) => {
           <MenuItem>
             <MenuItemHeader 
               $active={isPathActive('/')} 
-              onClick={() => toggleMenu('v1')}
+              $isOpen={sidebarOpen}
+              onClick={() => sidebarOpen && toggleMenu('v1')}
             >
-              <MenuItemLink to="/">
-                Contacts
+              <MenuItemLink to="/" $isOpen={sidebarOpen}>
+                <MenuIcon $isOpen={sidebarOpen}>
+                  <ContactsIcon size={20} />
+                </MenuIcon>
+                <MenuText $isOpen={sidebarOpen}>Contacts</MenuText>
               </MenuItemLink>
-              {expandedMenus.v1 ? "[open]" : "[+]"}
+              {sidebarOpen && (
+                <MenuExpandIcon>
+                  {expandedMenus.v1 ? <FiChevronDown size={16} /> : <FiChevronRight size={16} />}
+                </MenuExpandIcon>
+              )}
             </MenuItemHeader>
             
-            <SubMenu $isOpen={expandedMenus.v1}>
-              <SubMenuItem 
-                to="/contacts/interactions" 
-                $active={isPathActive('/contacts/interactions')}
-              >
-                Interactions
-              </SubMenuItem>
-              
-              <SubMenuItem 
-                to="/contacts/lists" 
-                $active={isPathActive('/contacts/lists')}
-              >
-                Lists
-              </SubMenuItem>
-              
-              <SubMenuItem 
-                to="/inbox" 
-                $active={isPathActive('/inbox')}
-              >
-                Processing
-              </SubMenuItem>
-            </SubMenu>
+            {sidebarOpen && (
+              <SubMenu $isOpen={expandedMenus.v1}>
+                <SubMenuItem 
+                  to="/contacts/interactions" 
+                  $active={isPathActive('/contacts/interactions')}
+                >
+                  Interactions
+                </SubMenuItem>
+                
+                <SubMenuItem 
+                  to="/contacts/lists" 
+                  $active={isPathActive('/contacts/lists')}
+                >
+                  Lists
+                </SubMenuItem>
+                
+                <SubMenuItem 
+                  to="/inbox" 
+                  $active={isPathActive('/inbox')}
+                >
+                  Processing
+                </SubMenuItem>
+              </SubMenu>
+            )}
           </MenuItem>
 
           {/* Opportunities Menu */}
           <MenuItem>
             <MenuItemHeader 
               $active={isPathActive('/opportunities')} 
-              onClick={() => toggleMenu('opportunities')}
+              $isOpen={sidebarOpen}
+              onClick={() => sidebarOpen && toggleMenu('opportunities')}
             >
-              <MenuItemLink to="/opportunities">
-                Opportunities
+              <MenuItemLink to="/opportunities" $isOpen={sidebarOpen}>
+                <MenuIcon $isOpen={sidebarOpen}>
+                  <OpportunitiesIcon size={20} />
+                </MenuIcon>
+                <MenuText $isOpen={sidebarOpen}>Opportunities</MenuText>
               </MenuItemLink>
-              {expandedMenus.opportunities ? "[open]" : "[+]"}
+              {sidebarOpen && (
+                <MenuExpandIcon>
+                  {expandedMenus.opportunities ? <FiChevronDown size={16} /> : <FiChevronRight size={16} />}
+                </MenuExpandIcon>
+              )}
             </MenuItemHeader>
             
-            <SubMenu $isOpen={expandedMenus.opportunities}>
-              <SubMenuItem 
-                to="/companies/deals" 
-                $active={isPathActive('/companies/deals')}
-              >
-                Deals
-              </SubMenuItem>
-              
-              <SubMenuItem 
-                to="/companies" 
-                $active={isPathActive('/companies') && !isPathActive('/companies/deals')}
-              >
-                Companies
-              </SubMenuItem>
-            </SubMenu>
+            {sidebarOpen && (
+              <SubMenu $isOpen={expandedMenus.opportunities}>
+                <SubMenuItem 
+                  to="/companies/deals" 
+                  $active={isPathActive('/companies/deals')}
+                >
+                  Deals
+                </SubMenuItem>
+                
+                <SubMenuItem 
+                  to="/companies" 
+                  $active={isPathActive('/companies') && !isPathActive('/companies/deals')}
+                >
+                  Companies
+                </SubMenuItem>
+              </SubMenu>
+            )}
           </MenuItem>
         </SidebarContent>
         
-        <SidebarFooter>
-          <UserInfo>
-            <UserAvatar>{getUserInitials()}</UserAvatar>
-            <UserDetails>
+        <SidebarFooter $isOpen={sidebarOpen}>
+          <UserInfo $isOpen={sidebarOpen}>
+            <UserAvatar $isOpen={sidebarOpen}>{getUserInitials()}</UserAvatar>
+            <UserDetails $isOpen={sidebarOpen}>
               <UserName>Simone Cimminelli</UserName>
               <UserRole>Administrator</UserRole>
             </UserDetails>
           </UserInfo>
-          <SignOutButton onClick={handleSignOut}>
+          <SignOutButton $isOpen={sidebarOpen} onClick={handleSignOut}>
             exit
           </SignOutButton>
         </SidebarFooter>
       </SidebarContainer>
       
       {/* Main Content Area */}
-      <Main>
+      <Main $sidebarOpen={sidebarOpen}>
         <ContentContainer>
           {children}
         </ContentContainer>
