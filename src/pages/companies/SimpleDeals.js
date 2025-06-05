@@ -1930,11 +1930,23 @@ const SimpleDeals = () => {
       sortable: true,
       pinned: 'left',
       editable: true,
-      cellStyle: { 
-        cursor: 'pointer', 
-        backgroundColor: 'rgba(0, 255, 0, 0.05)', 
-        textDecoration: 'underline',
-        color: '#00ff00'
+      cellStyle: (params) => {
+        const textLength = params.value ? params.value.length : 0;
+        let fontSize;
+        if (textLength > 30) {
+          fontSize = '9px';
+        } else if (textLength > 23) {
+          fontSize = '11px';
+        } else {
+          fontSize = '14px';
+        }
+        return {
+          cursor: 'pointer', 
+          backgroundColor: '#121212', 
+          textDecoration: 'none',
+          color: '#ffffff',
+          fontSize: fontSize
+        };
       }
     },
     { 

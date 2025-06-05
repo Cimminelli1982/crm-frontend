@@ -102,20 +102,28 @@ const FormContainer = styled.div`
   gap: 20px;
   width: 100%;
   padding: 0 15px;
-  max-height: calc(100% - 130px);
+  max-height: calc(100vh - 250px);
   overflow-y: auto;
+  padding-right: 25px; /* Add space for scrollbar */
+  margin-right: -10px; /* Compensate for extra padding */
   
   &::-webkit-scrollbar {
-    width: 6px;
+    width: 8px;
   }
   
   &::-webkit-scrollbar-track {
     background: #222;
+    border-radius: 4px;
   }
   
   &::-webkit-scrollbar-thumb {
     background-color: #00ff00;
-    border-radius: 3px;
+    border-radius: 4px;
+    border: 1px solid #333;
+  }
+  
+  &::-webkit-scrollbar-thumb:hover {
+    background-color: #00cc00;
   }
 `;
 
@@ -368,7 +376,7 @@ const EditDealFinalModal = ({
     stage: 'Lead',
     description: '',
     total_investment: '',
-    attachment: 'None', // Not in database yet
+    attachment: null, // Changed to null for file upload
     tags: [],
   });
   
@@ -411,17 +419,6 @@ const EditDealFinalModal = ({
     'Introduction'
   ];
   
-  // Attachment options
-  const attachmentOptions = [
-    'None',
-    'NDA',
-    'Term Sheet',
-    'Pitch Deck',
-    'Financial Model',
-    'Due Diligence',
-    'Contract'
-  ];
-  
   // Load deal data into form when modal opens, including fetching tags
   useEffect(() => {
     if (dealData) {
@@ -433,7 +430,7 @@ const EditDealFinalModal = ({
         stage: dealData.stage || 'Lead',
         description: dealData.description || '',
         total_investment: dealData.total_investment ? String(dealData.total_investment) : '',
-        attachment: 'None', // This field doesn't exist in the database yet
+        attachment: null, // Changed to null for file upload
         tags: [], // We'll fetch tags separately
       });
       
@@ -486,11 +483,20 @@ const EditDealFinalModal = ({
   
   // Form change handlers
   const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    const { name, value, type, files } = e.target;
+    
+    // Handle file inputs differently
+    if (type === 'file') {
+      setFormData(prev => ({
+        ...prev,
+        [name]: files && files.length > 0 ? files[0] : null
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
     
     // Clear errors for this field
     if (errors[name]) {
@@ -727,6 +733,7 @@ const EditDealFinalModal = ({
           padding: '25px',
           width: '805px', /* 700px increased by 15% */
           maxWidth: '90%',
+          height: '85vh',
           maxHeight: '85vh',
           backgroundColor: '#121212',
           border: '1px solid #333',
@@ -734,7 +741,9 @@ const EditDealFinalModal = ({
           boxShadow: '0 4px 20px rgba(0, 0, 0, 0.6)',
           color: '#e0e0e0',
           zIndex: 1001,
-          overflow: 'hidden'
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column'
         },
         overlay: {
           backgroundColor: 'rgba(0, 0, 0, 0.75)',
@@ -864,19 +873,14 @@ const EditDealFinalModal = ({
             <FormLabel htmlFor="attachment">
               <FiPaperclip size={14} /> Attachment
             </FormLabel>
-            <FormSelect
+            <FormInput
               id="attachment"
               name="attachment"
-              value={formData.attachment}
+              type="file"
               onChange={handleInputChange}
-            >
-              {attachmentOptions.map(option => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </FormSelect>
-            <HelpText>Select the type of attachment for this deal</HelpText>
+              accept="*/*"
+            />
+            <HelpText>Upload a file to attach to this deal</HelpText>
           </FormGroup>
           
           <FormGroup>

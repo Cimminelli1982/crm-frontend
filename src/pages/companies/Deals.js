@@ -321,14 +321,7 @@ const Deals = () => {
           className="ag-theme-alpine" 
           style={{ 
             height: 'calc(100% - 120px)', // Adjusted for filter buttons
-            width: '100%',
-            '--ag-background-color': '#121212',
-            '--ag-odd-row-background-color': '#1a1a1a',
-            '--ag-header-background-color': '#222222',
-            '--ag-header-foreground-color': '#00ff00',
-            '--ag-foreground-color': '#e0e0e0', 
-            '--ag-row-hover-color': '#2a2a2a',
-            '--ag-border-color': '#333333'
+            width: '100%'
           }}
         >
           <AgGridReact
