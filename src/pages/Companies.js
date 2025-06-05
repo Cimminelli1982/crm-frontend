@@ -577,11 +577,22 @@ const Companies = () => {
   const location = useLocation();
   const navigate = useNavigate();
   
-  // Check URL params for modal control
+  // Check URL params for modal control and search parameter
   useEffect(() => {
     const queryParams = new URLSearchParams(location.search);
     if (queryParams.get('addCompany') === 'true') {
       setShowAddCompanyModal(true);
+    }
+    
+    // Check for search parameter and set it in the search field
+    const searchParam = queryParams.get('search');
+    if (searchParam) {
+      setSearchTerm(searchParam);
+      setSearchField('name'); // Default to company name search
+      // Don't trigger fetchCompanies here, let the searchTerm useEffect handle it
+    } else if (searchTerm) {
+      // If there's no search param but we have a searchTerm, clear it
+      setSearchTerm('');
     }
   }, [location]);
   
@@ -1033,15 +1044,76 @@ const [showAddCompanyModal, setShowAddCompanyModal] = useState(false);
     }
   };
   
-  // Initial data fetch
+  // Initial data fetch - modified to not interfere with URL searches
   useEffect(() => {
-    // Reset to page 1 when the company list is refreshed due to filters/sort changes
-    if (refreshTrigger > 0) { // Only reset page on refreshes, not initial load
-      setCurrentPage(1);
+    // Only fetch if we don't have a search term (which would be handled by the search useEffect)
+    if (!searchTerm) {
+      // Reset to page 1 when the company list is refreshed due to filters/sort changes
+      if (refreshTrigger > 0) { // Only reset page on refreshes, not initial load
+        setCurrentPage(1);
+      }
+      fetchCompanies();
+      fetchFilterCounts();
     }
-    fetchCompanies();
-    fetchFilterCounts();
-  }, [refreshTrigger, sortBy, sortOrder]);
+  }, [refreshTrigger, sortBy, sortOrder, searchTerm]); // Added searchTerm as dependency
+  
+  // Trigger search when searchTerm changes (including from URL parameter)
+  useEffect(() => {
+    if (searchTerm && searchTerm.length >= 2) {
+      console.log(`Auto-triggering search for: "${searchTerm}"`);
+      
+      // Trigger search programmatically by simulating the search function
+      const triggerSearch = async () => {
+        setCurrentPage(1);
+        setIsLoading(true);
+        
+        try {
+          // Direct search for company name
+          const { data: nameSearchResults, error: nameSearchError } = await supabase
+            .from('companies')
+            .select('*')
+            .ilike('name', `%${searchTerm}%`)
+            .or('category.neq.Skip,category.is.null');
+            
+          if (nameSearchError) {
+            console.error("Error searching companies by name:", nameSearchError);
+            throw nameSearchError;
+          }
+          
+          console.log(`Auto-search found ${nameSearchResults?.length || 0} companies matching "${searchTerm}"`);
+          
+          if (nameSearchResults && nameSearchResults.length > 0) {
+            // Initialize with empty relationships
+            const companiesWithRelations = nameSearchResults.map(company => ({
+              ...company,
+              tags: [],
+              cities: [],
+              contacts: []
+            }));
+            
+            setCompanies(companiesWithRelations);
+            setFilteredCount(nameSearchResults.length);
+          } else {
+            setCompanies([]);
+            setFilteredCount(0);
+          }
+        } catch (error) {
+          console.error("Error in auto-search:", error);
+          setCompanies([]);
+          setFilteredCount(0);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      
+      triggerSearch();
+    } else if (searchTerm === '') {
+      // If searchTerm is explicitly empty, trigger normal fetchCompanies
+      console.log('Search term cleared, loading all companies');
+      setCurrentPage(1);
+      fetchCompanies();
+    }
+  }, [searchTerm]);
   
   // Add event listener to handle clicks outside menu/buttons and escape key
   useEffect(() => {

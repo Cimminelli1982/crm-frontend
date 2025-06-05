@@ -5,6 +5,7 @@ import styled from 'styled-components';
 import { supabase } from '../lib/supabaseClient';
 import { FiEdit, FiPhone, FiMail, FiMapPin, FiTag, FiBriefcase, FiMessageSquare, FiCalendar, FiClock, FiCheck, FiX, FiStar, FiLinkedin, FiPlus, FiTrash } from 'react-icons/fi';
 import { toast } from 'react-toastify';
+import DealViewFindAddModal from '../components/modals/DealViewFindAddModal';
 
 // Styled components
 const Container = styled.div`
@@ -805,6 +806,10 @@ const ContactRecord = () => {
   // Tags modal state
   const [isTagsModalOpen, setIsTagsModalOpen] = useState(false);
   const [activeTagFilter, setActiveTagFilter] = useState('contacts');
+  
+  // Deal modal state
+  const [isDealModalOpen, setIsDealModalOpen] = useState(false);
+  const [selectedDeal, setSelectedDeal] = useState(null);
   
   // Add new state for tag filtering
   const [selectedTags, setSelectedTags] = useState([]);
@@ -1742,47 +1747,46 @@ const ContactRecord = () => {
     setIsLoadingResults(true);
     
     try {
-      let query;
       let entityField;
       let entityTable;
+      let mainTable;
       let selectFields;
       
       if (entityType === 'contacts') {
         entityField = 'contact_id';
         entityTable = 'contact_tags';
+        mainTable = 'contacts';
         selectFields = `
-          contacts (
-            contact_id,
-            first_name,
-            last_name,
-            job_role,
-            score,
-            category
-          )
+          contact_id,
+          first_name,
+          last_name,
+          job_role,
+          score,
+          category
         `;
       } else if (entityType === 'companies') {
         entityField = 'company_id';
         entityTable = 'company_tags';
+        mainTable = 'companies';
         selectFields = `
-          companies (
-            company_id,
-            name,
-            website,
-            category,
-            description
-          )
+          company_id,
+          name,
+          website,
+          category,
+          description
         `;
       } else if (entityType === 'deals') {
         entityField = 'deal_id';
         entityTable = 'deal_tags';
+        mainTable = 'deals';
         selectFields = `
-          deals (
-            deal_id,
-            name,
-            amount,
-            status,
-            stage
-          )
+          deal_id,
+          opportunity,
+          total_investment,
+          category,
+          stage,
+          description,
+          created_at
         `;
       }
 
@@ -1813,29 +1817,16 @@ const ContactRecord = () => {
         return;
       }
       
-      // Now fetch the actual entity data for those IDs
+      // Now fetch the actual entity data directly from main table
       const { data: entities, error: entitiesError } = await supabase
-        .from(entityTable)
+        .from(mainTable)
         .select(selectFields)
         .in(entityField, entityIdsWithAllTags);
       
       if (entitiesError) throw entitiesError;
       
-      // Extract the nested data and remove duplicates
-      const results = entities?.map(item => 
-        entityType === 'contacts' ? item.contacts :
-        entityType === 'companies' ? item.companies :
-        item.deals
-      ).filter(Boolean) || [];
-      
-      // Remove duplicates based on ID
-      const uniqueResults = results.filter((item, index, arr) => {
-        const idField = entityType === 'contacts' ? 'contact_id' : 
-                       entityType === 'companies' ? 'company_id' : 'deal_id';
-        return arr.findIndex(other => other[idField] === item[idField]) === index;
-      });
-      
-      setFilteredResults(uniqueResults);
+      // The results are already the direct entity data, no need to extract nested data
+      setFilteredResults(entities || []);
       
     } catch (err) {
       console.error('Error fetching filtered results:', err);
@@ -1844,6 +1835,17 @@ const ContactRecord = () => {
     } finally {
       setIsLoadingResults(false);
     }
+  };
+  
+  // Deal modal handlers
+  const handleOpenDealModal = (deal) => {
+    setSelectedDeal(deal);
+    setIsDealModalOpen(true);
+  };
+
+  const handleCloseDealModal = () => {
+    setIsDealModalOpen(false);
+    setSelectedDeal(null);
   };
   
   if (loading) {
@@ -2822,7 +2824,7 @@ const ContactRecord = () => {
                             key={item.contact_id}
                             onClick={() => {
                               if (item.contact_id !== id) {
-                                navigate(`/contacts/record/${item.contact_id}`);
+                                navigate(`/contacts/${item.contact_id}`);
                                 handleCloseTagsModal();
                               }
                             }}
@@ -2839,7 +2841,14 @@ const ContactRecord = () => {
                         );
                       } else if (activeTagFilter === 'companies') {
                         return (
-                          <ResultItem key={item.company_id}>
+                          <ResultItem 
+                            key={item.company_id}
+                            onClick={() => {
+                              // Navigate to companies page with search parameter
+                              navigate(`/companies?search=${encodeURIComponent(item.name)}`);
+                              handleCloseTagsModal();
+                            }}
+                          >
                             <ResultTitle>{item.name}</ResultTitle>
                             <ResultSubtitle>
                               {item.category && `${item.category} • `}
@@ -2850,11 +2859,18 @@ const ContactRecord = () => {
                         );
                       } else if (activeTagFilter === 'deals') {
                         return (
-                          <ResultItem key={item.deal_id}>
-                            <ResultTitle>{item.name}</ResultTitle>
+                          <ResultItem 
+                            key={item.deal_id}
+                            onClick={() => {
+                              handleOpenDealModal(item);
+                              handleCloseTagsModal();
+                            }}
+                          >
+                            <ResultTitle>{item.opportunity}</ResultTitle>
                             <ResultSubtitle>
-                              {item.amount && `$${item.amount.toLocaleString()} • `}
-                              {item.stage || item.status}
+                              {item.total_investment && `$${item.total_investment.toLocaleString()} • `}
+                              {item.category && `${item.category} • `}
+                              {item.stage}
                             </ResultSubtitle>
                           </ResultItem>
                         );
@@ -2866,6 +2882,16 @@ const ContactRecord = () => {
             </ModalContent>
           </ModalContainer>
         </ModalOverlay>
+      )}
+
+      {/* Deal Modal */}
+      {isDealModalOpen && selectedDeal && (
+        <DealViewFindAddModal
+          isOpen={isDealModalOpen}
+          onClose={handleCloseDealModal}
+          contactData={contact}
+          showOnlyCreateTab={false}
+        />
       )}
     </Container>
   );
