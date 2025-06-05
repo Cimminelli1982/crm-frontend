@@ -3,11 +3,13 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { supabase } from '../lib/supabaseClient';
-import { FiEdit, FiPhone, FiMail, FiMapPin, FiTag, FiBriefcase, FiMessageSquare, FiCalendar, FiClock, FiCheck, FiX, FiStar, FiLinkedin, FiPlus, FiTrash } from 'react-icons/fi';
+import { FiEdit, FiPhone, FiMail, FiMapPin, FiTag, FiBriefcase, FiMessageSquare, FiCalendar, FiClock, FiCheck, FiX, FiStar, FiLinkedin, FiPlus, FiTrash, FiEdit2 } from 'react-icons/fi';
 import { toast } from 'react-toastify';
 import DealViewFindAddModal from '../components/modals/DealViewFindAddModal';
 import TagsModalComponent from '../components/modals/TagsModal';
 import CityModal from '../components/modals/CityModal';
+import LinkedInPreviewModal from '../components/modals/LinkedInPreviewModal';
+import ManageContactEmails from '../components/modals/ManageContactEmails';
 
 // Styled components
 const Container = styled.div`
@@ -323,6 +325,30 @@ const LinkedInIcon = styled(FiLinkedin)`
   
   &:focus {
     outline: none;
+  }
+`;
+
+const LinkedInContainer = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const LinkedInEditButton = styled.button`
+  background: none;
+  border: none;
+  color: #00ff00;
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  opacity: 0.7;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    color: #00cc00;
+    opacity: 1;
   }
 `;
 
@@ -831,6 +857,12 @@ const ContactRecord = () => {
   const [filteredResults, setFilteredResults] = useState([]);
   const [isLoadingResults, setIsLoadingResults] = useState(false);
   
+  // LinkedIn preview modal state
+  const [isLinkedInModalOpen, setIsLinkedInModalOpen] = useState(false);
+  
+  // ManageContactEmails modal state
+  const [isManageEmailsModalOpen, setIsManageEmailsModalOpen] = useState(false);
+  
   // Ref for click outside detection
   const mobileInputRef = useRef(null);
   const emailInputRef = useRef(null);
@@ -1074,7 +1106,7 @@ const ContactRecord = () => {
             
           // Get keep in touch record
           supabase
-            .from('keep_in_touch')
+            .from('mv_keep_in_touch')
             .select('*')
             .eq('contact_id', id)
             .single()
@@ -1246,6 +1278,81 @@ const ContactRecord = () => {
     } catch (error) {
       console.error('Error opening LinkedIn:', error);
       toast.error('Failed to open LinkedIn');
+    }
+  };
+
+  // LinkedIn edit modal handlers
+  const handleLinkedInEditClick = (e) => {
+    e.stopPropagation();
+    setIsLinkedInModalOpen(true);
+  };
+
+  const handleLinkedInModalClose = () => {
+    setIsLinkedInModalOpen(false);
+  };
+
+  const handleLinkedInDataSave = async (linkedInData) => {
+    try {
+      // Update contact with the LinkedIn data
+      const updates = {};
+      
+      if (linkedInData.jobRole) {
+        updates.job_role = linkedInData.jobRole;
+      }
+      
+      if (linkedInData.city) {
+        // Handle city data - we might need to create or find the city
+        // For now, let's just store it in a simple field if available
+        // You can enhance this to work with your cities system
+      }
+
+      if (Object.keys(updates).length > 0) {
+        const { error } = await supabase
+          .from('contacts')
+          .update(updates)
+          .eq('contact_id', id);
+        
+        if (error) throw error;
+        
+        // Update local state
+        setContact(prev => ({ ...prev, ...updates }));
+        toast.success('LinkedIn information updated successfully');
+      }
+
+      // Handle company data if provided
+      if (linkedInData.company) {
+        // This would require more complex logic to handle company creation/association
+        // For now, we'll just show a success message
+        toast.info('Company information extracted. You may need to manually associate the company.');
+      }
+      
+    } catch (error) {
+      console.error('Error saving LinkedIn data:', error);
+      toast.error('Failed to save LinkedIn information');
+    }
+  };
+
+  // ManageContactEmails modal handlers
+  const handleOpenEmailsModal = () => {
+    setIsManageEmailsModalOpen(true);
+  };
+
+  const handleCloseEmailsModal = () => {
+    setIsManageEmailsModalOpen(false);
+  };
+
+  const handleEmailsUpdated = async () => {
+    // Refresh emails from database when modal updates them
+    try {
+      const { data: emailsData, error } = await supabase
+        .from('contact_emails')
+        .select('*')
+        .eq('contact_id', id);
+        
+      if (error) throw error;
+      setEmails(emailsData || []);
+    } catch (err) {
+      console.error('Error refreshing emails:', err);
     }
   };
 
@@ -2156,25 +2263,28 @@ const ContactRecord = () => {
           )}
           
           {contact.linkedin && (
-            <a 
-              href={contact.linkedin.startsWith('http') ? contact.linkedin : `https://${contact.linkedin}`} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              style={{
-                backgroundColor: '#0A66C2',
-                color: 'white',
-                border: 'none',
-                padding: '10px',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                textDecoration: 'none',
-              }}
-            >
-              <FiBriefcase style={{ marginRight: '5px' }} /> LinkedIn
-            </a>
+            <LinkedInContainer>
+              <LinkedInIcon 
+                size={20}
+                hasLink={!!(contact.linkedin && contact.linkedin.trim())}
+                onClick={handleLinkedInClick}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleLinkedInClick();
+                  }
+                }}
+                tabIndex={0}
+                title={
+                  contact.linkedin && contact.linkedin.trim() 
+                    ? "Click to open LinkedIn profile" 
+                    : `Click to search for ${contact.first_name} ${contact.last_name} on LinkedIn`
+                }
+              />
+              <LinkedInEditButton onClick={handleLinkedInEditClick}>
+                Edit LinkedIn
+              </LinkedInEditButton>
+            </LinkedInContainer>
           )}
           
           <EditButton onClick={handleEdit}>
@@ -2192,108 +2302,44 @@ const ContactRecord = () => {
               <InfoItem>
               <SectionHeader>
                 <InfoLabel>Emails</InfoLabel>
-                <AddButton onClick={handleAddEmail} title="Add email">
-                  <FiPlus size={14} />
-                </AddButton>
               </SectionHeader>
               {emails.length > 0 && emails.map((email, index) => (
                 <EmailContainer key={email.email_id}>
-                  {editingEmailId === email.email_id ? (
-                    <EditableField ref={emailEditRef}>
-                      <EmailInput
-                        type="email"
-                        value={editEmailValue}
-                        onChange={(e) => setEditEmailValue(e.target.value)}
-                        disabled={isSavingEditEmail}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            handleSaveEditEmail();
-                          } else if (e.key === 'Escape') {
-                            handleCancelEditEmail();
-                          }
-                        }}
-                        autoFocus
-                      />
-                      <SaveButton 
-                        onClick={handleSaveEditEmail}
-                        disabled={isSavingEditEmail || !editEmailValue.trim()}
-                        title="Save changes"
-                      >
-                        <FiCheck size={14} />
-                      </SaveButton>
-                      <CancelButton 
-                        onClick={handleCancelEditEmail}
-                        disabled={isSavingEditEmail}
-                        title="Cancel"
-                      >
-                        <FiX size={14} />
-                      </CancelButton>
-                    </EditableField>
-                  ) : (
-                    <>
-                      <EmailValue 
-                        onClick={() => handleEditExistingEmail(email)}
-                        style={{ 
-                          cursor: 'pointer'
-                        }}
-                        title="Click to edit email"
-                      >
-                        {email.email}
-                      </EmailValue>
-                      <EmailActions>
-                        <SmallEditButton 
-                          onClick={() => handleEditExistingEmail(email)}
-                          title="Edit email"
-                        >
-                          <FiEdit size={10} />
-                        </SmallEditButton>
-                        <SmallDeleteButton 
-                          onClick={() => handleDeleteEmail(email.email_id)}
-                          title="Delete email"
-                        >
-                          <FiTrash size={10} />
-                        </SmallDeleteButton>
-                      </EmailActions>
-                    </>
-                  )}
+                  <EmailValue 
+                    onClick={() => {
+                      window.open(`mailto:${email.email}`, '_self');
+                    }}
+                    style={{ 
+                      cursor: 'pointer'
+                    }}
+                    title="Click to send email"
+                  >
+                    {email.email}
+                  </EmailValue>
+                  <EmailActions>
+                    <SmallEditButton 
+                      onClick={handleOpenEmailsModal}
+                      title="Manage emails"
+                    >
+                      <FiEdit size={10} />
+                    </SmallEditButton>
+                    <SmallDeleteButton 
+                      onClick={() => handleDeleteEmail(email.email_id)}
+                      title="Delete email"
+                    >
+                      <FiTrash size={10} />
+                    </SmallDeleteButton>
+                  </EmailActions>
                 </EmailContainer>
               ))}
-              {emails.length === 0 && !isAddingEmail && (
-                <InfoValue style={{ color: '#666', fontStyle: 'italic' }}>
-                  No emails
+              {emails.length === 0 && (
+                <InfoValue 
+                  onClick={handleOpenEmailsModal}
+                  style={{ color: '#00ff00', fontStyle: 'italic', cursor: 'pointer' }}
+                  title="Click to add emails"
+                >
+                  Add emails
                 </InfoValue>
-              )}
-              {isAddingEmail && (
-                <EditableField ref={emailInputRef} style={{ marginTop: '8px' }}>
-                  <EmailInput
-                    type="email"
-                    value={newEmailValue}
-                    onChange={(e) => setNewEmailValue(e.target.value)}
-                    disabled={isSavingEmail}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && newEmailValue.trim()) {
-                        handleSaveEmail();
-                      } else if (e.key === 'Escape') {
-                        handleCancelEmail();
-                      }
-                    }}
-                    onBlur={() => {
-                      if (newEmailValue.trim()) {
-                        handleSaveEmail();
-                      } else {
-                        handleCancelEmail();
-                      }
-                    }}
-                    autoFocus
-                  />
-                  <CancelButton 
-                    onClick={handleCancelEmail}
-                    disabled={isSavingEmail}
-                    title="Cancel"
-                  >
-                    <FiX size={14} />
-                  </CancelButton>
-                </EditableField>
               )}
             </InfoItem>
             
@@ -2436,23 +2482,31 @@ const ContactRecord = () => {
             
             <InfoItem>
               <InfoLabel>LinkedIn</InfoLabel>
-              <LinkedInIcon 
-                size={20}
-                hasLink={!!(contact.linkedin && contact.linkedin.trim())}
-                onClick={handleLinkedInClick}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    handleLinkedInClick();
+              <LinkedInContainer>
+                <LinkedInIcon 
+                  size={20}
+                  hasLink={!!(contact.linkedin && contact.linkedin.trim())}
+                  onClick={handleLinkedInClick}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleLinkedInClick();
+                    }
+                  }}
+                  tabIndex={0}
+                  title={
+                    contact.linkedin && contact.linkedin.trim() 
+                      ? "Click to open LinkedIn profile" 
+                      : `Click to search for ${contact.first_name} ${contact.last_name} on LinkedIn`
                   }
-                }}
-                tabIndex={0}
-                title={
-                  contact.linkedin && contact.linkedin.trim() 
-                    ? "Click to open LinkedIn profile" 
-                    : `Click to search for ${contact.first_name} ${contact.last_name} on LinkedIn`
-                }
-              />
+                />
+                <LinkedInEditButton 
+                  onClick={handleLinkedInEditClick}
+                  title="Edit LinkedIn information"
+                >
+                  <FiEdit2 size={14} />
+                </LinkedInEditButton>
+              </LinkedInContainer>
             </InfoItem>
             
             <InfoItem>
@@ -2727,7 +2781,7 @@ const ContactRecord = () => {
               </BadgeContainer>
             </Card>
           
-          <Card>
+            <Card>
             <CardTitle
               onClick={handleOpenLocationModal}
               style={{ cursor: 'pointer' }}
@@ -2735,7 +2789,7 @@ const ContactRecord = () => {
             >
               <FiMapPin /> Locations
             </CardTitle>
-            <BadgeContainer>
+              <BadgeContainer>
               {cities.length > 0 ? (
                 cities.map(city => (
                   <Badge 
@@ -2760,8 +2814,8 @@ const ContactRecord = () => {
                   Add Location
                 </span>
               )}
-            </BadgeContainer>
-          </Card>
+              </BadgeContainer>
+            </Card>
           
           {companies.length > 0 && (
             <Card>
@@ -3250,6 +3304,31 @@ const ContactRecord = () => {
             </ModalContent>
           </ModalContainer>
         </ModalOverlay>
+      )}
+
+      {/* LinkedIn Preview Modal */}
+      {isLinkedInModalOpen && contact && (
+        <LinkedInPreviewModal
+          isOpen={isLinkedInModalOpen}
+          onClose={handleLinkedInModalClose}
+          linkedInUrl={contact.linkedin || ''}
+          contactName={`${contact.first_name || ''} ${contact.last_name || ''}`.trim()}
+          firstName={contact.first_name || ''}
+          lastName={contact.last_name || ''}
+          email={emails.length > 0 ? emails[0].email : ''}
+          jobRole={contact.job_role || ''}
+          onSaveData={handleLinkedInDataSave}
+        />
+      )}
+
+      {/* ManageContactEmails Modal */}
+      {isManageEmailsModalOpen && (
+        <ManageContactEmails
+          isOpen={isManageEmailsModalOpen}
+          onRequestClose={handleCloseEmailsModal}
+          contact={contact}
+          onUpdateEmails={handleEmailsUpdated}
+        />
       )}
     </Container>
   );
