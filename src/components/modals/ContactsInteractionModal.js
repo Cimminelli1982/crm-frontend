@@ -496,7 +496,14 @@ const MeetingNotes = styled.div`
 `;
 
 // Main component
-const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
+const ContactsInteractionModal = ({ 
+  isOpen, 
+  onRequestClose, 
+  contact, 
+  showWhatsApp = true, 
+  showEmail = true, 
+  showMeetings = true 
+}) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [activeSection, setActiveSection] = useState(null);
@@ -629,7 +636,7 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
         setWhatsappChats(formattedChats);
         
         // Set default active section if there are any chats
-        if (formattedChats.length > 0 && !activeSection) {
+        if (formattedChats.length > 0 && !activeSection && showWhatsApp) {
           setActiveSection('whatsapp');
           setSelectedChat(formattedChats[0].chat_id);
           loadChatMessages(formattedChats[0].chat_id);
@@ -691,7 +698,7 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       setEmailThreads(formattedThreads);
       
       // Set default active section if there are any email threads and no chats
-      if (formattedThreads.length > 0 && !activeSection && whatsappChats.length === 0) {
+      if (formattedThreads.length > 0 && !activeSection && showEmail && (!showWhatsApp || whatsappChats.length === 0)) {
         setActiveSection('email');
         setSelectedEmailThread(formattedThreads[0].thread_id);
         loadEmailMessages(formattedThreads[0].thread_id);
@@ -781,7 +788,7 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
       setEmailThreads(formattedThreads);
       
       // Set default active section if there are any email threads and no chats
-      if (formattedThreads.length > 0 && !activeSection && whatsappChats.length === 0) {
+      if (formattedThreads.length > 0 && !activeSection && showEmail && (!showWhatsApp || whatsappChats.length === 0)) {
         setActiveSection('email');
         setSelectedEmailThread(formattedThreads[0].thread_id);
         loadEmailMessages(formattedThreads[0].thread_id);
@@ -1711,7 +1718,7 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
           <InteractionsLayout>
             {/* Channel headers in left sidebar */}
             <ChannelsMenu>
-              {whatsappChats.length > 0 && (
+              {showWhatsApp && whatsappChats.length > 0 && (
                 <>
                   <div style={{ padding: '10px 15px', color: '#aaa', fontSize: '0.8rem', borderBottom: '1px solid #272727', fontWeight: 'bold' }}>
                     WHATSAPP
@@ -1755,7 +1762,7 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
                 </>
               )}
               
-              {emailThreads.length > 0 && (
+              {showEmail && emailThreads.length > 0 && (
                 <>
                   <div style={{ padding: '10px 15px', color: '#aaa', fontSize: '0.8rem', borderBottom: '1px solid #272727', fontWeight: 'bold' }}>
                     EMAIL
@@ -1785,7 +1792,7 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
                 </>
               )}
               
-              {meetings.length > 0 && (
+              {showMeetings && meetings.length > 0 && (
                 <>
                   <div style={{ padding: '10px 15px', color: '#aaa', fontSize: '0.8rem', borderBottom: '1px solid #272727', fontWeight: 'bold' }}>
                     MEETINGS
@@ -1815,7 +1822,11 @@ const ContactsInteractionModal = ({ isOpen, onRequestClose, contact }) => {
                 </>
               )}
               
-              {whatsappChats.length === 0 && emailThreads.length === 0 && meetings.length === 0 && (
+              {(
+                (!showWhatsApp || whatsappChats.length === 0) && 
+                (!showEmail || emailThreads.length === 0) && 
+                (!showMeetings || meetings.length === 0)
+              ) && (
                 <NoDataMessage>No interactions found</NoDataMessage>
               )}
             </ChannelsMenu>

@@ -10,6 +10,7 @@ import TagsModalComponent from '../components/modals/TagsModal';
 import CityModal from '../components/modals/CityModal';
 import LinkedInPreviewModal from '../components/modals/LinkedInPreviewModal';
 import ManageContactEmails from '../components/modals/ManageContactEmails';
+import ContactsInteractionModal from '../components/modals/ContactsInteractionModal';
 
 // Styled components
 const Container = styled.div`
@@ -863,6 +864,14 @@ const ContactRecord = () => {
   // ManageContactEmails modal state
   const [isManageEmailsModalOpen, setIsManageEmailsModalOpen] = useState(false);
   
+  // ContactsInteractionModal state
+  const [isInteractionModalOpen, setIsInteractionModalOpen] = useState(false);
+  const [interactionModalFilters, setInteractionModalFilters] = useState({
+    showWhatsApp: true,
+    showEmail: true,
+    showMeetings: true
+  });
+  
   // Ref for click outside detection
   const mobileInputRef = useRef(null);
   const emailInputRef = useRef(null);
@@ -1341,8 +1350,7 @@ const ContactRecord = () => {
     setIsManageEmailsModalOpen(false);
   };
 
-  const handleEmailsUpdated = async () => {
-    // Refresh emails from database when modal updates them
+  const fetchEmails = async () => {
     try {
       const { data: emailsData, error } = await supabase
         .from('contact_emails')
@@ -1354,6 +1362,36 @@ const ContactRecord = () => {
     } catch (err) {
       console.error('Error refreshing emails:', err);
     }
+  };
+
+  const handleEmailsUpdated = () => {
+    // Refresh emails data
+    fetchEmails();
+  };
+
+  // Interaction modal handlers
+  const handleOpenInteractionModal = (filterType = 'all') => {
+    let filters = { showWhatsApp: true, showEmail: true, showMeetings: true };
+    
+    if (filterType === 'emails') {
+      filters = { showWhatsApp: false, showEmail: true, showMeetings: false };
+    } else if (filterType === 'whatsapp') {
+      filters = { showWhatsApp: true, showEmail: false, showMeetings: false };
+    } else if (filterType === 'meetings') {
+      filters = { showWhatsApp: false, showEmail: false, showMeetings: true };
+    }
+    
+    setInteractionModalFilters(filters);
+    setIsInteractionModalOpen(true);
+  };
+
+  const handleCloseInteractionModal = () => {
+    setIsInteractionModalOpen(false);
+    setInteractionModalFilters({
+      showWhatsApp: true,
+      showEmail: true,
+      showMeetings: true
+    });
   };
 
   // Mobile number handlers
@@ -2500,10 +2538,7 @@ const ContactRecord = () => {
                       : `Click to search for ${contact.first_name} ${contact.last_name} on LinkedIn`
                   }
                 />
-                <LinkedInEditButton 
-                  onClick={handleLinkedInEditClick}
-                  title="Edit LinkedIn information"
-                >
+                <LinkedInEditButton onClick={handleLinkedInEditClick}>
                   <FiEdit2 size={14} />
                 </LinkedInEditButton>
               </LinkedInContainer>
@@ -2849,7 +2884,7 @@ const ContactRecord = () => {
               active={activeTab === 'opportunities'}
               onClick={() => setActiveTab('opportunities')}
             >
-              Opportunities
+              Deals
             </Tab>
             <Tab 
               active={activeTab === 'introductions'}
@@ -2875,28 +2910,33 @@ const ContactRecord = () => {
             <Card>
               <Tabs style={{ borderBottom: '1px solid #222', marginTop: '-10px', paddingLeft: '0' }}>
                 <Tab 
-                  active={true}
-                  onClick={() => {}}
-                  style={{ fontSize: '0.9rem', padding: '8px 20px' }}
+                  active={false}
+                  onClick={() => handleOpenInteractionModal('emails')}
+                  style={{ fontSize: '0.9rem', padding: '8px 20px', cursor: 'pointer' }}
+                  title="Click to view email interactions"
                 >
                   Emails
                 </Tab>
                 <Tab 
                   active={false}
-                  onClick={() => {}}
-                  style={{ fontSize: '0.9rem', padding: '8px 20px' }}
+                  onClick={() => handleOpenInteractionModal('whatsapp')}
+                  style={{ fontSize: '0.9rem', padding: '8px 20px', cursor: 'pointer' }}
+                  title="Click to view WhatsApp interactions"
                 >
                   WhatsApp
                 </Tab>
                 <Tab 
                   active={false}
                   onClick={() => {}}
-                  style={{ fontSize: '0.9rem', padding: '8px 20px' }}
+                  style={{ fontSize: '0.9rem', padding: '8px 20px', opacity: 0.5, cursor: 'not-allowed' }}
+                  title="Meetings section - coming soon"
                 >
                   Meetings
                 </Tab>
               </Tabs>
-              <div style={{ padding: '30px 0', color: '#999', textAlign: 'center' }}>No interactions found</div>
+              <div style={{ padding: '30px 0', color: '#999', textAlign: 'center' }}>
+                Click on Emails or WhatsApp above to view interactions
+              </div>
             </Card>
           </TabContent>
           
@@ -3328,6 +3368,18 @@ const ContactRecord = () => {
           onRequestClose={handleCloseEmailsModal}
           contact={contact}
           onUpdateEmails={handleEmailsUpdated}
+        />
+      )}
+
+      {/* ContactsInteractionModal */}
+      {isInteractionModalOpen && contact && (
+        <ContactsInteractionModal
+          isOpen={isInteractionModalOpen}
+          onRequestClose={handleCloseInteractionModal}
+          contact={contact}
+          showWhatsApp={interactionModalFilters.showWhatsApp}
+          showEmail={interactionModalFilters.showEmail}
+          showMeetings={interactionModalFilters.showMeetings}
         />
       )}
     </Container>
