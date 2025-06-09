@@ -462,28 +462,28 @@ const Layout = ({ children }) => {
             </MenuItemHeader>
             
             {sidebarOpen && (
-              <SubMenu $isOpen={expandedMenus.v1}>
-                <SubMenuItem 
-                  to="/contacts/interactions" 
-                  $active={isPathActive('/contacts/interactions')}
-                >
-                  Interactions
-                </SubMenuItem>
-                
-                <SubMenuItem 
-                  to="/contacts/lists" 
-                  $active={isPathActive('/contacts/lists')}
-                >
-                  Lists
-                </SubMenuItem>
-                
-                <SubMenuItem 
-                  to="/inbox" 
-                  $active={isPathActive('/inbox')}
-                >
-                  Processing
-                </SubMenuItem>
-              </SubMenu>
+            <SubMenu $isOpen={expandedMenus.v1}>
+              <SubMenuItem 
+                to="/contacts/interactions" 
+                $active={isPathActive('/contacts/interactions')}
+              >
+                Interactions
+              </SubMenuItem>
+              
+              <SubMenuItem 
+                to="/contacts/lists" 
+                $active={isPathActive('/contacts/lists')}
+              >
+                Lists
+              </SubMenuItem>
+              
+              <SubMenuItem 
+                to="/inbox" 
+                $active={isPathActive('/inbox')}
+              >
+                Processing
+              </SubMenuItem>
+            </SubMenu>
             )}
           </MenuItem>
 
@@ -508,21 +508,21 @@ const Layout = ({ children }) => {
             </MenuItemHeader>
             
             {sidebarOpen && (
-              <SubMenu $isOpen={expandedMenus.opportunities}>
-                <SubMenuItem 
-                  to="/companies/deals" 
-                  $active={isPathActive('/companies/deals')}
-                >
-                  Deals
-                </SubMenuItem>
-                
-                <SubMenuItem 
-                  to="/companies" 
-                  $active={isPathActive('/companies') && !isPathActive('/companies/deals')}
-                >
-                  Companies
-                </SubMenuItem>
-              </SubMenu>
+            <SubMenu $isOpen={expandedMenus.opportunities}>
+              <SubMenuItem 
+                to="/companies/deals" 
+                $active={isPathActive('/companies/deals')}
+              >
+                Deals
+              </SubMenuItem>
+              
+              <SubMenuItem 
+                to="/companies" 
+                $active={isPathActive('/companies') && !isPathActive('/companies/deals')}
+              >
+                Companies
+              </SubMenuItem>
+            </SubMenu>
             )}
           </MenuItem>
         </SidebarContent>

@@ -1048,12 +1048,12 @@ const [showAddCompanyModal, setShowAddCompanyModal] = useState(false);
   useEffect(() => {
     // Only fetch if we don't have a search term (which would be handled by the search useEffect)
     if (!searchTerm) {
-      // Reset to page 1 when the company list is refreshed due to filters/sort changes
-      if (refreshTrigger > 0) { // Only reset page on refreshes, not initial load
-        setCurrentPage(1);
-      }
-      fetchCompanies();
-      fetchFilterCounts();
+    // Reset to page 1 when the company list is refreshed due to filters/sort changes
+    if (refreshTrigger > 0) { // Only reset page on refreshes, not initial load
+      setCurrentPage(1);
+    }
+    fetchCompanies();
+    fetchFilterCounts();
     }
   }, [refreshTrigger, sortBy, sortOrder, searchTerm]); // Added searchTerm as dependency
   

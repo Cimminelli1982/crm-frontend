@@ -606,6 +606,126 @@ const TagWithActions = styled.div`
   }
 `;
 
+// Styled components for introductions display
+const IntroductionCard = styled.div`
+  background-color: #222;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    border-color: #555;
+    background-color: #252525;
+  }
+`;
+
+const IntroductionHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+`;
+
+const IntroductionDate = styled.div`
+  color: #00ff00;
+  font-size: 0.9rem;
+  font-weight: bold;
+`;
+
+const IntroductionStatus = styled.div`
+  background-color: ${props => {
+    switch(props.status?.toLowerCase()) {
+      case 'completed': return '#004d00';
+      case 'in progress': return '#4d4d00';
+      case 'cancelled': return '#4d0000';
+      default: return '#002d4d';
+    }
+  }};
+  color: ${props => {
+    switch(props.status?.toLowerCase()) {
+      case 'completed': return '#00ff00';
+      case 'in progress': return '#ffff00';
+      case 'cancelled': return '#ff5555';
+      default: return '#00aaff';
+    }
+  }};
+  border: 1px solid currentColor;
+  border-radius: 12px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  font-weight: bold;
+`;
+
+const IntroductionContacts = styled.div`
+  margin-bottom: 8px;
+`;
+
+const IntroductionContactsLabel = styled.div`
+  color: #999;
+  font-size: 0.8rem;
+  margin-bottom: 4px;
+`;
+
+const IntroductionContactsValue = styled.div`
+  color: #eee;
+  font-size: 0.95rem;
+  font-weight: 500;
+`;
+
+const IntroductionCompanies = styled.div`
+  margin-bottom: 12px;
+`;
+
+const IntroductionCompaniesLabel = styled.div`
+  color: #999;
+  font-size: 0.8rem;
+  margin-bottom: 4px;
+`;
+
+const IntroductionCompaniesValue = styled.div`
+  color: #ccc;
+  font-size: 0.85rem;
+`;
+
+const IntroductionDescription = styled.div`
+  color: #ddd;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  margin-bottom: 8px;
+`;
+
+const IntroductionCategory = styled.div`
+  display: inline-block;
+  background-color: rgba(0, 255, 0, 0.1);
+  color: #00ff00;
+  border: 1px solid rgba(0, 255, 0, 0.3);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  font-weight: bold;
+`;
+
+const IntroductionsContainer = styled.div`
+  max-height: 600px;
+  overflow-y: auto;
+  padding-right: 8px;
+  
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: #222;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: #00ff00;
+    border-radius: 3px;
+  }
+`;
+
 // Tags Modal Styled Components
 const ModalOverlay = styled.div`
   position: fixed;
@@ -785,6 +905,10 @@ const ContactRecord = () => {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('interactions');
   
+  // Add introductions state
+  const [introductions, setIntroductions] = useState([]);
+  const [loadingIntroductions, setLoadingIntroductions] = useState(false);
+  
   // Birthday editing state
   const [isEditingBirthday, setIsEditingBirthday] = useState(false);
   const [editBirthdayValue, setEditBirthdayValue] = useState('');
@@ -849,10 +973,6 @@ const ContactRecord = () => {
   // CityModal state
   const [isCityModalOpen, setIsCityModalOpen] = useState(false);
   
-  // Deal modal state
-  const [isDealModalOpen, setIsDealModalOpen] = useState(false);
-  const [selectedDeal, setSelectedDeal] = useState(null);
-  
   // Add new state for tag filtering
   const [selectedTags, setSelectedTags] = useState([]);
   const [filteredResults, setFilteredResults] = useState([]);
@@ -879,6 +999,10 @@ const ContactRecord = () => {
   const birthdayEditRef = useRef(null);
   const tagEditRef = useRef(null);
   const tagAddRef = useRef(null);
+  
+  // Deals state
+  const [deals, setDeals] = useState([]);
+  const [loadingDeals, setLoadingDeals] = useState(false);
   
   // Handle click outside for mobile input
   useEffect(() => {
@@ -1141,6 +1265,17 @@ const ContactRecord = () => {
     
     fetchContactData();
   }, [id]);
+
+  useEffect(() => {
+    console.log('🚀 useEffect running for deals and introductions - id:', id);
+    if (id) {
+      console.log('✅ id exists, calling fetchDeals and fetchIntroductions');
+      fetchDeals();
+      fetchIntroductions();
+    } else {
+      console.log('❌ no id in useEffect');
+    }
+  }, [id]);
   
   // Handle edit button click
   const handleEdit = () => {
@@ -1364,9 +1499,211 @@ const ContactRecord = () => {
     }
   };
 
+  const fetchDeals = async () => {
+    if (!id) return;
+    
+    setLoadingDeals(true);
+    try {
+      // Get deals associated with this contact through deals_contacts table
+      const { data: dealContactsData, error: dealContactsError } = await supabase
+        .from('deals_contacts')
+        .select(`
+          deals_contacts_id,
+          relationship,
+          deals:deal_id (
+            deal_id,
+            opportunity,
+            total_investment,
+            category,
+            stage,
+            description,
+            created_at,
+            updated_at
+          )
+        `)
+        .eq('contact_id', id);
+        
+      if (dealContactsError) throw dealContactsError;
+      
+      // Format the deals data
+      const formattedDeals = dealContactsData?.map(dc => ({
+        ...dc.deals,
+        relationship: dc.relationship,
+        deals_contacts_id: dc.deals_contacts_id
+      })) || [];
+      
+      setDeals(formattedDeals);
+    } catch (err) {
+      console.error('Error fetching associated deals:', err);
+      setDeals([]);
+    } finally {
+      setLoadingDeals(false);
+    }
+  };
+
+  const fetchIntroductions = async () => {
+    console.log('🔥 fetchIntroductions CALLED - id:', id, 'type:', typeof id);
+    
+    if (!id) {
+      console.log('❌ No id provided, returning early');
+      return;
+    }
+    
+    setLoadingIntroductions(true);
+    console.log('Fetching introductions for contact ID:', id);
+    
+    try {
+      // Get introductions where this contact is involved
+      // Fetch all introductions and filter in JavaScript due to PostgREST JSONB operator issues
+      const { data: introductionsData, error: introductionsError } = await supabase
+        .from('introductions')
+        .select('*')
+        .order('introduction_date', { ascending: false });
+        
+      console.log('Introductions query result:', introductionsData, 'Error:', introductionsError);
+        
+      if (introductionsError) throw introductionsError;
+      
+      // Filter introductions to only include those with the current contact
+      const filteredIntroductions = introductionsData?.filter(intro => {
+        return intro.contact_ids && Array.isArray(intro.contact_ids) && intro.contact_ids.includes(id);
+      }) || [];
+      
+      console.log('Filtered introductions for contact:', filteredIntroductions);
+      
+      if (filteredIntroductions.length === 0) {
+        console.log('No introductions found for this contact');
+        setIntroductions([]);
+        return;
+      }
+
+      console.log('Found', filteredIntroductions.length, 'introductions');
+
+      // Get all unique contact IDs from the introductions (excluding current contact)
+      const allContactIds = new Set();
+      filteredIntroductions.forEach(intro => {
+        console.log('Processing introduction:', intro.introduction_id, 'contact_ids:', intro.contact_ids);
+        if (intro.contact_ids && Array.isArray(intro.contact_ids)) {
+          intro.contact_ids.forEach(contactId => {
+            if (contactId !== id) { // Exclude current contact - comparing strings now
+              allContactIds.add(contactId);
+            }
+          });
+        }
+      });
+
+      console.log('Other contact IDs found:', Array.from(allContactIds));
+
+      // Fetch contact names for the other contacts involved
+      let contactsMap = {};
+      let companiesMap = {};
+      
+      if (allContactIds.size > 0) {
+        const { data: contactsData, error: contactsError } = await supabase
+          .from('contacts')
+          .select('contact_id, first_name, last_name')
+          .in('contact_id', Array.from(allContactIds));
+        
+        console.log('Contacts data:', contactsData, 'Error:', contactsError);
+        
+        if (contactsError) {
+          console.error('Error fetching contacts for introductions:', contactsError);
+        } else {
+          // Create a map of contact_id to full name
+          contactsData?.forEach(contact => {
+            const fullName = `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+            contactsMap[contact.contact_id] = fullName || 'Unknown Contact';
+          });
+          
+          console.log('Contacts map:', contactsMap);
+          
+          // Fetch companies for the contacts
+          const { data: contactCompaniesData, error: contactCompaniesError } = await supabase
+            .from('contact_companies')
+            .select(`
+              contact_id,
+              company_id,
+              companies!inner(
+                company_id,
+                name
+              )
+            `)
+            .in('contact_id', Array.from(allContactIds));
+            
+          console.log('Contact companies data:', contactCompaniesData, 'Error:', contactCompaniesError);
+            
+          if (contactCompaniesError) {
+            console.error('Error fetching contact companies for introductions:', contactCompaniesError);
+          } else {
+            // Create a map of contact_id to array of company names
+            contactCompaniesData?.forEach(contactCompany => {
+              const contactId = contactCompany.contact_id;
+              const companyName = contactCompany.companies?.name;
+              
+              if (companyName) {
+                if (!companiesMap[contactId]) {
+                  companiesMap[contactId] = [];
+                }
+                companiesMap[contactId].push(companyName);
+              }
+            });
+            
+            console.log('Companies map:', companiesMap);
+          }
+        }
+      }
+
+      // Transform the data for display
+      const transformedIntroductions = filteredIntroductions.map(intro => {
+        // Get other contacts involved (excluding current contact)
+        const otherContactIds = intro.contact_ids?.filter(contactId => contactId !== id) || [];
+        const otherContactNames = otherContactIds.map(contactId => {
+          return contactsMap[contactId] || '🚫 Deleted Contact';
+        });
+
+        // Get companies for other contacts
+        const allCompanies = new Set();
+        otherContactIds.forEach(contactId => {
+          if (companiesMap[contactId]) {
+            companiesMap[contactId].forEach(companyName => {
+              allCompanies.add(companyName);
+            });
+          }
+        });
+
+        const transformed = {
+          id: intro.introduction_id,
+          date: intro.introduction_date || intro.created_at,
+          otherContacts: otherContactNames,
+          relatedCompanies: Array.from(allCompanies),
+          description: intro.text || '',
+          category: intro.category || '',
+          status: intro.status || 'Requested',
+          created_at: intro.created_at
+        };
+        
+        console.log('Transformed introduction:', transformed);
+        return transformed;
+      });
+
+      console.log('Final transformed introductions:', transformedIntroductions);
+      setIntroductions(transformedIntroductions);
+    } catch (err) {
+      console.error('Error fetching introductions:', err);
+      setIntroductions([]);
+    } finally {
+      setLoadingIntroductions(false);
+    }
+  };
+
   const handleEmailsUpdated = () => {
-    // Refresh emails data
+    // Refresh emails data after modal operations
     fetchEmails();
+  };
+
+  const handleDealsUpdated = () => {
+    // Refresh deals data after modal operations
+    fetchDeals();
   };
 
   // Interaction modal handlers
@@ -2022,17 +2359,6 @@ const ContactRecord = () => {
     }
   };
   
-  // Deal modal handlers
-  const handleOpenDealModal = (deal) => {
-    setSelectedDeal(deal);
-    setIsDealModalOpen(true);
-  };
-
-  const handleCloseDealModal = () => {
-    setIsDealModalOpen(false);
-    setSelectedDeal(null);
-  };
-
   // CityModal handlers
   const handleOpenCityModal = () => {
     setIsCityModalOpen(true);
@@ -2941,14 +3267,86 @@ const ContactRecord = () => {
           </TabContent>
           
           <TabContent active={activeTab === 'opportunities'}>
-            <Card>
-              <div style={{ padding: '30px 0', color: '#999', textAlign: 'center' }}>Coming soon</div>
-            </Card>
+            <DealViewFindAddModal
+              isOpen={true}
+              onClose={() => {}} // No close action needed for inline display
+              contactData={contact}
+              showOnlyCreateTab={false}
+              onSave={handleDealsUpdated}
+              inline={true}
+            />
           </TabContent>
           
           <TabContent active={activeTab === 'introductions'}>
             <Card>
-              <div style={{ padding: '30px 0', color: '#999', textAlign: 'center' }}>Coming soon</div>
+              {loadingIntroductions ? (
+                <div style={{ padding: '30px 0', color: '#00ff00', textAlign: 'center' }}>
+                  Loading introductions...
+                </div>
+              ) : introductions.length === 0 ? (
+                <div style={{ padding: '30px 0', color: '#999', textAlign: 'center' }}>
+                  No introductions found for this contact
+                </div>
+              ) : (
+                <IntroductionsContainer>
+                  <div style={{ 
+                    marginBottom: '16px', 
+                    color: '#00ff00', 
+                    fontSize: '1.1rem',
+                    fontWeight: 'bold'
+                  }}>
+                    {introductions.length} Introduction{introductions.length !== 1 ? 's' : ''} Found
+                  </div>
+                  
+                  {introductions.map(intro => (
+                    <IntroductionCard key={intro.id}>
+                      <IntroductionHeader>
+                        <IntroductionDate>
+                          {intro.date ? new Date(intro.date).toLocaleDateString() : 'No date'}
+                        </IntroductionDate>
+                        <IntroductionStatus status={intro.status}>
+                          {intro.status}
+                        </IntroductionStatus>
+                      </IntroductionHeader>
+                      
+                      <IntroductionContacts>
+                        <IntroductionContactsLabel>
+                          Introduced to:
+                        </IntroductionContactsLabel>
+                        <IntroductionContactsValue>
+                          {intro.otherContacts.length > 0 
+                            ? intro.otherContacts.join(' • ') 
+                            : 'No other contacts found'
+                          }
+                        </IntroductionContactsValue>
+                      </IntroductionContacts>
+                      
+                      {intro.relatedCompanies.length > 0 && (
+                        <IntroductionCompanies>
+                          <IntroductionCompaniesLabel>
+                            Related Companies:
+                          </IntroductionCompaniesLabel>
+                          <IntroductionCompaniesValue>
+                            {intro.relatedCompanies.join(', ')}
+                          </IntroductionCompaniesValue>
+                        </IntroductionCompanies>
+                      )}
+                      
+                      {intro.description && (
+                        <IntroductionDescription>
+                          {intro.description}
+                        </IntroductionDescription>
+                      )}
+                      
+                      {intro.category && (
+                        <IntroductionCategory>
+                          {intro.category}
+                        </IntroductionCategory>
+                      )}
+                    </IntroductionCard>
+                  ))}
+                </IntroductionsContainer>
+              )}
             </Card>
           </TabContent>
           
@@ -2977,183 +3375,6 @@ const ContactRecord = () => {
           </TabContent>
         </div>
       </ContentGrid>
-      
-      {/* Tags Modal */}
-      {isTagsModalOpen && (
-        <ModalOverlay onClick={handleCloseTagsModal}>
-          <ModalContainer onClick={(e) => e.stopPropagation()}>
-            <ModalSidebar>
-              <FilterButton 
-                active={activeTagFilter === 'contacts'}
-                onClick={() => handleEntityTypeChange('contacts')}
-              >
-                Related contacts
-              </FilterButton>
-              <FilterButton 
-                active={activeTagFilter === 'companies'}
-                onClick={() => handleEntityTypeChange('companies')}
-              >
-                Related Companies
-              </FilterButton>
-              <FilterButton 
-                active={activeTagFilter === 'deals'}
-                onClick={() => handleEntityTypeChange('deals')}
-              >
-                Related Deals
-              </FilterButton>
-              
-              {/* Tags display in sidebar */}
-              <div style={{ marginTop: '20px' }}>
-                <div style={{ color: '#00ff00', marginBottom: '10px', fontSize: '0.9rem', fontWeight: 'bold' }}>
-                  Filter by Tags
-                  {selectedTags.length > 0 && (
-                    <span style={{ color: '#999', fontSize: '0.8rem', marginLeft: '8px' }}>
-                      ({selectedTags.length} selected)
-                    </span>
-                  )}
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {tags.length > 0 ? (
-                    tags.map(tag => (
-                      <FilterableTag
-                        key={tag.tag_id}
-                        selected={selectedTags.includes(tag.tag_id)}
-                        onClick={() => handleTagToggle(tag.tag_id)}
-                      >
-                        {tag.name}
-                      </FilterableTag>
-                    ))
-                  ) : (
-                    <span style={{ color: '#666', fontStyle: 'italic', fontSize: '0.8rem' }}>
-                      No tags
-                    </span>
-                  )}
-                </div>
-              </div>
-            </ModalSidebar>
-            
-            <ModalContent>
-              <ModalHeader>
-                <ModalTitle>Tag Relationships</ModalTitle>
-                <CloseButton onClick={handleCloseTagsModal}>
-                  <FiX size={20} />
-                </CloseButton>
-              </ModalHeader>
-              
-              <ResultsContainer>
-                {selectedTags.length === 0 ? (
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center',
-                    height: '200px',
-                    color: '#999',
-                    textAlign: 'center'
-                  }}>
-                    Select one or more tags to see related {activeTagFilter}
-                  </div>
-                ) : isLoadingResults ? (
-                  <LoadingSpinner>
-                    Loading {activeTagFilter}...
-                  </LoadingSpinner>
-                ) : filteredResults.length === 0 ? (
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center',
-                    height: '200px',
-                    color: '#999',
-                    textAlign: 'center'
-                  }}>
-                    No {activeTagFilter} found with selected tags
-                  </div>
-                ) : (
-                  <div>
-                    <div style={{ 
-                      padding: '15px 20px 10px 20px', 
-                      borderBottom: '1px solid #333',
-                      color: '#00ff00',
-                      fontSize: '1.1rem',
-                      fontWeight: 'bold'
-                    }}>
-                      {filteredResults.length} {activeTagFilter} found
-                    </div>
-                    {filteredResults.map(item => {
-                      if (activeTagFilter === 'contacts') {
-                        return (
-                          <ResultItem 
-                            key={item.contact_id}
-                            onClick={() => {
-                              if (item.contact_id !== id) {
-                                navigate(`/contacts/${item.contact_id}`);
-                                handleCloseTagsModal();
-                              }
-                            }}
-                          >
-                            <ResultTitle>
-                              {item.first_name} {item.last_name}
-                            </ResultTitle>
-                            <ResultSubtitle>
-                              {item.job_role && `${item.job_role} • `}
-                              {item.category || 'Uncategorized'}
-                              {item.score && ` • Score: ${item.score}/5`}
-                            </ResultSubtitle>
-                          </ResultItem>
-                        );
-                      } else if (activeTagFilter === 'companies') {
-                        return (
-                          <ResultItem 
-                            key={item.company_id}
-                            onClick={() => {
-                              // Navigate to companies page with search parameter
-                              navigate(`/companies?search=${encodeURIComponent(item.name)}`);
-                              handleCloseTagsModal();
-                            }}
-                          >
-                            <ResultTitle>{item.name}</ResultTitle>
-                            <ResultSubtitle>
-                              {item.category && `${item.category} • `}
-                              {item.website && `${item.website} • `}
-                              {item.description || 'No description'}
-                            </ResultSubtitle>
-                          </ResultItem>
-                        );
-                      } else if (activeTagFilter === 'deals') {
-                        return (
-                          <ResultItem 
-                            key={item.deal_id}
-                            onClick={() => {
-                              handleOpenDealModal(item);
-                              handleCloseTagsModal();
-                            }}
-                          >
-                            <ResultTitle>{item.opportunity}</ResultTitle>
-                            <ResultSubtitle>
-                              {item.total_investment && `$${item.total_investment.toLocaleString()} • `}
-                              {item.category && `${item.category} • `}
-                              {item.stage}
-                            </ResultSubtitle>
-                          </ResultItem>
-                        );
-                      }
-                    })}
-                  </div>
-                )}
-              </ResultsContainer>
-            </ModalContent>
-          </ModalContainer>
-        </ModalOverlay>
-      )}
-
-      {/* Deal Modal */}
-      {isDealModalOpen && selectedDeal && (
-        <DealViewFindAddModal
-          isOpen={isDealModalOpen}
-          onClose={handleCloseDealModal}
-          contactData={contact}
-          showOnlyCreateTab={false}
-        />
-      )}
 
       {/* TagsModalComponent */}
       {isTagsManagerModalOpen && (
@@ -3324,7 +3545,8 @@ const ContactRecord = () => {
                           <ResultItem 
                             key={item.deal_id}
                             onClick={() => {
-                              handleOpenDealModal(item);
+                              // Since we're using inline display, we can just switch to the deals tab
+                              setActiveTab('opportunities');
                               handleCloseLocationModal();
                             }}
                           >

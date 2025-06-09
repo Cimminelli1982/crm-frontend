@@ -898,7 +898,8 @@ const DealViewFindAddModal = ({
   onClose, 
   contactData,
   showOnlyCreateTab = false,
-  onSave
+  onSave,
+  inline = false
 }) => {
   const [activeTab, setActiveTab] = useState(showOnlyCreateTab ? 'createNewDeal' : 'addFromList');
   const [searchTerm, setSearchTerm] = useState('');
@@ -916,11 +917,21 @@ const DealViewFindAddModal = ({
   // Fetch real deal data and existing associations from the database
   useEffect(() => {
     const fetchData = async () => {
-      if (!contactData?.contact_id) return;
+      console.log('=== DealViewFindAddModal fetchData DEBUG ===');
+      console.log('contactData:', contactData);
+      console.log('contactData.contact_id:', contactData?.contact_id);
+      
+      if (!contactData?.contact_id) {
+        console.log('❌ No contactData.contact_id - exiting fetchData');
+        return;
+      }
+      
+      console.log('✅ Proceeding with data fetch...');
       
       try {
         const { supabase } = await import('../../lib/supabaseClient');
         
+        console.log('🔍 Fetching all deals...');
         // Fetch all deals
         const { data: dealsData, error: dealsError } = await supabase
           .from('deals')
@@ -940,16 +951,21 @@ const DealViewFindAddModal = ({
           `)
           .order('created_at', { ascending: false });
           
+        console.log('Deals query result:', { dealsData, dealsError });
+          
         if (dealsError) {
           console.error('Error fetching deals:', dealsError);
           return;
         }
         
+        console.log('🔍 Fetching deal associations for contact:', contactData.contact_id);
         // Fetch existing deal-contact associations with relationship info
         const { data: associationsData, error: associationsError } = await supabase
           .from('deals_contacts')
           .select('deal_id, relationship')
           .eq('contact_id', contactData.contact_id);
+          
+        console.log('Associations query result:', { associationsData, associationsError });
           
         if (associationsError) {
           console.error('Error fetching deal associations:', associationsError);
@@ -963,6 +979,13 @@ const DealViewFindAddModal = ({
         const relationshipMap = {};
         associationsData?.forEach(assoc => {
           relationshipMap[assoc.deal_id] = assoc.relationship;
+        });
+        
+        console.log('📝 Setting deals state:', {
+          dealsCount: dealsData?.length || 0,
+          associatedIdsCount: associatedIds.length,
+          associatedIds,
+          relationshipMap
         });
         
         // Set deals and associations data
@@ -2317,6 +2340,110 @@ const DealViewFindAddModal = ({
       </ModalContent>
     );
   };
+
+  // If inline mode, render content directly without Modal wrapper
+  if (inline) {
+    return (
+      <div style={{
+        padding: '20px',
+        width: '100%',
+        height: '580px',
+        maxHeight: '80vh',
+        overflowY: 'auto',
+        backgroundColor: '#121212',
+        border: '1px solid #333',
+        borderRadius: '8px',
+        color: '#e0e0e0',
+        position: 'relative',
+        paddingBottom: '80px'
+      }}>
+        <ModalHeader>
+          <h2>
+            {showOnlyCreateTab ? 'Create New Deal' : (
+              <>
+                Deal - {contactData ? `${contactData.first_name} ${contactData.last_name}` : 'Contact'}
+                {contactData && contactData.companies && contactData.companies.length > 0 && 
+                  ` (${contactData.companies.map(company => company.name).join(', ')})`
+                }
+                {associatedDealIds.length > 0 && 
+                  <span style={{ 
+                    fontSize: '0.7rem', 
+                    backgroundColor: 'rgba(0, 255, 0, 0.2)', 
+                    color: '#00ff00',
+                    marginLeft: '10px',
+                    padding: '2px 6px',
+                    borderRadius: '10px',
+                    verticalAlign: 'middle'
+                  }}>
+                    {associatedDealIds.length} {associatedDealIds.length === 1 ? 'deal' : 'deals'}
+                  </span>
+                }
+              </>
+            )}
+          </h2>
+          <CloseButton onClick={onClose}>
+            <FiX />
+          </CloseButton>
+        </ModalHeader>
+        
+        <ContentContainer>
+          <TabContainer style={showOnlyCreateTab ? { display: 'none' } : {}}>
+            {!showOnlyCreateTab && (
+              <>
+                <Tab 
+                  $isActive={activeTab === 'addFromList'} 
+                  onClick={() => setActiveTab('addFromList')}
+                >
+                  Add from List
+                </Tab>
+                <Tab 
+                  $isActive={activeTab === 'associatedDeals'} 
+                  onClick={() => setActiveTab('associatedDeals')}
+                >
+                  Associated Deals
+                  {associatedDealIds.length > 0 && (
+                    <span style={{
+                      marginLeft: '5px',
+                      backgroundColor: 'rgba(0, 255, 0, 0.2)',
+                      color: '#00ff00',
+                      fontSize: '0.7rem',
+                      padding: '1px 5px',
+                      borderRadius: '10px',
+                      fontWeight: 'normal'
+                    }}>
+                      {associatedDealIds.length}
+                    </span>
+                  )}
+                </Tab>
+              </>
+            )}
+            <Tab 
+              $isActive={activeTab === 'createNewDeal'} 
+              onClick={() => setActiveTab('createNewDeal')}
+            >
+              Create New Deal
+            </Tab>
+          </TabContainer>
+          
+          <ContentArea style={showOnlyCreateTab ? { width: '100%' } : {}}>
+            {!showOnlyCreateTab && activeTab === 'addFromList' && renderAddFromListTab()}
+            {activeTab === 'createNewDeal' && renderCreateNewDealTab()}
+            {!showOnlyCreateTab && activeTab === 'associatedDeals' && renderAssociatedDealsTab()}
+          </ContentArea>
+        </ContentContainer>
+        
+        {/* Edit Deal Modal */}
+        {dealToEdit && (
+          <EditDealFinalModal
+            isOpen={editDealModalOpen}
+            onClose={() => setEditDealModalOpen(false)}
+            dealData={dealToEdit}
+            onSave={handleSaveDeal}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <>

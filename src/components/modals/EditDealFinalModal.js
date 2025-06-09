@@ -492,10 +492,10 @@ const EditDealFinalModal = ({
         [name]: files && files.length > 0 ? files[0] : null
       }));
     } else {
-      setFormData(prev => ({
-        ...prev,
-        [name]: value
-      }));
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
     }
     
     // Clear errors for this field
