@@ -502,7 +502,8 @@ const ContactsInteractionModal = ({
   contact, 
   showWhatsApp = true, 
   showEmail = true, 
-  showMeetings = true 
+  showMeetings = true,
+  inline = false
 }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -1606,6 +1607,235 @@ const ContactsInteractionModal = ({
     );
   };
   
+  // If inline mode, render content directly without Modal wrapper
+  if (inline) {
+    return (
+      <div style={{
+        padding: '20px',
+        width: '100%',
+        height: '580px',
+        maxHeight: '80vh',
+        overflowY: 'auto',
+        backgroundColor: '#121212',
+        border: '1px solid #333',
+        borderRadius: '8px',
+        color: '#e0e0e0',
+        position: 'relative'
+      }}>
+        <ModalHeader>
+          <h2>Recent Interactions{contact ? ` - ${contact.first_name} ${contact.last_name}` : ''}</h2>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <button 
+              onClick={() => contact?.mobile && window.open(`https://wa.me/${contact.mobile.replace(/\D/g, '')}`, '_blank')}
+              aria-label="WhatsApp"
+              title="Open WhatsApp"
+              style={{ color: '#25D366' }} // Neon green for WhatsApp
+            >
+              <RiWhatsappFill size={24} />
+            </button>
+            <button 
+              onClick={() => {
+                // Get primary email address from contact_emails for this contact
+                if (contact?.contact_id) {
+                  // First try to use the contact email if it exists
+                  if (contact.email) {
+                    window.open(`https://mail.superhuman.com/search/${encodeURIComponent(contact.email)}`, '_blank');
+                  } else {
+                    // If no email directly on contact, fetch from contact_emails
+                    (async () => {
+                      try {
+                        const { data: emails, error } = await supabase
+                          .from('contact_emails')
+                          .select('email')
+                          .eq('contact_id', contact.contact_id)
+                          .eq('is_primary', true)
+                          .limit(1);
+                          
+                        if (error) throw error;
+                        
+                        if (emails && emails.length > 0) {
+                          window.open(`https://mail.superhuman.com/search/${encodeURIComponent(emails[0].email)}`, '_blank');
+                        } else {
+                          // Try any email if no primary found
+                          const { data: anyEmails, error: anyEmailError } = await supabase
+                            .from('contact_emails')
+                            .select('email')
+                            .eq('contact_id', contact.contact_id)
+                            .limit(1);
+                            
+                          if (anyEmailError) throw anyEmailError;
+                          
+                          if (anyEmails && anyEmails.length > 0) {
+                            window.open(`https://mail.superhuman.com/search/${encodeURIComponent(anyEmails[0].email)}`, '_blank');
+                          }
+                        }
+                      } catch (err) {
+                        console.error('Error fetching contact email for Superhuman link:', err);
+                      }
+                    })();
+                  }
+                }
+              }}
+              aria-label="Email in Superhuman"
+              title="Open in Superhuman"
+              style={{ color: '#4a9eff' }} // Blue for Email
+            >
+              <FiMail size={24} />
+            </button>
+            {onRequestClose && (
+              <button onClick={onRequestClose} aria-label="Close">
+                <FiX size={20} />
+              </button>
+            )}
+          </div>
+        </ModalHeader>
+        
+        {error && (
+          <ErrorMessage>
+            <FiAlertTriangle size={20} />
+            <div>{error}</div>
+          </ErrorMessage>
+        )}
+        
+        <Card>
+          {loading ? (
+            <LoadingContainer style={{ minHeight: '200px' }}>
+              Loading interactions...
+            </LoadingContainer>
+          ) : (
+            <InteractionsLayout>
+              {/* Channel headers in left sidebar */}
+              <ChannelsMenu>
+                {showWhatsApp && whatsappChats.length > 0 && (
+                  <>
+                    <div style={{ padding: '10px 15px', color: '#aaa', fontSize: '0.8rem', borderBottom: '1px solid #272727', fontWeight: 'bold' }}>
+                      WHATSAPP
+                    </div>
+                    
+                    {/* WhatsApp chat items */}
+                    {whatsappChats.map((chat, index) => (
+                      <div 
+                        key={chat.chat_id || index}
+                        style={{ 
+                          padding: '10px 15px', 
+                          cursor: 'pointer', 
+                          borderBottom: '1px solid #191919',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          backgroundColor: selectedChat === chat.chat_id ? '#1e1e1e' : 'transparent'
+                        }}
+                        onClick={() => handleSelectChat(chat.chat_id)}
+                      >
+                        {chat.is_group_chat ? (
+                          <FiUsers size={16} color="#25d366" />
+                        ) : (
+                          <FiMessageSquare size={16} color="#25d366" />
+                        )}
+                        <span style={{ color: '#25d366' }}>
+                          {chat.chat_name}
+                        </span>
+                        {chat.unread_count > 0 && (
+                          <span style={{ 
+                            backgroundColor: '#222',
+                            color: '#888', 
+                            padding: '1px 6px',
+                            borderRadius: '10px',
+                            fontSize: '0.7rem',
+                            marginLeft: 'auto'
+                          }}>{chat.unread_count}</span>
+                        )}
+                      </div>
+                    ))}
+                  </>
+                )}
+                
+                {showEmail && emailThreads.length > 0 && (
+                  <>
+                    <div style={{ padding: '10px 15px', color: '#aaa', fontSize: '0.8rem', borderBottom: '1px solid #272727', fontWeight: 'bold' }}>
+                      EMAIL
+                    </div>
+                    
+                    {/* Email thread items */}
+                    {emailThreads.map((thread) => (
+                      <div 
+                        key={thread.thread_id}
+                        style={{ 
+                          padding: '10px 15px', 
+                          cursor: 'pointer', 
+                          borderBottom: '1px solid #191919',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          backgroundColor: selectedEmailThread === thread.thread_id ? '#1e1e1e' : 'transparent'
+                        }}
+                        onClick={() => handleSelectEmailThread(thread.thread_id)}
+                      >
+                        <FiMail size={16} color="#4a9eff" />
+                        <span style={{ color: '#4a9eff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {thread.title}
+                        </span>
+                      </div>
+                    ))}
+                  </>
+                )}
+                
+                {showMeetings && meetings.length > 0 && (
+                  <>
+                    <div style={{ padding: '10px 15px', color: '#aaa', fontSize: '0.8rem', borderBottom: '1px solid #272727', fontWeight: 'bold' }}>
+                      MEETINGS
+                    </div>
+                    
+                    {/* Meeting items */}
+                    {meetings.map((meeting) => (
+                      <div 
+                        key={meeting.id}
+                        style={{ 
+                          padding: '10px 15px', 
+                          cursor: 'pointer', 
+                          borderBottom: '1px solid #191919',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          backgroundColor: selectedMeeting === meeting.id ? '#1e1e1e' : 'transparent'
+                        }}
+                        onClick={() => handleSelectMeeting(meeting.id)}
+                      >
+                        <FiCalendar size={16} color="#ff9900" />
+                        <span style={{ color: '#ff9900', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {meeting.title}
+                        </span>
+                      </div>
+                    ))}
+                  </>
+                )}
+                
+                {(
+                  (!showWhatsApp || whatsappChats.length === 0) && 
+                  (!showEmail || emailThreads.length === 0) && 
+                  (!showMeetings || meetings.length === 0)
+                ) && (
+                  <NoDataMessage>No interactions found</NoDataMessage>
+                )}
+              </ChannelsMenu>
+              
+              {/* Interactions content */}
+              <InteractionsContainer>
+                {selectedChat && activeSection === 'whatsapp' && renderWhatsAppChat(selectedChat)}
+                {selectedEmailThread && activeSection === 'email' && renderEmailThread(selectedEmailThread)}
+                {selectedMeeting && activeSection === 'meetings' && renderMeeting(selectedMeeting)}
+                
+                {!activeSection && (
+                  <NoDataMessage>Select an interaction to view details</NoDataMessage>
+                )}
+              </InteractionsContainer>
+            </InteractionsLayout>
+          )}
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <Modal
       isOpen={isOpen}

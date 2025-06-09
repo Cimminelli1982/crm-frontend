@@ -11,6 +11,7 @@ import CityModal from '../components/modals/CityModal';
 import LinkedInPreviewModal from '../components/modals/LinkedInPreviewModal';
 import ManageContactEmails from '../components/modals/ManageContactEmails';
 import ContactsInteractionModal from '../components/modals/ContactsInteractionModal';
+import IntroductionAddModal from '../components/modals/IntroductionAddModal';
 
 // Styled components
 const Container = styled.div`
@@ -726,6 +727,40 @@ const IntroductionsContainer = styled.div`
   }
 `;
 
+const AddNewButton = styled.button`
+  background-color: #222;
+  color: #00ff00;
+  border: 1px solid #00ff00;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background-color: #00ff00;
+    color: #000;
+  }
+  
+  &:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(0, 255, 0, 0.3);
+  }
+`;
+
+const IntroductionsHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #333;
+`;
+
 // Tags Modal Styled Components
 const ModalOverlay = styled.div`
   position: fixed;
@@ -905,6 +940,9 @@ const ContactRecord = () => {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('interactions');
   
+  // Add new state for active interaction sub-tab
+  const [activeInteractionTab, setActiveInteractionTab] = useState('emails');
+  
   // Add introductions state
   const [introductions, setIntroductions] = useState([]);
   const [loadingIntroductions, setLoadingIntroductions] = useState(false);
@@ -991,6 +1029,9 @@ const ContactRecord = () => {
     showEmail: true,
     showMeetings: true
   });
+  
+  // IntroductionAddModal state
+  const [isIntroductionAddModalOpen, setIsIntroductionAddModalOpen] = useState(false);
   
   // Ref for click outside detection
   const mobileInputRef = useRef(null);
@@ -1729,6 +1770,21 @@ const ContactRecord = () => {
       showEmail: true,
       showMeetings: true
     });
+  };
+
+  // IntroductionAddModal handlers
+  const handleOpenIntroductionAddModal = () => {
+    setIsIntroductionAddModalOpen(true);
+  };
+
+  const handleCloseIntroductionAddModal = () => {
+    setIsIntroductionAddModalOpen(false);
+  };
+
+  const handleIntroductionSaved = () => {
+    // Refresh introductions after a new one is saved
+    fetchIntroductions();
+    setIsIntroductionAddModalOpen(false);
   };
 
   // Mobile number handlers
@@ -3236,18 +3292,18 @@ const ContactRecord = () => {
             <Card>
               <Tabs style={{ borderBottom: '1px solid #222', marginTop: '-10px', paddingLeft: '0' }}>
                 <Tab 
-                  active={false}
-                  onClick={() => handleOpenInteractionModal('emails')}
+                  active={activeInteractionTab === 'emails'}
+                  onClick={() => setActiveInteractionTab('emails')}
                   style={{ fontSize: '0.9rem', padding: '8px 20px', cursor: 'pointer' }}
-                  title="Click to view email interactions"
+                  title="View email interactions"
                 >
                   Emails
                 </Tab>
                 <Tab 
-                  active={false}
-                  onClick={() => handleOpenInteractionModal('whatsapp')}
+                  active={activeInteractionTab === 'whatsapp'}
+                  onClick={() => setActiveInteractionTab('whatsapp')}
                   style={{ fontSize: '0.9rem', padding: '8px 20px', cursor: 'pointer' }}
-                  title="Click to view WhatsApp interactions"
+                  title="View WhatsApp interactions"
                 >
                   WhatsApp
                 </Tab>
@@ -3260,9 +3316,36 @@ const ContactRecord = () => {
                   Meetings
                 </Tab>
               </Tabs>
-              <div style={{ padding: '30px 0', color: '#999', textAlign: 'center' }}>
-                Click on Emails or WhatsApp above to view interactions
-              </div>
+              
+              {activeInteractionTab === 'emails' && (
+                <ContactsInteractionModal
+                  isOpen={true}
+                  onRequestClose={() => {}} // No close action needed for inline display
+                  contact={contact}
+                  showWhatsApp={false}
+                  showEmail={true}
+                  showMeetings={false}
+                  inline={true}
+                />
+              )}
+              
+              {activeInteractionTab === 'whatsapp' && (
+                <ContactsInteractionModal
+                  isOpen={true}
+                  onRequestClose={() => {}} // No close action needed for inline display
+                  contact={contact}
+                  showWhatsApp={true}
+                  showEmail={false}
+                  showMeetings={false}
+                  inline={true}
+                />
+              )}
+              
+              {activeInteractionTab === 'meetings' && (
+                <div style={{ padding: '30px 0', color: '#999', textAlign: 'center' }}>
+                  Meetings functionality coming soon
+                </div>
+              )}
             </Card>
           </TabContent>
           
@@ -3279,6 +3362,23 @@ const ContactRecord = () => {
           
           <TabContent active={activeTab === 'introductions'}>
             <Card>
+              <IntroductionsHeader>
+                <div style={{ 
+                  color: '#00ff00', 
+                  fontSize: '1.1rem',
+                  fontWeight: 'bold'
+                }}>
+                  {loadingIntroductions ? 'Loading...' : 
+                   introductions.length === 0 ? 'No Introductions' :
+                   `${introductions.length} Introduction${introductions.length !== 1 ? 's' : ''} Found`
+                  }
+                </div>
+                <AddNewButton onClick={handleOpenIntroductionAddModal}>
+                  <FiPlus size={16} />
+                  ADD NEW
+                </AddNewButton>
+              </IntroductionsHeader>
+              
               {loadingIntroductions ? (
                 <div style={{ padding: '30px 0', color: '#00ff00', textAlign: 'center' }}>
                   Loading introductions...
@@ -3289,15 +3389,6 @@ const ContactRecord = () => {
                 </div>
               ) : (
                 <IntroductionsContainer>
-                  <div style={{ 
-                    marginBottom: '16px', 
-                    color: '#00ff00', 
-                    fontSize: '1.1rem',
-                    fontWeight: 'bold'
-                  }}>
-                    {introductions.length} Introduction{introductions.length !== 1 ? 's' : ''} Found
-                  </div>
-                  
                   {introductions.map(intro => (
                     <IntroductionCard key={intro.id}>
                       <IntroductionHeader>
@@ -3602,6 +3693,15 @@ const ContactRecord = () => {
           showWhatsApp={interactionModalFilters.showWhatsApp}
           showEmail={interactionModalFilters.showEmail}
           showMeetings={interactionModalFilters.showMeetings}
+        />
+      )}
+
+      {/* IntroductionAddModal */}
+      {isIntroductionAddModalOpen && (
+        <IntroductionAddModal
+          isOpen={isIntroductionAddModalOpen}
+          onClose={handleCloseIntroductionAddModal}
+          onSave={handleIntroductionSaved}
         />
       )}
     </Container>
