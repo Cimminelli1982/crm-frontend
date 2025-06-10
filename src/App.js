@@ -36,6 +36,7 @@ import DuplicateManager from './pages/contacts/DuplicateManager';
 import ContactCrmWorkflow from './pages/contacts/ContactCrmWorkflow';
 import Companies from './pages/Companies';
 import SimpleCompanies from './pages/companies/SimpleCompanies';
+import CompanyRecord from './pages/CompanyRecord';
 import Deals from './pages/companies/Deals';
 import SimpleDeals from './pages/companies/SimpleDeals';
 import Startups from './pages/companies/Startups';
@@ -180,6 +181,10 @@ const App = () => {
           {
             path: "companies",
             element: <SimpleCompanies />
+          },
+          {
+            path: "companies/:id",
+            element: <CompanyRecord />
           },
           {
             path: "companies/deals",

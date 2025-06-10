@@ -1232,39 +1232,6 @@ const WebsiteRenderer = (props) => {
   );
 };
 
-// Company name renderer (matches Name column UX from ContactsListTable)
-// Updated: 2024-12-19 - Force cache refresh
-const CompanyRenderer = (props) => {
-  const companyName = props.value;
-  if (!companyName) return '-';
-  
-  // Make company name clickable (placeholder for future navigation)
-  const handleClick = () => {
-    if (props.data && props.data.company_id) {
-      // navigate(`/companies/${props.data.company_id}`);
-      console.log('Company clicked:', props.data);
-    }
-  };
-  
-  return (
-    <div 
-      style={{
-        whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        cursor: 'pointer',
-        width: '100%',
-        height: '100%',
-        display: 'flex',
-        alignItems: 'center'
-      }}
-      onClick={handleClick}
-    >
-      {companyName}
-    </div>
-  );
-};
-
 const SimpleCompanies = () => {
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1281,6 +1248,38 @@ const SimpleCompanies = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState(null);
+
+  // Company name renderer with access to navigate hook
+  const CompanyRenderer = (props) => {
+    const companyName = props.value;
+    if (!companyName) return '-';
+    
+    // Make company name clickable to navigate to company record
+    const handleClick = () => {
+      if (props.data && props.data.company_id) {
+        navigate(`/companies/${props.data.company_id}`);
+        console.log('Company clicked:', props.data);
+      }
+    };
+    
+    return (
+      <div 
+        style={{
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          cursor: 'pointer',
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center'
+        }}
+        onClick={handleClick}
+      >
+        {companyName}
+      </div>
+    );
+  };
   
   // Define menu items with icons
   const menuItems = [
