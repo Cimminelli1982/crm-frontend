@@ -13,6 +13,7 @@ import ManageContactEmails from '../components/modals/ManageContactEmails';
 import ContactsInteractionModal from '../components/modals/ContactsInteractionModal';
 import IntroductionAddModal from '../components/modals/IntroductionAddModal';
 import ContactNotesModal from '../components/modals/ContactNotesModal';
+import NewEditCompanyModal from '../components/modals/NewEditCompanyModal';
 
 // Styled components
 const Container = styled.div`
@@ -1037,6 +1038,10 @@ const ContactRecord = () => {
   // ContactNotesModal state
   const [isContactNotesModalOpen, setIsContactNotesModalOpen] = useState(false);
   
+  // NewEditCompanyModal state
+  const [isNewEditCompanyModalOpen, setIsNewEditCompanyModalOpen] = useState(false);
+  const [selectedCompanyForEdit, setSelectedCompanyForEdit] = useState(null);
+  
   // Ref for click outside detection
   const mobileInputRef = useRef(null);
   const emailInputRef = useRef(null);
@@ -1829,6 +1834,58 @@ const ContactRecord = () => {
     } catch (err) {
       console.error('Error fetching notes:', err);
     }
+  };
+
+  // Function to fetch just the companies
+  const fetchCompanies = async () => {
+    if (!id) return;
+    
+    try {
+      const { data: companiesResult, error } = await supabase
+        .from('contact_companies')
+        .select(`
+          contact_companies_id,
+          relationship,
+          is_primary,
+          companies (
+            company_id,
+            name,
+            website,
+            category
+          )
+        `)
+        .eq('contact_id', id);
+        
+      if (error) throw error;
+      setCompanies(companiesResult || []);
+    } catch (err) {
+      console.error('Error fetching companies:', err);
+    }
+  };
+
+  // NewEditCompanyModal handlers
+  const handleOpenCompanyEditModal = (company) => {
+    // Ensure the company has the correct structure for the modal
+    const companyForModal = {
+      ...company.companies,
+      company_id: company.companies.company_id,
+      contact_companies_id: company.contact_companies_id,
+      relationship: company.relationship
+    };
+    setSelectedCompanyForEdit(companyForModal);
+    setIsNewEditCompanyModalOpen(true);
+  };
+
+  const handleCloseCompanyEditModal = () => {
+    setIsNewEditCompanyModalOpen(false);
+    setSelectedCompanyForEdit(null);
+  };
+
+  const handleCompanyUpdated = () => {
+    // Refresh companies data after modal operations
+    fetchCompanies();
+    setIsNewEditCompanyModalOpen(false);
+    setSelectedCompanyForEdit(null);
   };
 
   // Mobile number handlers
@@ -3283,9 +3340,15 @@ const ContactRecord = () => {
               <CardTitle><FiBriefcase /> Companies</CardTitle>
               {companies.map(company => (
                 <InfoItem key={company.contact_companies_id}>
-                  <InfoValue>
-                    {company.companies.name} 
-                    {company.is_primary && ' (Primary)'}
+                  <InfoValue
+                    onClick={() => handleOpenCompanyEditModal(company)}
+                    style={{ 
+                      cursor: 'pointer',
+                      color: '#00ff00'
+                    }}
+                    title="Click to edit company"
+                  >
+                    {company.companies.name}
                   </InfoValue>
                   <InfoLabel>
                     {company.relationship || 'Associated'}
@@ -3775,6 +3838,17 @@ const ContactRecord = () => {
           onRequestClose={handleCloseContactNotesModal}
           contact={contact}
           onNotesUpdated={handleNotesUpdated}
+        />
+      )}
+
+      {/* NewEditCompanyModal */}
+      {isNewEditCompanyModalOpen && selectedCompanyForEdit && (
+        <NewEditCompanyModal
+          isOpen={isNewEditCompanyModalOpen}
+          onRequestClose={handleCloseCompanyEditModal}
+          company={selectedCompanyForEdit}
+          contactId={contact?.contact_id}
+          onCompanyUpdated={handleCompanyUpdated}
         />
       )}
     </Container>
