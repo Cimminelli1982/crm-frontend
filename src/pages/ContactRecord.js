@@ -12,6 +12,7 @@ import LinkedInPreviewModal from '../components/modals/LinkedInPreviewModal';
 import ManageContactEmails from '../components/modals/ManageContactEmails';
 import ContactsInteractionModal from '../components/modals/ContactsInteractionModal';
 import IntroductionAddModal from '../components/modals/IntroductionAddModal';
+import ContactNotesModal from '../components/modals/ContactNotesModal';
 
 // Styled components
 const Container = styled.div`
@@ -1033,6 +1034,9 @@ const ContactRecord = () => {
   // IntroductionAddModal state
   const [isIntroductionAddModalOpen, setIsIntroductionAddModalOpen] = useState(false);
   
+  // ContactNotesModal state
+  const [isContactNotesModalOpen, setIsContactNotesModalOpen] = useState(false);
+  
   // Ref for click outside detection
   const mobileInputRef = useRef(null);
   const emailInputRef = useRef(null);
@@ -1785,6 +1789,46 @@ const ContactRecord = () => {
     // Refresh introductions after a new one is saved
     fetchIntroductions();
     setIsIntroductionAddModalOpen(false);
+  };
+
+  // ContactNotesModal handlers
+  const handleOpenContactNotesModal = () => {
+    setIsContactNotesModalOpen(true);
+  };
+
+  const handleCloseContactNotesModal = () => {
+    setIsContactNotesModalOpen(false);
+  };
+
+  const handleNotesUpdated = () => {
+    // Refresh notes data after modal operations
+    fetchNotes();
+  };
+
+  // Function to fetch just the notes
+  const fetchNotes = async () => {
+    if (!id) return;
+    
+    try {
+      const { data: notesResult, error } = await supabase
+        .from('notes_contacts')
+        .select(`
+          note_contact_id,
+          notes (
+            note_id,
+            title,
+            text,
+            created_at
+          )
+        `)
+        .eq('contact_id', id)
+        .order('created_at', { foreignTable: 'notes', ascending: false });
+        
+      if (error) throw error;
+      setNotes(notesResult?.map(n => n.notes) || []);
+    } catch (err) {
+      console.error('Error fetching notes:', err);
+    }
   };
 
   // Mobile number handlers
@@ -3443,18 +3487,36 @@ const ContactRecord = () => {
           
           <TabContent active={activeTab === 'notes'}>
             <Card>
+              <IntroductionsHeader>
+                <div style={{ 
+                  color: '#00ff00', 
+                  fontSize: '1.1rem',
+                  fontWeight: 'bold'
+                }}>
+                  {notes.length === 0 ? 'No Notes' : `${notes.length} Note${notes.length !== 1 ? 's' : ''} Found`}
+                </div>
+                <AddNewButton onClick={handleOpenContactNotesModal}>
+                  <FiPlus size={16} />
+                  ADD NEW
+                </AddNewButton>
+              </IntroductionsHeader>
+              
               {notes.length === 0 ? (
-                <div style={{ padding: '30px 0', color: '#999', textAlign: 'center' }}>No notes found</div>
+                <div style={{ padding: '30px 0', color: '#999', textAlign: 'center' }}>
+                  No notes found for this contact
+                </div>
               ) : (
-                notes.map(note => (
-                  <RelatedItem key={note.note_id}>
-                    <RelatedTitle>{note.title}</RelatedTitle>
-                    <RelatedSubtitle>{formatDateTime(note.created_at)}</RelatedSubtitle>
-                    <div style={{ marginTop: '10px', fontSize: '0.9rem', color: '#ddd' }}>
-                      {note.text}
-                    </div>
-                  </RelatedItem>
-                ))
+                <div>
+                  {notes.map(note => (
+                    <RelatedItem key={note.note_id} onClick={handleOpenContactNotesModal} style={{ cursor: 'pointer' }}>
+                      <RelatedTitle>{note.title}</RelatedTitle>
+                      <RelatedSubtitle>{formatDateTime(note.created_at)}</RelatedSubtitle>
+                      <div style={{ marginTop: '10px', fontSize: '0.9rem', color: '#ddd' }}>
+                        {note.text}
+                      </div>
+                    </RelatedItem>
+                  ))}
+                </div>
               )}
             </Card>
           </TabContent>
@@ -3702,6 +3764,17 @@ const ContactRecord = () => {
           isOpen={isIntroductionAddModalOpen}
           onClose={handleCloseIntroductionAddModal}
           onSave={handleIntroductionSaved}
+          preselectedContact={contact}
+        />
+      )}
+
+      {/* ContactNotesModal */}
+      {isContactNotesModalOpen && (
+        <ContactNotesModal
+          isOpen={isContactNotesModalOpen}
+          onRequestClose={handleCloseContactNotesModal}
+          contact={contact}
+          onNotesUpdated={handleNotesUpdated}
         />
       )}
     </Container>

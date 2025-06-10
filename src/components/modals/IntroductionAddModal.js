@@ -369,7 +369,7 @@ const Tag = styled.div`
   }
 `;
 
-const IntroductionAddModal = ({ isOpen, onClose, onSave }) => {
+const IntroductionAddModal = ({ isOpen, onClose, onSave, preselectedContact }) => {
   const [formData, setFormData] = useState({
     notes: '',
     category: '',
@@ -402,7 +402,7 @@ const IntroductionAddModal = ({ isOpen, onClose, onSave }) => {
     'Done, but need to monitor'
   ];
 
-  // Reset form when modal opens/closes
+  // Reset form when modal opens/closes and handle preselected contact
   useEffect(() => {
     if (isOpen) {
       setFormData({
@@ -413,10 +413,23 @@ const IntroductionAddModal = ({ isOpen, onClose, onSave }) => {
       setErrors({});
       setContactSuggestions([]);
       setShowSuggestions(false);
-      setSelectedContacts([]);
       setSearchTerm('');
+      
+      // If there's a preselected contact, add it to selectedContacts
+      if (preselectedContact) {
+        const formattedContact = {
+          id: preselectedContact.contact_id,
+          name: `${preselectedContact.first_name || ''} ${preselectedContact.last_name || ''}`.trim(),
+          firstName: preselectedContact.first_name,
+          lastName: preselectedContact.last_name,
+          isExisting: true
+        };
+        setSelectedContacts([formattedContact]);
+      } else {
+        setSelectedContacts([]);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, preselectedContact]);
 
   // Handle contact search input change
   const handleSearchChange = (e) => {
