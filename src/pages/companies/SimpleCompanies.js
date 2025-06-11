@@ -1255,10 +1255,12 @@ const SimpleCompanies = () => {
     if (!companyName) return '-';
     
     // Make company name clickable to navigate to company record
-    const handleClick = () => {
+    const handleClick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       if (props.data && props.data.company_id) {
+        console.log('Navigating to company:', props.data.company_id);
         navigate(`/companies/${props.data.company_id}`);
-        console.log('Company clicked:', props.data);
       }
     };
     
@@ -1272,9 +1274,17 @@ const SimpleCompanies = () => {
           width: '100%',
           height: '100%',
           display: 'flex',
-          alignItems: 'center'
+          alignItems: 'center',
+          color: '#00ff00',
+          textDecoration: 'underline'
         }}
         onClick={handleClick}
+        onMouseEnter={(e) => {
+          e.target.style.color = '#00cc00';
+        }}
+        onMouseLeave={(e) => {
+          e.target.style.color = '#00ff00';
+        }}
       >
         {companyName}
       </div>
@@ -1425,15 +1435,6 @@ const SimpleCompanies = () => {
       params.api.sizeColumnsToFit();
     }, 0);
   }, []);
-
-  // Row clicked handler
-  const handleRowClicked = React.useCallback((params) => {
-    // Navigate to company details page
-    if (params.data && params.data.company_id) {
-      // navigate(`/companies/${params.data.company_id}`);
-      console.log('Company clicked:', params.data);
-    }
-  }, [navigate]);
 
   // Fetch companies data
   const fetchCompanies = async () => {
@@ -1760,7 +1761,6 @@ const SimpleCompanies = () => {
             columnDefs={columnDefs}
             defaultColDef={defaultColDef}
             onGridReady={onGridReady}
-            onRowClicked={handleRowClicked}
             context={{
               setSelectedCompany,
               setShowEditModal,
@@ -1773,6 +1773,7 @@ const SimpleCompanies = () => {
             paginationPageSize={50}
             suppressCellFocus={true}
             enableCellTextSelection={true}
+            suppressRowClickSelection={true}
           />
         </div>
       )}
