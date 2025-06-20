@@ -2,7 +2,7 @@ import React, { useState, lazy, Suspense } from 'react';
 import styled from 'styled-components';
 import { FiClock, FiUserCheck, FiUsers, FiGift, FiCalendar, FiMail } from 'react-icons/fi';
 import ContactsListTable from '../../components/contacts/ContactsListTable';
-import MailingListsModal from '../../components/modals/MailingListsModal';
+import MailingListsTable from '../../components/contacts/MailingListsTable';
 
 // Lazy load the components
 const KeepInTouch = lazy(() => import('./SimpleKeepInTouch')); // This is the existing keep in touch page
@@ -110,7 +110,6 @@ const LoadingFallback = styled.div`
 
 const Interactions = () => {
   const [activeTab, setActiveTab] = useState('recent');
-  const [isMailingListsModalOpen, setIsMailingListsModalOpen] = useState(false);
 
   // Define menu items
   const menuItems = [
@@ -155,7 +154,8 @@ const Interactions = () => {
             Planner - Coming Soon
           </div>
         );
-
+      case 'mailinglists':
+        return <MailingListsTable />;
       default:
         return (
           <div style={{ color: '#00ff00', textAlign: 'center', paddingTop: '40px' }}>
@@ -166,11 +166,7 @@ const Interactions = () => {
   };
 
   const handleTabClick = (tabId) => {
-    if (tabId === 'mailinglists') {
-      setIsMailingListsModalOpen(true);
-    } else {
-      setActiveTab(tabId);
-    }
+    setActiveTab(tabId);
   };
 
   return (
@@ -194,11 +190,6 @@ const Interactions = () => {
           </Suspense>
         </ContentArea>
       </InteractionsContent>
-      
-      <MailingListsModal 
-        isOpen={isMailingListsModalOpen}
-        onClose={() => setIsMailingListsModalOpen(false)}
-      />
     </Container>
   );
 };

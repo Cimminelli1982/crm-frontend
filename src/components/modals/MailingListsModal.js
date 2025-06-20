@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { FiX, FiMail } from 'react-icons/fi';
 import { supabase } from '../../lib/supabaseClient';
 import CreateNewListModal from './CreateNewListModal';
+import ViewEmailListModal from './ViewEmailListModal';
 
 const ModalOverlay = styled.div`
   position: fixed;
@@ -189,6 +190,8 @@ const MailingListsModal = ({ isOpen, onClose }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [selectedEmailList, setSelectedEmailList] = useState(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -211,6 +214,12 @@ const MailingListsModal = ({ isOpen, onClose }) => {
       }
 
       setEmailLists(data || []);
+      
+      // Log the data structure to see available fields
+      if (data && data.length > 0) {
+        console.log('Email list data structure:', Object.keys(data[0]));
+        console.log('Sample email list:', data[0]);
+      }
     } catch (err) {
       console.error('Error fetching email lists:', err);
       setError(err.message);
@@ -224,18 +233,224 @@ const MailingListsModal = ({ isOpen, onClose }) => {
   };
 
   const handleOpen = (listId) => {
-    // TODO: Implement open functionality
-    console.log('Open list:', listId);
+    // Find the selected email list
+    const selectedList = emailLists.find(list => 
+      list.list_id === listId || 
+      list.email_list_id === listId || 
+      list.uuid === listId ||
+      list.id === listId
+    );
+
+    if (selectedList) {
+      setSelectedEmailList(selectedList);
+      setIsViewModalOpen(true);
+    }
   };
 
-  const handleDuplicate = (listId) => {
-    // TODO: Implement duplicate functionality
-    console.log('Duplicate list:', listId);
+  const handleDuplicate = async (listId) => {
+    try {
+      // Find the list to duplicate
+      const originalList = emailLists.find(list => 
+        list.list_id === listId || 
+        list.email_list_id === listId || 
+        list.uuid === listId ||
+        list.id === listId
+      );
+
+      if (!originalList) {
+        throw new Error('Original list not found');
+      }
+
+      // Create a duplicate with modified name
+      const duplicateList = {
+        ...originalList,
+        name: `Copy of ${originalList.name || 'Unnamed List'}`,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      // Remove the primary key field(s) so a new one gets generated
+      delete duplicateList.list_id;
+      delete duplicateList.email_list_id;
+      delete duplicateList.uuid;
+      delete duplicateList.id;
+
+      // Insert the duplicate into the database
+      const { data, error } = await supabase
+        .from('email_lists')
+        .insert([duplicateList])
+        .select();
+
+      if (error) {
+        throw error;
+      }
+
+      if (data && data.length > 0) {
+        const newEmailList = data[0];
+        const newListId = newEmailList.list_id || newEmailList.email_list_id || newEmailList.uuid || newEmailList.id;
+        
+        // Now copy all members from the original list to the new list
+        if (newListId) {
+          try {
+            console.log('Original list ID:', listId);
+            console.log('New list ID:', newListId);
+            
+            // Get all members from the original list - try different field names
+            let originalMembers = null;
+            let membersError = null;
+            
+            // Try list_id first
+            const result1 = await supabase
+              .from('email_list_members')
+              .select('*')
+              .eq('list_id', listId);
+              
+            if (result1.error && result1.error.code === '42703') {
+              // Try email_list_uuid
+              const result2 = await supabase
+                .from('email_list_members')
+                .select('*')
+                .eq('email_list_uuid', listId);
+                
+              if (result2.error && result2.error.code === '42703') {
+                // Try email_list_id
+                const result3 = await supabase
+                  .from('email_list_members')
+                  .select('*')
+                  .eq('email_list_id', listId);
+                  
+                originalMembers = result3.data;
+                membersError = result3.error;
+              } else {
+                originalMembers = result2.data;
+                membersError = result2.error;
+              }
+            } else {
+              originalMembers = result1.data;
+              membersError = result1.error;
+            }
+
+            if (membersError) {
+              throw membersError;
+            }
+
+            console.log('Found original members:', originalMembers?.length || 0);
+
+            if (originalMembers && originalMembers.length > 0) {
+                              // Create new member records for the duplicated list
+                const newMembers = originalMembers.map(member => {
+                  const newMember = { ...member };
+                  
+                  console.log('Original member:', member);
+                  
+                  // Remove the original IDs so new ones get generated
+                  delete newMember.id;
+                  delete newMember.member_id;
+                  delete newMember.list_member_id; // This is the actual primary key field
+                  
+                  // Set the new list ID using the same field name structure as original
+                  if (member.list_id !== undefined) {
+                    newMember.list_id = newListId;
+                  } else if (member.email_list_uuid !== undefined) {
+                    newMember.email_list_uuid = newListId;
+                  } else if (member.email_list_id !== undefined) {
+                    newMember.email_list_id = newListId;
+                  }
+                  
+                  // Update timestamp - use added_at instead of created_at
+                  newMember.added_at = new Date().toISOString();
+                  
+                  // Remove any fields that don't exist in the table
+                  delete newMember.created_at;
+                  delete newMember.updated_at;
+                  
+                  console.log('New member to insert:', newMember);
+                  
+                  return newMember;
+                });
+
+              // Insert all the new members
+              console.log('Inserting', newMembers.length, 'new members');
+              const { data: insertedMembers, error: insertMembersError } = await supabase
+                .from('email_list_members')
+                .insert(newMembers)
+                .select();
+
+              if (insertMembersError) {
+                console.error('Error duplicating email list members:', insertMembersError);
+                alert(`Email list duplicated but failed to copy members: ${insertMembersError.message}`);
+              } else {
+                console.log(`Successfully duplicated ${newMembers.length} members`);
+                console.log('Inserted members:', insertedMembers);
+              }
+            } else {
+              console.log('No members found in original list to duplicate');
+            }
+          } catch (membersErr) {
+            console.error('Error copying email list members:', membersErr);
+            alert(`Email list duplicated but failed to copy members: ${membersErr.message}`);
+          }
+        }
+
+        // Add the new duplicate to the local state
+        setEmailLists(prev => [newEmailList, ...prev]);
+        console.log('Email list duplicated successfully');
+      }
+
+    } catch (err) {
+      console.error('Error duplicating email list:', err);
+      alert(`Error duplicating email list: ${err.message}`);
+    }
   };
 
-  const handleDelete = (listId) => {
-    // TODO: Implement delete functionality
-    console.log('Delete list:', listId);
+  const handleDelete = async (listId) => {
+    if (!window.confirm('Are you sure you want to delete this email list? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      // Try common primary key field names
+      let deleteResult;
+      
+      // First try with list_id
+      deleteResult = await supabase
+        .from('email_lists')
+        .delete()
+        .eq('list_id', listId);
+
+      if (deleteResult.error && deleteResult.error.code === '42703') {
+        // If list_id doesn't exist, try with email_list_id
+        deleteResult = await supabase
+          .from('email_lists')
+          .delete()
+          .eq('email_list_id', listId);
+      }
+
+      if (deleteResult.error && deleteResult.error.code === '42703') {
+        // If email_list_id doesn't exist, try with uuid
+        deleteResult = await supabase
+          .from('email_lists')
+          .delete()
+          .eq('uuid', listId);
+      }
+
+      if (deleteResult.error) {
+        throw deleteResult.error;
+      }
+
+      // Remove the deleted list from the local state using the same identifier
+      setEmailLists(prev => prev.filter(list => 
+        list.list_id !== listId && 
+        list.email_list_id !== listId && 
+        list.uuid !== listId &&
+        list.id !== listId
+      ));
+      
+      console.log('Email list deleted successfully');
+    } catch (err) {
+      console.error('Error deleting email list:', err);
+      alert(`Error deleting email list: ${err.message}`);
+    }
   };
 
   if (!isOpen) return null;
@@ -269,33 +484,38 @@ const MailingListsModal = ({ isOpen, onClose }) => {
             <EmptyState>No mailing lists found</EmptyState>
           ) : (
             <ListContainer>
-              {emailLists.map((list) => (
-                <ListItem key={list.id}>
-                  <ListInfo>
-                    {list.list_type || 'Unknown'} - {list.name || 'Unnamed List'} - {list.contact_count || 0} contacts
-                  </ListInfo>
-                  <ActionButtons>
-                    <ActionButton 
-                      className="open"
-                      onClick={() => handleOpen(list.id)}
-                    >
-                      OPEN
-                    </ActionButton>
-                    <ActionButton 
-                      className="duplicate"
-                      onClick={() => handleDuplicate(list.id)}
-                    >
-                      DUPLICATE
-                    </ActionButton>
-                    <ActionButton 
-                      className="delete"
-                      onClick={() => handleDelete(list.id)}
-                    >
-                      DELETE
-                    </ActionButton>
-                  </ActionButtons>
-                </ListItem>
-              ))}
+              {emailLists.map((list) => {
+                // Use the first available primary key field
+                const listId = list.list_id || list.email_list_id || list.uuid || list.id;
+                
+                return (
+                  <ListItem key={listId}>
+                    <ListInfo>
+                      {list.list_type || 'Unknown'} - {list.name || 'Unnamed List'} - {list.total_contacts || 0} contacts
+                    </ListInfo>
+                    <ActionButtons>
+                      <ActionButton 
+                        className="open"
+                        onClick={() => handleOpen(listId)}
+                      >
+                        OPEN
+                      </ActionButton>
+                      <ActionButton 
+                        className="duplicate"
+                        onClick={() => handleDuplicate(listId)}
+                      >
+                        DUPLICATE
+                      </ActionButton>
+                      <ActionButton 
+                        className="delete"
+                        onClick={() => handleDelete(listId)}
+                      >
+                        DELETE
+                      </ActionButton>
+                    </ActionButtons>
+                  </ListItem>
+                );
+              })}
             </ListContainer>
           )}
         </ModalContent>
@@ -304,6 +524,15 @@ const MailingListsModal = ({ isOpen, onClose }) => {
       <CreateNewListModal 
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
+      />
+      
+      <ViewEmailListModal 
+        isOpen={isViewModalOpen}
+        onClose={() => {
+          setIsViewModalOpen(false);
+          setSelectedEmailList(null);
+        }}
+        emailList={selectedEmailList}
       />
     </ModalOverlay>
   );

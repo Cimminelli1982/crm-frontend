@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { FiX, FiMail } from 'react-icons/fi';
+import { supabase } from '../../lib/supabaseClient';
 
 const ModalOverlay = styled.div`
   position: fixed;
@@ -282,6 +283,35 @@ const CreateButton = styled.button`
   }
 `;
 
+const ContactGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 10px;
+  padding: 10px;
+  max-height: 300px;
+  overflow-y: auto;
+`;
+
+const ContactItem = styled.div`
+  background: #000;
+  border: 1px solid #333;
+  padding: 10px;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+`;
+
+const ContactName = styled.div`
+  color: #00ff00;
+  font-weight: bold;
+  font-size: 12px;
+  margin-bottom: 4px;
+`;
+
+const ContactEmail = styled.div`
+  color: #ccc;
+  font-size: 11px;
+`;
+
 const CreateNewListModal = ({ isOpen, onClose }) => {
   const [listType, setListType] = useState('static');
   const [listName, setListName] = useState('');
@@ -291,6 +321,9 @@ const CreateNewListModal = ({ isOpen, onClose }) => {
   const [searchTags, setSearchTags] = useState('');
   const [associatedTags, setAssociatedTags] = useState([]);
   const [selectedScores, setSelectedScores] = useState([]);
+  const [filteredContacts, setFilteredContacts] = useState([]);
+  const [loadingContacts, setLoadingContacts] = useState(false);
+  const [contactsError, setContactsError] = useState(null);
 
   const handleCreate = () => {
     // TODO: Implement create functionality
@@ -311,6 +344,9 @@ const CreateNewListModal = ({ isOpen, onClose }) => {
     setSearchTags('');
     setAssociatedTags([]);
     setSelectedScores([]);
+    setFilteredContacts([]);
+    setLoadingContacts(false);
+    setContactsError(null);
     onClose();
   };
 
@@ -320,6 +356,108 @@ const CreateNewListModal = ({ isOpen, onClose }) => {
         ? prev.filter(s => s !== score)
         : [...prev, score]
     );
+  };
+
+  // Fetch filtered contacts when dynamic list criteria changes
+  useEffect(() => {
+    if (listType === 'dynamic') {
+      fetchFilteredContacts();
+    }
+  }, [listType, associatedCities, associatedTags, selectedScores]);
+
+  const fetchFilteredContacts = async () => {
+    if (listType !== 'dynamic') return;
+
+    try {
+      setLoadingContacts(true);
+      setContactsError(null);
+
+      // Build filters for the edge function
+      const filters = {
+        limit: 100, // Limit for preview
+        offset: 0
+      };
+
+      // Add score range filter
+      if (selectedScores.length > 0) {
+        const minScore = Math.min(...selectedScores);
+        const maxScore = Math.max(...selectedScores);
+        filters.score_range = [minScore, maxScore];
+      }
+
+      // Add city filters (map to categories - you may need to adjust this mapping)
+      if (associatedCities.length > 0) {
+        // This is a simplified mapping - you might need to adjust based on your data structure
+        filters.category = associatedCities;
+      }
+
+      // Add tag filters (map to keep_in_touch - you may need to adjust this mapping)
+      if (associatedTags.length > 0) {
+        // This is a simplified mapping - you might need to adjust based on your data structure
+        filters.keep_in_touch = associatedTags;
+      }
+
+      console.log('Fetching contacts with filters:', filters);
+
+      // Call the get-filtered-contacts edge function
+      const { data, error } = await supabase.functions.invoke('get-filtered-contacts', {
+        body: { filters }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data && data.contacts) {
+        setFilteredContacts(data.contacts);
+        console.log('Filtered contacts:', data.contacts.length);
+      } else {
+        setFilteredContacts([]);
+      }
+
+    } catch (err) {
+      console.error('Error fetching filtered contacts:', err);
+      setContactsError(err.message);
+      setFilteredContacts([]);
+    } finally {
+      setLoadingContacts(false);
+    }
+  };
+
+  const addCity = (city) => {
+    if (city.trim() && !associatedCities.includes(city.trim())) {
+      setAssociatedCities(prev => [...prev, city.trim()]);
+      setSearchCities('');
+    }
+  };
+
+  const removeCity = (cityToRemove) => {
+    setAssociatedCities(prev => prev.filter(city => city !== cityToRemove));
+  };
+
+  const addTag = (tag) => {
+    if (tag.trim() && !associatedTags.includes(tag.trim())) {
+      setAssociatedTags(prev => [...prev, tag.trim()]);
+      setSearchTags('');
+    }
+  };
+
+  const removeTag = (tagToRemove) => {
+    setAssociatedTags(prev => prev.filter(tag => tag !== tagToRemove));
+  };
+
+  const handleCityKeyPress = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addCity(searchCities);
+    }
+  };
+
+  const handleTagKeyPress = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addTag(searchTags);
+    }
   };
 
   if (!isOpen) return null;
@@ -393,16 +531,22 @@ const CreateNewListModal = ({ isOpen, onClose }) => {
                     type="text"
                     value={searchCities}
                     onChange={(e) => setSearchCities(e.target.value)}
-                    placeholder="Search for cities..."
+                    onKeyPress={handleCityKeyPress}
+                    placeholder="Enter city name and press Enter"
                   />
                 </FilterRow>
                 
                 <FilterRow>
                   <Label>Associated Cities:</Label>
                   <TagsContainer>
-                    <TagBox></TagBox>
-                    <TagBox></TagBox>
-                    <TagBox></TagBox>
+                    {associatedCities.map((city, index) => (
+                      <TagBox key={index} onClick={() => removeCity(city)} style={{ cursor: 'pointer' }}>
+                        {city} ×
+                      </TagBox>
+                    ))}
+                    {associatedCities.length === 0 && (
+                      <TagBox style={{ opacity: 0.5 }}>No cities selected</TagBox>
+                    )}
                   </TagsContainer>
                 </FilterRow>
                 
@@ -412,16 +556,22 @@ const CreateNewListModal = ({ isOpen, onClose }) => {
                     type="text"
                     value={searchTags}
                     onChange={(e) => setSearchTags(e.target.value)}
-                    placeholder="Search for tags..."
+                    onKeyPress={handleTagKeyPress}
+                    placeholder="Enter tag name and press Enter"
                   />
                 </FilterRow>
                 
                 <FilterRow>
                   <Label>Associated Tags:</Label>
                   <TagsContainer>
-                    <TagBox></TagBox>
-                    <TagBox></TagBox>
-                    <TagBox></TagBox>
+                    {associatedTags.map((tag, index) => (
+                      <TagBox key={index} onClick={() => removeTag(tag)} style={{ cursor: 'pointer' }}>
+                        {tag} ×
+                      </TagBox>
+                    ))}
+                    {associatedTags.length === 0 && (
+                      <TagBox style={{ opacity: 0.5 }}>No tags selected</TagBox>
+                    )}
                   </TagsContainer>
                 </FilterRow>
                 
@@ -439,6 +589,34 @@ const CreateNewListModal = ({ isOpen, onClose }) => {
                     ))}
                   </ScoreContainer>
                 </FilterRow>
+                
+                <ContactsSection>
+                  <Label>Filtered Contacts ({filteredContacts.length}):</Label>
+                  <ContactsContainer>
+                    {loadingContacts ? (
+                      <PlaceholderText>Loading contacts...</PlaceholderText>
+                    ) : contactsError ? (
+                      <PlaceholderText style={{ color: '#ff4444' }}>
+                        Error: {contactsError}
+                      </PlaceholderText>
+                    ) : filteredContacts.length > 0 ? (
+                      <ContactGrid>
+                        {filteredContacts.map((contact, index) => (
+                          <ContactItem key={index}>
+                            <ContactName>{contact.first_name} {contact.last_name}</ContactName>
+                            <ContactEmail>{contact.email || 'No email'}</ContactEmail>
+                          </ContactItem>
+                        ))}
+                      </ContactGrid>
+                    ) : (
+                      <PlaceholderText>
+                        {(associatedCities.length > 0 || associatedTags.length > 0 || selectedScores.length > 0) 
+                          ? 'No contacts match the selected criteria' 
+                          : 'Select cities, tags, or scores to filter contacts'}
+                      </PlaceholderText>
+                    )}
+                  </ContactsContainer>
+                </ContactsSection>
               </FilterSection>
             )}
           </MainContent>
