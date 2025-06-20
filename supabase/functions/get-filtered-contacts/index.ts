@@ -31,7 +31,7 @@ serve(async (req) => {
     const { filters } = await req.json()
     console.log('Received filters:', JSON.stringify(filters, null, 2))
 
-    // Start building the query
+    // FIXED: Main query with proper email filtering for primary emails only
     let query = supabase
       .from('contacts')
       .select(`
@@ -43,12 +43,25 @@ serve(async (req) => {
         keep_in_touch_frequency,
         created_at,
         last_interaction_at,
-        contact_emails (
+        contact_emails!inner (
           email_id,
           email,
           is_primary
+        ),
+        contact_cities (
+          cities (
+            name
+          )
+        ),
+        contact_tags (
+          tags (
+            name
+          )
         )
       `)
+
+    // FIXED: Filter for primary emails only in the main query
+    query = query.eq('contact_emails.is_primary', true)
 
     // Handle category filters with special mappings
     if (filters.category && Array.isArray(filters.category) && filters.category.length > 0) {
@@ -102,8 +115,6 @@ serve(async (req) => {
         // Apply special Inbox logic if Inbox is included with other filters
         if (hasInbox && categoryConditions.includes('Inbox')) {
           console.log('Applying special Inbox logic for mixed filters')
-          // This is complex - we need to handle Inbox specially even in mixed filters
-          // For now, let's apply the last_interaction_at filter globally when Inbox is present
           query = query.not('last_interaction_at', 'is', null)
         }
       }
@@ -111,6 +122,12 @@ serve(async (req) => {
       // No category filters - apply default "all except Skip" logic
       console.log('No category filters - applying default "all except Skip" logic')
       query = query.neq('category', 'Skip')
+    }
+
+    // Apply score filter (handle both score array and score_range)
+    if (filters.score && Array.isArray(filters.score) && filters.score.length > 0) {
+      console.log('Applying score filter:', filters.score)
+      query = query.in('score', filters.score)
     }
 
     // Apply score range filter
@@ -126,33 +143,49 @@ serve(async (req) => {
       query = query.in('keep_in_touch_frequency', filters.keep_in_touch)
     }
 
-    // Apply pagination
-    const limit = filters.limit || 1000
+    // Apply city and tags filters (handled in post-processing for performance)
+    if (filters.city && Array.isArray(filters.city) && filters.city.length > 0) {
+      console.log('City filter will be applied in post-processing:', filters.city)
+    }
+
+    if (filters.tags && Array.isArray(filters.tags) && filters.tags.length > 0) {
+      console.log('Tags filter will be applied in post-processing:', filters.tags)
+    }
+
+    // Apply pagination - increased default limit to 150
+    const limit = filters.limit || 150
     const offset = filters.offset || 0
     console.log(`Applying pagination: limit=${limit}, offset=${offset}`)
     
     query = query.range(offset, offset + limit - 1)
 
     // Execute the query
-    console.log('Executing query...')
-    const { data: contacts, error, count } = await query
+    console.log('Executing main query...')
+    const { data: contacts, error } = await query
 
     if (error) {
       console.error('Database error:', error)
       throw error
     }
 
-    console.log(`Query successful. Found ${contacts?.length || 0} contacts`)
+    console.log(`Main query successful. Found ${contacts?.length || 0} contacts`)
 
-    // Get total count for pagination
+    // FIXED: Count query with proper join to contact_emails for primary emails
     let totalQuery = supabase
       .from('contacts')
       .select('contact_id', { count: 'exact', head: true })
+      .eq('contact_emails.is_primary', true)
+
+    // FIXED: Add the inner join to contact_emails in count query
+    totalQuery = totalQuery.select(`
+      contact_id,
+      contact_emails!inner(email, is_primary)
+    `, { count: 'exact', head: true })
 
     // Apply the same filters for count query
     if (filters.category && Array.isArray(filters.category) && filters.category.length > 0) {
       if (filters.category.length === 1 && filters.category[0] === 'Inbox') {
-        totalQuery = totalQuery.eq('category', 'Inbox').not('last_interaction_at', 'is', null)
+        totalQuery = totalQuery.eq('category', 'Inbox').not('last_interaction_at', 'is', null);
       } else {
         const categoryConditions: string[] = []
         const scoreConditions: number[] = []
@@ -186,11 +219,16 @@ serve(async (req) => {
         }
         
         if (hasInbox && categoryConditions.includes('Inbox')) {
-          totalQuery = totalQuery.not('last_interaction_at', 'is', null)
+          totalQuery = totalQuery.not('last_interaction_at', 'is', null');
         }
       }
     } else {
       totalQuery = totalQuery.neq('category', 'Skip')
+    }
+
+    // Apply score filter to count query
+    if (filters.score && Array.isArray(filters.score) && filters.score.length > 0) {
+      totalQuery = totalQuery.in('score', filters.score)
     }
 
     // Apply score range filter to count query
@@ -204,6 +242,7 @@ serve(async (req) => {
       totalQuery = totalQuery.in('keep_in_touch_frequency', filters.keep_in_touch)
     }
 
+    console.log('Executing count query...')
     const { count: totalCount, error: countError } = await totalQuery
 
     if (countError) {
@@ -213,16 +252,50 @@ serve(async (req) => {
 
     console.log(`Total count: ${totalCount}`)
 
-    // Process contacts to ensure full_name is available and add primary email
+    // FIXED: Improved processing - since we already filter for primary emails in query
     const processedContacts = contacts?.map(contact => {
-      // Find primary email or first email
-      const primaryEmail = contact.contact_emails?.find(email => email.is_primary) || contact.contact_emails?.[0]
+      // Since we filtered for is_primary=true in query, we can safely get the first email
+      const primaryEmail = contact.contact_emails?.[0]?.email || null
+      
+      // Get city name from contact_cities
+      const cityName = contact.contact_cities?.[0]?.cities?.name || null
+      
+      // Get all tag names from contact_tags
+      const tagNames = contact.contact_tags?.map(ct => ct.tags?.name).filter(Boolean) || []
       
       return {
         ...contact,
         full_name: `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Unknown',
-        email: primaryEmail?.email || '' // Add email field from contact_emails
+        email: primaryEmail,
+        city: cityName,
+        tags: tagNames
       }
+    }).filter(contact => {
+      // FIXED: Less aggressive filtering since we already have primary emails from query
+      if (!contact.email) {
+        console.warn('Contact without email found despite primary email filter:', contact.contact_id)
+        return false
+      }
+      
+      // Apply city filter in post-processing if specified
+      if (filters.city && Array.isArray(filters.city) && filters.city.length > 0) {
+        if (!contact.city) return false
+        return filters.city.some(filterCity => 
+          contact.city.toLowerCase().includes(filterCity.toLowerCase())
+        )
+      }
+      
+      // Apply tags filter in post-processing if specified
+      if (filters.tags && Array.isArray(filters.tags) && filters.tags.length > 0) {
+        if (!contact.tags || contact.tags.length === 0) return false
+        return filters.tags.some(filterTag => 
+          contact.tags.some(contactTag => 
+            contactTag.toLowerCase().includes(filterTag.toLowerCase())
+          )
+        )
+      }
+      
+      return true
     }) || []
 
     const response = {
@@ -231,7 +304,7 @@ serve(async (req) => {
       filters_applied: filters
     }
 
-    console.log('Returning response with', processedContacts.length, 'contacts')
+    console.log('Returning response with', processedContacts.length, 'contacts out of', totalCount, 'total')
 
     return new Response(
       JSON.stringify(response),

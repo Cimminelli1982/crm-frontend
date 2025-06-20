@@ -293,12 +293,37 @@ const MailingListsTable = () => {
         throw error;
       }
 
-      setEmailLists(data || []);
+      // Fetch junction table data for each list
+      const listsWithAssociations = await Promise.all(
+        (data || []).map(async (list) => {
+          const listId = list.list_id || list.email_list_id || list.uuid || list.id;
+          
+          // Fetch associated cities
+          const { data: cities, error: citiesError } = await supabase
+            .from('lists_cities')
+            .select('city_name')
+            .eq('list_id', listId);
+          
+          // Fetch associated tags
+          const { data: tags, error: tagsError } = await supabase
+            .from('emaillist_tags')
+            .select('tag_name')
+            .eq('list_id', listId);
+          
+          return {
+            ...list,
+            associated_cities: citiesError ? [] : cities?.map(c => c.city_name) || [],
+            associated_tags: tagsError ? [] : tags?.map(t => t.tag_name) || []
+          };
+        })
+      );
+
+      setEmailLists(listsWithAssociations);
       
       // Log the data structure to see available fields
-      if (data && data.length > 0) {
-        console.log('Email list data structure:', Object.keys(data[0]));
-        console.log('Sample email list:', data[0]);
+      if (listsWithAssociations && listsWithAssociations.length > 0) {
+        console.log('Email list data structure:', Object.keys(listsWithAssociations[0]));
+        console.log('Sample email list with associations:', listsWithAssociations[0]);
       }
     } catch (err) {
       console.error('Error fetching email lists:', err);
@@ -627,7 +652,22 @@ const MailingListsTable = () => {
     }
 
     try {
-      // Try common primary key field names
+      // First delete junction table entries
+      console.log('Deleting junction table entries for list:', listId);
+      
+      // Delete city associations
+      await supabase
+        .from('lists_cities')
+        .delete()
+        .eq('list_id', listId);
+      
+      // Delete tag associations  
+      await supabase
+        .from('emaillist_tags')
+        .delete()
+        .eq('list_id', listId);
+
+      // Then delete the main email list
       let deleteResult;
       
       // First try with list_id
@@ -664,7 +704,7 @@ const MailingListsTable = () => {
         list.id !== listId
       ));
       
-      console.log('Email list deleted successfully');
+      console.log('Email list and associations deleted successfully');
     } catch (err) {
       console.error('Error deleting email list:', err);
       alert(`Error deleting email list: ${err.message}`);
@@ -816,6 +856,7 @@ const MailingListsTable = () => {
       <CreateNewListModal 
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
+        onListCreated={fetchEmailLists}
       />
       
       <ViewEmailListModal 

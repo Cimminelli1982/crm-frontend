@@ -198,16 +198,32 @@ const TagBox = styled.div`
   font-size: 12px;
   border-radius: 4px;
   min-width: 80px;
-  min-height: 35px;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+`;
+
+const SuggestionsContainer = styled.div`
+  margin-top: 5px;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+`;
+
+const SuggestionItem = styled.div`
+  background-color: #111;
+  border: 1px solid #00ff00;
+  color: #00ff00;
+  padding: 6px 12px;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s ease;
   
   &:hover {
-    border-color: #00ff00;
-    color: #00ff00;
+    background-color: #00ff00;
+    color: #000;
   }
 `;
 
@@ -312,7 +328,7 @@ const ContactEmail = styled.div`
   font-size: 11px;
 `;
 
-const CreateNewListModal = ({ isOpen, onClose }) => {
+const CreateNewListModal = ({ isOpen, onClose, onListCreated }) => {
   const [listType, setListType] = useState('static');
   const [listName, setListName] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -324,14 +340,113 @@ const CreateNewListModal = ({ isOpen, onClose }) => {
   const [filteredContacts, setFilteredContacts] = useState([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
   const [contactsError, setContactsError] = useState(null);
+  
+  // Autocomplete states
+  const [citySuggestions, setCitySuggestions] = useState([]);
+  const [tagSuggestions, setTagSuggestions] = useState([]);
+  const [showCitySuggestions, setShowCitySuggestions] = useState(false);
+  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
 
-  const handleCreate = () => {
-    // TODO: Implement create functionality
-    console.log('Creating list:', {
-      type: listType,
-      name: listName,
-      searchTerm: searchTerm
-    });
+  const handleCreate = async () => {
+    if (!listName.trim()) {
+      alert('Please enter a list name');
+      return;
+    }
+
+    try {
+      console.log('Creating email list:', {
+        type: listType,
+        name: listName.trim(),
+        cities: associatedCities,
+        tags: associatedTags,
+        scores: selectedScores
+      });
+
+      // Create the email list first
+      const requestBody = {
+        name: listName.trim(),
+        description: `${listType} list with ${associatedCities.length} cities, ${associatedTags.length} tags`,
+        listType: listType,
+        queryFilters: listType === 'dynamic' ? {
+          cities: associatedCities,
+          tags: associatedTags,
+          scores: selectedScores
+        } : null
+      };
+
+      // For dynamic lists, don't send contactIds at all
+      // For static lists, send empty array (edge function should be modified to allow this)
+      if (listType === 'static') {
+        requestBody.contactIds = [];
+      }
+
+      const { data: emailListData, error: listError } = await supabase.functions.invoke('create-email-list', {
+        body: requestBody
+      });
+
+      if (listError) {
+        throw listError;
+      }
+
+      const createdList = emailListData.list;
+      const listId = createdList.list_id || createdList.email_list_id || createdList.uuid || createdList.id;
+
+      if (!listId) {
+        throw new Error('No list ID returned from create-email-list function');
+      }
+
+      console.log('Email list created with ID:', listId);
+
+      // Create city associations in lists_cities table
+      if (associatedCities.length > 0) {
+        const cityAssociations = associatedCities.map(cityName => ({
+          list_id: listId,
+          city_name: cityName
+        }));
+
+        const { error: cityError } = await supabase
+          .from('lists_cities')
+          .insert(cityAssociations);
+
+        if (cityError) {
+          console.error('Error creating city associations:', cityError);
+        } else {
+          console.log('Created city associations:', cityAssociations.length);
+        }
+      }
+
+      // Create tag associations in emaillist_tags table
+      if (associatedTags.length > 0) {
+        const tagAssociations = associatedTags.map(tagName => ({
+          list_id: listId,
+          tag_name: tagName
+        }));
+
+        const { error: tagError } = await supabase
+          .from('emaillist_tags')
+          .insert(tagAssociations);
+
+        if (tagError) {
+          console.error('Error creating tag associations:', tagError);
+        } else {
+          console.log('Created tag associations:', tagAssociations.length);
+        }
+      }
+
+      // Success - close modal and reset
+      alert(`Email list "${listName.trim()}" created successfully!`);
+      
+      // Notify parent to refresh the list
+      if (onListCreated) {
+        onListCreated();
+      }
+      
+      handleClose();
+
+    } catch (err) {
+      console.error('Error creating email list:', err);
+      alert(`Error creating email list: ${err.message}`);
+    }
   };
 
   const handleClose = () => {
@@ -347,6 +462,13 @@ const CreateNewListModal = ({ isOpen, onClose }) => {
     setFilteredContacts([]);
     setLoadingContacts(false);
     setContactsError(null);
+    
+    // Clear autocomplete states
+    setCitySuggestions([]);
+    setTagSuggestions([]);
+    setShowCitySuggestions(false);
+    setShowTagSuggestions(false);
+    
     onClose();
   };
 
@@ -356,6 +478,95 @@ const CreateNewListModal = ({ isOpen, onClose }) => {
         ? prev.filter(s => s !== score)
         : [...prev, score]
     );
+  };
+
+  const handleTagKeyPress = async (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      await addTag(searchTags);
+    }
+  };
+
+  // Search for cities in the database
+  const searchCitiesInDB = async (searchTerm) => {
+    if (searchTerm.length < 1) {
+      setCitySuggestions([]);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('cities')
+        .select('name')
+        .ilike('name', `%${searchTerm}%`)
+        .limit(10);
+
+      if (error) throw error;
+
+      // Get unique cities and filter out already selected ones
+      const uniqueCities = data
+        .map(item => item.name)
+        .filter(city => city && !associatedCities.includes(city))
+        .slice(0, 5);
+
+      setCitySuggestions(uniqueCities);
+    } catch (err) {
+      console.error('Error searching cities:', err);
+      setCitySuggestions([]);
+    }
+  };
+
+  // Search for tags in the database
+  const searchTagsInDB = async (searchTerm) => {
+    if (searchTerm.length < 1) {
+      setTagSuggestions([]);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('tags')
+        .select('name')
+        .ilike('name', `%${searchTerm}%`)
+        .limit(10);
+
+      if (error) throw error;
+
+      // Get unique tags and filter out already selected ones
+      const uniqueTags = data
+        .map(item => item.name)
+        .filter(tag => tag && !associatedTags.includes(tag))
+        .slice(0, 5);
+
+      setTagSuggestions(uniqueTags);
+    } catch (err) {
+      console.error('Error searching tags:', err);
+      setTagSuggestions([]);
+    }
+  };
+
+  // Handle city input change with search
+  const handleCityInputChange = (e) => {
+    const value = e.target.value;
+    setSearchCities(value);
+    searchCitiesInDB(value);
+  };
+
+  // Handle tag input change with search
+  const handleTagInputChange = (e) => {
+    const value = e.target.value;
+    setSearchTags(value);
+    searchTagsInDB(value);
+  };
+
+  // Add city from suggestion
+  const addCityFromSuggestion = async (city) => {
+    await addCity(city);
+  };
+
+  // Add tag from suggestion
+  const addTagFromSuggestion = async (tag) => {
+    await addTag(tag);
   };
 
   // Fetch filtered contacts when dynamic list criteria changes
@@ -385,16 +596,14 @@ const CreateNewListModal = ({ isOpen, onClose }) => {
         filters.score_range = [minScore, maxScore];
       }
 
-      // Add city filters (map to categories - you may need to adjust this mapping)
+      // Add city filters
       if (associatedCities.length > 0) {
-        // This is a simplified mapping - you might need to adjust based on your data structure
-        filters.category = associatedCities;
+        filters.city = associatedCities;
       }
 
-      // Add tag filters (map to keep_in_touch - you may need to adjust this mapping)
+      // Add tag filters
       if (associatedTags.length > 0) {
-        // This is a simplified mapping - you might need to adjust based on your data structure
-        filters.keep_in_touch = associatedTags;
+        filters.tags = associatedTags;
       }
 
       console.log('Fetching contacts with filters:', filters);
@@ -424,10 +633,47 @@ const CreateNewListModal = ({ isOpen, onClose }) => {
     }
   };
 
-  const addCity = (city) => {
-    if (city.trim() && !associatedCities.includes(city.trim())) {
+  const addCity = async (city) => {
+    if (!city.trim() || associatedCities.includes(city.trim())) {
+      return;
+    }
+
+    try {
+      // Check if city exists in database
+      const { data: existingCity, error: checkError } = await supabase
+        .from('cities')
+        .select('name')
+        .eq('name', city.trim())
+        .single();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        // Error other than "not found"
+        throw checkError;
+      }
+
+      // If city doesn't exist, create it
+      if (!existingCity) {
+        const { error: insertError } = await supabase
+          .from('cities')
+          .insert([{ name: city.trim() }]);
+
+        if (insertError) {
+          throw insertError;
+        }
+        console.log('Created new city:', city.trim());
+      }
+
+      // Add to local state
       setAssociatedCities(prev => [...prev, city.trim()]);
       setSearchCities('');
+      setCitySuggestions([]);
+
+    } catch (err) {
+      console.error('Error adding city:', err);
+      // Still add to local state even if database operation fails
+      setAssociatedCities(prev => [...prev, city.trim()]);
+      setSearchCities('');
+      setCitySuggestions([]);
     }
   };
 
@@ -435,10 +681,47 @@ const CreateNewListModal = ({ isOpen, onClose }) => {
     setAssociatedCities(prev => prev.filter(city => city !== cityToRemove));
   };
 
-  const addTag = (tag) => {
-    if (tag.trim() && !associatedTags.includes(tag.trim())) {
+  const addTag = async (tag) => {
+    if (!tag.trim() || associatedTags.includes(tag.trim())) {
+      return;
+    }
+
+    try {
+      // Check if tag exists in database
+      const { data: existingTag, error: checkError } = await supabase
+        .from('tags')
+        .select('name')
+        .eq('name', tag.trim())
+        .single();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        // Error other than "not found"
+        throw checkError;
+      }
+
+      // If tag doesn't exist, create it
+      if (!existingTag) {
+        const { error: insertError } = await supabase
+          .from('tags')
+          .insert([{ name: tag.trim() }]);
+
+        if (insertError) {
+          throw insertError;
+        }
+        console.log('Created new tag:', tag.trim());
+      }
+
+      // Add to local state
       setAssociatedTags(prev => [...prev, tag.trim()]);
       setSearchTags('');
+      setTagSuggestions([]);
+
+    } catch (err) {
+      console.error('Error adding tag:', err);
+      // Still add to local state even if database operation fails
+      setAssociatedTags(prev => [...prev, tag.trim()]);
+      setSearchTags('');
+      setTagSuggestions([]);
     }
   };
 
@@ -446,18 +729,87 @@ const CreateNewListModal = ({ isOpen, onClose }) => {
     setAssociatedTags(prev => prev.filter(tag => tag !== tagToRemove));
   };
 
-  const handleCityKeyPress = (e) => {
+  const handleCityKeyPress = async (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      addCity(searchCities);
+      await addCity(searchCities);
     }
   };
 
-  const handleTagKeyPress = (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      addTag(searchTags);
+  // Fetch city suggestions from database
+  const fetchCitySuggestions = async (searchTerm) => {
+    if (searchTerm.length < 1) {
+      setCitySuggestions([]);
+      setShowCitySuggestions(false);
+      return;
     }
+
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('category')
+        .ilike('category', `%${searchTerm}%`)
+        .not('category', 'is', null)
+        .limit(10);
+
+      if (error) throw error;
+
+      // Get unique categories and filter out already selected ones
+      const uniqueCities = [...new Set(data.map(item => item.category))]
+        .filter(city => city && !associatedCities.includes(city))
+        .slice(0, 10);
+
+      setCitySuggestions(uniqueCities);
+      setShowCitySuggestions(uniqueCities.length > 0);
+    } catch (err) {
+      console.error('Error fetching city suggestions:', err);
+      setCitySuggestions([]);
+      setShowCitySuggestions(false);
+    }
+  };
+
+  // Fetch tag suggestions from database
+  const fetchTagSuggestions = async (searchTerm) => {
+    if (searchTerm.length < 1) {
+      setTagSuggestions([]);
+      setShowTagSuggestions(false);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('keep_in_touch_frequency')
+        .ilike('keep_in_touch_frequency', `%${searchTerm}%`)
+        .not('keep_in_touch_frequency', 'is', null)
+        .limit(10);
+
+      if (error) throw error;
+
+      // Get unique keep_in_touch values and filter out already selected ones
+      const uniqueTags = [...new Set(data.map(item => item.keep_in_touch_frequency))]
+        .filter(tag => tag && !associatedTags.includes(tag))
+        .slice(0, 10);
+
+      setTagSuggestions(uniqueTags);
+      setShowTagSuggestions(uniqueTags.length > 0);
+    } catch (err) {
+      console.error('Error fetching tag suggestions:', err);
+      setTagSuggestions([]);
+      setShowTagSuggestions(false);
+    }
+  };
+
+  // Select city from suggestions
+  const selectCitySuggestion = (city) => {
+    addCity(city);
+    setShowCitySuggestions(false);
+  };
+
+  // Select tag from suggestions
+  const selectTagSuggestion = (tag) => {
+    addTag(tag);
+    setShowTagSuggestions(false);
   };
 
   if (!isOpen) return null;
@@ -530,10 +882,22 @@ const CreateNewListModal = ({ isOpen, onClose }) => {
                   <Input
                     type="text"
                     value={searchCities}
-                    onChange={(e) => setSearchCities(e.target.value)}
+                    onChange={handleCityInputChange}
                     onKeyPress={handleCityKeyPress}
                     placeholder="Enter city name and press Enter"
                   />
+                  {citySuggestions.length > 0 && (
+                    <SuggestionsContainer>
+                      {citySuggestions.map((city, index) => (
+                        <SuggestionItem 
+                          key={index}
+                          onClick={() => addCityFromSuggestion(city)}
+                        >
+                          {city}
+                        </SuggestionItem>
+                      ))}
+                    </SuggestionsContainer>
+                  )}
                 </FilterRow>
                 
                 <FilterRow>
@@ -555,10 +919,22 @@ const CreateNewListModal = ({ isOpen, onClose }) => {
                   <Input
                     type="text"
                     value={searchTags}
-                    onChange={(e) => setSearchTags(e.target.value)}
+                    onChange={handleTagInputChange}
                     onKeyPress={handleTagKeyPress}
                     placeholder="Enter tag name and press Enter"
                   />
+                  {tagSuggestions.length > 0 && (
+                    <SuggestionsContainer>
+                      {tagSuggestions.map((tag, index) => (
+                        <SuggestionItem 
+                          key={index}
+                          onClick={() => addTagFromSuggestion(tag)}
+                        >
+                          {tag}
+                        </SuggestionItem>
+                      ))}
+                    </SuggestionsContainer>
+                  )}
                 </FilterRow>
                 
                 <FilterRow>
