@@ -207,6 +207,7 @@ const App = () => {
             path: "inbox",
             element: <Inbox />
           },
+
           // Admin routes
           {
             path: "admin/hubspot-migration",

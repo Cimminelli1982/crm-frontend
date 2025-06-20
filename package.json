@@ -12,6 +12,7 @@
     "@slack/bolt": "^3.22.0",
     "@slack/web-api": "^7.9.0",
     "@supabase/supabase-js": "^2.33.1",
+    "@tailwindcss/postcss": "^4.1.10",
     "@tanstack/react-table": "^8.21.2",
     "@tanstack/table-core": "^8.21.2",
     "@testing-library/dom": "^9.3.1",

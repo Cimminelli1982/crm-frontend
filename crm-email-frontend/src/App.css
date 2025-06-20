@@ -1,0 +1,256 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Matrix Theme - Black and Green */
+:root {
+  --matrix-black: #000000;
+  --matrix-dark: #0a0a0a;
+  --matrix-green: #00ff00;
+  --matrix-green-dark: #00cc00;
+  --matrix-green-light: #33ff33;
+  --matrix-gray: #333333;
+  --matrix-gray-light: #666666;
+  --matrix-text: #00ff00;
+  --matrix-text-dim: #009900;
+}
+
+/* Global styles */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Courier New', Courier, monospace;
+  background-color: var(--matrix-black);
+  color: var(--matrix-green);
+  line-height: 1.4;
+  letter-spacing: 0.5px;
+}
+
+#root {
+  min-height: 100vh;
+  background-color: var(--matrix-black);
+}
+
+/* Custom animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideIn {
+  from { transform: translateY(-10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes matrixGlow {
+  0%, 100% { text-shadow: 0 0 5px var(--matrix-green); }
+  50% { text-shadow: 0 0 10px var(--matrix-green), 0 0 15px var(--matrix-green); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+.matrix-glow {
+  animation: matrixGlow 2s ease-in-out infinite;
+}
+
+/* Scrollbar personalizzata - Matrix style */
+.overflow-y-auto::-webkit-scrollbar {
+  width: 8px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: var(--matrix-black);
+  border: 1px solid var(--matrix-gray);
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background: var(--matrix-green);
+  border-radius: 0;
+  border: 1px solid var(--matrix-green-dark);
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background: var(--matrix-green-light);
+}
+
+/* Matrix-style borders and effects */
+.matrix-border {
+  border: 1px solid var(--matrix-green);
+  box-shadow: 0 0 5px rgba(0, 255, 0, 0.3);
+}
+
+.matrix-border:hover {
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+}
+
+/* Button styles */
+.matrix-button {
+  background-color: var(--matrix-black);
+  border: 1px solid var(--matrix-green);
+  color: var(--matrix-green);
+  font-family: 'Courier New', Courier, monospace;
+  letter-spacing: 0.5px;
+  transition: all 0.3s ease;
+}
+
+.matrix-button:hover {
+  background-color: var(--matrix-green);
+  color: var(--matrix-black);
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+}
+
+.matrix-button:active {
+  background-color: var(--matrix-green-dark);
+}
+
+/* Input styles */
+.matrix-input {
+  background-color: var(--matrix-black);
+  border: 1px solid var(--matrix-green);
+  color: var(--matrix-green);
+  font-family: 'Courier New', Courier, monospace;
+}
+
+.matrix-input:focus {
+  outline: none;
+  border-color: var(--matrix-green-light);
+  box-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
+}
+
+.matrix-input::placeholder {
+  color: var(--matrix-text-dim);
+}
+
+/* Card styles */
+.matrix-card {
+  background-color: var(--matrix-dark);
+  border: 1px solid var(--matrix-green);
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.2);
+}
+
+/* Text styles */
+.matrix-text-primary {
+  color: var(--matrix-green);
+}
+
+.matrix-text-secondary {
+  color: var(--matrix-text-dim);
+}
+
+.matrix-text-highlight {
+  color: var(--matrix-green-light);
+  text-shadow: 0 0 5px var(--matrix-green);
+}
+
+/* Table styles */
+.matrix-table {
+  background-color: var(--matrix-black);
+  border: 1px solid var(--matrix-green);
+}
+
+.matrix-table th {
+  background-color: var(--matrix-dark);
+  border-bottom: 1px solid var(--matrix-green);
+  color: var(--matrix-green);
+  font-family: 'Courier New', Courier, monospace;
+  letter-spacing: 0.5px;
+}
+
+.matrix-table td {
+  border-bottom: 1px solid var(--matrix-gray);
+  color: var(--matrix-green);
+}
+
+.matrix-table tr:hover {
+  background-color: rgba(0, 255, 0, 0.1);
+}
+
+/* Checkbox styles */
+.matrix-checkbox {
+  accent-color: var(--matrix-green);
+}
+
+/* Select styles */
+.matrix-select {
+  background-color: var(--matrix-black);
+  border: 1px solid var(--matrix-green);
+  color: var(--matrix-green);
+  font-family: 'Courier New', Courier, monospace;
+}
+
+.matrix-select:focus {
+  outline: none;
+  border-color: var(--matrix-green-light);
+  box-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
+}
+
+/* Loading spinner */
+.matrix-spinner {
+  border: 2px solid var(--matrix-gray);
+  border-top: 2px solid var(--matrix-green);
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Error styles */
+.matrix-error {
+  background-color: rgba(255, 0, 0, 0.1);
+  border: 1px solid #ff0000;
+  color: #ff6666;
+}
+
+/* Success styles */
+.matrix-success {
+  background-color: rgba(0, 255, 0, 0.1);
+  border: 1px solid var(--matrix-green);
+  color: var(--matrix-green-light);
+}
+
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}

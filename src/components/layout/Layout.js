@@ -9,7 +9,7 @@ import {
   FiLogOut, FiMenu, FiX, FiClock, FiPlusCircle, 
   FiHeart, FiAlertCircle, FiDollarSign, FiTrendingUp, 
   FiUserPlus, FiChevronDown, FiChevronRight, FiList,
-  FiInbox
+  FiInbox, FiMail
 } from 'react-icons/fi';
 
 // Main layout container
@@ -525,6 +525,8 @@ const Layout = ({ children }) => {
             </SubMenu>
             )}
           </MenuItem>
+
+
         </SidebarContent>
         
         <SidebarFooter $isOpen={sidebarOpen}>

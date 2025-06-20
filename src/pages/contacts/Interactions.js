@@ -1,7 +1,8 @@
 import React, { useState, lazy, Suspense } from 'react';
 import styled from 'styled-components';
-import { FiClock, FiUserCheck, FiUsers, FiGift, FiCalendar } from 'react-icons/fi';
+import { FiClock, FiUserCheck, FiUsers, FiGift, FiCalendar, FiMail } from 'react-icons/fi';
 import ContactsListTable from '../../components/contacts/ContactsListTable';
+import MailingListsModal from '../../components/modals/MailingListsModal';
 
 // Lazy load the components
 const KeepInTouch = lazy(() => import('./SimpleKeepInTouch')); // This is the existing keep in touch page
@@ -109,6 +110,7 @@ const LoadingFallback = styled.div`
 
 const Interactions = () => {
   const [activeTab, setActiveTab] = useState('recent');
+  const [isMailingListsModalOpen, setIsMailingListsModalOpen] = useState(false);
 
   // Define menu items
   const menuItems = [
@@ -116,7 +118,8 @@ const Interactions = () => {
     { id: 'keepintouch', name: 'Keep in Touch', icon: <FiClock /> },
     { id: 'introductions', name: 'Introductions', icon: <FiUsers /> },
     { id: 'celebrations', name: 'Celebrations', icon: <FiGift /> },
-    { id: 'planner', name: 'Planner', icon: <FiCalendar /> }
+    { id: 'planner', name: 'Planner', icon: <FiCalendar /> },
+    { id: 'mailinglists', name: 'Mailing Lists', icon: <FiMail /> }
   ];
 
   // Render the active component based on the selected tab
@@ -152,12 +155,21 @@ const Interactions = () => {
             Planner - Coming Soon
           </div>
         );
+
       default:
         return (
           <div style={{ color: '#00ff00', textAlign: 'center', paddingTop: '40px' }}>
             Select an interaction type from the menu above
           </div>
         );
+    }
+  };
+
+  const handleTabClick = (tabId) => {
+    if (tabId === 'mailinglists') {
+      setIsMailingListsModalOpen(true);
+    } else {
+      setActiveTab(tabId);
     }
   };
 
@@ -168,7 +180,7 @@ const Interactions = () => {
           <MenuItem 
             key={item.id}
             $active={activeTab === item.id}
-            onClick={() => setActiveTab(item.id)}
+            onClick={() => handleTabClick(item.id)}
           >
             {item.icon} {item.name}
           </MenuItem>
@@ -182,6 +194,11 @@ const Interactions = () => {
           </Suspense>
         </ContentArea>
       </InteractionsContent>
+      
+      <MailingListsModal 
+        isOpen={isMailingListsModalOpen}
+        onClose={() => setIsMailingListsModalOpen(false)}
+      />
     </Container>
   );
 };

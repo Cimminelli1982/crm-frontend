@@ -9,7 +9,8 @@ import {
   faCalendarAlt,
   faInbox,
   faChevronDown,
-  faChevronRight
+  faChevronRight,
+  faEnvelope
 } from '@fortawesome/free-solid-svg-icons';
 
 // Styled Components
@@ -188,6 +189,7 @@ const Sidebar = ({ user, onSignOut }) => {
   const [openMenus, setOpenMenus] = useState({
     contacts: true,
     companies: false,
+    opportunities: false,
     admin: false,
   });
 
@@ -207,7 +209,7 @@ const Sidebar = ({ user, onSignOut }) => {
   const menuItems = [
     {
       id: 'contacts',
-      name: 'Contacts',
+              name: 'Contacts',
       icon: faAddressBook,
       path: '/contacts',
       subItems: [
@@ -232,6 +234,7 @@ const Sidebar = ({ user, onSignOut }) => {
         { name: 'Companies', path: '/companies' }
       ]
     },
+
     {
       id: 'planner',
       name: 'Planner',
@@ -305,6 +308,7 @@ const Sidebar = ({ user, onSignOut }) => {
                       to={subItem.path}
                       className={({ isActive }) => isActive ? 'active' : ''}
                     >
+                      {subItem.icon && <FontAwesomeIcon icon={subItem.icon} style={{ marginRight: '8px' }} />}
                       {subItem.name}
                     </SubMenuItem>
                   ))}
