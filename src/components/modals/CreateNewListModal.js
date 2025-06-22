@@ -299,6 +299,37 @@ const CreateButton = styled.button`
   }
 `;
 
+const ClearFiltersButton = styled.button`
+  background-color: #000;
+  border: 2px solid #ff4444;
+  color: #ff4444;
+  padding: 12px 20px;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  margin-right: 15px;
+  
+  &:hover {
+    background-color: #ff4444;
+    color: #000;
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    
+    &:hover {
+      background-color: #000;
+      color: #ff4444;
+    }
+  }
+`;
+
 const ContactGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
@@ -328,15 +359,47 @@ const ContactEmail = styled.div`
   font-size: 11px;
 `;
 
+const Dropdown = styled.select`
+  background-color: #000;
+  border: 2px solid #333;
+  color: #ffffff;
+  padding: 12px 15px;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  border-radius: 4px;
+  outline: none;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  
+  &:focus {
+    border-color: #00ff00;
+  }
+  
+  option {
+    background-color: #000;
+    color: #ffffff;
+    padding: 8px;
+  }
+`;
+
+const CategoryContainer = styled.div`
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+`;
+
 const CreateNewListModal = ({ isOpen, onClose, onListCreated }) => {
   const [listType, setListType] = useState('static');
   const [listName, setListName] = useState('');
+  const [listDescription, setListDescription] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [searchCities, setSearchCities] = useState('');
   const [associatedCities, setAssociatedCities] = useState([]);
   const [searchTags, setSearchTags] = useState('');
   const [associatedTags, setAssociatedTags] = useState([]);
   const [selectedScores, setSelectedScores] = useState([]);
+  const [selectedCategories, setSelectedCategories] = useState([]);
+  const [selectedKeepInTouch, setSelectedKeepInTouch] = useState([]);
   const [filteredContacts, setFilteredContacts] = useState([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
   const [contactsError, setContactsError] = useState(null);
@@ -346,6 +409,27 @@ const CreateNewListModal = ({ isOpen, onClose, onListCreated }) => {
   const [tagSuggestions, setTagSuggestions] = useState([]);
   const [showCitySuggestions, setShowCitySuggestions] = useState(false);
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+
+  // Category options based on the edge function
+  const categoryOptions = [
+    'Inbox',
+    'Rockstars',
+    'Professional Investor',
+    'Founder',
+    'Manager',
+    'People I Care'
+  ];
+
+  // Keep in Touch frequency options based on the codebase
+  const keepInTouchOptions = [
+    'Weekly',
+    'Monthly',
+    'Quarterly',
+    'Twice per Year',
+    'Once per Year',
+    'Do not keep in touch',
+    'Not Set'
+  ];
 
   const handleCreate = async () => {
     if (!listName.trim()) {
@@ -365,12 +449,14 @@ const CreateNewListModal = ({ isOpen, onClose, onListCreated }) => {
       // Create the email list first
       const requestBody = {
         name: listName.trim(),
-        description: `${listType} list with ${associatedCities.length} cities, ${associatedTags.length} tags`,
+        description: listDescription.trim() || `${listType} list with ${associatedCities.length} cities, ${associatedTags.length} tags, ${selectedCategories.length} categories, ${selectedKeepInTouch.length} frequencies`,
         listType: listType,
         queryFilters: listType === 'dynamic' ? {
           cities: associatedCities,
           tags: associatedTags,
-          scores: selectedScores
+          scores: selectedScores,
+          categories: selectedCategories,
+          keepInTouch: selectedKeepInTouch
         } : null
       };
 
@@ -453,12 +539,15 @@ const CreateNewListModal = ({ isOpen, onClose, onListCreated }) => {
     // Reset form when closing
     setListType('static');
     setListName('');
+    setListDescription('');
     setSearchTerm('');
     setSearchCities('');
     setAssociatedCities([]);
     setSearchTags('');
     setAssociatedTags([]);
     setSelectedScores([]);
+    setSelectedCategories([]);
+    setSelectedKeepInTouch([]);
     setFilteredContacts([]);
     setLoadingContacts(false);
     setContactsError(null);
@@ -478,6 +567,43 @@ const CreateNewListModal = ({ isOpen, onClose, onListCreated }) => {
         ? prev.filter(s => s !== score)
         : [...prev, score]
     );
+  };
+
+  const handleCategoryChange = (e) => {
+    const category = e.target.value;
+    if (category && !selectedCategories.includes(category)) {
+      setSelectedCategories(prev => [...prev, category]);
+      // Reset dropdown to placeholder after selection
+      e.target.value = "";
+    }
+  };
+
+  const removeCategory = (categoryToRemove) => {
+    setSelectedCategories(prev => prev.filter(cat => cat !== categoryToRemove));
+  };
+
+  const handleKeepInTouchChange = (e) => {
+    const frequency = e.target.value;
+    if (frequency && !selectedKeepInTouch.includes(frequency)) {
+      setSelectedKeepInTouch(prev => [...prev, frequency]);
+      // Reset dropdown to placeholder after selection
+      e.target.value = "";
+    }
+  };
+
+  const removeKeepInTouch = (frequencyToRemove) => {
+    setSelectedKeepInTouch(prev => prev.filter(freq => freq !== frequencyToRemove));
+  };
+
+  const clearAllFilters = () => {
+    setAssociatedCities([]);
+    setAssociatedTags([]);
+    setSelectedScores([]);
+    setSelectedCategories([]);
+    setSelectedKeepInTouch([]);
+    setFilteredContacts([]);
+    setContactsError(null);
+    setLoadingContacts(false);
   };
 
   const handleTagKeyPress = async (e) => {
@@ -574,7 +700,7 @@ const CreateNewListModal = ({ isOpen, onClose, onListCreated }) => {
     if (listType === 'dynamic') {
       fetchFilteredContacts();
     }
-  }, [listType, associatedCities, associatedTags, selectedScores]);
+  }, [listType, associatedCities, associatedTags, selectedScores, selectedCategories, selectedKeepInTouch]);
 
   const fetchFilteredContacts = async () => {
     if (listType !== 'dynamic') return;
@@ -583,11 +709,8 @@ const CreateNewListModal = ({ isOpen, onClose, onListCreated }) => {
       setLoadingContacts(true);
       setContactsError(null);
 
-      // Build filters for the edge function
-      const filters = {
-        limit: 100, // Limit for preview
-        offset: 0
-      };
+      // Build filters for the edge function - no limit
+      const filters = {};
 
       // Add score range filter
       if (selectedScores.length > 0) {
@@ -604,6 +727,16 @@ const CreateNewListModal = ({ isOpen, onClose, onListCreated }) => {
       // Add tag filters
       if (associatedTags.length > 0) {
         filters.tags = associatedTags;
+      }
+
+      // Add category filters
+      if (selectedCategories.length > 0) {
+        filters.category = selectedCategories;
+      }
+
+      // Add keep in touch filters
+      if (selectedKeepInTouch.length > 0) {
+        filters.keep_in_touch = selectedKeepInTouch;
       }
 
       console.log('Fetching contacts with filters:', filters);
@@ -854,6 +987,16 @@ const CreateNewListModal = ({ isOpen, onClose, onListCreated }) => {
               />
             </FormSection>
             
+            <FormSection>
+              <Label>List Description:</Label>
+              <Input
+                type="text"
+                value={listDescription}
+                onChange={(e) => setListDescription(e.target.value)}
+                placeholder="Enter list description (optional)..."
+              />
+            </FormSection>
+            
             {listType === 'static' ? (
               <>
                 <FormSection>
@@ -966,6 +1109,64 @@ const CreateNewListModal = ({ isOpen, onClose, onListCreated }) => {
                   </ScoreContainer>
                 </FilterRow>
                 
+                <FilterRow>
+                  <Label>Category:</Label>
+                  <Dropdown
+                    value=""
+                    onChange={handleCategoryChange}
+                  >
+                    <option value="">Select a category...</option>
+                    {categoryOptions.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </Dropdown>
+                </FilterRow>
+                
+                <FilterRow>
+                  <Label>Selected Categories:</Label>
+                  <CategoryContainer>
+                    {selectedCategories.map((category, index) => (
+                      <TagBox key={index} onClick={() => removeCategory(category)} style={{ cursor: 'pointer' }}>
+                        {category} ×
+                      </TagBox>
+                    ))}
+                    {selectedCategories.length === 0 && (
+                      <TagBox style={{ opacity: 0.5 }}>No categories selected</TagBox>
+                    )}
+                  </CategoryContainer>
+                </FilterRow>
+                
+                <FilterRow>
+                  <Label>Keep in Touch Frequency:</Label>
+                  <Dropdown
+                    value=""
+                    onChange={handleKeepInTouchChange}
+                  >
+                    <option value="">Select a frequency...</option>
+                    {keepInTouchOptions.map((frequency) => (
+                      <option key={frequency} value={frequency}>
+                        {frequency}
+                      </option>
+                    ))}
+                  </Dropdown>
+                </FilterRow>
+                
+                <FilterRow>
+                  <Label>Selected Frequencies:</Label>
+                  <CategoryContainer>
+                    {selectedKeepInTouch.map((frequency, index) => (
+                      <TagBox key={index} onClick={() => removeKeepInTouch(frequency)} style={{ cursor: 'pointer' }}>
+                        {frequency} ×
+                      </TagBox>
+                    ))}
+                    {selectedKeepInTouch.length === 0 && (
+                      <TagBox style={{ opacity: 0.5 }}>No frequencies selected</TagBox>
+                    )}
+                  </CategoryContainer>
+                </FilterRow>
+                
                 <ContactsSection>
                   <Label>Filtered Contacts ({filteredContacts.length}):</Label>
                   <ContactsContainer>
@@ -986,9 +1187,9 @@ const CreateNewListModal = ({ isOpen, onClose, onListCreated }) => {
                       </ContactGrid>
                     ) : (
                       <PlaceholderText>
-                        {(associatedCities.length > 0 || associatedTags.length > 0 || selectedScores.length > 0) 
+                        {(associatedCities.length > 0 || associatedTags.length > 0 || selectedScores.length > 0 || selectedCategories.length > 0 || selectedKeepInTouch.length > 0) 
                           ? 'No contacts match the selected criteria' 
-                          : 'Select cities, tags, or scores to filter contacts'}
+                          : 'Select cities, tags, scores, categories, or frequencies to filter contacts'}
                       </PlaceholderText>
                     )}
                   </ContactsContainer>
@@ -999,6 +1200,18 @@ const CreateNewListModal = ({ isOpen, onClose, onListCreated }) => {
         </ModalContent>
         
         <ButtonContainer>
+          {listType === 'dynamic' && (
+            <ClearFiltersButton
+              onClick={clearAllFilters}
+              disabled={associatedCities.length === 0 && 
+                       associatedTags.length === 0 && 
+                       selectedScores.length === 0 && 
+                       selectedCategories.length === 0 && 
+                       selectedKeepInTouch.length === 0}
+            >
+              Clear All Filters
+            </ClearFiltersButton>
+          )}
           <CreateButton
             onClick={handleCreate}
             disabled={!listName.trim()}
