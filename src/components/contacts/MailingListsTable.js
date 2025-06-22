@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { FiMail, FiPlus, FiEye, FiRefreshCw, FiTrash2 } from 'react-icons/fi';
+import { FiMail, FiPlus, FiEye, FiRefreshCw, FiTrash2, FiSend } from 'react-icons/fi';
 import { supabase } from '../../lib/supabaseClient';
 import CreateNewListModal from '../modals/CreateNewListModal';
 import ViewEmailListModal from '../modals/ViewEmailListModal';
+import SendEmailModal from '../modals/SendEmailModal';
 
 const Container = styled.div`
   height: calc(100vh - 60px);
@@ -191,7 +192,23 @@ const ActionButton = styled.button`
     }
   }
   
+  &.send {
+    &:hover {
+      background-color: #00ff00;
+      color: #000;
+      border-color: #00ff00;
+    }
+  }
+  
   &.toggle {
+    &:hover {
+      background-color: #00ff00;
+      color: #000;
+      border-color: #00ff00;
+    }
+  }
+  
+  &.delete {
     &:hover {
       background-color: #00ff00;
       color: #000;
@@ -271,6 +288,7 @@ const MailingListsTable = () => {
   const [error, setError] = useState(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [isSendModalOpen, setIsSendModalOpen] = useState(false);
   const [selectedEmailList, setSelectedEmailList] = useState(null);
   const [editingCell, setEditingCell] = useState(null); // { listId, field }
   const [editingValue, setEditingValue] = useState('');
@@ -349,6 +367,21 @@ const MailingListsTable = () => {
     if (selectedList) {
       setSelectedEmailList(selectedList);
       setIsViewModalOpen(true);
+    }
+  };
+
+  const handleSend = (listId) => {
+    // Find the selected email list
+    const selectedList = emailLists.find(list => 
+      list.list_id === listId || 
+      list.email_list_id === listId || 
+      list.uuid === listId ||
+      list.id === listId
+    );
+
+    if (selectedList) {
+      setSelectedEmailList(selectedList);
+      setIsSendModalOpen(true);
     }
   };
 
@@ -801,6 +834,14 @@ const MailingListsTable = () => {
                 OPEN
               </ActionButton>
               <ActionButton 
+                className="send"
+                onClick={() => handleSend(listId)}
+                title="Send email campaign to this list"
+              >
+                <FiSend size={12} />
+                SEND
+              </ActionButton>
+              <ActionButton 
                 className="toggle"
                 onClick={() => handleToggleType(listId)}
                 title={`Convert to ${list.list_type === 'static' ? 'dynamic' : 'static'} list`}
@@ -866,6 +907,15 @@ const MailingListsTable = () => {
           setSelectedEmailList(null);
         }}
         onListUpdated={fetchEmailLists}
+        emailList={selectedEmailList}
+      />
+      
+      <SendEmailModal 
+        isOpen={isSendModalOpen}
+        onClose={() => {
+          setIsSendModalOpen(false);
+          setSelectedEmailList(null);
+        }}
         emailList={selectedEmailList}
       />
     </Container>
