@@ -388,6 +388,83 @@ const CategoryContainer = styled.div`
   flex-wrap: wrap;
 `;
 
+const ContactSearchContainer = styled.div`
+  max-height: 300px;
+  overflow-y: auto;
+  border: 2px solid #333;
+  border-radius: 4px;
+  background-color: #000;
+`;
+
+const ContactSearchItem = styled.div`
+  display: flex;
+  align-items: center;
+  padding: 12px 15px;
+  border-bottom: 1px solid #333;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background-color: #222;
+  }
+  
+  &:last-child {
+    border-bottom: none;
+  }
+`;
+
+const ContactCheckbox = styled.input`
+  margin-right: 12px;
+  width: 16px;
+  height: 16px;
+  accent-color: #00ff00;
+  cursor: pointer;
+`;
+
+const ContactInfo = styled.div`
+  flex: 1;
+`;
+
+const ContactSearchName = styled.div`
+  color: #00ff00;
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+  font-size: 14px;
+  margin-bottom: 4px;
+`;
+
+const ContactSearchEmail = styled.div`
+  color: #ccc;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+`;
+
+const SelectedContactsContainer = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+`;
+
+const SelectedContactTag = styled.div`
+  background-color: #00ff00;
+  color: #000;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background-color: #00cc00;
+  }
+`;
+
 const CreateNewListModal = ({ isOpen, onClose, onListCreated }) => {
   const [listType, setListType] = useState('static');
   const [listName, setListName] = useState('');
@@ -403,6 +480,12 @@ const CreateNewListModal = ({ isOpen, onClose, onListCreated }) => {
   const [filteredContacts, setFilteredContacts] = useState([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
   const [contactsError, setContactsError] = useState(null);
+  
+  // Static list states
+  const [staticContacts, setStaticContacts] = useState([]);
+  const [selectedStaticContacts, setSelectedStaticContacts] = useState([]);
+  const [loadingStaticContacts, setLoadingStaticContacts] = useState(false);
+  const [staticContactsError, setStaticContactsError] = useState(null);
   
   // Autocomplete states
   const [citySuggestions, setCitySuggestions] = useState([]);
@@ -437,6 +520,16 @@ const CreateNewListModal = ({ isOpen, onClose, onListCreated }) => {
       return;
     }
 
+    if (listType === 'dynamic' && filteredContacts.length === 0) {
+      alert('Dynamic list has no matching contacts. Please adjust your filters or switch to static list.');
+      return;
+    }
+
+    if (listType === 'static' && selectedStaticContacts.length === 0) {
+      alert('Static list requires at least one contact. Please search and select contacts.');
+      return;
+    }
+
     try {
       console.log('Creating email list:', {
         type: listType,
@@ -460,10 +553,18 @@ const CreateNewListModal = ({ isOpen, onClose, onListCreated }) => {
         } : null
       };
 
-      // For dynamic lists, don't send contactIds at all
-      // For static lists, send empty array (edge function should be modified to allow this)
-      if (listType === 'static') {
-        requestBody.contactIds = [];
+      // For dynamic lists, send the filtered contacts as contactIds
+      // For static lists, send the selected contacts as contactIds
+      if (listType === 'dynamic') {
+        // Extract contact IDs from the filtered contacts
+        const contactIds = filteredContacts.map(contact => contact.contact_id);
+        requestBody.contactIds = contactIds;
+        console.log('Sending contact IDs for dynamic list:', contactIds.length);
+      } else {
+        // Extract contact IDs from the selected static contacts
+        const contactIds = selectedStaticContacts.map(contact => contact.contact_id);
+        requestBody.contactIds = contactIds;
+        console.log('Sending contact IDs for static list:', contactIds.length);
       }
 
       const { data: emailListData, error: listError } = await supabase.functions.invoke('create-email-list', {
@@ -552,6 +653,12 @@ const CreateNewListModal = ({ isOpen, onClose, onListCreated }) => {
     setLoadingContacts(false);
     setContactsError(null);
     
+    // Reset static list states
+    setStaticContacts([]);
+    setSelectedStaticContacts([]);
+    setLoadingStaticContacts(false);
+    setStaticContactsError(null);
+    
     // Clear autocomplete states
     setCitySuggestions([]);
     setTagSuggestions([]);
@@ -604,6 +711,101 @@ const CreateNewListModal = ({ isOpen, onClose, onListCreated }) => {
     setFilteredContacts([]);
     setContactsError(null);
     setLoadingContacts(false);
+  };
+
+  // Search for contacts in static list mode
+  const searchStaticContacts = async (searchTerm) => {
+    if (searchTerm.length < 2) {
+      setStaticContacts([]);
+      return;
+    }
+
+    setLoadingStaticContacts(true);
+    setStaticContactsError(null);
+
+    try {
+      // First, search by name
+      const nameQuery = supabase
+        .from('contacts')
+        .select(`
+          contact_id,
+          first_name,
+          last_name,
+          contact_emails!inner (
+            email_id,
+            email,
+            is_primary
+          )
+        `)
+        .eq('contact_emails.is_primary', true)
+        .or(`first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%`)
+        .limit(25);
+
+      // Second, search by email
+      const emailQuery = supabase
+        .from('contacts')
+        .select(`
+          contact_id,
+          first_name,
+          last_name,
+          contact_emails!inner (
+            email_id,
+            email,
+            is_primary
+          )
+        `)
+        .eq('contact_emails.is_primary', true)
+        .filter('contact_emails.email', 'ilike', `%${searchTerm}%`)
+        .limit(25);
+
+      // Execute both queries
+      const [nameResult, emailResult] = await Promise.all([
+        nameQuery,
+        emailQuery
+      ]);
+
+      if (nameResult.error) throw nameResult.error;
+      if (emailResult.error) throw emailResult.error;
+
+      // Combine and deduplicate results
+      const allContacts = [...(nameResult.data || []), ...(emailResult.data || [])];
+      const uniqueContacts = allContacts.filter((contact, index, self) => 
+        index === self.findIndex(c => c.contact_id === contact.contact_id)
+      );
+
+      const processedContacts = uniqueContacts.map(contact => ({
+        ...contact,
+        full_name: `${contact.first_name || ''} ${contact.last_name || ''}`.trim(),
+        email: contact.contact_emails?.[0]?.email || 'No email'
+      }));
+
+      setStaticContacts(processedContacts.slice(0, 50)); // Limit to 50 total results
+    } catch (err) {
+      console.error('Error searching contacts:', err);
+      setStaticContactsError(err.message);
+      setStaticContacts([]);
+    } finally {
+      setLoadingStaticContacts(false);
+    }
+  };
+
+  // Handle static contact selection
+  const toggleStaticContact = (contact) => {
+    setSelectedStaticContacts(prev => {
+      const isSelected = prev.find(c => c.contact_id === contact.contact_id);
+      if (isSelected) {
+        return prev.filter(c => c.contact_id !== contact.contact_id);
+      } else {
+        return [...prev, contact];
+      }
+    });
+  };
+
+  // Handle search term change for static contacts
+  const handleStaticSearchChange = (e) => {
+    const value = e.target.value;
+    setSearchTerm(value);
+    searchStaticContacts(value);
   };
 
   const handleTagKeyPress = async (e) => {
@@ -1004,17 +1206,70 @@ const CreateNewListModal = ({ isOpen, onClose, onListCreated }) => {
                   <Input
                     type="text"
                     value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search for contacts..."
+                    onChange={handleStaticSearchChange}
+                    placeholder="Search for contacts by name or email..."
                   />
                 </FormSection>
                 
+                {searchTerm.length >= 2 && (
+                  <FormSection>
+                    <Label>Search Results:</Label>
+                    <ContactSearchContainer>
+                      {loadingStaticContacts ? (
+                        <ContactSearchItem>
+                          <PlaceholderText>Searching contacts...</PlaceholderText>
+                        </ContactSearchItem>
+                      ) : staticContactsError ? (
+                        <ContactSearchItem>
+                          <PlaceholderText style={{ color: '#ff4444' }}>
+                            Error: {staticContactsError}
+                          </PlaceholderText>
+                        </ContactSearchItem>
+                      ) : staticContacts.length > 0 ? (
+                        staticContacts.map((contact) => (
+                          <ContactSearchItem 
+                            key={contact.contact_id}
+                            onClick={() => toggleStaticContact(contact)}
+                          >
+                            <ContactCheckbox
+                              type="checkbox"
+                              checked={selectedStaticContacts.find(c => c.contact_id === contact.contact_id) !== undefined}
+                              onChange={() => toggleStaticContact(contact)}
+                            />
+                            <ContactInfo>
+                              <ContactSearchName>{contact.full_name}</ContactSearchName>
+                              <ContactSearchEmail>{contact.email}</ContactSearchEmail>
+                            </ContactInfo>
+                          </ContactSearchItem>
+                        ))
+                      ) : (
+                        <ContactSearchItem>
+                          <PlaceholderText>No contacts found matching "{searchTerm}"</PlaceholderText>
+                        </ContactSearchItem>
+                      )}
+                    </ContactSearchContainer>
+                  </FormSection>
+                )}
+                
                 <ContactsSection>
-                  <Label>Associated Contacts:</Label>
+                  <Label>Selected Contacts ({selectedStaticContacts.length}):</Label>
                   <ContactsContainer>
-                    <PlaceholderText>
-                      Associated Contacts List
-                    </PlaceholderText>
+                    {selectedStaticContacts.length > 0 ? (
+                      <SelectedContactsContainer>
+                        {selectedStaticContacts.map((contact) => (
+                          <SelectedContactTag 
+                            key={contact.contact_id}
+                            onClick={() => toggleStaticContact(contact)}
+                          >
+                            {contact.full_name} ×
+                          </SelectedContactTag>
+                        ))}
+                      </SelectedContactsContainer>
+                    ) : (
+                      <PlaceholderText>
+                        No contacts selected. Search and select contacts above.
+                      </PlaceholderText>
+                    )}
                   </ContactsContainer>
                 </ContactsSection>
               </>
