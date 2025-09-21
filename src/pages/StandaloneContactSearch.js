@@ -251,11 +251,11 @@ const StandaloneContactSearch = () => {
               )}
               {selectedContact.mobiles[0] && (
                 <ActionButton
-                  href={`tel:${selectedContact.mobiles[0].mobile}`}
+                  href={`https://wa.me/${selectedContact.mobiles[0].mobile.replace(/\D/g, '')}`}
                   $secondary
                 >
                   <FaPhone />
-                  Call
+                  WhatsApp
                 </ActionButton>
               )}
             </ActionButtons>
@@ -306,7 +306,7 @@ const StandaloneContactSearch = () => {
                         <InfoItemContent>
                           <InfoItemLabel>{mobile.type} Phone</InfoItemLabel>
                           <InfoItemValue>
-                            <a href={`tel:${mobile.mobile}`}>{mobile.mobile}</a>
+                            <a href={`https://wa.me/${mobile.mobile.replace(/\D/g, '')}`}>{mobile.mobile}</a>
                             {mobile.is_primary && <PrimaryTag>Primary</PrimaryTag>}
                           </InfoItemValue>
                         </InfoItemContent>
