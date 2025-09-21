@@ -42,7 +42,7 @@ const StandaloneContactSearch = () => {
         .from('contacts')
         .select(`
           *,
-          contact_emails!inner (email, type, is_primary),
+          contact_emails (email, type, is_primary),
           contact_mobiles (mobile, type, is_primary),
           contact_companies (
             company_id,
@@ -57,7 +57,7 @@ const StandaloneContactSearch = () => {
             cities (name, country)
           )
         `)
-        .or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,job_role.ilike.%${search}%`)
+        .or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,job_role.ilike.%${search}%,contact_emails.email.ilike.%${search}%,contact_mobiles.mobile.ilike.%${search}%,contact_companies.companies.name.ilike.%${search}%`)
         .limit(50);
 
       if (error) throw error;
@@ -199,13 +199,13 @@ const StandaloneContactSearch = () => {
                 </ContactCardHeader>
 
                 <ContactCardDetails>
-                  {contact.emails[0] && (
+                  {contact.emails?.length > 0 && contact.emails[0]?.email && (
                     <ContactDetail>
                       <FaEnvelope />
                       <span>{contact.emails[0].email}</span>
                     </ContactDetail>
                   )}
-                  {contact.mobiles[0] && (
+                  {contact.mobiles?.length > 0 && contact.mobiles[0]?.mobile && (
                     <ContactDetail>
                       <FaPhone />
                       <span>{contact.mobiles[0].mobile}</span>
@@ -240,7 +240,7 @@ const StandaloneContactSearch = () => {
               <span>Back to Search</span>
             </BackButton>
             <ActionButtons>
-              {selectedContact.emails[0] && (
+              {selectedContact.emails?.length > 0 && selectedContact.emails[0]?.email && (
                 <ActionButton
                   href={`mailto:${selectedContact.emails[0].email}`}
                   $primary
@@ -249,7 +249,7 @@ const StandaloneContactSearch = () => {
                   Email
                 </ActionButton>
               )}
-              {selectedContact.mobiles[0] && (
+              {selectedContact.mobiles?.length > 0 && selectedContact.mobiles[0]?.mobile && (
                 <ActionButton
                   href={`https://wa.me/${selectedContact.mobiles[0].mobile.replace(/\D/g, '')}`}
                   $secondary
