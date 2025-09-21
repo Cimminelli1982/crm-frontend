@@ -213,6 +213,7 @@ const Sidebar = ({ user, onSignOut }) => {
       icon: faAddressBook,
       path: '/contacts',
       subItems: [
+        { name: 'Search', path: '/contacts/search' },
         { name: 'Interactions', path: '/contacts/interactions' },
         { name: 'Lists', path: '/contacts/lists' }
       ]

@@ -1,0 +1,102 @@
+/* Additional mobile-specific styles for ContactSearch component */
+
+/* Ensure proper touch targets on mobile */
+@media (max-width: 767px) {
+  /* Make contact cards more touch-friendly */
+  .contact-card {
+    min-height: 80px;
+    padding: 1rem !important;
+  }
+
+  /* Ensure search input is properly sized */
+  .search-input {
+    font-size: 16px; /* Prevents zoom on iOS */
+    -webkit-appearance: none;
+    border-radius: 8px;
+  }
+
+  /* Better spacing for mobile */
+  .contact-avatar {
+    width: 52px !important;
+    height: 52px !important;
+  }
+
+  /* Optimize detail view for mobile */
+  .detail-content {
+    padding: 1rem !important;
+  }
+
+  .profile-avatar {
+    width: 72px !important;
+    height: 72px !important;
+  }
+
+  /* Better touch targets for action buttons */
+  .action-button {
+    padding: 0.75rem 1.25rem !important;
+    font-size: 1rem !important;
+  }
+
+  /* Improve scrolling on mobile */
+  .contacts-list {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .contact-detail-view {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Tablet specific optimizations */
+@media (min-width: 768px) and (max-width: 1024px) {
+  .search-section {
+    width: 350px !important;
+    min-width: 350px !important;
+  }
+
+  .profile-avatar {
+    width: 88px !important;
+    height: 88px !important;
+  }
+}
+
+/* Dark mode support for better mobile experience */
+@media (prefers-color-scheme: dark) {
+  .container {
+    background: #1a1a1a;
+  }
+
+  .search-section, .contact-card, .contact-detail-view {
+    background: #2d2d2d;
+    border-color: #404040;
+  }
+
+  .search-input {
+    background: #3d3d3d;
+    border-color: #505050;
+    color: white;
+  }
+
+  .search-input::placeholder {
+    color: #aaa;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .contact-card {
+    border-width: 2px !important;
+  }
+
+  .search-input {
+    border-width: 2px !important;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

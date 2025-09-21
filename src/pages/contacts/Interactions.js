@@ -1,10 +1,11 @@
 import React, { useState, lazy, Suspense } from 'react';
 import styled from 'styled-components';
-import { FiClock, FiUserCheck, FiUsers, FiGift, FiCalendar, FiMail } from 'react-icons/fi';
+import { FiClock, FiUserCheck, FiUsers, FiGift, FiCalendar, FiMail, FiSearch } from 'react-icons/fi';
 import ContactsListTable from '../../components/contacts/ContactsListTable';
 import MailingListsTable from '../../components/contacts/MailingListsTable';
 
 // Lazy load the components
+const ContactSearch = lazy(() => import('../ContactSearch'));
 const KeepInTouch = lazy(() => import('./SimpleKeepInTouch')); // This is the existing keep in touch page
 const SimpleIntroductions = lazy(() => import('../companies/SimpleIntroductions')); // New introductions table
 
@@ -109,10 +110,11 @@ const LoadingFallback = styled.div`
 `;
 
 const Interactions = () => {
-  const [activeTab, setActiveTab] = useState('recent');
+  const [activeTab, setActiveTab] = useState('search');
 
   // Define menu items
   const menuItems = [
+    { id: 'search', name: 'Search', icon: <FiSearch /> },
     { id: 'recent', name: 'Recent', icon: <FiUserCheck /> },
     { id: 'keepintouch', name: 'Keep in Touch', icon: <FiClock /> },
     { id: 'introductions', name: 'Introductions', icon: <FiUsers /> },
@@ -124,6 +126,8 @@ const Interactions = () => {
   // Render the active component based on the selected tab
   const renderContent = () => {
     switch (activeTab) {
+      case 'search':
+        return <ContactSearch />;
       case 'recent':
         return <ContactsListTable category="recent-30-days" />;
       case 'keepintouch':

@@ -43,6 +43,8 @@ import Startups from './pages/companies/Startups';
 import Investors from './pages/companies/Investors';
 import Planner from './pages/Planner';
 import ContactEnrichment from './pages/ContactEnrichment';
+import ContactSearch from './pages/ContactSearch';
+import StandaloneContactSearch from './pages/StandaloneContactSearch';
 import HubSpotMigrationTest from './components/HubSpotMigrationTest';
 import HubSpotTest from './components/HubSpotTest';
 
@@ -101,6 +103,10 @@ const App = () => {
         element: <LoginRoute />
       },
       {
+        path: "/search",
+        element: <ProtectedRoute><StandaloneContactSearch /></ProtectedRoute>
+      },
+      {
         path: "/",
         element: <ProtectedRoute><AppLayout /></ProtectedRoute>,
         children: [
@@ -119,7 +125,7 @@ const App = () => {
           // Contacts section
           {
             path: "contacts",
-            element: <Navigate to="/contacts/interactions" />
+            element: <Navigate to="/contacts/search" />
           },
           {
             path: "contacts/simple",
@@ -152,6 +158,10 @@ const App = () => {
           {
             path: "contacts/interactions",
             element: <Interactions />
+          },
+          {
+            path: "contacts/search",
+            element: <ContactSearch />
           },
           {
             path: "contacts/:id",
