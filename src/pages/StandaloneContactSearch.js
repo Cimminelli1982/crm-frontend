@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
-import { FaSearch, FaUser, FaPhone, FaEnvelope, FaBuilding, FaMapMarkerAlt, FaArrowLeft } from 'react-icons/fa';
+import { FaSearch, FaUser, FaPhone, FaEnvelope, FaBuilding, FaMapMarkerAlt, FaArrowLeft, FaClock } from 'react-icons/fa';
 import { toast, Toaster } from 'react-hot-toast';
 
 const StandaloneContactSearch = () => {
@@ -141,8 +141,18 @@ const StandaloneContactSearch = () => {
       {!selectedContact ? (
         <SearchView>
           <SearchHeader>
-            <AppTitle>Contact Search</AppTitle>
-            <AppSubtitle>Find and connect with your contacts</AppSubtitle>
+            <HeaderContent>
+              <HeaderText>
+                <AppTitle>Contact Search</AppTitle>
+                <AppSubtitle>Find and connect with your contacts</AppSubtitle>
+              </HeaderText>
+              <InteractionsIconButton
+                onClick={() => window.location.href = 'https://crm-editor-frontend.netlify.app/interactions'}
+                title="Switch to Interactions"
+              >
+                <FaClock />
+              </InteractionsIconButton>
+            </HeaderContent>
           </SearchHeader>
 
           <SearchContainer>
@@ -431,7 +441,51 @@ const SearchHeader = styled.div`
   background: white;
   padding: 24px 20px 20px 20px;
   border-bottom: 1px solid #e5e7eb;
+`;
+
+const HeaderContent = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 800px;
+  margin: 0 auto;
+`;
+
+const HeaderText = styled.div`
   text-align: center;
+  flex: 1;
+`;
+
+const InteractionsIconButton = styled.button`
+  background: none;
+  border: 2px solid #10b981;
+  color: #10b981;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 20px;
+  flex-shrink: 0;
+
+  &:hover {
+    background: #10b981;
+    color: white;
+    transform: scale(1.05);
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+
+  @media (max-width: 768px) {
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
+  }
 `;
 
 const AppTitle = styled.h1`
