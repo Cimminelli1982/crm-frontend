@@ -125,7 +125,7 @@ const App = () => {
           // Contacts section
           {
             path: "contacts",
-            element: <Navigate to="/contacts/search" />
+            element: <Navigate to="/contacts/interactions" />
           },
           {
             path: "contacts/simple",

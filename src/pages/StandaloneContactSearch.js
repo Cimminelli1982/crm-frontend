@@ -57,7 +57,7 @@ const StandaloneContactSearch = () => {
             cities (name, country)
           )
         `)
-        .or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,job_role.ilike.%${search}%,contact_emails.email.ilike.%${search}%,contact_mobiles.mobile.ilike.%${search}%,contact_companies.companies.name.ilike.%${search}%`)
+        .or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,job_role.ilike.%${search}%`)
         .limit(50);
 
       if (error) throw error;
