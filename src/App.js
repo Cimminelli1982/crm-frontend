@@ -45,6 +45,7 @@ import Planner from './pages/Planner';
 import ContactEnrichment from './pages/ContactEnrichment';
 import ContactSearch from './pages/ContactSearch';
 import StandaloneContactSearch from './pages/StandaloneContactSearch';
+import StandaloneInteractions from './pages/StandaloneInteractions';
 import HubSpotMigrationTest from './components/HubSpotMigrationTest';
 import HubSpotTest from './components/HubSpotTest';
 
@@ -105,6 +106,10 @@ const App = () => {
       {
         path: "/search",
         element: <ProtectedRoute><StandaloneContactSearch /></ProtectedRoute>
+      },
+      {
+        path: "/interactions",
+        element: <ProtectedRoute><StandaloneInteractions /></ProtectedRoute>
       },
       {
         path: "/",
