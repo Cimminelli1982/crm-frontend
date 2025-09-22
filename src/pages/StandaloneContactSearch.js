@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
-import { FaSearch, FaUser, FaPhone, FaEnvelope, FaBuilding, FaMapMarkerAlt, FaArrowLeft, FaClock, FaEdit } from 'react-icons/fa';
+import { FaSearch, FaUser, FaPhone, FaEnvelope, FaBuilding, FaMapMarkerAlt, FaArrowLeft, FaClock, FaEdit, FaStickyNote } from 'react-icons/fa';
 import { FiAlertTriangle, FiX } from 'react-icons/fi';
 import { toast, Toaster } from 'react-hot-toast';
 import Modal from 'react-modal';
@@ -335,6 +335,26 @@ const StandaloneContactSearch = () => {
       mobile: contactData.mobiles?.[0]?.mobile || null
     };
     handleOpenDeleteModal(contactWithEmailMobile);
+  };
+
+  // Handle Obsidian note opening/creation
+  const handleOpenObsidianNote = (contact) => {
+    const vaultName = "Living with Intention"; // Your actual vault name
+    const fileName = `${contact.first_name} ${contact.last_name}`;
+
+    // Use Advanced URI without mode parameter for "open existing OR create new" behavior
+    // Using filepath with .md extension - default behavior opens existing file or creates new
+    // SOLUTION: Use workspace:new-file command with filename parameter
+    // This should check if file exists and only create if it doesn't
+    const obsidianUrl = `obsidian://advanced-uri?vault=${encodeURIComponent(vaultName)}&commandid=workspace%253Anew-file&filename=${encodeURIComponent(fileName + '.md')}`;
+
+    // Open Obsidian URL
+    window.open(obsidianUrl, '_self');
+
+    toast.success(`Opening note for ${fileName}`, {
+      duration: 2000,
+      icon: '📝'
+    });
   };
 
   // Handle checkbox changes
@@ -807,9 +827,17 @@ const StandaloneContactSearch = () => {
                 )}
               </ProfileAvatar>
               <ProfileInfo>
-                <ProfileName>
-                  {selectedContact.first_name} {selectedContact.last_name}
-                </ProfileName>
+                <ProfileHeader>
+                  <ProfileName>
+                    {selectedContact.first_name} {selectedContact.last_name}
+                  </ProfileName>
+                  <ObsidianNoteButton
+                    onClick={() => handleOpenObsidianNote(selectedContact)}
+                    title={`Open Obsidian note for ${selectedContact.first_name} ${selectedContact.last_name}`}
+                  >
+                    <FaStickyNote />
+                  </ObsidianNoteButton>
+                </ProfileHeader>
                 {selectedContact.job_role && (
                   <ProfileRole>{selectedContact.job_role}</ProfileRole>
                 )}
@@ -1824,11 +1852,41 @@ const ProfileInfo = styled.div`
   flex: 1;
 `;
 
+const ProfileHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+`;
+
+const ObsidianNoteButton = styled.button`
+  background: #8b5cf6;
+  color: white;
+  border: none;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+
+  &:hover {
+    background: #7c3aed;
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
 const ProfileName = styled.h2`
   font-size: 24px;
   font-weight: 700;
   color: #1f2937;
-  margin: 0 0 6px 0;
+  margin: 0;
 
   @media (min-width: 768px) {
     font-size: 28px;
