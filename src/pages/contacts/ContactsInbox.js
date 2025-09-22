@@ -794,13 +794,16 @@ const ContactsInbox = () => {
       if (error) throw error;
       
       // Remove the contact from the list
-      setContacts(prevContacts => 
+      setContacts(prevContacts =>
         prevContacts.filter(contact => contact.contact_id !== contactData.contact_id)
       );
-      
+
+      // Trigger count refresh in parent Inbox component
+      window.dispatchEvent(new CustomEvent('refreshInboxCounts'));
+
       // Close the confirmation dialog
       setConfirmSkip(null);
-      
+
       setLoading(false);
       console.log('Contact marked as Skip:', contactData.contact_id);
     } catch (err) {

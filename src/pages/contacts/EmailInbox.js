@@ -813,10 +813,13 @@ const EmailInbox = () => {
       
       // Remove the email from the displayed list
       setEmails(emails.filter(email => email.id !== emailData.id));
-      
+
+      // Trigger count refresh in parent Inbox component
+      window.dispatchEvent(new CustomEvent('refreshInboxCounts'));
+
       // Close the confirmation dialog
       setConfirmSpam(null);
-      
+
       console.log('Email marked as spam:', emailData.id);
     } catch (err) {
       console.error('Error marking email as spam:', err);
@@ -838,10 +841,13 @@ const EmailInbox = () => {
         .eq('id', emailData.id);
       
       if (error) throw error;
-      
-      // Remove the email from the displayed list
-      setEmails(emails.filter(email => email.id !== emailData.id));
-      
+
+      // Re-fetch emails to check if there are more to process
+      await fetchEmails();
+
+      // Trigger count refresh in parent Inbox component
+      window.dispatchEvent(new CustomEvent('refreshInboxCounts'));
+
       // Here you would typically navigate to contact creation screen or similar
       // For now we'll just log it
       console.log('Email marked for CRM processing:', emailData.id);

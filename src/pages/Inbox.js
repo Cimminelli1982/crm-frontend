@@ -2,6 +2,7 @@ import React, { useState, lazy, Suspense, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { FiMail, FiUsers, FiClock, FiCopy, FiSkipForward, FiPhone, FiActivity } from 'react-icons/fi';
+import { supabase } from '../lib/supabaseClient';
 
 // Lazy load the inbox components
 const WhatsappInbox = lazy(() => import('./contacts/WhatsappInbox'));
@@ -114,17 +115,37 @@ const LoadingFallback = styled.div`
   font-family: 'Courier New', monospace;
 `;
 
+// Count badge for menu items
+const CountBadge = styled.span`
+  background-color: #00ff00;
+  color: #000;
+  border-radius: 10px;
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  margin-left: 8px;
+  min-width: 20px;
+  text-align: center;
+  font-weight: bold;
+`;
+
 const Inbox = () => {
   // Check for URL parameters and stored workflow contact
   const urlParams = new URLSearchParams(window.location.search);
   const sourceTab = urlParams.get('source');
   const navigate = useNavigate();
-  
+
   // Check session storage for workflow contact
   const workflowContactId = sessionStorage.getItem('workflow_contact_id');
-  
-  // Set initial active tab based on source parameter
-  const [activeTab, setActiveTab] = useState(sourceTab === 'category' ? 'category' : 'whatsapp');
+
+  // Set initial active tab based on source parameter - default to 'recent'
+  const [activeTab, setActiveTab] = useState(sourceTab === 'category' ? 'category' : 'recent');
+
+  // State for record counts
+  const [counts, setCounts] = useState({
+    email: 0,
+    category: 0,
+    kit: 0
+  });
   
   // If we have a workflow contact, immediately redirect to workflow page
   useEffect(() => {
@@ -136,15 +157,80 @@ const Inbox = () => {
     }
   }, [workflowContactId, navigate]);
 
-  // Define menu items
+  // Fetch counts for menu items
+  const fetchCounts = async () => {
+    try {
+      // Email count - emails with special_case = 'pending_approval'
+      const { count: emailCount } = await supabase
+        .from('email_inbox')
+        .select('*', { count: 'exact', head: true })
+        .eq('special_case', 'pending_approval');
+
+      // Category count - contacts with category = 'Inbox' and last_interaction_at within 60 days
+      const sixtyDaysAgo = new Date();
+      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+      const formattedDate = sixtyDaysAgo.toISOString();
+
+      const { count: categoryCount } = await supabase
+        .from('contacts')
+        .select('*', { count: 'exact', head: true })
+        .eq('category', 'Inbox')
+        .gte('last_interaction_at', formattedDate);
+
+      // Keep in Touch count - contacts with keep_in_touch_date not null
+      const { count: kitCount } = await supabase
+        .from('contacts')
+        .select('*', { count: 'exact', head: true })
+        .not('keep_in_touch_date', 'is', null);
+
+      setCounts({
+        email: emailCount || 0,
+        category: categoryCount || 0,
+        kit: kitCount || 0
+      });
+    } catch (error) {
+      console.error('Error fetching counts:', error);
+    }
+  };
+
+  // Fetch counts on component mount
+  useEffect(() => {
+    fetchCounts();
+  }, []);
+
+  // Refresh counts when activeTab changes (when user switches tabs)
+  useEffect(() => {
+    // Small delay to ensure any actions complete before refreshing counts
+    const timer = setTimeout(() => {
+      fetchCounts();
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [activeTab]);
+
+  // Listen for custom events from child components to refresh counts
+  useEffect(() => {
+    const handleRefreshCounts = () => {
+      // Small delay to ensure database changes are committed
+      setTimeout(() => {
+        fetchCounts();
+      }, 500);
+    };
+
+    window.addEventListener('refreshInboxCounts', handleRefreshCounts);
+
+    return () => {
+      window.removeEventListener('refreshInboxCounts', handleRefreshCounts);
+    };
+  }, []);
+
+  // Define menu items - reordered with Recent first, removed WhatsApp and Duplicates
   const menuItems = [
-    { id: 'whatsapp', name: 'WhatsApp', icon: <FiPhone /> },
-    { id: 'email', name: 'Email', icon: <FiMail /> },
     { id: 'recent', name: 'Recent', icon: <FiActivity /> },
-    { id: 'category', name: 'Categories', icon: <FiUsers /> },
-    { id: 'kit', name: 'Keep in Touch', icon: <FiClock /> },
-    { id: 'skip', name: 'Skip', icon: <FiSkipForward /> },
-    { id: 'duplicates', name: 'Duplicates', icon: <FiCopy /> }
+    { id: 'email', name: 'Email', icon: <FiMail />, count: counts.email },
+    { id: 'category', name: 'Categories', icon: <FiUsers />, count: counts.category },
+    { id: 'kit', name: 'Keep in Touch', icon: <FiClock />, count: counts.kit },
+    { id: 'skip', name: 'Skip', icon: <FiSkipForward /> }
   ];
 
   // Render the active component based on the selected tab
@@ -177,12 +263,15 @@ const Inbox = () => {
     <Container>
       <TopMenuContainer>
         {menuItems.map(item => (
-          <MenuItem 
+          <MenuItem
             key={item.id}
             $active={activeTab === item.id}
             onClick={() => setActiveTab(item.id)}
           >
             {item.icon} {item.name}
+            {item.count !== undefined && item.count > 0 && (
+              <CountBadge>{item.count}</CountBadge>
+            )}
           </MenuItem>
         ))}
       </TopMenuContainer>
