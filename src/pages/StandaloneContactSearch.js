@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
-import { FaSearch, FaUser, FaPhone, FaEnvelope, FaBuilding, FaMapMarkerAlt, FaArrowLeft, FaClock } from 'react-icons/fa';
+import { FaSearch, FaUser, FaPhone, FaEnvelope, FaBuilding, FaMapMarkerAlt, FaArrowLeft, FaClock, FaEdit } from 'react-icons/fa';
+import { FiAlertTriangle, FiX } from 'react-icons/fi';
 import { toast, Toaster } from 'react-hot-toast';
+import Modal from 'react-modal';
 
 const StandaloneContactSearch = () => {
   const [contacts, setContacts] = useState([]);
@@ -10,6 +12,33 @@ const StandaloneContactSearch = () => {
   const [loading, setLoading] = useState(false);
   const [selectedContact, setSelectedContact] = useState(null);
   const [searchHistory, setSearchHistory] = useState([]);
+
+  // Delete modal state (copied from ContactsInbox.js)
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [contactToDelete, setContactToDelete] = useState(null);
+  const [associatedData, setAssociatedData] = useState({});
+  const [selectedItems, setSelectedItems] = useState({
+    deleteInteractions: true,
+    deleteEmails: true,
+    deleteEmailParticipants: true,
+    deleteEmailThreads: true,
+    deleteTags: true,
+    deleteCities: true,
+    deleteCompanies: true,
+    deleteNotes: true,
+    deleteAttachments: true,
+    deleteContactEmails: true,
+    deleteContactMobiles: true,
+    deleteChat: true,
+    deleteContactChats: true,
+    deleteDeals: true,
+    deleteMeetings: true,
+    deleteInvestments: true,
+    deleteKit: true,
+    addToSpam: true,
+    addMobileToSpam: true
+  });
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const filteredContacts = useMemo(() => {
     if (!searchTerm) return [];
@@ -58,6 +87,8 @@ const StandaloneContactSearch = () => {
           )
         `)
         .or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,job_role.ilike.%${search}%`)
+        .not('category', 'eq', 'Skip')
+        .not('category', 'eq', 'WhatsApp Group Contact')
         .limit(50);
 
       if (error) throw error;
@@ -99,6 +130,477 @@ const StandaloneContactSearch = () => {
 
   const handleBackToSearch = () => {
     setSelectedContact(null);
+  };
+
+  // Handle edit button - opens in new tab with fullscreen (copied from StandaloneInteractions.js)
+  const handleEditContact = (contactId) => {
+    const url = `/contacts/workflow/${contactId}?step=2`;
+    const newTab = window.open(url, '_blank');
+
+    // Try to make the new tab fullscreen (requires user interaction)
+    if (newTab) {
+      newTab.focus();
+      // Note: Fullscreen API requires user interaction and may be blocked by browsers
+      setTimeout(() => {
+        if (newTab.document && newTab.document.documentElement && newTab.document.documentElement.requestFullscreen) {
+          newTab.document.documentElement.requestFullscreen().catch(() => {
+            // Fallback: maximize window if fullscreen fails
+            newTab.moveTo(0, 0);
+            newTab.resizeTo(window.screen.availWidth, window.screen.availHeight);
+          });
+        } else {
+          // Fallback: maximize window
+          newTab.moveTo(0, 0);
+          newTab.resizeTo(window.screen.availWidth, window.screen.availHeight);
+        }
+      }, 100);
+    }
+  };
+
+  // Open the spam modal (copied from ContactsInbox.js)
+  const handleOpenDeleteModal = async (contactData) => {
+    setContactToDelete(contactData);
+
+    try {
+      // Get counts of associated records and last interaction details
+      const [
+        chatResult,
+        contactChatsResult,
+        interactionsResult,
+        emailsResult,
+        emailParticipantsResult,
+        emailThreadsResult,
+        tagsResult,
+        citiesResult,
+        companiesResult,
+        notesResult,
+        attachmentsResult,
+        contactEmailsResult,
+        contactMobilesResult,
+        dealsResult,
+        meetingsResult,
+        investmentsResult,
+        kitResult,
+        lastInteractionResult
+      ] = await Promise.all([
+        // Skip chat tables as they don't exist (return 0)
+        Promise.resolve({ count: 0 }),
+        Promise.resolve({ count: 0 }),
+
+        // Get interactions count
+        supabase
+          .from('interactions')
+          .select('interaction_id', { count: 'exact', head: true })
+          .eq('contact_id', contactData.contact_id),
+
+        // Get emails count (where contact is sender)
+        supabase
+          .from('emails')
+          .select('email_id', { count: 'exact', head: true })
+          .eq('sender_contact_id', contactData.contact_id),
+
+        // Get email_participants count
+        supabase
+          .from('email_participants')
+          .select('participant_id', { count: 'exact', head: true })
+          .eq('contact_id', contactData.contact_id),
+
+        // Get contact_email_threads count
+        supabase
+          .from('contact_email_threads')
+          .select('email_thread_id', { count: 'exact', head: true })
+          .eq('contact_id', contactData.contact_id),
+
+        // Get tags count
+        supabase
+          .from('contact_tags')
+          .select('entry_id', { count: 'exact', head: true })
+          .eq('contact_id', contactData.contact_id),
+
+        // Get cities count
+        supabase
+          .from('contact_cities')
+          .select('entry_id', { count: 'exact', head: true })
+          .eq('contact_id', contactData.contact_id),
+
+        // Get companies count
+        supabase
+          .from('contact_companies')
+          .select('contact_companies_id', { count: 'exact', head: true })
+          .eq('contact_id', contactData.contact_id),
+
+        // Get notes count
+        supabase
+          .from('notes_contacts')
+          .select('note_contact_id', { count: 'exact', head: true })
+          .eq('contact_id', contactData.contact_id),
+
+        // Get attachments count
+        supabase
+          .from('attachments')
+          .select('attachment_id', { count: 'exact', head: true })
+          .eq('contact_id', contactData.contact_id),
+
+        // Get contact emails count
+        supabase
+          .from('contact_emails')
+          .select('email_id', { count: 'exact', head: true })
+          .eq('contact_id', contactData.contact_id),
+
+        // Get contact mobiles count
+        supabase
+          .from('contact_mobiles')
+          .select('mobile_id', { count: 'exact', head: true })
+          .eq('contact_id', contactData.contact_id),
+
+        // Get deals count
+        supabase
+          .from('deals_contacts')
+          .select('deals_contacts_id', { count: 'exact', head: true })
+          .eq('contact_id', contactData.contact_id),
+
+        // Get meetings count
+        supabase
+          .from('meeting_contacts')
+          .select('meeting_contact_id', { count: 'exact', head: true })
+          .eq('contact_id', contactData.contact_id),
+
+        // Get investments count
+        supabase
+          .from('investments_contacts')
+          .select('investments_contacts_id', { count: 'exact', head: true })
+          .eq('contact_id', contactData.contact_id),
+
+        // Get keep in touch count
+        supabase
+          .from('keep_in_touch')
+          .select('id', { count: 'exact', head: true })
+          .eq('contact_id', contactData.contact_id),
+
+        // Get last interaction details
+        supabase
+          .from('interactions')
+          .select('interaction_id, interaction_type, direction, interaction_date, summary')
+          .eq('contact_id', contactData.contact_id)
+          .order('interaction_date', { ascending: false })
+          .limit(1)
+      ]);
+
+      // Format last interaction
+      let lastInteraction = null;
+      if (lastInteractionResult.data) {
+        const interaction = lastInteractionResult.data;
+        const date = new Date(interaction.interaction_date).toLocaleDateString();
+        lastInteraction = {
+          summary: `${interaction.interaction_type} - ${interaction.summary || 'No notes'} (${date})`
+        };
+      }
+
+      // Set associated data
+      const data = {
+        chatCount: chatResult.count || 0,
+        contactChatsCount: contactChatsResult.count || 0,
+        interactionsCount: interactionsResult.count || 0,
+        emailsCount: emailsResult.count || 0,
+        emailParticipantsCount: emailParticipantsResult.count || 0,
+        emailThreadsCount: emailThreadsResult.count || 0,
+        tagsCount: tagsResult.count || 0,
+        citiesCount: citiesResult.count || 0,
+        companiesCount: companiesResult.count || 0,
+        notesCount: notesResult.count || 0,
+        attachmentsCount: attachmentsResult.count || 0,
+        contactEmailsCount: contactEmailsResult.count || 0,
+        contactMobilesCount: contactMobilesResult.count || 0,
+        dealsCount: dealsResult.count || 0,
+        meetingsCount: meetingsResult.count || 0,
+        investmentsCount: investmentsResult.count || 0,
+        kitCount: kitResult.count || 0,
+        lastInteraction
+      };
+
+      setAssociatedData(data);
+      setDeleteModalOpen(true);
+    } catch (error) {
+      console.error('Error fetching associated data:', error);
+      toast.error('Failed to load contact details');
+    }
+  };
+
+  // Handle spam button click
+  const handleSpamContact = (contactData) => {
+    // Prepare contact data with email and mobile fields
+    const contactWithEmailMobile = {
+      ...contactData,
+      email: contactData.emails?.[0]?.email || null,
+      mobile: contactData.mobiles?.[0]?.mobile || null
+    };
+    handleOpenDeleteModal(contactWithEmailMobile);
+  };
+
+  // Handle checkbox changes
+  const handleCheckboxChange = (event) => {
+    const { name, checked } = event.target;
+    setSelectedItems(prev => ({
+      ...prev,
+      [name]: checked
+    }));
+  };
+
+  // Execute the spam deletion operation (copied from ContactsInbox.js)
+  const handleConfirmDelete = async () => {
+    if (!contactToDelete) return;
+
+    try {
+      setIsDeleting(true);
+
+      // Add email to emails_spam table if selected and email exists
+      if (selectedItems.addToSpam && contactToDelete.email) {
+        const { error: spamError } = await supabase
+          .from('emails_spam')
+          .insert([{
+            email: contactToDelete.email,
+            counter: 1
+          }]);
+
+        if (spamError) {
+          console.error('Error adding to spam list:', spamError);
+        }
+      }
+
+      // Add mobile to whatsapp_spam table if selected and mobile exists
+      if (selectedItems.addMobileToSpam && contactToDelete.mobile) {
+        const { error: whatsappSpamError } = await supabase
+          .from('whatsapp_spam')
+          .insert([{
+            mobile_number: contactToDelete.mobile,
+            counter: 1,
+            created_at: new Date().toISOString(),
+            last_modified_at: new Date().toISOString()
+          }]);
+
+        if (whatsappSpamError) {
+          console.error('Error adding to WhatsApp spam list:', whatsappSpamError);
+        }
+      }
+
+      // Delete associated records based on selections
+      const promises = [];
+
+      // 1. Delete chat records if selected
+      if (selectedItems.deleteChat && associatedData.chatCount > 0) {
+        promises.push(
+          supabase
+            .from('chat')
+            .delete()
+            .eq('contact_id', contactToDelete.contact_id)
+        );
+      }
+
+      // 2. Delete interaction records if selected
+      if (selectedItems.deleteInteractions && associatedData.interactionsCount > 0) {
+        promises.push(
+          supabase
+            .from('interactions')
+            .delete()
+            .eq('contact_id', contactToDelete.contact_id)
+        );
+      }
+
+      // 3. Delete emails and associated records if selected
+      if (selectedItems.deleteEmails && associatedData.emailsCount > 0) {
+        // First get all email IDs
+        const { data: emailsData } = await supabase
+          .from('emails')
+          .select('email_id')
+          .eq('sender_contact_id', contactToDelete.contact_id);
+
+        if (emailsData && emailsData.length > 0) {
+          const emailIds = emailsData.map(e => e.email_id);
+
+          // Delete email participants
+          promises.push(
+            supabase
+              .from('email_participants')
+              .delete()
+              .in('email_id', emailIds)
+          );
+
+          // Delete emails
+          promises.push(
+            supabase
+              .from('emails')
+              .delete()
+              .eq('sender_contact_id', contactToDelete.contact_id)
+          );
+        }
+      }
+
+      // 4. Delete email threads if selected
+      if (selectedItems.deleteEmailThreads && associatedData.emailThreadsCount > 0) {
+        promises.push(
+          supabase
+            .from('contact_email_threads')
+            .delete()
+            .eq('contact_id', contactToDelete.contact_id)
+        );
+      }
+
+      // 5. Delete contact emails if selected
+      if (selectedItems.deleteContactEmails && associatedData.contactEmailsCount > 0) {
+        promises.push(
+          supabase
+            .from('contact_emails')
+            .delete()
+            .eq('contact_id', contactToDelete.contact_id)
+        );
+      }
+
+      // 6. Delete contact mobiles if selected
+      if (selectedItems.deleteContactMobiles && associatedData.contactMobilesCount > 0) {
+        promises.push(
+          supabase
+            .from('contact_mobiles')
+            .delete()
+            .eq('contact_id', contactToDelete.contact_id)
+        );
+      }
+
+      // 7. Delete note relationships if selected
+      if (selectedItems.deleteNotes && associatedData.notesCount > 0) {
+        promises.push(
+          supabase
+            .from('notes_contacts')
+            .delete()
+            .eq('contact_id', contactToDelete.contact_id)
+        );
+      }
+
+      // 8. Delete attachments if selected
+      if (selectedItems.deleteAttachments && associatedData.attachmentsCount > 0) {
+        promises.push(
+          supabase
+            .from('attachments')
+            .delete()
+            .eq('contact_id', contactToDelete.contact_id)
+        );
+      }
+
+      // 9. Delete tags if selected
+      if (selectedItems.deleteTags && associatedData.tagsCount > 0) {
+        promises.push(
+          supabase
+            .from('contact_tags')
+            .delete()
+            .eq('contact_id', contactToDelete.contact_id)
+        );
+      }
+
+      // 10. Delete cities if selected
+      if (selectedItems.deleteCities && associatedData.citiesCount > 0) {
+        promises.push(
+          supabase
+            .from('contact_cities')
+            .delete()
+            .eq('contact_id', contactToDelete.contact_id)
+        );
+      }
+
+      // 11. Delete companies if selected
+      if (selectedItems.deleteCompanies && associatedData.companiesCount > 0) {
+        promises.push(
+          supabase
+            .from('contact_companies')
+            .delete()
+            .eq('contact_id', contactToDelete.contact_id)
+        );
+      }
+
+      // 12. Delete contact chats if selected
+      if (selectedItems.deleteContactChats && associatedData.contactChatsCount > 0) {
+        promises.push(
+          supabase
+            .from('contact_chats')
+            .delete()
+            .eq('contact_id', contactToDelete.contact_id)
+        );
+      }
+
+      // 13. Delete deals if selected
+      if (selectedItems.deleteDeals && associatedData.dealsCount > 0) {
+        promises.push(
+          supabase
+            .from('deals_contacts')
+            .delete()
+            .eq('contact_id', contactToDelete.contact_id)
+        );
+      }
+
+      // 14. Delete meetings if selected
+      if (selectedItems.deleteMeetings && associatedData.meetingsCount > 0) {
+        promises.push(
+          supabase
+            .from('meeting_contacts')
+            .delete()
+            .eq('contact_id', contactToDelete.contact_id)
+        );
+      }
+
+      // 15. Delete investments if selected
+      if (selectedItems.deleteInvestments && associatedData.investmentsCount > 0) {
+        promises.push(
+          supabase
+            .from('investments_contacts')
+            .delete()
+            .eq('contact_id', contactToDelete.contact_id)
+        );
+      }
+
+      // 16. Delete keep in touch records if selected
+      if (selectedItems.deleteKit && associatedData.kitCount > 0) {
+        promises.push(
+          supabase
+            .from('keep_in_touch')
+            .delete()
+            .eq('contact_id', contactToDelete.contact_id)
+        );
+      }
+
+      // Execute all deletions
+      await Promise.all(promises);
+
+      // Finally delete the main contact record
+      const { error } = await supabase
+        .from('contacts')
+        .delete()
+        .eq('contact_id', contactToDelete.contact_id);
+
+      if (error) throw error;
+
+      toast.success('Contact and selected associated records deleted successfully');
+
+      // Remove the contact from the contacts list
+      setContacts(prev => prev.filter(contact => contact.contact_id !== contactToDelete.contact_id));
+
+      // If this was the selected contact, go back to the search
+      if (selectedContact && selectedContact.contact_id === contactToDelete.contact_id) {
+        setSelectedContact(null);
+      }
+
+      setDeleteModalOpen(false);
+      setContactToDelete(null);
+      setAssociatedData({});
+
+      // Trigger count refresh in parent if needed
+      if (window.dispatchEvent) {
+        window.dispatchEvent(new CustomEvent('refreshInboxCounts'));
+      }
+
+    } catch (error) {
+      console.error('Error deleting contact:', error);
+      toast.error('Failed to delete contact');
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   useEffect(() => {
@@ -185,43 +687,67 @@ const StandaloneContactSearch = () => {
 
           <ResultsContainer>
             {filteredContacts.map(contact => (
-              <ContactCard key={contact.contact_id} onClick={() => handleContactSelect(contact)}>
-                <ContactCardHeader>
-                  <ContactAvatar>
-                    {contact.profile_image_url ? (
-                      <img src={contact.profile_image_url} alt="Profile" />
-                    ) : (
-                      <FaUser />
-                    )}
-                  </ContactAvatar>
-                  <ContactInfo>
-                    <ContactName>
-                      {contact.first_name} {contact.last_name}
-                    </ContactName>
-                    {contact.job_role && <ContactRole>{contact.job_role}</ContactRole>}
-                    {contact.companies[0] && (
-                      <ContactCompany>
-                        <FaBuilding style={{ marginRight: '6px' }} />
-                        {contact.companies[0].name}
-                      </ContactCompany>
-                    )}
-                  </ContactInfo>
-                </ContactCardHeader>
+              <ContactCard key={contact.contact_id}>
+                <ContactCardContent onClick={() => handleContactSelect(contact)}>
+                  <ContactCardHeader>
+                    <ContactAvatar>
+                      {contact.profile_image_url ? (
+                        <img src={contact.profile_image_url} alt="Profile" />
+                      ) : (
+                        <FaUser />
+                      )}
+                    </ContactAvatar>
+                    <ContactInfo>
+                      <ContactName>
+                        {contact.first_name} {contact.last_name}
+                        {contact.category && <CategoryBadge category={contact.category}>{contact.category}</CategoryBadge>}
+                      </ContactName>
+                      {contact.job_role && <ContactRole>{contact.job_role}</ContactRole>}
+                      {contact.companies[0] && (
+                        <ContactCompany>
+                          <FaBuilding style={{ marginRight: '6px' }} />
+                          {contact.companies[0].name}
+                        </ContactCompany>
+                      )}
+                    </ContactInfo>
+                  </ContactCardHeader>
 
-                <ContactCardDetails>
-                  {contact.emails?.length > 0 && contact.emails[0]?.email && (
-                    <ContactDetail>
-                      <FaEnvelope />
-                      <span>{contact.emails[0].email}</span>
-                    </ContactDetail>
-                  )}
-                  {contact.mobiles?.length > 0 && contact.mobiles[0]?.mobile && (
-                    <ContactDetail>
-                      <FaPhone />
-                      <span>{contact.mobiles[0].mobile}</span>
-                    </ContactDetail>
-                  )}
-                </ContactCardDetails>
+                  <ContactCardDetails>
+                    {contact.emails?.length > 0 && contact.emails[0]?.email && (
+                      <ContactDetail>
+                        <FaEnvelope />
+                        <span>{contact.emails[0].email}</span>
+                      </ContactDetail>
+                    )}
+                    {contact.mobiles?.length > 0 && contact.mobiles[0]?.mobile && (
+                      <ContactDetail>
+                        <FaPhone />
+                        <span>{contact.mobiles[0].mobile}</span>
+                      </ContactDetail>
+                    )}
+                  </ContactCardDetails>
+                </ContactCardContent>
+
+                <ContactCardActions>
+                  <CardActionButton
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEditContact(contact.contact_id);
+                    }}
+                    $edit
+                  >
+                    <FaEdit />
+                  </CardActionButton>
+                  <CardActionButton
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSpamContact(contact);
+                    }}
+                    $spam
+                  >
+                    <FiAlertTriangle />
+                  </CardActionButton>
+                </ContactCardActions>
               </ContactCard>
             ))}
 
@@ -406,6 +932,355 @@ const StandaloneContactSearch = () => {
           </DetailContent>
         </DetailView>
       )}
+
+      {/* Powerful Delete Modal (copied from StandaloneInteractions.js) */}
+      <Modal
+        isOpen={deleteModalOpen}
+        onRequestClose={() => setDeleteModalOpen(false)}
+        shouldCloseOnOverlayClick={false}
+        style={{
+          content: {
+            top: '50%',
+            left: '50%',
+            right: 'auto',
+            bottom: 'auto',
+            marginRight: '-50%',
+            transform: 'translate(-50%, -50%)',
+            padding: '25px',
+            maxWidth: '600px',
+            width: '90%',
+            backgroundColor: '#121212',
+            border: '1px solid #333',
+            borderRadius: '8px',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.6)',
+            color: '#e0e0e0',
+            zIndex: 1001
+          },
+          overlay: {
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            zIndex: 1000
+          }
+        }}
+      >
+        <ModalHeader>
+          <h2>Delete Contact and Associated Data</h2>
+          <CloseButton onClick={() => setDeleteModalOpen(false)} disabled={isDeleting}>
+            <FiX />
+          </CloseButton>
+        </ModalHeader>
+
+        {contactToDelete && (
+          <>
+            <ModalContactDetail>
+              <DetailItem>
+                <DetailValue>
+                  {contactToDelete.first_name} {contactToDelete.last_name}
+                  {contactToDelete.email ? ` (${contactToDelete.email})` :
+                   contactToDelete.mobile ? ` (${contactToDelete.mobile})` : ''}
+                </DetailValue>
+              </DetailItem>
+            </ModalContactDetail>
+
+            <DetailItem style={{ marginTop: '15px', marginBottom: '15px' }}>
+              <DetailLabel>Last Interaction:</DetailLabel>
+              <DetailValue>
+                {associatedData.lastInteraction ?
+                  associatedData.lastInteraction.summary :
+                  'None'}
+              </DetailValue>
+            </DetailItem>
+
+            <ModalContent>
+              Select which items to delete:
+            </ModalContent>
+
+            <CheckboxContainer>
+              <CheckboxGroup>
+                {associatedData.interactionsCount > 0 && (
+                  <CheckboxItem>
+                    <Checkbox
+                      type="checkbox"
+                      id="deleteInteractions"
+                      name="deleteInteractions"
+                      checked={selectedItems.deleteInteractions}
+                      onChange={handleCheckboxChange}
+                      disabled={isDeleting}
+                    />
+                    <label htmlFor="deleteInteractions">Interactions ({associatedData.interactionsCount})</label>
+                  </CheckboxItem>
+                )}
+
+                {associatedData.emailsCount > 0 && (
+                  <CheckboxItem>
+                    <Checkbox
+                      type="checkbox"
+                      id="deleteEmails"
+                      name="deleteEmails"
+                      checked={selectedItems.deleteEmails}
+                      onChange={handleCheckboxChange}
+                      disabled={isDeleting}
+                    />
+                    <label htmlFor="deleteEmails">Emails ({associatedData.emailsCount})</label>
+                  </CheckboxItem>
+                )}
+
+                {associatedData.emailParticipantsCount > 0 && (
+                  <CheckboxItem>
+                    <Checkbox
+                      type="checkbox"
+                      id="deleteEmailParticipants"
+                      name="deleteEmailParticipants"
+                      checked={selectedItems.deleteEmailParticipants}
+                      onChange={handleCheckboxChange}
+                      disabled={isDeleting}
+                    />
+                    <label htmlFor="deleteEmailParticipants">Email Participants ({associatedData.emailParticipantsCount})</label>
+                  </CheckboxItem>
+                )}
+
+                {associatedData.emailThreadsCount > 0 && (
+                  <CheckboxItem>
+                    <Checkbox
+                      type="checkbox"
+                      id="deleteEmailThreads"
+                      name="deleteEmailThreads"
+                      checked={selectedItems.deleteEmailThreads}
+                      onChange={handleCheckboxChange}
+                      disabled={isDeleting}
+                    />
+                    <label htmlFor="deleteEmailThreads">Email Threads ({associatedData.emailThreadsCount})</label>
+                  </CheckboxItem>
+                )}
+
+                {associatedData.tagsCount > 0 && (
+                  <CheckboxItem>
+                    <Checkbox
+                      type="checkbox"
+                      id="deleteTags"
+                      name="deleteTags"
+                      checked={selectedItems.deleteTags}
+                      onChange={handleCheckboxChange}
+                      disabled={isDeleting}
+                    />
+                    <label htmlFor="deleteTags">Tags ({associatedData.tagsCount})</label>
+                  </CheckboxItem>
+                )}
+
+                {associatedData.citiesCount > 0 && (
+                  <CheckboxItem>
+                    <Checkbox
+                      type="checkbox"
+                      id="deleteCities"
+                      name="deleteCities"
+                      checked={selectedItems.deleteCities}
+                      onChange={handleCheckboxChange}
+                      disabled={isDeleting}
+                    />
+                    <label htmlFor="deleteCities">Cities ({associatedData.citiesCount})</label>
+                  </CheckboxItem>
+                )}
+
+                {associatedData.companiesCount > 0 && (
+                  <CheckboxItem>
+                    <Checkbox
+                      type="checkbox"
+                      id="deleteCompanies"
+                      name="deleteCompanies"
+                      checked={selectedItems.deleteCompanies}
+                      onChange={handleCheckboxChange}
+                      disabled={isDeleting}
+                    />
+                    <label htmlFor="deleteCompanies">Companies ({associatedData.companiesCount})</label>
+                  </CheckboxItem>
+                )}
+
+                {associatedData.notesCount > 0 && (
+                  <CheckboxItem>
+                    <Checkbox
+                      type="checkbox"
+                      id="deleteNotes"
+                      name="deleteNotes"
+                      checked={selectedItems.deleteNotes}
+                      onChange={handleCheckboxChange}
+                      disabled={isDeleting}
+                    />
+                    <label htmlFor="deleteNotes">Notes ({associatedData.notesCount})</label>
+                  </CheckboxItem>
+                )}
+
+                {associatedData.attachmentsCount > 0 && (
+                  <CheckboxItem>
+                    <Checkbox
+                      type="checkbox"
+                      id="deleteAttachments"
+                      name="deleteAttachments"
+                      checked={selectedItems.deleteAttachments}
+                      onChange={handleCheckboxChange}
+                      disabled={isDeleting}
+                    />
+                    <label htmlFor="deleteAttachments">Attachments ({associatedData.attachmentsCount})</label>
+                  </CheckboxItem>
+                )}
+
+                {associatedData.contactEmailsCount > 0 && (
+                  <CheckboxItem>
+                    <Checkbox
+                      type="checkbox"
+                      id="deleteContactEmails"
+                      name="deleteContactEmails"
+                      checked={selectedItems.deleteContactEmails}
+                      onChange={handleCheckboxChange}
+                      disabled={isDeleting}
+                    />
+                    <label htmlFor="deleteContactEmails">Contact Emails ({associatedData.contactEmailsCount})</label>
+                  </CheckboxItem>
+                )}
+
+                {associatedData.contactMobilesCount > 0 && (
+                  <CheckboxItem>
+                    <Checkbox
+                      type="checkbox"
+                      id="deleteContactMobiles"
+                      name="deleteContactMobiles"
+                      checked={selectedItems.deleteContactMobiles}
+                      onChange={handleCheckboxChange}
+                      disabled={isDeleting}
+                    />
+                    <label htmlFor="deleteContactMobiles">Contact Mobiles ({associatedData.contactMobilesCount})</label>
+                  </CheckboxItem>
+                )}
+
+                {associatedData.dealsCount > 0 && (
+                  <CheckboxItem>
+                    <Checkbox
+                      type="checkbox"
+                      id="deleteDeals"
+                      name="deleteDeals"
+                      checked={selectedItems.deleteDeals}
+                      onChange={handleCheckboxChange}
+                      disabled={isDeleting}
+                    />
+                    <label htmlFor="deleteDeals">Deals ({associatedData.dealsCount})</label>
+                  </CheckboxItem>
+                )}
+
+                {associatedData.meetingsCount > 0 && (
+                  <CheckboxItem>
+                    <Checkbox
+                      type="checkbox"
+                      id="deleteMeetings"
+                      name="deleteMeetings"
+                      checked={selectedItems.deleteMeetings}
+                      onChange={handleCheckboxChange}
+                      disabled={isDeleting}
+                    />
+                    <label htmlFor="deleteMeetings">Meetings ({associatedData.meetingsCount})</label>
+                  </CheckboxItem>
+                )}
+
+                {associatedData.investmentsCount > 0 && (
+                  <CheckboxItem>
+                    <Checkbox
+                      type="checkbox"
+                      id="deleteInvestments"
+                      name="deleteInvestments"
+                      checked={selectedItems.deleteInvestments}
+                      onChange={handleCheckboxChange}
+                      disabled={isDeleting}
+                    />
+                    <label htmlFor="deleteInvestments">Investments ({associatedData.investmentsCount})</label>
+                  </CheckboxItem>
+                )}
+
+                {associatedData.kitCount > 0 && (
+                  <CheckboxItem>
+                    <Checkbox
+                      type="checkbox"
+                      id="deleteKit"
+                      name="deleteKit"
+                      checked={selectedItems.deleteKit}
+                      onChange={handleCheckboxChange}
+                      disabled={isDeleting}
+                    />
+                    <label htmlFor="deleteKit">Keep in Touch ({associatedData.kitCount})</label>
+                  </CheckboxItem>
+                )}
+
+                {associatedData.chatCount > 0 && (
+                  <CheckboxItem>
+                    <Checkbox
+                      type="checkbox"
+                      id="deleteChat"
+                      name="deleteChat"
+                      checked={selectedItems.deleteChat}
+                      onChange={handleCheckboxChange}
+                      disabled={isDeleting}
+                    />
+                    <label htmlFor="deleteChat">Chat ({associatedData.chatCount})</label>
+                  </CheckboxItem>
+                )}
+
+                {associatedData.contactChatsCount > 0 && (
+                  <CheckboxItem>
+                    <Checkbox
+                      type="checkbox"
+                      id="deleteContactChats"
+                      name="deleteContactChats"
+                      checked={selectedItems.deleteContactChats}
+                      onChange={handleCheckboxChange}
+                      disabled={isDeleting}
+                    />
+                    <label htmlFor="deleteContactChats">Contact Chats ({associatedData.contactChatsCount})</label>
+                  </CheckboxItem>
+                )}
+
+                {contactToDelete.email && (
+                  <CheckboxItem>
+                    <Checkbox
+                      type="checkbox"
+                      id="addToSpam"
+                      name="addToSpam"
+                      checked={selectedItems.addToSpam}
+                      onChange={handleCheckboxChange}
+                      disabled={isDeleting}
+                    />
+                    <label htmlFor="addToSpam">Add email to spam list</label>
+                  </CheckboxItem>
+                )}
+
+                {contactToDelete.mobile && (
+                  <CheckboxItem>
+                    <Checkbox
+                      type="checkbox"
+                      id="addMobileToSpam"
+                      name="addMobileToSpam"
+                      checked={selectedItems.addMobileToSpam}
+                      onChange={handleCheckboxChange}
+                      disabled={isDeleting}
+                    />
+                    <label htmlFor="addMobileToSpam">Add mobile to WhatsApp spam list</label>
+                  </CheckboxItem>
+                )}
+              </CheckboxGroup>
+            </CheckboxContainer>
+
+            <ModalActions>
+              <DeleteButton
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Deleting...' : 'Delete Selected Items'}
+              </DeleteButton>
+              <CancelButton
+                onClick={() => setDeleteModalOpen(false)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </CancelButton>
+            </ModalActions>
+          </>
+        )}
+      </Modal>
     </FullScreenContainer>
   );
 };
@@ -592,9 +1467,11 @@ const ContactCard = styled.div`
   border-radius: 12px;
   padding: 16px;
   margin-bottom: 12px;
-  cursor: pointer;
   transition: all 0.2s ease;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
 
   &:hover {
     border-color: #3b82f6;
@@ -608,6 +1485,43 @@ const ContactCard = styled.div`
 
   &:last-child {
     margin-bottom: 0;
+  }
+`;
+
+const ContactCardContent = styled.div`
+  flex: 1;
+  cursor: pointer;
+`;
+
+const ContactCardActions = styled.div`
+  display: flex;
+  gap: 8px;
+  margin-left: 15px;
+  align-items: flex-start;
+`;
+
+const CardActionButton = styled.button`
+  background: ${props => props.$edit ? '#007acc' : props.$spam ? '#ff4444' : '#333'};
+  border: 1px solid ${props => props.$edit ? '#0099ff' : props.$spam ? '#ff6666' : '#555'};
+  border-radius: 4px;
+  color: white;
+  padding: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  min-width: 32px;
+  height: 32px;
+
+  &:hover {
+    background: ${props => props.$edit ? '#0099ff' : props.$spam ? '#ff6666' : '#555'};
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
   }
 `;
 
@@ -653,6 +1567,31 @@ const ContactName = styled.div`
   font-size: 16px;
   line-height: 1.4;
   margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const CategoryBadge = styled.span`
+  background: ${props =>
+    props.category === 'Inbox' || props.category === 'Not Set'
+      ? '#fee2e2'
+      : '#f3f4f6'
+  };
+  color: ${props =>
+    props.category === 'Inbox' || props.category === 'Not Set'
+      ? '#dc2626'
+      : '#374151'
+  };
+  border: 1px solid ${props =>
+    props.category === 'Inbox' || props.category === 'Not Set'
+      ? '#fecaca'
+      : '#d1d5db'
+  };
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 12px;
 `;
 
 const ContactRole = styled.div`
@@ -1019,6 +1958,189 @@ const NotesText = styled.div`
   color: #374151;
   line-height: 1.6;
   font-size: 16px;
+`;
+
+// Modal styled components (copied from StandaloneInteractions.js)
+const ModalHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #333;
+
+  h2 {
+    color: #e0e0e0;
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+  }
+`;
+
+const CloseButton = styled.button`
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  font-size: 20px;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #333;
+    color: #fff;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const ModalContactDetail = styled.div`
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 15px;
+  margin-bottom: 20px;
+`;
+
+const DetailItem = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
+const DetailLabel = styled.span`
+  color: #999;
+  font-size: 14px;
+  font-weight: 500;
+  margin-right: 10px;
+  min-width: 120px;
+`;
+
+const DetailValue = styled.span`
+  color: #e0e0e0;
+  font-size: 14px;
+  flex: 1;
+  text-align: right;
+  word-break: break-word;
+`;
+
+const ModalContent = styled.div`
+  color: #e0e0e0;
+  font-size: 16px;
+  margin-bottom: 20px;
+  font-weight: 500;
+`;
+
+const CheckboxContainer = styled.div`
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 10px 0;
+  border: 1px solid #333;
+  border-radius: 6px;
+  background: #1a1a1a;
+`;
+
+const CheckboxGroup = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 15px;
+
+  @media (max-width: 500px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const CheckboxItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  label {
+    color: #e0e0e0;
+    font-size: 14px;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+`;
+
+const Checkbox = styled.input`
+  width: 16px;
+  height: 16px;
+  accent-color: #00ff00;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const ModalActions = styled.div`
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 25px;
+  padding-top: 20px;
+  border-top: 1px solid #333;
+`;
+
+const DeleteButton = styled.button`
+  background: #ff4444;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover:not(:disabled) {
+    background: #ff6666;
+    transform: translateY(-1px);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+`;
+
+const CancelButton = styled.button`
+  background: #333;
+  color: #e0e0e0;
+  border: 1px solid #555;
+  padding: 12px 24px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover:not(:disabled) {
+    background: #444;
+    transform: translateY(-1px);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
 `;
 
 export default StandaloneContactSearch;
