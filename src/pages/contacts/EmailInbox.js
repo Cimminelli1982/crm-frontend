@@ -722,19 +722,11 @@ const EmailInbox = () => {
       filter: false,
       sortable: true,
     },
-    { 
-      headerName: 'Subject', 
+    {
+      headerName: 'Subject',
       field: 'subject',
-      minWidth: 230,
+      minWidth: 400,
       cellRenderer: TooltipCellRenderer,
-      filter: false,
-      sortable: true,
-    },
-    { 
-      headerName: 'Message', 
-      field: 'message_text',
-      cellRenderer: TooltipCellRenderer,
-      minWidth: 300,
       filter: false,
       sortable: true,
     },
