@@ -108,6 +108,7 @@ const LoadingFallback = styled.div`
   font-family: 'Courier New', monospace;
 `;
 
+
 const Interactions = () => {
   const [activeTab, setActiveTab] = useState('recent');
 
@@ -132,9 +133,9 @@ const Interactions = () => {
         return <SimpleIntroductions />;
       case 'celebrations':
         return (
-          <div style={{ 
-            color: '#00ff00', 
-            textAlign: 'center', 
+          <div style={{
+            color: '#00ff00',
+            textAlign: 'center',
             paddingTop: '100px',
             fontSize: '20px',
             fontFamily: 'Courier New, monospace'
@@ -144,9 +145,9 @@ const Interactions = () => {
         );
       case 'planner':
         return (
-          <div style={{ 
-            color: '#00ff00', 
-            textAlign: 'center', 
+          <div style={{
+            color: '#00ff00',
+            textAlign: 'center',
             paddingTop: '100px',
             fontSize: '20px',
             fontFamily: 'Courier New, monospace'
@@ -173,7 +174,7 @@ const Interactions = () => {
     <Container>
       <TopMenuContainer>
         {menuItems.map(item => (
-          <MenuItem 
+          <MenuItem
             key={item.id}
             $active={activeTab === item.id}
             onClick={() => handleTabClick(item.id)}

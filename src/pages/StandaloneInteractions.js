@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
-import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaMapMarkerAlt, FaArrowLeft, FaClock, FaComments, FaEdit, FaTrash, FaSearch } from 'react-icons/fa';
+import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaMapMarkerAlt, FaArrowLeft, FaClock, FaComments, FaEdit, FaTrash, FaSearch, FaSync } from 'react-icons/fa';
 import { toast, Toaster } from 'react-hot-toast';
 
 const StandaloneInteractions = () => {
   const [interactions, setInteractions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedContact, setSelectedContact] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const fetchInteractions = async () => {
     setLoading(true);
@@ -82,6 +83,15 @@ const StandaloneInteractions = () => {
 
   useEffect(() => {
     fetchInteractions();
+
+    // Auto-refresh every 60 seconds
+    const interval = setInterval(() => {
+      fetchInteractions();
+      console.log('Auto-refreshing interactions data...');
+    }, 60000); // 60 seconds
+
+    // Cleanup interval on component unmount
+    return () => clearInterval(interval);
   }, []);
 
   const handleContactSelect = (contact) => {
@@ -122,6 +132,17 @@ const StandaloneInteractions = () => {
       console.error('Error deleting contact:', error);
       toast.error('Failed to delete contact');
     }
+  };
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    await fetchInteractions();
+    console.log('Manual refresh triggered...');
+
+    // Stop the refresh animation after a short delay
+    setTimeout(() => {
+      setIsRefreshing(false);
+    }, 1000);
   };
 
   const formatInteractionDate = (dateString) => {
@@ -195,12 +216,22 @@ const StandaloneInteractions = () => {
                 <AppTitle>Recent Interactions</AppTitle>
                 <AppSubtitle>Last 30 days of contact interactions</AppSubtitle>
               </HeaderText>
-              <SearchIconButton
-                onClick={() => window.location.href = 'https://crm-editor-frontend.netlify.app/search'}
-                title="Switch to Search"
-              >
-                <FaSearch />
-              </SearchIconButton>
+              <HeaderButtons>
+                <HeaderButton
+                  onClick={handleManualRefresh}
+                  disabled={isRefreshing}
+                  title="Refresh interactions (Auto-refreshes every 60s)"
+                  $isRefreshing={isRefreshing}
+                >
+                  <FaSync />
+                </HeaderButton>
+                <SearchIconButton
+                  onClick={() => window.location.href = 'https://crm-editor-frontend.netlify.app/search'}
+                  title="Switch to Search"
+                >
+                  <FaSearch />
+                </SearchIconButton>
+              </HeaderButtons>
             </HeaderContent>
           </InteractionsHeader>
 
@@ -212,11 +243,6 @@ const StandaloneInteractions = () => {
           )}
 
           <ResultsContainer>
-            {!loading && (
-              <ResultsHeader>
-                {interactions.length} interaction{interactions.length !== 1 ? 's' : ''} found
-              </ResultsHeader>
-            )}
 
             {interactions.map(interaction => (
               <InteractionCard key={interaction.id}>
@@ -253,20 +279,6 @@ const StandaloneInteractions = () => {
                     </InteractionMeta>
                   </InteractionCardHeader>
 
-                  <InteractionCardDetails>
-                    {interaction.contact?.emails?.length > 0 && interaction.contact.emails[0]?.email && (
-                      <ContactDetail>
-                        <FaEnvelope />
-                        <span>{interaction.contact.emails[0].email}</span>
-                      </ContactDetail>
-                    )}
-                    {interaction.contact?.mobiles?.length > 0 && interaction.contact.mobiles[0]?.mobile && (
-                      <ContactDetail>
-                        <FaPhone />
-                        <span>{interaction.contact.mobiles[0].mobile}</span>
-                      </ContactDetail>
-                    )}
-                  </InteractionCardDetails>
                 </InteractionCardContent>
 
                 <InteractionCardActions>
@@ -529,6 +541,61 @@ const HeaderContent = styled.div`
 const HeaderText = styled.div`
   text-align: center;
   flex: 1;
+`;
+
+const HeaderButtons = styled.div`
+  display: flex;
+  gap: 12px;
+  align-items: center;
+`;
+
+const HeaderButton = styled.button`
+  background: none;
+  border: 2px solid #10b981;
+  color: #10b981;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 18px;
+  flex-shrink: 0;
+
+  &:hover {
+    background: #10b981;
+    color: white;
+    transform: scale(1.05);
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  ${props => props.$isRefreshing && `
+    svg {
+      animation: spin 1s linear infinite;
+    }
+  `}
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  @media (max-width: 768px) {
+    width: 44px;
+    height: 44px;
+    font-size: 16px;
+  }
 `;
 
 const SearchIconButton = styled.button`
