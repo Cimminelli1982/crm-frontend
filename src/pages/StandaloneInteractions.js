@@ -60,6 +60,9 @@ const StandaloneInteractions = () => {
         // Filter out contacts with category "WhatsApp Group Contact"
         if (contact.category === 'WhatsApp Group Contact') return false;
 
+        // Filter out contacts with category "System"
+        if (contact.category === 'System') return false;
+
         const lastInteractionDate = new Date(contact.last_interaction_at);
         return lastInteractionDate >= thirtyDaysAgo;
       });

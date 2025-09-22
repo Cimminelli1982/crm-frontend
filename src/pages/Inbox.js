@@ -177,11 +177,25 @@ const Inbox = () => {
         .eq('category', 'Inbox')
         .gte('last_interaction_at', formattedDate);
 
-      // Keep in Touch count - contacts with keep_in_touch_date not null
+      // Keep in Touch count - contacts with specific categories and keep_in_touch_frequency "Not Set" or NULL
+      const allowedCategories = [
+        'Professional Investor',
+        'Team',
+        'Advisor',
+        'Supplier',
+        'Founder',
+        'Manager',
+        'Institution',
+        'Media',
+        'Friend and Family'
+      ];
+
       const { count: kitCount } = await supabase
         .from('contacts')
         .select('*', { count: 'exact', head: true })
-        .not('keep_in_touch_date', 'is', null);
+        .in('category', allowedCategories)
+        .or('keep_in_touch_frequency.is.null,keep_in_touch_frequency.eq.Not Set')
+        .not('last_interaction_at', 'is', null);
 
       setCounts({
         email: emailCount || 0,
