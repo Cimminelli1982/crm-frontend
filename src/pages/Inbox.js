@@ -166,10 +166,10 @@ const Inbox = () => {
         .select('*', { count: 'exact', head: true })
         .eq('special_case', 'pending_approval');
 
-      // Category count - contacts with category = 'Inbox' and last_interaction_at within 60 days
-      const sixtyDaysAgo = new Date();
-      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-      const formattedDate = sixtyDaysAgo.toISOString();
+      // Category count - contacts with category = 'Inbox' and last_interaction_at within 100 days
+      const oneHundredDaysAgo = new Date();
+      oneHundredDaysAgo.setDate(oneHundredDaysAgo.getDate() - 100);
+      const formattedDate = oneHundredDaysAgo.toISOString();
 
       const { count: categoryCount } = await supabase
         .from('contacts')

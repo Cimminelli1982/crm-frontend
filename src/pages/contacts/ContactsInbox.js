@@ -1226,10 +1226,10 @@ const ContactsInbox = () => {
         throw lastError;
       };
       
-      // Calculate date 60 days ago
-      const sixtyDaysAgo = new Date();
-      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-      const formattedDate = sixtyDaysAgo.toISOString();
+      // Calculate date 100 days ago
+      const oneHundredDaysAgo = new Date();
+      oneHundredDaysAgo.setDate(oneHundredDaysAgo.getDate() - 100);
+      const formattedDate = oneHundredDaysAgo.toISOString();
       
       // Get all contacts count first with retry
       const { count, error: countError } = await retrySupabaseRequest(async () => {
