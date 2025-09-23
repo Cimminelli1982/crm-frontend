@@ -23,7 +23,13 @@
   to = "/.netlify/functions/:splat"
   status = 200
 
-# This handles the single-page application routing
+# Handle new CRM single-page application routing
+[[redirects]]
+  from = "/new-crm/*"
+  to = "/new-crm/index.html"
+  status = 200
+
+# This handles the main CRM single-page application routing
 [[redirects]]
   from = "/*"
   to = "/index.html"
