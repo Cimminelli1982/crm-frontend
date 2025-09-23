@@ -26,8 +26,14 @@ const ContactsList = ({
   const navigate = useNavigate();
 
   // Keep in Touch helper functions
-  const formatDaysUntilNext = (daysUntilNext) => {
-    if (daysUntilNext === null || daysUntilNext === undefined) return '';
+  const formatDaysUntilNext = (daysUntilNext, contact = null) => {
+    if (daysUntilNext === null || daysUntilNext === undefined) {
+      // Check if this is a birthday contact
+      if (contact?.days_until_birthday !== undefined) {
+        return formatBirthdayCountdown(contact.days_until_birthday);
+      }
+      return '';
+    }
 
     const days = parseInt(daysUntilNext);
     if (days < 0) {
@@ -39,7 +45,32 @@ const ContactsList = ({
     }
   };
 
-  const getUrgencyColor = (daysUntilNext, theme) => {
+  const formatBirthdayCountdown = (daysUntilBirthday) => {
+    const days = parseInt(daysUntilBirthday);
+    if (days === 0) {
+      return '🎉 Birthday today!';
+    } else if (days === 1) {
+      return '🎂 Birthday tomorrow!';
+    } else if (days <= 7) {
+      return `🎈 Birthday in ${days} days`;
+    } else {
+      return `🎁 Birthday in ${days} days`;
+    }
+  };
+
+  const getUrgencyColor = (daysUntilNext, theme, contact = null) => {
+    // Handle birthday coloring
+    if (contact?.days_until_birthday !== undefined) {
+      const days = parseInt(contact.days_until_birthday);
+      if (days === 0) {
+        return '#EF4444'; // Red for birthday today
+      } else if (days <= 7) {
+        return '#F59E0B'; // Amber for birthday this week
+      } else {
+        return '#10B981'; // Green for birthday coming up
+      }
+    }
+
     if (daysUntilNext === null || daysUntilNext === undefined) return theme === 'light' ? '#6B7280' : '#9CA3AF';
 
     const days = parseInt(daysUntilNext);
@@ -475,9 +506,9 @@ const ContactsList = ({
                 {pageContext === 'keepInTouch' && keepInTouchData?.showDaysCounter && (
                   <KeepInTouchStatus
                     theme={theme}
-                    $urgencyColor={getUrgencyColor(contact.days_until_next, theme)}
+                    $urgencyColor={getUrgencyColor(contact.days_until_next, theme, contact)}
                   >
-                    {formatDaysUntilNext(contact.days_until_next)}
+                    {formatDaysUntilNext(contact.days_until_next, contact)}
                   </KeepInTouchStatus>
                 )}
                 {contact.job_role && <ContactRole theme={theme}>{contact.job_role}</ContactRole>}

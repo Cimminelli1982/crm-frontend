@@ -38,12 +38,12 @@ const KeepInTouchPage = ({ theme, onKeepInTouchCountChange }) => {
           query = query.gt('days_until_next', 7);
         }
       } else if (filterCategory === 'Birthday') {
-        // Birthday filtering - get contacts from regular contacts table with birthday info
+        // Birthday filtering - get contacts with upcoming birthdays
         const today = new Date();
-        const nextMonth = new Date(today);
-        nextMonth.setMonth(nextMonth.getMonth() + 1);
+        const currentMonth = today.getMonth() + 1; // JavaScript months are 0-11, but we need 1-12
+        const currentDay = today.getDate();
 
-        // Get contacts with upcoming birthdays instead of keep-in-touch data
+        // Get contacts with upcoming birthdays in the next 2 months
         const { data: birthdayContacts, error: birthdayError } = await supabase
           .from('contacts')
           .select(`
@@ -69,15 +69,41 @@ const KeepInTouchPage = ({ theme, onKeepInTouchCountChange }) => {
 
         if (birthdayError) throw birthdayError;
 
-        // Process birthday contacts
-        const processedBirthdayContacts = (birthdayContacts || []).map(contact => ({
-          ...contact,
-          emails: contact.contact_emails || [],
-          mobiles: contact.contact_mobiles || [],
-          companies: contact.contact_companies?.map(cc => cc.companies).filter(Boolean) || [],
-          tags: contact.contact_tags?.map(ct => ct.tags?.name).filter(Boolean) || [],
-          cities: contact.contact_cities?.map(cc => cc.cities).filter(Boolean) || []
-        }));
+        // Process birthday contacts and calculate days until birthday
+        const processedBirthdayContacts = (birthdayContacts || []).map(contact => {
+          const birthdayDate = new Date(contact.birthday);
+          const birthdayMonth = birthdayDate.getMonth() + 1;
+          const birthdayDay = birthdayDate.getDate();
+
+          // Calculate this year's birthday
+          let nextBirthday = new Date(today.getFullYear(), birthdayMonth - 1, birthdayDay);
+
+          // If birthday already passed this year, use next year
+          if (nextBirthday < today) {
+            nextBirthday = new Date(today.getFullYear() + 1, birthdayMonth - 1, birthdayDay);
+          }
+
+          // Calculate days until birthday
+          const daysDiff = Math.ceil((nextBirthday - today) / (1000 * 60 * 60 * 24));
+
+          return {
+            ...contact,
+            emails: contact.contact_emails || [],
+            mobiles: contact.contact_mobiles || [],
+            companies: contact.contact_companies?.map(cc => cc.companies).filter(Boolean) || [],
+            tags: contact.contact_tags?.map(ct => ct.tags?.name).filter(Boolean) || [],
+            cities: contact.contact_cities?.map(cc => cc.cities).filter(Boolean) || [],
+            // Add birthday-specific fields
+            days_until_birthday: daysDiff,
+            next_birthday: nextBirthday,
+            birthday_month: birthdayMonth,
+            birthday_day: birthdayDay
+          };
+        })
+        // Filter to show only birthdays in the next 60 days
+        .filter(contact => contact.days_until_birthday <= 60)
+        // Sort by days until birthday (closest first)
+        .sort((a, b) => a.days_until_birthday - b.days_until_birthday);
 
         setContacts(processedBirthdayContacts);
         if (onKeepInTouchCountChange) {
