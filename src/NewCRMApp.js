@@ -4,11 +4,10 @@ import styled, { createGlobalStyle } from 'styled-components';
 import { Toaster } from 'react-hot-toast';
 
 import NewNavigation from './components/NewNavigation';
-import InboxPage from './pages/InboxPage';
-import StandaloneInteractions from './pages/StandaloneInteractions';
-import StandaloneContactSearch from './pages/StandaloneContactSearch';
+import SortPage from './pages/SortPage';
+import InteractionsPage from './pages/InteractionsPage';
+import SearchPage from './pages/SearchPage';
 import KeepInTouchPage from './pages/KeepInTouchPage';
-import TrashPage from './pages/TrashPage';
 import ContactDetail from './pages/ContactDetail';
 
 const GlobalStyles = createGlobalStyle`
@@ -116,12 +115,11 @@ const CRMAppContent = () => {
 
   // Map paths to page IDs for navigation highlighting
   const getPageIdFromPath = (pathname) => {
-    if (pathname.includes('/inbox')) return 'inbox';
+    if (pathname.includes('/sort')) return 'sort';
     if (pathname.includes('/interactions')) return 'interactions';
     if (pathname.includes('/search')) return 'search';
     if (pathname.includes('/keep-in-touch')) return 'keep-in-touch';
-    if (pathname.includes('/trash')) return 'trash';
-    return 'interactions'; // default
+    return 'sort'; // default to sort instead of interactions
   };
 
   const currentPage = getPageIdFromPath(location.pathname);
@@ -171,15 +169,14 @@ const CRMAppContent = () => {
       >
         <PageContainer>
           <Routes>
-            <Route path="/" element={<Navigate to="/interactions" replace />} />
-            <Route path="/inbox" element={<InboxPage theme={theme} onInboxCountChange={setInboxCount} />} />
-            <Route path="/interactions" element={<StandaloneInteractions theme={theme} />} />
-            <Route path="/search" element={<StandaloneContactSearch theme={theme} />} />
+            <Route path="/" element={<Navigate to="/sort" replace />} />
+            <Route path="/sort" element={<SortPage theme={theme} onInboxCountChange={setInboxCount} />} />
+            <Route path="/interactions" element={<InteractionsPage theme={theme} />} />
+            <Route path="/search" element={<SearchPage theme={theme} />} />
             <Route path="/keep-in-touch" element={<KeepInTouchPage theme={theme} onKeepInTouchCountChange={setKeepInTouchCount} />} />
-            <Route path="/trash" element={<TrashPage theme={theme} />} />
             <Route path="/contact/:contactId" element={<ContactDetail theme={theme} />} />
             {/* Fallback route */}
-            <Route path="*" element={<Navigate to="/interactions" replace />} />
+            <Route path="*" element={<Navigate to="/sort" replace />} />
           </Routes>
         </PageContainer>
       </ContentContainer>

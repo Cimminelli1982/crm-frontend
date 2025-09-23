@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import {
-  FiInbox,
+  FiLayers,
   FiClock,
   FiSearch,
   FiBell,
-  FiTrash2,
   FiMenu,
   FiX,
   FiChevronLeft,
@@ -14,7 +13,7 @@ import {
 import Logo from './Logo';
 
 const NewNavigation = ({
-  currentPage = 'search',
+  currentPage = 'sort',
   onNavigate,
   theme = 'light',
   onThemeToggle,
@@ -28,16 +27,17 @@ const NewNavigation = ({
 
   const navigationItems = [
     {
-      id: 'inbox',
-      label: 'Inbox',
-      icon: FiInbox,
-      path: '/inbox',
-      description: 'New contacts to categorize',
-      count: inboxCount
+      id: 'sort',
+      label: 'Sort',
+      icon: FiLayers,
+      path: '/sort',
+      description: 'Manage and organize your contacts',
+      count: inboxCount,
+      isInbox: true
     },
     {
       id: 'interactions',
-      label: 'Last Interactions',
+      label: 'Interactions',
       icon: FiClock,
       path: '/interactions',
       description: 'Recent contact activity'
@@ -56,13 +56,6 @@ const NewNavigation = ({
       path: '/keep-in-touch',
       description: 'Follow-up reminders',
       count: keepInTouchCount
-    },
-    {
-      id: 'trash',
-      label: 'Trash',
-      icon: FiTrash2,
-      path: '/trash',
-      description: 'Spam and skipped contacts'
     }
   ];
 
@@ -125,20 +118,19 @@ const NewNavigation = ({
                 key={item.id}
                 theme={theme}
                 $isActive={isActive}
-                $isTrash={item.id === 'trash'}
                 onClick={() => handleNavigation(item)}
               >
                 <MobileNavIconContainer>
-                  <MobileNavIcon theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
+                  <MobileNavIcon theme={theme} $isActive={isActive}>
                     <Icon size={20} />
                   </MobileNavIcon>
                   {item.count > 0 && (
-                    <CountBadge theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
+                    <CountBadge theme={theme} $isActive={isActive} $isInbox={item.isInbox}>
                       {item.count}
                     </CountBadge>
                   )}
                 </MobileNavIconContainer>
-                <MobileNavLabel theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
+                <MobileNavLabel theme={theme} $isActive={isActive}>
                   {item.label}
                 </MobileNavLabel>
               </MobileNavItem>
@@ -171,30 +163,24 @@ const NewNavigation = ({
                 key={item.id}
                 theme={theme}
                 $isActive={isActive}
-                $isTrash={item.id === 'trash'}
                 $isCollapsed={isCollapsed}
                 onClick={() => handleNavigation(item)}
                 title={isCollapsed ? item.description : ''}
               >
                 <TabletNavIconContainer>
-                  <TabletNavIcon theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
+                  <TabletNavIcon theme={theme} $isActive={isActive}>
                     <Icon size={22} />
                   </TabletNavIcon>
                   {item.count > 0 && (
-                    <CountBadge theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
+                    <CountBadge theme={theme} $isActive={isActive} $isInbox={item.isInbox}>
                       {item.count}
                     </CountBadge>
                   )}
                 </TabletNavIconContainer>
                 {!isCollapsed && (
                   <TabletNavText>
-                    <TabletNavLabel theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
+                    <TabletNavLabel theme={theme} $isActive={isActive}>
                       {item.label}
-                      {item.count > 0 && (
-                        <CountBadgeInline theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
-                          {item.count}
-                        </CountBadgeInline>
-                      )}
                     </TabletNavLabel>
                     <TabletNavDescription theme={theme}>
                       {item.description}
@@ -232,30 +218,24 @@ const NewNavigation = ({
                 key={item.id}
                 theme={theme}
                 $isActive={isActive}
-                $isTrash={item.id === 'trash'}
                 $isCollapsed={isCollapsed}
                 onClick={() => handleNavigation(item)}
                 title={isCollapsed ? `${item.label} - ${item.description}` : ''}
               >
                 <DesktopNavIconContainer>
-                  <DesktopNavIcon theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
+                  <DesktopNavIcon theme={theme} $isActive={isActive}>
                     <Icon size={20} />
                   </DesktopNavIcon>
                   {item.count > 0 && isCollapsed && (
-                    <CountBadge theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
+                    <CountBadge theme={theme} $isActive={isActive}>
                       {item.count}
                     </CountBadge>
                   )}
                 </DesktopNavIconContainer>
                 {!isCollapsed && (
                   <DesktopNavText>
-                    <DesktopNavLabel theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
+                    <DesktopNavLabel theme={theme} $isActive={isActive}>
                       {item.label}
-                      {item.count > 0 && (
-                        <CountBadgeInline theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
-                          {item.count}
-                        </CountBadgeInline>
-                      )}
                     </DesktopNavLabel>
                     <DesktopNavDescription theme={theme}>
                       {item.description}
@@ -329,8 +309,8 @@ const MobileNavItem = styled.button`
 
   ${props => props.$isActive && `
     background: ${props.theme === 'light'
-      ? props.$isTrash ? 'rgba(239, 68, 68, 0.1)' : 'rgba(59, 130, 246, 0.1)'
-      : props.$isTrash ? 'rgba(248, 113, 113, 0.15)' : 'rgba(96, 165, 250, 0.15)'
+      ? 'rgba(59, 130, 246, 0.1)'
+      : 'rgba(96, 165, 250, 0.15)'
     };
   `}
 
@@ -342,9 +322,7 @@ const MobileNavItem = styled.button`
 const MobileNavIcon = styled.div`
   color: ${props => {
     if (props.$isActive) {
-      return props.$isTrash
-        ? (props.theme === 'light' ? '#EF4444' : '#F87171')
-        : (props.theme === 'light' ? '#3B82F6' : '#60A5FA');
+      return (props.theme === 'light' ? '#3B82F6' : '#60A5FA');
     }
     return props.theme === 'light' ? '#6B7280' : '#9CA3AF';
   }};
@@ -356,9 +334,7 @@ const MobileNavLabel = styled.span`
   font-weight: ${props => props.$isActive ? '600' : '500'};
   color: ${props => {
     if (props.$isActive) {
-      return props.$isTrash
-        ? (props.theme === 'light' ? '#EF4444' : '#F87171')
-        : (props.theme === 'light' ? '#3B82F6' : '#60A5FA');
+      return (props.theme === 'light' ? '#3B82F6' : '#60A5FA');
     }
     return props.theme === 'light' ? '#6B7280' : '#9CA3AF';
   }};
@@ -416,8 +392,8 @@ const TabletNavItem = styled.button`
 
   ${props => props.$isActive && `
     background: ${props.theme === 'light'
-      ? props.$isTrash ? 'rgba(239, 68, 68, 0.1)' : 'rgba(59, 130, 246, 0.1)'
-      : props.$isTrash ? 'rgba(248, 113, 113, 0.15)' : 'rgba(96, 165, 250, 0.15)'
+      ? 'rgba(59, 130, 246, 0.1)'
+      : 'rgba(96, 165, 250, 0.15)'
     };
   `}
 
@@ -425,8 +401,8 @@ const TabletNavItem = styled.button`
     background: ${props => props.theme === 'light' ? '#F9FAFB' : '#374151'};
     ${props => props.$isActive && `
       background: ${props.theme === 'light'
-        ? props.$isTrash ? 'rgba(239, 68, 68, 0.15)' : 'rgba(59, 130, 246, 0.15)'
-        : props.$isTrash ? 'rgba(248, 113, 113, 0.2)' : 'rgba(96, 165, 250, 0.2)'
+        ? 'rgba(59, 130, 246, 0.15)'
+        : 'rgba(96, 165, 250, 0.2)'
       };
     `}
   }
@@ -435,9 +411,7 @@ const TabletNavItem = styled.button`
 const TabletNavIcon = styled.div`
   color: ${props => {
     if (props.$isActive) {
-      return props.$isTrash
-        ? (props.theme === 'light' ? '#EF4444' : '#F87171')
-        : (props.theme === 'light' ? '#3B82F6' : '#60A5FA');
+      return (props.theme === 'light' ? '#3B82F6' : '#60A5FA');
     }
     return props.theme === 'light' ? '#6B7280' : '#9CA3AF';
   }};
@@ -457,9 +431,7 @@ const TabletNavLabel = styled.span`
   font-weight: ${props => props.$isActive ? '600' : '500'};
   color: ${props => {
     if (props.$isActive) {
-      return props.$isTrash
-        ? (props.theme === 'light' ? '#EF4444' : '#F87171')
-        : (props.theme === 'light' ? '#3B82F6' : '#60A5FA');
+      return (props.theme === 'light' ? '#3B82F6' : '#60A5FA');
     }
     return props.theme === 'light' ? '#111827' : '#F9FAFB';
   }};
@@ -528,12 +500,12 @@ const DesktopNavItem = styled.button`
 
   ${props => props.$isActive && `
     background: ${props.theme === 'light'
-      ? props.$isTrash ? 'rgba(239, 68, 68, 0.1)' : 'rgba(59, 130, 246, 0.1)'
-      : props.$isTrash ? 'rgba(248, 113, 113, 0.15)' : 'rgba(96, 165, 250, 0.15)'
+      ? 'rgba(59, 130, 246, 0.1)'
+      : 'rgba(96, 165, 250, 0.15)'
     };
     border: 1px solid ${props.theme === 'light'
-      ? props.$isTrash ? 'rgba(239, 68, 68, 0.2)' : 'rgba(59, 130, 246, 0.2)'
-      : props.$isTrash ? 'rgba(248, 113, 113, 0.3)' : 'rgba(96, 165, 250, 0.3)'
+      ? 'rgba(59, 130, 246, 0.2)'
+      : 'rgba(96, 165, 250, 0.3)'
     };
   `}
 
@@ -543,8 +515,8 @@ const DesktopNavItem = styled.button`
 
     ${props => props.$isActive && `
       background: ${props.theme === 'light'
-        ? props.$isTrash ? 'rgba(239, 68, 68, 0.15)' : 'rgba(59, 130, 246, 0.15)'
-        : props.$isTrash ? 'rgba(248, 113, 113, 0.2)' : 'rgba(96, 165, 250, 0.2)'
+        ? 'rgba(59, 130, 246, 0.15)'
+        : 'rgba(96, 165, 250, 0.2)'
       };
     `}
   }
@@ -553,9 +525,7 @@ const DesktopNavItem = styled.button`
 const DesktopNavIcon = styled.div`
   color: ${props => {
     if (props.$isActive) {
-      return props.$isTrash
-        ? (props.theme === 'light' ? '#EF4444' : '#F87171')
-        : (props.theme === 'light' ? '#3B82F6' : '#60A5FA');
+      return (props.theme === 'light' ? '#3B82F6' : '#60A5FA');
     }
     return props.theme === 'light' ? '#6B7280' : '#9CA3AF';
   }};
@@ -575,9 +545,7 @@ const DesktopNavLabel = styled.span`
   font-weight: ${props => props.$isActive ? '600' : '500'};
   color: ${props => {
     if (props.$isActive) {
-      return props.$isTrash
-        ? (props.theme === 'light' ? '#EF4444' : '#F87171')
-        : (props.theme === 'light' ? '#3B82F6' : '#60A5FA');
+      return (props.theme === 'light' ? '#3B82F6' : '#60A5FA');
     }
     return props.theme === 'light' ? '#111827' : '#F9FAFB';
   }};
@@ -671,7 +639,11 @@ const CountBadge = styled.div`
   position: absolute;
   top: -6px;
   right: -6px;
-  background: ${props => props.theme === 'light' ? '#EF4444' : '#F87171'};
+  background: ${props =>
+    props.$isInbox
+      ? (props.theme === 'light' ? '#3B82F6' : '#60A5FA')  // Blue for inbox
+      : (props.theme === 'light' ? '#EF4444' : '#F87171')   // Red for others
+  };
   color: white;
   font-size: 10px;
   font-weight: 600;
@@ -686,7 +658,11 @@ const CountBadge = styled.div`
 `;
 
 const CountBadgeInline = styled.span`
-  background: ${props => props.theme === 'light' ? '#EF4444' : '#F87171'};
+  background: ${props =>
+    props.$isInbox
+      ? (props.theme === 'light' ? '#3B82F6' : '#60A5FA')  // Blue for inbox
+      : (props.theme === 'light' ? '#EF4444' : '#F87171')   // Red for others
+  };
   color: white;
   font-size: 11px;
   font-weight: 600;
