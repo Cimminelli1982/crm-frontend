@@ -107,6 +107,7 @@ const CRMAppContent = () => {
     const saved = localStorage.getItem('crm-nav-collapsed');
     return saved ? saved === 'true' : false;
   });
+  const [inboxCount, setInboxCount] = useState(0);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -155,6 +156,7 @@ const CRMAppContent = () => {
         onThemeToggle={handleThemeToggle}
         onCollapseChange={setNavCollapsed}
         initialCollapsed={navCollapsed}
+        inboxCount={inboxCount}
       />
 
       <ContentContainer
@@ -167,7 +169,7 @@ const CRMAppContent = () => {
         <PageContainer>
           <Routes>
             <Route path="/" element={<Navigate to="/interactions" replace />} />
-            <Route path="/inbox" element={<InboxPage theme={theme} />} />
+            <Route path="/inbox" element={<InboxPage theme={theme} onInboxCountChange={setInboxCount} />} />
             <Route path="/interactions" element={<StandaloneInteractions theme={theme} />} />
             <Route path="/search" element={<StandaloneContactSearch theme={theme} />} />
             <Route path="/keep-in-touch" element={<KeepInTouchPage theme={theme} />} />

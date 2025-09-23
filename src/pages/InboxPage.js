@@ -8,7 +8,7 @@ import Modal from 'react-modal';
 
 Modal.setAppElement('#root');
 
-const InboxPage = ({ theme }) => {
+const InboxPage = ({ theme, onInboxCountChange }) => {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedContact, setSelectedContact] = useState(null);
@@ -66,10 +66,9 @@ const InboxPage = ({ theme }) => {
   const fetchInboxContacts = async () => {
     setLoading(true);
     try {
-      // Calculate date 100 days ago (same logic as original inbox)
-      const oneHundredDaysAgo = new Date();
-      oneHundredDaysAgo.setDate(oneHundredDaysAgo.getDate() - 100);
-      const formattedDate = oneHundredDaysAgo.toISOString();
+      // Filter for results after June 25, 2025
+      const cutoffDate = new Date('2025-06-25');
+      const formattedDate = cutoffDate.toISOString();
 
       const { data, error } = await supabase
         .from('contacts')
@@ -92,8 +91,7 @@ const InboxPage = ({ theme }) => {
         `)
         .eq('category', 'Inbox')
         .gte('last_interaction_at', formattedDate)
-        .order('last_interaction_at', { ascending: false })
-        .limit(100);
+        .order('last_interaction_at', { ascending: false });
 
       if (error) throw error;
 
@@ -107,9 +105,17 @@ const InboxPage = ({ theme }) => {
       }));
 
       setContacts(processedContacts);
+
+      // Update parent component with count
+      if (onInboxCountChange) {
+        onInboxCountChange(processedContacts.length);
+      }
     } catch (error) {
       console.error('Error fetching inbox contacts:', error);
       toast.error('Failed to load inbox contacts');
+      if (onInboxCountChange) {
+        onInboxCountChange(0);
+      }
     } finally {
       setLoading(false);
     }
@@ -193,7 +199,13 @@ const InboxPage = ({ theme }) => {
       toast.success(`Contact moved to ${newCategory}`);
 
       // Remove contact from inbox list
-      setContacts(prev => prev.filter(c => c.contact_id !== contactToUpdate.contact_id));
+      setContacts(prev => {
+        const newContacts = prev.filter(c => c.contact_id !== contactToUpdate.contact_id);
+        if (onInboxCountChange) {
+          onInboxCountChange(newContacts.length);
+        }
+        return newContacts;
+      });
 
       // If this was the selected contact, go back to inbox
       if (selectedContact && selectedContact.contact_id === contactToUpdate.contact_id) {
@@ -315,7 +327,13 @@ const InboxPage = ({ theme }) => {
       if (error) throw error;
 
       // Remove contact from inbox list
-      setContacts(prev => prev.filter(c => c.contact_id !== contact.contact_id));
+      setContacts(prev => {
+        const newContacts = prev.filter(c => c.contact_id !== contact.contact_id);
+        if (onInboxCountChange) {
+          onInboxCountChange(newContacts.length);
+        }
+        return newContacts;
+      });
 
       toast.success(`${contact.first_name || ''} ${contact.last_name || ''} moved to Skip`.trim());
     } catch (error) {
@@ -390,7 +408,13 @@ const InboxPage = ({ theme }) => {
       toast.success('Contact and selected associated records deleted successfully');
 
       // Remove contact from inbox list
-      setContacts(prev => prev.filter(contact => contact.contact_id !== contactToDelete.contact_id));
+      setContacts(prev => {
+        const newContacts = prev.filter(contact => contact.contact_id !== contactToDelete.contact_id);
+        if (onInboxCountChange) {
+          onInboxCountChange(newContacts.length);
+        }
+        return newContacts;
+      });
 
       if (selectedContact && selectedContact.contact_id === contactToDelete.contact_id) {
         setSelectedContact(null);

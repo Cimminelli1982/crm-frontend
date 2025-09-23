@@ -19,7 +19,8 @@ const NewNavigation = ({
   theme = 'light',
   onThemeToggle,
   onCollapseChange,
-  initialCollapsed = false
+  initialCollapsed = false,
+  inboxCount = 0
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(initialCollapsed);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -30,7 +31,8 @@ const NewNavigation = ({
       label: 'Inbox',
       icon: FiInbox,
       path: '/inbox',
-      description: 'New contacts to categorize'
+      description: 'New contacts to categorize',
+      count: inboxCount
     },
     {
       id: 'interactions',
@@ -124,9 +126,16 @@ const NewNavigation = ({
                 $isTrash={item.id === 'trash'}
                 onClick={() => handleNavigation(item)}
               >
-                <MobileNavIcon theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
-                  <Icon size={20} />
-                </MobileNavIcon>
+                <MobileNavIconContainer>
+                  <MobileNavIcon theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
+                    <Icon size={20} />
+                  </MobileNavIcon>
+                  {item.count > 0 && (
+                    <CountBadge theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
+                      {item.count}
+                    </CountBadge>
+                  )}
+                </MobileNavIconContainer>
                 <MobileNavLabel theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
                   {item.label}
                 </MobileNavLabel>
@@ -165,13 +174,25 @@ const NewNavigation = ({
                 onClick={() => handleNavigation(item)}
                 title={isCollapsed ? item.description : ''}
               >
-                <TabletNavIcon theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
-                  <Icon size={22} />
-                </TabletNavIcon>
+                <TabletNavIconContainer>
+                  <TabletNavIcon theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
+                    <Icon size={22} />
+                  </TabletNavIcon>
+                  {item.count > 0 && (
+                    <CountBadge theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
+                      {item.count}
+                    </CountBadge>
+                  )}
+                </TabletNavIconContainer>
                 {!isCollapsed && (
                   <TabletNavText>
                     <TabletNavLabel theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
                       {item.label}
+                      {item.count > 0 && (
+                        <CountBadgeInline theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
+                          {item.count}
+                        </CountBadgeInline>
+                      )}
                     </TabletNavLabel>
                     <TabletNavDescription theme={theme}>
                       {item.description}
@@ -214,13 +235,25 @@ const NewNavigation = ({
                 onClick={() => handleNavigation(item)}
                 title={isCollapsed ? `${item.label} - ${item.description}` : ''}
               >
-                <DesktopNavIcon theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
-                  <Icon size={20} />
-                </DesktopNavIcon>
+                <DesktopNavIconContainer>
+                  <DesktopNavIcon theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
+                    <Icon size={20} />
+                  </DesktopNavIcon>
+                  {item.count > 0 && isCollapsed && (
+                    <CountBadge theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
+                      {item.count}
+                    </CountBadge>
+                  )}
+                </DesktopNavIconContainer>
                 {!isCollapsed && (
                   <DesktopNavText>
                     <DesktopNavLabel theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
                       {item.label}
+                      {item.count > 0 && (
+                        <CountBadgeInline theme={theme} $isActive={isActive} $isTrash={item.id === 'trash'}>
+                          {item.count}
+                        </CountBadgeInline>
+                      )}
                     </DesktopNavLabel>
                     <DesktopNavDescription theme={theme}>
                       {item.description}
@@ -607,6 +640,62 @@ const ThemeToggle = styled.button`
   &:hover {
     background: ${props => props.theme === 'light' ? '#F3F4F6' : '#4B5563'};
   }
+`;
+
+// Icon Containers for Count Badges
+const MobileNavIconContainer = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+`;
+
+const TabletNavIconContainer = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+`;
+
+const DesktopNavIconContainer = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+`;
+
+// Count Badges
+const CountBadge = styled.div`
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: ${props => props.theme === 'light' ? '#EF4444' : '#F87171'};
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 10px;
+  min-width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+`;
+
+const CountBadgeInline = styled.span`
+  background: ${props => props.theme === 'light' ? '#EF4444' : '#F87171'};
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 10px;
+  margin-left: 8px;
+  min-width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 `;
 
 export default NewNavigation;

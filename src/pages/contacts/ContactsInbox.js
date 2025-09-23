@@ -1226,10 +1226,9 @@ const ContactsInbox = () => {
         throw lastError;
       };
       
-      // Calculate date 100 days ago
-      const oneHundredDaysAgo = new Date();
-      oneHundredDaysAgo.setDate(oneHundredDaysAgo.getDate() - 100);
-      const formattedDate = oneHundredDaysAgo.toISOString();
+      // Filter for results after June 25, 2025
+      const cutoffDate = new Date('2025-06-25');
+      const formattedDate = cutoffDate.toISOString();
       
       // Get all contacts count first with retry
       const { count, error: countError } = await retrySupabaseRequest(async () => {
@@ -1280,8 +1279,8 @@ const ContactsInbox = () => {
       let totalFetchedCount = 0;
       let failedBatches = 0;
       
-      // Limit to 4000 contacts max for performance if needed
-      const maxContacts = Math.min(count, 4000);
+      // Fetch all contacts without limit to match mobile version
+      const maxContacts = count;
       for (let i = 0; i < maxContacts; i += batchSize) {
         try {
           setLoading(`Loading contacts... ${Math.min(i + batchSize, count)}/${count}`);
