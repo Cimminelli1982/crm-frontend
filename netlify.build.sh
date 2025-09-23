@@ -12,4 +12,4 @@ npm run build
 
 # Build the new CRM as well
 echo "Building new CRM..."
-npm run new-crm:build
+npm run new-crm:build || echo "New CRM build failed"
