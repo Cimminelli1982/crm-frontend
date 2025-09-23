@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="CRM Pro - Advanced Customer Relationship Management" />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    <title>CRM Pro - Advanced CRM</title>
+
+    <!-- Responsive meta tags for better mobile experience -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="CRM Pro">
+
+    <!-- Preload critical resources -->
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" as="style">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+      /* Global reset and base styles */
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html, body {
+        height: 100%;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        overflow-x: hidden;
+      }
+
+      #root {
+        height: 100%;
+        min-height: 100vh;
+      }
+
+      /* Loading screen */
+      .loading-screen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        transition: opacity 0.5s ease, visibility 0.5s ease;
+      }
+
+      .loading-screen.hide {
+        opacity: 0;
+        visibility: hidden;
+      }
+
+      .loading-content {
+        text-align: center;
+        color: white;
+      }
+
+      .loading-spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid rgba(255, 255, 255, 0.3);
+        border-top: 3px solid white;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 20px;
+      }
+
+      .loading-title {
+        font-size: 24px;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+
+      .loading-subtitle {
+        font-size: 16px;
+        opacity: 0.9;
+      }
+
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+
+      /* Prevent FOUC (Flash of Unstyled Content) */
+      .app-container {
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+
+      .app-container.loaded {
+        opacity: 1;
+      }
+
+      /* Error boundary styles */
+      .error-boundary {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        padding: 20px;
+        text-align: center;
+        background: #f9fafb;
+      }
+
+      .error-icon {
+        font-size: 48px;
+        margin-bottom: 20px;
+      }
+
+      .error-title {
+        font-size: 24px;
+        font-weight: 600;
+        color: #111827;
+        margin-bottom: 12px;
+      }
+
+      .error-message {
+        color: #6b7280;
+        margin-bottom: 24px;
+        max-width: 500px;
+        line-height: 1.5;
+      }
+
+      .error-button {
+        background: #3b82f6;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background-color 0.2s ease;
+      }
+
+      .error-button:hover {
+        background: #2563eb;
+      }
+    </style>
+  </head>
+  <body>
+    <noscript>
+      <div class="error-boundary">
+        <div class="error-icon">⚠️</div>
+        <h1 class="error-title">JavaScript Required</h1>
+        <p class="error-message">
+          CRM Pro requires JavaScript to be enabled in your browser. Please enable JavaScript and refresh the page.
+        </p>
+      </div>
+    </noscript>
+
+    <!-- Loading screen -->
+    <div id="loading-screen" class="loading-screen">
+      <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <div class="loading-title">CRM Pro</div>
+        <div class="loading-subtitle">Loading your advanced CRM...</div>
+      </div>
+    </div>
+
+    <!-- Main app container -->
+    <div id="root" class="app-container"></div>
+
+    <!-- Error boundary fallback -->
+    <script>
+      window.addEventListener('error', function(event) {
+        console.error('Global error:', event.error);
+        showErrorBoundary('An unexpected error occurred. Please refresh the page.');
+      });
+
+      window.addEventListener('unhandledrejection', function(event) {
+        console.error('Unhandled promise rejection:', event.reason);
+        showErrorBoundary('A network or loading error occurred. Please check your connection and refresh.');
+      });
+
+      function showErrorBoundary(message) {
+        const root = document.getElementById('root');
+        const loadingScreen = document.getElementById('loading-screen');
+
+        if (loadingScreen) {
+          loadingScreen.classList.add('hide');
+        }
+
+        root.innerHTML = `
+          <div class="error-boundary">
+            <div class="error-icon">❌</div>
+            <h1 class="error-title">Something went wrong</h1>
+            <p class="error-message">${message}</p>
+            <button class="error-button" onclick="window.location.reload()">
+              Reload Application
+            </button>
+          </div>
+        `;
+      }
+
+      // Hide loading screen when app is ready
+      function hideLoadingScreen() {
+        const loadingScreen = document.getElementById('loading-screen');
+        const appContainer = document.getElementById('root');
+
+        if (loadingScreen) {
+          loadingScreen.classList.add('hide');
+          setTimeout(() => {
+            loadingScreen.remove();
+          }, 500);
+        }
+
+        if (appContainer) {
+          appContainer.classList.add('loaded');
+        }
+      }
+
+      // Auto-hide loading screen after maximum timeout
+      setTimeout(() => {
+        hideLoadingScreen();
+      }, 5000);
+
+      // Listen for app ready signal
+      window.addEventListener('DOMContentLoaded', () => {
+        setTimeout(() => {
+          hideLoadingScreen();
+        }, 1000);
+      });
+    </script>
+  </body>
+</html>

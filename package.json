@@ -51,7 +51,10 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "dev": "netlify dev",
-    "trigger-hubspot-migration": "curl -X POST -H 'Authorization: Bearer YOUR_MIGRATION_SECRET_KEY' -H 'Content-Type: application/json' -d '{\"limit\": 25}' http://localhost:8888/.netlify/functions/companies-hubspot-supabase-migration"
+    "trigger-hubspot-migration": "curl -X POST -H 'Authorization: Bearer YOUR_MIGRATION_SECRET_KEY' -H 'Content-Type: application/json' -d '{\"limit\": 25}' http://localhost:8888/.netlify/functions/companies-hubspot-supabase-migration",
+    "new-crm:start": "webpack serve --config webpack.new-crm.js",
+    "new-crm:build": "NODE_ENV=production webpack --config webpack.new-crm.js",
+    "new-crm:dev": "NODE_ENV=development webpack serve --config webpack.new-crm.js --open"
   },
   "eslintConfig": {
     "extends": [
@@ -72,6 +75,7 @@
     ]
   },
   "devDependencies": {
+    "@babel/plugin-syntax-dynamic-import": "^7.8.3",
     "html-webpack-plugin": "^5.6.3",
     "webpack": "^5.98.0",
     "webpack-cli": "^6.0.1",

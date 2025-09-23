@@ -1183,18 +1183,15 @@ const StandaloneInteractions = () => {
 
 // Styled Components (reusing from StandaloneContactSearch with specific modifications)
 const FullScreenContainer = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  position: relative;
+  min-height: 100vh;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 `;
 
 const InteractionsView = styled.div`
-  height: 100%;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   background: white;
@@ -1204,7 +1201,7 @@ const InteractionsView = styled.div`
     margin: 20px;
     border-radius: 12px;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-    height: calc(100% - 40px);
+    min-height: calc(100vh - 40px);
   }
 `;
 
