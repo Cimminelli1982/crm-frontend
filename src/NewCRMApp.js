@@ -118,7 +118,7 @@ const CRMAppContent = () => {
     if (pathname.includes('/search')) return 'search';
     if (pathname.includes('/keep-in-touch')) return 'keep-in-touch';
     if (pathname.includes('/trash')) return 'trash';
-    return 'search'; // default
+    return 'interactions'; // default
   };
 
   const currentPage = getPageIdFromPath(location.pathname);
@@ -166,14 +166,14 @@ const CRMAppContent = () => {
       >
         <PageContainer>
           <Routes>
-            <Route path="/" element={<Navigate to="/search" replace />} />
+            <Route path="/" element={<Navigate to="/interactions" replace />} />
             <Route path="/inbox" element={<InboxPage theme={theme} />} />
             <Route path="/interactions" element={<StandaloneInteractions theme={theme} />} />
             <Route path="/search" element={<StandaloneContactSearch theme={theme} />} />
             <Route path="/keep-in-touch" element={<KeepInTouchPage theme={theme} />} />
             <Route path="/trash" element={<TrashPage theme={theme} />} />
             {/* Fallback route */}
-            <Route path="*" element={<Navigate to="/search" replace />} />
+            <Route path="*" element={<Navigate to="/interactions" replace />} />
           </Routes>
         </PageContainer>
       </ContentContainer>
