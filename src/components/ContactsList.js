@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
-import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaEdit, FaClock, FaTimes } from 'react-icons/fa';
+import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaEdit, FaClock, FaTimes, FaCalendarAlt } from 'react-icons/fa';
 import { FiSkipForward, FiAlertTriangle, FiX } from 'react-icons/fi';
 import { toast } from 'react-hot-toast';
 import Modal from 'react-modal';
@@ -21,7 +21,8 @@ const ContactsList = ({
   onContactClick,
   badgeType = 'time', // 'time' or 'category'
   pageContext = null, // 'keepInTouch' or null
-  keepInTouchData = null // { showDaysCounter: boolean, showFrequencyBadge: boolean }
+  keepInTouchData = null, // { showDaysCounter: boolean, showFrequencyBadge: boolean }
+  filterCategory = null // 'Birthday' or other category
 }) => {
   const navigate = useNavigate();
 
@@ -30,7 +31,7 @@ const ContactsList = ({
     if (daysUntilNext === null || daysUntilNext === undefined) {
       // Check if this is a birthday contact
       if (contact?.days_until_birthday !== undefined) {
-        return formatBirthdayCountdown(contact.days_until_birthday);
+        return formatBirthdayCountdown(contact.days_until_birthday, contact);
       }
       return '';
     }
@@ -45,16 +46,20 @@ const ContactsList = ({
     }
   };
 
-  const formatBirthdayCountdown = (daysUntilBirthday) => {
+  const formatBirthdayCountdown = (daysUntilBirthday, contact = null) => {
     const days = parseInt(daysUntilBirthday);
+    const ageInfo = contact?.turning_age ? ` (turning ${contact.turning_age})` : '';
+
     if (days === 0) {
-      return '🎉 Birthday today!';
+      return `🎉 Birthday today${ageInfo}!`;
     } else if (days === 1) {
-      return '🎂 Birthday tomorrow!';
+      return `🎂 Birthday tomorrow${ageInfo}!`;
     } else if (days <= 7) {
-      return `🎈 Birthday in ${days} days`;
+      return `🎈 Birthday in ${days} days${ageInfo}`;
+    } else if (days <= 30) {
+      return `🎁 Birthday in ${days} days${ageInfo}`;
     } else {
-      return `🎁 Birthday in ${days} days`;
+      return `🎂 Birthday in ${days} days${ageInfo}`;
     }
   };
 
@@ -119,6 +124,11 @@ const ContactsList = ({
   const [frequencyModalOpen, setFrequencyModalOpen] = useState(false);
   const [contactForFrequency, setContactForFrequency] = useState(null);
   const [selectedFrequency, setSelectedFrequency] = useState('');
+
+  // Birthday edit modal state
+  const [birthdayModalOpen, setBirthdayModalOpen] = useState(false);
+  const [contactForBirthday, setContactForBirthday] = useState(null);
+  const [selectedBirthday, setSelectedBirthday] = useState('');
 
   const frequencyOptions = [
     'Weekly',
@@ -206,6 +216,57 @@ const ContactsList = ({
     } catch (error) {
       console.error('Error updating frequency:', error);
       toast.error('Failed to update frequency');
+    }
+  };
+
+  // Handle opening birthday modal
+  const handleOpenBirthdayModal = (contact, e) => {
+    if (e) e.stopPropagation();
+    setContactForBirthday(contact);
+    setSelectedBirthday(contact.birthday || '');
+    setBirthdayModalOpen(true);
+  };
+
+  // Handle updating birthday
+  const handleUpdateBirthday = async () => {
+    if (!contactForBirthday) return;
+
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .update({ birthday: selectedBirthday || null })
+        .eq('contact_id', contactForBirthday.contact_id);
+
+      if (error) throw error;
+
+      toast.success('Birthday updated successfully');
+      setBirthdayModalOpen(false);
+      setContactForBirthday(null);
+      setSelectedBirthday('');
+      if (onContactUpdate) onContactUpdate();
+    } catch (error) {
+      console.error('Error updating birthday:', error);
+      toast.error('Failed to update birthday');
+    }
+  };
+
+  // Handle removing birthday
+  const handleRemoveBirthday = async (contact, e) => {
+    if (e) e.stopPropagation();
+
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .update({ birthday: null })
+        .eq('contact_id', contact.contact_id);
+
+      if (error) throw error;
+
+      toast.success('Birthday removed');
+      if (onContactUpdate) onContactUpdate();
+    } catch (error) {
+      console.error('Error removing birthday:', error);
+      toast.error('Failed to remove birthday');
     }
   };
 
@@ -451,6 +512,11 @@ const ContactsList = ({
       return `${contact.spam_counter}x`;
     }
 
+    // If in Birthday filter, always show the contact category
+    if (filterCategory === 'Birthday') {
+      return contact.category || 'No Category';
+    }
+
     // If badgeType is 'category', show the contact category
     if (badgeType === 'category') {
       return contact.category || 'No Category';
@@ -492,9 +558,21 @@ const ContactsList = ({
               <ContactInfo>
                 <ContactName theme={theme}>
                   {contact.first_name} {contact.last_name}
-                  {pageContext === 'keepInTouch' && keepInTouchData?.showFrequencyBadge && contact.keep_in_touch_frequency && (
+                  {pageContext === 'keepInTouch' && keepInTouchData?.showFrequencyBadge && (
                     <KeepInTouchFrequencyBadge theme={theme}>
-                      {formatFrequency(contact.keep_in_touch_frequency)}
+                      {filterCategory === 'Birthday' && contact.birthday
+                        ? (() => {
+                            const birthDate = new Date(contact.birthday);
+                            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                                              'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                            const month = monthNames[birthDate.getMonth()];
+                            const day = birthDate.getDate();
+                            return `${month} ${day}`;
+                          })()
+                        : contact.keep_in_touch_frequency
+                          ? formatFrequency(contact.keep_in_touch_frequency)
+                          : null
+                      }
                     </KeepInTouchFrequencyBadge>
                   )}
                   {pageContext !== 'keepInTouch' && (
@@ -550,23 +628,47 @@ const ContactsList = ({
 
               {pageContext === 'keepInTouch' ? (
                 <>
-                  <CardActionButton
-                    theme={theme}
-                    onClick={(e) => handleOpenFrequencyModal(contact, e)}
-                    $frequency
-                    title="Change keep in touch frequency"
-                  >
-                    <FaClock />
-                  </CardActionButton>
+                  {filterCategory === 'Birthday' ? (
+                    <>
+                      <CardActionButton
+                        theme={theme}
+                        onClick={(e) => handleOpenBirthdayModal(contact, e)}
+                        $frequency
+                        title="Edit birthday date"
+                      >
+                        <FaCalendarAlt />
+                      </CardActionButton>
 
-                  <CardActionButton
-                    theme={theme}
-                    onClick={(e) => handleRemoveFromKeepInTouch(contact, e)}
-                    $removeKeepInTouch
-                    title="Don't keep in touch"
-                  >
-                    <FaTimes />
-                  </CardActionButton>
+                      <CardActionButton
+                        theme={theme}
+                        onClick={(e) => handleRemoveBirthday(contact, e)}
+                        $removeKeepInTouch
+                        title="Remove birthday"
+                      >
+                        <FaTimes />
+                      </CardActionButton>
+                    </>
+                  ) : (
+                    <>
+                      <CardActionButton
+                        theme={theme}
+                        onClick={(e) => handleOpenFrequencyModal(contact, e)}
+                        $frequency
+                        title="Change keep in touch frequency"
+                      >
+                        <FaClock />
+                      </CardActionButton>
+
+                      <CardActionButton
+                        theme={theme}
+                        onClick={(e) => handleRemoveFromKeepInTouch(contact, e)}
+                        $removeKeepInTouch
+                        title="Don't keep in touch"
+                      >
+                        <FaTimes />
+                      </CardActionButton>
+                    </>
+                  )}
                 </>
               ) : (
                 <>
@@ -850,6 +952,75 @@ const ContactsList = ({
                 disabled={!selectedFrequency}
               >
                 Update Frequency
+              </UpdateFrequencyButton>
+            </ButtonGroup>
+          </FrequencyModalBody>
+        </FrequencyModalContent>
+      </Modal>
+
+      {/* Birthday Modal */}
+      <Modal
+        isOpen={birthdayModalOpen}
+        onRequestClose={() => setBirthdayModalOpen(false)}
+        style={{
+          overlay: {
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 9999
+          },
+          content: {
+            top: '50%',
+            left: '50%',
+            right: 'auto',
+            bottom: 'auto',
+            marginRight: '-50%',
+            transform: 'translate(-50%, -50%)',
+            padding: '0',
+            border: 'none',
+            borderRadius: '12px',
+            backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+            maxWidth: '400px',
+            width: '90%'
+          }
+        }}
+      >
+        <FrequencyModalContent theme={theme}>
+          <FrequencyModalHeader theme={theme}>
+            <h3>Edit Birthday</h3>
+            <FrequencyModalCloseButton
+              theme={theme}
+              onClick={() => setBirthdayModalOpen(false)}
+            >
+              <FiX />
+            </FrequencyModalCloseButton>
+          </FrequencyModalHeader>
+
+          <FrequencyModalBody>
+            <ContactNameDisplay theme={theme}>
+              {contactForBirthday?.first_name} {contactForBirthday?.last_name}
+            </ContactNameDisplay>
+
+            <BirthdayInputContainer>
+              <BirthdayLabel theme={theme}>Birthday</BirthdayLabel>
+              <BirthdayInput
+                type="date"
+                theme={theme}
+                value={selectedBirthday}
+                onChange={(e) => setSelectedBirthday(e.target.value)}
+              />
+            </BirthdayInputContainer>
+
+            <ButtonGroup>
+              <CancelButton
+                theme={theme}
+                onClick={() => setBirthdayModalOpen(false)}
+              >
+                Cancel
+              </CancelButton>
+              <UpdateFrequencyButton
+                theme={theme}
+                onClick={handleUpdateBirthday}
+              >
+                Update Birthday
               </UpdateFrequencyButton>
             </ButtonGroup>
           </FrequencyModalBody>
@@ -1402,6 +1573,39 @@ const UpdateFrequencyButton = styled.button`
   &:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+  }
+`;
+
+const BirthdayInputContainer = styled.div`
+  margin-bottom: 20px;
+`;
+
+const BirthdayLabel = styled.label`
+  display: block;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+`;
+
+const BirthdayInput = styled.input`
+  width: 100%;
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#374151'};
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: all 0.2s ease;
+
+  &:focus {
+    outline: none;
+    border-color: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+    ring: 2px solid ${props => props.theme === 'light' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(96, 165, 250, 0.1)'};
+  }
+
+  &::-webkit-calendar-picker-indicator {
+    filter: ${props => props.theme === 'light' ? 'none' : 'invert(1)'};
   }
 `;
 

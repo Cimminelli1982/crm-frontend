@@ -64,27 +64,33 @@ const KeepInTouchPage = ({ theme, onKeepInTouchCountChange }) => {
             )
           `)
           .not('birthday', 'is', null)
-          .order('birthday', { ascending: true })
-          .limit(100);
+          .order('first_name', { ascending: true });
 
         if (birthdayError) throw birthdayError;
 
         // Process birthday contacts and calculate days until birthday
         const processedBirthdayContacts = (birthdayContacts || []).map(contact => {
-          const birthdayDate = new Date(contact.birthday);
-          const birthdayMonth = birthdayDate.getMonth() + 1;
-          const birthdayDay = birthdayDate.getDate();
+          // Extract year, month and day from birthday string (YYYY-MM-DD format)
+          const birthdayParts = contact.birthday.split('-');
+          const birthYear = parseInt(birthdayParts[0]); // YYYY
+          const birthdayMonth = parseInt(birthdayParts[1]); // MM (1-12)
+          const birthdayDay = parseInt(birthdayParts[2]); // DD (1-31)
 
-          // Calculate this year's birthday
+          // Calculate this year's birthday using today's year
           let nextBirthday = new Date(today.getFullYear(), birthdayMonth - 1, birthdayDay);
 
           // If birthday already passed this year, use next year
+          let birthdayYear = today.getFullYear();
           if (nextBirthday < today) {
             nextBirthday = new Date(today.getFullYear() + 1, birthdayMonth - 1, birthdayDay);
+            birthdayYear = today.getFullYear() + 1;
           }
 
-          // Calculate days until birthday
-          const daysDiff = Math.ceil((nextBirthday - today) / (1000 * 60 * 60 * 24));
+          // Calculate age they will turn (or have turned if today)
+          const turningAge = birthdayYear - birthYear;
+
+          // Calculate days until birthday (0 means today)
+          const daysDiff = Math.floor((nextBirthday - today) / (1000 * 60 * 60 * 24));
 
           return {
             ...contact,
@@ -97,11 +103,29 @@ const KeepInTouchPage = ({ theme, onKeepInTouchCountChange }) => {
             days_until_birthday: daysDiff,
             next_birthday: nextBirthday,
             birthday_month: birthdayMonth,
-            birthday_day: birthdayDay
+            birthday_day: birthdayDay,
+            turning_age: turningAge,
+            birth_year: birthYear
           };
         })
-        // Filter to show only birthdays in the next 60 days
-        .filter(contact => contact.days_until_birthday <= 60)
+        // Filter based on selected birthday subcategory
+        .filter(contact => {
+          const days = contact.days_until_birthday;
+
+          switch (subCategory) {
+            case 'Today':
+              return days === 0;
+            case 'This Week':
+              return days <= 7;
+            case 'This Month':
+              return days <= 30;
+            case 'Next 3 Months':
+              return days <= 90;
+            case 'All':
+            default:
+              return true; // Show all birthdays
+          }
+        })
         // Sort by days until birthday (closest first)
         .sort((a, b) => a.days_until_birthday - b.days_until_birthday);
 
@@ -206,6 +230,7 @@ const KeepInTouchPage = ({ theme, onKeepInTouchCountChange }) => {
 
   const keepInTouchCategories = ['Touch Base', 'Birthday'];
   const touchBaseSubCategories = ['Over Due', 'Due', 'Soon', 'Relax'];
+  const birthdaySubCategories = ['This Week', 'This Month', 'Next 3 Months', 'All'];
 
   return (
     <PageContainer theme={theme}>
@@ -259,6 +284,22 @@ const KeepInTouchPage = ({ theme, onKeepInTouchCountChange }) => {
           </TouchBaseSubMenu>
         )}
 
+        {/* Birthday Submenu - in gray area below header */}
+        {filterCategory === 'Birthday' && (
+          <TouchBaseSubMenu theme={theme}>
+            {birthdaySubCategories.map(subCat => (
+              <TouchBaseSubTab
+                key={subCat}
+                theme={theme}
+                $active={subCategory === subCat}
+                onClick={() => setSubCategory(subCat)}
+              >
+                {subCat}
+              </TouchBaseSubTab>
+            ))}
+          </TouchBaseSubMenu>
+        )}
+
         <ContentArea>
           <ContactsList
             contacts={contacts}
@@ -276,6 +317,7 @@ const KeepInTouchPage = ({ theme, onKeepInTouchCountChange }) => {
               showDaysCounter: true,
               showFrequencyBadge: true
             }}
+            filterCategory={filterCategory}
           />
         </ContentArea>
       </KeepInTouchView>
