@@ -14,7 +14,7 @@ module.exports = {
     chunkFilename: process.env.NODE_ENV === 'production'
       ? 'static/js/[name].[contenthash:8].chunk.js'
       : 'static/js/[name].[contenthash:8].chunk.js',
-    publicPath: '/',
+    publicPath: '/new-crm/',
     clean: true,
   },
 
