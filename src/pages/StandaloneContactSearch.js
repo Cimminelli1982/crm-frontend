@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
 import { FaSearch, FaUser, FaPhone, FaEnvelope, FaBuilding, FaMapMarkerAlt, FaArrowLeft, FaClock, FaEdit, FaStickyNote } from 'react-icons/fa';
@@ -7,6 +8,7 @@ import { toast, Toaster } from 'react-hot-toast';
 import Modal from 'react-modal';
 
 const StandaloneContactSearch = () => {
+  const navigate = useNavigate();
   const [contacts, setContacts] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
@@ -120,11 +122,12 @@ const StandaloneContactSearch = () => {
   }, [searchTerm]);
 
   const handleContactSelect = (contact) => {
-    setSelectedContact(contact);
-
-    // Add to search history
+    // Add to search history before navigating
     const newHistory = [contact.contact_id, ...searchHistory.filter(id => id !== contact.contact_id)].slice(0, 5);
     setSearchHistory(newHistory);
+
+    // Navigate to shared contact detail page
+    navigate(`/contact/${contact.contact_id}`);
     localStorage.setItem('contactSearchHistory', JSON.stringify(newHistory));
   };
 

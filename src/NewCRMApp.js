@@ -9,6 +9,7 @@ import StandaloneInteractions from './pages/StandaloneInteractions';
 import StandaloneContactSearch from './pages/StandaloneContactSearch';
 import KeepInTouchPage from './pages/KeepInTouchPage';
 import TrashPage from './pages/TrashPage';
+import ContactDetail from './pages/ContactDetail';
 
 const GlobalStyles = createGlobalStyle`
   * {
@@ -108,6 +109,7 @@ const CRMAppContent = () => {
     return saved ? saved === 'true' : false;
   });
   const [inboxCount, setInboxCount] = useState(0);
+  const [keepInTouchCount, setKeepInTouchCount] = useState(0);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -157,6 +159,7 @@ const CRMAppContent = () => {
         onCollapseChange={setNavCollapsed}
         initialCollapsed={navCollapsed}
         inboxCount={inboxCount}
+        keepInTouchCount={keepInTouchCount}
       />
 
       <ContentContainer
@@ -172,8 +175,9 @@ const CRMAppContent = () => {
             <Route path="/inbox" element={<InboxPage theme={theme} onInboxCountChange={setInboxCount} />} />
             <Route path="/interactions" element={<StandaloneInteractions theme={theme} />} />
             <Route path="/search" element={<StandaloneContactSearch theme={theme} />} />
-            <Route path="/keep-in-touch" element={<KeepInTouchPage theme={theme} />} />
+            <Route path="/keep-in-touch" element={<KeepInTouchPage theme={theme} onKeepInTouchCountChange={setKeepInTouchCount} />} />
             <Route path="/trash" element={<TrashPage theme={theme} />} />
+            <Route path="/contact/:contactId" element={<ContactDetail theme={theme} />} />
             {/* Fallback route */}
             <Route path="*" element={<Navigate to="/interactions" replace />} />
           </Routes>

@@ -20,7 +20,8 @@ const NewNavigation = ({
   onThemeToggle,
   onCollapseChange,
   initialCollapsed = false,
-  inboxCount = 0
+  inboxCount = 0,
+  keepInTouchCount = 0
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(initialCollapsed);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -53,7 +54,8 @@ const NewNavigation = ({
       label: 'Keep in Touch',
       icon: FiBell,
       path: '/keep-in-touch',
-      description: 'Follow-up reminders'
+      description: 'Follow-up reminders',
+      count: keepInTouchCount
     },
     {
       id: 'trash',

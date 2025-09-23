@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
-import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaMapMarkerAlt, FaEdit, FaClock, FaCalendar, FaStickyNote, FaSync, FaCheck, FaSnooze } from 'react-icons/fa';
+import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaMapMarkerAlt, FaEdit, FaClock, FaCalendar, FaStickyNote, FaSync, FaCheck, FaPause } from 'react-icons/fa';
 import { FiAlertTriangle, FiX, FiBell, FiClock } from 'react-icons/fi';
 import { toast } from 'react-hot-toast';
 import Modal from 'react-modal';
 
-const KeepInTouchPage = ({ theme }) => {
+const KeepInTouchPage = ({ theme, onKeepInTouchCountChange }) => {
+  const navigate = useNavigate();
   const [keepInTouchContacts, setKeepInTouchContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedContact, setSelectedContact] = useState(null);
@@ -105,9 +107,19 @@ const KeepInTouchPage = ({ theme }) => {
         .filter(kit => kit.isOverdue || kit.isDueSoon); // Only show overdue or due soon
 
       setKeepInTouchContacts(processedContacts);
+
+      // Update count in navigation
+      if (onKeepInTouchCountChange) {
+        onKeepInTouchCountChange(processedContacts.length);
+      }
     } catch (error) {
       console.error('Error fetching keep in touch contacts:', error);
       toast.error('Failed to load keep in touch contacts');
+
+      // Update count to 0 on error
+      if (onKeepInTouchCountChange) {
+        onKeepInTouchCountChange(0);
+      }
     } finally {
       setLoading(false);
     }
@@ -156,8 +168,8 @@ const KeepInTouchPage = ({ theme }) => {
     return () => clearInterval(interval);
   }, []);
 
-  const handleContactSelect = (contact) => {
-    setSelectedContact(contact);
+  const handleContactSelect = (kitContact) => {
+    navigate(`/contact/${kitContact.contact.contact_id}`);
   };
 
   const handleBackToKeepInTouch = () => {
@@ -226,7 +238,13 @@ const KeepInTouchPage = ({ theme }) => {
       toast.success(`Contact snoozed for ${snoozeDays} day${snoozeDays !== 1 ? 's' : ''}`);
 
       // Remove from current list (will reappear when snooze expires)
-      setKeepInTouchContacts(prev => prev.filter(c => c.id !== contactToSnooze.id));
+      const newContacts = keepInTouchContacts.filter(c => c.id !== contactToSnooze.id);
+      setKeepInTouchContacts(newContacts);
+
+      // Update count in navigation
+      if (onKeepInTouchCountChange) {
+        onKeepInTouchCountChange(newContacts.length);
+      }
 
       if (selectedContact && selectedContact.id === contactToSnooze.id) {
         setSelectedContact(null);
@@ -297,7 +315,13 @@ const KeepInTouchPage = ({ theme }) => {
       toast.success('Contact marked as done! Next follow-up scheduled.');
 
       // Remove from current list (will reappear based on frequency)
-      setKeepInTouchContacts(prev => prev.filter(c => c.id !== contactToMarkDone.id));
+      const newContacts = keepInTouchContacts.filter(c => c.id !== contactToMarkDone.id);
+      setKeepInTouchContacts(newContacts);
+
+      // Update count in navigation
+      if (onKeepInTouchCountChange) {
+        onKeepInTouchCountChange(newContacts.length);
+      }
 
       if (selectedContact && selectedContact.id === contactToMarkDone.id) {
         setSelectedContact(null);
@@ -333,7 +357,13 @@ const KeepInTouchPage = ({ theme }) => {
 
       toast.success('Contact removed from Keep in Touch');
 
-      setKeepInTouchContacts(prev => prev.filter(c => c.id !== contactToDelete.id));
+      const newContacts = keepInTouchContacts.filter(c => c.id !== contactToDelete.id);
+      setKeepInTouchContacts(newContacts);
+
+      // Update count in navigation
+      if (onKeepInTouchCountChange) {
+        onKeepInTouchCountChange(newContacts.length);
+      }
 
       if (selectedContact && selectedContact.id === contactToDelete.id) {
         setSelectedContact(null);
@@ -487,7 +517,7 @@ const KeepInTouchPage = ({ theme }) => {
                       $snooze
                       title="Snooze"
                     >
-                      <FaSnooze />
+                      <FaPause />
                     </ActionButton>
 
                     <ActionButton
@@ -637,7 +667,7 @@ const KeepInTouchPage = ({ theme }) => {
                   $color="#F59E0B"
                 >
                   <QuickActionIcon $color="#F59E0B">
-                    <FaSnooze />
+                    <FaPause />
                   </QuickActionIcon>
                   <QuickActionLabel>Snooze</QuickActionLabel>
                   <QuickActionDescription theme={theme}>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
 import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaMapMarkerAlt, FaArrowLeft, FaClock, FaComments, FaEdit, FaSearch, FaSync, FaStickyNote } from 'react-icons/fa';
@@ -7,6 +8,7 @@ import { toast, Toaster } from 'react-hot-toast';
 import Modal from 'react-modal';
 
 const StandaloneInteractions = () => {
+  const navigate = useNavigate();
   const [interactions, setInteractions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedContact, setSelectedContact] = useState(null);
@@ -107,7 +109,7 @@ const StandaloneInteractions = () => {
   }, []);
 
   const handleContactSelect = (contact) => {
-    setSelectedContact(contact);
+    navigate(`/contact/${contact.contact_id}`);
   };
 
   const handleBackToInteractions = () => {

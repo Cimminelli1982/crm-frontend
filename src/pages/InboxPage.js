@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
 import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaMapMarkerAlt, FaEdit, FaCheck, FaTimes, FaStickyNote, FaSync, FaArrowLeft } from 'react-icons/fa';
@@ -9,6 +10,7 @@ import Modal from 'react-modal';
 Modal.setAppElement('#root');
 
 const InboxPage = ({ theme, onInboxCountChange }) => {
+  const navigate = useNavigate();
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedContact, setSelectedContact] = useState(null);
@@ -133,7 +135,7 @@ const InboxPage = ({ theme, onInboxCountChange }) => {
   }, []);
 
   const handleContactSelect = (contact) => {
-    setSelectedContact(contact);
+    navigate(`/contact/${contact.contact_id}`);
   };
 
   const handleBackToInbox = () => {

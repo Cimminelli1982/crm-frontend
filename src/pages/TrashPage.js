@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
 import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaMapMarkerAlt, FaEdit, FaUndo, FaStickyNote, FaSync, FaTrashRestore, FaEye } from 'react-icons/fa';
@@ -7,6 +8,7 @@ import { toast } from 'react-hot-toast';
 import Modal from 'react-modal';
 
 const TrashPage = ({ theme }) => {
+  const navigate = useNavigate();
   const [trashedContacts, setTrashedContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedContact, setSelectedContact] = useState(null);
@@ -115,7 +117,7 @@ const TrashPage = ({ theme }) => {
   }, []);
 
   const handleContactSelect = (contact) => {
-    setSelectedContact(contact);
+    navigate(`/contact/${contact.contact_id}`);
   };
 
   const handleBackToTrash = () => {
