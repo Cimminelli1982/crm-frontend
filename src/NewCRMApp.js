@@ -211,11 +211,18 @@ const CRMAppContent = () => {
 
 // Main App Component with Router
 const NewCRMApp = () => {
-  return (
-    <Router basename="/new-crm">
-      <CRMAppContent />
-    </Router>
-  );
+  console.log('NewCRMApp component rendering...');
+
+  try {
+    return (
+      <Router basename="/new-crm">
+        <CRMAppContent />
+      </Router>
+    );
+  } catch (error) {
+    console.error('Error in NewCRMApp:', error);
+    return <div style={{ padding: '20px', color: 'red' }}>Error loading CRM: {error.message}</div>;
+  }
 };
 
 export default NewCRMApp;
