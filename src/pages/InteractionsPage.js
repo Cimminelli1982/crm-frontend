@@ -47,7 +47,17 @@ const InteractionsPage = ({ theme }) => {
       const formattedStartDate = startDate.toISOString();
       let query = supabase
         .from('contacts')
-        .select('*')
+        .select(`
+          *,
+          contact_companies (
+            company_id,
+            is_primary,
+            companies (
+              company_id,
+              name
+            )
+          )
+        `)
         .not('category', 'in', '("Skip","WhatsApp Group Contact","System","Not Set","Inbox")')
         .not('last_interaction_at', 'is', null); // Always filter out contacts without interactions
 
@@ -78,8 +88,14 @@ const InteractionsPage = ({ theme }) => {
 
       if (error) throw error;
 
-      console.log(`Found ${data?.length || 0} contacts with interactions in ${timeFilter.toLowerCase()}`);
-      setContacts(data || []);
+      // Transform the data structure to match what ContactsList expects
+      const transformedContacts = (data || []).map(contact => ({
+        ...contact,
+        companies: contact.contact_companies?.map(cc => cc.companies).filter(Boolean) || []
+      }));
+
+      console.log(`Found ${transformedContacts?.length || 0} contacts with interactions in ${timeFilter.toLowerCase()}`);
+      setContacts(transformedContacts);
     } catch (error) {
       console.error('Error fetching interactions:', error);
       toast.error('Failed to load interactions');

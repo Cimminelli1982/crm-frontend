@@ -2990,26 +2990,115 @@ const ContactDetail = ({ theme }) => {
         lastName={contact?.last_name || ''}
         email={contact?.contact_emails?.find(e => e.is_primary)?.email || ''}
         contactId={contactId}
-        onSaveData={(enrichedData) => {
-          // Handle the enriched data
-          if (enrichedData.jobRole && enrichedData.jobRole !== contact?.job_role) {
-            setContact(prev => ({ ...prev, job_role: enrichedData.jobRole }));
-          }
-          if (enrichedData.city && enrichedData.city !== contact?.city) {
-            setContact(prev => ({ ...prev, city: enrichedData.city }));
-          }
-          if (enrichedData.linkedin && enrichedData.linkedin !== contact?.linkedin) {
-            setContact(prev => ({ ...prev, linkedin: enrichedData.linkedin }));
-          }
+        onSaveData={async (enrichedData) => {
+          try {
+            // Prepare updates for the contact
+            const contactUpdates = {};
 
-          // Refresh related data (companies) if company data was enriched
-          if (enrichedData.company) {
-            fetchRelatedData();
-          }
+            if (enrichedData.jobRole && enrichedData.jobRole !== contact?.job_role) {
+              contactUpdates.job_role = enrichedData.jobRole;
+            }
+            if (enrichedData.city && enrichedData.city !== contact?.city) {
+              contactUpdates.city = enrichedData.city;
+            }
+            if (enrichedData.linkedin && enrichedData.linkedin !== contact?.linkedin) {
+              contactUpdates.linkedin = enrichedData.linkedin;
+            }
 
-          // Show success toast
-          toast.success('Contact enriched successfully!');
-          setLinkedinEnrichModalOpen(false);
+            // Update contact in database if there are changes
+            if (Object.keys(contactUpdates).length > 0) {
+              contactUpdates.last_modified_at = new Date().toISOString();
+
+              const { error: contactError } = await supabase
+                .from('contacts')
+                .update(contactUpdates)
+                .eq('contact_id', contactId);
+
+              if (contactError) throw contactError;
+
+              // Update local state
+              setContact(prev => ({ ...prev, ...contactUpdates }));
+            }
+
+            // Handle company creation and association
+            if (enrichedData.company) {
+              let companyId = null;
+
+              // Check if company already exists
+              const { data: existingCompanies, error: searchError } = await supabase
+                .from('companies')
+                .select('company_id, name')
+                .ilike('name', enrichedData.company)
+                .limit(1);
+
+              if (searchError) throw searchError;
+
+              if (existingCompanies && existingCompanies.length > 0) {
+                companyId = existingCompanies[0].company_id;
+              } else {
+                // Create new company
+                const companyData = {
+                  name: enrichedData.company,
+                  created_at: new Date().toISOString()
+                };
+
+                if (enrichedData.companyWebsite) {
+                  companyData.website = enrichedData.companyWebsite;
+                }
+                if (enrichedData.companyDescription) {
+                  companyData.description = enrichedData.companyDescription;
+                }
+
+                const { data: newCompany, error: createError } = await supabase
+                  .from('companies')
+                  .insert(companyData)
+                  .select();
+
+                if (createError) throw createError;
+
+                if (newCompany && newCompany.length > 0) {
+                  companyId = newCompany[0].company_id;
+                }
+              }
+
+              // Associate company with contact if we have a company ID
+              if (companyId) {
+                // Check if association already exists
+                const { data: existingAssoc, error: assocError } = await supabase
+                  .from('contact_companies')
+                  .select('contact_company_id')
+                  .eq('contact_id', contactId)
+                  .eq('company_id', companyId);
+
+                if (assocError) throw assocError;
+
+                if (!existingAssoc || existingAssoc.length === 0) {
+                  // Create new association
+                  const { error: createAssocError } = await supabase
+                    .from('contact_companies')
+                    .insert({
+                      contact_id: contactId,
+                      company_id: companyId,
+                      created_at: new Date().toISOString()
+                    });
+
+                  if (createAssocError) throw createAssocError;
+                }
+              }
+            }
+
+            // Refresh data to show updates
+            await fetchContact();
+            await fetchRelatedData();
+
+            // Show success toast
+            toast.success('Contact enriched successfully!');
+            setLinkedinEnrichModalOpen(false);
+
+          } catch (error) {
+            console.error('Error saving enriched data:', error);
+            toast.error(`Failed to save enriched data: ${error.message}`);
+          }
         }}
         context={{
           refreshData: () => {
