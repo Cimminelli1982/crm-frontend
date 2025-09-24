@@ -6,6 +6,7 @@ import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaMapMarkerAlt, FaArrowLeft, F
 import { FiAlertTriangle, FiMail, FiUser, FiCalendar, FiMessageSquare, FiExternalLink } from 'react-icons/fi';
 import { toast } from 'react-hot-toast';
 import Modal from 'react-modal';
+import LinkedinSearchOpenEnrich from '../components/modals/Linkedin-Search-Open-Enrich';
 
 // Set Modal app element for accessibility
 Modal.setAppElement('#root');
@@ -51,6 +52,8 @@ const ContactDetail = ({ theme }) => {
   const [associateCompanyModalOpen, setAssociateCompanyModalOpen] = useState(false);
   const [createCompanyModalOpen, setCreateCompanyModalOpen] = useState(false);
   const [prefilledCompanyName, setPrefilledCompanyName] = useState('');
+  // LinkedIn enrichment modal
+  const [linkedinEnrichModalOpen, setLinkedinEnrichModalOpen] = useState(false);
 
   // Delete modal state (copied from StandaloneInteractions.js)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -1888,9 +1891,14 @@ const ContactDetail = ({ theme }) => {
                           <RelatedSectionTitle theme={theme} style={{ borderBottom: 'none', paddingBottom: '0' }}>
                             🏢 Companies
                           </RelatedSectionTitle>
-                          <AddButton theme={theme} onClick={() => setAssociateCompanyModalOpen(true)}>
-                            + Add Companies
-                          </AddButton>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <AddButton theme={theme} onClick={() => setAssociateCompanyModalOpen(true)}>
+                              + Add Companies
+                            </AddButton>
+                            <AddButton theme={theme} onClick={() => setLinkedinEnrichModalOpen(true)} style={{ background: '#0077b5', borderColor: '#0077b5' }}>
+                              🔗 LinkedIn Enrich
+                            </AddButton>
+                          </div>
                         </RelatedSectionHeader>
                         {contactCompanies.length === 0 ? (
                           <RelatedEmptyMessage theme={theme}>
@@ -2970,6 +2978,46 @@ const ContactDetail = ({ theme }) => {
           prefilledName={prefilledCompanyName}
         />
       </Modal>
+
+      {/* LinkedIn Enrichment Modal */}
+      <LinkedinSearchOpenEnrich
+        isOpen={linkedinEnrichModalOpen}
+        onClose={() => setLinkedinEnrichModalOpen(false)}
+        linkedInUrl={contact?.linkedin || ''}
+        contactName={contact ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() : ''}
+        jobRole={contact?.job_role || ''}
+        firstName={contact?.first_name || ''}
+        lastName={contact?.last_name || ''}
+        email={contact?.contact_emails?.find(e => e.is_primary)?.email || ''}
+        contactId={contactId}
+        onSaveData={(enrichedData) => {
+          // Handle the enriched data
+          if (enrichedData.jobRole && enrichedData.jobRole !== contact?.job_role) {
+            setContact(prev => ({ ...prev, job_role: enrichedData.jobRole }));
+          }
+          if (enrichedData.city && enrichedData.city !== contact?.city) {
+            setContact(prev => ({ ...prev, city: enrichedData.city }));
+          }
+          if (enrichedData.linkedin && enrichedData.linkedin !== contact?.linkedin) {
+            setContact(prev => ({ ...prev, linkedin: enrichedData.linkedin }));
+          }
+
+          // Refresh related data (companies) if company data was enriched
+          if (enrichedData.company) {
+            fetchRelatedData();
+          }
+
+          // Show success toast
+          toast.success('Contact enriched successfully!');
+          setLinkedinEnrichModalOpen(false);
+        }}
+        context={{
+          refreshData: () => {
+            fetchContact();
+            fetchRelatedData();
+          }
+        }}
+      />
 
     </PageContainer>
   );
