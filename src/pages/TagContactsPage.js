@@ -2,44 +2,44 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
-import { FaSync, FaArrowLeft, FaStar } from 'react-icons/fa';
+import { FaSync, FaArrowLeft, FaStar, FaTag } from 'react-icons/fa';
 import { FiClock } from 'react-icons/fi';
 import { toast } from 'react-hot-toast';
 import ContactsList from '../components/ContactsList';
 
-const CityContactsPage = ({ theme }) => {
+const TagContactsPage = ({ theme }) => {
   const navigate = useNavigate();
-  const { cityId } = useParams();
+  const { tagId } = useParams();
   const location = useLocation();
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [sortBy, setSortBy] = useState('last_interaction'); // 'last_interaction' or 'rating'
+  const [sortBy, setSortBy] = useState('last_interaction'); // 'last_interaction', 'rating', or 'keep_in_touch'
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [cityInfo, setCityInfo] = useState(null);
+  const [tagInfo, setTagInfo] = useState(null);
 
-  // Get city name from location state (passed from ContactDetail) or fetch it
-  const cityName = location.state?.cityName || 'Unknown City';
+  // Get tag name from location state (passed from ContactDetail) or fetch it
+  const tagName = location.state?.tagName || 'Unknown Tag';
   const previousContactId = location.state?.contactId;
 
-  const fetchCityInfo = async () => {
-    if (!cityId) return;
+  const fetchTagInfo = async () => {
+    if (!tagId) return;
 
     try {
       const { data, error } = await supabase
-        .from('cities')
+        .from('tags')
         .select('*')
-        .eq('city_id', cityId)
+        .eq('id', tagId)
         .single();
 
       if (error) throw error;
-      setCityInfo(data);
+      setTagInfo(data);
     } catch (error) {
-      console.error('Error fetching city info:', error);
+      console.error('Error fetching tag info:', error);
     }
   };
 
-  const fetchCityContacts = async () => {
-    if (!cityId) return;
+  const fetchTagContacts = async () => {
+    if (!tagId) return;
 
     setLoading(true);
     try {
@@ -55,14 +55,14 @@ const CityContactsPage = ({ theme }) => {
             is_primary,
             companies (name, website, category)
           ),
-          contact_tags (
-            tags (name)
+          contact_tags!inner (
+            tags!inner (tag_id, name)
           ),
-          contact_cities!inner (
-            cities!inner (city_id, name, country)
+          contact_cities (
+            cities (name, country)
           )
         `)
-        .eq('contact_cities.cities.city_id', cityId)
+        .eq('contact_tags.tags.tag_id', tagId)
         .not('category', 'in', '("Skip","WhatsApp Group Contact","System","Not Set","Inbox")')
         .not('last_interaction_at', 'is', null); // Only show contacts with interactions
 
@@ -106,24 +106,24 @@ const CityContactsPage = ({ theme }) => {
         });
       }
 
-      console.log(`Found ${sortedData?.length || 0} contacts in city ${cityName}`);
+      console.log(`Found ${sortedData?.length || 0} contacts with tag ${tagName}`);
       setContacts(sortedData);
     } catch (error) {
-      console.error('Error fetching city contacts:', error);
-      toast.error('Failed to load city contacts');
+      console.error('Error fetching tag contacts:', error);
+      toast.error('Failed to load tag contacts');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchCityInfo();
-    fetchCityContacts();
-  }, [cityId, sortBy]);
+    fetchTagInfo();
+    fetchTagContacts();
+  }, [tagId, sortBy]);
 
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
-    await fetchCityContacts();
+    await fetchTagContacts();
     setTimeout(() => setIsRefreshing(false), 1000);
   };
 
@@ -145,13 +145,12 @@ const CityContactsPage = ({ theme }) => {
     { key: 'keep_in_touch', label: 'Keep in Touch', icon: <FiClock /> }
   ];
 
-  const displayCityName = cityInfo?.name || cityName;
-  const displayCountry = cityInfo?.country;
+  const displayTagName = tagInfo?.name || tagName;
 
   return (
     <PageContainer theme={theme}>
-      <CityContactsView>
-        <CityContactsHeader theme={theme}>
+      <TagContactsView>
+        <TagContactsHeader theme={theme}>
           <HeaderContent>
             <BackButtonContainer>
               <BackButton theme={theme} onClick={handleBack}>
@@ -163,13 +162,10 @@ const CityContactsPage = ({ theme }) => {
             <HeaderTextContainer>
               <HeaderText>
                 <PageTitle theme={theme}>
-                  📍 {displayCityName}
-                  {displayCountry && displayCountry !== 'Unknown' && (
-                    <CountryText theme={theme}>, {displayCountry}</CountryText>
-                  )}
+                  🏷️ {displayTagName}
                 </PageTitle>
                 <PageSubtitle theme={theme}>
-                  {contacts.length} contacts in this city
+                  {contacts.length} contacts with this tag
                 </PageSubtitle>
               </HeaderText>
               <RefreshButton
@@ -196,7 +192,7 @@ const CityContactsPage = ({ theme }) => {
               </FilterTab>
             ))}
           </FilterTabs>
-        </CityContactsHeader>
+        </TagContactsHeader>
 
         <ContentArea>
           <ContactsList
@@ -204,35 +200,35 @@ const CityContactsPage = ({ theme }) => {
             loading={loading}
             theme={theme}
             emptyStateConfig={{
-              icon: '📍',
-              title: `No contacts in ${displayCityName}`,
-              text: 'No contacts found for this city.'
+              icon: '🏷️',
+              title: `No contacts with tag "${displayTagName}"`,
+              text: 'No contacts found for this tag.'
             }}
-            onContactUpdate={fetchCityContacts}
+            onContactUpdate={fetchTagContacts}
             showActions={true}
             badgeType={sortBy === 'rating' ? 'category' : 'time'}
           />
         </ContentArea>
-      </CityContactsView>
+      </TagContactsView>
     </PageContainer>
   );
 };
 
-// Styled Components (following InteractionsPage pattern)
+// Styled Components (following CityContactsPage pattern)
 const PageContainer = styled.div`
   min-height: 100vh;
   background: ${props => props.theme === 'light' ? '#F9FAFB' : '#111827'};
   transition: background-color 0.3s ease;
 `;
 
-const CityContactsView = styled.div`
+const TagContactsView = styled.div`
   height: 100vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 `;
 
-const CityContactsHeader = styled.div`
+const TagContactsHeader = styled.div`
   background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
   border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
   padding: 24px;
@@ -296,11 +292,6 @@ const PageTitle = styled.h1`
   @media (max-width: 640px) {
     font-size: 1.5rem;
   }
-`;
-
-const CountryText = styled.span`
-  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
-  font-weight: 500;
 `;
 
 const PageSubtitle = styled.p`
@@ -388,4 +379,4 @@ const ContentArea = styled.div`
   overflow-x: hidden;
 `;
 
-export default CityContactsPage;
+export default TagContactsPage;

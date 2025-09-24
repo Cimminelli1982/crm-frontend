@@ -77,7 +77,7 @@ const ContactDetail = ({ theme }) => {
             companies (name, website, category)
           ),
           contact_tags (
-            tags (name)
+            tags (tag_id, name)
           ),
           contact_cities (
             cities (name, country)
@@ -94,7 +94,7 @@ const ContactDetail = ({ theme }) => {
         emails: data.contact_emails || [],
         mobiles: data.contact_mobiles || [],
         companies: data.contact_companies?.map(cc => cc.companies).filter(Boolean) || [],
-        tags: data.contact_tags?.map(ct => ct.tags?.name).filter(Boolean) || [],
+        tags: data.contact_tags?.map(ct => ct.tags).filter(Boolean) || [],
         cities: data.contact_cities?.map(cc => cc.cities).filter(Boolean) || []
       };
 
@@ -322,6 +322,17 @@ const ContactDetail = ({ theme }) => {
       // Multiple mobiles, show modal
       setMobileModalOpen(true);
     }
+  };
+
+  const handleTagClick = (tag) => {
+    if (!tag?.tag_id || !tag?.name) return;
+
+    navigate(`/tag/${tag.tag_id}/contacts`, {
+      state: {
+        tagName: tag.name,
+        contactId: contact.contact_id
+      }
+    });
   };
 
   const handleEmailSelect = (email) => {
@@ -1108,7 +1119,7 @@ const ContactDetail = ({ theme }) => {
                 <SectionTitle theme={theme}>Tags</SectionTitle>
                 <TagList>
                   {contact.tags.map((tag, idx) => (
-                    <Tag key={idx} theme={theme}>{tag}</Tag>
+                    <Tag key={idx} theme={theme}>{tag.name}</Tag>
                   ))}
                 </TagList>
               </InfoSection>
@@ -1285,7 +1296,12 @@ const ContactDetail = ({ theme }) => {
                         ) : (
                           <TagsContainer>
                             {contactTags.map((tagRelation, index) => (
-                              <TagBadge key={index} theme={theme}>
+                              <TagBadge
+                                key={index}
+                                theme={theme}
+                                $clickable={true}
+                                onClick={() => handleTagClick(tagRelation.tags)}
+                              >
                                 {tagRelation.tags?.name || tagRelation.tags?.tag_name || 'Unknown Tag'}
                               </TagBadge>
                             ))}
@@ -3331,10 +3347,11 @@ const TagBadge = styled.span`
   font-size: 0.875rem;
   font-weight: 500;
   transition: all 0.2s ease;
+  cursor: ${props => props.$clickable ? 'pointer' : 'default'};
 
   &:hover {
     background: ${props => props.theme === 'light' ? '#DBEAFE' : '#1E40AF'};
-    transform: translateY(-1px);
+    transform: ${props => props.$clickable ? 'translateY(-1px)' : 'none'};
   }
 `;
 

@@ -14,18 +14,6 @@ const KeepInTouchPage = ({ theme, onKeepInTouchCountChange }) => {
   const [filterCategory, setFilterCategory] = useState('Touch Base');
   const [subCategory, setSubCategory] = useState('Over Due');
 
-  // Handle subCategory changes when filterCategory changes
-  const handleFilterCategoryChange = (category) => {
-    setFilterCategory(category);
-    if (category === 'Touch Base') {
-      setSubCategory('Over Due');
-    } else if (category === 'Birthday') {
-      setSubCategory('This Week');
-    } else if (category === 'Keep in Touch') {
-      setSubCategory('All');
-    }
-  };
-
   const fetchContacts = async () => {
     setLoading(true);
     try {
@@ -147,59 +135,6 @@ const KeepInTouchPage = ({ theme, onKeepInTouchCountChange }) => {
         }
         setLoading(false);
         return;
-      } else if (filterCategory === 'Keep in Touch') {
-        // Keep in Touch filtering - get contacts with valid keep_in_touch_frequency values
-        let keepInTouchQuery = supabase
-          .from('contacts')
-          .select(`
-            *,
-            contact_emails (email, type, is_primary),
-            contact_mobiles (mobile, type, is_primary),
-            contact_companies (
-              company_id,
-              relationship,
-              is_primary,
-              companies (name, website, category)
-            ),
-            contact_tags (
-              tags (name)
-            ),
-            contact_cities (
-              cities (name, country)
-            )
-          `)
-          .not('keep_in_touch_frequency', 'in', '("Not Set","Do not keep in touch")')
-          .not('keep_in_touch_frequency', 'is', null)
-          .not('category', 'in', '("Skip","WhatsApp Group Contact","System","Not Set","Inbox")');
-
-        // Apply subcategory filter
-        if (subCategory !== 'All') {
-          keepInTouchQuery = keepInTouchQuery.eq('keep_in_touch_frequency', subCategory);
-        }
-
-        const { data: keepInTouchContacts, error: keepInTouchError } = await keepInTouchQuery
-          .order('first_name', { ascending: true });
-
-        if (keepInTouchError) throw keepInTouchError;
-
-        // Process keep in touch contacts
-        const processedKeepInTouchContacts = (keepInTouchContacts || []).map(contact => {
-          return {
-            ...contact,
-            emails: contact.contact_emails || [],
-            mobiles: contact.contact_mobiles || [],
-            companies: contact.contact_companies?.map(cc => cc.companies).filter(Boolean) || [],
-            tags: contact.contact_tags?.map(ct => ct.tags?.name).filter(Boolean) || [],
-            cities: contact.contact_cities?.map(cc => cc.cities).filter(Boolean) || []
-          };
-        });
-
-        setContacts(processedKeepInTouchContacts);
-        if (onKeepInTouchCountChange) {
-          onKeepInTouchCountChange(processedKeepInTouchContacts.length);
-        }
-        setLoading(false);
-        return;
       } else {
         // Other main categories will be implemented later
         setContacts([]);
@@ -293,10 +228,9 @@ const KeepInTouchPage = ({ theme, onKeepInTouchCountChange }) => {
     setTimeout(() => setIsRefreshing(false), 1000);
   };
 
-  const keepInTouchCategories = ['Touch Base', 'Birthday', 'Keep in Touch'];
+  const keepInTouchCategories = ['Touch Base', 'Birthday'];
   const touchBaseSubCategories = ['Over Due', 'Due', 'Soon', 'Relax'];
   const birthdaySubCategories = ['This Week', 'This Month', 'Next 3 Months', 'All'];
-  const keepInTouchSubCategories = ['All', 'Weekly', 'Monthly', 'Quarterly', 'Twice per Year', 'Once per Year'];
 
   return (
     <PageContainer theme={theme}>
@@ -325,7 +259,7 @@ const KeepInTouchPage = ({ theme, onKeepInTouchCountChange }) => {
                 key={category}
                 theme={theme}
                 $active={filterCategory === category}
-                onClick={() => handleFilterCategoryChange(category)}
+                onClick={() => setFilterCategory(category)}
               >
                 {category}
               </FilterTab>
@@ -354,22 +288,6 @@ const KeepInTouchPage = ({ theme, onKeepInTouchCountChange }) => {
         {filterCategory === 'Birthday' && (
           <TouchBaseSubMenu theme={theme}>
             {birthdaySubCategories.map(subCat => (
-              <TouchBaseSubTab
-                key={subCat}
-                theme={theme}
-                $active={subCategory === subCat}
-                onClick={() => setSubCategory(subCat)}
-              >
-                {subCat}
-              </TouchBaseSubTab>
-            ))}
-          </TouchBaseSubMenu>
-        )}
-
-        {/* Keep in Touch Submenu - in gray area below header */}
-        {filterCategory === 'Keep in Touch' && (
-          <TouchBaseSubMenu theme={theme}>
-            {keepInTouchSubCategories.map(subCat => (
               <TouchBaseSubTab
                 key={subCat}
                 theme={theme}

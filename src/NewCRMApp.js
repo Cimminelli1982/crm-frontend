@@ -10,6 +10,7 @@ import SearchPage from './pages/SearchPage';
 import KeepInTouchPage from './pages/KeepInTouchPage';
 import ContactDetail from './pages/ContactDetail';
 import CityContactsPage from './pages/CityContactsPage';
+import TagContactsPage from './pages/TagContactsPage';
 
 const GlobalStyles = createGlobalStyle`
   * {
@@ -177,6 +178,7 @@ const CRMAppContent = () => {
             <Route path="/keep-in-touch" element={<KeepInTouchPage theme={theme} onKeepInTouchCountChange={setKeepInTouchCount} />} />
             <Route path="/contact/:contactId" element={<ContactDetail theme={theme} />} />
             <Route path="/city/:cityId/contacts" element={<CityContactsPage theme={theme} />} />
+            <Route path="/tag/:tagId/contacts" element={<TagContactsPage theme={theme} />} />
             {/* Fallback route */}
             <Route path="*" element={<Navigate to="/sort" replace />} />
           </Routes>
