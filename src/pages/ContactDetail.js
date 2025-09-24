@@ -62,6 +62,7 @@ const ContactDetail = ({ theme }) => {
   // Keep in touch data
   const [keepInTouchData, setKeepInTouchData] = useState(null);
   const [loadingKeepInTouchData, setLoadingKeepInTouchData] = useState(false);
+  const [lastInteraction, setLastInteraction] = useState(null);
   const [editingFrequency, setEditingFrequency] = useState(false);
 
   // Occurrences editing states
@@ -306,6 +307,7 @@ const ContactDetail = ({ theme }) => {
         .maybeSingle();
 
       if (error) throw error;
+      console.log('fetchKeepInTouchData result:', data);
       setKeepInTouchData(data);
     } catch (error) {
       console.error('Error fetching keep in touch data:', error);
@@ -315,40 +317,54 @@ const ContactDetail = ({ theme }) => {
     }
   };
 
-  const updateKeepInTouchFrequency = async (newFrequency) => {
+  const fetchLastInteraction = async () => {
     if (!contactId) return;
     try {
-      // First check if keep_in_touch record exists
-      const { data: existingRecord, error: checkError } = await supabase
-        .from('keep_in_touch')
-        .select('id')
+      const { data, error } = await supabase
+        .from('interactions')
+        .select('interaction_date, summary, interaction_type')
         .eq('contact_id', contactId)
+        .order('interaction_date', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
-      if (checkError) throw checkError;
+      if (error) throw error;
+      setLastInteraction(data);
+    } catch (error) {
+      console.error('Error fetching last interaction:', error);
+      setLastInteraction(null);
+    }
+  };
 
-      if (existingRecord) {
-        // Update existing record
-        const { error: updateError } = await supabase
-          .from('keep_in_touch')
-          .update({ frequency: newFrequency })
-          .eq('contact_id', contactId);
+  const updateKeepInTouchFrequency = async (newFrequency) => {
+    if (!contactId) {
+      console.error('No contactId available!');
+      return;
+    }
+    console.log('Updating frequency to:', newFrequency, 'for contact:', contactId);
 
-        if (updateError) throw updateError;
-      } else {
-        // Create new record
-        const { error: insertError } = await supabase
-          .from('keep_in_touch')
-          .insert({
-            contact_id: contactId,
-            frequency: newFrequency
-          });
+    try {
+      // Update the contacts table directly
+      const { data: updateData, error: updateError } = await supabase
+        .from('contacts')
+        .update({ keep_in_touch_frequency: newFrequency })
+        .eq('contact_id', contactId)
+        .select();
 
-        if (insertError) throw insertError;
-      }
+      if (updateError) throw updateError;
+      console.log('Contacts table update result:', updateData);
+
+      // Update local contact state
+      setContact(prev => ({ ...prev, keep_in_touch_frequency: newFrequency }));
 
       // Refresh the keep in touch data
       await fetchKeepInTouchData();
+
+      // Recalculate next event if we're on the Next tab
+      if (activeKeepInTouchTab === 'Next') {
+        await calculateNextEvent();
+      }
+
       toast.success('Keep in touch frequency updated');
     } catch (error) {
       console.error('Error updating keep in touch frequency:', error);
@@ -592,11 +608,36 @@ const ContactDetail = ({ theme }) => {
     }
   };
 
+  const [actualKeepInTouchFrequency, setActualKeepInTouchFrequency] = useState(null);
+
+  const checkActualKeepInTouchFrequency = async () => {
+    if (!contact?.contact_id) return null;
+    try {
+      const { data: keepInTouchRecord } = await supabase
+        .from('keep_in_touch')
+        .select('frequency')
+        .eq('contact_id', contact.contact_id)
+        .maybeSingle();
+
+      const frequency = keepInTouchRecord?.frequency || null;
+      console.log('Actual frequency from keep_in_touch table:', frequency);
+      setActualKeepInTouchFrequency(frequency);
+      return frequency;
+    } catch (error) {
+      console.error('Error checking actual keep_in_touch frequency:', error);
+      setActualKeepInTouchFrequency(null);
+      return null;
+    }
+  };
+
   const calculateNextEvent = async () => {
     if (!contact || loadingNextEvent) return;
     setLoadingNextEvent(true);
 
     try {
+      // Ensure we have the latest actual frequency
+      const currentActualFrequency = await checkActualKeepInTouchFrequency();
+
       const events = [];
       const today = new Date();
 
@@ -619,22 +660,73 @@ const ContactDetail = ({ theme }) => {
         }
       }
 
-      // Touch base event (from keep in touch data)
-      if (keepInTouchData?.next_interaction_date) {
-        const touchBaseDate = new Date(keepInTouchData.next_interaction_date);
-        const timeDiff = touchBaseDate.getTime() - today.getTime();
-        const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
-
+      // Touch base event - use contact.keep_in_touch_frequency directly
+      if (contact.keep_in_touch_frequency === 'Do not keep in touch') {
+        console.log('Adding relaxed event for "Do not keep in touch"');
         events.push({
-          type: 'touchbase',
-          name: 'Touch Base',
-          days: daysDiff,
-          emoji: '🤝',
-          color: '#3B82F6',
-          gradient: 'linear-gradient(135deg, #DBEAFE 0%, #BFDBFE 100%)',
-          frequency: keepInTouchData.frequency,
-          date: touchBaseDate
+          type: 'touchbase-relaxed',
+          name: 'No Touch Base',
+          days: 999, // Very high number so it doesn't show as priority
+          emoji: '😌',
+          color: '#059669',
+          gradient: 'linear-gradient(135deg, #D1FAE5 0%, #A7F3D0 100%)',
+          frequency: 'Do not keep in touch',
+          isRelaxed: true
         });
+      } else if (!contact.keep_in_touch_frequency || contact.keep_in_touch_frequency === 'Not Set') {
+        console.log('Adding setup event');
+        events.push({
+          type: 'touchbase-notset',
+          name: 'Touch Base Setup',
+          days: 0,
+          emoji: '⚙️',
+          color: '#6B7280',
+          gradient: 'linear-gradient(135deg, #F9FAFB 0%, #E5E7EB 100%)',
+          frequency: 'Not Set',
+          needsSetup: true
+        });
+      } else if (keepInTouchData?.frequency) {
+        if (keepInTouchData.frequency === 'Not Set') {
+          // Show frequency selector
+          events.push({
+            type: 'touchbase-notset',
+            name: 'Touch Base Setup',
+            days: 0,
+            emoji: '⚙️',
+            color: '#6B7280',
+            gradient: 'linear-gradient(135deg, #F9FAFB 0%, #E5E7EB 100%)',
+            frequency: keepInTouchData.frequency,
+            needsSetup: true
+          });
+        } else if (keepInTouchData.frequency === 'Do not keep in touch') {
+          // Show relaxed message
+          events.push({
+            type: 'touchbase-relaxed',
+            name: 'No Touch Base',
+            days: 999, // Very high number so it doesn't show as priority
+            emoji: '😌',
+            color: '#059669',
+            gradient: 'linear-gradient(135deg, #D1FAE5 0%, #A7F3D0 100%)',
+            frequency: keepInTouchData.frequency,
+            isRelaxed: true
+          });
+        } else if (keepInTouchData.next_interaction_date) {
+          // Normal touch base with date
+          const touchBaseDate = new Date(keepInTouchData.next_interaction_date);
+          const timeDiff = touchBaseDate.getTime() - today.getTime();
+          const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
+
+          events.push({
+            type: 'touchbase',
+            name: 'Touch Base',
+            days: daysDiff,
+            emoji: '🤝',
+            color: '#3B82F6',
+            gradient: 'linear-gradient(135deg, #DBEAFE 0%, #BFDBFE 100%)',
+            frequency: keepInTouchData.frequency,
+            date: touchBaseDate
+          });
+        }
       }
 
       // Easter event
@@ -667,16 +759,49 @@ const ContactDetail = ({ theme }) => {
         });
       }
 
-      // Find the closest event (excluding past events, but including today)
-      const upcomingEvents = events.filter(event => event.days >= 0);
-      if (upcomingEvents.length > 0) {
-        const closest = upcomingEvents.reduce((prev, current) =>
-          prev.days < current.days ? prev : current
-        );
-        setNextEvent(closest);
+      // Find the next most important event
+      // Priority: 1) Setup needed, 2) Overdue touch base, 3) Relaxed message, 4) Closest upcoming event
+      let nextEvent = null;
+
+      console.log('All events:', events.map(e => ({ type: e.type, name: e.name, days: e.days, needsSetup: e.needsSetup, isRelaxed: e.isRelaxed })));
+
+      // First, check if touch base setup is needed (highest priority)
+      const needsSetup = events.find(event => event.needsSetup);
+      console.log('Setup needed event:', needsSetup);
+      if (needsSetup) {
+        console.log('Selecting setup event as next');
+        nextEvent = { ...needsSetup, isOverdue: false };
       } else {
-        setNextEvent(null);
+        // Then, check for overdue touch base
+        const overdueTouch = events.find(event => event.type === 'touchbase' && event.days < 0);
+        console.log('Overdue touch event:', overdueTouch);
+        if (overdueTouch) {
+          console.log('Selecting overdue touch as next');
+          nextEvent = { ...overdueTouch, isOverdue: true };
+        } else {
+          // Check for relaxed event first (should have priority over other events)
+          const relaxedEvent = events.find(event => event.isRelaxed);
+          console.log('Relaxed event found:', relaxedEvent);
+          if (relaxedEvent) {
+            console.log('Selecting relaxed event as next');
+            nextEvent = { ...relaxedEvent, isOverdue: false };
+          } else {
+            // Otherwise, find the closest upcoming event
+            const activeEvents = events.filter(event => !event.isRelaxed && event.days >= 0);
+            console.log('Active events:', activeEvents.map(e => ({ type: e.type, days: e.days })));
+            if (activeEvents.length > 0) {
+              nextEvent = activeEvents.reduce((prev, current) =>
+                prev.days < current.days ? prev : current
+              );
+              console.log('Selecting closest upcoming event:', nextEvent.type);
+              nextEvent.isOverdue = false;
+            }
+          }
+        }
       }
+
+      console.log('Final selected nextEvent:', nextEvent);
+      setNextEvent(nextEvent);
 
     } catch (error) {
       console.error('Error calculating next event:', error);
@@ -705,7 +830,10 @@ const ContactDetail = ({ theme }) => {
       fetchRelatedData();
     } else if (activeTab === 'Keep in touch' && (activeKeepInTouchTab === 'Touch base' || activeKeepInTouchTab === 'Occurrences' || activeKeepInTouchTab === 'Next')) {
       fetchKeepInTouchData();
-      if (activeKeepInTouchTab === 'Occurrences') {
+      checkActualKeepInTouchFrequency();
+      if (activeKeepInTouchTab === 'Touch base') {
+        fetchLastInteraction();
+      } else if (activeKeepInTouchTab === 'Occurrences') {
         fetchHolidayCountdowns();
       } else if (activeKeepInTouchTab === 'Next') {
         calculateNextEvent();
@@ -713,12 +841,12 @@ const ContactDetail = ({ theme }) => {
     }
   }, [contact, activeTab, activeChatTab, activeRelatedTab, activeKeepInTouchTab]);
 
-  // Recalculate next event when keepInTouchData changes
+  // Recalculate next event when keepInTouchData changes (including when it becomes null)
   useEffect(() => {
-    if (activeTab === 'Keep in touch' && activeKeepInTouchTab === 'Next' && contact && keepInTouchData) {
+    if (activeTab === 'Keep in touch' && activeKeepInTouchTab === 'Next' && contact) {
       calculateNextEvent();
     }
-  }, [keepInTouchData, contact, activeTab, activeKeepInTouchTab]);
+  }, [keepInTouchData, actualKeepInTouchFrequency, contact, activeTab, activeKeepInTouchTab]);
 
   const handleBack = () => {
     navigate(-1); // Go back to previous page
@@ -1858,23 +1986,62 @@ const ContactDetail = ({ theme }) => {
                           <NextEventTitle theme={theme}>Next: {nextEvent.name}</NextEventTitle>
                         </NextEventHeader>
 
-                        <NextEventCountdown theme={theme}>
-                          <NextEventDays theme={theme} $eventType={nextEvent.type}>
-                            {nextEvent.days}
-                          </NextEventDays>
-                          <NextEventDaysLabel theme={theme}>
-                            {nextEvent.days === 0 ? 'TODAY!' : nextEvent.days === 1 ? 'day to go' : 'days to go'}
-                          </NextEventDaysLabel>
-                        </NextEventCountdown>
+                        {nextEvent.needsSetup ? (
+                          <FrequencySetupContainer theme={theme}>
+                            <SetupMessage theme={theme}>
+                              Set your touch base frequency to get started
+                            </SetupMessage>
+                            <FrequencySelector theme={theme}>
+                              <FrequencySelect
+                                theme={theme}
+                                defaultValue="Not Set"
+                                onChange={(e) => {
+                                  updateKeepInTouchFrequency(e.target.value);
+                                }}
+                              >
+                                <option value="Not Set">Select frequency...</option>
+                                <option value="Weekly">Weekly</option>
+                                <option value="Monthly">Monthly</option>
+                                <option value="Quarterly">Quarterly</option>
+                                <option value="Twice per Year">Twice per Year</option>
+                                <option value="Once per Year">Once per Year</option>
+                                <option value="Do not keep in touch">Do not keep in touch</option>
+                              </FrequencySelect>
+                            </FrequencySelector>
+                          </FrequencySetupContainer>
+                        ) : nextEvent.isRelaxed ? (
+                          <RelaxedContainer theme={theme}>
+                            <RelaxedMessage theme={theme}>
+                              😌 No need to keep in touch - you can relax!
+                            </RelaxedMessage>
+                            <RelaxedSubtext theme={theme}>
+                              This contact is set to "Do not keep in touch"
+                            </RelaxedSubtext>
+                          </RelaxedContainer>
+                        ) : (
+                          <NextEventCountdown theme={theme}>
+                            <NextEventDays theme={theme} $eventType={nextEvent.type} $isOverdue={nextEvent.isOverdue}>
+                              {nextEvent.isOverdue ? Math.abs(nextEvent.days) : nextEvent.days}
+                            </NextEventDays>
+                            <NextEventDaysLabel theme={theme} $isOverdue={nextEvent.isOverdue}>
+                              {nextEvent.isOverdue
+                                ? Math.abs(nextEvent.days) === 1 ? 'day overdue' : 'days overdue'
+                                : nextEvent.days === 0 ? 'TODAY!' : nextEvent.days === 1 ? 'day to go' : 'days to go'
+                              }
+                            </NextEventDaysLabel>
+                          </NextEventCountdown>
+                        )}
 
-                        <NextEventDate theme={theme}>
-                          📅 {nextEvent.date.toLocaleDateString('en-US', {
-                            weekday: 'long',
-                            month: 'long',
-                            day: 'numeric',
-                            year: 'numeric'
-                          })}
-                        </NextEventDate>
+                        {nextEvent.date && (
+                          <NextEventDate theme={theme}>
+                            📅 {nextEvent.date.toLocaleDateString('en-US', {
+                              weekday: 'long',
+                              month: 'long',
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}
+                          </NextEventDate>
+                        )}
 
                         <NextEventDetails theme={theme}>
                           {nextEvent.type === 'birthday' && (
@@ -1894,17 +2061,22 @@ const ContactDetail = ({ theme }) => {
                           )}
                         </NextEventDetails>
 
-                        {nextEvent.days === 0 && (
+                        {nextEvent.isOverdue && (
+                          <NextEventOverdue theme={theme}>
+                            🚨 {nextEvent.name} is {Math.abs(nextEvent.days)} day{Math.abs(nextEvent.days) !== 1 ? 's' : ''} overdue - reach out now!
+                          </NextEventOverdue>
+                        )}
+                        {!nextEvent.isOverdue && nextEvent.days === 0 && (
                           <NextEventToday theme={theme}>
                             🔥 Don't forget - it's {nextEvent.name.toLowerCase()} today!
                           </NextEventToday>
                         )}
-                        {nextEvent.days === 1 && (
+                        {!nextEvent.isOverdue && nextEvent.days === 1 && (
                           <NextEventSoon theme={theme}>
                             ⚡ Tomorrow is {nextEvent.name.toLowerCase()} - time to prepare!
                           </NextEventSoon>
                         )}
-                        {nextEvent.days > 1 && nextEvent.days <= 7 && (
+                        {!nextEvent.isOverdue && nextEvent.days > 1 && nextEvent.days <= 7 && (
                           <NextEventThisWeek theme={theme}>
                             📌 {nextEvent.name} is this week - keep it in mind!
                           </NextEventThisWeek>
@@ -1941,8 +2113,8 @@ const ContactDetail = ({ theme }) => {
                       <TouchBaseSection theme={theme}>
                         <TouchBaseSectionTitle theme={theme}>Last Interaction</TouchBaseSectionTitle>
                         <TouchBaseValue theme={theme}>
-                          {keepInTouchData?.last_interaction_at
-                            ? new Date(keepInTouchData.last_interaction_at).toLocaleDateString('en-US', {
+                          {lastInteraction?.interaction_date
+                            ? new Date(lastInteraction.interaction_date).toLocaleDateString('en-US', {
                                 year: 'numeric',
                                 month: 'long',
                                 day: 'numeric'
@@ -1958,7 +2130,7 @@ const ContactDetail = ({ theme }) => {
                           <FrequencySelector theme={theme}>
                             <FrequencySelect
                               theme={theme}
-                              value={keepInTouchData?.frequency || 'Not Set'}
+                              value={contact?.keep_in_touch_frequency || 'Not Set'}
                               onChange={(e) => {
                                 updateKeepInTouchFrequency(e.target.value);
                                 setEditingFrequency(false);
@@ -1982,7 +2154,7 @@ const ContactDetail = ({ theme }) => {
                         ) : (
                           <FrequencyDisplay theme={theme}>
                             <TouchBaseValue theme={theme}>
-                              {keepInTouchData?.frequency || 'Not Set'}
+                              {contact?.keep_in_touch_frequency || 'Not Set'}
                             </TouchBaseValue>
                             <FrequencyButton
                               theme={theme}
@@ -2016,9 +2188,11 @@ const ContactDetail = ({ theme }) => {
                           </TouchBaseNextContainer>
                         ) : (
                           <TouchBaseValue theme={theme}>
-                            {keepInTouchData?.frequency && keepInTouchData.frequency !== 'Not Set' && keepInTouchData.frequency !== 'Do not keep in touch'
+                            {contact?.keep_in_touch_frequency && contact.keep_in_touch_frequency !== 'Not Set' && contact.keep_in_touch_frequency !== 'Do not keep in touch'
                               ? 'Set frequency to calculate next touch base'
-                              : 'No frequency set'
+                              : contact?.keep_in_touch_frequency === 'Do not keep in touch'
+                                ? 'No need to keep in touch - relax!'
+                                : 'No frequency set'
                             }
                           </TouchBaseValue>
                         )}
@@ -7153,6 +7327,7 @@ const NextEventDays = styled.div`
   line-height: 1;
   margin-bottom: 8px;
   color: ${props => {
+    if (props.$isOverdue) return '#DC2626'; // Red for overdue
     if (props.$eventType === 'birthday') return '#92400E';
     if (props.$eventType === 'touchbase') return '#1E40AF';
     if (props.$eventType === 'easter') return '#581C87';
@@ -7165,11 +7340,16 @@ const NextEventDays = styled.div`
     : '0 2px 8px rgba(0, 0, 0, 0.4)'
   };
 
-  animation: next-event-pulse 2s ease-in-out infinite;
+  animation: ${props => props.$isOverdue ? 'next-event-urgent-pulse' : 'next-event-pulse'} 2s ease-in-out infinite;
 
   @keyframes next-event-pulse {
     0%, 100% { transform: scale(1); }
     50% { transform: scale(1.05); }
+  }
+
+  @keyframes next-event-urgent-pulse {
+    0%, 100% { transform: scale(1); color: #DC2626; }
+    50% { transform: scale(1.1); color: #EF4444; }
   }
 `;
 
@@ -7178,8 +7358,12 @@ const NextEventDaysLabel = styled.div`
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 2px;
-  color: ${props => props.theme === 'light' ? '#374151' : '#D1D5DB'};
-  opacity: 0.8;
+  color: ${props =>
+    props.$isOverdue
+      ? '#DC2626'
+      : props.theme === 'light' ? '#374151' : '#D1D5DB'
+  };
+  opacity: ${props => props.$isOverdue ? '1' : '0.8'};
 `;
 
 const NextEventDate = styled.div`
@@ -7252,6 +7436,31 @@ const NextEventThisWeek = styled.div`
   margin-top: 20px;
 `;
 
+const NextEventOverdue = styled.div`
+  font-size: 18px;
+  font-weight: 700;
+  color: #DC2626;
+  background: #FEE2E2;
+  border: 3px solid #EF4444;
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 20px;
+  animation: next-event-critical 1s ease-in-out infinite;
+
+  @keyframes next-event-critical {
+    0%, 100% {
+      background: #FEE2E2;
+      border-color: #EF4444;
+      transform: scale(1);
+    }
+    50% {
+      background: #FECACA;
+      border-color: #DC2626;
+      transform: scale(1.02);
+    }
+  }
+`;
+
 const EasterApiNote = styled.div`
   font-size: 14px;
   color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
@@ -7290,6 +7499,62 @@ const NextEventEmptySubtext = styled.div`
   color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
   max-width: 400px;
   line-height: 1.5;
+`;
+
+// Frequency Setup styled components
+const FrequencySetupContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  align-items: center;
+  padding: 24px;
+  background: ${props => props.theme === 'light' ? 'rgba(249, 250, 251, 0.8)' : 'rgba(31, 41, 55, 0.8)'};
+  border-radius: 16px;
+  border: 2px dashed ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  margin: 20px 0;
+`;
+
+const SetupMessage = styled.div`
+  font-size: 18px;
+  font-weight: 600;
+  color: ${props => props.theme === 'light' ? '#374151' : '#D1D5DB'};
+  text-align: center;
+  margin-bottom: 8px;
+`;
+
+// Relaxed State styled components
+const RelaxedContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  padding: 32px 24px;
+  background: linear-gradient(135deg, #D1FAE5 0%, #A7F3D0 100%);
+  border-radius: 20px;
+  border: 2px solid #059669;
+  margin: 20px 0;
+  animation: relaxed-gentle-glow 4s ease-in-out infinite;
+
+  @keyframes relaxed-gentle-glow {
+    0%, 100% { box-shadow: 0 4px 15px rgba(5, 150, 105, 0.2); }
+    50% { box-shadow: 0 6px 20px rgba(5, 150, 105, 0.3); }
+  }
+`;
+
+const RelaxedMessage = styled.div`
+  font-size: 24px;
+  font-weight: 700;
+  color: #065F46;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+`;
+
+const RelaxedSubtext = styled.div`
+  font-size: 16px;
+  font-weight: 500;
+  color: #047857;
+  text-align: center;
+  opacity: 0.8;
 `;
 
 export default ContactDetail;
