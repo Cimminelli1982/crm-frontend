@@ -335,6 +335,18 @@ const ContactDetail = ({ theme }) => {
     });
   };
 
+  const handleCompanyClick = (company) => {
+    if (!company?.companies?.company_id) return;
+
+    navigate(`/company/${company.companies.company_id}`, {
+      state: {
+        activeTab: 'Related',
+        activeRelatedTab: 'Contacts',
+        previousContactId: contact.contact_id
+      }
+    });
+  };
+
   const handleEmailSelect = (email) => {
     window.open(`mailto:${email}`, '_self');
     setEmailModalOpen(false);
@@ -1334,7 +1346,12 @@ const ContactDetail = ({ theme }) => {
                         ) : (
                           <RelatedGrid>
                             {contactCompanies.map((companyRelation, index) => (
-                              <RelatedCard key={index} theme={theme}>
+                              <RelatedCard
+                                key={index}
+                                theme={theme}
+                                $clickable={true}
+                                onClick={() => handleCompanyClick(companyRelation)}
+                              >
                                 <RelatedCardIcon theme={theme}>
                                   🏢
                                 </RelatedCardIcon>
