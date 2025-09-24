@@ -59,6 +59,25 @@ const ContactDetail = ({ theme }) => {
   const [selectedItems, setSelectedItems] = useState({});
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Keep in touch data
+  const [keepInTouchData, setKeepInTouchData] = useState(null);
+  const [loadingKeepInTouchData, setLoadingKeepInTouchData] = useState(false);
+  const [editingFrequency, setEditingFrequency] = useState(false);
+
+  // Occurrences editing states
+  const [editingBirthday, setEditingBirthday] = useState(false);
+  const [editingEaster, setEditingEaster] = useState(false);
+  const [editingChristmas, setEditingChristmas] = useState(false);
+
+  // Holiday countdown states
+  const [easterCountdown, setEasterCountdown] = useState(null);
+  const [christmasCountdown, setChristmasCountdown] = useState(null);
+  const [loadingHolidayData, setLoadingHolidayData] = useState(false);
+
+  // Next event state
+  const [nextEvent, setNextEvent] = useState(null);
+  const [loadingNextEvent, setLoadingNextEvent] = useState(false);
+
   const fetchContact = async () => {
     if (!contactId) return;
 
@@ -274,6 +293,398 @@ const ContactDetail = ({ theme }) => {
     }
   };
 
+  const fetchKeepInTouchData = async () => {
+    if (!contactId || !contact) return;
+    setLoadingKeepInTouchData(true);
+    try {
+      // First try to get data from the view by matching the full name
+      const fullName = `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+      const { data, error } = await supabase
+        .from('v_keep_in_touch_complete')
+        .select('*')
+        .eq('full_name', fullName)
+        .maybeSingle();
+
+      if (error) throw error;
+      setKeepInTouchData(data);
+    } catch (error) {
+      console.error('Error fetching keep in touch data:', error);
+      // Don't show toast error as this might be normal if no keep in touch record exists
+    } finally {
+      setLoadingKeepInTouchData(false);
+    }
+  };
+
+  const updateKeepInTouchFrequency = async (newFrequency) => {
+    if (!contactId) return;
+    try {
+      // First check if keep_in_touch record exists
+      const { data: existingRecord, error: checkError } = await supabase
+        .from('keep_in_touch')
+        .select('id')
+        .eq('contact_id', contactId)
+        .maybeSingle();
+
+      if (checkError) throw checkError;
+
+      if (existingRecord) {
+        // Update existing record
+        const { error: updateError } = await supabase
+          .from('keep_in_touch')
+          .update({ frequency: newFrequency })
+          .eq('contact_id', contactId);
+
+        if (updateError) throw updateError;
+      } else {
+        // Create new record
+        const { error: insertError } = await supabase
+          .from('keep_in_touch')
+          .insert({
+            contact_id: contactId,
+            frequency: newFrequency
+          });
+
+        if (insertError) throw insertError;
+      }
+
+      // Refresh the keep in touch data
+      await fetchKeepInTouchData();
+      toast.success('Keep in touch frequency updated');
+    } catch (error) {
+      console.error('Error updating keep in touch frequency:', error);
+      toast.error('Failed to update keep in touch frequency');
+    }
+  };
+
+  const updateBirthday = async (newBirthday) => {
+    if (!contactId) return;
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .update({ birthday: newBirthday })
+        .eq('contact_id', contactId);
+
+      if (error) throw error;
+
+      // Update local contact data
+      setContact(prev => ({ ...prev, birthday: newBirthday }));
+      toast.success('Birthday updated');
+    } catch (error) {
+      console.error('Error updating birthday:', error);
+      toast.error('Failed to update birthday');
+    }
+  };
+
+  const updateWishes = async (wishType, newWish) => {
+    if (!contactId) return;
+    try {
+      // First check if keep_in_touch record exists
+      const { data: existingRecord, error: checkError } = await supabase
+        .from('keep_in_touch')
+        .select('id')
+        .eq('contact_id', contactId)
+        .maybeSingle();
+
+      if (checkError) throw checkError;
+
+      const updateData = { [wishType]: newWish };
+
+      if (existingRecord) {
+        // Update existing record
+        const { error: updateError } = await supabase
+          .from('keep_in_touch')
+          .update(updateData)
+          .eq('contact_id', contactId);
+
+        if (updateError) throw updateError;
+      } else {
+        // Create new record with default frequency
+        const { error: insertError } = await supabase
+          .from('keep_in_touch')
+          .insert({
+            contact_id: contactId,
+            frequency: 'Not Set',
+            ...updateData
+          });
+
+        if (insertError) throw insertError;
+      }
+
+      // Refresh the keep in touch data
+      await fetchKeepInTouchData();
+      toast.success(`${wishType === 'easter' ? 'Easter' : 'Christmas'} wishes updated`);
+    } catch (error) {
+      console.error(`Error updating ${wishType} wishes:`, error);
+      toast.error(`Failed to update ${wishType === 'easter' ? 'Easter' : 'Christmas'} wishes`);
+    }
+  };
+
+  // Birthday helper functions
+  const calculateAge = (birthday) => {
+    if (!birthday) return null;
+    const today = new Date();
+    const birthDate = new Date(birthday);
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
+  const calculateDaysUntilBirthday = (birthday) => {
+    if (!birthday) return null;
+    const today = new Date();
+    const birthDate = new Date(birthday);
+
+    // Set the birthday for this year
+    const thisYearBirthday = new Date(today.getFullYear(), birthDate.getMonth(), birthDate.getDate());
+
+    // If birthday has passed this year, calculate for next year
+    if (thisYearBirthday < today) {
+      thisYearBirthday.setFullYear(today.getFullYear() + 1);
+    }
+
+    // Calculate days until birthday
+    const timeDiff = thisYearBirthday.getTime() - today.getTime();
+    const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
+
+    return daysDiff;
+  };
+
+  const isBirthdayToday = (birthday) => {
+    if (!birthday) return false;
+    const today = new Date();
+    const birthDate = new Date(birthday);
+    return today.getMonth() === birthDate.getMonth() && today.getDate() === birthDate.getDate();
+  };
+
+  const getNextAge = (birthday) => {
+    const currentAge = calculateAge(birthday);
+    if (currentAge === null) return null;
+
+    const daysUntil = calculateDaysUntilBirthday(birthday);
+    if (daysUntil === 0) return currentAge + 1; // It's their birthday today
+    if (daysUntil === null) return null;
+
+    return currentAge + 1;
+  };
+
+  // Holiday calculation functions - using web API for accurate Easter dates
+  const [easterDates, setEasterDates] = useState({});
+  const [loadingEasterDates, setLoadingEasterDates] = useState(false);
+
+  const fetchEasterDate = async (year) => {
+    if (easterDates[year]) return easterDates[year];
+
+    setLoadingEasterDates(true);
+    try {
+      // Using a free API for Easter dates
+      const response = await fetch(`https://date.nager.at/api/v3/publicholidays/${year}/US`);
+      const holidays = await response.json();
+      const easter = holidays.find(holiday => holiday.name === 'Easter Sunday');
+
+      if (easter) {
+        const easterDate = new Date(easter.date);
+        setEasterDates(prev => ({ ...prev, [year]: easterDate }));
+        setLoadingEasterDates(false);
+        return easterDate;
+      }
+    } catch (error) {
+      console.error('Failed to fetch Easter date:', error);
+    }
+
+    // Fallback to calculation if API fails
+    setLoadingEasterDates(false);
+    return calculateEasterDateFallback(year);
+  };
+
+  const calculateEasterDateFallback = (year) => {
+    // Simplified Easter calculation as fallback
+    const a = year % 19;
+    const b = Math.floor(year / 100);
+    const c = year % 100;
+    const d = Math.floor(b / 4);
+    const e = b % 4;
+    const f = Math.floor((b + 8) / 25);
+    const g = Math.floor((b - f + 1) / 3);
+    const h = (19 * a + b - d - g + 15) % 30;
+    const i = Math.floor(c / 4);
+    const k = c % 4;
+    const l = (32 + 2 * e + 2 * i - h - k) % 7;
+    const m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const month = Math.floor((h + l - 7 * m + 114) / 31);
+    const day = ((h + l - 7 * m + 114) % 31) + 1;
+
+    return new Date(year, month - 1, day);
+  };
+
+  const calculateChristmasDate = (year) => {
+    return new Date(year, 11, 25); // December 25th
+  };
+
+  const calculateDaysUntilHoliday = async (holidayType) => {
+    const today = new Date();
+    const currentYear = today.getFullYear();
+
+    let holidayDate;
+    if (holidayType === 'easter') {
+      holidayDate = await fetchEasterDate(currentYear);
+    } else if (holidayType === 'christmas') {
+      holidayDate = calculateChristmasDate(currentYear);
+    }
+
+    // If holiday has passed this year, get next year's date
+    if (holidayDate < today) {
+      if (holidayType === 'easter') {
+        holidayDate = await fetchEasterDate(currentYear + 1);
+      } else if (holidayType === 'christmas') {
+        holidayDate = calculateChristmasDate(currentYear + 1);
+      }
+    }
+
+    const timeDiff = holidayDate.getTime() - today.getTime();
+    const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
+
+    return { days: daysDiff, date: holidayDate };
+  };
+
+  const isHolidayToday = async (holidayType) => {
+    const today = new Date();
+    let holidayDate;
+
+    if (holidayType === 'easter') {
+      holidayDate = await fetchEasterDate(today.getFullYear());
+    } else if (holidayType === 'christmas') {
+      holidayDate = calculateChristmasDate(today.getFullYear());
+    }
+
+    return today.getMonth() === holidayDate.getMonth() &&
+           today.getDate() === holidayDate.getDate();
+  };
+
+  const getHolidayEmoji = (wishType, isToday = false) => {
+    if (wishType === 'easter') {
+      return isToday ? '🐰🥕🌸' : '🐰🥚🌷';
+    } else if (wishType === 'christmas') {
+      return isToday ? '🎅🎁❄️' : '🎄🎅⭐';
+    }
+    return '';
+  };
+
+  const fetchHolidayCountdowns = async () => {
+    if (loadingHolidayData) return;
+    setLoadingHolidayData(true);
+
+    try {
+      const [easter, christmas] = await Promise.all([
+        calculateDaysUntilHoliday('easter'),
+        calculateDaysUntilHoliday('christmas')
+      ]);
+
+      setEasterCountdown(easter);
+      setChristmasCountdown(christmas);
+    } catch (error) {
+      console.error('Error fetching holiday countdowns:', error);
+    } finally {
+      setLoadingHolidayData(false);
+    }
+  };
+
+  const calculateNextEvent = async () => {
+    if (!contact || loadingNextEvent) return;
+    setLoadingNextEvent(true);
+
+    try {
+      const events = [];
+      const today = new Date();
+
+      // Birthday event
+      if (contact.birthday) {
+        const birthdayDays = calculateDaysUntilBirthday(contact.birthday);
+        if (birthdayDays !== null) {
+          events.push({
+            type: 'birthday',
+            name: 'Birthday',
+            days: birthdayDays,
+            emoji: '🎂',
+            color: '#F59E0B',
+            gradient: 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)',
+            age: birthdayDays === 0 ? getNextAge(contact.birthday) : getNextAge(contact.birthday),
+            date: new Date(today.getFullYear() + (birthdayDays === 0 ? 0 : (new Date(contact.birthday).getMonth() < today.getMonth() ||
+              (new Date(contact.birthday).getMonth() === today.getMonth() && new Date(contact.birthday).getDate() < today.getDate()) ? 1 : 0)),
+              new Date(contact.birthday).getMonth(), new Date(contact.birthday).getDate())
+          });
+        }
+      }
+
+      // Touch base event (from keep in touch data)
+      if (keepInTouchData?.next_interaction_date) {
+        const touchBaseDate = new Date(keepInTouchData.next_interaction_date);
+        const timeDiff = touchBaseDate.getTime() - today.getTime();
+        const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
+
+        events.push({
+          type: 'touchbase',
+          name: 'Touch Base',
+          days: daysDiff,
+          emoji: '🤝',
+          color: '#3B82F6',
+          gradient: 'linear-gradient(135deg, #DBEAFE 0%, #BFDBFE 100%)',
+          frequency: keepInTouchData.frequency,
+          date: touchBaseDate
+        });
+      }
+
+      // Easter event
+      const easterData = await calculateDaysUntilHoliday('easter');
+      if (easterData) {
+        events.push({
+          type: 'easter',
+          name: 'Easter',
+          days: easterData.days,
+          emoji: '🐰',
+          color: '#7C3AED',
+          gradient: 'linear-gradient(135deg, #F3E8FF 0%, #DDD6FE 100%)',
+          wishes: keepInTouchData?.easter || 'no wishes set',
+          date: easterData.date
+        });
+      }
+
+      // Christmas event
+      const christmasData = await calculateDaysUntilHoliday('christmas');
+      if (christmasData) {
+        events.push({
+          type: 'christmas',
+          name: 'Christmas',
+          days: christmasData.days,
+          emoji: '🎄',
+          color: '#DC2626',
+          gradient: 'linear-gradient(135deg, #FECACA 0%, #FCA5A5 100%)',
+          wishes: keepInTouchData?.christmas || 'no wishes set',
+          date: christmasData.date
+        });
+      }
+
+      // Find the closest event (excluding past events, but including today)
+      const upcomingEvents = events.filter(event => event.days >= 0);
+      if (upcomingEvents.length > 0) {
+        const closest = upcomingEvents.reduce((prev, current) =>
+          prev.days < current.days ? prev : current
+        );
+        setNextEvent(closest);
+      } else {
+        setNextEvent(null);
+      }
+
+    } catch (error) {
+      console.error('Error calculating next event:', error);
+    } finally {
+      setLoadingNextEvent(false);
+    }
+  };
+
   useEffect(() => {
     fetchContact();
   }, [contactId]);
@@ -292,8 +703,22 @@ const ContactDetail = ({ theme }) => {
       }
     } else if (activeTab === 'Related' && activeRelatedTab === 'Contacts') {
       fetchRelatedData();
+    } else if (activeTab === 'Keep in touch' && (activeKeepInTouchTab === 'Touch base' || activeKeepInTouchTab === 'Occurrences' || activeKeepInTouchTab === 'Next')) {
+      fetchKeepInTouchData();
+      if (activeKeepInTouchTab === 'Occurrences') {
+        fetchHolidayCountdowns();
+      } else if (activeKeepInTouchTab === 'Next') {
+        calculateNextEvent();
+      }
     }
-  }, [contact, activeTab, activeChatTab, activeRelatedTab]);
+  }, [contact, activeTab, activeChatTab, activeRelatedTab, activeKeepInTouchTab]);
+
+  // Recalculate next event when keepInTouchData changes
+  useEffect(() => {
+    if (activeTab === 'Keep in touch' && activeKeepInTouchTab === 'Next' && contact && keepInTouchData) {
+      calculateNextEvent();
+    }
+  }, [keepInTouchData, contact, activeTab, activeKeepInTouchTab]);
 
   const handleBack = () => {
     navigate(-1); // Go back to previous page
@@ -1419,21 +1844,483 @@ const ContactDetail = ({ theme }) => {
               </KeepInTouchSubMenu>
 
               {activeKeepInTouchTab === 'Next' && (
-                <ComingSoonMessage theme={theme}>
-                  ⏭️ Next interactions coming soon
-                </ComingSoonMessage>
+                <NextEventContent theme={theme}>
+                  {loadingNextEvent ? (
+                    <NextEventLoadingContainer theme={theme}>
+                      <TouchBaseLoader theme={theme} />
+                      <LoadingText theme={theme}>Finding your next important event...</LoadingText>
+                    </NextEventLoadingContainer>
+                  ) : nextEvent ? (
+                    <NextEventContainer theme={theme}>
+                      <NextEventCard theme={theme} $eventType={nextEvent.type}>
+                        <NextEventHeader theme={theme}>
+                          <NextEventEmoji>{nextEvent.emoji}</NextEventEmoji>
+                          <NextEventTitle theme={theme}>Next: {nextEvent.name}</NextEventTitle>
+                        </NextEventHeader>
+
+                        <NextEventCountdown theme={theme}>
+                          <NextEventDays theme={theme} $eventType={nextEvent.type}>
+                            {nextEvent.days}
+                          </NextEventDays>
+                          <NextEventDaysLabel theme={theme}>
+                            {nextEvent.days === 0 ? 'TODAY!' : nextEvent.days === 1 ? 'day to go' : 'days to go'}
+                          </NextEventDaysLabel>
+                        </NextEventCountdown>
+
+                        <NextEventDate theme={theme}>
+                          📅 {nextEvent.date.toLocaleDateString('en-US', {
+                            weekday: 'long',
+                            month: 'long',
+                            day: 'numeric',
+                            year: 'numeric'
+                          })}
+                        </NextEventDate>
+
+                        <NextEventDetails theme={theme}>
+                          {nextEvent.type === 'birthday' && (
+                            <NextEventDetail theme={theme}>
+                              🎈 Turning {nextEvent.age} years old
+                            </NextEventDetail>
+                          )}
+                          {nextEvent.type === 'touchbase' && (
+                            <NextEventDetail theme={theme}>
+                              📞 Frequency: {nextEvent.frequency}
+                            </NextEventDetail>
+                          )}
+                          {(nextEvent.type === 'easter' || nextEvent.type === 'christmas') && nextEvent.wishes !== 'no wishes set' && (
+                            <NextEventDetail theme={theme}>
+                              🎯 Plan: {nextEvent.wishes}
+                            </NextEventDetail>
+                          )}
+                        </NextEventDetails>
+
+                        {nextEvent.days === 0 && (
+                          <NextEventToday theme={theme}>
+                            🔥 Don't forget - it's {nextEvent.name.toLowerCase()} today!
+                          </NextEventToday>
+                        )}
+                        {nextEvent.days === 1 && (
+                          <NextEventSoon theme={theme}>
+                            ⚡ Tomorrow is {nextEvent.name.toLowerCase()} - time to prepare!
+                          </NextEventSoon>
+                        )}
+                        {nextEvent.days > 1 && nextEvent.days <= 7 && (
+                          <NextEventThisWeek theme={theme}>
+                            📌 {nextEvent.name} is this week - keep it in mind!
+                          </NextEventThisWeek>
+                        )}
+                      </NextEventCard>
+
+                      <EasterApiNote theme={theme}>
+                        🌐 <strong>Easter dates</strong> are fetched from the internet and update annually for accuracy
+                      </EasterApiNote>
+                    </NextEventContainer>
+                  ) : (
+                    <NextEventEmpty theme={theme}>
+                      <NextEventEmptyIcon>📅</NextEventEmptyIcon>
+                      <NextEventEmptyText theme={theme}>
+                        No upcoming events found
+                      </NextEventEmptyText>
+                      <NextEventEmptySubtext theme={theme}>
+                        Set a birthday, configure touch base frequency, or add holiday wishes to see your next important event
+                      </NextEventEmptySubtext>
+                    </NextEventEmpty>
+                  )}
+                </NextEventContent>
               )}
 
               {activeKeepInTouchTab === 'Touch base' && (
-                <ComingSoonMessage theme={theme}>
-                  🤝 Touch base reminders coming soon
-                </ComingSoonMessage>
+                <TouchBaseContent theme={theme}>
+                  {loadingKeepInTouchData ? (
+                    <TouchBaseLoadingContainer theme={theme}>
+                      <TouchBaseLoader theme={theme} />
+                      <LoadingText theme={theme}>Loading touch base data...</LoadingText>
+                    </TouchBaseLoadingContainer>
+                  ) : (
+                    <TouchBaseContainer theme={theme}>
+                      <TouchBaseSection theme={theme}>
+                        <TouchBaseSectionTitle theme={theme}>Last Interaction</TouchBaseSectionTitle>
+                        <TouchBaseValue theme={theme}>
+                          {keepInTouchData?.last_interaction_at
+                            ? new Date(keepInTouchData.last_interaction_at).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric'
+                              })
+                            : 'No interactions recorded'
+                          }
+                        </TouchBaseValue>
+                      </TouchBaseSection>
+
+                      <TouchBaseSection theme={theme}>
+                        <TouchBaseSectionTitle theme={theme}>Keep in Touch Frequency</TouchBaseSectionTitle>
+                        {editingFrequency ? (
+                          <FrequencySelector theme={theme}>
+                            <FrequencySelect
+                              theme={theme}
+                              value={keepInTouchData?.frequency || 'Not Set'}
+                              onChange={(e) => {
+                                updateKeepInTouchFrequency(e.target.value);
+                                setEditingFrequency(false);
+                              }}
+                            >
+                              <option value="Not Set">Not Set</option>
+                              <option value="Weekly">Weekly</option>
+                              <option value="Monthly">Monthly</option>
+                              <option value="Quarterly">Quarterly</option>
+                              <option value="Twice per Year">Twice per Year</option>
+                              <option value="Once per Year">Once per Year</option>
+                              <option value="Do not keep in touch">Do not keep in touch</option>
+                            </FrequencySelect>
+                            <FrequencyButton
+                              theme={theme}
+                              onClick={() => setEditingFrequency(false)}
+                            >
+                              Cancel
+                            </FrequencyButton>
+                          </FrequencySelector>
+                        ) : (
+                          <FrequencyDisplay theme={theme}>
+                            <TouchBaseValue theme={theme}>
+                              {keepInTouchData?.frequency || 'Not Set'}
+                            </TouchBaseValue>
+                            <FrequencyButton
+                              theme={theme}
+                              onClick={() => setEditingFrequency(true)}
+                            >
+                              <FaEdit /> Edit
+                            </FrequencyButton>
+                          </FrequencyDisplay>
+                        )}
+                      </TouchBaseSection>
+
+                      <TouchBaseSection theme={theme}>
+                        <TouchBaseSectionTitle theme={theme}>Next Keep in Touch</TouchBaseSectionTitle>
+                        {keepInTouchData?.next_interaction_date ? (
+                          <TouchBaseNextContainer theme={theme}>
+                            <TouchBaseValue theme={theme}>
+                              {new Date(keepInTouchData.next_interaction_date).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric'
+                              })}
+                            </TouchBaseValue>
+                            <TouchBaseDaysCount theme={theme} $overdue={keepInTouchData.days_until_next < 0}>
+                              {keepInTouchData.days_until_next < 0
+                                ? `${Math.abs(Math.floor(keepInTouchData.days_until_next))} days overdue`
+                                : keepInTouchData.days_until_next === 0
+                                ? 'Due today'
+                                : `${Math.floor(keepInTouchData.days_until_next)} days remaining`
+                              }
+                            </TouchBaseDaysCount>
+                          </TouchBaseNextContainer>
+                        ) : (
+                          <TouchBaseValue theme={theme}>
+                            {keepInTouchData?.frequency && keepInTouchData.frequency !== 'Not Set' && keepInTouchData.frequency !== 'Do not keep in touch'
+                              ? 'Set frequency to calculate next touch base'
+                              : 'No frequency set'
+                            }
+                          </TouchBaseValue>
+                        )}
+                      </TouchBaseSection>
+                    </TouchBaseContainer>
+                  )}
+                </TouchBaseContent>
               )}
 
               {activeKeepInTouchTab === 'Occurrences' && (
-                <ComingSoonMessage theme={theme}>
-                  🔄 Occurrences coming soon
-                </ComingSoonMessage>
+                <OccurrencesContent theme={theme}>
+                  {loadingKeepInTouchData ? (
+                    <OccurrencesLoadingContainer theme={theme}>
+                      <TouchBaseLoader theme={theme} />
+                      <LoadingText theme={theme}>Loading occurrences data...</LoadingText>
+                    </OccurrencesLoadingContainer>
+                  ) : (
+                    <OccurrencesContainer theme={theme}>
+                      {/* Birthday Section */}
+                      <OccurrenceSection theme={theme}>
+                        <OccurrenceSectionTitle theme={theme}>Date of Birth</OccurrenceSectionTitle>
+                        {editingBirthday ? (
+                          <BirthdayEditor theme={theme}>
+                            <BirthdayInput
+                              theme={theme}
+                              type="date"
+                              defaultValue={contact?.birthday || ''}
+                              onBlur={(e) => {
+                                if (e.target.value !== contact?.birthday) {
+                                  updateBirthday(e.target.value || null);
+                                }
+                                setEditingBirthday(false);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  if (e.target.value !== contact?.birthday) {
+                                    updateBirthday(e.target.value || null);
+                                  }
+                                  setEditingBirthday(false);
+                                } else if (e.key === 'Escape') {
+                                  setEditingBirthday(false);
+                                }
+                              }}
+                              autoFocus
+                            />
+                            <OccurrenceButton
+                              theme={theme}
+                              onClick={() => setEditingBirthday(false)}
+                            >
+                              Cancel
+                            </OccurrenceButton>
+                          </BirthdayEditor>
+                        ) : (
+                          <BirthdayDisplayContainer theme={theme}>
+                            <BirthdayMainInfo theme={theme}>
+                              <OccurrenceValue theme={theme}>
+                                {contact?.birthday
+                                  ? new Date(contact.birthday).toLocaleDateString('en-US', {
+                                      year: 'numeric',
+                                      month: 'long',
+                                      day: 'numeric'
+                                    })
+                                  : 'No birthday set'
+                                }
+                              </OccurrenceValue>
+                              <OccurrenceButton
+                                theme={theme}
+                                onClick={() => setEditingBirthday(true)}
+                              >
+                                <FaEdit /> Edit
+                              </OccurrenceButton>
+                            </BirthdayMainInfo>
+
+                            {contact?.birthday && (
+                              <BirthdayFunInfo theme={theme}>
+                                {isBirthdayToday(contact.birthday) ? (
+                                  <BirthdayTodayCard theme={theme}>
+                                    🎉 <BirthdayTodayText theme={theme}>Happy Birthday!</BirthdayTodayText> 🎂
+                                    <BirthdayAgeText theme={theme}>
+                                      Turning {getNextAge(contact.birthday)} years old today!
+                                    </BirthdayAgeText>
+                                  </BirthdayTodayCard>
+                                ) : (
+                                  <BirthdayCountdownContainer theme={theme}>
+                                    <BirthdayCountdownCard theme={theme}>
+                                      <BirthdayCountdownDays theme={theme}>
+                                        {calculateDaysUntilBirthday(contact.birthday)}
+                                      </BirthdayCountdownDays>
+                                      <BirthdayCountdownLabel theme={theme}>
+                                        {calculateDaysUntilBirthday(contact.birthday) === 1 ? 'day' : 'days'} until birthday
+                                      </BirthdayCountdownLabel>
+                                    </BirthdayCountdownCard>
+
+                                    <BirthdayAgeInfo theme={theme}>
+                                      <BirthdayCurrentAge theme={theme}>
+                                        Currently {calculateAge(contact.birthday)} years old
+                                      </BirthdayCurrentAge>
+                                      <BirthdayNextAge theme={theme}>
+                                        Will be {getNextAge(contact.birthday)} 🎈
+                                      </BirthdayNextAge>
+                                    </BirthdayAgeInfo>
+                                  </BirthdayCountdownContainer>
+                                )}
+                              </BirthdayFunInfo>
+                            )}
+                          </BirthdayDisplayContainer>
+                        )}
+                      </OccurrenceSection>
+
+                      {/* Easter Wishes Section */}
+                      <OccurrenceSection theme={theme}>
+                        <OccurrenceSectionTitle theme={theme}>Easter Wishes</OccurrenceSectionTitle>
+                        {editingEaster ? (
+                          <WishesSelector theme={theme}>
+                            <WishesSelect
+                              theme={theme}
+                              value={keepInTouchData?.easter || 'no wishes set'}
+                              onChange={(e) => {
+                                updateWishes('easter', e.target.value);
+                                setEditingEaster(false);
+                              }}
+                            >
+                              <option value="no wishes set">No wishes set</option>
+                              <option value="call">Call</option>
+                              <option value="email standard">Email standard</option>
+                              <option value="email custom">Email custom</option>
+                              <option value="whatsapp standard">WhatsApp standard</option>
+                              <option value="whatsapp custom">WhatsApp custom</option>
+                              <option value="present">Present</option>
+                            </WishesSelect>
+                            <OccurrenceButton
+                              theme={theme}
+                              onClick={() => setEditingEaster(false)}
+                            >
+                              Cancel
+                            </OccurrenceButton>
+                          </WishesSelector>
+                        ) : (
+                          <HolidayDisplayContainer theme={theme}>
+                            <HolidayMainInfo theme={theme}>
+                              <OccurrenceValue theme={theme}>
+                                {keepInTouchData?.easter ?
+                                  keepInTouchData.easter.charAt(0).toUpperCase() + keepInTouchData.easter.slice(1)
+                                  : 'No wishes set'
+                                }
+                              </OccurrenceValue>
+                              <OccurrenceButton
+                                theme={theme}
+                                onClick={() => setEditingEaster(true)}
+                              >
+                                <FaEdit /> Edit
+                              </OccurrenceButton>
+                            </HolidayMainInfo>
+
+                            {easterCountdown && (
+                              <HolidayFunInfo theme={theme}>
+                                {easterCountdown.days === 0 ? (
+                                  <HolidayTodayCard theme={theme} $holiday="easter">
+                                    🐰 <HolidayTodayText theme={theme}>Happy Easter!</HolidayTodayText> 🥚
+                                    <HolidayMessage theme={theme}>
+                                      {keepInTouchData?.easter && keepInTouchData.easter !== 'no wishes set'
+                                        ? `Time to send ${keepInTouchData.easter}! 🌸`
+                                        : 'Easter wishes not set 🌷'
+                                      }
+                                    </HolidayMessage>
+                                  </HolidayTodayCard>
+                                ) : (
+                                  <HolidayCountdownContainer theme={theme}>
+                                    <HolidayCountdownCard theme={theme} $holiday="easter">
+                                      <HolidayCountdownDays theme={theme}>
+                                        {easterCountdown.days}
+                                      </HolidayCountdownDays>
+                                      <HolidayCountdownLabel theme={theme}>
+                                        {easterCountdown.days === 1 ? 'day' : 'days'} until Easter
+                                      </HolidayCountdownLabel>
+                                      <HolidayEmoji>🐰🥚🌷</HolidayEmoji>
+                                    </HolidayCountdownCard>
+
+                                    <HolidayInfo theme={theme}>
+                                      <HolidayDate theme={theme}>
+                                        📅 {easterCountdown.date.toLocaleDateString('en-US', {
+                                          weekday: 'long',
+                                          month: 'long',
+                                          day: 'numeric',
+                                          year: 'numeric'
+                                        })}
+                                      </HolidayDate>
+                                      {keepInTouchData?.easter && keepInTouchData.easter !== 'no wishes set' && (
+                                        <HolidayPlan theme={theme}>
+                                          🎯 Plan: {keepInTouchData.easter}
+                                        </HolidayPlan>
+                                      )}
+                                    </HolidayInfo>
+                                  </HolidayCountdownContainer>
+                                )}
+                              </HolidayFunInfo>
+                            )}
+                          </HolidayDisplayContainer>
+                        )}
+                      </OccurrenceSection>
+
+                      {/* Christmas Wishes Section */}
+                      <OccurrenceSection theme={theme}>
+                        <OccurrenceSectionTitle theme={theme}>Christmas Wishes</OccurrenceSectionTitle>
+                        {editingChristmas ? (
+                          <WishesSelector theme={theme}>
+                            <WishesSelect
+                              theme={theme}
+                              value={keepInTouchData?.christmas || 'no wishes set'}
+                              onChange={(e) => {
+                                updateWishes('christmas', e.target.value);
+                                setEditingChristmas(false);
+                              }}
+                            >
+                              <option value="no wishes set">No wishes set</option>
+                              <option value="call">Call</option>
+                              <option value="email standard">Email standard</option>
+                              <option value="email custom">Email custom</option>
+                              <option value="whatsapp standard">WhatsApp standard</option>
+                              <option value="whatsapp custom">WhatsApp custom</option>
+                              <option value="present">Present</option>
+                            </WishesSelect>
+                            <OccurrenceButton
+                              theme={theme}
+                              onClick={() => setEditingChristmas(false)}
+                            >
+                              Cancel
+                            </OccurrenceButton>
+                          </WishesSelector>
+                        ) : (
+                          <HolidayDisplayContainer theme={theme}>
+                            <HolidayMainInfo theme={theme}>
+                              <OccurrenceValue theme={theme}>
+                                {keepInTouchData?.christmas ?
+                                  keepInTouchData.christmas.charAt(0).toUpperCase() + keepInTouchData.christmas.slice(1)
+                                  : 'No wishes set'
+                                }
+                              </OccurrenceValue>
+                              <OccurrenceButton
+                                theme={theme}
+                                onClick={() => setEditingChristmas(true)}
+                              >
+                                <FaEdit /> Edit
+                              </OccurrenceButton>
+                            </HolidayMainInfo>
+
+                            {christmasCountdown && (
+                              <HolidayFunInfo theme={theme}>
+                                {christmasCountdown.days === 0 ? (
+                                  <HolidayTodayCard theme={theme} $holiday="christmas">
+                                    🎅 <HolidayTodayText theme={theme}>Merry Christmas!</HolidayTodayText> 🎁
+                                    <HolidayMessage theme={theme}>
+                                      {keepInTouchData?.christmas && keepInTouchData.christmas !== 'no wishes set'
+                                        ? `Time to send ${keepInTouchData.christmas}! ❄️`
+                                        : 'Christmas wishes not set 🎄'
+                                      }
+                                    </HolidayMessage>
+                                  </HolidayTodayCard>
+                                ) : (
+                                  <HolidayCountdownContainer theme={theme}>
+                                    <HolidayCountdownCard theme={theme} $holiday="christmas">
+                                      <HolidayCountdownDays theme={theme}>
+                                        {christmasCountdown.days}
+                                      </HolidayCountdownDays>
+                                      <HolidayCountdownLabel theme={theme}>
+                                        {christmasCountdown.days === 1 ? 'day' : 'days'} until Christmas
+                                      </HolidayCountdownLabel>
+                                      <HolidayEmoji>🎄🎅⭐</HolidayEmoji>
+                                    </HolidayCountdownCard>
+
+                                    <HolidayInfo theme={theme}>
+                                      <HolidayDate theme={theme}>
+                                        📅 {christmasCountdown.date.toLocaleDateString('en-US', {
+                                          weekday: 'long',
+                                          month: 'long',
+                                          day: 'numeric',
+                                          year: 'numeric'
+                                        })}
+                                      </HolidayDate>
+                                      {keepInTouchData?.christmas && keepInTouchData.christmas !== 'no wishes set' && (
+                                        <HolidayPlan theme={theme}>
+                                          🎯 Plan: {keepInTouchData.christmas}
+                                        </HolidayPlan>
+                                      )}
+                                      <ChristmasCountdownFun theme={theme}>
+                                        {christmasCountdown.days <= 30 && christmasCountdown.days > 7 && "🎁 Time to start shopping!"}
+                                        {christmasCountdown.days <= 7 && christmasCountdown.days > 1 && "🏃‍♂️ Last week countdown!"}
+                                        {christmasCountdown.days === 1 && "🔥 Last day to prepare!"}
+                                        {christmasCountdown.days > 100 && "❄️ Still a while to go..."}
+                                        {christmasCountdown.days > 30 && christmasCountdown.days <= 100 && "🌟 Getting closer!"}
+                                      </ChristmasCountdownFun>
+                                    </HolidayInfo>
+                                  </HolidayCountdownContainer>
+                                )}
+                              </HolidayFunInfo>
+                            )}
+                          </HolidayDisplayContainer>
+                        )}
+                      </OccurrenceSection>
+                    </OccurrencesContainer>
+                  )}
+                </OccurrencesContent>
               )}
 
               {activeKeepInTouchTab === 'Lists' && (
@@ -5538,5 +6425,871 @@ const CreateCompanyButton = styled.button`
   }
 `;
 
+// Touch Base styled components
+const TouchBaseContent = styled.div`
+  padding: 24px;
+  max-width: 800px;
+  margin: 0 auto;
+`;
+
+const TouchBaseLoadingContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 60px 20px;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+`;
+
+const TouchBaseLoader = styled.div`
+  width: 32px;
+  height: 32px;
+  border: 3px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
+  border-top: 3px solid ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`;
+
+const TouchBaseContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+`;
+
+const TouchBaseSection = styled.div`
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: ${props => props.theme === 'light'
+    ? '0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06)'
+    : '0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2)'
+  };
+`;
+
+const TouchBaseSectionTitle = styled.h3`
+  font-size: 18px;
+  font-weight: 600;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  margin: 0 0 16px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+`;
+
+const TouchBaseValue = styled.div`
+  font-size: 16px;
+  font-weight: 500;
+  color: ${props => props.theme === 'light' ? '#374151' : '#D1D5DB'};
+  line-height: 1.5;
+`;
+
+const FrequencyDisplay = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+`;
+
+const FrequencySelector = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+`;
+
+const FrequencySelect = styled.select`
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 16px;
+  font-weight: 500;
+  outline: none;
+  transition: border-color 0.2s ease;
+
+  &:focus {
+    border-color: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+    box-shadow: 0 0 0 3px ${props => props.theme === 'light' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(96, 165, 250, 0.1)'};
+  }
+
+  option {
+    background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+    color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  }
+`;
+
+const FrequencyButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: ${props => props.theme === 'light' ? '#3B82F6' : '#1D4ED8'};
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover:not(:disabled) {
+    background: ${props => props.theme === 'light' ? '#2563EB' : '#1E40AF'};
+    transform: translateY(-1px);
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  &:disabled {
+    background: ${props => props.theme === 'light' ? '#9CA3AF' : '#4B5563'};
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+
+  svg {
+    font-size: 12px;
+  }
+`;
+
+const TouchBaseNextContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`;
+
+const TouchBaseDaysCount = styled.div`
+  font-size: 14px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  display: inline-block;
+  width: fit-content;
+
+  ${props => props.$overdue
+    ? `
+      background: ${props.theme === 'light' ? '#FEE2E2' : '#7F1D1D'};
+      color: ${props.theme === 'light' ? '#DC2626' : '#FCA5A5'};
+    `
+    : `
+      background: ${props.theme === 'light' ? '#D1FAE5' : '#065F46'};
+      color: ${props.theme === 'light' ? '#059669' : '#6EE7B7'};
+    `
+  }
+`;
+
+// Occurrences styled components
+const OccurrencesContent = styled.div`
+  padding: 24px;
+  max-width: 800px;
+  margin: 0 auto;
+`;
+
+const OccurrencesLoadingContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 60px 20px;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+`;
+
+const OccurrencesContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+`;
+
+const OccurrenceSection = styled.div`
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: ${props => props.theme === 'light'
+    ? '0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06)'
+    : '0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2)'
+  };
+`;
+
+const OccurrenceSectionTitle = styled.h3`
+  font-size: 18px;
+  font-weight: 600;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  margin: 0 0 16px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+`;
+
+const OccurrenceValue = styled.div`
+  font-size: 16px;
+  font-weight: 500;
+  color: ${props => props.theme === 'light' ? '#374151' : '#D1D5DB'};
+  line-height: 1.5;
+`;
+
+const OccurrenceDisplay = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+`;
+
+const OccurrenceButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: ${props => props.theme === 'light' ? '#3B82F6' : '#1D4ED8'};
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover:not(:disabled) {
+    background: ${props => props.theme === 'light' ? '#2563EB' : '#1E40AF'};
+    transform: translateY(-1px);
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  &:disabled {
+    background: ${props => props.theme === 'light' ? '#9CA3AF' : '#4B5563'};
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+
+  svg {
+    font-size: 12px;
+  }
+`;
+
+const BirthdayEditor = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+`;
+
+const BirthdayInput = styled.input`
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 16px;
+  font-weight: 500;
+  outline: none;
+  transition: border-color 0.2s ease;
+
+  &:focus {
+    border-color: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+    box-shadow: 0 0 0 3px ${props => props.theme === 'light' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(96, 165, 250, 0.1)'};
+  }
+
+  &::-webkit-calendar-picker-indicator {
+    filter: ${props => props.theme === 'light' ? 'none' : 'invert(1)'};
+  }
+`;
+
+const WishesSelector = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+`;
+
+const WishesSelect = styled.select`
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 16px;
+  font-weight: 500;
+  outline: none;
+  transition: border-color 0.2s ease;
+
+  &:focus {
+    border-color: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+    box-shadow: 0 0 0 3px ${props => props.theme === 'light' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(96, 165, 250, 0.1)'};
+  }
+
+  option {
+    background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+    color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  }
+`;
+
+// Birthday Fun styled components
+const BirthdayDisplayContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+`;
+
+const BirthdayMainInfo = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+`;
+
+const BirthdayFunInfo = styled.div`
+  margin-top: 16px;
+`;
+
+const BirthdayTodayCard = styled.div`
+  background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%);
+  border: 2px solid #F59E0B;
+  border-radius: 16px;
+  padding: 20px;
+  text-align: center;
+  animation: birthday-bounce 2s ease-in-out infinite;
+
+  @keyframes birthday-bounce {
+    0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+    40% { transform: translateY(-10px); }
+    60% { transform: translateY(-5px); }
+  }
+`;
+
+const BirthdayTodayText = styled.span`
+  font-size: 20px;
+  font-weight: 700;
+  color: #92400E;
+  margin: 0 8px;
+`;
+
+const BirthdayAgeText = styled.div`
+  font-size: 16px;
+  font-weight: 600;
+  color: #92400E;
+  margin-top: 8px;
+`;
+
+const BirthdayCountdownContainer = styled.div`
+  display: flex;
+  gap: 20px;
+  align-items: center;
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+    gap: 16px;
+  }
+`;
+
+const BirthdayCountdownCard = styled.div`
+  background: ${props => props.theme === 'light'
+    ? 'linear-gradient(135deg, #DBEAFE 0%, #BFDBFE 100%)'
+    : 'linear-gradient(135deg, #1E3A8A 0%, #1E40AF 100%)'
+  };
+  border: 2px solid ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+  border-radius: 16px;
+  padding: 20px;
+  text-align: center;
+  min-width: 120px;
+  box-shadow: ${props => props.theme === 'light'
+    ? '0 4px 12px rgba(59, 130, 246, 0.2)'
+    : '0 4px 12px rgba(96, 165, 250, 0.3)'
+  };
+`;
+
+const BirthdayCountdownDays = styled.div`
+  font-size: 32px;
+  font-weight: 800;
+  color: ${props => props.theme === 'light' ? '#1E40AF' : '#BFDBFE'};
+  line-height: 1;
+`;
+
+const BirthdayCountdownLabel = styled.div`
+  font-size: 12px;
+  font-weight: 600;
+  color: ${props => props.theme === 'light' ? '#1E40AF' : '#BFDBFE'};
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 4px;
+`;
+
+const BirthdayAgeInfo = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`;
+
+const BirthdayCurrentAge = styled.div`
+  font-size: 16px;
+  font-weight: 600;
+  color: ${props => props.theme === 'light' ? '#374151' : '#D1D5DB'};
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  &:before {
+    content: '🎯';
+    font-size: 18px;
+  }
+`;
+
+const BirthdayNextAge = styled.div`
+  font-size: 16px;
+  font-weight: 600;
+  color: ${props => props.theme === 'light' ? '#059669' : '#6EE7B7'};
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  &:before {
+    content: '🎂';
+    font-size: 18px;
+  }
+`;
+
+// Holiday Fun styled components
+const HolidayDisplayContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+`;
+
+const HolidayMainInfo = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+`;
+
+const HolidayFunInfo = styled.div`
+  margin-top: 16px;
+`;
+
+const HolidayTodayCard = styled.div`
+  ${props => props.$holiday === 'easter'
+    ? `
+      background: linear-gradient(135deg, #FEF3C7 0%, #DDD6FE 100%);
+      border: 2px solid #7C3AED;
+    `
+    : `
+      background: linear-gradient(135deg, #FECACA 0%, #FEF3C7 100%);
+      border: 2px solid #DC2626;
+    `
+  }
+  border-radius: 16px;
+  padding: 20px;
+  text-align: center;
+  animation: holiday-sparkle 3s ease-in-out infinite;
+
+  @keyframes holiday-sparkle {
+    0%, 100% { transform: scale(1) rotate(0deg); }
+    25% { transform: scale(1.02) rotate(0.5deg); }
+    50% { transform: scale(1.01) rotate(-0.5deg); }
+    75% { transform: scale(1.02) rotate(0.3deg); }
+  }
+`;
+
+const HolidayTodayText = styled.span`
+  font-size: 20px;
+  font-weight: 700;
+  color: ${props => props.theme === 'light' ? '#7C2D12' : '#FED7AA'};
+  margin: 0 8px;
+`;
+
+const HolidayMessage = styled.div`
+  font-size: 16px;
+  font-weight: 600;
+  color: ${props => props.theme === 'light' ? '#7C2D12' : '#FED7AA'};
+  margin-top: 8px;
+`;
+
+const HolidayCountdownContainer = styled.div`
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+    gap: 16px;
+  }
+`;
+
+const HolidayCountdownCard = styled.div`
+  ${props => props.$holiday === 'easter'
+    ? `
+      background: ${props.theme === 'light'
+        ? 'linear-gradient(135deg, #F3E8FF 0%, #DDD6FE 100%)'
+        : 'linear-gradient(135deg, #581C87 0%, #7C3AED 100%)'
+      };
+      border: 2px solid ${props.theme === 'light' ? '#7C3AED' : '#A855F7'};
+      box-shadow: ${props.theme === 'light'
+        ? '0 4px 12px rgba(124, 58, 237, 0.2)'
+        : '0 4px 12px rgba(168, 85, 247, 0.3)'
+      };
+    `
+    : `
+      background: ${props.theme === 'light'
+        ? 'linear-gradient(135deg, #FECACA 0%, #FCA5A5 100%)'
+        : 'linear-gradient(135deg, #7F1D1D 0%, #DC2626 100%)'
+      };
+      border: 2px solid ${props.theme === 'light' ? '#DC2626' : '#EF4444'};
+      box-shadow: ${props.theme === 'light'
+        ? '0 4px 12px rgba(220, 38, 38, 0.2)'
+        : '0 4px 12px rgba(239, 68, 68, 0.3)'
+      };
+    `
+  }
+  border-radius: 16px;
+  padding: 20px;
+  text-align: center;
+  min-width: 120px;
+  position: relative;
+  overflow: hidden;
+
+  &:before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: ${props => props.$holiday === 'easter'
+      ? 'radial-gradient(circle, rgba(168, 85, 247, 0.1) 0%, transparent 70%)'
+      : 'radial-gradient(circle, rgba(239, 68, 68, 0.1) 0%, transparent 70%)'
+    };
+    animation: holiday-glow 4s ease-in-out infinite;
+  }
+
+  @keyframes holiday-glow {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(180deg); }
+  }
+`;
+
+const HolidayCountdownDays = styled.div`
+  font-size: 32px;
+  font-weight: 800;
+  ${props => props.theme === 'light'
+    ? 'color: #581C87;'
+    : 'color: #DDD6FE;'
+  }
+  line-height: 1;
+  position: relative;
+  z-index: 1;
+`;
+
+const HolidayCountdownLabel = styled.div`
+  font-size: 12px;
+  font-weight: 600;
+  ${props => props.theme === 'light'
+    ? 'color: #581C87;'
+    : 'color: #DDD6FE;'
+  }
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 4px;
+  position: relative;
+  z-index: 1;
+`;
+
+const HolidayEmoji = styled.div`
+  font-size: 16px;
+  margin-top: 8px;
+  animation: holiday-bounce 2s ease-in-out infinite;
+  position: relative;
+  z-index: 1;
+
+  @keyframes holiday-bounce {
+    0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+    40% { transform: translateY(-4px); }
+    60% { transform: translateY(-2px); }
+  }
+`;
+
+const HolidayInfo = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+`;
+
+const HolidayDate = styled.div`
+  font-size: 16px;
+  font-weight: 600;
+  color: ${props => props.theme === 'light' ? '#374151' : '#D1D5DB'};
+  background: ${props => props.theme === 'light' ? '#F9FAFB' : '#1F2937'};
+  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  border-radius: 8px;
+  padding: 8px 12px;
+`;
+
+const HolidayPlan = styled.div`
+  font-size: 14px;
+  font-weight: 600;
+  color: ${props => props.theme === 'light' ? '#059669' : '#6EE7B7'};
+  background: ${props => props.theme === 'light' ? '#D1FAE5' : '#065F46'};
+  border: 1px solid ${props => props.theme === 'light' ? '#10B981' : '#059669'};
+  border-radius: 8px;
+  padding: 8px 12px;
+`;
+
+const ChristmasCountdownFun = styled.div`
+  font-size: 14px;
+  font-weight: 600;
+  color: ${props => props.theme === 'light' ? '#DC2626' : '#FCA5A5'};
+  background: ${props => props.theme === 'light' ? '#FEE2E2' : '#7F1D1D'};
+  border: 1px solid ${props => props.theme === 'light' ? '#EF4444' : '#DC2626'};
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-style: italic;
+`;
+
+// Next Event styled components
+const NextEventContent = styled.div`
+  padding: 24px;
+  max-width: 800px;
+  margin: 0 auto;
+`;
+
+const NextEventLoadingContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 60px 20px;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+`;
+
+const NextEventContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+`;
+
+const NextEventCard = styled.div`
+  background: ${props => {
+    if (props.$eventType === 'birthday') return 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)';
+    if (props.$eventType === 'touchbase') return 'linear-gradient(135deg, #DBEAFE 0%, #BFDBFE 100%)';
+    if (props.$eventType === 'easter') return 'linear-gradient(135deg, #F3E8FF 0%, #DDD6FE 100%)';
+    if (props.$eventType === 'christmas') return 'linear-gradient(135deg, #FECACA 0%, #FCA5A5 100%)';
+    return 'linear-gradient(135deg, #F9FAFB 0%, #E5E7EB 100%)';
+  }};
+
+  border: 3px solid ${props => {
+    if (props.$eventType === 'birthday') return '#F59E0B';
+    if (props.$eventType === 'touchbase') return '#3B82F6';
+    if (props.$eventType === 'easter') return '#7C3AED';
+    if (props.$eventType === 'christmas') return '#DC2626';
+    return '#6B7280';
+  }};
+
+  border-radius: 20px;
+  padding: 32px;
+  text-align: center;
+  box-shadow: ${props => props.theme === 'light'
+    ? '0 10px 25px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05)'
+    : '0 10px 25px rgba(0, 0, 0, 0.3), 0 4px 6px rgba(0, 0, 0, 0.1)'
+  };
+
+  animation: next-event-glow 3s ease-in-out infinite;
+
+  @keyframes next-event-glow {
+    0%, 100% { box-shadow: ${props => props.theme === 'light'
+      ? '0 10px 25px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05)'
+      : '0 10px 25px rgba(0, 0, 0, 0.3), 0 4px 6px rgba(0, 0, 0, 0.1)'
+    }; }
+    50% { box-shadow: ${props => props.theme === 'light'
+      ? '0 15px 35px rgba(0, 0, 0, 0.15), 0 6px 12px rgba(0, 0, 0, 0.08)'
+      : '0 15px 35px rgba(0, 0, 0, 0.4), 0 6px 12px rgba(0, 0, 0, 0.2)'
+    }; }
+  }
+`;
+
+const NextEventHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 24px;
+`;
+
+const NextEventEmoji = styled.div`
+  font-size: 48px;
+  animation: next-event-bounce 2s ease-in-out infinite;
+
+  @keyframes next-event-bounce {
+    0%, 20%, 50%, 80%, 100% { transform: translateY(0) scale(1); }
+    40% { transform: translateY(-8px) scale(1.1); }
+    60% { transform: translateY(-4px) scale(1.05); }
+  }
+`;
+
+const NextEventTitle = styled.h2`
+  font-size: 28px;
+  font-weight: 800;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  margin: 0;
+  text-shadow: ${props => props.theme === 'light'
+    ? '0 2px 4px rgba(0, 0, 0, 0.1)'
+    : '0 2px 4px rgba(0, 0, 0, 0.3)'
+  };
+`;
+
+const NextEventCountdown = styled.div`
+  margin-bottom: 24px;
+`;
+
+const NextEventDays = styled.div`
+  font-size: 72px;
+  font-weight: 900;
+  line-height: 1;
+  margin-bottom: 8px;
+  color: ${props => {
+    if (props.$eventType === 'birthday') return '#92400E';
+    if (props.$eventType === 'touchbase') return '#1E40AF';
+    if (props.$eventType === 'easter') return '#581C87';
+    if (props.$eventType === 'christmas') return '#7F1D1D';
+    return '#374151';
+  }};
+
+  text-shadow: ${props => props.theme === 'light'
+    ? '0 2px 8px rgba(0, 0, 0, 0.2)'
+    : '0 2px 8px rgba(0, 0, 0, 0.4)'
+  };
+
+  animation: next-event-pulse 2s ease-in-out infinite;
+
+  @keyframes next-event-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+  }
+`;
+
+const NextEventDaysLabel = styled.div`
+  font-size: 16px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: ${props => props.theme === 'light' ? '#374151' : '#D1D5DB'};
+  opacity: 0.8;
+`;
+
+const NextEventDate = styled.div`
+  font-size: 18px;
+  font-weight: 600;
+  color: ${props => props.theme === 'light' ? '#374151' : '#D1D5DB'};
+  background: ${props => props.theme === 'light' ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.2)'};
+  border-radius: 12px;
+  padding: 12px 20px;
+  margin: 20px auto;
+  display: inline-block;
+  backdrop-filter: blur(8px);
+  border: 1px solid ${props => props.theme === 'light' ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.1)'};
+`;
+
+const NextEventDetails = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 24px 0;
+`;
+
+const NextEventDetail = styled.div`
+  font-size: 16px;
+  font-weight: 600;
+  color: ${props => props.theme === 'light' ? '#059669' : '#6EE7B7'};
+  background: ${props => props.theme === 'light' ? 'rgba(209, 250, 229, 0.8)' : 'rgba(6, 95, 70, 0.8)'};
+  border-radius: 10px;
+  padding: 8px 16px;
+  display: inline-block;
+  backdrop-filter: blur(4px);
+`;
+
+const NextEventToday = styled.div`
+  font-size: 18px;
+  font-weight: 700;
+  color: #DC2626;
+  background: #FEE2E2;
+  border: 2px solid #EF4444;
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 20px;
+  animation: next-event-urgent 1.5s ease-in-out infinite;
+
+  @keyframes next-event-urgent {
+    0%, 100% { background: #FEE2E2; }
+    50% { background: #FECACA; }
+  }
+`;
+
+const NextEventSoon = styled.div`
+  font-size: 16px;
+  font-weight: 600;
+  color: #F59E0B;
+  background: #FEF3C7;
+  border: 2px solid #F59E0B;
+  border-radius: 12px;
+  padding: 12px;
+  margin-top: 20px;
+`;
+
+const NextEventThisWeek = styled.div`
+  font-size: 16px;
+  font-weight: 600;
+  color: #3B82F6;
+  background: #DBEAFE;
+  border: 2px solid #3B82F6;
+  border-radius: 12px;
+  padding: 12px;
+  margin-top: 20px;
+`;
+
+const EasterApiNote = styled.div`
+  font-size: 14px;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  background: ${props => props.theme === 'light' ? '#F9FAFB' : '#1F2937'};
+  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+  font-style: italic;
+`;
+
+const NextEventEmpty = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+`;
+
+const NextEventEmptyIcon = styled.div`
+  font-size: 64px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+`;
+
+const NextEventEmptyText = styled.div`
+  font-size: 20px;
+  font-weight: 600;
+  color: ${props => props.theme === 'light' ? '#374151' : '#D1D5DB'};
+  margin-bottom: 8px;
+`;
+
+const NextEventEmptySubtext = styled.div`
+  font-size: 14px;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  max-width: 400px;
+  line-height: 1.5;
+`;
 
 export default ContactDetail;

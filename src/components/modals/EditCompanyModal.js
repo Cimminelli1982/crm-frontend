@@ -167,7 +167,7 @@ const Tag = styled.span`
   font-size: 0.75rem;
   border-radius: 9999px;
   background-color: ${props => props.color || '#f3f4f6'};
-  color: ${props => props.textColor || '#4b5563'};
+  color: ${props => props.$textColor || '#4b5563'};
   font-weight: 500;
 `;
 
@@ -287,17 +287,18 @@ const RemoveButton = styled.button`
   }
 `;
 
-// Company categories
+// Company categories - matches database enum
 const COMPANY_CATEGORIES = [
   'Advisory',
+  'Corporate',
   'Corporation',
+  'Inbox',
   'Institution',
+  'Media',
+  'Not Set',
   'Professional Investor',
   'SME',
-  'Startup',
-  'Supplier',
-  'Media',
-  'Team'
+  'Startup'
 ];
 
 // Helper function to get tag colors - for consistent coloring
@@ -312,11 +313,16 @@ const getTagColor = (tagName) => {
     { bg: '#fae8ff', text: '#86198f' }, // Fuchsia
     { bg: '#fce7f3', text: '#9d174d' }  // Pink
   ];
-  
+
+  // Handle null/undefined tag names
+  if (!tagName || typeof tagName !== 'string') {
+    return colors[0]; // Return first color as default
+  }
+
   // Generate a consistent index based on the tag name
   const sum = tagName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
   const index = sum % colors.length;
-  
+
   return colors[index];
 };
 
@@ -383,11 +389,6 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
   const [citySuggestions, setCitySuggestions] = useState([]);
   const [showCitySuggestions, setShowCitySuggestions] = useState(false);
   
-  // Contacts states
-  const [contacts, setContacts] = useState([]);
-  const [contactSearchTerm, setContactSearchTerm] = useState('');
-  const [contactSuggestions, setContactSuggestions] = useState([]);
-  const [showContactSuggestions, setShowContactSuggestions] = useState(false);
   
   // UI states
   const [loading, setLoading] = useState(false);
@@ -407,7 +408,6 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
       // Load related data
       setTags(company.tags || []);
       setCities(company.cities || []);
-      setContacts(company.contacts || []);
       
       // Reset UI states
       setError('');
@@ -433,12 +433,11 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
         if (error) throw error;
         
         // Filter out already added tags
-        const filteredSuggestions = data.filter(tag => 
-          !tags.some(existingTag => existingTag.id === tag.id)
+        const filteredSuggestions = data.filter(tag =>
+          !tags.some(existingTag => (existingTag.tag_id || existingTag.id) === (tag.tag_id || tag.id))
         );
         
         setTagSuggestions(filteredSuggestions);
-        setShowTagSuggestions(filteredSuggestions.length > 0);
       } catch (error) {
         console.error('Error fetching tag suggestions:', error);
       }
@@ -465,8 +464,8 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
         if (error) throw error;
         
         // Filter out already added cities
-        const filteredSuggestions = data.filter(city => 
-          !cities.some(existingCity => existingCity.id === city.id)
+        const filteredSuggestions = data.filter(city =>
+          !cities.some(existingCity => (existingCity.city_id || existingCity.id) === (city.city_id || city.id))
         );
         
         setCitySuggestions(filteredSuggestions);
@@ -479,37 +478,6 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
     fetchCitySuggestions();
   }, [citySearchTerm, cities]);
 
-  // Handle contact search
-  useEffect(() => {
-    const fetchContactSuggestions = async () => {
-      if (!contactSearchTerm || contactSearchTerm.length < 2) {
-        setContactSuggestions([]);
-        return;
-      }
-      
-      try {
-        const { data, error } = await supabase
-          .from('contacts')
-          .select('*')
-          .or(`first_name.ilike.%${contactSearchTerm}%,last_name.ilike.%${contactSearchTerm}%,email.ilike.%${contactSearchTerm}%`)
-          .limit(10);
-          
-        if (error) throw error;
-        
-        // Filter out already added contacts
-        const filteredSuggestions = data.filter(contact => 
-          !contacts.some(existingContact => existingContact.id === contact.id)
-        );
-        
-        setContactSuggestions(filteredSuggestions);
-        setShowContactSuggestions(filteredSuggestions.length > 0);
-      } catch (error) {
-        console.error('Error fetching contact suggestions:', error);
-      }
-    };
-    
-    fetchContactSuggestions();
-  }, [contactSearchTerm, contacts]);
   
   // Handle tag add/remove
   const handleAddTag = async (tag) => {
@@ -519,7 +487,7 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
   };
   
   const handleRemoveTag = (tagId) => {
-    setTags(tags.filter(tag => tag.id !== tagId));
+    setTags(tags.filter(tag => (tag.tag_id || tag.id) !== tagId));
   };
   
   const handleCreateTag = async () => {
@@ -547,7 +515,7 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
   };
   
   const handleRemoveCity = (cityId) => {
-    setCities(cities.filter(city => city.id !== cityId));
+    setCities(cities.filter(city => (city.city_id || city.id) !== cityId));
   };
   
   const handleCreateCity = async () => {
@@ -567,22 +535,6 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
     }
   };
   
-  // Handle contact add/remove
-  const handleAddContact = (contact) => {
-    setContacts([...contacts, contact]);
-    setContactSearchTerm('');
-    setShowContactSuggestions(false);
-  };
-  
-  const handleRemoveContact = (contactId) => {
-    setContacts(contacts.filter(contact => contact.id !== contactId));
-  };
-  
-  // Format contact name for display
-  const formatContactName = (contact) => {
-    if (!contact) return "";
-    return `${contact.first_name || ""} ${contact.last_name || ""}`.trim() || contact.email || "Unknown";
-  };
 
   // Save the company
   const handleSubmit = async (e) => {
@@ -620,9 +572,9 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
           linkedin: formattedLinkedin,
           category: companyCategory,
           description: companyDescription.trim(),
-          modified_at: new Date()
+          last_modified_at: new Date()
         })
-        .eq('id', company.id)
+        .eq('company_id', company.company_id)
         .select();
         
       if (updateError) throw updateError;
@@ -630,124 +582,83 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
       // Handle tags relationships
       // First, get existing tag relationships
       const { data: existingTags, error: existingTagsError } = await supabase
-        .from('companies_tags')
+        .from('company_tags')
         .select('tag_id')
-        .eq('company_id', company.id);
+        .eq('company_id', company.company_id);
         
       if (existingTagsError) throw existingTagsError;
       
       // Determine which tags to add and which to remove
       const existingTagIds = existingTags.map(tag => tag.tag_id);
-      const newTagIds = tags.map(tag => tag.id);
-      
+      const newTagIds = tags.map(tag => tag.tag_id || tag.id);
+
       const tagsToAdd = newTagIds.filter(id => !existingTagIds.includes(id));
       const tagsToRemove = existingTagIds.filter(id => !newTagIds.includes(id));
-      
+
       // Remove tags that are no longer associated
       if (tagsToRemove.length > 0) {
         const { error: removeTagsError } = await supabase
-          .from('companies_tags')
+          .from('company_tags')
           .delete()
-          .eq('company_id', company.id)
+          .eq('company_id', company.company_id)
           .in('tag_id', tagsToRemove);
-          
+
         if (removeTagsError) throw removeTagsError;
       }
-      
+
       // Add new tags
       if (tagsToAdd.length > 0) {
         const tagConnections = tagsToAdd.map(tagId => ({
-          company_id: company.id,
+          company_id: company.company_id,
           tag_id: tagId
         }));
-        
+
         const { error: addTagsError } = await supabase
-          .from('companies_tags')
+          .from('company_tags')
           .insert(tagConnections);
-          
+
         if (addTagsError) throw addTagsError;
       }
       
       // Handle cities relationships
       // First, get existing city relationships
       const { data: existingCities, error: existingCitiesError } = await supabase
-        .from('companies_cities')
+        .from('company_cities')
         .select('city_id')
-        .eq('company_id', company.id);
-        
+        .eq('company_id', company.company_id);
+
       if (existingCitiesError) throw existingCitiesError;
-      
+
       // Determine which cities to add and which to remove
       const existingCityIds = existingCities.map(city => city.city_id);
-      const newCityIds = cities.map(city => city.id);
-      
+      const newCityIds = cities.map(city => city.city_id || city.id);
+
       const citiesToAdd = newCityIds.filter(id => !existingCityIds.includes(id));
       const citiesToRemove = existingCityIds.filter(id => !newCityIds.includes(id));
-      
+
       // Remove cities that are no longer associated
       if (citiesToRemove.length > 0) {
         const { error: removeCitiesError } = await supabase
-          .from('companies_cities')
+          .from('company_cities')
           .delete()
-          .eq('company_id', company.id)
+          .eq('company_id', company.company_id)
           .in('city_id', citiesToRemove);
-          
+
         if (removeCitiesError) throw removeCitiesError;
       }
-      
+
       // Add new cities
       if (citiesToAdd.length > 0) {
         const cityConnections = citiesToAdd.map(cityId => ({
-          company_id: company.id,
+          company_id: company.company_id,
           city_id: cityId
         }));
-        
+
         const { error: addCitiesError } = await supabase
-          .from('companies_cities')
+          .from('company_cities')
           .insert(cityConnections);
-          
+
         if (addCitiesError) throw addCitiesError;
-      }
-      
-      // Handle contacts relationships
-      // First, get existing contact relationships
-      const { data: existingContacts, error: existingContactsError } = await supabase
-        .from('contact_companies')
-        .select('contact_id')
-        .eq('company_id', company.id);
-        
-      if (existingContactsError) throw existingContactsError;
-      
-      // Determine which contacts to add and which to remove
-      const existingContactIds = existingContacts.map(contact => contact.contact_id);
-      const newContactIds = contacts.map(contact => contact.id);
-      
-      const contactsToAdd = newContactIds.filter(id => !existingContactIds.includes(id));
-      const contactsToRemove = existingContactIds.filter(id => !newContactIds.includes(id));
-      
-      // Remove contacts that are no longer associated
-      if (contactsToRemove.length > 0) {
-        const { error: removeContactsError } = await supabase
-          .from('contact_companies')
-          .delete()
-          .eq('company_id', company.id)
-          .in('contact_id', contactsToRemove);
-          
-        if (removeContactsError) throw removeContactsError;
-      }
-      
-      // Add new contacts
-      if (contactsToAdd.length > 0) {
-        const contactConnections = contactsToAdd.map(contactId => ({
-          company_id: company.id,
-          contact_id: contactId
-        }));
-        
-        const { error: addContactsError } = await supabase
-          .from('contact_companies')
-          .insert(contactConnections);
-          
-        if (addContactsError) throw addContactsError;
       }
       
       setMessage({ type: 'success', text: 'Company updated successfully' });
@@ -874,17 +785,18 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
             <SectionTitle>Tags</SectionTitle>
             
             <TagsContainer>
-              {tags.map(tag => {
+              {tags.map((tag, index) => {
                 const color = getTagColor(tag.name);
+                const tagId = tag.tag_id || tag.id || index;
                 return (
-                  <Tag 
-                    key={tag.id} 
+                  <Tag
+                    key={`tag-${tagId}-${index}`}
                     color={color.bg}
-                    textColor={color.text}
+                    $textColor={color.text}
                   >
                     {tag.name}
-                    <TagRemoveButton 
-                      onClick={() => handleRemoveTag(tag.id)}
+                    <TagRemoveButton
+                      onClick={() => handleRemoveTag(tagId)}
                       type="button"
                     >
                       ×
@@ -900,18 +812,15 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
                 value={tagSearchTerm}
                 onChange={(e) => setTagSearchTerm(e.target.value)}
                 placeholder="Search for tags or add new ones"
-                onFocus={() => {
-                  if (tagSuggestions.length > 0) {
-                    setShowTagSuggestions(true);
-                  }
-                }}
+                onFocus={() => setShowTagSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowTagSuggestions(false), 200)}
               />
               
               {showTagSuggestions && (
                 <SuggestionsContainer>
-                  {tagSuggestions.map(tag => (
-                    <Suggestion 
-                      key={tag.id}
+                  {tagSuggestions.map((tag, index) => (
+                    <Suggestion
+                      key={`suggestion-${tag.id || tag.tag_id}-${index}`}
                       onClick={() => handleAddTag(tag)}
                     >
                       {tag.name}
@@ -936,24 +845,27 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
             
             {cities.length > 0 && (
               <ListContainer>
-                {cities.map(city => (
-                  <ListItem key={city.id}>
-                    <ListItemText>
-                      {getFlagEmoji(city.name) && (
-                        <span style={{ marginRight: '5px' }}>
-                          {getFlagEmoji(city.name)}
-                        </span>
-                      )}
-                      {city.name}
-                    </ListItemText>
-                    <RemoveButton 
-                      onClick={() => handleRemoveCity(city.id)}
-                      type="button"
-                    >
-                      ×
-                    </RemoveButton>
-                  </ListItem>
-                ))}
+                {cities.map((city, index) => {
+                  const cityId = city.city_id || city.id || index;
+                  return (
+                    <ListItem key={`city-${cityId}-${index}`}>
+                      <ListItemText>
+                        {getFlagEmoji(city.name) && (
+                          <span style={{ marginRight: '5px' }}>
+                            {getFlagEmoji(city.name)}
+                          </span>
+                        )}
+                        {city.name}
+                      </ListItemText>
+                      <RemoveButton
+                        onClick={() => handleRemoveCity(cityId)}
+                        type="button"
+                      >
+                        ×
+                      </RemoveButton>
+                    </ListItem>
+                  );
+                })}
               </ListContainer>
             )}
             
@@ -972,9 +884,9 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
               
               {showCitySuggestions && (
                 <SuggestionsContainer>
-                  {citySuggestions.map(city => (
-                    <Suggestion 
-                      key={city.id}
+                  {citySuggestions.map((city, index) => (
+                    <Suggestion
+                      key={`city-suggestion-${city.city_id || city.id}-${index}`}
                       onClick={() => handleAddCity(city)}
                     >
                       {getFlagEmoji(city.name) && (
@@ -994,60 +906,6 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
                       Create "{citySearchTerm}"
                     </NewTagButton>
                   )}
-                </SuggestionsContainer>
-              )}
-            </TagInput>
-          </Section>
-          
-          <Section>
-            <SectionTitle>Associated Contacts</SectionTitle>
-            
-            {contacts.length > 0 && (
-              <ListContainer>
-                {contacts.map(contact => (
-                  <ListItem key={contact.id}>
-                    <ListItemText>
-                      {formatContactName(contact)}
-                    </ListItemText>
-                    <RemoveButton 
-                      onClick={() => handleRemoveContact(contact.id)}
-                      type="button"
-                    >
-                      ×
-                    </RemoveButton>
-                  </ListItem>
-                ))}
-              </ListContainer>
-            )}
-            
-            <TagInput>
-              <Input
-                type="text"
-                value={contactSearchTerm}
-                onChange={(e) => setContactSearchTerm(e.target.value)}
-                placeholder="Search for contacts"
-                onFocus={() => {
-                  if (contactSuggestions.length > 0) {
-                    setShowContactSuggestions(true);
-                  }
-                }}
-              />
-              
-              {showContactSuggestions && (
-                <SuggestionsContainer>
-                  {contactSuggestions.map(contact => (
-                    <Suggestion 
-                      key={contact.id}
-                      onClick={() => handleAddContact(contact)}
-                    >
-                      {formatContactName(contact)}
-                      {contact.email && (
-                        <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-                          {contact.email}
-                        </div>
-                      )}
-                    </Suggestion>
-                  ))}
                 </SuggestionsContainer>
               )}
             </TagInput>

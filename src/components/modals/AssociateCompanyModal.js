@@ -221,11 +221,13 @@ const RELATIONSHIP_TYPES = [
   "other"
 ];
 
-const AssociateCompanyModal = ({ 
-  isOpen, 
-  onRequestClose, 
+const AssociateCompanyModal = ({
+  isOpen,
+  onRequestClose,
   contactId,
-  onCompanyAssociated = () => {}
+  contactCompanies = [],
+  onCompanyAssociated = () => {},
+  onCompanyRemoved = () => {}
 }) => {
   // State for the search
   const [searchTerm, setSearchTerm] = useState('');
@@ -237,6 +239,9 @@ const AssociateCompanyModal = ({
   const [selectedCompany, setSelectedCompany] = useState(null);
   const [relationship, setRelationship] = useState('not_set');
   const [isPrimary, setIsPrimary] = useState(false);
+
+  // State for managing companies
+  const [removingCompany, setRemovingCompany] = useState(null);
   
   // Refs
   const searchInputRef = useRef(null);
@@ -354,6 +359,28 @@ const AssociateCompanyModal = ({
     // Signal to parent component to open new company modal with the search term
     onCompanyAssociated({ action: 'create_new', name: searchTerm });
   };
+
+  // Handle removing a company association
+  const handleRemoveCompany = async (companyRelation) => {
+    try {
+      setRemovingCompany(companyRelation.contact_companies_id);
+
+      const { error } = await supabase
+        .from('contact_companies')
+        .delete()
+        .eq('contact_companies_id', companyRelation.contact_companies_id);
+
+      if (error) throw error;
+
+      toast.success(`${companyRelation.companies?.name || 'Company'} unlinked successfully`);
+      onCompanyRemoved(companyRelation);
+    } catch (error) {
+      console.error('Error removing company association:', error);
+      toast.error(`Failed to unlink company: ${error.message}`);
+    } finally {
+      setRemovingCompany(null);
+    }
+  };
   
   // Handle associating the company
   const handleAssociateCompany = async () => {
@@ -457,25 +484,90 @@ const AssociateCompanyModal = ({
     >
       <ModalContainer>
         <Header>
-          <Title>Associate Company</Title>
+          <Title>Manage Companies</Title>
           <CloseButton onClick={onRequestClose}>
             <FiX size={20} />
           </CloseButton>
         </Header>
+
+        {/* Related Companies Section */}
+        <FormGroup>
+          <FormLabel>Associated Companies</FormLabel>
+          {contactCompanies.length === 0 ? (
+            <EmptyMessage>No companies associated with this contact</EmptyMessage>
+          ) : (
+            <ResultsContainer>
+              {contactCompanies.map((companyRelation) => (
+                <ResultItem key={companyRelation.contact_companies_id}>
+                  <ResultInfo>
+                    <ResultCompanyName>
+                      {companyRelation.companies?.name || 'Unknown Company'}
+                      {companyRelation.is_primary && (
+                        <span style={{
+                          marginLeft: '8px',
+                          padding: '2px 6px',
+                          backgroundColor: '#10B981',
+                          color: 'white',
+                          borderRadius: '12px',
+                          fontSize: '11px',
+                          fontWeight: '500'
+                        }}>
+                          Primary
+                        </span>
+                      )}
+                    </ResultCompanyName>
+                    <ResultCompanyDetail>
+                      {companyRelation.companies?.category || 'No category'} •
+                      {companyRelation.relationship !== 'not_set' ?
+                        companyRelation.relationship.charAt(0).toUpperCase() + companyRelation.relationship.slice(1) :
+                        'No relationship set'
+                      }
+                      {companyRelation.companies?.website && (
+                        <>
+                          {' • '}
+                          <a
+                            href={companyRelation.companies.website}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: '#00ff00' }}
+                          >
+                            Website
+                          </a>
+                        </>
+                      )}
+                    </ResultCompanyDetail>
+                  </ResultInfo>
+                  <ActionButton
+                    onClick={() => handleRemoveCompany(companyRelation)}
+                    disabled={removingCompany === companyRelation.contact_companies_id}
+                    title="Remove association"
+                    style={{ color: '#ef4444' }}
+                  >
+                    {removingCompany === companyRelation.contact_companies_id ? '...' : <FiX size={16} />}
+                  </ActionButton>
+                </ResultItem>
+              ))}
+            </ResultsContainer>
+          )}
+        </FormGroup>
         
-        <SearchContainer>
-          <SearchInput 
-            ref={searchInputRef}
-            type="text"
-            value={searchTerm}
-            onChange={handleSearchChange}
-            onKeyDown={handleSearchKeyDown}
-            placeholder="Search for a company by name..."
-          />
-          <SearchIcon>
-            <FiSearch size={16} />
-          </SearchIcon>
-        </SearchContainer>
+        {/* Add Companies Section */}
+        <FormGroup>
+          <FormLabel>Add Companies</FormLabel>
+          <SearchContainer>
+            <SearchInput
+              ref={searchInputRef}
+              type="text"
+              value={searchTerm}
+              onChange={handleSearchChange}
+              onKeyDown={handleSearchKeyDown}
+              placeholder="Search for a company by name..."
+            />
+            <SearchIcon>
+              <FiSearch size={16} />
+            </SearchIcon>
+          </SearchContainer>
+        </FormGroup>
         
         {loading && (
           <EmptyMessage>Searching...</EmptyMessage>

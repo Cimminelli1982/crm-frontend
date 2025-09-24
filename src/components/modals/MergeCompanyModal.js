@@ -134,8 +134,8 @@ const CompanyContacts = styled.div`
 `;
 
 const ActionButton = styled.button`
-  background: ${props => props.primary ? 'black' : '#f3f4f6'};
-  color: ${props => props.primary ? 'white' : '#4b5563'};
+  background: ${props => props.$primary ? 'black' : '#f3f4f6'};
+  color: ${props => props.$primary ? 'white' : '#4b5563'};
   border: none;
   border-radius: 4px;
   padding: 6px 10px;
@@ -149,7 +149,7 @@ const ActionButton = styled.button`
   justify-content: center;
   
   &:hover {
-    background-color: ${props => props.primary ? '#333333' : '#e5e7eb'};
+    background-color: ${props => props.$primary ? '#333333' : '#e5e7eb'};
   }
   
   &:disabled {
@@ -286,8 +286,19 @@ const MergeCompanyModal = ({ isOpen, onRequestClose, company }) => {
   const fetchSimilarCompanies = async () => {
     try {
       setLoading(true);
-      
+
       if (!company) return;
+
+      console.log('Fetching similar companies for:', company.name, 'ID:', company.company_id);
+
+      // Debug: Let's see what companies are actually in the database
+      const { data: sampleCompanies, error: sampleError } = await supabase
+        .from('companies')
+        .select('company_id, name, category')
+        .neq('company_id', company.company_id)
+        .limit(10);
+
+      console.log('Sample companies in database:', sampleCompanies?.map(c => `${c.name} (${c.category})`));
       
       // First, get companies with similar names
       let similarNameCompanies = [];
@@ -296,6 +307,7 @@ const MergeCompanyModal = ({ isOpen, onRequestClose, company }) => {
         // Extract words from company name
         const nameWords = company.name.split(/\s+/).filter(word => word.length > 2);
         console.log("Company name words:", nameWords);
+        console.log("Current company ID to exclude:", company.company_id);
         
         // If we have words to search for
         if (nameWords.length > 0) {
@@ -304,20 +316,22 @@ const MergeCompanyModal = ({ isOpen, onRequestClose, company }) => {
             supabase
               .from('companies')
               .select('*')
-              .neq('id', company.id) // Exclude current company
+              .neq('company_id', company.company_id) // Exclude current company
               .neq('category', 'Skip') // Exclude companies with Skip category
               .ilike('name', `%${word}%`) // Match any word in the name
           );
           
           // Execute all searches
           const results = await Promise.all(promises);
-          
+
           // Combine results from all searches
           const allResults = [];
           results.forEach((result, i) => {
             if (!result.error && result.data) {
-              console.log(`Results for '${nameWords[i]}':`, result.data.length);
+              console.log(`Results for '${nameWords[i]}':`, result.data.length, result.data.map(c => c.name));
               allResults.push(...result.data);
+            } else if (result.error) {
+              console.error(`Error searching for '${nameWords[i]}':`, result.error);
             }
           });
           
@@ -337,7 +351,7 @@ const MergeCompanyModal = ({ isOpen, onRequestClose, company }) => {
           const { data, error } = await supabase
             .from('companies')
             .select('*')
-            .neq('id', company.id) // Exclude current company
+            .neq('company_id', company.company_id) // Exclude current company
             .neq('category', 'Skip'); // Exclude companies with Skip category
           
           if (!error && data) {
@@ -354,7 +368,7 @@ const MergeCompanyModal = ({ isOpen, onRequestClose, company }) => {
       if (company.contacts && company.contacts.length > 0) {
         try {
           // Get contact IDs from current company
-          const contactIds = company.contacts.map(contact => contact.id);
+          const contactIds = company.contacts.map(contact => contact.contact_id || contact.id);
           
           // Find companies that share these contacts
           const { data: contactCompanyData, error: contactCompanyError } = await supabase
@@ -364,14 +378,14 @@ const MergeCompanyModal = ({ isOpen, onRequestClose, company }) => {
               companies:company_id (*)
             `)
             .in('contact_id', contactIds)
-            .neq('company_id', company.id);
+            .neq('company_id', company.company_id);
             
           if (!contactCompanyError && contactCompanyData) {
             // Extract unique companies
             const companiesMap = {};
             contactCompanyData.forEach(item => {
               if (item.companies && item.companies.category !== 'Skip') {
-                companiesMap[item.companies.id] = item.companies;
+                companiesMap[item.companies.company_id] = item.companies;
               }
             });
             
@@ -387,7 +401,7 @@ const MergeCompanyModal = ({ isOpen, onRequestClose, company }) => {
       const uniqueCompanies = {};
       
       allCompanies.forEach(comp => {
-        uniqueCompanies[comp.id] = comp;
+        uniqueCompanies[comp.company_id] = comp;
       });
       
       // Convert back to array and include contact data
@@ -400,12 +414,13 @@ const MergeCompanyModal = ({ isOpen, onRequestClose, company }) => {
             .from('contact_companies')
             .select(`
               contact_id,
-              contacts:contact_id (id, first_name, last_name)
+              contacts:contact_id (contact_id, first_name, last_name)
             `)
-            .eq('company_id', comp.id);
+            .eq('company_id', comp.company_id);
             
           if (!contactsError && contactsData) {
             comp.contacts = contactsData.map(item => item.contacts).filter(Boolean);
+            console.log(`Contacts for company ${comp.name}:`, comp.contacts);
           } else {
             comp.contacts = [];
           }
@@ -478,12 +493,12 @@ const MergeCompanyModal = ({ isOpen, onRequestClose, company }) => {
       const { error } = await supabase
         .from('companies')
         .update({ category: 'Skip', modified_at: new Date() })
-        .eq('id', duplicateId);
+        .eq('company_id', duplicateId);
         
       if (error) throw error;
       
       // Remove from local state
-      setSimilarCompanies(similarCompanies.filter(comp => comp.id !== duplicateId));
+      setSimilarCompanies(similarCompanies.filter(comp => comp.company_id !== duplicateId));
       setMessage({ type: 'success', text: 'Company marked as duplicate and hidden' });
       
     } catch (error) {
@@ -507,7 +522,7 @@ const MergeCompanyModal = ({ isOpen, onRequestClose, company }) => {
       setMergeInProgress(true);
       
       // Find the company to merge with
-      const targetCompany = similarCompanies.find(comp => comp.id === selectedMergeId);
+      const targetCompany = similarCompanies.find(comp => comp.company_id === selectedMergeId);
       if (!targetCompany) throw new Error('Target company not found');
       
       // 1. Transfer all tags from target to source
@@ -516,14 +531,14 @@ const MergeCompanyModal = ({ isOpen, onRequestClose, company }) => {
         const { data: tagData, error: tagError } = await supabase
           .from('companies_tags')
           .select('tag_id')
-          .eq('company_id', targetCompany.id);
+          .eq('company_id', targetCompany.company_id);
           
         if (!tagError && tagData) {
           // Get existing tags for source company to avoid duplicates
           const { data: existingTags } = await supabase
             .from('companies_tags')
             .select('tag_id')
-            .eq('company_id', company.id);
+            .eq('company_id', company.company_id);
             
           const existingTagIds = new Set(existingTags?.map(t => t.tag_id) || []);
           
@@ -531,7 +546,7 @@ const MergeCompanyModal = ({ isOpen, onRequestClose, company }) => {
           const tagsToTransfer = tagData
             .filter(tag => !existingTagIds.has(tag.tag_id))
             .map(tag => ({
-              company_id: company.id,
+              company_id: company.company_id,
               tag_id: tag.tag_id
             }));
             
@@ -552,14 +567,14 @@ const MergeCompanyModal = ({ isOpen, onRequestClose, company }) => {
         const { data: cityData, error: cityError } = await supabase
           .from('companies_cities')
           .select('city_id')
-          .eq('company_id', targetCompany.id);
+          .eq('company_id', targetCompany.company_id);
           
         if (!cityError && cityData) {
           // Get existing cities for source company to avoid duplicates
           const { data: existingCities } = await supabase
             .from('companies_cities')
             .select('city_id')
-            .eq('company_id', company.id);
+            .eq('company_id', company.company_id);
             
           const existingCityIds = new Set(existingCities?.map(c => c.city_id) || []);
           
@@ -567,7 +582,7 @@ const MergeCompanyModal = ({ isOpen, onRequestClose, company }) => {
           const citiesToTransfer = cityData
             .filter(city => !existingCityIds.has(city.city_id))
             .map(city => ({
-              company_id: company.id,
+              company_id: company.company_id,
               city_id: city.city_id
             }));
             
@@ -588,14 +603,14 @@ const MergeCompanyModal = ({ isOpen, onRequestClose, company }) => {
         const { data: contactData, error: contactError } = await supabase
           .from('contact_companies')
           .select('contact_id')
-          .eq('company_id', targetCompany.id);
+          .eq('company_id', targetCompany.company_id);
           
         if (!contactError && contactData) {
           // Get existing contacts for source company to avoid duplicates
           const { data: existingContacts } = await supabase
             .from('contact_companies')
             .select('contact_id')
-            .eq('company_id', company.id);
+            .eq('company_id', company.company_id);
             
           const existingContactIds = new Set(existingContacts?.map(c => c.contact_id) || []);
           
@@ -603,7 +618,7 @@ const MergeCompanyModal = ({ isOpen, onRequestClose, company }) => {
           const contactsToTransfer = contactData
             .filter(contact => !existingContactIds.has(contact.contact_id))
             .map(contact => ({
-              company_id: company.id,
+              company_id: company.company_id,
               contact_id: contact.contact_id
             }));
             
@@ -624,12 +639,12 @@ const MergeCompanyModal = ({ isOpen, onRequestClose, company }) => {
         .update({ 
           category: 'Skip', 
           modified_at: new Date(),
-          description: `${targetCompany.description || ''}\n\nMerged into ${company.name} (ID: ${company.id})`
+          description: `${targetCompany.description || ''}\n\nMerged into ${company.name} (ID: ${company.company_id})`
         })
-        .eq('id', targetCompany.id);
+        .eq('company_id', targetCompany.company_id);
         
       // Remove from local state
-      setSimilarCompanies(similarCompanies.filter(comp => comp.id !== targetCompany.id));
+      setSimilarCompanies(similarCompanies.filter(comp => comp.company_id !== targetCompany.company_id));
       
       setMessage({ 
         type: 'success', 
@@ -767,7 +782,7 @@ const MergeCompanyModal = ({ isOpen, onRequestClose, company }) => {
               </CompanyTableHeader>
               
               {filteredCompanies.map(similarCompany => (
-                <CompanyTableRow key={similarCompany.id}>
+                <CompanyTableRow key={similarCompany.company_id}>
                   <CompanyName>{similarCompany.name}</CompanyName>
                   <CompanyContacts>
                     {formatContactList(similarCompany.contacts)}
@@ -775,19 +790,19 @@ const MergeCompanyModal = ({ isOpen, onRequestClose, company }) => {
                   <div style={{ display: 'flex', gap: '6px' }}>
                     <ActionButton 
                       className="delete"
-                      onClick={() => handleDeleteDuplicate(similarCompany.id)}
+                      onClick={() => handleDeleteDuplicate(similarCompany.company_id)}
                       disabled={loading || mergeInProgress}
                       title="Mark as duplicate (sets category to Skip)"
                     >
                       <FiTrash2 size={12} />
                     </ActionButton>
-                    <ActionButton 
-                      primary={selectedMergeId === similarCompany.id}
-                      onClick={() => handleSelectMerge(similarCompany.id)}
+                    <ActionButton
+                      $primary={selectedMergeId === similarCompany.company_id}
+                      onClick={() => handleSelectMerge(similarCompany.company_id)}
                       disabled={loading || mergeInProgress}
                       title="Select for merge"
                     >
-                      {selectedMergeId === similarCompany.id ? 'Selected' : 'Select'}
+                      {selectedMergeId === similarCompany.company_id ? 'Selected' : 'Select'}
                     </ActionButton>
                   </div>
                 </CompanyTableRow>
@@ -796,8 +811,8 @@ const MergeCompanyModal = ({ isOpen, onRequestClose, company }) => {
           )}
           
           {selectedMergeId && (
-            <MergeButton 
-              primary 
+            <MergeButton
+              $primary
               onClick={handleMergeCompanies}
               disabled={loading || mergeInProgress}
             >

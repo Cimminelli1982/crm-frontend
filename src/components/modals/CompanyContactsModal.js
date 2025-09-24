@@ -234,23 +234,23 @@ const CompanyContactsModal = ({ isOpen, onRequestClose, company, onContactClick 
   // Fetch related contacts for the company
   const fetchRelatedContacts = async () => {
     try {
-      console.log('Fetching related contacts for company ID:', company.id);
-      
+      console.log('Fetching related contacts for company ID:', company.company_id);
+
       const { data, error } = await supabase
         .from('contact_companies')
         .select(`
           contact_id,
-          contacts:contact_id(id, first_name, last_name, email)
+          contacts:contact_id(contact_id, first_name, last_name)
         `)
-        .eq('company_id', company.id);
+        .eq('company_id', company.company_id);
 
       if (error) throw error;
 
       const contacts = data.map(item => ({
-        id: item.contact_id,
+        id: item.contacts.contact_id,
+        contact_id: item.contacts.contact_id,
         first_name: item.contacts.first_name,
-        last_name: item.contacts.last_name,
-        email: item.contacts.email
+        last_name: item.contacts.last_name
       }));
 
       console.log('Fetched contacts:', contacts);
@@ -272,7 +272,7 @@ const CompanyContactsModal = ({ isOpen, onRequestClose, company, onContactClick 
       const { data, error } = await supabase
         .from('contacts')
         .select('*')
-        .or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%`)
+        .or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%`)
         .limit(10);
 
       if (error) throw error;
@@ -311,12 +311,14 @@ const CompanyContactsModal = ({ isOpen, onRequestClose, company, onContactClick 
       const { error } = await supabase
         .from('contact_companies')
         .delete()
-        .eq('company_id', company.id)
-        .eq('contact_id', contactToRemove.id);
+        .eq('company_id', company.company_id)
+        .eq('contact_id', contactToRemove.contact_id || contactToRemove.id);
 
       if (error) throw error;
       
-      setRelatedContacts(relatedContacts.filter(contact => contact.id !== contactToRemove.id));
+      setRelatedContacts(relatedContacts.filter(contact =>
+        (contact.id || contact.contact_id) !== (contactToRemove.id || contactToRemove.contact_id)
+      ));
       setMessage({ type: 'success', text: 'Contact unlinked successfully' });
     } catch (error) {
       console.error('Error unlinking contact:', error);
@@ -332,16 +334,16 @@ const CompanyContactsModal = ({ isOpen, onRequestClose, company, onContactClick 
       console.log('Adding contact:', contactToAdd);
       console.log('Company:', company);
       
-      if (!company.id) {
+      if (!company.company_id) {
         throw new Error('Missing company ID');
       }
-      
+
       // Check if already associated
       const { data: existingCheck, error: checkError } = await supabase
         .from('contact_companies')
         .select('company_id, contact_id')
-        .eq('company_id', company.id)
-        .eq('contact_id', contactToAdd.id);
+        .eq('company_id', company.company_id)
+        .eq('contact_id', contactToAdd.contact_id || contactToAdd.id);
         
       if (checkError) {
         console.error('Error checking existing contact association:', checkError);
@@ -357,8 +359,8 @@ const CompanyContactsModal = ({ isOpen, onRequestClose, company, onContactClick 
       }
       
       const newAssociation = {
-        company_id: company.id,
-        contact_id: contactToAdd.id,
+        company_id: company.company_id,
+        contact_id: contactToAdd.contact_id || contactToAdd.id,
         created_at: new Date().toISOString()
       };
       console.log('Creating new association:', newAssociation);
@@ -405,7 +407,7 @@ const CompanyContactsModal = ({ isOpen, onRequestClose, company, onContactClick 
         const { data, error } = await supabase
           .from('contacts')
           .select('*')
-          .eq('id', contactId)
+          .eq('contact_id', contactId)
           .single();
           
         if (error) throw error;
@@ -458,11 +460,11 @@ const CompanyContactsModal = ({ isOpen, onRequestClose, company, onContactClick 
         <Section>
           <SectionTitle>Company Contacts</SectionTitle>
           <ContactsList>
-            {relatedContacts.map(contact => (
-              <ContactBadge 
-                key={contact.id}
+            {relatedContacts.map((contact, index) => (
+              <ContactBadge
+                key={`related-contact-${contact.id || contact.contact_id}-${index}`}
                 style={{ cursor: 'pointer' }}
-                onClick={() => handleContactClick(contact.id)}
+                onClick={() => handleContactClick(contact.id || contact.contact_id)}
               >
                 <span title={formatContactName(contact)}>{formatContactName(contact)}</span>
                 <button 
@@ -495,20 +497,19 @@ const CompanyContactsModal = ({ isOpen, onRequestClose, company, onContactClick 
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search for a contact (name or email)..."
+              placeholder="Search for a contact by name..."
             />
           </SearchContainer>
 
           {showSuggestions && (
             <SuggestionsContainer>
-              {suggestions.map(suggestion => (
+              {suggestions.map((suggestion, index) => (
                 <SuggestionItem
-                  key={suggestion.id}
+                  key={`contact-suggestion-${suggestion.contact_id || suggestion.id}-${index}`}
                   onClick={() => handleAddContact(suggestion)}
                   disabled={loading}
                 >
                   {formatContactName(suggestion)}
-                  {suggestion.email && <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>{suggestion.email}</span>}
                 </SuggestionItem>
               ))}
               {suggestions.length === 0 && searchTerm.length >= 2 && (

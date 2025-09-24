@@ -5,6 +5,10 @@ import styled from 'styled-components';
 import { FaArrowLeft, FaEdit, FaTrash, FaGlobe, FaLinkedin, FaLayerGroup } from 'react-icons/fa';
 import { toast } from 'react-hot-toast';
 import ContactsList from '../components/ContactsList';
+import EditCompanyModal from '../components/modals/EditCompanyModal';
+import CompanyContactsModal from '../components/modals/CompanyContactsModal';
+import CompanyDuplicateModal from '../components/modals/CompanyDuplicateModal';
+import CompanyFiles from '../components/CompanyFiles';
 
 const CompanyDetailPage = ({ theme }) => {
   const { companyId } = useParams();
@@ -26,6 +30,15 @@ const CompanyDetailPage = ({ theme }) => {
   const [companyCities, setCompanyCities] = useState([]);
   const [companyTags, setCompanyTags] = useState([]);
   const [loadingRelatedData, setLoadingRelatedData] = useState(false);
+
+  // Edit modal state
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  // Contacts modal state
+  const [isContactsModalOpen, setIsContactsModalOpen] = useState(false);
+
+  // Merge modal state
+  const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
 
   const fetchCompany = async () => {
     if (!companyId) return;
@@ -218,6 +231,113 @@ const CompanyDetailPage = ({ theme }) => {
     }
   };
 
+  // Button handlers
+  const handleEdit = () => {
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditModalClose = () => {
+    setIsEditModalOpen(false);
+    // Refresh company data after edit
+    fetchCompany();
+    fetchRelatedData();
+  };
+
+  const handleAddContacts = () => {
+    setIsContactsModalOpen(true);
+  };
+
+  const handleContactsModalClose = () => {
+    setIsContactsModalOpen(false);
+    // Refresh related data after contacts changes
+    fetchRelatedData();
+  };
+
+  const handleMerge = () => {
+    setIsMergeModalOpen(true);
+  };
+
+  const handleMergeModalClose = () => {
+    setIsMergeModalOpen(false);
+    // Refresh company data after potential merge
+    fetchCompany();
+    fetchRelatedData();
+  };
+
+  const handleDelete = async () => {
+    if (!company) return;
+
+    const confirmMessage = `Are you sure you want to delete "${company.name}"?\n\nThis will permanently delete:\n• The company record\n• All associated tags, cities, and contacts\n• All attachments, investments, and notes\n• This action cannot be undone!`;
+
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      console.log('Deleting company and all associated records:', company.company_id);
+
+      // First, get all attachments to delete the actual files
+      const { data: attachments } = await supabase
+        .from('company_attachments')
+        .select('file_path, file_name')
+        .eq('company_id', company.company_id);
+
+      // Delete actual files from storage if they exist
+      if (attachments && attachments.length > 0) {
+        console.log('Deleting attachment files:', attachments.length);
+        for (const attachment of attachments) {
+          if (attachment.file_path) {
+            try {
+              const { error: storageError } = await supabase.storage
+                .from('attachments') // Adjust bucket name as needed
+                .remove([attachment.file_path]);
+
+              if (storageError) {
+                console.warn('Could not delete file:', attachment.file_path, storageError);
+              }
+            } catch (fileError) {
+              console.warn('Error deleting file:', attachment.file_path, fileError);
+            }
+          }
+        }
+      }
+
+      // Delete ALL references to the company from ALL tables
+      await Promise.all([
+        supabase.from('company_attachments').delete().eq('company_id', company.company_id),
+        supabase.from('company_cities').delete().eq('company_id', company.company_id),
+        supabase.from('company_tags').delete().eq('company_id', company.company_id),
+        supabase.from('contact_companies').delete().eq('company_id', company.company_id),
+        supabase.from('investments').delete().eq('related_company', company.company_id),
+        supabase.from('notes_companies').delete().eq('company_id', company.company_id)
+      ]);
+
+      console.log('All references cleaned up, now deleting company');
+
+      // Delete the company
+      const { error: deleteError } = await supabase
+        .from('companies')
+        .delete()
+        .eq('company_id', company.company_id);
+
+      if (deleteError) {
+        console.error('Failed to delete company:', deleteError);
+        toast.error('Failed to delete company: ' + deleteError.message);
+        return;
+      }
+
+      console.log('Successfully deleted company');
+      toast.success(`"${company.name}" has been permanently deleted`);
+
+      // Navigate back to companies list
+      navigate('/companies');
+
+    } catch (error) {
+      console.error('Error deleting company:', error);
+      toast.error('Failed to delete company: ' + error.message);
+    }
+  };
+
   if (loading) {
     return (
       <PageContainer theme={theme}>
@@ -337,15 +457,15 @@ const CompanyDetailPage = ({ theme }) => {
             </CompanyInfo>
 
             <ActionButtons>
-              <ActionButton theme={theme} $primary>
+              <ActionButton theme={theme} $primary onClick={handleEdit}>
                 <FaEdit />
                 <ActionButtonText>Edit</ActionButtonText>
               </ActionButton>
-              <ActionButton theme={theme} $merge>
+              <ActionButton theme={theme} $merge onClick={handleMerge}>
                 <FaLayerGroup />
                 <ActionButtonText>Merge</ActionButtonText>
               </ActionButton>
-              <ActionButton theme={theme} $danger>
+              <ActionButton theme={theme} $danger onClick={handleDelete}>
                 <FaTrash />
                 <ActionButtonText>Delete</ActionButtonText>
               </ActionButton>
@@ -376,7 +496,7 @@ const CompanyDetailPage = ({ theme }) => {
                 <SectionTitle theme={theme}>
                   🧑‍💼 Associated Contacts ({companyContacts.length})
                 </SectionTitle>
-                <AddButton theme={theme}>
+                <AddButton theme={theme} onClick={handleAddContacts}>
                   + Add Contacts
                 </AddButton>
               </RelatedSectionHeader>
@@ -398,16 +518,10 @@ const CompanyDetailPage = ({ theme }) => {
             </RelatedSection>
           )}
 
-          {/* Files - Coming Soon */}
+          {/* Files */}
           {activeTab === 'Files' && (
             <RelatedSection>
-              <ComingSoonContainer>
-                <ComingSoonIcon>📁</ComingSoonIcon>
-                <ComingSoonTitle theme={theme}>Files Coming Soon</ComingSoonTitle>
-                <ComingSoonText theme={theme}>
-                  File management for companies will be available in a future update
-                </ComingSoonText>
-              </ComingSoonContainer>
+              <CompanyFiles company={company} />
             </RelatedSection>
           )}
 
@@ -425,6 +539,41 @@ const CompanyDetailPage = ({ theme }) => {
           )}
         </MainContent>
       </CompanyDetailView>
+
+      {/* Edit Company Modal */}
+      <EditCompanyModal
+        isOpen={isEditModalOpen}
+        onRequestClose={handleEditModalClose}
+        company={{
+          ...company,
+          tags: companyTags.map(tagRelation => ({
+            tag_id: tagRelation.tags?.tag_id,
+            id: tagRelation.tags?.tag_id,
+            name: tagRelation.tags?.name
+          })),
+          cities: companyCities.map(cityRelation => ({
+            city_id: cityRelation.cities?.city_id,
+            id: cityRelation.cities?.city_id,
+            name: cityRelation.cities?.name,
+            country: cityRelation.cities?.country
+          })),
+          contacts: companyContacts
+        }}
+      />
+
+      {/* Company Contacts Modal */}
+      <CompanyContactsModal
+        isOpen={isContactsModalOpen}
+        onRequestClose={handleContactsModalClose}
+        company={company}
+      />
+
+      {/* Company Duplicate Modal */}
+      <CompanyDuplicateModal
+        isOpen={isMergeModalOpen}
+        onRequestClose={handleMergeModalClose}
+        company={company}
+      />
     </PageContainer>
   );
 };
