@@ -56,6 +56,18 @@ const InteractionsPage = ({ theme }) => {
               company_id,
               name
             )
+          ),
+          contact_emails (
+            email_id,
+            email,
+            type,
+            is_primary
+          ),
+          contact_mobiles (
+            mobile_id,
+            mobile,
+            type,
+            is_primary
           )
         `)
         .not('category', 'in', '("Skip","WhatsApp Group Contact","System","Not Set","Inbox")')
