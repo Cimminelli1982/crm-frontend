@@ -323,6 +323,7 @@ const SearchView = styled.div`
   height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 `;
 
 const SearchHeader = styled.div`
@@ -458,10 +459,8 @@ const FilterTab = styled.button`
 
 const ContentArea = styled.div`
   flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
+  overflow-y: auto;
+  overflow-x: hidden;
 `;
 
 const SearchInputContainer = styled.div`

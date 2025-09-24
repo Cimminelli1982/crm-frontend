@@ -1186,7 +1186,7 @@ const ContactDetail = ({ theme }) => {
           {activeTab === 'Related' && (
             <>
               <RelatedSubMenu theme={theme}>
-                {['Contacts', 'Companies', 'Deals', 'Lists'].map(relatedTab => (
+                {['Contacts', 'Deals', 'Lists'].map(relatedTab => (
                   <RelatedSubTab
                     key={relatedTab}
                     theme={theme}
@@ -1224,7 +1224,23 @@ const ContactDetail = ({ theme }) => {
                         ) : (
                           <RelatedGrid>
                             {contactCities.map((cityRelation, index) => (
-                              <RelatedCard key={index} theme={theme}>
+                              <RelatedCard
+                                key={index}
+                                theme={theme}
+                                $clickable={true}
+                                onClick={() => {
+                                  const cityId = cityRelation.cities?.city_id;
+                                  const cityName = cityRelation.cities?.name || cityRelation.cities?.city_name || 'Unknown City';
+                                  if (cityId) {
+                                    navigate(`/city/${cityId}/contacts`, {
+                                      state: {
+                                        cityName: cityName,
+                                        contactId: contact.contact_id
+                                      }
+                                    });
+                                  }
+                                }}
+                              >
                                 <RelatedCardIcon theme={theme}>
                                   🏙️
                                 </RelatedCardIcon>
@@ -1339,11 +1355,6 @@ const ContactDetail = ({ theme }) => {
                 </RelatedContainer>
               )}
 
-              {activeRelatedTab === 'Companies' && (
-                <ComingSoonMessage theme={theme}>
-                  🏢 Related companies coming soon
-                </ComingSoonMessage>
-              )}
 
               {activeRelatedTab === 'Deals' && (
                 <ComingSoonMessage theme={theme}>
@@ -1813,6 +1824,7 @@ const ContactDetail = ({ theme }) => {
           contact={contact}
           contactCompanies={contactCompanies}
           onCompanyAdded={handleCompanyAdded}
+          onCompanyRemoved={handleCompanyAdded} // Reuse the same handler to refresh data
           onClose={() => setAssociateCompanyModalOpen(false)}
           onCreateNewCompany={(companyName) => {
             setAssociateCompanyModalOpen(false);
@@ -3252,11 +3264,17 @@ const RelatedCard = styled.div`
   align-items: flex-start;
   gap: 12px;
   transition: all 0.2s ease;
+  cursor: ${props => props.$clickable ? 'pointer' : 'default'};
 
   &:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     border-color: ${props => props.theme === 'light' ? '#D1D5DB' : '#6B7280'};
+
+    ${props => props.$clickable && `
+      background: ${props.theme === 'light' ? '#EFF6FF' : '#1E3A8A'};
+      border-color: ${props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+    `}
   }
 `;
 
@@ -4330,11 +4348,12 @@ const TagLoadingOverlay = styled.div`
 `;
 
 // Associate Company Modal Component
-const AssociateCompanyModal = ({ theme, contact, contactCompanies, onCompanyAdded, onClose, onCreateNewCompany }) => {
+const AssociateCompanyModal = ({ theme, contact, contactCompanies, onCompanyAdded, onCompanyRemoved, onClose, onCreateNewCompany }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [removingCompany, setRemovingCompany] = useState(null);
 
   // Fetch company suggestions
   const fetchCompanySuggestions = async (search) => {
@@ -4401,26 +4420,98 @@ const AssociateCompanyModal = ({ theme, contact, contactCompanies, onCompanyAdde
     }
   };
 
+  const handleRemoveCompany = async (companyRelation) => {
+    try {
+      setRemovingCompany(companyRelation.contact_companies_id);
+
+      const { error } = await supabase
+        .from('contact_companies')
+        .delete()
+        .eq('contact_companies_id', companyRelation.contact_companies_id);
+
+      if (error) throw error;
+
+      onCompanyRemoved(companyRelation);
+    } catch (err) {
+      console.error('Error removing company:', err);
+      toast.error('Failed to remove company association');
+    } finally {
+      setRemovingCompany(null);
+    }
+  };
+
   return (
     <CompanyModalContainer theme={theme}>
       <CompanyModalHeader theme={theme}>
-        <CompanyModalTitle theme={theme}>Associate Company</CompanyModalTitle>
+        <CompanyModalTitle theme={theme}>Manage Companies</CompanyModalTitle>
         <CompanyModalCloseButton theme={theme} onClick={onClose}>
           ×
         </CompanyModalCloseButton>
       </CompanyModalHeader>
 
       <CompanyModalContent theme={theme}>
-        <CompanySearchContainer>
-          <CompanySearchInput
-            theme={theme}
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search for a company by name..."
-          />
-          <CompanySearchIcon theme={theme}>🔍</CompanySearchIcon>
-        </CompanySearchContainer>
+        {/* Associated Companies Section */}
+        <CompanyModalSection>
+          <CompanyModalSectionTitle theme={theme}>Associated Companies</CompanyModalSectionTitle>
+          {contactCompanies.length === 0 ? (
+            <CompanyEmptyMessage theme={theme}>
+              No companies associated with this contact
+            </CompanyEmptyMessage>
+          ) : (
+            <CompanyList>
+              {contactCompanies.map((companyRelation) => (
+                <CompanyTag key={companyRelation.contact_companies_id} theme={theme}>
+                  <CompanyTagContent>
+                    <CompanyTagName>
+                      {companyRelation.companies?.name || 'Unknown Company'}
+                      {companyRelation.is_primary && (
+                        <PrimaryBadge theme={theme}>Primary</PrimaryBadge>
+                      )}
+                    </CompanyTagName>
+                    {(companyRelation.companies?.category || companyRelation.companies?.website) && (
+                      <CompanyTagDetails theme={theme}>
+                        {companyRelation.companies?.category && companyRelation.companies.category}
+                        {companyRelation.companies?.category && companyRelation.companies?.website && ' • '}
+                        {companyRelation.companies?.website && (
+                          <a
+                            href={companyRelation.companies.website}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: 'inherit' }}
+                          >
+                            Website
+                          </a>
+                        )}
+                      </CompanyTagDetails>
+                    )}
+                  </CompanyTagContent>
+                  <CompanyRemoveButton
+                    theme={theme}
+                    onClick={() => handleRemoveCompany(companyRelation)}
+                    disabled={removingCompany === companyRelation.contact_companies_id}
+                  >
+                    {removingCompany === companyRelation.contact_companies_id ? '...' : '×'}
+                  </CompanyRemoveButton>
+                </CompanyTag>
+              ))}
+            </CompanyList>
+          )}
+        </CompanyModalSection>
+
+        {/* Add Companies Section */}
+        <CompanyModalSection>
+          <CompanyModalSectionTitle theme={theme}>Add Companies</CompanyModalSectionTitle>
+          <CompanySearchContainer>
+            <CompanySearchInput
+              theme={theme}
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search for a company by name..."
+            />
+            <CompanySearchIcon theme={theme}>🔍</CompanySearchIcon>
+          </CompanySearchContainer>
+        </CompanyModalSection>
 
         {showSuggestions && (
           <CompanySuggestionsContainer theme={theme}>
@@ -5008,6 +5099,106 @@ const CompanyModalButton = styled.button`
       background: ${props.theme === 'light' ? '#F9FAFB' : '#4B5563'};
     }
   `}
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+// Additional Company Modal Components
+const CompanyModalSection = styled.div`
+  margin-bottom: 24px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
+const CompanyModalSectionTitle = styled.h3`
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+`;
+
+const CompanyEmptyMessage = styled.div`
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  font-style: italic;
+  text-align: center;
+  padding: 20px;
+  background: ${props => props.theme === 'light' ? '#F9FAFB' : '#374151'};
+  border-radius: 8px;
+  border: 1px dashed ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+`;
+
+const CompanyList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`;
+
+const CompanyTag = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
+  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
+  border-radius: 8px;
+  padding: 12px 16px;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
+  }
+`;
+
+const CompanyTagContent = styled.div`
+  flex: 1;
+  min-width: 0;
+`;
+
+const CompanyTagName = styled.div`
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  word-break: break-word;
+`;
+
+const CompanyTagDetails = styled.div`
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  font-size: 0.875rem;
+
+  a {
+    color: inherit;
+    text-decoration: underline;
+
+    &:hover {
+      color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+    }
+  }
+`;
+
+const CompanyRemoveButton = styled.button`
+  background: none;
+  border: none;
+  color: ${props => props.theme === 'light' ? '#EF4444' : '#F87171'};
+  cursor: pointer;
+  font-size: 1.2rem;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+
+  &:hover:not(:disabled) {
+    background: ${props => props.theme === 'light' ? '#FEE2E2' : '#7F1D1D'};
+    color: ${props => props.theme === 'light' ? '#DC2626' : '#FCA5A5'};
+  }
 
   &:disabled {
     opacity: 0.5;
