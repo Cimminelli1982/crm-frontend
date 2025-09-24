@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
-import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaMapMarkerAlt, FaArrowLeft, FaEdit, FaStickyNote } from 'react-icons/fa';
-import { FiAlertTriangle } from 'react-icons/fi';
+import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaMapMarkerAlt, FaArrowLeft, FaEdit, FaStickyNote, FaComments, FaHandshake, FaSlack } from 'react-icons/fa';
+import { FiAlertTriangle, FiMail, FiUser, FiCalendar, FiMessageSquare, FiExternalLink } from 'react-icons/fi';
 import { toast } from 'react-hot-toast';
 import Modal from 'react-modal';
 
@@ -12,6 +12,27 @@ const ContactDetail = ({ theme }) => {
   const navigate = useNavigate();
   const [contact, setContact] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('Info');
+  const [activeChatTab, setActiveChatTab] = useState('Timeline');
+  const [activeRelatedTab, setActiveRelatedTab] = useState('Contacts');
+  const [activeKeepInTouchTab, setActiveKeepInTouchTab] = useState('Next');
+
+  // Email/Mobile selection modals
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [mobileModalOpen, setMobileModalOpen] = useState(false);
+
+  // Email detail modal
+  const [emailDetailModalOpen, setEmailDetailModalOpen] = useState(false);
+  const [selectedEmailDetail, setSelectedEmailDetail] = useState(null);
+  const [loadingEmailDetail, setLoadingEmailDetail] = useState(false);
+
+  // Timeline data
+  const [interactions, setInteractions] = useState([]);
+  const [loadingInteractions, setLoadingInteractions] = useState(false);
+  const [whatsappInteractions, setWhatsappInteractions] = useState([]);
+  const [loadingWhatsappInteractions, setLoadingWhatsappInteractions] = useState(false);
+  const [emailInteractions, setEmailInteractions] = useState([]);
+  const [loadingEmailInteractions, setLoadingEmailInteractions] = useState(false);
 
   // Delete modal state (copied from StandaloneInteractions.js)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -68,12 +89,404 @@ const ContactDetail = ({ theme }) => {
     }
   };
 
+  const fetchInteractions = async () => {
+    if (!contactId) return;
+
+    setLoadingInteractions(true);
+    try {
+      const { data, error } = await supabase
+        .from('interactions')
+        .select(`
+          *,
+          chats (
+            chat_name
+          ),
+          email_threads (
+            subject
+          )
+        `)
+        .eq('contact_id', contactId)
+        .order('interaction_date', { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+      setInteractions(data || []);
+    } catch (error) {
+      console.error('Error fetching interactions:', error);
+      toast.error('Failed to load interactions');
+    } finally {
+      setLoadingInteractions(false);
+    }
+  };
+
+  const fetchWhatsappInteractions = async () => {
+    if (!contactId) return;
+
+    setLoadingWhatsappInteractions(true);
+    try {
+      const { data, error } = await supabase
+        .from('interactions')
+        .select(`
+          *,
+          chats (
+            chat_name
+          )
+        `)
+        .eq('contact_id', contactId)
+        .eq('interaction_type', 'whatsapp')
+        .order('interaction_date', { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+      setWhatsappInteractions(data || []);
+    } catch (error) {
+      console.error('Error fetching WhatsApp interactions:', error);
+      toast.error('Failed to load WhatsApp interactions');
+    } finally {
+      setLoadingWhatsappInteractions(false);
+    }
+  };
+
+  const fetchEmailInteractions = async () => {
+    if (!contactId) return;
+
+    setLoadingEmailInteractions(true);
+    try {
+      const { data, error } = await supabase
+        .from('interactions')
+        .select(`
+          *,
+          email_threads (
+            subject
+          )
+        `)
+        .eq('contact_id', contactId)
+        .eq('interaction_type', 'email')
+        .order('interaction_date', { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+      setEmailInteractions(data || []);
+    } catch (error) {
+      console.error('Error fetching email interactions:', error);
+      toast.error('Failed to load email interactions');
+    } finally {
+      setLoadingEmailInteractions(false);
+    }
+  };
+
   useEffect(() => {
     fetchContact();
-  }, [contactId]);
+    if (activeTab === 'Chats') {
+      if (activeChatTab === 'Timeline') {
+        fetchInteractions();
+      } else if (activeChatTab === 'WhatsApp') {
+        fetchWhatsappInteractions();
+      } else if (activeChatTab === 'Email') {
+        fetchEmailInteractions();
+      }
+    }
+  }, [contactId, activeTab, activeChatTab]);
 
   const handleBack = () => {
     navigate(-1); // Go back to previous page
+  };
+
+  const handleEmailClick = () => {
+    if (!contact?.emails?.length) return;
+
+    if (contact.emails.length === 1) {
+      // Only one email, open directly
+      window.open(`mailto:${contact.emails[0].email}`, '_self');
+    } else {
+      // Multiple emails, show modal
+      setEmailModalOpen(true);
+    }
+  };
+
+  const handleMobileClick = () => {
+    if (!contact?.mobiles?.length) return;
+
+    if (contact.mobiles.length === 1) {
+      // Only one mobile, open WhatsApp directly
+      const cleanMobile = contact.mobiles[0].mobile.replace(/\D/g, '');
+      window.open(`https://wa.me/${cleanMobile}`, '_blank');
+    } else {
+      // Multiple mobiles, show modal
+      setMobileModalOpen(true);
+    }
+  };
+
+  const handleEmailSelect = (email) => {
+    window.open(`mailto:${email}`, '_self');
+    setEmailModalOpen(false);
+  };
+
+  const handleMobileSelect = (mobile) => {
+    const cleanMobile = mobile.replace(/\D/g, '');
+    window.open(`https://wa.me/${cleanMobile}`, '_blank');
+    setMobileModalOpen(false);
+  };
+
+  const handleEmailInteractionClick = async (interaction) => {
+    if (interaction.interaction_type !== 'email' || !interaction.email_thread_id) return;
+
+    setLoadingEmailDetail(true);
+    setEmailDetailModalOpen(true);
+
+    try {
+      const { data, error } = await supabase
+        .from('emails')
+        .select(`
+          *,
+          email_participants (
+            participant_type,
+            contacts (
+              contact_id,
+              first_name,
+              last_name,
+              contact_emails (email, is_primary)
+            )
+          )
+        `)
+        .eq('email_thread_id', interaction.email_thread_id)
+        .order('message_timestamp', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (error) throw error;
+      setSelectedEmailDetail(data);
+    } catch (error) {
+      console.error('Error fetching email details:', error);
+      toast.error('Failed to load email details');
+      setEmailDetailModalOpen(false);
+    } finally {
+      setLoadingEmailDetail(false);
+    }
+  };
+
+  // Helper functions for timeline
+  const getInteractionIcon = (type) => {
+    switch (type) {
+      case 'email': return <FaEnvelope />;
+      case 'whatsapp': return <FaComments />;
+      case 'meeting': return <FaHandshake />;
+      case 'phone_call':
+      case 'call': return <FaPhone />;
+      case 'slack': return <FaSlack />;
+      case 'sms': return <FaPhone />;
+      case 'note': return <FaStickyNote />;
+      default: return <FaComments />;
+    }
+  };
+
+  const getInteractionTypeLabel = (type) => {
+    switch (type) {
+      case 'email': return 'Email';
+      case 'whatsapp': return 'WhatsApp';
+      case 'meeting': return 'Meeting';
+      case 'phone_call':
+      case 'call': return 'Phone Call';
+      case 'slack': return 'Slack';
+      case 'sms': return 'SMS';
+      case 'note': return 'Note';
+      default: return 'Other';
+    }
+  };
+
+  const formatInteractionDate = (dateString) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = Math.abs(now - date);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 1) return 'Today';
+    if (diffDays === 2) return 'Yesterday';
+    if (diffDays <= 7) return `${diffDays - 1} days ago`;
+    return date.toLocaleDateString();
+  };
+
+  const formatInteractionTime = (dateString) => {
+    return new Date(dateString).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+  };
+
+  // Group interactions by date and then by conversations
+  const groupInteractionsByDate = (interactions) => {
+    const groups = {};
+    interactions.forEach(interaction => {
+      const dateKey = new Date(interaction.interaction_date).toDateString();
+      if (!groups[dateKey]) {
+        groups[dateKey] = [];
+      }
+      groups[dateKey].push(interaction);
+    });
+    return groups;
+  };
+
+  // Group interactions within a day by conversation (chat_id or email_thread_id)
+  const groupInteractionsByConversation = (dayInteractions) => {
+    const conversationGroups = {};
+    const standaloneInteractions = [];
+
+    dayInteractions.forEach(interaction => {
+      const conversationId = interaction.chat_id || interaction.email_thread_id;
+
+      if (conversationId) {
+        if (!conversationGroups[conversationId]) {
+          // Get the name from the related data
+          const name = interaction.chat_id
+            ? interaction.chats?.chat_name || 'WhatsApp Chat'
+            : interaction.email_threads?.subject || 'Email Thread';
+
+          conversationGroups[conversationId] = {
+            id: conversationId,
+            type: interaction.chat_id ? 'chat' : 'email',
+            name: name,
+            interactions: []
+          };
+        }
+        conversationGroups[conversationId].interactions.push(interaction);
+      } else {
+        standaloneInteractions.push(interaction);
+      }
+    });
+
+    // Sort interactions within each conversation by time
+    Object.values(conversationGroups).forEach(group => {
+      group.interactions.sort((a, b) => new Date(a.interaction_date) - new Date(b.interaction_date));
+    });
+
+    return { conversationGroups: Object.values(conversationGroups), standaloneInteractions };
+  };
+
+  // Render timeline component
+  const renderTimeline = (interactionData, loadingState, emptyMessage) => {
+    if (loadingState) {
+      return (
+        <TimelineLoading theme={theme}>
+          <LoadingSpinner />
+          <span>Loading interactions...</span>
+        </TimelineLoading>
+      );
+    }
+
+    if (interactionData.length === 0) {
+      return (
+        <EmptyTimelineMessage theme={theme}>
+          {emptyMessage}
+        </EmptyTimelineMessage>
+      );
+    }
+
+    return (
+      <TimelineContent>
+        {Object.entries(groupInteractionsByDate(interactionData)).map(([dateKey, dayInteractions]) => {
+          const { conversationGroups, standaloneInteractions } = groupInteractionsByConversation(dayInteractions);
+
+          return (
+            <TimelineDay key={dateKey}>
+              <TimelineDateHeader theme={theme}>
+                {formatInteractionDate(dayInteractions[0].interaction_date)}
+              </TimelineDateHeader>
+              <TimelineItems>
+                {/* Render conversation groups */}
+                {conversationGroups.map((conversationGroup) => (
+                  <ConversationGroup key={conversationGroup.id} theme={theme}>
+                    <ConversationHeader theme={theme}>
+                      <ConversationIcon theme={theme} $type={conversationGroup.type}>
+                        {conversationGroup.type === 'chat' ? '💬' : '📧'}
+                      </ConversationIcon>
+                      <ConversationTitle theme={theme}>
+                        {conversationGroup.name}
+                        <ConversationCount theme={theme}>
+                          {conversationGroup.interactions.length} message{conversationGroup.interactions.length !== 1 ? 's' : ''}
+                        </ConversationCount>
+                      </ConversationTitle>
+                    </ConversationHeader>
+
+                    <ConversationMessages>
+                      {conversationGroup.interactions.map((interaction, index) => (
+                        <ConversationMessage
+                          key={interaction.interaction_id}
+                          theme={theme}
+                          $direction={interaction.direction}
+                          $clickable={interaction.interaction_type === 'email'}
+                          onClick={() => interaction.interaction_type === 'email' ? handleEmailInteractionClick(interaction) : null}
+                        >
+                          <MessageHeader>
+                            <MessageDirection theme={theme} $direction={interaction.direction}>
+                              {interaction.direction === 'received' ? '↓' : '↑'}
+                            </MessageDirection>
+                            <MessageTime theme={theme}>
+                              {formatInteractionTime(interaction.interaction_date)}
+                            </MessageTime>
+                          </MessageHeader>
+                          {interaction.summary && (
+                            <MessageContent theme={theme} $direction={interaction.direction}>
+                              {interaction.summary}
+                            </MessageContent>
+                          )}
+                          {interaction.special_case_tag && (
+                            <TimelineSpecialTag theme={theme}>
+                              {interaction.special_case_tag}
+                            </TimelineSpecialTag>
+                          )}
+                        </ConversationMessage>
+                      ))}
+                    </ConversationMessages>
+                  </ConversationGroup>
+                ))}
+
+                {/* Render standalone interactions */}
+                {standaloneInteractions.map((interaction) => (
+                  <TimelineItem
+                    key={interaction.interaction_id}
+                    theme={theme}
+                    $clickable={interaction.interaction_type === 'email'}
+                    onClick={() => interaction.interaction_type === 'email' ? handleEmailInteractionClick(interaction) : null}
+                  >
+                    <TimelineIconContainer
+                      theme={theme}
+                      $type={interaction.interaction_type}
+                      $direction={interaction.direction}
+                    >
+                      {getInteractionIcon(interaction.interaction_type)}
+                    </TimelineIconContainer>
+                    <TimelineItemContent theme={theme}>
+                      <TimelineItemHeader>
+                        <TimelineItemType theme={theme}>
+                          {getInteractionTypeLabel(interaction.interaction_type)}
+                          <TimelineDirection theme={theme} $direction={interaction.direction}>
+                            {interaction.direction === 'received' ? '↓' : '↑'}
+                          </TimelineDirection>
+                        </TimelineItemType>
+                        <TimelineItemTime theme={theme}>
+                          {formatInteractionTime(interaction.interaction_date)}
+                        </TimelineItemTime>
+                      </TimelineItemHeader>
+                      {interaction.summary && (
+                        <TimelineItemSummary theme={theme}>
+                          {interaction.summary}
+                        </TimelineItemSummary>
+                      )}
+                      {interaction.special_case_tag && (
+                        <TimelineSpecialTag theme={theme}>
+                          {interaction.special_case_tag}
+                        </TimelineSpecialTag>
+                      )}
+                    </TimelineItemContent>
+                  </TimelineItem>
+                ))}
+              </TimelineItems>
+            </TimelineDay>
+          );
+        })}
+      </TimelineContent>
+    );
   };
 
   const handleEditContact = () => {
@@ -378,7 +791,7 @@ const ContactDetail = ({ theme }) => {
               theme={theme}
             >
               <FaEdit />
-              Edit
+              <span>Edit</span>
             </ActionButton>
             <ActionButton
               as="button"
@@ -387,26 +800,28 @@ const ContactDetail = ({ theme }) => {
               theme={theme}
             >
               <FiAlertTriangle />
-              Delete
+              <span>Delete</span>
             </ActionButton>
-            {contact.emails?.length > 0 && contact.emails[0]?.email && (
+            {contact.emails?.length > 0 && (
               <ActionButton
-                href={`mailto:${contact.emails[0].email}`}
+                as="button"
+                onClick={handleEmailClick}
                 $primary
                 theme={theme}
               >
                 <FaEnvelope />
-                Email
+                <span>Email</span>
               </ActionButton>
             )}
-            {contact.mobiles?.length > 0 && contact.mobiles[0]?.mobile && (
+            {contact.mobiles?.length > 0 && (
               <ActionButton
-                href={`https://wa.me/${contact.mobiles[0].mobile.replace(/\D/g, '')}`}
+                as="button"
+                onClick={handleMobileClick}
                 $secondary
                 theme={theme}
               >
                 <FaPhone />
-                WhatsApp
+                <span>WhatsApp</span>
               </ActionButton>
             )}
           </ActionButtons>
@@ -425,6 +840,11 @@ const ContactDetail = ({ theme }) => {
               <ProfileHeader>
                 <ProfileName theme={theme}>
                   {contact.first_name} {contact.last_name}
+                  {contact.companies?.length > 0 && (
+                    <CompanyNames theme={theme}>
+                      {contact.companies.map(company => company.name).join(', ')}
+                    </CompanyNames>
+                  )}
                 </ProfileName>
                 <ObsidianNoteButton
                   theme={theme}
@@ -437,13 +857,34 @@ const ContactDetail = ({ theme }) => {
               {contact.job_role && (
                 <ProfileRole theme={theme}>{contact.job_role}</ProfileRole>
               )}
-              {contact.score && (
-                <ScoreBadge theme={theme}>Score: {contact.score}</ScoreBadge>
-              )}
+              <ProfileBadges>
+                {contact.category && (
+                  <CategoryBadge theme={theme}>{contact.category}</CategoryBadge>
+                )}
+                {contact.score && (
+                  <ScoreBadge theme={theme}>
+                    {'⭐'.repeat(contact.score)}
+                  </ScoreBadge>
+                )}
+              </ProfileBadges>
             </ProfileInfo>
           </ProfileSection>
 
-          <InfoGrid>
+          <NavTabs theme={theme}>
+            {['Info', 'Chats', 'Related', 'Keep in touch'].map(tab => (
+              <NavTab
+                key={tab}
+                theme={theme}
+                $active={activeTab === tab}
+                onClick={() => setActiveTab(tab)}
+              >
+                {tab}
+              </NavTab>
+            ))}
+          </NavTabs>
+
+          {activeTab === 'Info' && (
+            <InfoGrid>
             {(contact.emails?.length > 0 || contact.mobiles?.length > 0) && (
               <InfoSection>
                 <SectionTitle theme={theme}>Contact Information</SectionTitle>
@@ -552,7 +993,132 @@ const ContactDetail = ({ theme }) => {
                 </InfoList>
               </InfoSection>
             )}
-          </InfoGrid>
+            </InfoGrid>
+          )}
+
+          {activeTab === 'Chats' && (
+            <>
+              <ChatSubMenu theme={theme}>
+                {['Timeline', 'WhatsApp', 'Email', 'Meetings'].map(chatTab => (
+                  <ChatSubTab
+                    key={chatTab}
+                    theme={theme}
+                    $active={activeChatTab === chatTab}
+                    onClick={() => setActiveChatTab(chatTab)}
+                    disabled={chatTab === 'Meetings'}
+                  >
+                    {chatTab}
+                  </ChatSubTab>
+                ))}
+              </ChatSubMenu>
+
+              {activeChatTab === 'Timeline' && (
+                <TimelineContainer theme={theme}>
+                  {renderTimeline(interactions, loadingInteractions, '📅 No interactions found for this contact')}
+                </TimelineContainer>
+              )}
+
+              {activeChatTab === 'WhatsApp' && (
+                <TimelineContainer theme={theme}>
+                  {renderTimeline(whatsappInteractions, loadingWhatsappInteractions, '💬 No WhatsApp messages found for this contact')}
+                </TimelineContainer>
+              )}
+
+              {activeChatTab === 'Email' && (
+                <TimelineContainer theme={theme}>
+                  {renderTimeline(emailInteractions, loadingEmailInteractions, '📧 No email conversations found for this contact')}
+                </TimelineContainer>
+              )}
+
+              {activeChatTab === 'Meetings' && (
+                <ComingSoonMessage theme={theme}>
+                  🤝 Meetings coming soon
+                </ComingSoonMessage>
+              )}
+            </>
+          )}
+
+          {activeTab === 'Related' && (
+            <>
+              <RelatedSubMenu theme={theme}>
+                {['Contacts', 'Companies', 'Deals', 'Lists'].map(relatedTab => (
+                  <RelatedSubTab
+                    key={relatedTab}
+                    theme={theme}
+                    $active={activeRelatedTab === relatedTab}
+                    onClick={() => setActiveRelatedTab(relatedTab)}
+                  >
+                    {relatedTab}
+                  </RelatedSubTab>
+                ))}
+              </RelatedSubMenu>
+
+              {activeRelatedTab === 'Contacts' && (
+                <ComingSoonMessage theme={theme}>
+                  👥 Related contacts coming soon
+                </ComingSoonMessage>
+              )}
+
+              {activeRelatedTab === 'Companies' && (
+                <ComingSoonMessage theme={theme}>
+                  🏢 Related companies coming soon
+                </ComingSoonMessage>
+              )}
+
+              {activeRelatedTab === 'Deals' && (
+                <ComingSoonMessage theme={theme}>
+                  💼 Related deals coming soon
+                </ComingSoonMessage>
+              )}
+
+              {activeRelatedTab === 'Lists' && (
+                <ComingSoonMessage theme={theme}>
+                  📋 Related lists coming soon
+                </ComingSoonMessage>
+              )}
+            </>
+          )}
+
+          {activeTab === 'Keep in touch' && (
+            <>
+              <KeepInTouchSubMenu theme={theme}>
+                {['Next', 'Touch base', 'Occurrences', 'Lists'].map(keepInTouchTab => (
+                  <KeepInTouchSubTab
+                    key={keepInTouchTab}
+                    theme={theme}
+                    $active={activeKeepInTouchTab === keepInTouchTab}
+                    onClick={() => setActiveKeepInTouchTab(keepInTouchTab)}
+                  >
+                    {keepInTouchTab}
+                  </KeepInTouchSubTab>
+                ))}
+              </KeepInTouchSubMenu>
+
+              {activeKeepInTouchTab === 'Next' && (
+                <ComingSoonMessage theme={theme}>
+                  ⏭️ Next interactions coming soon
+                </ComingSoonMessage>
+              )}
+
+              {activeKeepInTouchTab === 'Touch base' && (
+                <ComingSoonMessage theme={theme}>
+                  🤝 Touch base reminders coming soon
+                </ComingSoonMessage>
+              )}
+
+              {activeKeepInTouchTab === 'Occurrences' && (
+                <ComingSoonMessage theme={theme}>
+                  🔄 Occurrences coming soon
+                </ComingSoonMessage>
+              )}
+
+              {activeKeepInTouchTab === 'Lists' && (
+                <ComingSoonMessage theme={theme}>
+                  📝 Keep in touch lists coming soon
+                </ComingSoonMessage>
+              )}
+            </>
+          )}
         </DetailContent>
       </DetailView>
 
@@ -670,6 +1236,186 @@ const ContactDetail = ({ theme }) => {
           </>
         )}
       </Modal>
+
+      {/* Email Selection Modal */}
+      <Modal
+        isOpen={emailModalOpen}
+        onRequestClose={() => setEmailModalOpen(false)}
+        shouldCloseOnOverlayClick={true}
+        style={{
+          content: {
+            top: '50%',
+            left: '50%',
+            right: 'auto',
+            bottom: 'auto',
+            marginRight: '-50%',
+            transform: 'translate(-50%, -50%)',
+            padding: '25px',
+            maxWidth: '400px',
+            width: '90%',
+            backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+            border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+            borderRadius: '12px',
+            color: theme === 'light' ? '#111827' : '#F9FAFB',
+            zIndex: 1001
+          },
+          overlay: {
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            zIndex: 1000
+          }
+        }}
+      >
+        <SelectionModalHeader theme={theme}>
+          <h3>Select Email Address</h3>
+          <SelectionCloseButton theme={theme} onClick={() => setEmailModalOpen(false)}>
+            ✕
+          </SelectionCloseButton>
+        </SelectionModalHeader>
+
+        <SelectionList>
+          {contact?.emails?.map((emailObj, index) => (
+            <SelectionItem
+              key={index}
+              theme={theme}
+              onClick={() => handleEmailSelect(emailObj.email)}
+            >
+              <SelectionIcon>
+                <FaEnvelope />
+              </SelectionIcon>
+              <SelectionDetails>
+                <SelectionPrimary theme={theme}>
+                  {emailObj.email}
+                  {emailObj.is_primary && <PrimaryBadge theme={theme}>Primary</PrimaryBadge>}
+                </SelectionPrimary>
+                <SelectionSecondary theme={theme}>
+                  {emailObj.type || 'Email'}
+                </SelectionSecondary>
+              </SelectionDetails>
+            </SelectionItem>
+          ))}
+        </SelectionList>
+      </Modal>
+
+      {/* Mobile Selection Modal */}
+      <Modal
+        isOpen={mobileModalOpen}
+        onRequestClose={() => setMobileModalOpen(false)}
+        shouldCloseOnOverlayClick={true}
+        style={{
+          content: {
+            top: '50%',
+            left: '50%',
+            right: 'auto',
+            bottom: 'auto',
+            marginRight: '-50%',
+            transform: 'translate(-50%, -50%)',
+            padding: '25px',
+            maxWidth: '400px',
+            width: '90%',
+            backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+            border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+            borderRadius: '12px',
+            color: theme === 'light' ? '#111827' : '#F9FAFB',
+            zIndex: 1001
+          },
+          overlay: {
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            zIndex: 1000
+          }
+        }}
+      >
+        <SelectionModalHeader theme={theme}>
+          <h3>Select Phone Number</h3>
+          <SelectionCloseButton theme={theme} onClick={() => setMobileModalOpen(false)}>
+            ✕
+          </SelectionCloseButton>
+        </SelectionModalHeader>
+
+        <SelectionList>
+          {contact?.mobiles?.map((mobileObj, index) => (
+            <SelectionItem
+              key={index}
+              theme={theme}
+              onClick={() => handleMobileSelect(mobileObj.mobile)}
+            >
+              <SelectionIcon>
+                <FaPhone />
+              </SelectionIcon>
+              <SelectionDetails>
+                <SelectionPrimary theme={theme}>
+                  {mobileObj.mobile}
+                  {mobileObj.is_primary && <PrimaryBadge theme={theme}>Primary</PrimaryBadge>}
+                </SelectionPrimary>
+                <SelectionSecondary theme={theme}>
+                  {mobileObj.type || 'Mobile'} • WhatsApp
+                </SelectionSecondary>
+              </SelectionDetails>
+            </SelectionItem>
+          ))}
+        </SelectionList>
+      </Modal>
+
+      {/* Email Detail Modal */}
+      <Modal
+        isOpen={emailDetailModalOpen}
+        onRequestClose={() => setEmailDetailModalOpen(false)}
+        shouldCloseOnOverlayClick={true}
+        style={{
+          content: {
+            top: '50%',
+            left: '50%',
+            right: 'auto',
+            bottom: 'auto',
+            marginRight: '-50%',
+            transform: 'translate(-50%, -50%)',
+            padding: '0',
+            maxWidth: '800px',
+            width: '90%',
+            maxHeight: '90vh',
+            backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+            border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+            borderRadius: '12px',
+            color: theme === 'light' ? '#111827' : '#F9FAFB',
+            zIndex: 1001,
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column'
+          },
+          overlay: {
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            zIndex: 1000
+          }
+        }}
+      >
+        {loadingEmailDetail ? (
+          <EmailDetailLoading>
+            <LoadingSpinner />
+            <span>Loading email details...</span>
+          </EmailDetailLoading>
+        ) : selectedEmailDetail ? (
+          <>
+            <EmailDetailHeader theme={theme}>
+              <EmailDetailTitle theme={theme}>
+                {selectedEmailDetail.subject || '(No Subject)'}
+              </EmailDetailTitle>
+
+              <EmailDetailCloseButton theme={theme} onClick={() => setEmailDetailModalOpen(false)}>
+                ×
+              </EmailDetailCloseButton>
+            </EmailDetailHeader>
+
+            <EmailDetailBody theme={theme}>
+              <EmailDetailMessage theme={theme}>
+                {selectedEmailDetail.body_plain || selectedEmailDetail.body_html || '(No message content)'}
+              </EmailDetailMessage>
+            </EmailDetailBody>
+          </>
+        ) : (
+          <EmailDetailLoading>
+            <span>No email details available</span>
+          </EmailDetailLoading>
+        )}
+      </Modal>
     </PageContainer>
   );
 };
@@ -723,11 +1469,24 @@ const BackButton = styled.button`
   &:hover {
     text-decoration: underline;
   }
+
+  @media (max-width: 640px) {
+    gap: 0;
+    padding: 8px 4px;
+
+    span {
+      display: none;
+    }
+  }
 `;
 
 const ActionButtons = styled.div`
   display: flex;
   gap: 8px;
+
+  @media (max-width: 640px) {
+    gap: 4px;
+  }
 `;
 
 const ActionButton = styled.a`
@@ -743,6 +1502,16 @@ const ActionButton = styled.a`
   border: none;
   cursor: pointer;
   font-family: inherit;
+
+  @media (max-width: 640px) {
+    padding: 10px 12px;
+    gap: 0;
+    font-size: 16px;
+
+    span {
+      display: none;
+    }
+  }
 
   ${props => props.$primary && `
     background: #3B82F6;
@@ -850,9 +1619,22 @@ const ProfileName = styled.h2`
   font-weight: 700;
   color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
   margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 
   @media (min-width: 768px) {
     font-size: 28px;
+  }
+`;
+
+const CompanyNames = styled.span`
+  font-size: 16px;
+  font-weight: 500;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+
+  @media (min-width: 768px) {
+    font-size: 18px;
   }
 `;
 
@@ -885,12 +1667,30 @@ const ProfileRole = styled.div`
   margin-bottom: 8px;
 `;
 
+const ProfileBadges = styled.div`
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+`;
+
+const CategoryBadge = styled.div`
+  background: ${props => props.theme === 'light' ? '#F0FDF4' : '#14532D'};
+  color: ${props => props.theme === 'light' ? '#16A34A' : '#86EFAC'};
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-block;
+  border: 1px solid ${props => props.theme === 'light' ? '#BBF7D0' : '#166534'};
+`;
+
 const ScoreBadge = styled.div`
-  background: ${props => props.theme === 'light' ? '#DBEAFE' : '#1E3A8A'};
-  color: ${props => props.theme === 'light' ? '#1D4ED8' : '#93C5FD'};
-  padding: 4px 12px;
-  border-radius: 16px;
-  font-size: 14px;
+  background: white;
+  color: ${props => props.theme === 'light' ? '#1D4ED8' : '#1D4ED8'};
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 11px;
   font-weight: 500;
   display: inline-block;
 `;
@@ -1197,6 +1997,751 @@ const CancelButton = styled.button`
   &:disabled {
     cursor: not-allowed;
     opacity: 0.7;
+  }
+`;
+
+// Navigation styled components
+const NavTabs = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  max-width: 600px;
+  margin: 24px auto;
+  background: ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
+  border-radius: 12px;
+  padding: 6px;
+  width: fit-content;
+  box-shadow: ${props => props.theme === 'light'
+    ? '0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06)'
+    : '0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2)'
+  };
+`;
+
+const NavTab = styled.button`
+  background: ${props => props.$active
+    ? (props.theme === 'light' ? '#FFFFFF' : '#1F2937')
+    : 'transparent'
+  };
+  color: ${props => props.$active
+    ? (props.theme === 'light' ? '#111827' : '#F9FAFB')
+    : (props.theme === 'light' ? '#6B7280' : '#9CA3AF')
+  };
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+  font-size: 15px;
+  font-weight: ${props => props.$active ? '600' : '500'};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: fit-content;
+  white-space: nowrap;
+  position: relative;
+  box-shadow: ${props => props.$active
+    ? (props.theme === 'light'
+        ? '0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08)'
+        : '0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3)')
+    : 'none'
+  };
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+    color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+    transform: translateY(-1px);
+    box-shadow: ${props => props.theme === 'light'
+      ? '0 2px 8px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1)'
+      : '0 2px 8px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4)'
+    };
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
+const ComingSoonMessage = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  font-size: 18px;
+  font-weight: 500;
+`;
+
+// Chat submenu styled components (similar to TouchBase submenu)
+const ChatSubMenu = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  max-width: 500px;
+  margin: 15px auto 0 auto;
+  background: ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
+  border-radius: 8px;
+  padding: 4px;
+  width: fit-content;
+`;
+
+const ChatSubTab = styled.button`
+  background: ${props => props.$active
+    ? (props.theme === 'light' ? '#FFFFFF' : '#1F2937')
+    : 'transparent'
+  };
+  color: ${props => props.$active
+    ? (props.theme === 'light' ? '#111827' : '#F9FAFB')
+    : (props.theme === 'light' ? '#6B7280' : '#9CA3AF')
+  };
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+  font-weight: ${props => props.$active ? '600' : '500'};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: fit-content;
+  white-space: nowrap;
+  box-shadow: ${props => props.$active
+    ? (props.theme === 'light'
+        ? '0 1px 2px rgba(0, 0, 0, 0.1)'
+        : '0 1px 2px rgba(0, 0, 0, 0.2)')
+    : 'none'
+  };
+
+  &:hover:not([disabled]) {
+    background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+    color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+    box-shadow: ${props => props.theme === 'light'
+      ? '0 1px 3px rgba(0, 0, 0, 0.12)'
+      : '0 1px 3px rgba(0, 0, 0, 0.4)'
+    };
+  }
+
+  &:active:not([disabled]) {
+    transform: scale(0.98);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+// Related submenu styled components
+const RelatedSubMenu = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  max-width: 500px;
+  margin: 15px auto 0 auto;
+  background: ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
+  border-radius: 8px;
+  padding: 4px;
+  width: fit-content;
+`;
+
+const RelatedSubTab = styled.button`
+  background: ${props => props.$active
+    ? (props.theme === 'light' ? '#FFFFFF' : '#1F2937')
+    : 'transparent'
+  };
+  color: ${props => props.$active
+    ? (props.theme === 'light' ? '#111827' : '#F9FAFB')
+    : (props.theme === 'light' ? '#6B7280' : '#9CA3AF')
+  };
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+  font-weight: ${props => props.$active ? '600' : '500'};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: fit-content;
+  white-space: nowrap;
+  box-shadow: ${props => props.$active
+    ? (props.theme === 'light'
+        ? '0 1px 2px rgba(0, 0, 0, 0.1)'
+        : '0 1px 2px rgba(0, 0, 0, 0.2)')
+    : 'none'
+  };
+
+  &:hover:not([disabled]) {
+    background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+    color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+    box-shadow: ${props => props.theme === 'light'
+      ? '0 1px 3px rgba(0, 0, 0, 0.12)'
+      : '0 1px 3px rgba(0, 0, 0, 0.4)'
+    };
+  }
+
+  &:active:not([disabled]) {
+    transform: scale(0.98);
+  }
+`;
+
+// Keep in Touch submenu styled components
+const KeepInTouchSubMenu = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  max-width: 600px;
+  margin: 15px auto 0 auto;
+  background: ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
+  border-radius: 8px;
+  padding: 4px;
+  width: fit-content;
+`;
+
+const KeepInTouchSubTab = styled.button`
+  background: ${props => props.$active
+    ? (props.theme === 'light' ? '#FFFFFF' : '#1F2937')
+    : 'transparent'
+  };
+  color: ${props => props.$active
+    ? (props.theme === 'light' ? '#111827' : '#F9FAFB')
+    : (props.theme === 'light' ? '#6B7280' : '#9CA3AF')
+  };
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+  font-weight: ${props => props.$active ? '600' : '500'};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: fit-content;
+  white-space: nowrap;
+  box-shadow: ${props => props.$active
+    ? (props.theme === 'light'
+        ? '0 1px 2px rgba(0, 0, 0, 0.1)'
+        : '0 1px 2px rgba(0, 0, 0, 0.2)')
+    : 'none'
+  };
+
+  &:hover:not([disabled]) {
+    background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+    color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+    box-shadow: ${props => props.theme === 'light'
+      ? '0 1px 3px rgba(0, 0, 0, 0.12)'
+      : '0 1px 3px rgba(0, 0, 0, 0.4)'
+    };
+  }
+
+  &:active:not([disabled]) {
+    transform: scale(0.98);
+  }
+`;
+
+// Email/Mobile Selection Modal styled components
+const SelectionModalHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+
+  h3 {
+    color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+    margin: 0;
+    font-size: 1.1em;
+    font-weight: 600;
+  }
+`;
+
+const SelectionCloseButton = styled.button`
+  background: none;
+  border: none;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  cursor: pointer;
+  padding: 5px;
+  border-radius: 3px;
+  font-size: 18px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
+    color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  }
+`;
+
+const SelectionList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`;
+
+const SelectionItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
+    border-color: ${props => props.theme === 'light' ? '#D1D5DB' : '#6B7280'};
+  }
+
+  &:active {
+    transform: scale(0.98);
+  }
+`;
+
+const SelectionIcon = styled.div`
+  width: 32px;
+  height: 32px;
+  background: ${props => props.theme === 'light' ? '#F3F4F6' : '#4B5563'};
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+
+  svg {
+    color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+    font-size: 14px;
+  }
+`;
+
+const SelectionDetails = styled.div`
+  flex: 1;
+`;
+
+const SelectionPrimary = styled.div`
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  font-weight: 500;
+  font-size: 15px;
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const SelectionSecondary = styled.div`
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  font-size: 13px;
+`;
+
+const PrimaryBadge = styled.span`
+  background: ${props => props.theme === 'light' ? '#D1FAE5' : '#065F46'};
+  color: ${props => props.theme === 'light' ? '#065F46' : '#6EE7B7'};
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 500;
+`;
+
+// Timeline styled components
+const TimelineContainer = styled.div`
+  padding: 20px;
+  max-height: 600px;
+  overflow-y: auto;
+`;
+
+const TimelineLoading = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 20px;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+`;
+
+const EmptyTimelineMessage = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  font-size: 16px;
+`;
+
+const TimelineContent = styled.div`
+  position: relative;
+`;
+
+const TimelineDay = styled.div`
+  margin-bottom: 30px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
+const TimelineDateHeader = styled.div`
+  font-weight: 600;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  font-size: 16px;
+  margin-bottom: 16px;
+  padding-left: 50px;
+  position: sticky;
+  top: 0;
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+  padding-top: 8px;
+  padding-bottom: 8px;
+  z-index: 5;
+`;
+
+const TimelineItems = styled.div`
+  position: relative;
+`;
+
+const TimelineItem = styled.div`
+  position: relative;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  cursor: ${props => props.$clickable ? 'pointer' : 'default'};
+  transition: all 0.2s ease;
+
+  ${props => props.$clickable && `
+    &:hover {
+      transform: translateY(-1px);
+
+      & > div:last-child {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      }
+    }
+  `}
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
+const TimelineIconContainer = styled.div`
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+
+  background: ${props => {
+    if (props.$direction === 'received') {
+      return props.theme === 'light' ? '#DBEAFE' : '#1E3A8A';
+    } else {
+      return props.theme === 'light' ? '#D1FAE5' : '#065F46';
+    }
+  }};
+
+  color: ${props => {
+    if (props.$direction === 'received') {
+      return props.theme === 'light' ? '#1D4ED8' : '#93C5FD';
+    } else {
+      return props.theme === 'light' ? '#059669' : '#6EE7B7';
+    }
+  }};
+
+  border: 3px solid ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+
+  svg {
+    font-size: 16px;
+  }
+`;
+
+const TimelineItemContent = styled.div`
+  flex: 1;
+  background: ${props => props.theme === 'light' ? '#F9FAFB' : '#374151'};
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
+  margin-top: 4px;
+`;
+
+const TimelineItemHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+`;
+
+const TimelineItemType = styled.div`
+  font-weight: 600;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+`;
+
+const TimelineDirection = styled.span`
+  font-size: 16px;
+  color: ${props => {
+    if (props.$direction === 'received') {
+      return props.theme === 'light' ? '#3B82F6' : '#60A5FA';
+    } else {
+      return props.theme === 'light' ? '#10B981' : '#34D399';
+    }
+  }};
+`;
+
+const TimelineItemTime = styled.div`
+  font-size: 12px;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  font-weight: 500;
+`;
+
+const TimelineItemSummary = styled.div`
+  color: ${props => props.theme === 'light' ? '#374151' : '#D1D5DB'};
+  font-size: 14px;
+  line-height: 1.5;
+
+  a {
+    color: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+`;
+
+const TimelineSpecialTag = styled.div`
+  margin-top: 8px;
+  padding: 4px 8px;
+  background: ${props => props.theme === 'light' ? '#FEF3C7' : '#92400E'};
+  color: ${props => props.theme === 'light' ? '#92400E' : '#FEF3C7'};
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-block;
+`;
+
+// Conversation Group styled components
+const ConversationGroup = styled.div`
+  margin-bottom: 24px;
+  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
+  border-radius: 12px;
+  background: ${props => props.theme === 'light' ? '#FEFEFE' : '#2D3748'};
+  overflow: hidden;
+`;
+
+const ConversationHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: ${props => props.theme === 'light' ? '#F8FAFC' : '#1A202C'};
+  border-bottom: 1px solid ${props => props.theme === 'light' ? '#E2E8F0' : '#4A5568'};
+`;
+
+const ConversationIcon = styled.div`
+  font-size: 20px;
+  flex-shrink: 0;
+`;
+
+const ConversationTitle = styled.div`
+  flex: 1;
+  font-weight: 600;
+  color: ${props => props.theme === 'light' ? '#2D3748' : '#E2E8F0'};
+  font-size: 14px;
+`;
+
+const ConversationCount = styled.div`
+  font-size: 12px;
+  font-weight: 400;
+  color: ${props => props.theme === 'light' ? '#718096' : '#A0AEC0'};
+  margin-top: 2px;
+`;
+
+const ConversationMessages = styled.div`
+  padding: 8px;
+`;
+
+const ConversationMessage = styled.div`
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  position: relative;
+  cursor: ${props => props.$clickable ? 'pointer' : 'default'};
+  transition: all 0.2s ease;
+
+  background: ${props => {
+    if (props.$direction === 'sent') {
+      return props.theme === 'light' ? '#E6FFFA' : '#065F46';
+    } else {
+      return props.theme === 'light' ? '#EBF8FF' : '#1E3A8A';
+    }
+  }};
+
+  border-left: 3px solid ${props => {
+    if (props.$direction === 'sent') {
+      return props.theme === 'light' ? '#38B2AC' : '#81E6D9';
+    } else {
+      return props.theme === 'light' ? '#4299E1' : '#90CDF4';
+    }
+  }};
+
+  ${props => props.$clickable && `
+    &:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+  `}
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
+const MessageHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+`;
+
+const MessageDirection = styled.div`
+  font-size: 14px;
+  font-weight: 600;
+  color: ${props => {
+    if (props.$direction === 'received') {
+      return props.theme === 'light' ? '#3182CE' : '#90CDF4';
+    } else {
+      return props.theme === 'light' ? '#319795' : '#81E6D9';
+    }
+  }};
+`;
+
+const MessageTime = styled.div`
+  font-size: 11px;
+  color: ${props => props.theme === 'light' ? '#718096' : '#A0AEC0'};
+  font-weight: 500;
+`;
+
+const MessageContent = styled.div`
+  color: ${props => props.theme === 'light' ? '#2D3748' : '#E2E8F0'};
+  font-size: 13px;
+  line-height: 1.4;
+  word-break: break-word;
+
+  a {
+    color: ${props => props.theme === 'light' ? '#3182CE' : '#90CDF4'};
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+`;
+
+// Email Detail Modal styled components
+const EmailDetailLoading = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 20px;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  flex-direction: column;
+`;
+
+const EmailDetailHeader = styled.div`
+  padding: 15px 20px;
+  border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+`;
+
+const EmailDetailTitle = styled.h3`
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  flex: 1;
+`;
+
+const EmailDetailCloseButton = styled.button`
+  background: none;
+  border: none;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+
+  &:hover {
+    color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+    background: ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
+  }
+`;
+
+const EmailDetailBody = styled.div`
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+`;
+
+const EmailDetailMessage = styled.div`
+  background-color: ${props => props.theme === 'light' ? '#F9FAFB' : '#374151'};
+  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
+  border-radius: 8px;
+  padding: 20px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  color: ${props => props.theme === 'light' ? '#374151' : '#D1D5DB'};
+  max-height: 500px;
+  overflow-y: auto;
+  font-size: 14px;
+
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: ${props => props.theme === 'light' ? '#F3F4F6' : '#1F2937'};
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+    border-radius: 4px;
+
+    &:hover {
+      background-color: ${props => props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
+    }
   }
 `;
 
