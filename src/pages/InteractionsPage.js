@@ -191,6 +191,7 @@ const InteractionsPage = ({ theme }) => {
             onContactUpdate={fetchInteractions}
             showActions={true}
             badgeType="category"
+            pageContext="interactions"
           />
         </ContentArea>
       </InteractionsView>

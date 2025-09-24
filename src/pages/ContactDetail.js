@@ -2998,9 +2998,10 @@ const ContactDetail = ({ theme }) => {
             if (enrichedData.jobRole && enrichedData.jobRole !== contact?.job_role) {
               contactUpdates.job_role = enrichedData.jobRole;
             }
-            if (enrichedData.city && enrichedData.city !== contact?.city) {
-              contactUpdates.city = enrichedData.city;
-            }
+            // Note: Skipping city update as contacts table may not have city column
+            // if (enrichedData.city && enrichedData.city !== contact?.city) {
+            //   contactUpdates.city = enrichedData.city;
+            // }
             if (enrichedData.linkedin && enrichedData.linkedin !== contact?.linkedin) {
               contactUpdates.linkedin = enrichedData.linkedin;
             }
