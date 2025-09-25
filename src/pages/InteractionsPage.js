@@ -68,6 +68,11 @@ const InteractionsPage = ({ theme }) => {
             mobile,
             type,
             is_primary
+          ),
+          keep_in_touch (
+            frequency,
+            christmas,
+            easter
           )
         `)
         .not('category', 'in', '("Skip","WhatsApp Group Contact","System","Not Set","Inbox")')
@@ -100,10 +105,28 @@ const InteractionsPage = ({ theme }) => {
 
       if (error) throw error;
 
+      console.log('Total contacts from query:', (data || []).length);
+      console.log('Sample contact with keep_in_touch:', (data || [])[0]?.keep_in_touch);
+
+      // Debug: Check what keep_in_touch data we're getting
+      const pierdavideContact = (data || []).find(c => c.first_name === 'Pierdavide' && c.last_name === 'Fiore');
+      if (pierdavideContact) {
+        console.log('Raw Pierdavide data from query:', {
+          keep_in_touch: pierdavideContact.keep_in_touch,
+          keep_in_touch_length: pierdavideContact.keep_in_touch?.length,
+          first_element: pierdavideContact.keep_in_touch?.[0]
+        });
+      }
+
       // Transform the data structure to match what ContactsList expects
       const transformedContacts = (data || []).map(contact => ({
         ...contact,
-        companies: contact.contact_companies?.map(cc => cc.companies).filter(Boolean) || []
+        companies: contact.contact_companies?.map(cc => cc.companies).filter(Boolean) || [],
+        // Flatten keep_in_touch data for easy access in getKeepInTouchStatus
+        // Handle both object and array formats
+        keep_in_touch_frequency: contact.keep_in_touch?.frequency || contact.keep_in_touch?.[0]?.frequency || null,
+        christmas: contact.keep_in_touch?.christmas || contact.keep_in_touch?.[0]?.christmas || null,
+        easter: contact.keep_in_touch?.easter || contact.keep_in_touch?.[0]?.easter || null
       }));
 
       console.log(`Found ${transformedContacts?.length || 0} contacts with interactions in ${timeFilter.toLowerCase()}`);

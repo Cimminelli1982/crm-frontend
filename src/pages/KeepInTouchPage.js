@@ -190,6 +190,8 @@ const KeepInTouchPage = ({ theme, onKeepInTouchCountChange }) => {
             ...contact,
             // Add keep-in-touch specific fields
             keep_in_touch_frequency: kitData.frequency,
+            christmas: kitData.christmas,
+            easter: kitData.easter,
             days_until_next: kitData.days_until_next,
             next_interaction_date: kitData.next_interaction_date,
             why_keeping_in_touch: kitData.why_keeping_in_touch,

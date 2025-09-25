@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
@@ -21,10 +21,11 @@ const ContactsList = ({
   onContactClick,
   badgeType = 'time', // 'time' or 'category'
   pageContext = null, // 'keepInTouch' or null
-  keepInTouchData = null, // { showDaysCounter: boolean, showFrequencyBadge: boolean }
+  keepInTouchConfig = null, // { showDaysCounter: boolean, showFrequencyBadge: boolean }
   filterCategory = null // 'Birthday' or other category
 }) => {
   const navigate = useNavigate();
+
 
   // Keep in Touch helper functions
   const formatDaysUntilNext = (daysUntilNext, contact = null) => {
@@ -134,8 +135,16 @@ const ContactsList = ({
   const [communicationModalOpen, setCommunicationModalOpen] = useState(false);
   const [contactForCommunication, setContactForCommunication] = useState(null);
 
-  // Keep in touch coming soon modal state (for interactions page)
-  const [keepInTouchComingSoonModalOpen, setKeepInTouchComingSoonModalOpen] = useState(false);
+  // Keep in touch data input modal state (for interactions page)
+  const [keepInTouchModalOpen, setKeepInTouchModalOpen] = useState(false);
+  const [contactForKeepInTouch, setContactForKeepInTouch] = useState(null);
+  const [keepInTouchData, setKeepInTouchData] = useState({}); // Store loaded keep_in_touch data for status checks
+  const [keepInTouchFormData, setKeepInTouchFormData] = useState({
+    frequency: '',
+    birthday: '',
+    christmasWishes: '',
+    easterWishes: ''
+  });
 
   const frequencyOptions = [
     'Weekly',
@@ -264,10 +273,225 @@ const ContactsList = ({
     setCommunicationModalOpen(true);
   };
 
-  // Handle opening keep in touch coming soon modal (for interactions page)
-  const handleOpenKeepInTouchComingSoon = (contact, e) => {
+  // Handle opening keep in touch data input modal (for interactions page)
+  const handleOpenKeepInTouchModal = async (contact, e) => {
     if (e) e.stopPropagation();
-    setKeepInTouchComingSoonModalOpen(true);
+    setContactForKeepInTouch(contact);
+
+    // Load existing keep in touch data from keep_in_touch table
+    try {
+      const { data: keepInTouchData, error } = await supabase
+        .from('keep_in_touch')
+        .select('frequency, christmas, easter')
+        .eq('contact_id', contact.contact_id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
+        console.error('Error loading keep in touch data:', error);
+      }
+
+      // Pre-populate form with existing data
+      setKeepInTouchFormData({
+        frequency: keepInTouchData?.frequency || '',
+        birthday: contact.birthday || '',
+        christmasWishes: keepInTouchData?.christmas || '',
+        easterWishes: keepInTouchData?.easter || ''
+      });
+    } catch (error) {
+      console.error('Error loading keep in touch data:', error);
+      // Set default values if loading fails
+      setKeepInTouchFormData({
+        frequency: '',
+        birthday: contact.birthday || '',
+        christmasWishes: '',
+        easterWishes: ''
+      });
+    }
+
+    setKeepInTouchModalOpen(true);
+  };
+
+  // Handle form field changes
+  const handleKeepInTouchFormChange = (field, value) => {
+    setKeepInTouchFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  // Handle saving keep in touch data
+  const handleSaveKeepInTouchData = async () => {
+    if (!contactForKeepInTouch) return;
+
+    try {
+      // Update birthday in contacts table - handle empty strings properly
+      const birthdayValue = keepInTouchFormData.birthday && keepInTouchFormData.birthday.trim() !== ''
+                           ? keepInTouchFormData.birthday
+                           : null;
+
+      if (birthdayValue !== contactForKeepInTouch.birthday) {
+        const { error: contactError } = await supabase
+          .from('contacts')
+          .update({ birthday: birthdayValue })
+          .eq('contact_id', contactForKeepInTouch.contact_id);
+
+        if (contactError) throw contactError;
+      }
+
+      // Check if keep_in_touch record exists
+      const { data: existingRecord, error: checkError } = await supabase
+        .from('keep_in_touch')
+        .select('id')
+        .eq('contact_id', contactForKeepInTouch.contact_id)
+        .single();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        throw checkError;
+      }
+
+      // Prepare keep in touch data - handle NULL and empty values properly
+      const keepInTouchData = {
+        contact_id: contactForKeepInTouch.contact_id,
+        frequency: keepInTouchFormData.frequency && keepInTouchFormData.frequency.trim() !== ''
+                  ? keepInTouchFormData.frequency
+                  : 'Not Set',
+        christmas: keepInTouchFormData.christmasWishes && keepInTouchFormData.christmasWishes.trim() !== ''
+                  ? keepInTouchFormData.christmasWishes
+                  : 'no wishes set',
+        easter: keepInTouchFormData.easterWishes && keepInTouchFormData.easterWishes.trim() !== ''
+                ? keepInTouchFormData.easterWishes
+                : 'no wishes set'
+      };
+
+      let keepInTouchError;
+      if (existingRecord) {
+        // Update existing record
+        ({ error: keepInTouchError } = await supabase
+          .from('keep_in_touch')
+          .update(keepInTouchData)
+          .eq('contact_id', contactForKeepInTouch.contact_id));
+      } else {
+        // Insert new record
+        ({ error: keepInTouchError } = await supabase
+          .from('keep_in_touch')
+          .insert(keepInTouchData));
+      }
+
+      if (keepInTouchError) throw keepInTouchError;
+
+      toast.success('Keep in Touch data updated successfully!');
+      setKeepInTouchModalOpen(false);
+      setContactForKeepInTouch(null);
+
+      // Refresh data if callback provided
+      if (onContactUpdate) {
+        onContactUpdate();
+      }
+    } catch (error) {
+      console.error('Error updating keep in touch data:', error);
+      toast.error('Failed to update keep in touch data: ' + (error.message || 'Unknown error'));
+    }
+  };
+
+  // Check keep in touch data completeness status using 4 fields
+  const getKeepInTouchStatus = (contact) => {
+    // Check 4 fields: birthday (contacts), frequency, christmas, easter (keep_in_touch)
+    const hasBirthday = !!(contact.birthday && contact.birthday !== null);
+    const hasFrequency = !!(contact.keep_in_touch_frequency &&
+                        contact.keep_in_touch_frequency !== 'Not Set');
+    const hasChristmas = !!(contact.christmas &&
+                        contact.christmas !== 'no wishes set');
+    const hasEaster = !!(contact.easter &&
+                     contact.easter !== 'no wishes set');
+
+    // Debug logging for Pierdavide Fiore
+    if (contact.first_name === 'Pierdavide' && contact.last_name === 'Fiore') {
+      console.log('Pierdavide Fiore Debug:', {
+        birthday: contact.birthday,
+        keep_in_touch_frequency: contact.keep_in_touch_frequency,
+        christmas: contact.christmas,
+        easter: contact.easter,
+        hasBirthday,
+        hasFrequency,
+        hasChristmas,
+        hasEaster,
+        filledFieldsCount: [hasBirthday, hasFrequency, hasChristmas, hasEaster].filter(Boolean).length
+      });
+    }
+
+    const filledFields = [hasBirthday, hasFrequency, hasChristmas, hasEaster].filter(Boolean).length;
+
+    // All 4 fields filled = heart
+    if (filledFields === 4) {
+      return 'complete';
+    }
+    // All filled except birthday = cake
+    else if (filledFields === 3 && !hasBirthday && hasFrequency && hasChristmas && hasEaster) {
+      return 'missing_birthday';
+    }
+    // Missing 2+ fields = sad face
+    else {
+      return 'incomplete';
+    }
+  };
+
+  // Enhanced status check that considers christmas/easter wishes
+  // This properly checks all fields including wishes from keep_in_touch table
+  const getEnhancedKeepInTouchStatus = (contact, keepInTouchData = null) => {
+    // Frequency complete: NOT NULL AND NOT "Not Set"
+    const hasFrequency = contact.keep_in_touch_frequency &&
+                        contact.keep_in_touch_frequency !== 'Not Set';
+
+    // Birthday complete: NOT NULL AND NOT empty
+    const hasBirthday = contact.birthday && contact.birthday.trim() !== '';
+
+    // Christmas wishes complete: NOT NULL AND NOT "no wishes set"
+    const hasChristmasWishes = keepInTouchData?.christmas &&
+                              keepInTouchData.christmas !== 'no wishes set';
+
+    // Easter wishes complete: NOT NULL AND NOT "no wishes set"
+    const hasEasterWishes = keepInTouchData?.easter &&
+                           keepInTouchData.easter !== 'no wishes set';
+
+    if (!hasFrequency) {
+      return 'incomplete'; // Frequency not set - sad face
+    } else if (hasFrequency && !hasBirthday) {
+      return 'missing_birthday'; // Frequency set but birthday missing - cake
+    } else if (hasFrequency && hasBirthday && hasChristmasWishes && hasEasterWishes) {
+      return 'complete'; // Everything properly filled - thumbs up
+    } else {
+      return 'incomplete'; // Missing wishes data - sad face
+    }
+  };
+
+  // Get icon and styling based on status
+  const getKeepInTouchDisplay = (contact) => {
+    // Use basic status for now - could be enhanced to load keep_in_touch data for each contact
+    // but that would be expensive. For now, we'll be conservative:
+    // Only show 'complete' (thumbs up) if we're certain all data is present
+    const status = getKeepInTouchStatus(contact);
+
+    switch (status) {
+      case 'complete':
+        return {
+          icon: '👍',
+          backgroundColor: '#10B981',
+          title: 'Keep in touch - Basic info complete (check wishes in modal)'
+        };
+      case 'missing_birthday':
+        return {
+          icon: '🎂',
+          backgroundColor: '#A7F3D0',
+          title: 'Keep in touch - Birthday missing'
+        };
+      case 'incomplete':
+      default:
+        return {
+          icon: '😕',
+          backgroundColor: '#F87171',
+          title: 'Keep in touch - Incomplete'
+        };
+    }
   };
 
   // Handle communication actions
@@ -666,11 +890,15 @@ const ContactsList = ({
 
                   <CardActionButton
                     theme={theme}
-                    onClick={(e) => handleOpenKeepInTouchComingSoon(contact, e)}
+                    onClick={(e) => handleOpenKeepInTouchModal(contact, e)}
                     $keepInTouch
-                    title="Keep in touch"
+                    title={getKeepInTouchDisplay(contact).title}
+                    style={{
+                      backgroundColor: getKeepInTouchDisplay(contact).backgroundColor,
+                      color: 'white'
+                    }}
                   >
-                    <FaHeart />
+                    {getKeepInTouchDisplay(contact).icon}
                   </CardActionButton>
 
                   <CardActionButton
@@ -1214,10 +1442,10 @@ const ContactsList = ({
         </FrequencyModalContent>
       </Modal>
 
-      {/* Keep in Touch Coming Soon Modal (for interactions page) */}
+      {/* Keep in Touch Data Input Modal (for interactions page) */}
       <Modal
-        isOpen={keepInTouchComingSoonModalOpen}
-        onRequestClose={() => setKeepInTouchComingSoonModalOpen(false)}
+        isOpen={keepInTouchModalOpen}
+        onRequestClose={() => setKeepInTouchModalOpen(false)}
         shouldCloseOnOverlayClick={true}
         style={{
           content: {
@@ -1230,7 +1458,7 @@ const ContactsList = ({
             padding: '0',
             border: 'none',
             borderRadius: '12px',
-            maxWidth: '350px',
+            maxWidth: '500px',
             width: '90%',
             background: 'transparent'
           },
@@ -1242,25 +1470,210 @@ const ContactsList = ({
       >
         <FrequencyModalContent theme={theme}>
           <FrequencyModalHeader theme={theme}>
-            <h3 style={{ margin: 0, fontSize: '18px' }}>Keep in Touch</h3>
+            <h3 style={{ margin: 0, fontSize: '16px' }}>Keep in Touch Settings</h3>
             <FrequencyModalCloseButton
-              onClick={() => setKeepInTouchComingSoonModalOpen(false)}
+              onClick={() => setKeepInTouchModalOpen(false)}
               theme={theme}
             >
               <FiX />
             </FrequencyModalCloseButton>
           </FrequencyModalHeader>
           <FrequencyModalBody>
-            <div style={{
-              textAlign: 'center',
-              padding: '40px 20px',
-              color: theme === 'light' ? '#111827' : '#F9FAFB'
-            }}>
-              <div style={{ fontSize: '48px', marginBottom: '20px' }}>🚀</div>
-              <h4 style={{ margin: '0 0 12px 0', fontSize: '18px' }}>Coming Soon!</h4>
-              <p style={{ margin: 0, fontSize: '14px', opacity: 0.8 }}>
-                Keep in Touch functionality will be available soon. Stay tuned!
-              </p>
+            <div style={{ padding: '20px' }}>
+              {contactForKeepInTouch && (
+                <div style={{
+                  marginBottom: '20px',
+                  padding: '12px',
+                  backgroundColor: theme === 'light' ? '#F3F4F6' : '#374151',
+                  borderRadius: '8px'
+                }}>
+                  <h4 style={{
+                    margin: '0 0 4px 0',
+                    fontSize: '14px',
+                    color: theme === 'light' ? '#111827' : '#F9FAFB'
+                  }}>
+                    {contactForKeepInTouch.first_name} {contactForKeepInTouch.last_name}
+                  </h4>
+                  <div style={{
+                    fontSize: '12px',
+                    color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                  }}>
+                    Complete all fields to enable full Keep in Touch features
+                  </div>
+                </div>
+              )}
+
+              {/* Keep in Touch Frequency */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{
+                  display: 'block',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  marginBottom: '8px',
+                  color: theme === 'light' ? '#111827' : '#F9FAFB'
+                }}>
+                  <FaHeart style={{ marginRight: '6px' }} />
+                  Keep in Touch Frequency
+                </label>
+                <select
+                  value={keepInTouchFormData.frequency}
+                  onChange={(e) => handleKeepInTouchFormChange('frequency', e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                    borderRadius: '6px',
+                    backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                    color: theme === 'light' ? '#111827' : '#F9FAFB',
+                    fontSize: '14px'
+                  }}
+                >
+                  <option value="">Select frequency...</option>
+                  <option value="Weekly">Weekly</option>
+                  <option value="Monthly">Monthly</option>
+                  <option value="Quarterly">Quarterly</option>
+                  <option value="Twice per Year">Twice per Year</option>
+                  <option value="Once per Year">Once per Year</option>
+                  <option value="Do not keep in touch">Do not keep in touch</option>
+                </select>
+              </div>
+
+              {/* Date of Birth */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{
+                  display: 'block',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  marginBottom: '8px',
+                  color: theme === 'light' ? '#111827' : '#F9FAFB'
+                }}>
+                  <FaCalendarAlt style={{ marginRight: '6px' }} />
+                  Date of Birth
+                </label>
+                <input
+                  type="date"
+                  value={keepInTouchFormData.birthday}
+                  onChange={(e) => handleKeepInTouchFormChange('birthday', e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                    borderRadius: '6px',
+                    backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                    color: theme === 'light' ? '#111827' : '#F9FAFB',
+                    fontSize: '14px'
+                  }}
+                />
+              </div>
+
+              {/* Christmas Wishes */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{
+                  display: 'block',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  marginBottom: '8px',
+                  color: theme === 'light' ? '#111827' : '#F9FAFB'
+                }}>
+                  🎄 Christmas Wishes
+                </label>
+                <select
+                  value={keepInTouchFormData.christmasWishes}
+                  onChange={(e) => handleKeepInTouchFormChange('christmasWishes', e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                    borderRadius: '6px',
+                    backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                    color: theme === 'light' ? '#111827' : '#F9FAFB',
+                    fontSize: '14px'
+                  }}
+                >
+                  <option value="">Select Christmas wishes...</option>
+                  <option value="no wishes set">Not set</option>
+                  <option value="no wishes">No wishes</option>
+                  <option value="whatsapp standard">WhatsApp standard</option>
+                  <option value="email standard">Email standard</option>
+                  <option value="email custom">Email custom</option>
+                  <option value="whatsapp custom">WhatsApp custom</option>
+                  <option value="call">Call</option>
+                  <option value="present">Present</option>
+                </select>
+              </div>
+
+              {/* Easter Wishes */}
+              <div style={{ marginBottom: '30px' }}>
+                <label style={{
+                  display: 'block',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  marginBottom: '8px',
+                  color: theme === 'light' ? '#111827' : '#F9FAFB'
+                }}>
+                  🐰 Easter Wishes
+                </label>
+                <select
+                  value={keepInTouchFormData.easterWishes}
+                  onChange={(e) => handleKeepInTouchFormChange('easterWishes', e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                    borderRadius: '6px',
+                    backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                    color: theme === 'light' ? '#111827' : '#F9FAFB',
+                    fontSize: '14px'
+                  }}
+                >
+                  <option value="">Select Easter wishes...</option>
+                  <option value="no wishes set">Not set</option>
+                  <option value="no wishes">No wishes</option>
+                  <option value="whatsapp standard">WhatsApp standard</option>
+                  <option value="email standard">Email standard</option>
+                  <option value="email custom">Email custom</option>
+                  <option value="whatsapp custom">WhatsApp custom</option>
+                  <option value="call">Call</option>
+                  <option value="present">Present</option>
+                </select>
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{
+                display: 'flex',
+                gap: '12px',
+                justifyContent: 'flex-end'
+              }}>
+                <button
+                  onClick={() => setKeepInTouchModalOpen(false)}
+                  style={{
+                    padding: '10px 20px',
+                    border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                    borderRadius: '6px',
+                    backgroundColor: 'transparent',
+                    color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                    fontSize: '14px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveKeepInTouchData}
+                  style={{
+                    padding: '10px 20px',
+                    border: 'none',
+                    borderRadius: '6px',
+                    backgroundColor: '#3B82F6',
+                    color: '#FFFFFF',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    fontWeight: '500'
+                  }}
+                >
+                  Save Settings
+                </button>
+              </div>
             </div>
           </FrequencyModalBody>
         </FrequencyModalContent>
