@@ -157,16 +157,8 @@ const ContactsList = ({
   const handleEditContact = (contactId, e) => {
     if (e) e.stopPropagation();
 
-    // Check if we're in local development
-    const isLocal = window.location.hostname === 'localhost';
-    const url = isLocal
-      ? `http://localhost:3000/contacts/workflow/${contactId}?step=2`
-      : `/contacts/workflow/${contactId}?step=2`;
-
-    const newTab = window.open(url, '_blank');
-    if (newTab) {
-      newTab.focus();
-    }
+    // Navigate to the new contact edit page
+    navigate(`/contact/${contactId}/edit`);
   };
 
   const handleSkipContact = async (contact, e) => {
