@@ -688,6 +688,15 @@ const ContactsList = ({
                     <>
                       <CardActionButton
                         theme={theme}
+                        onClick={(e) => handleOpenCommunicationModal(contact, e)}
+                        $communication
+                        title="Contact via WhatsApp, Email, or LinkedIn"
+                      >
+                        <FiMessageCircle />
+                      </CardActionButton>
+
+                      <CardActionButton
+                        theme={theme}
                         onClick={(e) => handleOpenBirthdayModal(contact, e)}
                         $frequency
                         title="Edit birthday date"
@@ -706,6 +715,15 @@ const ContactsList = ({
                     </>
                   ) : (
                     <>
+                      <CardActionButton
+                        theme={theme}
+                        onClick={(e) => handleOpenCommunicationModal(contact, e)}
+                        $communication
+                        title="Contact via WhatsApp, Email, or LinkedIn"
+                      >
+                        <FiMessageCircle />
+                      </CardActionButton>
+
                       <CardActionButton
                         theme={theme}
                         onClick={(e) => handleOpenFrequencyModal(contact, e)}
