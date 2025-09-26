@@ -5,17 +5,24 @@ import styled from 'styled-components';
 import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaArrowLeft } from 'react-icons/fa';
 import { FiExternalLink } from 'react-icons/fi';
 import { toast } from 'react-hot-toast';
+import RelatedSection from '../components/RelatedSection';
 
 const ContactEditNew = ({ theme }) => {
   const { contactId } = useParams();
   const navigate = useNavigate();
   const [contact, setContact] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('Quick Edit');
+  const [activeTab, setActiveTab] = useState('Edit');
+  const [activeEditTab, setActiveEditTab] = useState('Core');
+  const [saving, setSaving] = useState(false);
+  const [keepInTouchData, setKeepInTouchData] = useState(null);
+
 
   useEffect(() => {
     fetchContact();
+    fetchKeepInTouchData();
   }, [contactId]);
+
 
   const fetchContact = async () => {
     if (!contactId) return;
@@ -72,6 +79,133 @@ const ContactEditNew = ({ theme }) => {
       setLoading(false);
     }
   };
+
+  const fetchKeepInTouchData = async () => {
+    if (!contactId) return;
+    try {
+      const { data, error } = await supabase
+        .from('keep_in_touch')
+        .select('*')
+        .eq('contact_id', contactId)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      setKeepInTouchData(data || {
+        frequency: 'Not Set',
+        christmas: 'no wishes set',
+        easter: 'no wishes set',
+        why_keeping_in_touch: '',
+        next_follow_up_notes: ''
+      });
+    } catch (error) {
+      console.error('Error fetching keep in touch data:', error);
+      setKeepInTouchData({
+        frequency: 'Not Set',
+        christmas: 'no wishes set',
+        easter: 'no wishes set',
+        why_keeping_in_touch: '',
+        next_follow_up_notes: ''
+      });
+    }
+  };
+
+
+  const handleSaveCoreInfo = async () => {
+    if (!contactId || !contact) return;
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .update({
+          first_name: contact.first_name,
+          last_name: contact.last_name,
+          job_role: contact.job_role,
+          job_title: contact.job_title,
+          category: contact.category,
+          score: contact.score,
+          linkedin: contact.linkedin,
+          description: contact.description,
+          birthday: contact.birthday
+        })
+        .eq('contact_id', contactId);
+
+      if (error) {
+        throw error;
+      }
+
+      toast.success('Core information updated successfully!');
+    } catch (error) {
+      console.error('Error saving core info:', error);
+      toast.error('Failed to save changes: ' + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveKeepInTouch = async () => {
+    if (!contactId || !keepInTouchData) return;
+    setSaving(true);
+    try {
+      // First check if record exists
+      const { data: existingRecord } = await supabase
+        .from('keep_in_touch')
+        .select('contact_id')
+        .eq('contact_id', contactId)
+        .maybeSingle();
+
+      const keepInTouchUpdate = {
+        contact_id: contactId,
+        frequency: keepInTouchData.frequency,
+        christmas: keepInTouchData.christmas,
+        easter: keepInTouchData.easter,
+        why_keeping_in_touch: keepInTouchData.why_keeping_in_touch || '',
+        next_follow_up_notes: keepInTouchData.next_follow_up_notes || ''
+      };
+
+      let error;
+      if (existingRecord) {
+        // Update existing record
+        const result = await supabase
+          .from('keep_in_touch')
+          .update(keepInTouchUpdate)
+          .eq('contact_id', contactId);
+        error = result.error;
+      } else {
+        // Insert new record
+        const result = await supabase
+          .from('keep_in_touch')
+          .insert([keepInTouchUpdate]);
+        error = result.error;
+      }
+
+      if (error) {
+        throw error;
+      }
+
+      // Also update birthday in contacts table if it changed
+      if (contact?.birthday) {
+        const { error: birthdayError } = await supabase
+          .from('contacts')
+          .update({ birthday: contact.birthday })
+          .eq('contact_id', contactId);
+
+        if (birthdayError) {
+          console.error('Error updating birthday:', birthdayError);
+        }
+      }
+
+      toast.success('Keep in touch settings saved successfully!');
+    } catch (error) {
+      console.error('Error saving keep in touch data:', error);
+      toast.error('Failed to save keep in touch settings: ' + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
 
   const handleOpenLegacyEdit = () => {
     // Check if we're in local development
@@ -164,7 +298,7 @@ const ContactEditNew = ({ theme }) => {
           </ProfileSection>
 
           <NavTabs theme={theme}>
-            {['Quick Edit', 'Missing Fields', 'Merge'].map(tab => (
+            {['Edit', 'Missing Fields', 'Merge'].map(tab => (
               <NavTab
                 key={tab}
                 theme={theme}
@@ -177,14 +311,224 @@ const ContactEditNew = ({ theme }) => {
           </NavTabs>
 
           <TabContent theme={theme}>
-            {activeTab === 'Quick Edit' && (
-              <ComingSoonContainer>
-                <ComingSoonIcon>🚀</ComingSoonIcon>
-                <ComingSoonTitle theme={theme}>Quick Edit - Coming Soon</ComingSoonTitle>
-                <ComingSoonText theme={theme}>
-                  We're working on a streamlined editing experience that will allow you to quickly update the most important contact fields.
-                </ComingSoonText>
-              </ComingSoonContainer>
+            {activeTab === 'Edit' && (
+              <>
+                <EditSubMenu theme={theme}>
+                  {['Core', 'Related', 'Keep in Touch'].map(tab => (
+                    <SubNavTab
+                      key={tab}
+                      theme={theme}
+                      $active={activeEditTab === tab}
+                      onClick={() => setActiveEditTab(tab)}
+                    >
+                      {tab}
+                    </SubNavTab>
+                  ))}
+                </EditSubMenu>
+
+                {activeEditTab === 'Core' && (
+                  <QuickEditContainer>
+                    <QuickEditForm theme={theme}>
+                      {/* Core Info Section */}
+                      <FormSection>
+                        <SectionHeader theme={theme}>
+                          <SectionTitle theme={theme}>Core Information</SectionTitle>
+                        </SectionHeader>
+                        <FormGrid>
+                          <FormGroup>
+                            <FormLabel theme={theme}>First Name</FormLabel>
+                            <FormInput
+                              theme={theme}
+                              type="text"
+                              value={contact?.first_name || ''}
+                              onChange={(e) => setContact(prev => ({ ...prev, first_name: e.target.value }))}
+                            />
+                          </FormGroup>
+                          <FormGroup>
+                            <FormLabel theme={theme}>Last Name</FormLabel>
+                            <FormInput
+                              theme={theme}
+                              type="text"
+                              value={contact?.last_name || ''}
+                              onChange={(e) => setContact(prev => ({ ...prev, last_name: e.target.value }))}
+                            />
+                          </FormGroup>
+                          <FormGroup>
+                            <FormLabel theme={theme}>Job Role</FormLabel>
+                            <FormInput
+                              theme={theme}
+                              type="text"
+                              value={contact?.job_role || ''}
+                              onChange={(e) => setContact(prev => ({
+                                ...prev,
+                                job_role: e.target.value,
+                                job_title: e.target.value
+                              }))}
+                            />
+                          </FormGroup>
+                          <FormGroup>
+                            <FormLabel theme={theme}>Category</FormLabel>
+                            <FormSelect
+                              theme={theme}
+                              value={contact?.category || 'Inbox'}
+                              onChange={(e) => setContact(prev => ({ ...prev, category: e.target.value }))}
+                            >
+                              <option value="Inbox">Inbox</option>
+                              <option value="Skip">Skip</option>
+                              <option value="Professional Investor">Professional Investor</option>
+                              <option value="Team">Team</option>
+                              <option value="WhatsApp Group Contact">WhatsApp Group Contact</option>
+                              <option value="Advisor">Advisor</option>
+                              <option value="Supplier">Supplier</option>
+                              <option value="Founder">Founder</option>
+                              <option value="Manager">Manager</option>
+                              <option value="Friend and Family">Friend and Family</option>
+                              <option value="Other">Other</option>
+                              <option value="Student">Student</option>
+                              <option value="Media">Media</option>
+                              <option value="Not Set">Not Set</option>
+                              <option value="Institution">Institution</option>
+                              <option value="SUBSCRIBER NEWSLETTER">Subscriber Newsletter</option>
+                              <option value="System">System</option>
+                            </FormSelect>
+                          </FormGroup>
+                          <FormGroup>
+                            <FormLabel theme={theme}>Score</FormLabel>
+                            <FormInput
+                              theme={theme}
+                              type="number"
+                              min="1"
+                              max="5"
+                              value={contact?.score || ''}
+                              onChange={(e) => setContact(prev => ({ ...prev, score: parseInt(e.target.value) || null }))}
+                            />
+                          </FormGroup>
+                          <FormGroup>
+                            <FormLabel theme={theme}>LinkedIn</FormLabel>
+                            <FormInput
+                              theme={theme}
+                              type="url"
+                              value={contact?.linkedin || ''}
+                              onChange={(e) => setContact(prev => ({ ...prev, linkedin: e.target.value }))}
+                              placeholder="https://linkedin.com/in/..."
+                            />
+                          </FormGroup>
+                          <FormGroup $fullWidth>
+                            <FormLabel theme={theme}>Description</FormLabel>
+                            <FormTextarea
+                              theme={theme}
+                              value={contact?.description || ''}
+                              onChange={(e) => setContact(prev => ({
+                                ...prev,
+                                description: e.target.value
+                              }))}
+                              rows={3}
+                            />
+                          </FormGroup>
+                        </FormGrid>
+                      </FormSection>
+
+                      {/* Save Button */}
+                      <SaveButtonContainer>
+                        <SaveButton
+                          theme={theme}
+                          onClick={handleSaveCoreInfo}
+                          disabled={saving}
+                        >
+                          {saving ? 'Saving...' : 'Save Core Information'}
+                        </SaveButton>
+                      </SaveButtonContainer>
+                    </QuickEditForm>
+                  </QuickEditContainer>
+                )}
+
+                {activeEditTab === 'Related' && (
+                  <RelatedSection contactId={contactId} theme={theme} />
+                )}
+
+                {activeEditTab === 'Keep in Touch' && (
+                  <QuickEditContainer>
+                    <QuickEditForm theme={theme}>
+                      <FormSection>
+                        <SectionHeader theme={theme}>
+                          <SectionTitle theme={theme}>Keep in Touch Settings</SectionTitle>
+                        </SectionHeader>
+                        <FormGrid>
+                          <FormGroup>
+                            <FormLabel theme={theme}>Frequency</FormLabel>
+                            <FormSelect
+                              theme={theme}
+                              value={keepInTouchData?.frequency || 'Not Set'}
+                              onChange={(e) => setKeepInTouchData(prev => ({ ...prev, frequency: e.target.value }))}
+                            >
+                              <option value="Not Set">Not Set</option>
+                              <option value="Weekly">Weekly</option>
+                              <option value="Monthly">Monthly</option>
+                              <option value="Quarterly">Quarterly</option>
+                              <option value="Twice per Year">Twice per Year</option>
+                              <option value="Once per Year">Once per Year</option>
+                              <option value="Do not keep in touch">Do not keep in touch</option>
+                            </FormSelect>
+                          </FormGroup>
+                          <FormGroup>
+                            <FormLabel theme={theme}>Birthday</FormLabel>
+                            <FormInput
+                              theme={theme}
+                              type="date"
+                              value={contact?.birthday || ''}
+                              onChange={(e) => setContact(prev => ({ ...prev, birthday: e.target.value }))}
+                            />
+                          </FormGroup>
+                          <FormGroup>
+                            <FormLabel theme={theme}>Christmas Wishes</FormLabel>
+                            <FormSelect
+                              theme={theme}
+                              value={keepInTouchData?.christmas || 'no wishes set'}
+                              onChange={(e) => setKeepInTouchData(prev => ({ ...prev, christmas: e.target.value }))}
+                            >
+                              <option value="no wishes set">No wishes set</option>
+                              <option value="whatsapp standard">WhatsApp Standard</option>
+                              <option value="email standard">Email Standard</option>
+                              <option value="email custom">Email Custom</option>
+                              <option value="whatsapp custom">WhatsApp Custom</option>
+                              <option value="call">Call</option>
+                              <option value="present">Present</option>
+                              <option value="no wishes">No wishes</option>
+                            </FormSelect>
+                          </FormGroup>
+                          <FormGroup>
+                            <FormLabel theme={theme}>Easter Wishes</FormLabel>
+                            <FormSelect
+                              theme={theme}
+                              value={keepInTouchData?.easter || 'no wishes set'}
+                              onChange={(e) => setKeepInTouchData(prev => ({ ...prev, easter: e.target.value }))}
+                            >
+                              <option value="no wishes set">No wishes set</option>
+                              <option value="whatsapp standard">WhatsApp Standard</option>
+                              <option value="email standard">Email Standard</option>
+                              <option value="email custom">Email Custom</option>
+                              <option value="whatsapp custom">WhatsApp Custom</option>
+                              <option value="call">Call</option>
+                              <option value="present">Present</option>
+                              <option value="no wishes">No wishes</option>
+                            </FormSelect>
+                          </FormGroup>
+                        </FormGrid>
+                      </FormSection>
+
+                      <SaveButtonContainer>
+                        <SaveButton
+                          theme={theme}
+                          onClick={handleSaveKeepInTouch}
+                          disabled={saving}
+                        >
+                          {saving ? 'Saving...' : 'Save Keep in Touch Settings'}
+                        </SaveButton>
+                      </SaveButtonContainer>
+                    </QuickEditForm>
+                  </QuickEditContainer>
+                )}
+              </>
             )}
 
             {activeTab === 'Missing Fields' && (
@@ -556,5 +900,217 @@ const ComingSoonText = styled.p`
   line-height: 1.6;
   margin: 0;
 `;
+
+// Quick Edit Form Styled Components
+const QuickEditContainer = styled.div`
+  width: 100%;
+  padding: 0;
+`;
+
+const QuickEditForm = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+  padding: 0;
+`;
+
+const FormSection = styled.div`
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+`;
+
+const SectionHeader = styled.div`
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+`;
+
+const SectionTitle = styled.h3`
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+`;
+
+const FormGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+`;
+
+const FormGroup = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  ${props => props.$fullWidth && `
+    grid-column: 1 / -1;
+  `}
+`;
+
+const FormLabel = styled.label`
+  color: ${props => props.theme === 'light' ? '#374151' : '#D1D5DB'};
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 2px;
+`;
+
+const FormInput = styled.input`
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#111827'};
+  border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  border-radius: 8px;
+  padding: 14px 16px;
+  font-size: 15px;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  transition: all 0.2s ease;
+
+  &:focus {
+    outline: none;
+    border-color: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+    box-shadow: 0 0 0 3px ${props => props.theme === 'light' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(96, 165, 250, 0.1)'};
+  }
+
+  &::placeholder {
+    color: ${props => props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
+  }
+`;
+
+const FormSelect = styled.select`
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#111827'};
+  border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  border-radius: 8px;
+  padding: 14px 16px;
+  font-size: 15px;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  transition: all 0.2s ease;
+  cursor: pointer;
+
+  &:focus {
+    outline: none;
+    border-color: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+    box-shadow: 0 0 0 3px ${props => props.theme === 'light' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(96, 165, 250, 0.1)'};
+  }
+
+  option {
+    background: ${props => props.theme === 'light' ? '#FFFFFF' : '#111827'};
+    color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  }
+`;
+
+const FormTextarea = styled.textarea`
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#111827'};
+  border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 14px;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  font-family: inherit;
+  resize: vertical;
+  transition: all 0.2s ease;
+
+  &:focus {
+    outline: none;
+    border-color: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+    box-shadow: 0 0 0 3px ${props => props.theme === 'light' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(96, 165, 250, 0.1)'};
+  }
+
+  &::placeholder {
+    color: ${props => props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
+  }
+`;
+
+const SaveButtonContainer = styled.div`
+  display: flex;
+  justify-content: center;
+  padding: 20px 0;
+`;
+
+const SaveButton = styled.button`
+  background: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+  color: white;
+  border: none;
+  border-radius: 12px;
+  padding: 16px 32px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 160px;
+
+  &:hover:not(:disabled) {
+    background: ${props => props.theme === 'light' ? '#2563EB' : '#3B82F6'};
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+`;
+
+// Edit SubMenu Styled Components
+const EditSubMenu = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  max-width: 600px;
+  margin: 0 auto 32px;
+  background: ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
+  border-radius: 12px;
+  padding: 6px;
+  width: fit-content;
+  box-shadow: ${props => props.theme === 'light'
+    ? '0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06)'
+    : '0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2)'
+  };
+`;
+
+const SubNavTab = styled.button`
+  background: ${props => props.$active
+    ? (props.theme === 'light' ? '#FFFFFF' : '#1F2937')
+    : 'transparent'
+  };
+  color: ${props => props.$active
+    ? (props.theme === 'light' ? '#111827' : '#F9FAFB')
+    : (props.theme === 'light' ? '#6B7280' : '#9CA3AF')
+  };
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+  font-size: 14px;
+  font-weight: ${props => props.$active ? '600' : '500'};
+  white-space: nowrap;
+  box-shadow: ${props => props.$active
+    ? (props.theme === 'light'
+      ? '0 2px 4px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08)'
+      : '0 2px 4px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3)')
+    : 'none'
+  };
+
+  &:hover {
+    color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+    background: ${props => props.$active
+      ? (props.theme === 'light' ? '#FFFFFF' : '#1F2937')
+      : (props.theme === 'light' ? 'rgba(255, 255, 255, 0.7)' : 'rgba(31, 41, 55, 0.7)')
+    };
+  }
+`;
+
 
 export default ContactEditNew;

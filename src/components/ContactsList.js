@@ -272,7 +272,7 @@ const ContactsList = ({
 
     // Load existing keep in touch data from keep_in_touch table
     try {
-      const { data: keepInTouchData, error } = await supabase
+      const { data: existingKeepInTouchData, error } = await supabase
         .from('keep_in_touch')
         .select('frequency, christmas, easter')
         .eq('contact_id', contact.contact_id)
@@ -284,10 +284,10 @@ const ContactsList = ({
 
       // Pre-populate form with existing data
       setKeepInTouchFormData({
-        frequency: keepInTouchData?.frequency || '',
+        frequency: existingKeepInTouchData?.frequency || '',
         birthday: contact.birthday || '',
-        christmasWishes: keepInTouchData?.christmas || '',
-        easterWishes: keepInTouchData?.easter || ''
+        christmasWishes: existingKeepInTouchData?.christmas || '',
+        easterWishes: existingKeepInTouchData?.easter || ''
       });
     } catch (error) {
       console.error('Error loading keep in touch data:', error);
@@ -342,7 +342,7 @@ const ContactsList = ({
       }
 
       // Prepare keep in touch data - handle NULL and empty values properly
-      const keepInTouchData = {
+      const keepInTouchUpdateData = {
         contact_id: contactForKeepInTouch.contact_id,
         frequency: keepInTouchFormData.frequency && keepInTouchFormData.frequency.trim() !== ''
                   ? keepInTouchFormData.frequency
@@ -360,13 +360,13 @@ const ContactsList = ({
         // Update existing record
         ({ error: keepInTouchError } = await supabase
           .from('keep_in_touch')
-          .update(keepInTouchData)
+          .update(keepInTouchUpdateData)
           .eq('contact_id', contactForKeepInTouch.contact_id));
       } else {
         // Insert new record
         ({ error: keepInTouchError } = await supabase
           .from('keep_in_touch')
-          .insert(keepInTouchData));
+          .insert(keepInTouchUpdateData));
       }
 
       if (keepInTouchError) throw keepInTouchError;
@@ -429,7 +429,7 @@ const ContactsList = ({
 
   // Enhanced status check that considers christmas/easter wishes
   // This properly checks all fields including wishes from keep_in_touch table
-  const getEnhancedKeepInTouchStatus = (contact, keepInTouchData = null) => {
+  const getEnhancedKeepInTouchStatus = (contact, keepInTouchRecord = null) => {
     // Frequency complete: NOT NULL AND NOT "Not Set"
     const hasFrequency = contact.keep_in_touch_frequency &&
                         contact.keep_in_touch_frequency !== 'Not Set';
@@ -438,12 +438,12 @@ const ContactsList = ({
     const hasBirthday = contact.birthday && contact.birthday.trim() !== '';
 
     // Christmas wishes complete: NOT NULL AND NOT "no wishes set"
-    const hasChristmasWishes = keepInTouchData?.christmas &&
-                              keepInTouchData.christmas !== 'no wishes set';
+    const hasChristmasWishes = keepInTouchRecord?.christmas &&
+                              keepInTouchRecord.christmas !== 'no wishes set';
 
     // Easter wishes complete: NOT NULL AND NOT "no wishes set"
-    const hasEasterWishes = keepInTouchData?.easter &&
-                           keepInTouchData.easter !== 'no wishes set';
+    const hasEasterWishes = keepInTouchRecord?.easter &&
+                           keepInTouchRecord.easter !== 'no wishes set';
 
     if (!hasFrequency) {
       return 'incomplete'; // Frequency not set - sad face
@@ -810,7 +810,7 @@ const ContactsList = ({
               <ContactInfo>
                 <ContactName theme={theme}>
                   {contact.first_name} {contact.last_name}
-                  {pageContext === 'keepInTouch' && keepInTouchData?.showFrequencyBadge && (
+                  {pageContext === 'keepInTouch' && keepInTouchConfig?.showFrequencyBadge && (
                     <KeepInTouchFrequencyBadge theme={theme}>
                       {filterCategory === 'Birthday' && contact.birthday
                         ? (() => {
@@ -833,7 +833,7 @@ const ContactsList = ({
                     </PriorityIndicator>
                   )}
                 </ContactName>
-                {pageContext === 'keepInTouch' && keepInTouchData?.showDaysCounter && (
+                {pageContext === 'keepInTouch' && keepInTouchConfig?.showDaysCounter && (
                   <KeepInTouchStatus
                     theme={theme}
                     $urgencyColor={getUrgencyColor(contact.days_until_next, theme, contact)}
