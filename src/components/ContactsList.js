@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
-import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaEdit, FaClock, FaTimes, FaCalendarAlt, FaHeart, FaCog, FaInfoCircle, FaStar, FaPlus } from 'react-icons/fa';
+import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaEdit, FaClock, FaTimes, FaCalendarAlt, FaHeart, FaCog, FaInfoCircle, FaStar, FaPlus, FaBriefcase, FaLink, FaHandshake } from 'react-icons/fa';
 import { FiSkipForward, FiAlertTriangle, FiX, FiMessageCircle } from 'react-icons/fi';
 import { toast } from 'react-hot-toast';
 import Modal from 'react-modal';
@@ -147,13 +147,21 @@ const ContactsList = ({
     easterWishes: ''
   });
 
-  // Description modal state
-  const [descriptionModalOpen, setDescriptionModalOpen] = useState(false);
-  const [contactForDescription, setContactForDescription] = useState(null);
-  const [descriptionText, setDescriptionText] = useState('');
-  const [jobRoleText, setJobRoleText] = useState('');
-  const [contactCategory, setContactCategory] = useState('');
-  const [contactScore, setContactScore] = useState(0);
+  // Quick Edit Contact modal state
+  const [quickEditContactModalOpen, setQuickEditContactModalOpen] = useState(false);
+  const [contactForQuickEdit, setContactForQuickEdit] = useState(null);
+  const [quickEditActiveTab, setQuickEditActiveTab] = useState('Info');
+  const [quickEditDescriptionText, setQuickEditDescriptionText] = useState('');
+  const [quickEditJobRoleText, setQuickEditJobRoleText] = useState('');
+  const [quickEditContactCategory, setQuickEditContactCategory] = useState('');
+  const [quickEditContactScore, setQuickEditContactScore] = useState(0);
+  const [quickEditFirstName, setQuickEditFirstName] = useState('');
+  const [quickEditLastName, setQuickEditLastName] = useState('');
+  const [quickEditLinkedin, setQuickEditLinkedin] = useState('');
+
+  // Company association for Quick Edit Modal
+  const [quickEditAssociateCompanyModalOpen, setQuickEditAssociateCompanyModalOpen] = useState(false);
+  const [quickEditContactCompanies, setQuickEditContactCompanies] = useState([]);
 
   // Company association modal state
   const [companyModalOpen, setCompanyModalOpen] = useState(false);
@@ -576,41 +584,165 @@ const ContactsList = ({
     }
   };
 
-  // Handle opening description modal
-  const handleOpenDescriptionModal = (contact, e) => {
+  // Handle opening quick edit contact modal
+  const handleOpenQuickEditContactModal = async (contact, e) => {
     if (e) e.stopPropagation();
-    setContactForDescription(contact);
-    setDescriptionText(contact.description || '');
-    setJobRoleText(contact.job_role || '');
-    setContactCategory(contact.category || 'Not Set');
-    setContactScore(contact.score || 0);
-    setDescriptionModalOpen(true);
+    setContactForQuickEdit(contact);
+    setQuickEditActiveTab('Info');
+    setQuickEditDescriptionText(contact.description || '');
+    setQuickEditJobRoleText(contact.job_role || '');
+    setQuickEditContactCategory(contact.category || 'Not Set');
+    setQuickEditContactScore(contact.score || 0);
+    setQuickEditFirstName(contact.first_name || '');
+    setQuickEditLastName(contact.last_name || '');
+    setQuickEditLinkedin(contact.linkedin || '');
+
+    // Load company associations
+    try {
+      const { data: companiesData, error } = await supabase
+        .from('contact_companies')
+        .select(`
+          contact_companies_id,
+          company_id,
+          is_primary,
+          relationship,
+          companies (
+            company_id,
+            name,
+            category,
+            website
+          )
+        `)
+        .eq('contact_id', contact.contact_id);
+
+      if (error) throw error;
+      setQuickEditContactCompanies(companiesData || []);
+    } catch (error) {
+      console.error('Error loading company associations:', error);
+      setQuickEditContactCompanies([]);
+    }
+
+    setQuickEditContactModalOpen(true);
   };
 
-  // Handle saving all contact details
-  const handleSaveDescription = async () => {
-    if (!contactForDescription) return;
+  // Handle company association changes
+  const handleQuickEditCompanyAdded = async () => {
+    // Reload company associations after adding/removing
+    if (contactForQuickEdit) {
+      try {
+        const { data: companiesData, error } = await supabase
+          .from('contact_companies')
+          .select(`
+            contact_companies_id,
+            company_id,
+            is_primary,
+            relationship,
+            companies (
+              company_id,
+              name,
+              category,
+              website
+            )
+          `)
+          .eq('contact_id', contactForQuickEdit.contact_id);
+
+        if (error) throw error;
+        setQuickEditContactCompanies(companiesData || []);
+      } catch (error) {
+        console.error('Error reloading company associations:', error);
+      }
+    }
+  };
+
+  // Handle company relationship type updates
+  const handleUpdateCompanyRelationship = async (contactCompaniesId, newRelationship) => {
+    try {
+      const { error } = await supabase
+        .from('contact_companies')
+        .update({ relationship: newRelationship })
+        .eq('contact_companies_id', contactCompaniesId);
+
+      if (error) throw error;
+
+      // Update local state
+      setQuickEditContactCompanies(prev =>
+        prev.map(relation =>
+          relation.contact_companies_id === contactCompaniesId
+            ? { ...relation, relationship: newRelationship }
+            : relation
+        )
+      );
+
+      toast.success('Relationship type updated successfully');
+    } catch (err) {
+      console.error('Error updating company relationship:', err);
+      toast.error('Failed to update relationship type');
+    }
+  };
+
+  // Handle company category updates
+  const handleUpdateCompanyCategory = async (companyId, newCategory) => {
+    try {
+      const { error } = await supabase
+        .from('companies')
+        .update({ category: newCategory })
+        .eq('company_id', companyId);
+
+      if (error) throw error;
+
+      // Update local state
+      setQuickEditContactCompanies(prev =>
+        prev.map(relation => {
+          if ((relation.companies?.company_id || relation.companies?.id) === companyId) {
+            return {
+              ...relation,
+              companies: {
+                ...relation.companies,
+                category: newCategory
+              }
+            };
+          }
+          return relation;
+        })
+      );
+
+      toast.success('Company category updated successfully');
+    } catch (err) {
+      console.error('Error updating company category:', err);
+      toast.error('Failed to update company category');
+    }
+  };
+
+  // Handle saving quick edit contact details
+  const handleSaveQuickEditContact = async () => {
+    if (!contactForQuickEdit) return;
 
     try {
       const { error } = await supabase
         .from('contacts')
         .update({
-          description: descriptionText.trim() || null,
-          job_role: jobRoleText.trim() || null,
-          category: contactCategory || 'Not Set',
-          score: contactScore
+          first_name: quickEditFirstName.trim() || null,
+          last_name: quickEditLastName.trim() || null,
+          description: quickEditDescriptionText.trim() || null,
+          job_role: quickEditJobRoleText.trim() || null,
+          category: quickEditContactCategory || 'Not Set',
+          score: quickEditContactScore,
+          linkedin: quickEditLinkedin.trim() || null
         })
-        .eq('contact_id', contactForDescription.contact_id);
+        .eq('contact_id', contactForQuickEdit.contact_id);
 
       if (error) throw error;
 
       toast.success('Contact details updated successfully');
-      setDescriptionModalOpen(false);
-      setContactForDescription(null);
-      setDescriptionText('');
-      setJobRoleText('');
-      setContactCategory('');
-      setContactScore(0);
+      setQuickEditContactModalOpen(false);
+      setContactForQuickEdit(null);
+      setQuickEditDescriptionText('');
+      setQuickEditJobRoleText('');
+      setQuickEditContactCategory('');
+      setQuickEditContactScore(0);
+      setQuickEditFirstName('');
+      setQuickEditLastName('');
+      setQuickEditLinkedin('');
       if (onContactUpdate) onContactUpdate();
     } catch (error) {
       console.error('Error updating contact details:', error);
@@ -1258,9 +1390,9 @@ const ContactsList = ({
                   <img src={contact.profile_image_url} alt="Profile" />
                 ) : (
                   <InfoIconButton
-                    onClick={(e) => handleOpenDescriptionModal(contact, e)}
+                    onClick={(e) => handleOpenQuickEditContactModal(contact, e)}
                     theme={theme}
-                    title="View/Edit contact description"
+                    title="Quick Edit Contact Details"
                   >
                     <FaInfoCircle />
                   </InfoIconButton>
@@ -2191,16 +2323,16 @@ const ContactsList = ({
         </FrequencyModalContent>
       </Modal>
 
-      {/* Description Modal */}
+      {/* Quick Edit Contact Modal */}
       <Modal
-        isOpen={descriptionModalOpen}
+        isOpen={quickEditContactModalOpen}
         onRequestClose={() => {
-          setDescriptionModalOpen(false);
-          setDescriptionText('');
-          setJobRoleText('');
-          setContactCategory('Not Set');
-          setContactScore(0);
-          setContactForDescription(null);
+          setQuickEditContactModalOpen(false);
+          setQuickEditDescriptionText('');
+          setQuickEditJobRoleText('');
+          setQuickEditContactCategory('Not Set');
+          setQuickEditContactScore(0);
+          setContactForQuickEdit(null);
         }}
         shouldCloseOnOverlayClick={true}
         style={{
@@ -2227,14 +2359,14 @@ const ContactsList = ({
         <FrequencyModalContent theme={theme}>
           <FrequencyModalHeader theme={theme}>
             <h3 style={{ margin: 0, fontSize: '18px' }}>
-              Edit Contact Details - {contactForDescription?.first_name} {contactForDescription?.last_name}
+              Editing: {contactForQuickEdit?.first_name} {contactForQuickEdit?.last_name}
             </h3>
             <FrequencyModalCloseButton
               onClick={() => {
-                setDescriptionModalOpen(false);
-                setDescriptionText('');
-                setJobRoleText('');
-                setContactForDescription(null);
+                setQuickEditContactModalOpen(false);
+                setQuickEditDescriptionText('');
+                setQuickEditJobRoleText('');
+                setContactForQuickEdit(null);
               }}
               theme={theme}
             >
@@ -2242,153 +2374,523 @@ const ContactsList = ({
             </FrequencyModalCloseButton>
           </FrequencyModalHeader>
           <FrequencyModalBody>
-            <div style={{ padding: '20px' }}>
-              {/* Job Role Input */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{
-                  display: 'block',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  marginBottom: '8px',
-                  color: theme === 'light' ? '#111827' : '#F9FAFB'
-                }}>
-                  Job Role / Title
-                </label>
-                <input
-                  type="text"
-                  value={jobRoleText}
-                  onChange={(e) => setJobRoleText(e.target.value)}
-                  placeholder="Enter job role or title..."
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
-                    borderRadius: '6px',
-                    backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
-                    color: theme === 'light' ? '#111827' : '#F9FAFB',
-                    fontSize: '14px',
-                    fontFamily: 'inherit'
-                  }}
-                />
-              </div>
+            {/* Tab Navigation - Using Spam Submenu UI Pattern */}
+            <QuickEditTabMenu theme={theme}>
+              {[
+                { id: 'Info', label: 'Info', icon: FaInfoCircle },
+                { id: 'Work', label: 'Work', icon: FaBriefcase },
+                { id: 'Related', label: 'Related', icon: FaLink },
+                { id: 'Keep in touch', label: 'Keep in touch', icon: FaHandshake }
+              ].map(tab => {
+                const IconComponent = tab.icon;
+                const isActive = quickEditActiveTab === tab.id;
+                return (
+                  <QuickEditTab
+                    key={tab.id}
+                    theme={theme}
+                    $active={isActive}
+                    onClick={() => setQuickEditActiveTab(tab.id)}
+                  >
+                    <IconComponent style={{ fontSize: '14px' }} />
+                    <span className="tab-text">{tab.label}</span>
+                  </QuickEditTab>
+                );
+              })}
+            </QuickEditTabMenu>
 
-              {/* Category Dropdown */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{
-                  display: 'block',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  marginBottom: '8px',
-                  color: theme === 'light' ? '#111827' : '#F9FAFB'
-                }}>
-                  Category
-                </label>
-                <select
-                  value={contactCategory}
-                  onChange={(e) => setContactCategory(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
-                    borderRadius: '6px',
-                    backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
-                    color: theme === 'light' ? '#111827' : '#F9FAFB',
-                    fontSize: '14px',
-                    fontFamily: 'inherit'
-                  }}
-                >
-                  {categoryOptions.map(category => (
-                    <option key={category} value={category}>{category}</option>
-                  ))}
-                </select>
-              </div>
+            {/* Tab Content */}
+            <div style={{ padding: '0 20px 20px 20px', minHeight: '500px' }}>
 
-              {/* Score Rating */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{
-                  display: 'block',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  marginBottom: '8px',
-                  color: theme === 'light' ? '#111827' : '#F9FAFB'
+              {/* Info Tab */}
+              {quickEditActiveTab === 'Info' && (
+                <div style={{
+                  height: '460px',
+                  overflow: 'auto',
+                  paddingRight: '8px',
+                  marginRight: '-8px'
                 }}>
-                  Score Rating
-                </label>
+                  {/* First Name */}
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      marginBottom: '8px',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB'
+                    }}>
+                      First Name
+                    </label>
+                    <input
+                      type="text"
+                      value={quickEditFirstName}
+                      onChange={(e) => setQuickEditFirstName(e.target.value)}
+                      placeholder="Enter first name..."
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        borderRadius: '6px',
+                        backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px',
+                        fontFamily: 'inherit'
+                      }}
+                    />
+                  </div>
+
+                  {/* Last Name */}
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      marginBottom: '8px',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB'
+                    }}>
+                      Last Name
+                    </label>
+                    <input
+                      type="text"
+                      value={quickEditLastName}
+                      onChange={(e) => setQuickEditLastName(e.target.value)}
+                      placeholder="Enter last name..."
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        borderRadius: '6px',
+                        backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px',
+                        fontFamily: 'inherit'
+                      }}
+                    />
+                  </div>
+
+                  {/* Category Dropdown */}
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      marginBottom: '8px',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB'
+                    }}>
+                      Category
+                    </label>
+                    <select
+                      value={quickEditContactCategory}
+                      onChange={(e) => setQuickEditContactCategory(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        borderRadius: '6px',
+                        backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px',
+                        fontFamily: 'inherit'
+                      }}
+                    >
+                      {categoryOptions.map(category => (
+                        <option key={category} value={category}>{category}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Score Rating */}
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      marginBottom: '8px',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB'
+                    }}>
+                      Score Rating
+                    </label>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '12px',
+                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                      borderRadius: '6px',
+                      backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937'
+                    }}>
+                      {[1, 2, 3, 4, 5].map(star => (
+                        <FaStar
+                          key={star}
+                          onClick={() => setQuickEditContactScore(star)}
+                          style={{
+                            fontSize: '18px',
+                            color: star <= quickEditContactScore ? '#F59E0B' : '#D1D5DB',
+                            cursor: 'pointer',
+                            transition: 'color 0.2s ease'
+                          }}
+                          onMouseEnter={(e) => e.target.style.transform = 'scale(1.1)'}
+                          onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
+                        />
+                      ))}
+                      <span style={{
+                        marginLeft: '12px',
+                        fontSize: '14px',
+                        color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                      }}>
+                        {quickEditContactScore > 0 ? `${quickEditContactScore}/5` : 'Not rated'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      marginBottom: '8px',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB'
+                    }}>
+                      Description / Notes
+                    </label>
+                    <textarea
+                      value={quickEditDescriptionText}
+                      onChange={(e) => setQuickEditDescriptionText(e.target.value)}
+                      placeholder="Enter description or notes..."
+                      rows={4}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        borderRadius: '6px',
+                        backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px',
+                        fontFamily: 'inherit',
+                        resize: 'vertical',
+                        minHeight: '80px'
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Work Tab */}
+              {quickEditActiveTab === 'Work' && (
+                <div style={{
+                  height: '460px',
+                  overflow: 'auto',
+                  paddingRight: '8px',
+                  marginRight: '-8px'
+                }}>
+                  {/* Job Title */}
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      marginBottom: '8px',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB'
+                    }}>
+                      Job Title
+                    </label>
+                    <input
+                      type="text"
+                      value={quickEditJobRoleText}
+                      onChange={(e) => setQuickEditJobRoleText(e.target.value)}
+                      placeholder="Enter job title..."
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        borderRadius: '6px',
+                        backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px',
+                        fontFamily: 'inherit'
+                      }}
+                    />
+                  </div>
+
+                  {/* LinkedIn */}
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      marginBottom: '8px',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB'
+                    }}>
+                      LinkedIn Profile
+                    </label>
+                    <input
+                      type="url"
+                      value={quickEditLinkedin}
+                      onChange={(e) => setQuickEditLinkedin(e.target.value)}
+                      placeholder="https://linkedin.com/in/..."
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        borderRadius: '6px',
+                        backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px',
+                        fontFamily: 'inherit'
+                      }}
+                    />
+                  </div>
+
+                  {/* Company Associations */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '8px'
+                    }}>
+                      <label style={{
+                        display: 'block',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB'
+                      }}>
+                        Company Associations
+                      </label>
+                      <button
+                        onClick={() => setQuickEditAssociateCompanyModalOpen(true)}
+                        style={{
+                          background: '#3B82F6',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          padding: '6px 12px',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          fontWeight: '500'
+                        }}
+                      >
+                        + Manage Companies
+                      </button>
+                    </div>
+
+                    <div style={{
+                      padding: '16px',
+                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                      borderRadius: '6px',
+                      backgroundColor: theme === 'light' ? '#F9FAFB' : '#111827',
+                      fontSize: '14px',
+                      minHeight: '100px',
+                      maxHeight: '200px',
+                      overflowY: 'auto'
+                    }}>
+                      {quickEditContactCompanies?.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {quickEditContactCompanies.map((companyRelation, index) => (
+                            <div key={companyRelation.contact_companies_id} style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: '8px',
+                              backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                              borderRadius: '4px',
+                              border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
+                            }}>
+                              <FaBuilding style={{ fontSize: '14px', color: '#3B82F6' }} />
+                              <div style={{ flex: 1 }}>
+                                <div style={{
+                                  color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                  fontWeight: '500',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px'
+                                }}>
+                                  {companyRelation.companies?.name || 'Unknown Company'}
+                                  {companyRelation.is_primary && (
+                                    <span style={{
+                                      fontSize: '10px',
+                                      padding: '2px 6px',
+                                      backgroundColor: '#10B981',
+                                      color: 'white',
+                                      borderRadius: '10px',
+                                      fontWeight: '600'
+                                    }}>
+                                      PRIMARY
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Relationship Type Dropdown */}
+                                <div style={{ marginTop: '8px', marginBottom: '4px' }}>
+                                  <label style={{
+                                    fontSize: '10px',
+                                    color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                    marginBottom: '2px',
+                                    display: 'block'
+                                  }}>
+                                    Relationship
+                                  </label>
+                                  <select
+                                    value={companyRelation.relationship || 'not_set'}
+                                    onChange={(e) => handleUpdateCompanyRelationship(companyRelation.contact_companies_id, e.target.value)}
+                                    style={{
+                                      width: '100%',
+                                      padding: '4px 8px',
+                                      fontSize: '12px',
+                                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                                      borderRadius: '4px',
+                                      backgroundColor: theme === 'light' ? '#FFFFFF' : '#374151',
+                                      color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                      fontFamily: 'inherit'
+                                    }}
+                                  >
+                                    <option value="not_set">Not Set</option>
+                                    <option value="employee">Employee</option>
+                                    <option value="founder">Founder</option>
+                                    <option value="advisor">Advisor</option>
+                                    <option value="manager">Manager</option>
+                                    <option value="investor">Investor</option>
+                                    <option value="other">Other</option>
+                                    <option value="suggestion">Suggestion</option>
+                                  </select>
+                                </div>
+
+                                {/* Company Category Dropdown */}
+                                <div style={{ marginTop: '8px', marginBottom: '4px' }}>
+                                  <label style={{
+                                    fontSize: '10px',
+                                    color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                    marginBottom: '2px',
+                                    display: 'block'
+                                  }}>
+                                    Company Category
+                                  </label>
+                                  <select
+                                    value={companyRelation.companies?.category || 'Not Set'}
+                                    onChange={(e) => handleUpdateCompanyCategory(companyRelation.companies?.company_id || companyRelation.companies?.id, e.target.value)}
+                                    style={{
+                                      width: '100%',
+                                      padding: '4px 8px',
+                                      fontSize: '12px',
+                                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                                      borderRadius: '4px',
+                                      backgroundColor: theme === 'light' ? '#FFFFFF' : '#374151',
+                                      color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                      fontFamily: 'inherit'
+                                    }}
+                                  >
+                                    <option value="Not Set">Not Set</option>
+                                    <option value="Advisory">Advisory</option>
+                                    <option value="Corporate">Corporate</option>
+                                    <option value="Corporation">Corporation</option>
+                                    <option value="Inbox">Inbox</option>
+                                    <option value="Institution">Institution</option>
+                                    <option value="Media">Media</option>
+                                    <option value="Professional Investor">Professional Investor</option>
+                                    <option value="SME">SME</option>
+                                    <option value="Skip">Skip</option>
+                                    <option value="Startup">Startup</option>
+                                  </select>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          height: '80px',
+                          color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                          textAlign: 'center'
+                        }}>
+                          <FaBuilding style={{ fontSize: '24px', marginBottom: '8px', opacity: 0.5 }} />
+                          <span>No companies associated</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Related Tab */}
+              {quickEditActiveTab === 'Related' && (
                 <div style={{
                   display: 'flex',
+                  flexDirection: 'column',
                   alignItems: 'center',
-                  gap: '8px',
-                  padding: '12px',
-                  border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
-                  borderRadius: '6px',
-                  backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937'
+                  justifyContent: 'center',
+                  height: '460px',
+                  textAlign: 'center'
                 }}>
-                  {[1, 2, 3, 4, 5].map(star => (
-                    <FaStar
-                      key={star}
-                      onClick={() => setContactScore(star)}
-                      style={{
-                        fontSize: '20px',
-                        color: star <= contactScore ? '#F59E0B' : '#D1D5DB',
-                        cursor: 'pointer',
-                        transition: 'color 0.2s ease'
-                      }}
-                      onMouseEnter={(e) => e.target.style.transform = 'scale(1.1)'}
-                      onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
-                    />
-                  ))}
-                  <span style={{
-                    marginLeft: '12px',
-                    fontSize: '14px',
-                    color: theme === 'light' ? '#6B7280' : '#9CA3AF'
-                  }}>
-                    {contactScore > 0 ? `${contactScore}/5` : 'Not rated'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Description Input */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{
-                  display: 'block',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  marginBottom: '8px',
-                  color: theme === 'light' ? '#111827' : '#F9FAFB'
-                }}>
-                  Description / Notes
-                </label>
-                <textarea
-                  value={descriptionText}
-                  onChange={(e) => setDescriptionText(e.target.value)}
-                  placeholder="Enter description or notes..."
-                  rows={4}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
-                    borderRadius: '6px',
-                    backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔗</div>
+                  <h4 style={{
+                    fontSize: '18px',
+                    fontWeight: '600',
                     color: theme === 'light' ? '#111827' : '#F9FAFB',
+                    marginBottom: '8px'
+                  }}>
+                    Related - Coming Soon
+                  </h4>
+                  <p style={{
                     fontSize: '14px',
-                    fontFamily: 'inherit',
-                    resize: 'vertical',
-                    minHeight: '100px'
-                  }}
-                />
-              </div>
+                    color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                    lineHeight: 1.5
+                  }}>
+                    Advanced relationship management features will be available here soon.
+                  </p>
+                </div>
+              )}
 
+              {/* Keep in touch Tab */}
+              {quickEditActiveTab === 'Keep in touch' && (
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: '460px',
+                  textAlign: 'center'
+                }}>
+                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>🤝</div>
+                  <h4 style={{
+                    fontSize: '18px',
+                    fontWeight: '600',
+                    color: theme === 'light' ? '#111827' : '#F9FAFB',
+                    marginBottom: '8px'
+                  }}>
+                    Keep in Touch - Coming Soon
+                  </h4>
+                  <p style={{
+                    fontSize: '14px',
+                    color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                    lineHeight: 1.5
+                  }}>
+                    Keep in touch scheduling and reminder features will be available here soon.
+                  </p>
+                </div>
+              )}
+
+              {/* Action Buttons */}
               <div style={{
                 display: 'flex',
                 gap: '12px',
-                justifyContent: 'flex-end'
+                justifyContent: 'flex-end',
+                marginTop: '24px',
+                paddingTop: '20px',
+                borderTop: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
               }}>
                 <button
                   onClick={() => {
-                    setDescriptionModalOpen(false);
-                    setDescriptionText('');
-                    setJobRoleText('');
-                    setContactForDescription(null);
+                    setQuickEditContactModalOpen(false);
+                    setQuickEditDescriptionText('');
+                    setQuickEditJobRoleText('');
+                    setQuickEditFirstName('');
+                    setQuickEditLastName('');
+                    setQuickEditLinkedin('');
+                    setContactForQuickEdit(null);
                   }}
                   style={{
                     padding: '10px 20px',
@@ -2403,7 +2905,7 @@ const ContactsList = ({
                   Cancel
                 </button>
                 <button
-                  onClick={handleSaveDescription}
+                  onClick={handleSaveQuickEditContact}
                   style={{
                     padding: '10px 20px',
                     border: 'none',
@@ -2421,6 +2923,41 @@ const ContactsList = ({
             </div>
           </FrequencyModalBody>
         </FrequencyModalContent>
+      </Modal>
+
+      {/* Quick Edit Associate Company Modal */}
+      <Modal
+        isOpen={quickEditAssociateCompanyModalOpen}
+        onRequestClose={() => setQuickEditAssociateCompanyModalOpen(false)}
+        style={{
+          content: {
+            top: '50%',
+            left: '50%',
+            right: 'auto',
+            bottom: 'auto',
+            marginRight: '-50%',
+            transform: 'translate(-50%, -50%)',
+            padding: '0',
+            border: 'none',
+            borderRadius: '12px',
+            maxWidth: '600px',
+            width: '90%',
+            background: 'transparent'
+          },
+          overlay: {
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 1100
+          }
+        }}
+      >
+        <QuickEditAssociateCompanyModal
+          theme={theme}
+          contact={contactForQuickEdit}
+          contactCompanies={quickEditContactCompanies}
+          onCompanyAdded={handleQuickEditCompanyAdded}
+          onCompanyRemoved={handleQuickEditCompanyAdded}
+          onClose={() => setQuickEditAssociateCompanyModalOpen(false)}
+        />
       </Modal>
 
       {!loading && contacts.length === 0 && (
@@ -3449,6 +3986,480 @@ const InfoIconButton = styled.button`
 
   &:active {
     transform: scale(0.95);
+  }
+`;
+
+// Quick Edit Associate Company Modal Component
+const QuickEditAssociateCompanyModal = ({ theme, contact, contactCompanies, onCompanyAdded, onCompanyRemoved, onClose }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [removingCompany, setRemovingCompany] = useState(null);
+
+  // Fetch company suggestions
+  const fetchCompanySuggestions = async (search) => {
+    try {
+      if (search.length < 3) {
+        setSuggestions([]);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('companies')
+        .select('*')
+        .ilike('name', `%${search}%`)
+        .limit(10);
+
+      if (error) throw error;
+
+      // Filter out companies that are already associated
+      const filteredSuggestions = data.filter(company => {
+        const companyId = company.company_id || company.id;
+        return !contactCompanies.some(relation => {
+          const relationCompanyId = relation.companies?.company_id || relation.companies?.id;
+          return relationCompanyId === companyId;
+        });
+      });
+
+      setSuggestions(filteredSuggestions);
+    } catch (err) {
+      console.error('Error fetching company suggestions:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (searchTerm.length >= 3) {
+      fetchCompanySuggestions(searchTerm);
+      setShowSuggestions(true);
+    } else {
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  }, [searchTerm, contactCompanies]);
+
+  const handleAddCompany = async (company) => {
+    try {
+      setLoading(true);
+
+      // Add relationship in contact_companies table
+      const { error } = await supabase
+        .from('contact_companies')
+        .insert({
+          contact_id: contact.contact_id,
+          company_id: company.company_id || company.id
+        });
+
+      if (error) throw error;
+
+      onCompanyAdded();
+      setSearchTerm('');
+      setShowSuggestions(false);
+      toast.success('Company association added successfully');
+    } catch (err) {
+      console.error('Error adding company:', err);
+      toast.error('Failed to add company association');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRemoveCompany = async (companyRelation) => {
+    try {
+      setRemovingCompany(companyRelation.contact_companies_id);
+
+      const { error } = await supabase
+        .from('contact_companies')
+        .delete()
+        .eq('contact_companies_id', companyRelation.contact_companies_id);
+
+      if (error) throw error;
+
+      onCompanyRemoved();
+      toast.success('Company association removed successfully');
+    } catch (err) {
+      console.error('Error removing company:', err);
+      toast.error('Failed to remove company association');
+    } finally {
+      setRemovingCompany(null);
+    }
+  };
+
+  return (
+    <QuickEditCompanyModalContainer theme={theme}>
+      <QuickEditCompanyModalHeader theme={theme}>
+        <QuickEditCompanyModalTitle theme={theme}>Manage Company Associations</QuickEditCompanyModalTitle>
+        <QuickEditCompanyModalCloseButton theme={theme} onClick={onClose}>
+          ×
+        </QuickEditCompanyModalCloseButton>
+      </QuickEditCompanyModalHeader>
+
+      <QuickEditCompanyModalContent theme={theme}>
+        {/* Associated Companies Section */}
+        <QuickEditCompanyModalSection>
+          <QuickEditCompanyModalSectionTitle theme={theme}>Current Associations</QuickEditCompanyModalSectionTitle>
+          {contactCompanies.length === 0 ? (
+            <QuickEditCompanyEmptyMessage theme={theme}>
+              No companies associated with this contact
+            </QuickEditCompanyEmptyMessage>
+          ) : (
+            <QuickEditCompanyList>
+              {contactCompanies.map((companyRelation) => (
+                <QuickEditCompanyTag key={companyRelation.contact_companies_id} theme={theme}>
+                  <QuickEditCompanyTagContent>
+                    <QuickEditCompanyTagName theme={theme}>
+                      {companyRelation.companies?.name || 'Unknown Company'}
+                      {companyRelation.is_primary && (
+                        <QuickEditPrimaryBadge theme={theme}>Primary</QuickEditPrimaryBadge>
+                      )}
+                    </QuickEditCompanyTagName>
+
+                    {/* Relationship Type */}
+                    <QuickEditCompanyTagDetails theme={theme}>
+                      Relationship: {companyRelation.relationship ?
+                        companyRelation.relationship.charAt(0).toUpperCase() + companyRelation.relationship.slice(1).replace('_', ' ')
+                        : 'Not Set'}
+                    </QuickEditCompanyTagDetails>
+
+                    {companyRelation.companies?.category && (
+                      <QuickEditCompanyTagDetails theme={theme}>
+                        Category: {companyRelation.companies.category}
+                      </QuickEditCompanyTagDetails>
+                    )}
+                  </QuickEditCompanyTagContent>
+                  <QuickEditCompanyRemoveButton
+                    theme={theme}
+                    onClick={() => handleRemoveCompany(companyRelation)}
+                    disabled={removingCompany === companyRelation.contact_companies_id}
+                  >
+                    {removingCompany === companyRelation.contact_companies_id ? '...' : '×'}
+                  </QuickEditCompanyRemoveButton>
+                </QuickEditCompanyTag>
+              ))}
+            </QuickEditCompanyList>
+          )}
+        </QuickEditCompanyModalSection>
+
+        {/* Add Companies Section */}
+        <QuickEditCompanyModalSection>
+          <QuickEditCompanyModalSectionTitle theme={theme}>Add Company</QuickEditCompanyModalSectionTitle>
+          <QuickEditCompanySearchContainer>
+            <QuickEditCompanySearchInput
+              theme={theme}
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search for a company by name..."
+            />
+          </QuickEditCompanySearchContainer>
+        </QuickEditCompanyModalSection>
+
+        {showSuggestions && (
+          <QuickEditCompanySuggestionsContainer theme={theme}>
+            {suggestions.length > 0
+              ? suggestions.map((suggestion, index) => (
+                  <QuickEditCompanySuggestionItem
+                    key={suggestion.id || suggestion.company_id || `suggestion-${index}`}
+                    theme={theme}
+                    onClick={() => handleAddCompany(suggestion)}
+                    disabled={loading}
+                  >
+                    <div>
+                      <div style={{ fontWeight: '500' }}>{suggestion.name}</div>
+                      {suggestion.category && (
+                        <div style={{ fontSize: '12px', opacity: 0.7 }}>
+                          {suggestion.category}
+                        </div>
+                      )}
+                    </div>
+                  </QuickEditCompanySuggestionItem>
+                ))
+              : <QuickEditCompanyEmptyMessage theme={theme}>
+                  No companies found matching "{searchTerm}"
+                </QuickEditCompanyEmptyMessage>
+            }
+          </QuickEditCompanySuggestionsContainer>
+        )}
+      </QuickEditCompanyModalContent>
+    </QuickEditCompanyModalContainer>
+  );
+};
+
+const QuickEditTabMenu = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  max-width: 90%;
+  margin: 0 auto 20px auto;
+  background: ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
+  border-radius: 8px;
+  padding: 4px;
+  width: fit-content;
+  flex-wrap: wrap;
+
+  @media (max-width: 768px) {
+    max-width: 95%;
+    gap: 1px;
+    padding: 3px;
+  }
+
+  @media (max-width: 600px) {
+    max-width: fit-content;
+    margin: 0 auto 20px auto;
+  }
+
+  @media (max-width: 480px) {
+    flex-direction: row;
+    width: fit-content;
+    max-width: fit-content;
+    gap: 2px;
+    justify-content: center;
+    margin: 0 auto 20px auto;
+  }
+`;
+
+const QuickEditTab = styled.button`
+  background: ${props => props.$active
+    ? (props.theme === 'light' ? '#FFFFFF' : '#1F2937')
+    : 'transparent'
+  };
+  color: ${props => props.$active
+    ? (props.theme === 'light' ? '#111827' : '#F9FAFB')
+    : (props.theme === 'light' ? '#6B7280' : '#9CA3AF')
+  };
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+  font-weight: ${props => props.$active ? '600' : '500'};
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  min-width: fit-content;
+
+  &:hover {
+    background: ${props => props.$active
+      ? (props.theme === 'light' ? '#FFFFFF' : '#1F2937')
+      : (props.theme === 'light' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.05)')
+    };
+  }
+
+  .tab-text {
+    display: inline;
+  }
+
+  @media (max-width: 768px) {
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+
+  @media (max-width: 600px) {
+    padding: 8px;
+    gap: 0;
+
+    .tab-text {
+      display: none;
+    }
+  }
+
+  @media (max-width: 480px) {
+    width: auto;
+    justify-content: center;
+    padding: 8px;
+    min-width: 44px; /* Ensure minimum touch target */
+  }
+`;
+
+// Quick Edit Company Modal Styled Components
+const QuickEditCompanyModalContainer = styled.div`
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+  border-radius: 12px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+`;
+
+const QuickEditCompanyModalHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+`;
+
+const QuickEditCompanyModalTitle = styled.h3`
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+`;
+
+const QuickEditCompanyModalCloseButton = styled.button`
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover {
+    color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  }
+`;
+
+const QuickEditCompanyModalContent = styled.div`
+  padding: 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+`;
+
+const QuickEditCompanyModalSection = styled.div`
+  margin-bottom: 24px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
+const QuickEditCompanyModalSectionTitle = styled.h4`
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+`;
+
+const QuickEditCompanyEmptyMessage = styled.div`
+  text-align: center;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  font-style: italic;
+  padding: 20px;
+`;
+
+const QuickEditCompanyList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`;
+
+const QuickEditCompanyTag = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  background: ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
+  border-radius: 6px;
+  border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+`;
+
+const QuickEditCompanyTagContent = styled.div`
+  flex: 1;
+`;
+
+const QuickEditCompanyTagName = styled.div`
+  font-weight: 500;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const QuickEditPrimaryBadge = styled.span`
+  font-size: 10px;
+  padding: 2px 6px;
+  background: #10B981;
+  color: white;
+  border-radius: 10px;
+  font-weight: 600;
+`;
+
+const QuickEditCompanyTagDetails = styled.div`
+  font-size: 12px;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  margin-top: 4px;
+`;
+
+const QuickEditCompanyRemoveButton = styled.button`
+  background: #EF4444;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+
+  &:hover {
+    background: #DC2626;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const QuickEditCompanySearchContainer = styled.div`
+  position: relative;
+`;
+
+const QuickEditCompanySearchInput = styled.input`
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  border-radius: 6px;
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  font-size: 14px;
+
+  &:focus {
+    outline: none;
+    border-color: #3B82F6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+
+  &::placeholder {
+    color: ${props => props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
+  }
+`;
+
+const QuickEditCompanySuggestionsContainer = styled.div`
+  border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  border-radius: 6px;
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+  max-height: 200px;
+  overflow-y: auto;
+`;
+
+const QuickEditCompanySuggestionItem = styled.div`
+  padding: 12px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 `;
 
