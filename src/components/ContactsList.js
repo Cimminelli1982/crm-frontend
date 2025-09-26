@@ -726,7 +726,7 @@ const ContactsList = ({
           description: quickEditDescriptionText.trim() || null,
           job_role: quickEditJobRoleText.trim() || null,
           category: quickEditContactCategory || 'Not Set',
-          score: quickEditContactScore,
+          score: quickEditContactScore > 0 ? quickEditContactScore : null,
           linkedin: quickEditLinkedin.trim() || null
         })
         .eq('contact_id', contactForQuickEdit.contact_id);
@@ -2940,7 +2940,7 @@ const ContactsList = ({
             padding: '0',
             border: 'none',
             borderRadius: '12px',
-            maxWidth: '600px',
+            maxWidth: '500px',
             width: '90%',
             background: 'transparent'
           },
@@ -3996,6 +3996,42 @@ const QuickEditAssociateCompanyModal = ({ theme, contact, contactCompanies, onCo
   const [loading, setLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [removingCompany, setRemovingCompany] = useState(null);
+  const [emailDomains, setEmailDomains] = useState([]);
+
+  // Fetch email domains from contact emails
+  const fetchEmailDomains = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('contact_emails')
+        .select('email')
+        .eq('contact_id', contact.contact_id);
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        setEmailDomains([]);
+        return;
+      }
+
+      // Extract domains from emails and remove duplicates
+      const domains = data
+        .map(item => {
+          const email = item.email;
+          if (!email || !email.includes('@')) return null;
+          const domain = email.substring(email.indexOf('@') + 1);
+          // Convert domain to potential company name (capitalize first letter)
+          const companyName = domain.split('.')[0];
+          return companyName.charAt(0).toUpperCase() + companyName.slice(1);
+        })
+        .filter(domain => domain && domain.length > 1) // Filter out null and single character domains
+        .filter((domain, index, self) => self.indexOf(domain) === index); // Remove duplicates
+
+      setEmailDomains(domains);
+    } catch (err) {
+      console.error('Error fetching email domains:', err);
+      setEmailDomains([]);
+    }
+  };
 
   // Fetch company suggestions
   const fetchCompanySuggestions = async (search) => {
@@ -4037,6 +4073,13 @@ const QuickEditAssociateCompanyModal = ({ theme, contact, contactCompanies, onCo
       setShowSuggestions(false);
     }
   }, [searchTerm, contactCompanies]);
+
+  // Fetch email domains when modal opens
+  useEffect(() => {
+    if (contact) {
+      fetchEmailDomains();
+    }
+  }, [contact]);
 
   const handleAddCompany = async (company) => {
     try {
@@ -4152,6 +4195,49 @@ const QuickEditAssociateCompanyModal = ({ theme, contact, contactCompanies, onCo
               placeholder="Search for a company by name..."
             />
           </QuickEditCompanySearchContainer>
+
+          {/* Email Domain Suggestions */}
+          {emailDomains.length > 0 && searchTerm.length < 3 && (
+            <div style={{ marginTop: '12px' }}>
+              <div style={{
+                fontSize: '12px',
+                color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                marginBottom: '8px',
+                fontWeight: '500'
+              }}>
+                Suggestions from contact's email:
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {emailDomains.map((domain, index) => (
+                  <button
+                    key={index}
+                    onClick={() => setSearchTerm(domain)}
+                    style={{
+                      padding: '4px 8px',
+                      fontSize: '12px',
+                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                      borderRadius: '4px',
+                      backgroundColor: theme === 'light' ? '#F9FAFB' : '#374151',
+                      color: theme === 'light' ? '#374151' : '#D1D5DB',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseOver={(e) => {
+                      e.target.style.backgroundColor = theme === 'light' ? '#EEF2FF' : '#4B5563';
+                      e.target.style.borderColor = '#3B82F6';
+                    }}
+                    onMouseOut={(e) => {
+                      e.target.style.backgroundColor = theme === 'light' ? '#F9FAFB' : '#374151';
+                      e.target.style.borderColor = theme === 'light' ? '#D1D5DB' : '#4B5563';
+                    }}
+                  >
+                    {domain}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </QuickEditCompanyModalSection>
 
         {showSuggestions && (
