@@ -18,6 +18,7 @@ const CompanyDetailPage = ({ theme }) => {
   // Main company data
   const [company, setCompany] = useState(null);
   const [companyDomains, setCompanyDomains] = useState([]);
+  const [companyLogo, setCompanyLogo] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // Navigation management
@@ -36,6 +37,9 @@ const CompanyDetailPage = ({ theme }) => {
 
   // Edit modal state
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  // Logo upload state
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
   // Contacts modal state
   const [isContactsModalOpen, setIsContactsModalOpen] = useState(false);
@@ -72,6 +76,30 @@ const CompanyDetailPage = ({ theme }) => {
         setCompanyDomains([]);
       } else {
         setCompanyDomains(domainsData || []);
+      }
+
+      // Fetch company logo
+      const { data: logoData, error: logoError } = await supabase
+        .from('company_attachments')
+        .select(`
+          attachments (
+            file_url,
+            permanent_url,
+            file_type,
+            file_name
+          )
+        `)
+        .eq('company_id', companyId)
+        .eq('is_logo', true)
+        .single();
+
+      if (logoError && logoError.code !== 'PGRST116') { // PGRST116 = no rows found
+        console.error('Error fetching logo:', logoError);
+        setCompanyLogo(null);
+      } else if (logoData?.attachments) {
+        setCompanyLogo(logoData.attachments);
+      } else {
+        setCompanyLogo(null);
       }
     } catch (error) {
       console.error('Error fetching company:', error);
@@ -414,6 +442,72 @@ const CompanyDetailPage = ({ theme }) => {
     fetchRelatedData();
   };
 
+  const handleLogoUpload = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      setIsUploadingLogo(true);
+      try {
+        // Upload file to Supabase Storage
+        const fileName = `company_logos/${company.company_id}_${Date.now()}.${file.name.split('.').pop()}`;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('attachments')
+          .upload(fileName, file, {
+            cacheControl: '3600',
+            upsert: false
+          });
+
+        if (uploadError) throw uploadError;
+
+        // Create attachment record
+        const { data: attachmentData, error: attachmentError } = await supabase
+          .from('attachments')
+          .insert({
+            file_name: file.name,
+            file_url: uploadData.path,
+            file_type: file.type,
+            file_size: file.size,
+            permanent_url: supabase.storage.from('attachments').getPublicUrl(uploadData.path).data.publicUrl
+          })
+          .select()
+          .single();
+
+        if (attachmentError) throw attachmentError;
+
+        // Remove existing logo if any
+        await supabase
+          .from('company_attachments')
+          .delete()
+          .eq('company_id', company.company_id)
+          .eq('is_logo', true);
+
+        // Link attachment to company as logo
+        const { error: linkError } = await supabase
+          .from('company_attachments')
+          .insert({
+            company_id: company.company_id,
+            attachment_id: attachmentData.attachment_id,
+            is_logo: true
+          });
+
+        if (linkError) throw linkError;
+
+        toast.success('Logo uploaded successfully!');
+        fetchCompany(); // Refresh to show new logo
+      } catch (error) {
+        console.error('Error uploading logo:', error);
+        toast.error('Failed to upload logo: ' + error.message);
+      } finally {
+        setIsUploadingLogo(false);
+      }
+    };
+    input.click();
+  };
+
   const handleDelete = async () => {
     if (!company) return;
 
@@ -524,7 +618,23 @@ const CompanyDetailPage = ({ theme }) => {
           <HeaderMain>
             <CompanyInfo>
               <CompanyAvatar theme={theme}>
-                🏢
+                {companyLogo ? (
+                  <LogoImage
+                    src={companyLogo.permanent_url || companyLogo.file_url}
+                    alt={`${company.name} logo`}
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      e.target.nextSibling.style.display = 'block';
+                    }}
+                  />
+                ) : null}
+                <LogoFallback
+                  style={{ display: companyLogo ? 'none' : 'block' }}
+                  onClick={handleLogoUpload}
+                  title="Click to upload company logo"
+                >
+                  {isUploadingLogo ? '⏳' : ''}
+                </LogoFallback>
               </CompanyAvatar>
               <CompanyDetails>
                 <CompanyName theme={theme}>{company.name}</CompanyName>
@@ -881,6 +991,40 @@ const CompanyAvatar = styled.div`
   justify-content: center;
   font-size: 32px;
   flex-shrink: 0;
+  overflow: hidden;
+  position: relative;
+`;
+
+const LogoImage = styled.img`
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 12px;
+`;
+
+const LogoFallback = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 32px;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 12px;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  margin-top: 8px;
+  margin-left: 2px;
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#DBEAFE' : '#1E40AF'};
+    transform: scale(1.02);
+  }
+
+  &:active {
+    transform: scale(0.98);
+  }
 `;
 
 const CompanyDetails = styled.div`
