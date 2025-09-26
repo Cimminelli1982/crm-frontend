@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
-import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaEdit, FaClock, FaTimes, FaCalendarAlt, FaHeart, FaCog } from 'react-icons/fa';
+import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaEdit, FaClock, FaTimes, FaCalendarAlt, FaHeart, FaCog, FaInfoCircle, FaStar } from 'react-icons/fa';
 import { FiSkipForward, FiAlertTriangle, FiX, FiMessageCircle } from 'react-icons/fi';
 import { toast } from 'react-hot-toast';
 import Modal from 'react-modal';
+// Remove CompanyMainModal import - we'll handle this inline
 
 const ContactsList = ({
   contacts = [],
@@ -146,6 +147,20 @@ const ContactsList = ({
     easterWishes: ''
   });
 
+  // Description modal state
+  const [descriptionModalOpen, setDescriptionModalOpen] = useState(false);
+  const [contactForDescription, setContactForDescription] = useState(null);
+  const [descriptionText, setDescriptionText] = useState('');
+  const [jobRoleText, setJobRoleText] = useState('');
+  const [contactCategory, setContactCategory] = useState('');
+  const [contactScore, setContactScore] = useState(0);
+
+  // Company association modal state
+  const [companyModalOpen, setCompanyModalOpen] = useState(false);
+  const [selectedContactForCompany, setSelectedContactForCompany] = useState(null);
+  // Smart company suggestions state
+  const [companySuggestions, setCompanySuggestions] = useState({});
+
   const frequencyOptions = [
     'Weekly',
     'Monthly',
@@ -153,6 +168,45 @@ const ContactsList = ({
     'Twice per Year',
     'Once per Year'
   ];
+
+  const categoryOptions = [
+    'Inbox',
+    'Skip',
+    'Professional Investor',
+    'Team',
+    'WhatsApp Group Contact',
+    'Advisor',
+    'Supplier',
+    'Founder',
+    'Manager',
+    'Friend and Family',
+    'Other',
+    'Student',
+    'Media',
+    'Not Set',
+    'Institution',
+    'SUBSCRIBER NEWSLETTER',
+    'System'
+  ];
+
+  const renderScoreStars = (score, size = 'small') => {
+    const starSize = size === 'small' ? '12px' : '16px';
+    const gap = size === 'small' ? '2px' : '4px';
+
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: gap }}>
+        {[1, 2, 3, 4, 5].map(star => (
+          <FaStar
+            key={star}
+            style={{
+              fontSize: starSize,
+              color: star <= score ? '#F59E0B' : '#D1D5DB'
+            }}
+          />
+        ))}
+      </div>
+    )
+  };
 
   const handleEditContact = (contactId, e) => {
     if (e) e.stopPropagation();
@@ -522,6 +576,159 @@ const ContactsList = ({
     }
   };
 
+  // Handle opening description modal
+  const handleOpenDescriptionModal = (contact, e) => {
+    if (e) e.stopPropagation();
+    setContactForDescription(contact);
+    setDescriptionText(contact.description || '');
+    setJobRoleText(contact.job_role || '');
+    setContactCategory(contact.category || 'Not Set');
+    setContactScore(contact.score || 0);
+    setDescriptionModalOpen(true);
+  };
+
+  // Handle saving all contact details
+  const handleSaveDescription = async () => {
+    if (!contactForDescription) return;
+
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .update({
+          description: descriptionText.trim() || null,
+          job_role: jobRoleText.trim() || null,
+          category: contactCategory || 'Not Set',
+          score: contactScore
+        })
+        .eq('contact_id', contactForDescription.contact_id);
+
+      if (error) throw error;
+
+      toast.success('Contact details updated successfully');
+      setDescriptionModalOpen(false);
+      setContactForDescription(null);
+      setDescriptionText('');
+      setJobRoleText('');
+      setContactCategory('');
+      setContactScore(0);
+      if (onContactUpdate) onContactUpdate();
+    } catch (error) {
+      console.error('Error updating contact details:', error);
+      toast.error('Failed to update contact details');
+    }
+  };
+
+  // Handle company click
+  const handleCompanyClick = (companyId, e) => {
+    if (e) e.stopPropagation();
+    navigate(`/company/${companyId}`);
+  };
+
+  // Extract domain from email (skip generic providers)
+  const extractBusinessDomain = (email) => {
+    if (!email) return null;
+    const domain = email.split('@')[1]?.toLowerCase();
+    const genericDomains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'me.com', 'aol.com', 'protonmail.com'];
+    return genericDomains.includes(domain) ? null : domain;
+  };
+
+  // Fetch company suggestion based on email domain
+  const fetchCompanySuggestion = async (contact) => {
+    try {
+      // First get the contact's email from contact_emails table
+      const { data: emailData, error: emailError } = await supabase
+        .from('contact_emails')
+        .select('email')
+        .eq('contact_id', contact.contact_id)
+        .limit(1);
+
+      if (emailError || !emailData?.length) return null;
+
+      const email = emailData[0].email;
+      const domain = extractBusinessDomain(email);
+
+      if (!domain) return null;
+
+      // Search for domain in website field only (domain field doesn't exist)
+      const { data, error } = await supabase
+        .from('companies')
+        .select('*')
+        .ilike('website', `%${domain}%`)
+        .limit(1);
+
+      if (error) throw error;
+      return data?.[0] || null;
+    } catch (err) {
+      console.error('Error fetching company suggestion:', err);
+      return null;
+    }
+  };
+
+  // Load company suggestions for contacts without companies
+  useEffect(() => {
+    const loadSuggestions = async () => {
+      const suggestions = {};
+      const contactsWithoutCompanies = contacts.filter(contact => !contact.companies?.[0]);
+
+      for (const contact of contactsWithoutCompanies) {
+        const suggestion = await fetchCompanySuggestion(contact);
+        if (suggestion) {
+          suggestions[contact.contact_id] = suggestion;
+        }
+      }
+
+      setCompanySuggestions(suggestions);
+    };
+
+    if (contacts.length > 0) {
+      loadSuggestions();
+    }
+  }, [contacts]);
+
+  // Handle accepting company suggestion
+  const handleAcceptSuggestion = async (contact, company, e) => {
+    if (e) e.stopPropagation();
+
+    try {
+      const { error } = await supabase
+        .from('contact_companies')
+        .insert({
+          contact_id: contact.contact_id,
+          company_id: company.company_id || company.id,
+          is_primary: true
+        });
+
+      if (error) throw error;
+      toast.success(`Associated ${contact.first_name} with ${company.name}`);
+
+      // Remove from suggestions and refresh contacts
+      setCompanySuggestions(prev => {
+        const updated = { ...prev };
+        delete updated[contact.contact_id];
+        return updated;
+      });
+
+      if (onContactUpdate) onContactUpdate();
+    } catch (err) {
+      console.error('Error accepting suggestion:', err);
+      toast.error('Failed to associate company');
+    }
+  };
+
+  // Handle rejecting company suggestion (opens manual modal)
+  const handleRejectSuggestion = (contact, e) => {
+    if (e) e.stopPropagation();
+    setSelectedContactForCompany(contact);
+    setCompanyModalOpen(true);
+  };
+
+  // Handle add company click (manual)
+  const handleAddCompanyClick = (contact, e) => {
+    if (e) e.stopPropagation();
+    setSelectedContactForCompany(contact);
+    setCompanyModalOpen(true);
+  };
+
   // Handle opening delete modal with spam functionality
   const handleOpenDeleteModal = async (contact, e) => {
     if (e) e.stopPropagation();
@@ -804,7 +1011,13 @@ const ContactsList = ({
                 {contact.profile_image_url ? (
                   <img src={contact.profile_image_url} alt="Profile" />
                 ) : (
-                  <FaUser />
+                  <InfoIconButton
+                    onClick={(e) => handleOpenDescriptionModal(contact, e)}
+                    theme={theme}
+                    title="View/Edit contact description"
+                  >
+                    <FaInfoCircle />
+                  </InfoIconButton>
                 )}
               </ContactAvatar>
               <ContactInfo>
@@ -841,12 +1054,59 @@ const ContactsList = ({
                     {formatDaysUntilNext(contact.days_until_next, contact)}
                   </KeepInTouchStatus>
                 )}
-                {contact.job_role && <ContactRole theme={theme}>{contact.job_role}</ContactRole>}
-                {contact.companies?.[0] && (
-                  <ContactCompany theme={theme}>
+                {contact.job_role && (
+                  <ContactRoleContainer>
+                    <ContactRole theme={theme}>{contact.job_role}</ContactRole>
+                    {contact.score && contact.score > 0 && (
+                      <ContactScoreStars>
+                        {renderScoreStars(contact.score, 'small')}
+                      </ContactScoreStars>
+                    )}
+                  </ContactRoleContainer>
+                )}
+                {contact.companies?.[0] ? (
+                  <ContactCompany
+                    theme={theme}
+                    onClick={(e) => handleCompanyClick(contact.companies[0].company_id, e)}
+                    $clickable={true}
+                  >
                     <FaBuilding style={{ marginRight: '6px' }} />
                     {contact.companies[0].name}
                   </ContactCompany>
+                ) : companySuggestions[contact.contact_id] ? (
+                  <SmartSuggestion theme={theme}>
+                    <FaBuilding style={{ marginRight: '6px', color: 'currentColor' }} />
+                    <SuggestionText>
+                      Associate with {companySuggestions[contact.contact_id].name}?
+                    </SuggestionText>
+                    <SuggestionActions>
+                      <SuggestionButton
+                        variant="accept"
+                        theme={theme}
+                        onClick={(e) => handleAcceptSuggestion(contact, companySuggestions[contact.contact_id], e)}
+                        title="Accept suggestion"
+                      >
+                        ✓
+                      </SuggestionButton>
+                      <SuggestionButton
+                        variant="reject"
+                        theme={theme}
+                        onClick={(e) => handleRejectSuggestion(contact, e)}
+                        title="Choose different company"
+                      >
+                        ✕
+                      </SuggestionButton>
+                    </SuggestionActions>
+                  </SmartSuggestion>
+                ) : (
+                  <AddCompanyButton
+                    theme={theme}
+                    onClick={(e) => handleAddCompanyClick(contact, e)}
+                    title="Add company association"
+                  >
+                    <FaBuilding style={{ marginRight: '6px' }} />
+                    + Add Related Company
+                  </AddCompanyButton>
                 )}
               </ContactInfo>
             </ContactCardHeader>
@@ -1671,6 +1931,238 @@ const ContactsList = ({
         </FrequencyModalContent>
       </Modal>
 
+      {/* Description Modal */}
+      <Modal
+        isOpen={descriptionModalOpen}
+        onRequestClose={() => {
+          setDescriptionModalOpen(false);
+          setDescriptionText('');
+          setJobRoleText('');
+          setContactCategory('Not Set');
+          setContactScore(0);
+          setContactForDescription(null);
+        }}
+        shouldCloseOnOverlayClick={true}
+        style={{
+          content: {
+            top: '50%',
+            left: '50%',
+            right: 'auto',
+            bottom: 'auto',
+            marginRight: '-50%',
+            transform: 'translate(-50%, -50%)',
+            padding: '0',
+            border: 'none',
+            borderRadius: '12px',
+            maxWidth: '500px',
+            width: '90%',
+            background: 'transparent'
+          },
+          overlay: {
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 1000
+          }
+        }}
+      >
+        <FrequencyModalContent theme={theme}>
+          <FrequencyModalHeader theme={theme}>
+            <h3 style={{ margin: 0, fontSize: '18px' }}>
+              Edit Contact Details - {contactForDescription?.first_name} {contactForDescription?.last_name}
+            </h3>
+            <FrequencyModalCloseButton
+              onClick={() => {
+                setDescriptionModalOpen(false);
+                setDescriptionText('');
+                setJobRoleText('');
+                setContactForDescription(null);
+              }}
+              theme={theme}
+            >
+              <FiX />
+            </FrequencyModalCloseButton>
+          </FrequencyModalHeader>
+          <FrequencyModalBody>
+            <div style={{ padding: '20px' }}>
+              {/* Job Role Input */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{
+                  display: 'block',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  marginBottom: '8px',
+                  color: theme === 'light' ? '#111827' : '#F9FAFB'
+                }}>
+                  Job Role / Title
+                </label>
+                <input
+                  type="text"
+                  value={jobRoleText}
+                  onChange={(e) => setJobRoleText(e.target.value)}
+                  placeholder="Enter job role or title..."
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                    borderRadius: '6px',
+                    backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                    color: theme === 'light' ? '#111827' : '#F9FAFB',
+                    fontSize: '14px',
+                    fontFamily: 'inherit'
+                  }}
+                />
+              </div>
+
+              {/* Category Dropdown */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{
+                  display: 'block',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  marginBottom: '8px',
+                  color: theme === 'light' ? '#111827' : '#F9FAFB'
+                }}>
+                  Category
+                </label>
+                <select
+                  value={contactCategory}
+                  onChange={(e) => setContactCategory(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                    borderRadius: '6px',
+                    backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                    color: theme === 'light' ? '#111827' : '#F9FAFB',
+                    fontSize: '14px',
+                    fontFamily: 'inherit'
+                  }}
+                >
+                  {categoryOptions.map(category => (
+                    <option key={category} value={category}>{category}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Score Rating */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{
+                  display: 'block',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  marginBottom: '8px',
+                  color: theme === 'light' ? '#111827' : '#F9FAFB'
+                }}>
+                  Score Rating
+                </label>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '12px',
+                  border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                  borderRadius: '6px',
+                  backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937'
+                }}>
+                  {[1, 2, 3, 4, 5].map(star => (
+                    <FaStar
+                      key={star}
+                      onClick={() => setContactScore(star)}
+                      style={{
+                        fontSize: '20px',
+                        color: star <= contactScore ? '#F59E0B' : '#D1D5DB',
+                        cursor: 'pointer',
+                        transition: 'color 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => e.target.style.transform = 'scale(1.1)'}
+                      onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
+                    />
+                  ))}
+                  <span style={{
+                    marginLeft: '12px',
+                    fontSize: '14px',
+                    color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                  }}>
+                    {contactScore > 0 ? `${contactScore}/5` : 'Not rated'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Description Input */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{
+                  display: 'block',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  marginBottom: '8px',
+                  color: theme === 'light' ? '#111827' : '#F9FAFB'
+                }}>
+                  Description / Notes
+                </label>
+                <textarea
+                  value={descriptionText}
+                  onChange={(e) => setDescriptionText(e.target.value)}
+                  placeholder="Enter description or notes..."
+                  rows={4}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                    borderRadius: '6px',
+                    backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                    color: theme === 'light' ? '#111827' : '#F9FAFB',
+                    fontSize: '14px',
+                    fontFamily: 'inherit',
+                    resize: 'vertical',
+                    minHeight: '100px'
+                  }}
+                />
+              </div>
+
+              <div style={{
+                display: 'flex',
+                gap: '12px',
+                justifyContent: 'flex-end'
+              }}>
+                <button
+                  onClick={() => {
+                    setDescriptionModalOpen(false);
+                    setDescriptionText('');
+                    setJobRoleText('');
+                    setContactForDescription(null);
+                  }}
+                  style={{
+                    padding: '10px 20px',
+                    border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                    borderRadius: '6px',
+                    backgroundColor: 'transparent',
+                    color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                    fontSize: '14px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveDescription}
+                  style={{
+                    padding: '10px 20px',
+                    border: 'none',
+                    borderRadius: '6px',
+                    backgroundColor: '#3B82F6',
+                    color: '#FFFFFF',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    fontWeight: '500'
+                  }}
+                >
+                  Save Details
+                </button>
+              </div>
+            </div>
+          </FrequencyModalBody>
+        </FrequencyModalContent>
+      </Modal>
+
       {!loading && contacts.length === 0 && (
         <EmptyState>
           <EmptyIcon>{emptyStateConfig.icon}</EmptyIcon>
@@ -1678,7 +2170,282 @@ const ContactsList = ({
           <EmptyText theme={theme}>{emptyStateConfig.text}</EmptyText>
         </EmptyState>
       )}
+
+      {/* Company Association Modal */}
+      <Modal
+        isOpen={companyModalOpen}
+        onRequestClose={() => {
+          setCompanyModalOpen(false);
+          setSelectedContactForCompany(null);
+        }}
+        shouldCloseOnOverlayClick={true}
+        style={{
+          content: {
+            top: '50%',
+            left: '50%',
+            right: 'auto',
+            bottom: 'auto',
+            marginRight: '-50%',
+            transform: 'translate(-50%, -50%)',
+            padding: '0',
+            border: 'none',
+            borderRadius: '12px',
+            backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+            width: '600px',
+            maxWidth: '90vw',
+            height: '500px',
+            overflow: 'hidden'
+          },
+          overlay: {
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 1000
+          }
+        }}
+      >
+        {selectedContactForCompany && (
+          <CompanyAssociationModal
+            theme={theme}
+            contact={selectedContactForCompany}
+            onClose={() => {
+              setCompanyModalOpen(false);
+              setSelectedContactForCompany(null);
+            }}
+            onCompanyAdded={() => {
+              if (onContactUpdate) onContactUpdate();
+              setCompanyModalOpen(false);
+              setSelectedContactForCompany(null);
+            }}
+          />
+        )}
+      </Modal>
     </ContactsListContainer>
+  );
+};
+
+// Company Association Modal Component
+const CompanyAssociationModal = ({ theme, contact, onClose, onCompanyAdded }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // Fetch company suggestions
+  const fetchCompanySuggestions = async (search) => {
+    try {
+      if (search.length < 2) {
+        setSuggestions([]);
+        return;
+      }
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('companies')
+        .select('*')
+        .ilike('name', `%${search}%`)
+        .limit(10);
+
+      if (error) throw error;
+      setSuggestions(data || []);
+    } catch (err) {
+      console.error('Error fetching company suggestions:', err);
+      toast.error('Failed to search companies');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (searchTerm.length >= 2) {
+      const timeoutId = setTimeout(() => {
+        fetchCompanySuggestions(searchTerm);
+        setShowSuggestions(true);
+      }, 300);
+      return () => clearTimeout(timeoutId);
+    } else {
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  }, [searchTerm]);
+
+  const handleAddCompany = async (company) => {
+    try {
+      setLoading(true);
+      const { error } = await supabase
+        .from('contact_companies')
+        .insert({
+          contact_id: contact.contact_id,
+          company_id: company.company_id || company.id,
+          is_primary: true
+        });
+
+      if (error) throw error;
+      toast.success(`Added ${company.name} to ${contact.first_name} ${contact.last_name}`);
+      onCompanyAdded();
+    } catch (err) {
+      console.error('Error adding company:', err);
+      toast.error('Failed to associate company');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{
+      padding: '24px',
+      color: theme === 'light' ? '#111827' : '#F9FAFB',
+      height: '500px',
+      display: 'flex',
+      flexDirection: 'column'
+    }}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '20px',
+        paddingBottom: '15px',
+        borderBottom: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
+      }}>
+        <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '500' }}>
+          Add Company for {contact.first_name} {contact.last_name}
+        </h2>
+        <button
+          onClick={onClose}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            fontSize: '24px',
+            cursor: 'pointer',
+            color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+            padding: '5px'
+          }}
+        >
+          ×
+        </button>
+      </div>
+
+      <div style={{ marginBottom: '20px' }}>
+        <label style={{
+          display: 'block',
+          marginBottom: '8px',
+          fontWeight: '500',
+          fontSize: '14px'
+        }}>
+          Search Companies
+        </label>
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          placeholder="Type company name..."
+          style={{
+            width: '100%',
+            padding: '12px 16px',
+            border: `2px solid ${theme === 'light' ? '#10B981' : '#065F46'}`,
+            borderRadius: '8px',
+            fontSize: '16px',
+            background: theme === 'light' ? '#FFFFFF' : '#374151',
+            color: theme === 'light' ? '#111827' : '#F9FAFB',
+            outline: 'none',
+            boxSizing: 'border-box'
+          }}
+        />
+      </div>
+
+      <div style={{
+        background: theme === 'light' ? '#F9FAFB' : '#374151',
+        border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#4B5563'}`,
+        borderRadius: '8px',
+        height: '250px',
+        overflowY: 'auto',
+        flex: 1
+        }}>
+        {!showSuggestions ? (
+          <div style={{
+            padding: '20px',
+            textAlign: 'center',
+            color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+          }}>
+            {searchTerm.length === 0 ? 'Start typing to search companies...' : 'Type at least 2 characters...'}
+          </div>
+        ) : loading ? (
+          <div style={{ padding: '20px', textAlign: 'center' }}>
+            Searching...
+          </div>
+        ) : suggestions.length > 0 ? (
+          suggestions.map((company) => (
+            <button
+              key={company.company_id || company.id}
+              onClick={() => handleAddCompany(company)}
+              style={{
+                width: '100%',
+                padding: '12px 16px',
+                textAlign: 'left',
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                borderBottom: `1px solid ${theme === 'light' ? '#E5E7EB' : '#4B5563'}`,
+                color: theme === 'light' ? '#111827' : '#F9FAFB',
+                fontSize: '14px'
+              }}
+              onMouseOver={(e) => {
+                e.target.style.background = theme === 'light' ? '#F3F4F6' : '#4B5563';
+              }}
+              onMouseOut={(e) => {
+                e.target.style.background = 'transparent';
+              }}
+            >
+              <div style={{ fontWeight: '500', marginBottom: '4px' }}>
+                {company.name}
+              </div>
+              {company.category && (
+                <div style={{
+                  fontSize: '12px',
+                  color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                }}>
+                  {company.category}
+                </div>
+              )}
+            </button>
+          ))
+        ) : (
+          <div style={{
+            padding: '20px',
+            textAlign: 'center',
+            color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+          }}>
+            No companies found. Try a different search term.
+          </div>
+        )}
+      </div>
+
+      <div style={{
+        marginTop: '20px',
+        paddingTop: '20px',
+        borderTop: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+        textAlign: 'center'
+      }}>
+        <p style={{
+          margin: '0 0 16px 0',
+          color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+          fontSize: '14px'
+        }}>
+          Can't find the company? You can create a new one from the contact detail page.
+        </p>
+        <button
+          onClick={onClose}
+          style={{
+            padding: '8px 16px',
+            background: theme === 'light' ? '#F3F4F6' : '#374151',
+            border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+            borderRadius: '6px',
+            cursor: 'pointer',
+            color: theme === 'light' ? '#374151' : '#D1D5DB',
+            fontSize: '14px'
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
   );
 };
 
@@ -1823,14 +2590,127 @@ const ContactRole = styled.div`
   margin-bottom: 4px;
 `;
 
+const ContactRoleContainer = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+`;
+
+const ContactScoreStars = styled.div`
+  display: flex;
+  align-items: center;
+`;
+
 const ContactCompany = styled.div`
   color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
   font-size: 14px;
   display: flex;
   align-items: center;
+  cursor: ${props => props.$clickable ? 'pointer' : 'default'};
+  transition: all 0.2s ease;
+
+  ${props => props.$clickable && `
+    &:hover {
+      color: ${props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+      transform: translateX(2px);
+    }
+  `}
 
   svg {
     font-size: 12px;
+  }
+`;
+
+const AddCompanyButton = styled.div`
+  color: ${props => props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    color: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+    transform: translateX(2px);
+  }
+
+  svg {
+    font-size: 12px;
+    color: ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  }
+`;
+
+const SmartSuggestion = styled.div`
+  color: ${props => props.theme === 'light' ? '#059669' : '#10B981'};
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: ${props => props.theme === 'light' ? '#F9FAFB' : '#1F2937'};
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  max-width: fit-content;
+
+  @media (max-width: 768px) {
+    font-size: 11px;
+    padding: 3px 5px;
+    gap: 3px;
+  }
+`;
+
+const SuggestionText = styled.div`
+  flex: 1;
+  font-weight: 400;
+
+  @media (max-width: 768px) {
+    font-size: 11px;
+  }
+`;
+
+const SuggestionActions = styled.div`
+  display: flex;
+  gap: 3px;
+
+  @media (max-width: 768px) {
+    gap: 2px;
+  }
+`;
+
+const SuggestionButton = styled.button`
+  padding: 3px 6px;
+  border-radius: 3px;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  min-width: 20px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  ${props => props.variant === 'accept' ? `
+    background: ${props.theme === 'light' ? '#10B981' : '#059669'};
+    color: white;
+    &:hover {
+      background: ${props.theme === 'light' ? '#059669' : '#047857'};
+    }
+  ` : `
+    background: ${props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
+    color: white;
+    &:hover {
+      background: ${props.theme === 'light' ? '#6B7280' : '#4B5563'};
+    }
+  `}
+
+  @media (max-width: 768px) {
+    padding: 2px 4px;
+    font-size: 10px;
+    min-width: 18px;
+    height: 20px;
   }
 `;
 
@@ -2253,6 +3133,31 @@ const BirthdayInput = styled.input`
 
   &::-webkit-calendar-picker-indicator {
     filter: ${props => props.theme === 'light' ? 'none' : 'invert(1)'};
+  }
+`;
+
+const InfoIconButton = styled.button`
+  width: 100%;
+  height: 100%;
+  background: #F3F4F6;
+  border: none;
+  border-radius: 50%;
+  color: #6B7280;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #E5E7EB;
+    color: #374151;
+    transform: scale(1.1);
+  }
+
+  &:active {
+    transform: scale(0.95);
   }
 `;
 
