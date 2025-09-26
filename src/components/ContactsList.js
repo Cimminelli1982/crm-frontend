@@ -1248,11 +1248,13 @@ const ContactsList = ({
   return (
     <ContactsListContainer>
       {contacts.map(contact => (
-        <ContactCard key={contact.contact_id} theme={theme}>
+        <ContactCard key={contact.contact_id} theme={theme} $isCompany={contact.isCompanyRecord}>
           <ContactCardContent onClick={() => handleContactClick(contact)}>
             <ContactCardHeader>
-              <ContactAvatar>
-                {contact.profile_image_url ? (
+              <ContactAvatar $isCompany={contact.isCompanyRecord}>
+                {contact.isCompanyRecord ? (
+                  <FaBuilding style={{ color: '#3B82F6', fontSize: '20px' }} />
+                ) : contact.profile_image_url ? (
                   <img src={contact.profile_image_url} alt="Profile" />
                 ) : (
                   <InfoIconButton
@@ -2730,8 +2732,18 @@ const ContactsListContainer = styled.div`
 `;
 
 const ContactCard = styled.div`
-  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
-  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  background: ${props => {
+    if (props.$isCompany) {
+      return props.theme === 'light' ? '#F8FAFC' : '#1E293B'; // Slightly different background for companies
+    }
+    return props.theme === 'light' ? '#FFFFFF' : '#1F2937';
+  }};
+  border: 1px solid ${props => {
+    if (props.$isCompany) {
+      return props.theme === 'light' ? '#CBD5E1' : '#475569'; // Slightly different border for companies
+    }
+    return props.theme === 'light' ? '#E5E7EB' : '#374151';
+  }};
   border-radius: 12px;
   padding: 20px;
   margin-bottom: 16px;
@@ -2764,13 +2776,19 @@ const ContactAvatar = styled.div`
   width: 50px;
   height: 50px;
   border-radius: 50%;
-  background: #F3F4F6;
+  background: ${props => props.$isCompany ?
+    (props.theme === 'light' ? '#EBF4FF' : '#1E3A8A') :
+    '#F3F4F6'
+  };
   display: flex;
   align-items: center;
   justify-content: center;
   margin-right: 12px;
   flex-shrink: 0;
-  border: 2px solid #E5E7EB;
+  border: 2px solid ${props => props.$isCompany ?
+    (props.theme === 'light' ? '#BFDBFE' : '#3B82F6') :
+    '#E5E7EB'
+  };
 
   img {
     width: 100%;

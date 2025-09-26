@@ -22,6 +22,7 @@ const CompanyDetailPage = ({ theme }) => {
 
   // Navigation management
   const [activeTab, setActiveTab] = useState(() => location.state?.activeRelatedTab || 'Contacts');
+  const [activeContactsSubTab, setActiveContactsSubTab] = useState('Associated');
 
   // Description expand state
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
@@ -30,6 +31,7 @@ const CompanyDetailPage = ({ theme }) => {
   const [companyContacts, setCompanyContacts] = useState([]);
   const [companyCities, setCompanyCities] = useState([]);
   const [companyTags, setCompanyTags] = useState([]);
+  const [suggestedContacts, setSuggestedContacts] = useState([]);
   const [loadingRelatedData, setLoadingRelatedData] = useState(false);
 
   // Edit modal state
@@ -161,6 +163,129 @@ const CompanyDetailPage = ({ theme }) => {
     }
   };
 
+  // Smart suggestion logic - adapted from ContactsList but reversed for this company
+  const fetchSuggestedContacts = async () => {
+    if (!companyId) return;
+
+    try {
+      console.log(`🔍 Finding contacts that should be associated with company: ${company?.name}`);
+
+      // Get all domains for this company (like ContactsList does)
+      const { data: companyDomains, error: domainsError } = await supabase
+        .from('company_domains')
+        .select('domain, is_primary')
+        .eq('company_id', companyId);
+
+      if (domainsError) throw domainsError;
+
+      if (!companyDomains || companyDomains.length === 0) {
+        console.log('⚠️ No domains found for company');
+        setSuggestedContacts([]);
+        return;
+      }
+
+      console.log(`📍 Company domains:`, companyDomains.map(d => d.domain));
+
+      // Get contacts already associated with this company
+      const { data: existingAssociations } = await supabase
+        .from('contact_companies')
+        .select('contact_id')
+        .eq('company_id', companyId);
+
+      const existingContactIds = (existingAssociations || []).map(assoc => assoc.contact_id);
+
+      // Find contacts with emails matching ANY of this company's domains
+      // (Using the same domain matching logic as ContactsList)
+      const emailSearchPromises = companyDomains.map(async (domainData) => {
+        let domain = domainData.domain;
+
+        // Remove www. prefix if present (equinox.com works for both www.equinox.com and equinox.com emails)
+        const cleanDomain = domain.replace(/^www\./, '');
+
+        console.log(`🔍 Searching for emails matching: @${cleanDomain}`);
+
+        // Search contact_emails table (same as ContactsList fetchCompanySuggestion)
+        const { data: contactsWithMatchingEmails, error: emailError } = await supabase
+          .from('contact_emails')
+          .select(`
+            contact_id,
+            email,
+            contacts (
+              contact_id,
+              first_name,
+              last_name,
+              job_role,
+              category,
+              created_at
+            )
+          `)
+          .ilike('email', `%@${cleanDomain}`)
+          .limit(20); // Reasonable limit per domain
+
+        if (emailError) {
+          console.error(`Error searching emails for domain ${domain}:`, emailError);
+          return [];
+        }
+
+        const matchingContacts = (contactsWithMatchingEmails || []);
+        console.log(`📧 Found ${matchingContacts.length} contacts with @${cleanDomain} emails:`,
+          matchingContacts.map(r => `${r.contacts?.first_name} ${r.contacts?.last_name} (${r.email}) - ${r.contacts?.category}`)
+        );
+
+        const filteredContacts = matchingContacts
+          .filter(result => {
+            if (!result.contacts) {
+              console.log(`❌ Skipping result with no contact data`);
+              return false;
+            }
+            if (existingContactIds.includes(result.contacts.contact_id)) {
+              console.log(`❌ Skipping ${result.contacts.first_name} ${result.contacts.last_name} - already associated`);
+              return false;
+            }
+            if (result.contacts.category === 'Skip') {
+              console.log(`❌ Skipping ${result.contacts.first_name} ${result.contacts.last_name} - Skip category`);
+              return false;
+            }
+            console.log(`✅ Including ${result.contacts.first_name} ${result.contacts.last_name} - ${result.contacts.category}`);
+            return true;
+          })
+          .map(result => ({
+            ...result.contacts,
+            matching_email: result.email,
+            matching_domain: cleanDomain,
+            is_primary_domain: domainData.is_primary,
+            emails: [{ email: result.email, is_primary: true }], // Format for ContactsList
+            mobiles: [],
+            companies: [], // No companies (that's why they're suggested)
+            tags: [],
+            cities: []
+          }));
+
+        console.log(`🎯 After filtering: ${filteredContacts.length} contacts for domain ${cleanDomain}`);
+        return filteredContacts;
+      });
+
+      const allMatches = await Promise.all(emailSearchPromises);
+      const flatMatches = allMatches.flat();
+
+      // Remove duplicates by contact_id (same contact might match multiple domains)
+      const uniqueContacts = flatMatches.reduce((acc, contact) => {
+        if (!acc.find(c => c.contact_id === contact.contact_id)) {
+          acc.push(contact);
+        }
+        return acc;
+      }, []);
+
+      console.log(`✅ Found ${uniqueContacts.length} contacts matching company domains`);
+      setSuggestedContacts(uniqueContacts);
+
+    } catch (error) {
+      console.error('Error fetching suggested contacts:', error);
+      setSuggestedContacts([]);
+    }
+  };
+
+
   useEffect(() => {
     fetchCompany();
   }, [companyId]);
@@ -168,6 +293,7 @@ const CompanyDetailPage = ({ theme }) => {
   useEffect(() => {
     if (company) {
       fetchRelatedData();
+      fetchSuggestedContacts();
     }
   }, [company, companyId]);
 
@@ -403,7 +529,11 @@ const CompanyDetailPage = ({ theme }) => {
               <CompanyDetails>
                 <CompanyName theme={theme}>{company.name}</CompanyName>
                 {company.category && (
-                  <CompanyCategory theme={theme}>
+                  <CompanyCategory
+                    theme={theme}
+                    $clickable={company.category === 'Not Set'}
+                    onClick={company.category === 'Not Set' ? handleEdit : undefined}
+                  >
                     {company.category}
                   </CompanyCategory>
                 )}
@@ -541,27 +671,74 @@ const CompanyDetailPage = ({ theme }) => {
             <RelatedSection>
               <RelatedSectionHeader>
                 <SectionTitle theme={theme}>
-                  🧑‍💼 Associated Contacts ({companyContacts.length})
+                  🧑‍💼 Contacts
                 </SectionTitle>
                 <AddButton theme={theme} onClick={handleAddContacts}>
                   + Add Contacts
                 </AddButton>
               </RelatedSectionHeader>
 
-              <ContactsList
-                contacts={companyContacts}
-                loading={loadingRelatedData}
-                theme={theme}
-                emptyStateConfig={{
-                  icon: '🧑‍💼',
-                  title: 'No contacts associated',
-                  text: 'No contacts are currently associated with this company.'
-                }}
-                onContactUpdate={fetchRelatedData}
-                showActions={true}
-                badgeType="category"
-                onContactClick={(contact) => handleContactClick({ contacts: contact })}
-              />
+              {/* Contacts Sub Menu */}
+              <ContactsSubMenu theme={theme}>
+                <SubMenuButton
+                  theme={theme}
+                  $isActive={activeContactsSubTab === 'Associated'}
+                  onClick={() => setActiveContactsSubTab('Associated')}
+                >
+                  Associated ({companyContacts.length})
+                </SubMenuButton>
+                {suggestedContacts.length > 0 && (
+                  <SubMenuButton
+                    theme={theme}
+                    $isActive={activeContactsSubTab === 'Suggested'}
+                    onClick={() => setActiveContactsSubTab('Suggested')}
+                  >
+                    Suggested ({suggestedContacts.length})
+                  </SubMenuButton>
+                )}
+              </ContactsSubMenu>
+
+              {/* Associated Contacts */}
+              {activeContactsSubTab === 'Associated' && (
+                <ContactsList
+                  contacts={companyContacts}
+                  loading={loadingRelatedData}
+                  theme={theme}
+                  emptyStateConfig={{
+                    icon: '🧑‍💼',
+                    title: 'No contacts associated',
+                    text: 'No contacts are currently associated with this company.'
+                  }}
+                  onContactUpdate={() => {
+                    fetchRelatedData();
+                    fetchSuggestedContacts(); // Refresh suggestions when contacts change
+                  }}
+                  showActions={true}
+                  badgeType="category"
+                  onContactClick={(contact) => handleContactClick({ contacts: contact })}
+                />
+              )}
+
+              {/* Suggested Contacts */}
+              {activeContactsSubTab === 'Suggested' && suggestedContacts.length > 0 && (
+                <ContactsList
+                  contacts={suggestedContacts}
+                  loading={false}
+                  theme={theme}
+                  emptyStateConfig={{
+                    icon: '💡',
+                    title: 'No suggestions found',
+                    text: 'No contacts found with matching email domains.'
+                  }}
+                  onContactUpdate={() => {
+                    fetchRelatedData();
+                    fetchSuggestedContacts();
+                  }}
+                  showActions={true}
+                  badgeType="category"
+                  onContactClick={(contact) => handleContactClick({ contacts: contact })}
+                />
+              )}
             </RelatedSection>
           )}
 
@@ -733,6 +910,21 @@ const CompanyCategory = styled.div`
   font-size: 0.875rem;
   font-weight: 500;
   margin-bottom: 12px;
+  transition: all 0.2s ease;
+
+  ${props => props.$clickable && `
+    cursor: pointer;
+
+    &:hover {
+      background: ${props.theme === 'light' ? '#DBEAFE' : '#1E40AF'};
+      transform: scale(1.02);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    &:active {
+      transform: scale(0.98);
+    }
+  `}
 `;
 
 const CompanyDescription = styled.div`
@@ -919,6 +1111,59 @@ const SectionTitle = styled.h3`
   font-weight: 600;
   color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
   margin: 0 0 20px 0;
+`;
+
+const SuggestionSubtitle = styled.p`
+  font-size: 14px;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  margin: -15px 0 20px 0;
+  font-style: italic;
+`;
+
+const ContactsSubMenu = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  max-width: 90%;
+  margin: 15px auto 0 auto;
+  background: ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
+  border-radius: 8px;
+  padding: 4px;
+  width: fit-content;
+  flex-wrap: wrap;
+
+  @media (max-width: 1024px) {
+    max-width: 95%;
+    gap: 1px;
+  }
+`;
+
+const SubMenuButton = styled.button`
+  background: ${props => props.$isActive
+    ? (props.theme === 'light' ? '#FFFFFF' : '#1F2937')
+    : 'transparent'
+  };
+  color: ${props => props.$isActive
+    ? (props.theme === 'light' ? '#111827' : '#F9FAFB')
+    : (props.theme === 'light' ? '#6B7280' : '#9CA3AF')
+  };
+  border: none;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+  font-weight: ${props => props.$isActive ? '600' : '500'};
+
+  &:hover:not([disabled]) {
+    color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  }
+
+  @media (max-width: 768px) {
+    padding: 4px 6px;
+    font-size: 13px;
+  }
 `;
 
 const RelatedSubMenu = styled.div`

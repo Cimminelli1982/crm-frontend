@@ -121,7 +121,10 @@ const InteractionsPage = ({ theme }) => {
       // Transform the data structure to match what ContactsList expects
       const transformedContacts = (data || []).map(contact => ({
         ...contact,
-        companies: contact.contact_companies?.map(cc => cc.companies).filter(Boolean) || [],
+        companies: contact.contact_companies?.map(cc => ({
+          ...cc.companies,
+          company_id: cc.company_id // Preserve company_id from the join table
+        })).filter(Boolean) || [],
         // Flatten keep_in_touch data for easy access in getKeepInTouchStatus
         // Handle both object and array formats
         keep_in_touch_frequency: contact.keep_in_touch?.frequency || contact.keep_in_touch?.[0]?.frequency || null,

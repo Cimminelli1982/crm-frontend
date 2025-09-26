@@ -8,6 +8,17 @@ import ContactsList from '../components/ContactsList';
 
 const SearchPage = ({ theme }) => {
   const navigate = useNavigate();
+
+  // Handle clicks on both contacts and company records
+  const handleItemClick = (item) => {
+    if (item.isCompanyRecord) {
+      // Navigate to company detail page
+      navigate(`/company/${item.company_id}`);
+    } else {
+      // Navigate to contact detail page
+      navigate(`/contact/${item.contact_id}`);
+    }
+  };
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [filterCategory, setFilterCategory] = useState('Name');
   const [searchQuery, setSearchQuery] = useState('');
@@ -84,31 +95,63 @@ const SearchPage = ({ theme }) => {
           break;
 
         case 'Company':
-          const companyResult = await supabase
-            .from('contacts')
-            .select(`
-              *,
-              contact_emails (email, type, is_primary),
-              contact_mobiles (mobile, type, is_primary),
-              contact_companies!inner (
-                company_id,
-                relationship,
-                is_primary,
-                companies!inner (name, website, category)
-              ),
-              contact_tags (
-                tags (name)
-              ),
-              contact_cities (
-                cities (name, country)
-              )
-            `)
-            .not('category', 'in', '("Skip","WhatsApp Group Contact","System","Not Set")')
-            .ilike('contact_companies.companies.name', `%${query}%`)
-            .order('last_interaction_at', { ascending: false, nullsLast: true })
-            .limit(100);
-          data = companyResult.data;
-          error = companyResult.error;
+          // Search for both contacts associated with companies AND companies themselves
+          const [companyContactsResult, companiesResult] = await Promise.all([
+            // 1. Search for contacts associated with companies
+            supabase
+              .from('contacts')
+              .select(`
+                *,
+                contact_emails (email, type, is_primary),
+                contact_mobiles (mobile, type, is_primary),
+                contact_companies!inner (
+                  company_id,
+                  relationship,
+                  is_primary,
+                  companies!inner (name, website, category)
+                ),
+                contact_tags (
+                  tags (name)
+                ),
+                contact_cities (
+                  cities (name, country)
+                )
+              `)
+              .not('category', 'in', '("Skip","WhatsApp Group Contact","System","Not Set")')
+              .ilike('contact_companies.companies.name', `%${query}%`)
+              .order('last_interaction_at', { ascending: false, nullsLast: true })
+              .limit(50),
+
+            // 2. Search for companies directly
+            supabase
+              .from('companies')
+              .select('company_id, name, website, category, description')
+              .ilike('name', `%${query}%`)
+              .not('category', 'eq', 'Skip')
+              .order('name')
+              .limit(50)
+          ]);
+
+          if (companyContactsResult.error) throw companyContactsResult.error;
+          if (companiesResult.error) throw companiesResult.error;
+
+          // Combine both results - companies first, then contacts
+          data = [
+            ...(companiesResult.data || []).map(company => ({
+              // Mark as company record for identification
+              isCompanyRecord: true,
+              company_id: company.company_id,
+              contact_id: `company_${company.company_id}`, // Unique ID for React keys
+              name: company.name,
+              first_name: company.name, // Display name
+              last_name: '', // Empty last name
+              website: company.website,
+              category: company.category,
+              description: company.description
+            })),
+            ...(companyContactsResult.data || [])
+          ];
+          error = null;
           break;
 
         case 'City':
@@ -174,18 +217,48 @@ const SearchPage = ({ theme }) => {
 
       if (error) throw error;
 
-      // Process the contacts data to match expected format
-      const processedContacts = (data || []).map(contact => ({
-        ...contact,
-        emails: contact.contact_emails || [],
-        mobiles: contact.contact_mobiles || [],
-        companies: contact.contact_companies?.map(cc => cc.companies).filter(Boolean) || [],
-        tags: contact.contact_tags?.map(ct => ct.tags?.name).filter(Boolean) || [],
-        cities: contact.contact_cities?.map(cc => cc.cities).filter(Boolean) || []
-      }));
+      // Process the data to handle both contacts and company records
+      const processedResults = (data || []).map(item => {
+        // Check if this is a company record
+        if (item.isCompanyRecord) {
+          console.log('SearchPage processing company record:', item.name);
+          return {
+            ...item,
+            // Add display properties for company records
+            display_name: item.name,
+            display_type: 'company',
+            emails: [],
+            mobiles: [],
+            companies: [{ name: item.name, website: item.website, category: item.category }],
+            tags: [],
+            cities: []
+          };
+        } else {
+          // Process contact records as before
+          console.log('SearchPage processing contact:', item.first_name, item.contact_companies);
+          const companies = item.contact_companies?.map(cc => {
+            console.log('Processing company relation:', cc);
+            return {
+              ...cc.companies,
+              company_id: cc.company_id // Preserve company_id from the join table
+            };
+          }).filter(Boolean) || [];
+          console.log('Processed companies:', companies);
 
-      setContacts(processedContacts);
-      console.log(`Found ${processedContacts.length} contacts matching "${query}" in ${filterCategory}`);
+          return {
+            ...item,
+            display_type: 'contact',
+            emails: item.contact_emails || [],
+            mobiles: item.contact_mobiles || [],
+            companies: companies,
+            tags: item.contact_tags?.map(ct => ct.tags?.name).filter(Boolean) || [],
+            cities: item.contact_cities?.map(cc => cc.cities).filter(Boolean) || []
+          };
+        }
+      });
+
+      setContacts(processedResults);
+      console.log(`Found ${processedResults.length} results matching "${query}" in ${filterCategory}`);
 
     } catch (error) {
       console.error('Search error:', error);
@@ -298,10 +371,11 @@ const SearchPage = ({ theme }) => {
               theme={theme}
               emptyStateConfig={{
                 icon: '🔍',
-                title: 'No contacts found',
-                text: `No contacts match "${searchQuery}" in ${filterCategory.toLowerCase()}.`
+                title: 'No results found',
+                text: `No contacts or companies match "${searchQuery}" in ${filterCategory.toLowerCase()}.`
               }}
               onContactUpdate={() => performSearch(searchQuery)}
+              onContactClick={handleItemClick}
               showActions={true}
               badgeType="category"
             />

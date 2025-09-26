@@ -96,7 +96,10 @@ const KeepInTouchPage = ({ theme, onKeepInTouchCountChange }) => {
             ...contact,
             emails: contact.contact_emails || [],
             mobiles: contact.contact_mobiles || [],
-            companies: contact.contact_companies?.map(cc => cc.companies).filter(Boolean) || [],
+            companies: contact.contact_companies?.map(cc => ({
+              ...cc.companies,
+              company_id: cc.company_id // Preserve company_id from the join table
+            })).filter(Boolean) || [],
             tags: contact.contact_tags?.map(ct => ct.tags?.name).filter(Boolean) || [],
             cities: contact.contact_cities?.map(cc => cc.cities).filter(Boolean) || [],
             // Add birthday-specific fields
@@ -199,7 +202,10 @@ const KeepInTouchPage = ({ theme, onKeepInTouchCountChange }) => {
             // Process related data
             emails: contact.contact_emails || [],
             mobiles: contact.contact_mobiles || [],
-            companies: contact.contact_companies?.map(cc => cc.companies).filter(Boolean) || [],
+            companies: contact.contact_companies?.map(cc => ({
+              ...cc.companies,
+              company_id: cc.company_id // Preserve company_id from the join table
+            })).filter(Boolean) || [],
             tags: contact.contact_tags?.map(ct => ct.tags?.name).filter(Boolean) || [],
             cities: contact.contact_cities?.map(cc => cc.cities).filter(Boolean) || []
           };
