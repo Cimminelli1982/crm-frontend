@@ -929,8 +929,8 @@ const ContactsList = ({
         console.log(`✅ Created domain entry: ${company.domain || company.website} for company: ${company.name}`);
         toast.success(`Created ${company.name} company and associated with ${contact.first_name}`);
       } else {
-        // Use existing company
-        companyIdToUse = company.company_id || company.id;
+        // Use existing company - handle different data structures
+        companyIdToUse = company.company_id || company.id || company.companies?.company_id;
         toast.success(`Associated ${contact.first_name} with ${company.name}`);
       }
 
