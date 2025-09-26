@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
-import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaEdit, FaClock, FaTimes, FaCalendarAlt, FaHeart, FaCog, FaInfoCircle, FaStar } from 'react-icons/fa';
+import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaEdit, FaClock, FaTimes, FaCalendarAlt, FaHeart, FaCog, FaInfoCircle, FaStar, FaPlus } from 'react-icons/fa';
 import { FiSkipForward, FiAlertTriangle, FiX, FiMessageCircle } from 'react-icons/fi';
 import { toast } from 'react-hot-toast';
 import Modal from 'react-modal';
@@ -657,27 +657,71 @@ const ContactsList = ({
         .limit(1);
 
       if (error) throw error;
-      return data?.[0] || null;
+
+      // If existing company found, return it
+      if (data?.[0]) {
+        return { ...data[0], suggestionType: 'existing' };
+      }
+
+      // If no company found, suggest creating one based on the domain
+      const companyName = domain.split('.')[0];
+      const capitalizedName = companyName.charAt(0).toUpperCase() + companyName.slice(1);
+
+      return {
+        suggestionType: 'create',
+        name: capitalizedName,
+        website: domain,
+        domain: domain,
+        category: 'Corporate' // Default category for new companies
+      };
     } catch (err) {
       console.error('Error fetching company suggestion:', err);
       return null;
     }
   };
 
-  // Load company suggestions for contacts without companies
+  // Load company suggestions for contacts without companies (batched)
   useEffect(() => {
     const loadSuggestions = async () => {
       const suggestions = {};
       const contactsWithoutCompanies = contacts.filter(contact => !contact.companies?.[0]);
 
-      for (const contact of contactsWithoutCompanies) {
-        const suggestion = await fetchCompanySuggestion(contact);
-        if (suggestion) {
-          suggestions[contact.contact_id] = suggestion;
-        }
-      }
+      // Only process if we have a reasonable number of contacts (like Missing > Company section)
+      if (contactsWithoutCompanies.length > 0 && contactsWithoutCompanies.length <= 50) {
+        console.log(`🔍 Loading company suggestions for ${contactsWithoutCompanies.length} contacts...`);
 
-      setCompanySuggestions(suggestions);
+        // Process in batches of 10 to avoid overwhelming the database
+        const batchSize = 10;
+
+        for (let i = 0; i < contactsWithoutCompanies.length; i += batchSize) {
+          const batch = contactsWithoutCompanies.slice(i, i + batchSize);
+
+          // Process batch in parallel
+          const batchPromises = batch.map(async (contact) => {
+            const suggestion = await fetchCompanySuggestion(contact);
+            return { contactId: contact.contact_id, suggestion };
+          });
+
+          const batchResults = await Promise.all(batchPromises);
+
+          // Add suggestions from this batch
+          batchResults.forEach(({ contactId, suggestion }) => {
+            if (suggestion) {
+              suggestions[contactId] = suggestion;
+            }
+          });
+
+          // Small delay between batches to be nice to the database
+          if (i + batchSize < contactsWithoutCompanies.length) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        }
+
+        console.log(`✅ Found ${Object.keys(suggestions).length} company suggestions`);
+        setCompanySuggestions(suggestions);
+      } else if (contactsWithoutCompanies.length > 50) {
+        console.log(`⚠️ Too many contacts (${contactsWithoutCompanies.length}) - skipping company suggestions`);
+      }
     };
 
     if (contacts.length > 0) {
@@ -690,16 +734,40 @@ const ContactsList = ({
     if (e) e.stopPropagation();
 
     try {
-      const { error } = await supabase
+      let companyIdToUse;
+
+      if (company.suggestionType === 'create') {
+        // Create new company first
+        console.log(`🏢 Creating new company: ${company.name}`);
+        const { data: newCompany, error: createError } = await supabase
+          .from('companies')
+          .insert({
+            name: company.name,
+            website: company.website,
+            category: company.category || 'Corporate'
+          })
+          .select()
+          .single();
+
+        if (createError) throw createError;
+        companyIdToUse = newCompany.company_id;
+        toast.success(`Created ${company.name} company and associated with ${contact.first_name}`);
+      } else {
+        // Use existing company
+        companyIdToUse = company.company_id || company.id;
+        toast.success(`Associated ${contact.first_name} with ${company.name}`);
+      }
+
+      // Associate contact with company
+      const { error: associateError } = await supabase
         .from('contact_companies')
         .insert({
           contact_id: contact.contact_id,
-          company_id: company.company_id || company.id,
+          company_id: companyIdToUse,
           is_primary: true
         });
 
-      if (error) throw error;
-      toast.success(`Associated ${contact.first_name} with ${company.name}`);
+      if (associateError) throw associateError;
 
       // Remove from suggestions and refresh contacts
       setCompanySuggestions(prev => {
@@ -711,7 +779,7 @@ const ContactsList = ({
       if (onContactUpdate) onContactUpdate();
     } catch (err) {
       console.error('Error accepting suggestion:', err);
-      toast.error('Failed to associate company');
+      toast.error(company.suggestionType === 'create' ? 'Failed to create company' : 'Failed to associate company');
     }
   };
 
@@ -1074,11 +1142,25 @@ const ContactsList = ({
                     {contact.companies[0].name}
                   </ContactCompany>
                 ) : companySuggestions[contact.contact_id] ? (
-                  <SmartSuggestion theme={theme}>
-                    <FaBuilding style={{ marginRight: '6px', color: 'currentColor' }} />
-                    <SuggestionText>
-                      Associate with {companySuggestions[contact.contact_id].name}?
-                    </SuggestionText>
+                  <SmartSuggestion
+                    theme={theme}
+                    $suggestionType={companySuggestions[contact.contact_id].suggestionType}
+                  >
+                    {companySuggestions[contact.contact_id].suggestionType === 'create' ? (
+                      <>
+                        <FaPlus style={{ marginRight: '6px', color: 'currentColor' }} />
+                        <SuggestionText>
+                          Create {companySuggestions[contact.contact_id].name} company?
+                        </SuggestionText>
+                      </>
+                    ) : (
+                      <>
+                        <FaBuilding style={{ marginRight: '6px', color: 'currentColor' }} />
+                        <SuggestionText>
+                          Associate with {companySuggestions[contact.contact_id].name}?
+                        </SuggestionText>
+                      </>
+                    )}
                     <SuggestionActions>
                       <SuggestionButton
                         variant="accept"
@@ -2642,15 +2724,30 @@ const AddCompanyButton = styled.div`
 `;
 
 const SmartSuggestion = styled.div`
-  color: ${props => props.theme === 'light' ? '#059669' : '#10B981'};
+  color: ${props => {
+    if (props.$suggestionType === 'create') {
+      return props.theme === 'light' ? '#7C3AED' : '#A78BFA';
+    }
+    return props.theme === 'light' ? '#059669' : '#10B981';
+  }};
   font-size: 12px;
   display: flex;
   align-items: center;
   gap: 4px;
-  background: ${props => props.theme === 'light' ? '#F9FAFB' : '#1F2937'};
+  background: ${props => {
+    if (props.$suggestionType === 'create') {
+      return props.theme === 'light' ? '#FAF5FF' : '#1E1B23';
+    }
+    return props.theme === 'light' ? '#F9FAFB' : '#1F2937';
+  }};
   padding: 4px 6px;
   border-radius: 4px;
-  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  border: 1px solid ${props => {
+    if (props.$suggestionType === 'create') {
+      return props.theme === 'light' ? '#E9D5FF' : '#4C1D95';
+    }
+    return props.theme === 'light' ? '#E5E7EB' : '#374151';
+  }};
   max-width: fit-content;
 
   @media (max-width: 768px) {

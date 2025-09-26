@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
-import { FaSync } from 'react-icons/fa';
-import { FiCheckCircle, FiXCircle, FiArrowRight, FiArrowLeft, FiMail, FiUser, FiCalendar, FiMessageSquare, FiExternalLink } from 'react-icons/fi';
+import { FaSync, FaBirthdayCake } from 'react-icons/fa';
+import { FiCheckCircle, FiXCircle, FiArrowRight, FiArrowLeft, FiMail, FiUser, FiCalendar, FiMessageSquare, FiExternalLink, FiBuilding, FiTag, FiMapPin, FiStar } from 'react-icons/fi';
 import { toast } from 'react-hot-toast';
 import ContactsList from '../components/ContactsList';
 
@@ -14,6 +14,7 @@ const SortPage = ({ theme, onInboxCountChange }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [filterCategory, setFilterCategory] = useState('Inbox');
   const [spamSubCategory, setSpamSubCategory] = useState('Email'); // Email or WhatsApp
+  const [missingSubCategory, setMissingSubCategory] = useState('Basics'); // Basics, Company, Tags, Cities, Score, Keep in touch, Birthday
   const [selectedEmail, setSelectedEmail] = useState(null);
   const [confirmSpam, setConfirmSpam] = useState(null);
 
@@ -75,6 +76,44 @@ const SortPage = ({ theme, onInboxCountChange }) => {
 
         error = null;
 
+      } else if (filterCategory === 'Missing') {
+        // Handle Missing submenu categories
+        console.log(`Loading Missing > ${missingSubCategory}`);
+
+        if (missingSubCategory === 'Company') {
+          console.log('🔍 Loading contacts without companies using database view...');
+
+          // Use the optimized database view that does all the heavy lifting
+          const { data: contactsData, error: contactsError } = await supabase
+            .from('contacts_without_companies')
+            .select('*');
+
+          if (contactsError) {
+            console.error('❌ Error fetching contacts without companies:', contactsError);
+            throw contactsError;
+          }
+
+          console.log(`✅ Fetched ${contactsData?.length || 0} contacts without companies from database view`);
+          contactsData?.slice(0, 5).forEach((c, i) => {
+            console.log(`📅 Contact ${i + 1}: ${c.first_name} ${c.last_name} - ${c.last_interaction_at || 'NO DATE'}`);
+          });
+
+          // Transform data to match ContactsList component expectations
+          data = (contactsData || []).map(contact => ({
+            ...contact,
+            emails: [], // Will be empty for now (can be loaded separately if needed)
+            mobiles: [], // Will be empty for now (can be loaded separately if needed)
+            companies: [] // Explicitly empty since these are contacts without companies
+          }));
+
+          console.log('✅ Data transformation complete. Final data:', data.slice(0, 3));
+        } else {
+          // For other Missing subcategories, keep "Coming Soon" behavior
+          data = [];
+        }
+
+        error = null;
+
       } else if (filterCategory === 'Mail Filter') {
         // Get emails from email_inbox with special_case = 'pending_approval' (same as EmailInbox component)
         const { data: pendingEmails, error: mailError } = await supabase
@@ -131,7 +170,7 @@ const SortPage = ({ theme, onInboxCountChange }) => {
             )
           `);
 
-        let categoryFilter = filterCategory === 'Skip' ? 'Skip' : 'Inbox';
+        let categoryFilter = 'Inbox';
 
         if (filterCategory === 'Inbox') {
           // For Inbox, also filter by recent interactions (last 100 days)
@@ -177,7 +216,7 @@ const SortPage = ({ theme, onInboxCountChange }) => {
 
   useEffect(() => {
     fetchContacts();
-  }, [filterCategory, spamSubCategory]);
+  }, [filterCategory, spamSubCategory, missingSubCategory]);
 
   const handleManualRefresh = async () => {
     setIsRefreshing(true);
@@ -260,7 +299,7 @@ const SortPage = ({ theme, onInboxCountChange }) => {
   };
 
 
-  const sortCategories = ['Inbox', 'Skip', 'Spam', 'Mail Filter'];
+  const sortCategories = ['Inbox', 'Mail Filter', 'Missing', 'Spam'];
 
   return (
     <PageContainer theme={theme}>
@@ -296,6 +335,61 @@ const SortPage = ({ theme, onInboxCountChange }) => {
             ))}
           </FilterTabs>
         </SortHeader>
+
+        {/* Missing Submenu */}
+        {filterCategory === 'Missing' && (
+          <SpamSubMenu theme={theme}>
+            <SpamSubTab
+              theme={theme}
+              $active={missingSubCategory === 'Basics'}
+              onClick={() => setMissingSubCategory('Basics')}
+            >
+              Basics
+            </SpamSubTab>
+            <SpamSubTab
+              theme={theme}
+              $active={missingSubCategory === 'Company'}
+              onClick={() => setMissingSubCategory('Company')}
+            >
+              Company
+            </SpamSubTab>
+            <SpamSubTab
+              theme={theme}
+              $active={missingSubCategory === 'Tags'}
+              onClick={() => setMissingSubCategory('Tags')}
+            >
+              Tags
+            </SpamSubTab>
+            <SpamSubTab
+              theme={theme}
+              $active={missingSubCategory === 'Cities'}
+              onClick={() => setMissingSubCategory('Cities')}
+            >
+              Cities
+            </SpamSubTab>
+            <SpamSubTab
+              theme={theme}
+              $active={missingSubCategory === 'Score'}
+              onClick={() => setMissingSubCategory('Score')}
+            >
+              Score
+            </SpamSubTab>
+            <SpamSubTab
+              theme={theme}
+              $active={missingSubCategory === 'Keep in touch'}
+              onClick={() => setMissingSubCategory('Keep in touch')}
+            >
+              Keep in touch
+            </SpamSubTab>
+            <SpamSubTab
+              theme={theme}
+              $active={missingSubCategory === 'Birthday'}
+              onClick={() => setMissingSubCategory('Birthday')}
+            >
+              Birthday
+            </SpamSubTab>
+          </SpamSubMenu>
+        )}
 
         {/* Spam Submenu - in gray area below header */}
         {filterCategory === 'Spam' && (
@@ -334,15 +428,15 @@ const SortPage = ({ theme, onInboxCountChange }) => {
               theme={theme}
               emptyStateConfig={{
                 icon: filterCategory === 'Inbox' ? '📥' :
-                      filterCategory === 'Skip' ? '⏭️' :
+                      filterCategory === 'Missing' ? (missingSubCategory === 'Company' ? '🏢' : '🚧') :
                       filterCategory === 'Spam' ? '🚫' :
                       '📧',
                 title: filterCategory === 'Inbox' ? 'Inbox is empty!' :
-                       filterCategory === 'Skip' ? 'No skipped contacts!' :
-                       filterCategory === 'Spam' ? 'No spam contacts!' :
-                       'No mail filter contacts!',
+                        filterCategory === 'Missing' ? (missingSubCategory === 'Company' ? 'All contacts have companies!' : 'Coming Soon!') :
+                        filterCategory === 'Spam' ? 'No spam contacts!' :
+                        'No mail filter contacts!',
                 text: filterCategory === 'Inbox' ? 'All contacts have been categorized. Great work!' :
-                      filterCategory === 'Skip' ? 'No contacts have been skipped yet.' :
+                      filterCategory === 'Missing' ? (missingSubCategory === 'Company' ? 'Every contact is associated with a company. Great organization!' : `The ${missingSubCategory} feature is coming soon. Stay tuned!`) :
                       filterCategory === 'Spam' ? 'No contacts have been marked as spam.' :
                       'No contacts from email filtering.'
               }}
@@ -574,12 +668,24 @@ const SpamSubMenu = styled.div`
   justify-content: center;
   align-items: center;
   gap: 2px;
-  max-width: 400px;
+  max-width: 90%;
   margin: 15px auto 0 auto;
   background: ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
   border-radius: 8px;
   padding: 4px;
   width: fit-content;
+  flex-wrap: wrap;
+
+  @media (max-width: 1024px) {
+    max-width: 95%;
+    gap: 1px;
+  }
+
+  @media (max-width: 768px) {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    max-width: 100%;
+  }
 `;
 
 const SpamSubTab = styled.button`
@@ -592,7 +698,7 @@ const SpamSubTab = styled.button`
     : (props.theme === 'light' ? '#6B7280' : '#9CA3AF')
   };
   border: none;
-  padding: 8px 16px;
+  padding: 6px 10px;
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -781,9 +887,6 @@ const MailFilterEmailList = ({ contacts, loading, theme, onSpamClick, onAddToCRM
             <EmailSubject theme={theme}>
               {contact.mobile || '(No Subject)'}
             </EmailSubject>
-            <EmailDate theme={theme}>
-              {new Date(contact.last_interaction_at).toLocaleDateString()}
-            </EmailDate>
           </EmailInfo>
           <EmailActions>
             <EmailActionButton
@@ -826,6 +929,8 @@ const EmailItem = styled.div`
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
 
   &:hover {
     border-color: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
@@ -834,7 +939,7 @@ const EmailItem = styled.div`
 
   @media (max-width: 768px) {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
     padding: 12px;
     gap: 12px;
   }
@@ -845,6 +950,7 @@ const EmailInfo = styled.div`
   align-items: center;
   gap: 16px;
   flex: 1;
+  min-width: 0;
 
   @media (max-width: 768px) {
     flex-wrap: wrap;
@@ -877,10 +983,10 @@ const EmailSubject = styled.div`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 400px;
 
   @media (max-width: 768px) {
-    flex: 1 1 100%;
-    margin-top: 4px;
+    max-width: 200px;
     font-size: 13px;
   }
 `;
@@ -899,11 +1005,14 @@ const EmailDate = styled.div`
 const EmailActions = styled.div`
   display: flex;
   gap: 8px;
+  flex-shrink: 0;
+  align-items: center;
 
   @media (max-width: 768px) {
     width: 100%;
     justify-content: flex-end;
     gap: 6px;
+    flex-wrap: wrap;
   }
 `;
 
@@ -924,6 +1033,8 @@ const EmailActionButton = styled.button`
   font-size: 12px;
   transition: all 0.2s ease;
   white-space: nowrap;
+  flex-shrink: 0;
+  min-width: fit-content;
 
   &:hover {
     opacity: 0.8;
@@ -932,6 +1043,7 @@ const EmailActionButton = styled.button`
   @media (max-width: 768px) {
     padding: 8px 10px;
     font-size: 11px;
+    flex: 0 0 auto;
 
     span {
       display: none;
@@ -941,6 +1053,7 @@ const EmailActionButton = styled.button`
   @media (max-width: 480px) {
     padding: 6px 8px;
     font-size: 10px;
+    min-width: 60px;
   }
 `;
 

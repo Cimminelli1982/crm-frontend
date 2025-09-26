@@ -4,6 +4,7 @@ import styled, { createGlobalStyle } from 'styled-components';
 import { Toaster } from 'react-hot-toast';
 
 import NewNavigation from './components/NewNavigation';
+import NotificationBar from './components/NotificationBar';
 import SortPage from './pages/SortPage';
 import InteractionsPage from './pages/InteractionsPage';
 import SearchPage from './pages/SearchPage';
@@ -13,6 +14,7 @@ import ContactEditNew from './pages/ContactEditNew';
 import CityContactsPage from './pages/CityContactsPage';
 import TagContactsPage from './pages/TagContactsPage';
 import CompanyDetailPage from './pages/CompanyDetailPage';
+import { supabase } from './lib/supabaseClient';
 
 const GlobalStyles = createGlobalStyle`
   * {
@@ -113,6 +115,12 @@ const CRMAppContent = () => {
   });
   const [inboxCount, setInboxCount] = useState(0);
   const [keepInTouchCount, setKeepInTouchCount] = useState(0);
+  const [notification, setNotification] = useState({
+    message: '',
+    type: 'info',
+    visible: false
+  });
+  const [birthdayContacts, setBirthdayContacts] = useState([]);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -138,6 +146,67 @@ const CRMAppContent = () => {
     localStorage.setItem('crm-theme', newTheme);
   };
 
+  const showNotification = (message, type = 'info', duration = 0) => {
+    setNotification({ message, type, visible: true });
+    if (duration > 0) {
+      setTimeout(() => {
+        setNotification(prev => ({ ...prev, visible: false }));
+      }, duration);
+    }
+  };
+
+  const hideNotification = () => {
+    setNotification(prev => ({ ...prev, visible: false }));
+  };
+
+  const fetchTodayBirthdays = async () => {
+    try {
+      const today = new Date();
+      const month = today.getMonth() + 1;
+      const day = today.getDate();
+
+      const { data: birthdays, error } = await supabase
+        .from('contacts')
+        .select('contact_id, first_name, last_name, birthday')
+        .not('birthday', 'is', null)
+        .order('first_name');
+
+      if (error) {
+        console.error('Error fetching birthdays:', error);
+        return false;
+      }
+
+      const todayBirthdays = birthdays.filter(contact => {
+        const birthdayDate = new Date(contact.birthday);
+        const contactMonth = birthdayDate.getMonth() + 1;
+        const contactDay = birthdayDate.getDate();
+        return contactMonth === month && contactDay === day;
+      });
+
+      setBirthdayContacts(todayBirthdays);
+
+      if (todayBirthdays.length > 0) {
+        setNotification({
+          message: '',
+          type: 'success',
+          visible: true,
+          contacts: todayBirthdays,
+          notificationType: 'birthday'
+        });
+        // Auto-hide after 8 seconds
+        setTimeout(() => {
+          setNotification(prev => ({ ...prev, visible: false }));
+        }, 8000);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Failed to fetch today birthdays:', error);
+      return false;
+    }
+  };
+
+
   // Listen for navigation collapse changes
   useEffect(() => {
     const handleNavCollapse = (event) => {
@@ -148,6 +217,82 @@ const CRMAppContent = () => {
     window.addEventListener('navCollapseChange', handleNavCollapse);
     return () => window.removeEventListener('navCollapseChange', handleNavCollapse);
   }, []);
+
+  // Set up real-time subscription for new interactions
+  useEffect(() => {
+    const subscription = supabase
+      .channel('interactions')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'interactions',
+          filter: 'direction=eq.received'
+        },
+        async (payload) => {
+          console.log('🔔 New interaction payload:', payload.new);
+
+          // Fetch contact details for the interaction
+          const { data: contact, error } = await supabase
+            .from('contacts')
+            .select('first_name, last_name')
+            .eq('contact_id', payload.new.contact_id)
+            .single();
+
+          console.log('🔔 Contact fetch result:', contact, error);
+
+          if (contact && !error) {
+            const messagePreview = payload.new.interaction_type === 'whatsapp'
+              ? payload.new.summary?.substring(0, 100) + (payload.new.summary?.length > 100 ? '...' : '')
+              : payload.new.summary?.substring(0, 60) + (payload.new.summary?.length > 60 ? '...' : '');
+
+            const messageText = `📩 ${contact.first_name}: ${messagePreview}`;
+            console.log('🔔 Message notification text:', messageText);
+
+            // Force hide any existing notification first
+            setNotification(prev => ({ ...prev, visible: false }));
+
+            // Small delay to ensure the previous notification is hidden
+            setTimeout(() => {
+              console.log('🔔 Setting message notification');
+              setNotification({
+                message: messageText,
+                type: 'info',
+                visible: true,
+                contacts: [{
+                  ...payload.new,
+                  contacts: contact,
+                  // Ensure we have the necessary IDs for action buttons
+                  email_thread_id: payload.new.email_thread_id,
+                  chat_id: payload.new.chat_id,
+                  interaction_type: payload.new.interaction_type
+                }],
+                notificationType: 'messages'
+              });
+
+              // Auto-hide after 10 seconds
+              setTimeout(() => {
+                setNotification(prev => ({ ...prev, visible: false }));
+              }, 10000);
+            }, 100);
+          } else {
+            console.log('🔔 Contact fetch failed:', error);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subscription);
+    };
+  }, []);
+
+  // Fetch birthday notifications on load
+  useEffect(() => {
+    fetchTodayBirthdays();
+  }, []);
+
 
   return (
     <AppContainer theme={theme}>
@@ -171,6 +316,16 @@ const CRMAppContent = () => {
                      window.innerWidth >= 768 ? '280px' : '0'
         }}
       >
+        <NotificationBar
+          message={notification.message}
+          type={notification.type}
+          visible={notification.visible}
+          onClose={hideNotification}
+          theme={theme}
+          contacts={notification.contacts}
+          onContactClick={(contactId) => navigate(`/contact/${contactId}`)}
+          notificationType={notification.notificationType}
+        />
         <PageContainer>
           <Routes>
             <Route path="/" element={<Navigate to="/sort" replace />} />
