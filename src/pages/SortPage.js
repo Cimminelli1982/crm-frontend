@@ -442,6 +442,8 @@ const SortPage = ({ theme, onInboxCountChange }) => {
               }}
               onContactUpdate={fetchContacts}
               showActions={true}
+              badgeType="category"
+              pageContext="sort"
             />
           )}
         </ContentArea>

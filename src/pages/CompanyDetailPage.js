@@ -17,6 +17,7 @@ const CompanyDetailPage = ({ theme }) => {
 
   // Main company data
   const [company, setCompany] = useState(null);
+  const [companyDomains, setCompanyDomains] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Navigation management
@@ -45,6 +46,7 @@ const CompanyDetailPage = ({ theme }) => {
 
     setLoading(true);
     try {
+      // Fetch company data
       const { data, error } = await supabase
         .from('companies')
         .select('*')
@@ -53,6 +55,22 @@ const CompanyDetailPage = ({ theme }) => {
 
       if (error) throw error;
       setCompany(data);
+
+      // Fetch company domains
+      const { data: domainsData, error: domainsError } = await supabase
+        .from('company_domains')
+        .select('*')
+        .eq('company_id', companyId)
+        .order('is_primary', { ascending: false })
+        .order('created_at', { ascending: true });
+
+      if (domainsError) {
+        console.error('Error fetching domains:', domainsError);
+        // Don't fail the whole request if domains fail
+        setCompanyDomains([]);
+      } else {
+        setCompanyDomains(domainsData || []);
+      }
     } catch (error) {
       console.error('Error fetching company:', error);
       toast.error('Failed to load company details');
@@ -166,10 +184,16 @@ const CompanyDetailPage = ({ theme }) => {
     }
   };
 
-  const handleWebsiteClick = () => {
-    if (!company?.website) return;
+  const handleWebsiteClick = (domain = null) => {
+    // Use provided domain or fall back to primary domain or first domain
+    const targetDomain = domain ||
+                         companyDomains.find(d => d.is_primary)?.domain ||
+                         companyDomains[0]?.domain ||
+                         company?.website; // Legacy fallback
 
-    let url = company.website;
+    if (!targetDomain) return;
+
+    let url = targetDomain;
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       url = `https://${url}`;
     }
@@ -440,11 +464,34 @@ const CompanyDetailPage = ({ theme }) => {
                   </CompanyMeta>
                 )}
                 <CompanyLinks>
-                  {company.website && (
-                    <LinkButton theme={theme} onClick={handleWebsiteClick}>
-                      <FaGlobe />
-                      <span>Website</span>
-                    </LinkButton>
+                  {(companyDomains.length > 0 || company.website) && (
+                    <>
+                      {companyDomains.length > 1 ? (
+                        <DomainDropdownContainer>
+                          <LinkButton theme={theme} onClick={() => handleWebsiteClick()}>
+                            <FaGlobe />
+                            <span>Websites ({companyDomains.length})</span>
+                          </LinkButton>
+                          <DomainList theme={theme} className="domain-list">
+                            {companyDomains.map((domainObj, index) => (
+                              <DomainItem
+                                key={index}
+                                theme={theme}
+                                onClick={() => handleWebsiteClick(domainObj.domain)}
+                              >
+                                {domainObj.domain}
+                                {domainObj.is_primary && <PrimaryBadge theme={theme}>Primary</PrimaryBadge>}
+                              </DomainItem>
+                            ))}
+                          </DomainList>
+                        </DomainDropdownContainer>
+                      ) : (
+                        <LinkButton theme={theme} onClick={() => handleWebsiteClick()}>
+                          <FaGlobe />
+                          <span>Website</span>
+                        </LinkButton>
+                      )}
+                    </>
                   )}
                   {company.linkedin && (
                     <LinkButton theme={theme} onClick={handleLinkedInClick}>
@@ -725,6 +772,73 @@ const LinkButton = styled.button`
   svg {
     font-size: 12px;
   }
+`;
+
+const DomainDropdownContainer = styled.div`
+  position: relative;
+  display: inline-block;
+
+  &:hover {
+    .domain-list {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+  }
+`;
+
+const DomainList = styled.div`
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  border-radius: 8px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px);
+  transition: all 0.2s ease;
+  min-width: 200px;
+  margin-top: 4px;
+  overflow: hidden;
+
+  &.domain-list {
+    /* For easier hover targeting */
+  }
+`;
+
+const DomainItem = styled.div`
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
+  font-size: 13px;
+  color: ${props => props.theme === 'light' ? '#374151' : '#F3F4F6'};
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#F9FAFB' : '#374151'};
+    color: ${props => props.theme === 'light' ? '#1F2937' : '#FFFFFF'};
+  }
+`;
+
+const PrimaryBadge = styled.span`
+  background: ${props => props.theme === 'light' ? '#10B981' : '#059669'};
+  color: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  margin-left: 8px;
 `;
 
 const ActionButtons = styled.div`

@@ -632,7 +632,7 @@ const ContactsList = ({
     return genericDomains.includes(domain) ? null : domain;
   };
 
-  // Fetch company suggestion based on email domain
+  // Fetch company suggestion based on email domain with sophisticated matching
   const fetchCompanySuggestion = async (contact) => {
     try {
       // First get the contact's email from contact_emails table
@@ -649,21 +649,185 @@ const ContactsList = ({
 
       if (!domain) return null;
 
-      // Search for domain in website field only (domain field doesn't exist)
-      const { data, error } = await supabase
-        .from('companies')
-        .select('*')
-        .ilike('website', `%${domain}%`)
-        .limit(1);
+      // Step 1: Try exact domain match first
+      const { data: exactMatches, error: exactError } = await supabase
+        .from('company_domains')
+        .select(`
+          domain,
+          is_primary,
+          companies (
+            company_id,
+            name,
+            category,
+            description,
+            linkedin,
+            created_at
+          )
+        `)
+        .eq('domain', domain);
 
-      if (error) throw error;
+      if (exactError) throw exactError;
 
-      // If existing company found, return it
-      if (data?.[0]) {
-        return { ...data[0], suggestionType: 'existing' };
+      // Step 2: If multiple companies share the domain, find best match
+      if (exactMatches && exactMatches.length > 0) {
+        if (exactMatches.length === 1) {
+          // Single match - easy case
+          const companyData = exactMatches[0].companies;
+          return {
+            ...companyData,
+            domain: exactMatches[0].domain,
+            is_primary_domain: exactMatches[0].is_primary,
+            suggestionType: 'existing'
+          };
+        } else {
+          // Multiple companies share this domain - need intelligent selection
+          console.log(`🤔 Found ${exactMatches.length} companies sharing domain: ${domain}`);
+
+          // Get contact's name for similarity matching
+          const contactName = `${contact.first_name} ${contact.last_name}`.toLowerCase();
+
+          // Score each company based on various factors
+          let bestMatch = null;
+          let bestScore = -1;
+
+          for (const match of exactMatches) {
+            const companyData = match.companies;
+            let score = 0;
+
+            // Factor 1: Primary domain gets bonus
+            if (match.is_primary) score += 10;
+
+            // Factor 2: Company name similarity to contact name
+            const companyName = companyData.name.toLowerCase();
+            if (contactName.includes(companyName.split(' ')[0]) ||
+                companyName.includes(contactName.split(' ')[0])) {
+              score += 20;
+            }
+
+            // Factor 3: Prefer more specific/longer company names (less generic)
+            score += Math.min(companyData.name.length / 5, 10);
+
+            // Factor 4: Recent activity bonus (newer companies might be more relevant)
+            const daysSinceCreation = (new Date() - new Date(companyData.created_at)) / (1000 * 60 * 60 * 24);
+            if (daysSinceCreation < 365) score += 5; // Bonus for companies created in last year
+
+            console.log(`📊 ${companyData.name}: score ${score}`);
+
+            if (score > bestScore) {
+              bestScore = score;
+              bestMatch = {
+                ...companyData,
+                domain: match.domain,
+                is_primary_domain: match.is_primary,
+                suggestionType: 'existing',
+                matchReason: `Best match among ${exactMatches.length} companies sharing ${domain}`
+              };
+            }
+          }
+
+          if (bestMatch) {
+            console.log(`✅ Selected: ${bestMatch.name} (score: ${bestScore})`);
+            return bestMatch;
+          }
+        }
       }
 
-      // If no company found, suggest creating one based on the domain
+      // Step 3: Intelligent domain variant matching for corporate groups
+      console.log(`🧠 Checking for intelligent domain variants of: ${domain}`);
+
+      // Extract the core company name from the domain (before first dot)
+      const domainParts = domain.split('.');
+      const coreCompanyName = domainParts[0];
+
+      // Only proceed if we have a meaningful company name (not generic)
+      if (coreCompanyName.length > 3 && !['www', 'mail', 'email', 'app'].includes(coreCompanyName.toLowerCase())) {
+
+        // Search for domain variants with the same core company name but different TLDs/suffixes
+        const { data: variantMatches, error: variantError } = await supabase
+          .from('company_domains')
+          .select(`
+            domain,
+            is_primary,
+            companies (
+              company_id,
+              name,
+              category,
+              description,
+              linkedin,
+              created_at
+            )
+          `)
+          .or(`domain.ilike.${coreCompanyName}.%,domain.ilike.www.${coreCompanyName}.%,domain.ilike.%.${coreCompanyName}.%`)
+          .neq('domain', domain) // Exclude exact match we already checked
+          .limit(5);
+
+        if (!variantError && variantMatches && variantMatches.length > 0) {
+          console.log(`🎯 Found ${variantMatches.length} domain variants for "${coreCompanyName}":`, variantMatches.map(m => `${m.domain} → ${m.companies.name}`));
+
+          // Score the matches based on domain similarity and company relevance
+          let bestMatch = null;
+          let bestScore = 0;
+
+          for (const variant of variantMatches) {
+            const variantCompany = variant.companies;
+            let score = 0;
+
+            // Factor 1: Exact core name match in domain gets high score
+            const variantCore = variant.domain.split('.')[0].replace(/^www\./, '');
+            if (variantCore.toLowerCase() === coreCompanyName.toLowerCase()) {
+              score += 50;
+            }
+
+            // Factor 2: Core name appears in company name
+            const companyNameLower = variantCompany.name.toLowerCase();
+            if (companyNameLower.includes(coreCompanyName.toLowerCase())) {
+              score += 30;
+            }
+
+            // Factor 3: Primary domain bonus
+            if (variant.is_primary) {
+              score += 10;
+            }
+
+            // Factor 4: Shorter, cleaner company names are preferred (less likely to be auto-generated)
+            if (variantCompany.name.length < 50 && !variantCompany.name.includes('.')) {
+              score += 15;
+            }
+
+            // Factor 5: Recent companies get slight bonus (more likely to be actively managed)
+            const daysSinceCreation = (new Date() - new Date(variantCompany.created_at)) / (1000 * 60 * 60 * 24);
+            if (daysSinceCreation < 365) {
+              score += 5;
+            }
+
+            console.log(`  📊 ${variantCompany.name} (${variant.domain}): score ${score}`);
+
+            if (score > bestScore) {
+              bestScore = score;
+              bestMatch = {
+                ...variantCompany,
+                domain: variant.domain,
+                is_primary_domain: variant.is_primary,
+                suggestionType: 'existing',
+                matchReason: `Domain variant of ${coreCompanyName} group (${variant.domain})`
+              };
+            }
+          }
+
+          if (bestMatch && bestScore >= 30) { // Minimum threshold for confidence
+            console.log(`✅ Best variant match: ${bestMatch.name} (score: ${bestScore})`);
+            return bestMatch;
+          } else {
+            console.log(`⚠️ Variant matches found but scores too low (best: ${bestScore})`);
+          }
+        } else {
+          console.log(`🔍 No domain variants found for "${coreCompanyName}"`);
+        }
+      } else {
+        console.log(`⏭️ Skipping variant search for generic/short domain: ${domain}`);
+      }
+
+      // Step 4: If no match found, suggest creating new company
       const companyName = domain.split('.')[0];
       const capitalizedName = companyName.charAt(0).toUpperCase() + companyName.slice(1);
 
@@ -672,7 +836,7 @@ const ContactsList = ({
         name: capitalizedName,
         website: domain,
         domain: domain,
-        category: 'Corporate' // Default category for new companies
+        category: 'Corporate'
       };
     } catch (err) {
       console.error('Error fetching company suggestion:', err);
@@ -743,7 +907,6 @@ const ContactsList = ({
           .from('companies')
           .insert({
             name: company.name,
-            website: company.website,
             category: company.category || 'Corporate'
           })
           .select()
@@ -751,6 +914,19 @@ const ContactsList = ({
 
         if (createError) throw createError;
         companyIdToUse = newCompany.company_id;
+
+        // Create domain entry in company_domains table
+        const { error: domainError } = await supabase
+          .from('company_domains')
+          .insert({
+            company_id: companyIdToUse,
+            domain: company.domain || company.website,
+            is_primary: true
+          });
+
+        if (domainError) throw domainError;
+
+        console.log(`✅ Created domain entry: ${company.domain || company.website} for company: ${company.name}`);
         toast.success(`Created ${company.name} company and associated with ${contact.first_name}`);
       } else {
         // Use existing company
