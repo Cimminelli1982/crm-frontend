@@ -69,6 +69,20 @@ const InteractionsPage = ({ theme }) => {
             type,
             is_primary
           ),
+          contact_cities (
+            city_id,
+            cities (
+              city_id,
+              name
+            )
+          ),
+          contact_tags (
+            tag_id,
+            tags (
+              tag_id,
+              name
+            )
+          ),
           keep_in_touch (
             frequency,
             christmas,

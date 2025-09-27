@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
-import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaEdit, FaClock, FaTimes, FaCalendarAlt, FaHeart, FaCog, FaInfoCircle, FaStar, FaPlus, FaBriefcase, FaLink, FaHandshake, FaBolt, FaTrash, FaMapMarkerAlt, FaTag } from 'react-icons/fa';
+import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaEdit, FaClock, FaTimes, FaCalendarAlt, FaHeart, FaCog, FaInfoCircle, FaStar, FaPlus, FaBriefcase, FaLink, FaHandshake, FaBolt, FaTrash, FaMapMarkerAlt, FaTag, FaExternalLinkAlt } from 'react-icons/fa';
 import { FiSkipForward, FiAlertTriangle, FiX, FiMessageCircle } from 'react-icons/fi';
 import { toast } from 'react-hot-toast';
 import Modal from 'react-modal';
@@ -518,6 +518,7 @@ const ContactsList = ({
     if (!contact.companies || contact.companies.length === 0) missing.work.push('company');
 
     // Related tab - only check if arrays are explicitly empty (not undefined/not loaded)
+    // We can't assume undefined means missing since it might just not be loaded
     if (contact.contact_cities !== undefined && (!contact.contact_cities || contact.contact_cities.length === 0)) missing.related.push('cities');
     if (contact.contact_tags !== undefined && (!contact.contact_tags || contact.contact_tags.length === 0)) missing.related.push('tags');
 
@@ -584,8 +585,8 @@ const ContactsList = ({
       case 'description': return !contact.description || !contact.description.trim();
       case 'job_role': return !contact.job_role || !contact.job_role.trim();
       case 'linkedin': return !contact.linkedin || !contact.linkedin.trim();
-      case 'email': return !contact.contact_emails || contact.contact_emails.length === 0;
-      case 'mobile': return !contact.contact_mobiles || contact.contact_mobiles.length === 0;
+      case 'email': return contact.contact_emails !== undefined && (!contact.contact_emails || contact.contact_emails.length === 0);
+      case 'mobile': return contact.contact_mobiles !== undefined && (!contact.contact_mobiles || contact.contact_mobiles.length === 0);
       case 'company': return !contact.companies || contact.companies.length === 0;
       case 'cities': return contact.contact_cities !== undefined && (!contact.contact_cities || contact.contact_cities.length === 0);
       case 'tags': return contact.contact_tags !== undefined && (!contact.contact_tags || contact.contact_tags.length === 0);
@@ -593,7 +594,7 @@ const ContactsList = ({
       case 'frequency': return !contact.keep_in_touch_frequency;
       case 'christmas': return !contact.christmas || contact.christmas === 'no wishes set';
       case 'easter': return !contact.easter || contact.easter === 'no wishes set';
-      default: return true;
+      default: return false;
     }
   };
 
@@ -882,12 +883,33 @@ const ContactsList = ({
 
     // Set initial tab based on mode
     if (missingFieldsOnly) {
-      // In missing fields mode, prioritize Keep in Touch tab if it has missing fields
+      // In missing fields mode, prioritize tab that contains the most missing fields
       const visibleTabs = getVisibleTabs(contact, true);
       if (visibleTabs.length > 0) {
-        // If Keep in Touch is visible, prioritize it, otherwise use first tab
-        const keepInTouchTab = visibleTabs.find(tab => tab.id === 'Keep in touch');
-        const selectedTab = keepInTouchTab ? keepInTouchTab.id : visibleTabs[0].id;
+        // Get missing fields analysis
+        const missing = getMissingFields(contact);
+
+        // Count missing fields per tab
+        const tabMissingCount = {
+          'Info': missing.info.length,
+          'Contacts': missing.contacts.length,
+          'Work': missing.work.length,
+          'Related': missing.related.length,
+          'Keep in touch': missing.keepInTouch.length
+        };
+
+        // Find tab with most missing fields among visible tabs
+        let selectedTab = visibleTabs[0].id; // fallback
+        let maxMissingFields = 0;
+
+        for (const tab of visibleTabs) {
+          const missingCount = tabMissingCount[tab.id] || 0;
+          if (missingCount > maxMissingFields) {
+            maxMissingFields = missingCount;
+            selectedTab = tab.id;
+          }
+        }
+
         setQuickEditActiveTab(selectedTab);
       } else {
         setQuickEditActiveTab('Info'); // fallback
@@ -1677,7 +1699,7 @@ const ContactsList = ({
             created_at
           )
         `)
-        .eq('domain', domain);
+        .or(`domain.eq.${domain},domain.eq.https://${domain}/,domain.eq.http://${domain}/,domain.eq.${domain}/`);
 
       if (exactError) throw exactError;
 
@@ -1959,10 +1981,35 @@ const ContactsList = ({
   };
 
   // Handle rejecting company suggestion (opens manual modal)
-  const handleRejectSuggestion = (contact, e) => {
+  const handleRejectSuggestion = async (contact, e) => {
     if (e) e.stopPropagation();
-    setSelectedContactForCompany(contact);
-    setCompanyModalOpen(true);
+    setContactForQuickEdit(contact);
+
+    // Load company associations for the contact
+    try {
+      const { data: companiesData, error } = await supabase
+        .from('contact_companies')
+        .select(`
+          contact_companies_id,
+          relationship,
+          is_primary,
+          companies (
+            company_id,
+            name,
+            category,
+            description
+          )
+        `)
+        .eq('contact_id', contact.contact_id);
+
+      if (error) throw error;
+      setQuickEditContactCompanies(companiesData || []);
+    } catch (error) {
+      console.error('Error loading company associations:', error);
+      setQuickEditContactCompanies([]);
+    }
+
+    setQuickEditAssociateCompanyModalOpen(true);
   };
 
   // Handle add company click (manual)
@@ -2341,22 +2388,35 @@ const ContactsList = ({
                       </>
                     )}
                     <SuggestionActions>
-                      <SuggestionButton
-                        variant="accept"
-                        theme={theme}
-                        onClick={(e) => handleAcceptSuggestion(contact, companySuggestions[contact.contact_id], e)}
-                        title="Accept suggestion"
-                      >
-                        ✓
-                      </SuggestionButton>
-                      <SuggestionButton
-                        variant="reject"
-                        theme={theme}
-                        onClick={(e) => handleRejectSuggestion(contact, e)}
-                        title="Choose different company"
-                      >
-                        ✕
-                      </SuggestionButton>
+                      {companySuggestions[contact.contact_id].suggestionType === 'create' ? (
+                        <SuggestionButton
+                          variant="link"
+                          theme={theme}
+                          onClick={(e) => handleRejectSuggestion(contact, e)}
+                          title="Open company association modal"
+                        >
+                          <FaExternalLinkAlt />
+                        </SuggestionButton>
+                      ) : (
+                        <>
+                          <SuggestionButton
+                            variant="accept"
+                            theme={theme}
+                            onClick={(e) => handleAcceptSuggestion(contact, companySuggestions[contact.contact_id], e)}
+                            title="Accept suggestion"
+                          >
+                            ✓
+                          </SuggestionButton>
+                          <SuggestionButton
+                            variant="reject"
+                            theme={theme}
+                            onClick={(e) => handleRejectSuggestion(contact, e)}
+                            title="Choose different company"
+                          >
+                            ✕
+                          </SuggestionButton>
+                        </>
+                      )}
                     </SuggestionActions>
                   </SmartSuggestion>
                 ) : (
@@ -5574,19 +5634,33 @@ const SuggestionButton = styled.button`
   align-items: center;
   justify-content: center;
 
-  ${props => props.variant === 'accept' ? `
-    background: ${props.theme === 'light' ? '#10B981' : '#059669'};
-    color: white;
-    &:hover {
-      background: ${props.theme === 'light' ? '#059669' : '#047857'};
+  ${props => {
+    if (props.variant === 'accept') {
+      return `
+        background: ${props.theme === 'light' ? '#10B981' : '#059669'};
+        color: white;
+        &:hover {
+          background: ${props.theme === 'light' ? '#059669' : '#047857'};
+        }
+      `;
+    } else if (props.variant === 'link') {
+      return `
+        background: ${props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+        color: white;
+        &:hover {
+          background: ${props.theme === 'light' ? '#2563EB' : '#3B82F6'};
+        }
+      `;
+    } else {
+      return `
+        background: ${props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
+        color: white;
+        &:hover {
+          background: ${props.theme === 'light' ? '#6B7280' : '#4B5563'};
+        }
+      `;
     }
-  ` : `
-    background: ${props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
-    color: white;
-    &:hover {
-      background: ${props.theme === 'light' ? '#6B7280' : '#4B5563'};
-    }
-  `}
+  }}
 
   @media (max-width: 768px) {
     padding: 2px 4px;
@@ -6052,6 +6126,139 @@ const QuickEditAssociateCompanyModal = ({ theme, contact, contactCompanies, onCo
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [removingCompany, setRemovingCompany] = useState(null);
   const [emailDomains, setEmailDomains] = useState([]);
+  const [similarCompanies, setSimilarCompanies] = useState([]);
+
+  // Calculate similarity percentage between two strings using Levenshtein distance
+  const calculateSimilarity = (str1, str2) => {
+    const len1 = str1.length;
+    const len2 = str2.length;
+    const matrix = Array(len1 + 1).fill().map(() => Array(len2 + 1).fill(0));
+
+    for (let i = 0; i <= len1; i++) matrix[i][0] = i;
+    for (let j = 0; j <= len2; j++) matrix[0][j] = j;
+
+    for (let i = 1; i <= len1; i++) {
+      for (let j = 1; j <= len2; j++) {
+        if (str1[i - 1] === str2[j - 1]) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j] + 1,
+            matrix[i][j - 1] + 1,
+            matrix[i - 1][j - 1] + 1
+          );
+        }
+      }
+    }
+
+    const maxLen = Math.max(len1, len2);
+    const distance = matrix[len1][len2];
+    return ((maxLen - distance) / maxLen) * 100;
+  };
+
+  // Fetch similar companies based on domain suggestions
+  const fetchSimilarCompanies = async (domainSuggestions) => {
+    if (!domainSuggestions || domainSuggestions.length === 0) {
+      setSimilarCompanies([]);
+      return;
+    }
+
+    try {
+      // Get all companies from database
+      const { data: allCompanies, error } = await supabase
+        .from('companies')
+        .select('company_id, name, category')
+        .limit(500); // Limit to prevent performance issues
+
+      if (error) throw error;
+
+      const similarMatches = [];
+
+      for (const domainSuggestion of domainSuggestions) {
+        for (const company of allCompanies || []) {
+          const domainLower = domainSuggestion.toLowerCase();
+          const companyLower = company.name.toLowerCase();
+
+          // Debug specific case
+          if (companyLower.includes('exceptional')) {
+            console.log(`🔍 Processing company: "${company.name}" for domain: "${domainSuggestion}"`);
+          }
+
+          // Calculate similarity in multiple ways to catch edge cases
+          const directSimilarity = calculateSimilarity(domainLower, companyLower);
+
+          // Also try without spaces/punctuation for better matching
+          const domainClean = domainLower.replace(/[^a-z0-9]/g, '');
+          const companyClean = companyLower.replace(/[^a-z0-9]/g, '');
+          const cleanSimilarity = calculateSimilarity(domainClean, companyClean);
+
+          // Try language-aware matching (arte = art, etc.)
+          const domainNormalized = domainClean.replace(/arte$/, 'art').replace(/art$/, 'art');
+          const companyNormalized = companyClean.replace(/arte$/, 'art').replace(/art$/, 'art');
+          const normalizedSimilarity = calculateSimilarity(domainNormalized, companyNormalized);
+
+          // Check if domain is a prefix/substring of company name (high priority match)
+          let substringScore = 0;
+          if (companyClean.startsWith(domainClean) || domainClean.startsWith(companyClean)) {
+            // Perfect prefix match gets 95% score
+            substringScore = 95;
+            if (companyLower.includes('exceptional')) {
+              console.log(`🎯 PREFIX MATCH: "${domainClean}" and "${companyClean}" - score: 95`);
+            }
+          } else if (companyClean.includes(domainClean) || domainClean.includes(companyClean)) {
+            // Substring match gets 85% score
+            substringScore = 85;
+            if (companyLower.includes('exceptional')) {
+              console.log(`🎯 SUBSTRING MATCH: "${domainClean}" and "${companyClean}" - score: 85`);
+            }
+          }
+
+          // Use the highest similarity score from all methods
+          const similarity = Math.max(directSimilarity, cleanSimilarity, normalizedSimilarity, substringScore);
+
+          // Debug logging only for matches above threshold
+          if (similarity >= 70 && (domainLower.includes('exceptional') || companyLower.includes('exceptional'))) {
+            console.log(`✅ MATCH: "${domainLower}" vs "${companyLower}":`, {
+              direct: directSimilarity,
+              clean: cleanSimilarity,
+              normalized: normalizedSimilarity,
+              substring: substringScore,
+              final: similarity
+            });
+          }
+
+          if (similarity >= 70) {
+            // Check if company is already in the contact's associations
+            const isAlreadyAssociated = contactCompanies.some(
+              relation => relation.companies?.company_id === company.company_id
+            );
+
+            if (!isAlreadyAssociated) {
+              similarMatches.push({
+                ...company,
+                similarity: Math.round(similarity),
+                originalDomain: domainSuggestion
+              });
+            }
+          }
+        }
+      }
+
+      // Sort by similarity percentage (highest first) and remove duplicates
+      const uniqueMatches = similarMatches
+        .filter((company, index, self) =>
+          self.findIndex(c => c.company_id === company.company_id) === index
+        )
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, 5); // Limit to top 5 matches
+
+      setSimilarCompanies(uniqueMatches);
+      console.log(`🔍 Fuzzy matching results for domains [${domainSuggestions}]:`, uniqueMatches);
+    } catch (err) {
+      console.error('Error fetching similar companies:', err);
+      setSimilarCompanies([]);
+    }
+  };
 
   // Fetch email domains from contact emails
   const fetchEmailDomains = async () => {
@@ -6082,9 +6289,13 @@ const QuickEditAssociateCompanyModal = ({ theme, contact, contactCompanies, onCo
         .filter((domain, index, self) => self.indexOf(domain) === index); // Remove duplicates
 
       setEmailDomains(domains);
+
+      // Fetch similar companies based on domain suggestions
+      await fetchSimilarCompanies(domains);
     } catch (err) {
       console.error('Error fetching email domains:', err);
       setEmailDomains([]);
+      setSimilarCompanies([]);
     }
   };
 
@@ -6288,6 +6499,68 @@ const QuickEditAssociateCompanyModal = ({ theme, contact, contactCompanies, onCo
                     }}
                   >
                     {domain}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Similar Companies Based on Domain Matching */}
+          {similarCompanies.length > 0 && searchTerm.length < 3 && (
+            <div style={{ marginTop: '16px' }}>
+              <div style={{
+                fontSize: '12px',
+                color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                marginBottom: '8px',
+                fontWeight: '500'
+              }}>
+                Similar companies (70%+ match):
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {similarCompanies.map((company, index) => (
+                  <button
+                    key={index}
+                    onClick={() => handleAddCompany(company)}
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '13px',
+                      border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#4B5563'}`,
+                      borderRadius: '6px',
+                      backgroundColor: theme === 'light' ? '#FFFFFF' : '#374151',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseOver={(e) => {
+                      e.target.style.backgroundColor = theme === 'light' ? '#F3F4F6' : '#4B5563';
+                      e.target.style.borderColor = theme === 'light' ? '#D1D5DB' : '#6B7280';
+                    }}
+                    onMouseOut={(e) => {
+                      e.target.style.backgroundColor = theme === 'light' ? '#FFFFFF' : '#374151';
+                      e.target.style.borderColor = theme === 'light' ? '#E5E7EB' : '#4B5563';
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: '500' }}>{company.name}</div>
+                      <div style={{
+                        fontSize: '11px',
+                        color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                        marginTop: '2px'
+                      }}>
+                        {company.similarity}% match with "{company.originalDomain}"
+                      </div>
+                    </div>
+                    <div style={{
+                      fontSize: '11px',
+                      color: theme === 'light' ? '#059669' : '#10B981',
+                      fontWeight: '600'
+                    }}>
+                      {company.similarity}%
+                    </div>
                   </button>
                 ))}
               </div>
