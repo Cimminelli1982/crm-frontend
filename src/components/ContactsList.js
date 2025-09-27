@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
-import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaEdit, FaClock, FaTimes, FaCalendarAlt, FaHeart, FaCog, FaInfoCircle, FaStar, FaPlus, FaBriefcase, FaLink, FaHandshake } from 'react-icons/fa';
+import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaEdit, FaClock, FaTimes, FaCalendarAlt, FaHeart, FaCog, FaInfoCircle, FaStar, FaPlus, FaBriefcase, FaLink, FaHandshake, FaBolt, FaTrash } from 'react-icons/fa';
 import { FiSkipForward, FiAlertTriangle, FiX, FiMessageCircle } from 'react-icons/fi';
 import { toast } from 'react-hot-toast';
 import Modal from 'react-modal';
@@ -159,6 +159,14 @@ const ContactsList = ({
   const [quickEditLastName, setQuickEditLastName] = useState('');
   const [quickEditLinkedin, setQuickEditLinkedin] = useState('');
 
+  // Contact emails and mobiles for Quick Edit Modal
+  const [quickEditContactEmails, setQuickEditContactEmails] = useState([]);
+  const [quickEditContactMobiles, setQuickEditContactMobiles] = useState([]);
+  const [newEmailText, setNewEmailText] = useState('');
+  const [newEmailType, setNewEmailType] = useState('personal');
+  const [newMobileText, setNewMobileText] = useState('');
+  const [newMobileType, setNewMobileType] = useState('personal');
+
   // Company association for Quick Edit Modal
   const [quickEditAssociateCompanyModalOpen, setQuickEditAssociateCompanyModalOpen] = useState(false);
   const [quickEditContactCompanies, setQuickEditContactCompanies] = useState([]);
@@ -168,6 +176,10 @@ const ContactsList = ({
   const [selectedContactForCompany, setSelectedContactForCompany] = useState(null);
   // Smart company suggestions state
   const [companySuggestions, setCompanySuggestions] = useState({});
+
+  // Powerups menu modal state
+  const [powerupsMenuOpen, setPowerupsMenuOpen] = useState(false);
+  const [contactForPowerups, setContactForPowerups] = useState(null);
 
   const frequencyOptions = [
     'Weekly',
@@ -221,6 +233,12 @@ const ContactsList = ({
 
     // Navigate to the new contact edit page
     navigate(`/contact/${contactId}/edit`);
+  };
+
+  const handleOpenPowerupsMenu = (contact, e) => {
+    if (e) e.stopPropagation();
+    setContactForPowerups(contact);
+    setPowerupsMenuOpen(true);
   };
 
   const handleSkipContact = async (contact, e) => {
@@ -458,20 +476,6 @@ const ContactsList = ({
     const hasEaster = !!(contact.easter &&
                      contact.easter !== 'no wishes set');
 
-    // Debug logging for Pierdavide Fiore
-    if (contact.first_name === 'Pierdavide' && contact.last_name === 'Fiore') {
-      console.log('Pierdavide Fiore Debug:', {
-        birthday: contact.birthday,
-        keep_in_touch_frequency: contact.keep_in_touch_frequency,
-        christmas: contact.christmas,
-        easter: contact.easter,
-        hasBirthday,
-        hasFrequency,
-        hasChristmas,
-        hasEaster,
-        filledFieldsCount: [hasBirthday, hasFrequency, hasChristmas, hasEaster].filter(Boolean).length
-      });
-    }
 
     const filledFields = [hasBirthday, hasFrequency, hasChristmas, hasEaster].filter(Boolean).length;
 
@@ -622,6 +626,36 @@ const ContactsList = ({
       setQuickEditContactCompanies([]);
     }
 
+    // Load contact emails
+    try {
+      const { data: emailsData, error: emailsError } = await supabase
+        .from('contact_emails')
+        .select('email_id, email, type, is_primary')
+        .eq('contact_id', contact.contact_id)
+        .order('is_primary', { ascending: false });
+
+      if (emailsError) throw emailsError;
+      setQuickEditContactEmails(emailsData || []);
+    } catch (error) {
+      console.error('Error loading contact emails:', error);
+      setQuickEditContactEmails([]);
+    }
+
+    // Load contact mobiles
+    try {
+      const { data: mobilesData, error: mobilesError } = await supabase
+        .from('contact_mobiles')
+        .select('mobile_id, mobile, type, is_primary')
+        .eq('contact_id', contact.contact_id)
+        .order('is_primary', { ascending: false });
+
+      if (mobilesError) throw mobilesError;
+      setQuickEditContactMobiles(mobilesData || []);
+    } catch (error) {
+      console.error('Error loading contact mobiles:', error);
+      setQuickEditContactMobiles([]);
+    }
+
     setQuickEditContactModalOpen(true);
   };
 
@@ -713,6 +747,202 @@ const ContactsList = ({
     }
   };
 
+  // Handle adding new email
+  const handleAddEmail = async (email, type = 'personal') => {
+    if (!contactForQuickEdit || !email.trim()) return;
+
+    try {
+      const { data: newEmail, error } = await supabase
+        .from('contact_emails')
+        .insert({
+          contact_id: contactForQuickEdit.contact_id,
+          email: email.trim(),
+          type: type,
+          is_primary: quickEditContactEmails.length === 0
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setQuickEditContactEmails(prev => [...prev, newEmail]);
+      toast.success('Email added successfully');
+    } catch (error) {
+      console.error('Error adding email:', error);
+      toast.error('Failed to add email');
+    }
+  };
+
+  // Handle removing email
+  const handleRemoveEmail = async (emailId) => {
+    try {
+      const { error } = await supabase
+        .from('contact_emails')
+        .delete()
+        .eq('email_id', emailId);
+
+      if (error) throw error;
+
+      setQuickEditContactEmails(prev => prev.filter(e => e.email_id !== emailId));
+      toast.success('Email removed successfully');
+    } catch (error) {
+      console.error('Error removing email:', error);
+      toast.error('Failed to remove email');
+    }
+  };
+
+  // Handle updating email type
+  const handleUpdateEmailType = async (emailId, newType) => {
+    try {
+      const { error } = await supabase
+        .from('contact_emails')
+        .update({ type: newType })
+        .eq('email_id', emailId);
+
+      if (error) throw error;
+
+      setQuickEditContactEmails(prev =>
+        prev.map(email =>
+          email.email_id === emailId ? { ...email, type: newType } : email
+        )
+      );
+      toast.success('Email type updated successfully');
+    } catch (error) {
+      console.error('Error updating email type:', error);
+      toast.error('Failed to update email type');
+    }
+  };
+
+  // Handle setting email as primary
+  const handleSetEmailPrimary = async (emailId) => {
+    try {
+      // First, remove primary status from all emails
+      const { error: removeError } = await supabase
+        .from('contact_emails')
+        .update({ is_primary: false })
+        .eq('contact_id', contactForQuickEdit.contact_id);
+
+      if (removeError) throw removeError;
+
+      // Then set the selected email as primary
+      const { error: setPrimaryError } = await supabase
+        .from('contact_emails')
+        .update({ is_primary: true })
+        .eq('email_id', emailId);
+
+      if (setPrimaryError) throw setPrimaryError;
+
+      setQuickEditContactEmails(prev =>
+        prev.map(email => ({
+          ...email,
+          is_primary: email.email_id === emailId
+        }))
+      );
+      toast.success('Primary email updated successfully');
+    } catch (error) {
+      console.error('Error setting primary email:', error);
+      toast.error('Failed to set primary email');
+    }
+  };
+
+  // Handle adding new mobile
+  const handleAddMobile = async (mobile, type = 'personal') => {
+    if (!contactForQuickEdit || !mobile.trim()) return;
+
+    try {
+      const { data: newMobile, error } = await supabase
+        .from('contact_mobiles')
+        .insert({
+          contact_id: contactForQuickEdit.contact_id,
+          mobile: mobile.trim(),
+          type: type,
+          is_primary: quickEditContactMobiles.length === 0
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setQuickEditContactMobiles(prev => [...prev, newMobile]);
+      toast.success('Mobile added successfully');
+    } catch (error) {
+      console.error('Error adding mobile:', error);
+      toast.error('Failed to add mobile');
+    }
+  };
+
+  // Handle removing mobile
+  const handleRemoveMobile = async (mobileId) => {
+    try {
+      const { error } = await supabase
+        .from('contact_mobiles')
+        .delete()
+        .eq('mobile_id', mobileId);
+
+      if (error) throw error;
+
+      setQuickEditContactMobiles(prev => prev.filter(m => m.mobile_id !== mobileId));
+      toast.success('Mobile removed successfully');
+    } catch (error) {
+      console.error('Error removing mobile:', error);
+      toast.error('Failed to remove mobile');
+    }
+  };
+
+  // Handle updating mobile type
+  const handleUpdateMobileType = async (mobileId, newType) => {
+    try {
+      const { error } = await supabase
+        .from('contact_mobiles')
+        .update({ type: newType })
+        .eq('mobile_id', mobileId);
+
+      if (error) throw error;
+
+      setQuickEditContactMobiles(prev =>
+        prev.map(mobile =>
+          mobile.mobile_id === mobileId ? { ...mobile, type: newType } : mobile
+        )
+      );
+      toast.success('Mobile type updated successfully');
+    } catch (error) {
+      console.error('Error updating mobile type:', error);
+      toast.error('Failed to update mobile type');
+    }
+  };
+
+  // Handle setting mobile as primary
+  const handleSetMobilePrimary = async (mobileId) => {
+    try {
+      // First, remove primary status from all mobiles
+      const { error: removeError } = await supabase
+        .from('contact_mobiles')
+        .update({ is_primary: false })
+        .eq('contact_id', contactForQuickEdit.contact_id);
+
+      if (removeError) throw removeError;
+
+      // Then set the selected mobile as primary
+      const { error: setPrimaryError } = await supabase
+        .from('contact_mobiles')
+        .update({ is_primary: true })
+        .eq('mobile_id', mobileId);
+
+      if (setPrimaryError) throw setPrimaryError;
+
+      setQuickEditContactMobiles(prev =>
+        prev.map(mobile => ({
+          ...mobile,
+          is_primary: mobile.mobile_id === mobileId
+        }))
+      );
+      toast.success('Primary mobile updated successfully');
+    } catch (error) {
+      console.error('Error setting primary mobile:', error);
+      toast.error('Failed to set primary mobile');
+    }
+  };
+
   // Handle saving quick edit contact details
   const handleSaveQuickEditContact = async () => {
     if (!contactForQuickEdit) return;
@@ -743,6 +973,10 @@ const ContactsList = ({
       setQuickEditFirstName('');
       setQuickEditLastName('');
       setQuickEditLinkedin('');
+      setNewEmailText('');
+      setNewEmailType('personal');
+      setNewMobileText('');
+      setNewMobileType('personal');
       if (onContactUpdate) onContactUpdate();
     } catch (error) {
       console.error('Error updating contact details:', error);
@@ -858,14 +1092,12 @@ const ContactsList = ({
           }
 
           if (bestMatch) {
-            console.log(`✅ Selected: ${bestMatch.name} (score: ${bestScore})`);
             return bestMatch;
           }
         }
       }
 
       // Step 3: Intelligent domain variant matching for corporate groups
-      console.log(`🧠 Checking for intelligent domain variants of: ${domain}`);
 
       // Extract the core company name from the domain (before first dot)
       const domainParts = domain.split('.');
@@ -894,7 +1126,6 @@ const ContactsList = ({
           .limit(5);
 
         if (!variantError && variantMatches && variantMatches.length > 0) {
-          console.log(`🎯 Found ${variantMatches.length} domain variants for "${coreCompanyName}":`, variantMatches.map(m => `${m.domain} → ${m.companies.name}`));
 
           // Score the matches based on domain similarity and company relevance
           let bestMatch = null;
@@ -932,7 +1163,6 @@ const ContactsList = ({
               score += 5;
             }
 
-            console.log(`  📊 ${variantCompany.name} (${variant.domain}): score ${score}`);
 
             if (score > bestScore) {
               bestScore = score;
@@ -947,16 +1177,9 @@ const ContactsList = ({
           }
 
           if (bestMatch && bestScore >= 30) { // Minimum threshold for confidence
-            console.log(`✅ Best variant match: ${bestMatch.name} (score: ${bestScore})`);
             return bestMatch;
-          } else {
-            console.log(`⚠️ Variant matches found but scores too low (best: ${bestScore})`);
           }
-        } else {
-          console.log(`🔍 No domain variants found for "${coreCompanyName}"`);
         }
-      } else {
-        console.log(`⏭️ Skipping variant search for generic/short domain: ${domain}`);
       }
 
       // Step 4: If no match found, suggest creating new company
@@ -984,7 +1207,6 @@ const ContactsList = ({
 
       // Only process if we have a reasonable number of contacts (like Missing > Company section)
       if (contactsWithoutCompanies.length > 0 && contactsWithoutCompanies.length <= 50) {
-        console.log(`🔍 Loading company suggestions for ${contactsWithoutCompanies.length} contacts...`);
 
         // Process in batches of 10 to avoid overwhelming the database
         const batchSize = 10;
@@ -1013,10 +1235,8 @@ const ContactsList = ({
           }
         }
 
-        console.log(`✅ Found ${Object.keys(suggestions).length} company suggestions`);
         setCompanySuggestions(suggestions);
       } else if (contactsWithoutCompanies.length > 50) {
-        console.log(`⚠️ Too many contacts (${contactsWithoutCompanies.length}) - skipping company suggestions`);
       }
     };
 
@@ -1432,9 +1652,11 @@ const ContactsList = ({
                     {formatDaysUntilNext(contact.days_until_next, contact)}
                   </KeepInTouchStatus>
                 )}
-                {contact.job_role && (
+                {(contact.job_role || (contact.score && contact.score > 0)) && (
                   <ContactRoleContainer>
-                    <ContactRole theme={theme}>{contact.job_role}</ContactRole>
+                    {contact.job_role && (
+                      <ContactRole theme={theme}>{contact.job_role}</ContactRole>
+                    )}
                     {contact.score && contact.score > 0 && (
                       <ContactScoreStars>
                         {renderScoreStars(contact.score, 'small')}
@@ -1547,11 +1769,11 @@ const ContactsList = ({
 
                   <CardActionButton
                     theme={theme}
-                    onClick={(e) => handleEditContact(contact.contact_id, e)}
-                    $settings
-                    title="Edit contact"
+                    onClick={(e) => handleOpenPowerupsMenu(contact, e)}
+                    $powerups
+                    title="Contact Power-ups"
                   >
-                    <FaCog />
+                    <FaBolt />
                   </CardActionButton>
                 </>
               ) : pageContext === 'keepInTouch' ? (
@@ -2333,6 +2555,10 @@ const ContactsList = ({
           setQuickEditContactCategory('Not Set');
           setQuickEditContactScore(0);
           setContactForQuickEdit(null);
+          setNewEmailText('');
+          setNewEmailType('personal');
+          setNewMobileText('');
+          setNewMobileType('personal');
         }}
         shouldCloseOnOverlayClick={true}
         style={{
@@ -2367,6 +2593,10 @@ const ContactsList = ({
                 setQuickEditDescriptionText('');
                 setQuickEditJobRoleText('');
                 setContactForQuickEdit(null);
+                setNewEmailText('');
+                setNewEmailType('personal');
+                setNewMobileText('');
+                setNewMobileType('personal');
               }}
               theme={theme}
             >
@@ -2378,6 +2608,7 @@ const ContactsList = ({
             <QuickEditTabMenu theme={theme}>
               {[
                 { id: 'Info', label: 'Info', icon: FaInfoCircle },
+                { id: 'Contacts', label: 'Contacts', icon: FaEnvelope },
                 { id: 'Work', label: 'Work', icon: FaBriefcase },
                 { id: 'Related', label: 'Related', icon: FaLink },
                 { id: 'Keep in touch', label: 'Keep in touch', icon: FaHandshake }
@@ -2575,6 +2806,418 @@ const ContactsList = ({
                 </div>
               )}
 
+              {/* Contacts Tab */}
+              {quickEditActiveTab === 'Contacts' && (
+                <div style={{
+                  height: '460px',
+                  overflow: 'auto',
+                  paddingRight: '8px',
+                  marginRight: '-8px'
+                }}>
+                  {/* Emails Section */}
+                  <div style={{ marginBottom: '32px' }}>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: '12px'
+                    }}>
+                      <label style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB'
+                      }}>
+                        <FaEnvelope style={{ fontSize: '14px', color: '#3B82F6' }} />
+                        Email Addresses
+                      </label>
+                    </div>
+
+                    {/* Add New Email */}
+                    <div style={{
+                      marginBottom: '16px',
+                      display: 'flex',
+                      gap: '8px',
+                      alignItems: 'center'
+                    }}>
+                      <input
+                        type="email"
+                        value={newEmailText}
+                        onChange={(e) => setNewEmailText(e.target.value)}
+                        placeholder="Add email address..."
+                        style={{
+                          flex: 1,
+                          padding: '8px 12px',
+                          border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                          borderRadius: '6px',
+                          backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                          fontSize: '14px',
+                          fontFamily: 'inherit'
+                        }}
+                      />
+                      <select
+                        value={newEmailType}
+                        onChange={(e) => setNewEmailType(e.target.value)}
+                        style={{
+                          padding: '8px 12px',
+                          border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                          borderRadius: '6px',
+                          backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                          fontSize: '14px',
+                          fontFamily: 'inherit'
+                        }}
+                      >
+                        <option value="personal">Personal</option>
+                        <option value="work">Work</option>
+                        <option value="other">Other</option>
+                      </select>
+                      <button
+                        onClick={() => {
+                          if (newEmailText.trim()) {
+                            handleAddEmail(newEmailText, newEmailType);
+                            setNewEmailText('');
+                          }
+                        }}
+                        style={{
+                          padding: '8px 12px',
+                          backgroundColor: '#3B82F6',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '14px',
+                          fontWeight: '500',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <FaPlus style={{ fontSize: '12px' }} />
+                        Add
+                      </button>
+                    </div>
+
+                    {/* Email List */}
+                    <div style={{
+                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                      borderRadius: '6px',
+                      backgroundColor: theme === 'light' ? '#F9FAFB' : '#111827',
+                      fontSize: '14px',
+                      minHeight: '100px',
+                      maxHeight: '200px',
+                      overflowY: 'auto'
+                    }}>
+                      {quickEditContactEmails?.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                          {quickEditContactEmails.map((emailData, index) => (
+                            <div key={emailData.email_id} style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: '12px',
+                              backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                              borderRadius: index === 0 ? '6px 6px 0 0' : index === quickEditContactEmails.length - 1 ? '0 0 6px 6px' : '0'
+                            }}>
+                              <FaEnvelope style={{ fontSize: '14px', color: '#3B82F6' }} />
+                              <div style={{ flex: 1 }}>
+                                <div style={{
+                                  color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                  fontWeight: '500',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px'
+                                }}>
+                                  {emailData.email}
+                                  {emailData.is_primary && (
+                                    <span style={{
+                                      fontSize: '10px',
+                                      padding: '2px 6px',
+                                      backgroundColor: '#10B981',
+                                      color: 'white',
+                                      borderRadius: '10px',
+                                      fontWeight: '600'
+                                    }}>
+                                      PRIMARY
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <select
+                                value={emailData.type}
+                                onChange={(e) => handleUpdateEmailType(emailData.email_id, e.target.value)}
+                                style={{
+                                  padding: '4px 8px',
+                                  border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                                  borderRadius: '4px',
+                                  backgroundColor: theme === 'light' ? '#FFFFFF' : '#374151',
+                                  color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                  fontSize: '12px',
+                                  fontFamily: 'inherit'
+                                }}
+                              >
+                                <option value="personal">Personal</option>
+                                <option value="work">Work</option>
+                                <option value="other">Other</option>
+                              </select>
+                              {!emailData.is_primary && (
+                                <button
+                                  onClick={() => handleSetEmailPrimary(emailData.email_id)}
+                                  style={{
+                                    padding: '4px 6px',
+                                    backgroundColor: 'transparent',
+                                    color: '#10B981',
+                                    border: `1px solid #10B981`,
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                    fontSize: '10px',
+                                    fontWeight: '500'
+                                  }}
+                                >
+                                  Set Primary
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleRemoveEmail(emailData.email_id)}
+                                style={{
+                                  padding: '4px',
+                                  backgroundColor: 'transparent',
+                                  color: '#EF4444',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  fontSize: '12px'
+                                }}
+                              >
+                                <FaTrash />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          height: '80px',
+                          color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                          textAlign: 'center'
+                        }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                            <FaEnvelope style={{ fontSize: '24px', opacity: 0.5 }} />
+                            <span>No email addresses</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Mobile Numbers Section */}
+                  <div>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: '12px'
+                    }}>
+                      <label style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB'
+                      }}>
+                        <FaPhone style={{ fontSize: '14px', color: '#3B82F6' }} />
+                        Mobile Numbers
+                      </label>
+                    </div>
+
+                    {/* Add New Mobile */}
+                    <div style={{
+                      marginBottom: '16px',
+                      display: 'flex',
+                      gap: '8px',
+                      alignItems: 'center'
+                    }}>
+                      <input
+                        type="tel"
+                        value={newMobileText}
+                        onChange={(e) => setNewMobileText(e.target.value)}
+                        placeholder="Add mobile number..."
+                        style={{
+                          flex: 1,
+                          padding: '8px 12px',
+                          border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                          borderRadius: '6px',
+                          backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                          fontSize: '14px',
+                          fontFamily: 'inherit'
+                        }}
+                      />
+                      <select
+                        value={newMobileType}
+                        onChange={(e) => setNewMobileType(e.target.value)}
+                        style={{
+                          padding: '8px 12px',
+                          border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                          borderRadius: '6px',
+                          backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                          fontSize: '14px',
+                          fontFamily: 'inherit'
+                        }}
+                      >
+                        <option value="personal">Personal</option>
+                        <option value="work">Work</option>
+                        <option value="other">Other</option>
+                      </select>
+                      <button
+                        onClick={() => {
+                          if (newMobileText.trim()) {
+                            handleAddMobile(newMobileText, newMobileType);
+                            setNewMobileText('');
+                          }
+                        }}
+                        style={{
+                          padding: '8px 12px',
+                          backgroundColor: '#3B82F6',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '14px',
+                          fontWeight: '500',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <FaPlus style={{ fontSize: '12px' }} />
+                        Add
+                      </button>
+                    </div>
+
+                    {/* Mobile List */}
+                    <div style={{
+                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                      borderRadius: '6px',
+                      backgroundColor: theme === 'light' ? '#F9FAFB' : '#111827',
+                      fontSize: '14px',
+                      minHeight: '100px',
+                      maxHeight: '200px',
+                      overflowY: 'auto'
+                    }}>
+                      {quickEditContactMobiles?.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                          {quickEditContactMobiles.map((mobileData, index) => (
+                            <div key={mobileData.mobile_id} style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: '12px',
+                              backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                              borderRadius: index === 0 ? '6px 6px 0 0' : index === quickEditContactMobiles.length - 1 ? '0 0 6px 6px' : '0'
+                            }}>
+                              <FaPhone style={{ fontSize: '14px', color: '#3B82F6' }} />
+                              <div style={{ flex: 1 }}>
+                                <div style={{
+                                  color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                  fontWeight: '500',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px'
+                                }}>
+                                  {mobileData.mobile}
+                                  {mobileData.is_primary && (
+                                    <span style={{
+                                      fontSize: '10px',
+                                      padding: '2px 6px',
+                                      backgroundColor: '#10B981',
+                                      color: 'white',
+                                      borderRadius: '10px',
+                                      fontWeight: '600'
+                                    }}>
+                                      PRIMARY
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <select
+                                value={mobileData.type}
+                                onChange={(e) => handleUpdateMobileType(mobileData.mobile_id, e.target.value)}
+                                style={{
+                                  padding: '4px 8px',
+                                  border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                                  borderRadius: '4px',
+                                  backgroundColor: theme === 'light' ? '#FFFFFF' : '#374151',
+                                  color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                  fontSize: '12px',
+                                  fontFamily: 'inherit'
+                                }}
+                              >
+                                <option value="personal">Personal</option>
+                                <option value="work">Work</option>
+                                <option value="other">Other</option>
+                              </select>
+                              {!mobileData.is_primary && (
+                                <button
+                                  onClick={() => handleSetMobilePrimary(mobileData.mobile_id)}
+                                  style={{
+                                    padding: '4px 6px',
+                                    backgroundColor: 'transparent',
+                                    color: '#10B981',
+                                    border: `1px solid #10B981`,
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                    fontSize: '10px',
+                                    fontWeight: '500'
+                                  }}
+                                >
+                                  Set Primary
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleRemoveMobile(mobileData.mobile_id)}
+                                style={{
+                                  padding: '4px',
+                                  backgroundColor: 'transparent',
+                                  color: '#EF4444',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  fontSize: '12px'
+                                }}
+                              >
+                                <FaTrash />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          height: '80px',
+                          color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                          textAlign: 'center'
+                        }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                            <FaPhone style={{ fontSize: '24px', opacity: 0.5 }} />
+                            <span>No mobile numbers</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Work Tab */}
               {quickEditActiveTab === 'Work' && (
                 <div style={{
@@ -2680,8 +3323,8 @@ const ContactsList = ({
                       borderRadius: '6px',
                       backgroundColor: theme === 'light' ? '#F9FAFB' : '#111827',
                       fontSize: '14px',
-                      minHeight: '100px',
-                      maxHeight: '200px',
+                      minHeight: '150px',
+                      maxHeight: '300px',
                       overflowY: 'auto'
                     }}>
                       {quickEditContactCompanies?.length > 0 ? (
@@ -2891,6 +3534,10 @@ const ContactsList = ({
                     setQuickEditLastName('');
                     setQuickEditLinkedin('');
                     setContactForQuickEdit(null);
+                    setNewEmailText('');
+                    setNewEmailType('personal');
+                    setNewMobileText('');
+                    setNewMobileType('personal');
                   }}
                   style={{
                     padding: '10px 20px',
@@ -3014,6 +3661,99 @@ const ContactsList = ({
             }}
           />
         )}
+      </Modal>
+
+      {/* Contacts Powerups Menu Modal */}
+      <Modal
+        isOpen={powerupsMenuOpen}
+        onRequestClose={() => setPowerupsMenuOpen(false)}
+        style={{
+          content: {
+            top: '50%',
+            left: '50%',
+            right: 'auto',
+            bottom: 'auto',
+            marginRight: '-50%',
+            transform: 'translate(-50%, -50%)',
+            background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+            border: theme === 'light' ? '1px solid #E5E7EB' : '1px solid #374151',
+            borderRadius: '12px',
+            padding: '0',
+            width: '320px',
+            maxWidth: '90%'
+          },
+          overlay: {
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            zIndex: 1000
+          }
+        }}
+        contentLabel="Contact Power-ups"
+      >
+        <PowerupsMenuContainer theme={theme}>
+          <PowerupsMenuHeader theme={theme}>
+            <PowerupsMenuTitle theme={theme}>
+              ⚡ Contact Power-ups
+            </PowerupsMenuTitle>
+            <PowerupsMenuCloseButton
+              theme={theme}
+              onClick={() => setPowerupsMenuOpen(false)}
+            >
+              <FiX />
+            </PowerupsMenuCloseButton>
+          </PowerupsMenuHeader>
+
+          <PowerupsMenuContent>
+            <PowerupsMenuItem
+              theme={theme}
+              onClick={() => {
+                setPowerupsMenuOpen(false);
+                handleOpenQuickEditContactModal(contactForPowerups);
+              }}
+            >
+              <PowerupsMenuIcon>
+                <FaEdit />
+              </PowerupsMenuIcon>
+              <PowerupsMenuText theme={theme}>
+                <PowerupsMenuItemTitle theme={theme}>Edit Contact</PowerupsMenuItemTitle>
+                <PowerupsMenuItemSubtitle theme={theme}>Quick edit contact details</PowerupsMenuItemSubtitle>
+              </PowerupsMenuText>
+            </PowerupsMenuItem>
+
+            <PowerupsMenuItem
+              theme={theme}
+              onClick={() => {
+                setPowerupsMenuOpen(false);
+                // TODO: Open merge modal
+                console.log('Open merge modal for:', contactForPowerups?.first_name, contactForPowerups?.last_name);
+              }}
+            >
+              <PowerupsMenuIcon>
+                <FaHandshake />
+              </PowerupsMenuIcon>
+              <PowerupsMenuText theme={theme}>
+                <PowerupsMenuItemTitle theme={theme}>Merge Contacts</PowerupsMenuItemTitle>
+                <PowerupsMenuItemSubtitle theme={theme}>Combine duplicate contacts</PowerupsMenuItemSubtitle>
+              </PowerupsMenuText>
+            </PowerupsMenuItem>
+
+            <PowerupsMenuItem
+              theme={theme}
+              onClick={() => {
+                setPowerupsMenuOpen(false);
+                // TODO: Open enrich modal
+                console.log('Open enrich modal for:', contactForPowerups?.first_name, contactForPowerups?.last_name);
+              }}
+            >
+              <PowerupsMenuIcon>
+                <FaBriefcase />
+              </PowerupsMenuIcon>
+              <PowerupsMenuText theme={theme}>
+                <PowerupsMenuItemTitle theme={theme}>Enrich Contact</PowerupsMenuItemTitle>
+                <PowerupsMenuItemSubtitle theme={theme}>Add LinkedIn & company data</PowerupsMenuItemSubtitle>
+              </PowerupsMenuText>
+            </PowerupsMenuItem>
+          </PowerupsMenuContent>
+        </PowerupsMenuContainer>
       </Modal>
     </ContactsListContainer>
   );
@@ -3400,7 +4140,6 @@ const PriorityIndicator = styled.div`
 const ContactRole = styled.div`
   color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
   font-size: 14px;
-  margin-bottom: 4px;
 `;
 
 const ContactRoleContainer = styled.div`
@@ -3586,6 +4325,7 @@ const CardActionButton = styled.button`
     props.$communication ? '#10B981' :           // Green for communication (interactions page)
     props.$keepInTouch ? '#EF4444' :            // Red/Pink for keep in touch (interactions page)
     props.$settings ? '#6B7280' :               // Gray for settings (interactions page)
+    props.$powerups ? '#F59E0B' :               // Yellow for powerups menu
     '#6B7280'                                    // Default gray
   };
   color: white;
@@ -4335,7 +5075,7 @@ const QuickEditTab = styled.button`
   }
 
   .tab-text {
-    display: inline;
+    display: none;
   }
 
   @media (max-width: 768px) {
@@ -4547,6 +5287,104 @@ const QuickEditCompanySuggestionItem = styled.div`
     opacity: 0.5;
     cursor: not-allowed;
   }
+`;
+
+// Powerups Menu Styled Components
+const PowerupsMenuContainer = styled.div`
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+  border-radius: 12px;
+  overflow: hidden;
+`;
+
+const PowerupsMenuHeader = styled.div`
+  padding: 20px 24px;
+  border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: ${props => props.theme === 'light' ? '#F9FAFB' : '#111827'};
+`;
+
+const PowerupsMenuTitle = styled.h3`
+  font-size: 18px;
+  font-weight: 600;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const PowerupsMenuCloseButton = styled.button`
+  background: none;
+  border: none;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  transition: all 0.2s;
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
+    color: ${props => props.theme === 'light' ? '#374151' : '#F3F4F6'};
+  }
+`;
+
+const PowerupsMenuContent = styled.div`
+  padding: 16px;
+`;
+
+const PowerupsMenuItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: 8px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#F9FAFB' : '#374151'};
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+`;
+
+const PowerupsMenuIcon = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #F59E0B, #D97706);
+  color: white;
+  font-size: 16px;
+`;
+
+const PowerupsMenuText = styled.div`
+  flex: 1;
+`;
+
+const PowerupsMenuItemTitle = styled.div`
+  font-size: 15px;
+  font-weight: 600;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  margin-bottom: 4px;
+`;
+
+const PowerupsMenuItemSubtitle = styled.div`
+  font-size: 13px;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
 `;
 
 export default ContactsList;
