@@ -555,7 +555,9 @@ const TagsContainer = styled.div`
   gap: 8px;
 `;
 
-const TagBadge = styled.span`
+const TagBadge = styled.div`
+  display: inline-flex;
+  align-items: center;
   background: ${props => props.theme === 'light' ? '#EFF6FF' : '#1E3A8A'};
   color: ${props => props.theme === 'light' ? '#1D4ED8' : '#DBEAFE'};
   border: 1px solid ${props => props.theme === 'light' ? '#DBEAFE' : '#3B82F6'};
@@ -563,6 +565,7 @@ const TagBadge = styled.span`
   border-radius: 20px;
   font-size: 0.875rem;
   font-weight: 500;
+  gap: 6px;
   transition: all 0.2s ease;
   cursor: ${props => props.$clickable ? 'pointer' : 'default'};
 
@@ -852,9 +855,14 @@ const TagManagementModal = ({ theme, contact, contactTags, onTagAdded, onTagRemo
       if (error) throw error;
 
       // Filter out tags already associated with contact
-      const filteredSuggestions = data.filter(tag =>
-        !contactTags.some(contactTag => contactTag.tags?.tag_id === tag.tag_id || contactTag.tags?.id === tag.id)
-      );
+      const filteredSuggestions = data.filter(tag => {
+        const isAlreadyAssociated = contactTags.some(contactTag => {
+          const contactTagId = contactTag.tags?.tag_id || contactTag.tags?.id || contactTag.tag_id;
+          const suggestionTagId = tag.tag_id || tag.id;
+          return contactTagId === suggestionTagId;
+        });
+        return !isAlreadyAssociated;
+      });
 
       setSuggestions(filteredSuggestions);
     } catch (error) {
@@ -1597,19 +1605,24 @@ const RelatedTagBadge = styled.div`
 const TagRemoveButton = styled.button`
   background: none;
   border: none;
-  color: inherit;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
   cursor: pointer;
-  font-size: 16px;
+  padding: 2px 4px;
+  font-size: 14px;
+  line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
+  border-radius: 2px;
+  margin-left: 6px;
+  min-width: 16px;
   height: 16px;
-  border-radius: 50%;
-  transition: background-color 0.2s ease;
+
   &:hover {
-    background: rgba(255, 255, 255, 0.2);
+    color: ${props => props.theme === 'light' ? '#DC2626' : '#F87171'};
+    background: ${props => props.theme === 'light' ? '#FEE2E2' : '#374151'};
   }
+
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
@@ -1960,3 +1973,4 @@ const CompanyModalButton = styled.button`
 `;
 
 export default RelatedSection;
+export { CityManagementModal, TagManagementModal };

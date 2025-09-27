@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
-import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaEdit, FaClock, FaTimes, FaCalendarAlt, FaHeart, FaCog, FaInfoCircle, FaStar, FaPlus, FaBriefcase, FaLink, FaHandshake, FaBolt, FaTrash } from 'react-icons/fa';
+import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaEdit, FaClock, FaTimes, FaCalendarAlt, FaHeart, FaCog, FaInfoCircle, FaStar, FaPlus, FaBriefcase, FaLink, FaHandshake, FaBolt, FaTrash, FaMapMarkerAlt, FaTag } from 'react-icons/fa';
 import { FiSkipForward, FiAlertTriangle, FiX, FiMessageCircle } from 'react-icons/fi';
 import { toast } from 'react-hot-toast';
 import Modal from 'react-modal';
+import { CityManagementModal, TagManagementModal } from './RelatedSection';
 // Remove CompanyMainModal import - we'll handle this inline
 
 const ContactsList = ({
@@ -143,6 +144,9 @@ const ContactsList = ({
   const [keepInTouchFormData, setKeepInTouchFormData] = useState({
     frequency: '',
     birthday: '',
+    birthdayDay: '',
+    birthdayMonth: '',
+    ageEstimate: '',
     christmasWishes: '',
     easterWishes: ''
   });
@@ -166,6 +170,14 @@ const ContactsList = ({
   const [newEmailType, setNewEmailType] = useState('personal');
   const [newMobileText, setNewMobileText] = useState('');
   const [newMobileType, setNewMobileType] = useState('personal');
+
+  // Contact cities and tags for Quick Edit Modal
+  const [quickEditContactCities, setQuickEditContactCities] = useState([]);
+  const [quickEditContactTags, setQuickEditContactTags] = useState([]);
+
+  // City and Tag modals for Quick Edit Modal
+  const [quickEditCityModalOpen, setQuickEditCityModalOpen] = useState(false);
+  const [quickEditTagModalOpen, setQuickEditTagModalOpen] = useState(false);
 
   // Company association for Quick Edit Modal
   const [quickEditAssociateCompanyModalOpen, setQuickEditAssociateCompanyModalOpen] = useState(false);
@@ -363,18 +375,26 @@ const ContactsList = ({
       }
 
       // Pre-populate form with existing data
+      const birthdayComponents = parseBirthdayIntoComponents(contact.birthday);
       setKeepInTouchFormData({
         frequency: existingKeepInTouchData?.frequency || '',
         birthday: contact.birthday || '',
+        birthdayDay: birthdayComponents.day,
+        birthdayMonth: birthdayComponents.month,
+        ageEstimate: birthdayComponents.ageEstimate,
         christmasWishes: existingKeepInTouchData?.christmas || '',
         easterWishes: existingKeepInTouchData?.easter || ''
       });
     } catch (error) {
       console.error('Error loading keep in touch data:', error);
       // Set default values if loading fails
+      const birthdayComponents = parseBirthdayIntoComponents(contact.birthday);
       setKeepInTouchFormData({
         frequency: '',
         birthday: contact.birthday || '',
+        birthdayDay: birthdayComponents.day,
+        birthdayMonth: birthdayComponents.month,
+        ageEstimate: birthdayComponents.ageEstimate,
         christmasWishes: '',
         easterWishes: ''
       });
@@ -383,12 +403,75 @@ const ContactsList = ({
     setKeepInTouchModalOpen(true);
   };
 
+  // Calculate birthday from day, month and age estimate
+  const calculateBirthdayFromComponents = (day, month, ageEstimate) => {
+    if (!day || !month || !ageEstimate) return '';
+
+    const currentYear = new Date().getFullYear();
+    let birthYear;
+
+    if (ageEstimate === '80+') {
+      birthYear = currentYear - 85; // Use 85 as average for 80+
+    } else {
+      birthYear = currentYear - parseInt(ageEstimate);
+    }
+
+    // Format as YYYY-MM-DD for database storage
+    const paddedMonth = month.toString().padStart(2, '0');
+    const paddedDay = day.toString().padStart(2, '0');
+    return `${birthYear}-${paddedMonth}-${paddedDay}`;
+  };
+
+  // Parse existing birthday into components
+  const parseBirthdayIntoComponents = (birthday) => {
+    if (!birthday) return { day: '', month: '', ageEstimate: '' };
+
+    try {
+      const date = new Date(birthday);
+      const currentYear = new Date().getFullYear();
+      const birthYear = date.getFullYear();
+      const age = currentYear - birthYear;
+
+      // Find closest age estimate
+      const ageOptions = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80];
+      let closestAge = '80+';
+
+      if (age <= 82) {
+        closestAge = ageOptions.reduce((prev, curr) =>
+          Math.abs(curr - age) < Math.abs(prev - age) ? curr : prev
+        ).toString();
+      }
+
+      return {
+        day: date.getDate().toString(),
+        month: (date.getMonth() + 1).toString(),
+        ageEstimate: closestAge
+      };
+    } catch (error) {
+      console.error('Error parsing birthday:', error);
+      return { day: '', month: '', ageEstimate: '' };
+    }
+  };
+
   // Handle form field changes
   const handleKeepInTouchFormChange = (field, value) => {
-    setKeepInTouchFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+    setKeepInTouchFormData(prev => {
+      const updated = {
+        ...prev,
+        [field]: value
+      };
+
+      // Auto-calculate birthday when any component changes
+      if (['birthdayDay', 'birthdayMonth', 'ageEstimate'].includes(field)) {
+        const day = field === 'birthdayDay' ? value : prev.birthdayDay;
+        const month = field === 'birthdayMonth' ? value : prev.birthdayMonth;
+        const age = field === 'ageEstimate' ? value : prev.ageEstimate;
+
+        updated.birthday = calculateBirthdayFromComponents(day, month, age);
+      }
+
+      return updated;
+    });
   };
 
   // Handle saving keep in touch data
@@ -654,6 +737,51 @@ const ContactsList = ({
     } catch (error) {
       console.error('Error loading contact mobiles:', error);
       setQuickEditContactMobiles([]);
+    }
+
+    // Load contact cities
+    try {
+      const { data: citiesData, error: citiesError } = await supabase
+        .from('contact_cities')
+        .select(`
+          entry_id,
+          contact_id,
+          city_id,
+          cities (
+            city_id,
+            name,
+            country
+          )
+        `)
+        .eq('contact_id', contact.contact_id);
+
+      if (citiesError) throw citiesError;
+      setQuickEditContactCities(citiesData || []);
+    } catch (error) {
+      console.error('Error loading contact cities:', error);
+      setQuickEditContactCities([]);
+    }
+
+    // Load contact tags
+    try {
+      const { data: tagsData, error: tagsError } = await supabase
+        .from('contact_tags')
+        .select(`
+          entry_id,
+          contact_id,
+          tag_id,
+          tags (
+            tag_id,
+            name
+          )
+        `)
+        .eq('contact_id', contact.contact_id);
+
+      if (tagsError) throw tagsError;
+      setQuickEditContactTags(tagsData || []);
+    } catch (error) {
+      console.error('Error loading contact tags:', error);
+      setQuickEditContactTags([]);
     }
 
     setQuickEditContactModalOpen(true);
@@ -943,6 +1071,103 @@ const ContactsList = ({
     }
   };
 
+  // Handle removing city
+  const handleRemoveCity = async (entryId) => {
+    try {
+      const { error } = await supabase
+        .from('contact_cities')
+        .delete()
+        .eq('entry_id', entryId);
+
+      if (error) throw error;
+
+      setQuickEditContactCities(prev => prev.filter(c => c.entry_id !== entryId));
+      toast.success('City removed successfully');
+    } catch (error) {
+      console.error('Error removing city:', error);
+      toast.error('Failed to remove city');
+    }
+  };
+
+  // Handle removing tag
+  const handleRemoveTag = async (entryId) => {
+    try {
+      const { error } = await supabase
+        .from('contact_tags')
+        .delete()
+        .eq('entry_id', entryId);
+
+      if (error) throw error;
+
+      setQuickEditContactTags(prev => prev.filter(t => t.entry_id !== entryId));
+      toast.success('Tag removed successfully');
+    } catch (error) {
+      console.error('Error removing tag:', error);
+      toast.error('Failed to remove tag');
+    }
+  };
+
+  // Handle city added callback
+  const handleQuickEditCityAdded = () => {
+    // Reload cities after adding
+    if (contactForQuickEdit) {
+      const contact = contactForQuickEdit;
+      const loadCities = async () => {
+        try {
+          const { data: citiesData, error: citiesError } = await supabase
+            .from('contact_cities')
+            .select(`
+              entry_id,
+              contact_id,
+              city_id,
+              cities (
+                city_id,
+                name,
+                country
+              )
+            `)
+            .eq('contact_id', contact.contact_id);
+
+          if (citiesError) throw citiesError;
+          setQuickEditContactCities(citiesData || []);
+        } catch (error) {
+          console.error('Error reloading contact cities:', error);
+        }
+      };
+      loadCities();
+    }
+  };
+
+  // Handle tag added callback
+  const handleQuickEditTagAdded = () => {
+    // Reload tags after adding
+    if (contactForQuickEdit) {
+      const contact = contactForQuickEdit;
+      const loadTags = async () => {
+        try {
+          const { data: tagsData, error: tagsError } = await supabase
+            .from('contact_tags')
+            .select(`
+              entry_id,
+              contact_id,
+              tag_id,
+              tags (
+                tag_id,
+                name
+              )
+            `)
+            .eq('contact_id', contact.contact_id);
+
+          if (tagsError) throw tagsError;
+          setQuickEditContactTags(tagsData || []);
+        } catch (error) {
+          console.error('Error reloading contact tags:', error);
+        }
+      };
+      loadTags();
+    }
+  };
+
   // Handle saving quick edit contact details
   const handleSaveQuickEditContact = async () => {
     if (!contactForQuickEdit) return;
@@ -977,6 +1202,10 @@ const ContactsList = ({
       setNewEmailType('personal');
       setNewMobileText('');
       setNewMobileType('personal');
+      setQuickEditContactCities([]);
+      setQuickEditContactTags([]);
+      setQuickEditCityModalOpen(false);
+      setQuickEditTagModalOpen(false);
       if (onContactUpdate) onContactUpdate();
     } catch (error) {
       console.error('Error updating contact details:', error);
@@ -2346,28 +2575,6 @@ const ContactsList = ({
           </FrequencyModalHeader>
           <FrequencyModalBody>
             <div style={{ padding: '20px' }}>
-              {contactForKeepInTouch && (
-                <div style={{
-                  marginBottom: '20px',
-                  padding: '12px',
-                  backgroundColor: theme === 'light' ? '#F3F4F6' : '#374151',
-                  borderRadius: '8px'
-                }}>
-                  <h4 style={{
-                    margin: '0 0 4px 0',
-                    fontSize: '14px',
-                    color: theme === 'light' ? '#111827' : '#F9FAFB'
-                  }}>
-                    {contactForKeepInTouch.first_name} {contactForKeepInTouch.last_name}
-                  </h4>
-                  <div style={{
-                    fontSize: '12px',
-                    color: theme === 'light' ? '#6B7280' : '#9CA3AF'
-                  }}>
-                    Complete all fields to enable full Keep in Touch features
-                  </div>
-                </div>
-              )}
 
               {/* Keep in Touch Frequency */}
               <div style={{ marginBottom: '20px' }}>
@@ -2406,20 +2613,118 @@ const ContactsList = ({
 
               {/* Date of Birth */}
               <div style={{ marginBottom: '20px' }}>
-                <label style={{
-                  display: 'block',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  marginBottom: '8px',
-                  color: theme === 'light' ? '#111827' : '#F9FAFB'
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '8px'
                 }}>
-                  <FaCalendarAlt style={{ marginRight: '6px' }} />
-                  Date of Birth
-                </label>
-                <input
-                  type="date"
-                  value={keepInTouchFormData.birthday}
-                  onChange={(e) => handleKeepInTouchFormChange('birthday', e.target.value)}
+                  <label style={{
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    color: theme === 'light' ? '#111827' : '#F9FAFB'
+                  }}>
+                    <FaCalendarAlt style={{ marginRight: '6px' }} />
+                    Date of Birth
+                  </label>
+                  <button
+                    onClick={async () => {
+                      try {
+                        // Clear birthday in database
+                        const { error } = await supabase
+                          .from('contacts')
+                          .update({ birthday: null })
+                          .eq('contact_id', contactForKeepInTouch.contact_id);
+
+                        if (error) throw error;
+
+                        // Clear form fields
+                        setKeepInTouchFormData(prev => ({
+                          ...prev,
+                          birthday: '',
+                          birthdayDay: '',
+                          birthdayMonth: '',
+                          ageEstimate: ''
+                        }));
+
+                        toast.success('Birthday cleared successfully!');
+                      } catch (error) {
+                        console.error('Error clearing birthday:', error);
+                        toast.error('Failed to clear birthday');
+                      }
+                    }}
+                    style={{
+                      padding: '4px 6px',
+                      border: 'none',
+                      borderRadius: '4px',
+                      backgroundColor: theme === 'light' ? '#EF4444' : '#DC2626',
+                      color: '#FFFFFF',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      fontWeight: '500'
+                    }}
+                    title="Clear birthday"
+                  >
+                    <FiX size={14} />
+                  </button>
+                </div>
+
+                {/* Day and Month dropdowns in same row */}
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                  <select
+                    value={keepInTouchFormData.birthdayDay}
+                    onChange={(e) => handleKeepInTouchFormChange('birthdayDay', e.target.value)}
+                    style={{
+                      flex: 1,
+                      padding: '10px',
+                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                      borderRadius: '6px',
+                      backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB',
+                      fontSize: '14px'
+                    }}
+                  >
+                    <option value="">Day</option>
+                    {Array.from({length: 31}, (_, i) => i + 1).map(day => (
+                      <option key={day} value={day}>{day}</option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={keepInTouchFormData.birthdayMonth}
+                    onChange={(e) => handleKeepInTouchFormChange('birthdayMonth', e.target.value)}
+                    style={{
+                      flex: 1,
+                      padding: '10px',
+                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                      borderRadius: '6px',
+                      backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB',
+                      fontSize: '14px'
+                    }}
+                  >
+                    <option value="">Month</option>
+                    <option value="1">January</option>
+                    <option value="2">February</option>
+                    <option value="3">March</option>
+                    <option value="4">April</option>
+                    <option value="5">May</option>
+                    <option value="6">June</option>
+                    <option value="7">July</option>
+                    <option value="8">August</option>
+                    <option value="9">September</option>
+                    <option value="10">October</option>
+                    <option value="11">November</option>
+                    <option value="12">December</option>
+                  </select>
+                </div>
+
+                {/* Age estimate dropdown */}
+                <select
+                  value={keepInTouchFormData.ageEstimate}
+                  onChange={(e) => handleKeepInTouchFormChange('ageEstimate', e.target.value)}
                   style={{
                     width: '100%',
                     padding: '10px',
@@ -2429,7 +2734,23 @@ const ContactsList = ({
                     color: theme === 'light' ? '#111827' : '#F9FAFB',
                     fontSize: '14px'
                   }}
-                />
+                >
+                  <option value="">Age estimate (for birthday calculation)</option>
+                  <option value="20">20</option>
+                  <option value="25">25</option>
+                  <option value="30">30</option>
+                  <option value="35">35</option>
+                  <option value="40">40</option>
+                  <option value="45">45</option>
+                  <option value="50">50</option>
+                  <option value="55">55</option>
+                  <option value="60">60</option>
+                  <option value="65">65</option>
+                  <option value="70">70</option>
+                  <option value="75">75</option>
+                  <option value="80">80</option>
+                  <option value="80+">80+</option>
+                </select>
               </div>
 
               {/* Christmas Wishes */}
@@ -2559,6 +2880,10 @@ const ContactsList = ({
           setNewEmailType('personal');
           setNewMobileText('');
           setNewMobileType('personal');
+          setQuickEditContactCities([]);
+          setQuickEditContactTags([]);
+          setQuickEditCityModalOpen(false);
+          setQuickEditTagModalOpen(false);
         }}
         shouldCloseOnOverlayClick={true}
         style={{
@@ -2597,6 +2922,10 @@ const ContactsList = ({
                 setNewEmailType('personal');
                 setNewMobileText('');
                 setNewMobileType('personal');
+                setQuickEditContactCities([]);
+                setQuickEditContactTags([]);
+                setQuickEditCityModalOpen(false);
+                setQuickEditTagModalOpen(false);
               }}
               theme={theme}
             >
@@ -3461,29 +3790,237 @@ const ContactsList = ({
               {/* Related Tab */}
               {quickEditActiveTab === 'Related' && (
                 <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
                   height: '460px',
-                  textAlign: 'center'
+                  overflow: 'auto',
+                  paddingRight: '8px',
+                  marginRight: '-8px'
                 }}>
-                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔗</div>
-                  <h4 style={{
-                    fontSize: '18px',
-                    fontWeight: '600',
-                    color: theme === 'light' ? '#111827' : '#F9FAFB',
-                    marginBottom: '8px'
-                  }}>
-                    Related - Coming Soon
-                  </h4>
-                  <p style={{
-                    fontSize: '14px',
-                    color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                    lineHeight: 1.5
-                  }}>
-                    Advanced relationship management features will be available here soon.
-                  </p>
+                  {/* Cities Section */}
+                  <div style={{ marginBottom: '32px' }}>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: '12px'
+                    }}>
+                      <label style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB'
+                      }}>
+                        <FaMapMarkerAlt style={{ fontSize: '14px', color: '#3B82F6' }} />
+                        Cities
+                      </label>
+                      <button
+                        onClick={() => setQuickEditCityModalOpen(true)}
+                        style={{
+                          padding: '6px 12px',
+                          backgroundColor: '#3B82F6',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                          fontWeight: '500',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <FaPlus style={{ fontSize: '10px' }} />
+                        Add Cities
+                      </button>
+                    </div>
+
+                    {/* Cities List */}
+                    <div style={{
+                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                      borderRadius: '6px',
+                      backgroundColor: theme === 'light' ? '#F9FAFB' : '#111827',
+                      fontSize: '14px',
+                      minHeight: '100px',
+                      maxHeight: '200px',
+                      overflowY: 'auto'
+                    }}>
+                      {quickEditContactCities?.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                          {quickEditContactCities.map((cityData, index) => (
+                            <div key={cityData.entry_id} style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: '12px',
+                              backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                              borderRadius: index === 0 ? '6px 6px 0 0' : index === quickEditContactCities.length - 1 ? '0 0 6px 6px' : '0'
+                            }}>
+                              <FaMapMarkerAlt style={{ fontSize: '14px', color: '#3B82F6' }} />
+                              <div style={{ flex: 1 }}>
+                                <div style={{
+                                  color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                  fontWeight: '500'
+                                }}>
+                                  {cityData.cities?.name || 'Unknown City'}
+                                  {cityData.cities?.country && cityData.cities.country !== 'Unknown' && (
+                                    <span style={{
+                                      fontSize: '12px',
+                                      color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                      fontWeight: 'normal',
+                                      marginLeft: '8px'
+                                    }}>
+                                      {cityData.cities.country}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => handleRemoveCity(cityData.entry_id)}
+                                style={{
+                                  padding: '4px',
+                                  backgroundColor: 'transparent',
+                                  color: '#EF4444',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  fontSize: '12px'
+                                }}
+                              >
+                                <FaTrash />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          height: '80px',
+                          color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                          textAlign: 'center'
+                        }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                            <FaMapMarkerAlt style={{ fontSize: '24px', opacity: 0.5 }} />
+                            <span>No cities associated</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Tags Section */}
+                  <div>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: '12px'
+                    }}>
+                      <label style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB'
+                      }}>
+                        <FaTag style={{ fontSize: '14px', color: '#3B82F6' }} />
+                        Tags
+                      </label>
+                      <button
+                        onClick={() => setQuickEditTagModalOpen(true)}
+                        style={{
+                          padding: '6px 12px',
+                          backgroundColor: '#3B82F6',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                          fontWeight: '500',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <FaPlus style={{ fontSize: '10px' }} />
+                        Add Tags
+                      </button>
+                    </div>
+
+                    {/* Tags List */}
+                    <div style={{
+                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                      borderRadius: '6px',
+                      backgroundColor: theme === 'light' ? '#F9FAFB' : '#111827',
+                      fontSize: '14px',
+                      minHeight: '100px',
+                      maxHeight: '200px',
+                      overflowY: 'auto',
+                      padding: '12px'
+                    }}>
+                      {quickEditContactTags?.length > 0 ? (
+                        <div style={{
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          gap: '8px'
+                        }}>
+                          {quickEditContactTags.map((tagData) => (
+                            <div
+                              key={tagData.entry_id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '6px 10px',
+                                backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                                border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                                borderRadius: '20px',
+                                fontSize: '12px',
+                                fontWeight: '500',
+                                color: theme === 'light' ? '#111827' : '#F9FAFB'
+                              }}
+                            >
+                              <FaTag style={{ fontSize: '10px', color: '#3B82F6' }} />
+                              <span>{tagData.tags?.name || 'Unknown Tag'}</span>
+                              <button
+                                onClick={() => handleRemoveTag(tagData.entry_id)}
+                                style={{
+                                  padding: '2px',
+                                  backgroundColor: 'transparent',
+                                  color: '#EF4444',
+                                  border: 'none',
+                                  borderRadius: '2px',
+                                  cursor: 'pointer',
+                                  fontSize: '10px',
+                                  display: 'flex',
+                                  alignItems: 'center'
+                                }}
+                              >
+                                <FaTrash />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          height: '68px',
+                          color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                          textAlign: 'center'
+                        }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                            <FaTag style={{ fontSize: '24px', opacity: 0.5 }} />
+                            <span>No tags associated</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -3538,6 +4075,10 @@ const ContactsList = ({
                     setNewEmailType('personal');
                     setNewMobileText('');
                     setNewMobileType('personal');
+                    setQuickEditContactCities([]);
+                    setQuickEditContactTags([]);
+                    setQuickEditCityModalOpen(false);
+                    setQuickEditTagModalOpen(false);
                   }}
                   style={{
                     padding: '10px 20px',
@@ -3604,6 +4145,78 @@ const ContactsList = ({
           onCompanyAdded={handleQuickEditCompanyAdded}
           onCompanyRemoved={handleQuickEditCompanyAdded}
           onClose={() => setQuickEditAssociateCompanyModalOpen(false)}
+        />
+      </Modal>
+
+      {/* Quick Edit City Modal */}
+      <Modal
+        isOpen={quickEditCityModalOpen}
+        onRequestClose={() => setQuickEditCityModalOpen(false)}
+        style={{
+          content: {
+            top: '50%',
+            left: '50%',
+            right: 'auto',
+            bottom: 'auto',
+            marginRight: '-50%',
+            transform: 'translate(-50%, -50%)',
+            padding: '0',
+            border: 'none',
+            borderRadius: '12px',
+            maxWidth: '500px',
+            width: '90%',
+            maxHeight: '80vh',
+            overflow: 'hidden'
+          },
+          overlay: {
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 1000
+          }
+        }}
+      >
+        <CityManagementModal
+          theme={theme}
+          contact={contactForQuickEdit}
+          contactCities={quickEditContactCities}
+          onCityAdded={handleQuickEditCityAdded}
+          onCityRemoved={handleQuickEditCityAdded}
+          onClose={() => setQuickEditCityModalOpen(false)}
+        />
+      </Modal>
+
+      {/* Quick Edit Tag Modal */}
+      <Modal
+        isOpen={quickEditTagModalOpen}
+        onRequestClose={() => setQuickEditTagModalOpen(false)}
+        style={{
+          content: {
+            top: '50%',
+            left: '50%',
+            right: 'auto',
+            bottom: 'auto',
+            marginRight: '-50%',
+            transform: 'translate(-50%, -50%)',
+            padding: '0',
+            border: 'none',
+            borderRadius: '12px',
+            maxWidth: '500px',
+            width: '90%',
+            maxHeight: '80vh',
+            overflow: 'hidden'
+          },
+          overlay: {
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 1000
+          }
+        }}
+      >
+        <TagManagementModal
+          theme={theme}
+          contact={contactForQuickEdit}
+          contactTags={quickEditContactTags}
+          onTagAdded={handleQuickEditTagAdded}
+          onTagRemoved={handleQuickEditTagAdded}
+          onClose={() => setQuickEditTagModalOpen(false)}
         />
       </Modal>
 

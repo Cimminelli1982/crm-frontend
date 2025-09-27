@@ -4554,7 +4554,7 @@ const TagsContainer = styled.div`
   gap: 8px;
 `;
 
-const TagBadge = styled.span`
+const TagBadge = styled.div`
   background: ${props => props.theme === 'light' ? '#EFF6FF' : '#1E3A8A'};
   color: ${props => props.theme === 'light' ? '#1D4ED8' : '#DBEAFE'};
   border: 1px solid ${props => props.theme === 'light' ? '#DBEAFE' : '#3B82F6'};
@@ -4564,6 +4564,9 @@ const TagBadge = styled.span`
   font-weight: 500;
   transition: all 0.2s ease;
   cursor: ${props => props.$clickable ? 'pointer' : 'default'};
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 
   &:hover {
     background: ${props => props.theme === 'light' ? '#DBEAFE' : '#1E40AF'};
@@ -4837,9 +4840,14 @@ const TagManagementModal = ({ theme, contact, contactTags, onTagAdded, onTagRemo
       if (error) throw error;
 
       // Filter out tags already associated with contact
-      const filteredSuggestions = data.filter(tag =>
-        !contactTags.some(contactTag => contactTag.tags?.tag_id === tag.tag_id || contactTag.tags?.id === tag.id)
-      );
+      const filteredSuggestions = data.filter(tag => {
+        const isAlreadyAssociated = contactTags.some(contactTag => {
+          const contactTagId = contactTag.tags?.tag_id || contactTag.tags?.id || contactTag.tag_id;
+          const suggestionTagId = tag.tag_id || tag.id;
+          return contactTagId === suggestionTagId;
+        });
+        return !isAlreadyAssociated;
+      });
 
       setSuggestions(filteredSuggestions);
     } catch (error) {
@@ -5419,11 +5427,20 @@ const TagRemoveButton = styled.button`
   border: none;
   color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
   cursor: pointer;
-  padding: 0;
-  font-size: 1.2rem;
+  padding: 2px 4px;
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  margin-left: 6px;
+  min-width: 16px;
+  height: 16px;
 
   &:hover {
     color: ${props => props.theme === 'light' ? '#DC2626' : '#F87171'};
+    background: ${props => props.theme === 'light' ? '#FEE2E2' : '#374151'};
   }
 
   &:disabled {
