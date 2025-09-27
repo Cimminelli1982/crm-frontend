@@ -81,32 +81,53 @@ const SortPage = ({ theme, onInboxCountChange }) => {
         console.log(`Loading Missing > ${missingSubCategory}`);
 
         if (missingSubCategory === 'Company') {
-          console.log('🔍 Loading contacts without companies using database view...');
+          console.log('🔍 Loading contacts without companies using optimized single query...');
 
-          // Use the optimized database view that does all the heavy lifting
+          // Use a single query with JOIN to get both completeness data and interaction dates
           const { data: contactsData, error: contactsError } = await supabase
-            .from('contacts_without_companies')
-            .select('*');
+            .rpc('get_contacts_without_companies_sorted');
 
           if (contactsError) {
             console.error('❌ Error fetching contacts without companies:', contactsError);
-            throw contactsError;
+            // Fallback to simpler approach if stored procedure doesn't exist
+            console.log('🔄 Falling back to contact_completeness view...');
+
+            // Use the contacts_without_companies view - exactly what we need!
+            const { data: fallbackData, error: fallbackError } = await supabase
+              .from('contacts_without_companies')
+              .select('*')
+              .not('category', 'in', '("Skip","WhatsApp Group Contact","System","Not Set","Inbox")')
+              .not('last_interaction_at', 'is', null)
+              .order('last_interaction_at', { ascending: false })
+              .limit(100);
+
+            if (fallbackError) {
+              console.error('❌ Fallback query failed:', fallbackError);
+              throw fallbackError;
+            }
+
+            data = (fallbackData || []).map(contact => ({
+              ...contact,
+              emails: [],
+              mobiles: [],
+              companies: []
+            }));
+
+            console.log(`✅ Fetched ${data?.length || 0} contacts without companies (fallback method)`);
+          } else {
+            console.log(`✅ Fetched ${contactsData?.length || 0} contacts without companies using stored procedure`);
+            contactsData?.slice(0, 5).forEach((c, i) => {
+              console.log(`📅 Contact ${i + 1}: ${c.first_name} ${c.last_name} - ${c.last_interaction_at || 'NO DATE'} (${c.completeness_score}% complete)`);
+            });
+
+            // Transform data to match ContactsList component expectations
+            data = (contactsData || []).map(contact => ({
+              ...contact,
+              emails: [], // Will be empty for now (can be loaded separately if needed)
+              mobiles: [], // Will be empty for now (can be loaded separately if needed)
+              companies: [] // Explicitly empty since these are contacts without companies
+            }));
           }
-
-          console.log(`✅ Fetched ${contactsData?.length || 0} contacts without companies from database view`);
-          contactsData?.slice(0, 5).forEach((c, i) => {
-            console.log(`📅 Contact ${i + 1}: ${c.first_name} ${c.last_name} - ${c.last_interaction_at || 'NO DATE'}`);
-          });
-
-          // Transform data to match ContactsList component expectations
-          data = (contactsData || []).map(contact => ({
-            ...contact,
-            emails: [], // Will be empty for now (can be loaded separately if needed)
-            mobiles: [], // Will be empty for now (can be loaded separately if needed)
-            companies: [] // Explicitly empty since these are contacts without companies
-          }));
-
-          console.log('✅ Data transformation complete. Final data:', data.slice(0, 3));
         } else {
           // For other Missing subcategories, keep "Coming Soon" behavior
           data = [];

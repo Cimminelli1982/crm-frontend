@@ -154,6 +154,7 @@ const ContactsList = ({
   // Quick Edit Contact modal state
   const [quickEditContactModalOpen, setQuickEditContactModalOpen] = useState(false);
   const [contactForQuickEdit, setContactForQuickEdit] = useState(null);
+  const [showMissingFieldsOnly, setShowMissingFieldsOnly] = useState(false);
   const [quickEditActiveTab, setQuickEditActiveTab] = useState('Info');
   const [quickEditDescriptionText, setQuickEditDescriptionText] = useState('');
   const [quickEditJobRoleText, setQuickEditJobRoleText] = useState('');
@@ -365,6 +366,13 @@ const ContactsList = ({
     setCommunicationModalOpen(true);
   };
 
+  // Handle opening missing fields modal (completeness-focused Quick Edit)
+  const handleOpenMissingFieldsModal = async (contact, e) => {
+    if (e) e.stopPropagation();
+    // Reuse the existing Quick Edit modal but in "missing fields" mode
+    await handleOpenQuickEditContactModal(contact, e, true);
+  };
+
   // Handle opening keep in touch data input modal (for interactions page)
   const handleOpenKeepInTouchModal = async (contact, e) => {
     if (e) e.stopPropagation();
@@ -458,6 +466,190 @@ const ContactsList = ({
     } catch (error) {
       console.error('Error parsing birthday:', error);
       return { day: '', month: '', ageEstimate: '' };
+    }
+  };
+
+  // Get contact completeness score from database view
+  const getContactCompleteness = (contact) => {
+    // The completeness_score should come from the contact_completeness view
+    // If it's not available, fallback to a basic calculation
+    if (contact.completeness_score !== undefined) {
+      return parseInt(contact.completeness_score);
+    }
+
+    // Fallback for cases where view data isn't loaded
+    return 50; // Default neutral score
+  };
+
+  // Helper functions for missing fields modal - simplified approach
+  const getMissingFields = (contact) => {
+    if (!contact) return {
+      info: [],
+      contacts: [],
+      work: [],
+      related: [],
+      keepInTouch: []
+    };
+
+    const missing = {
+      info: [],
+      contacts: [],
+      work: [],
+      related: [],
+      keepInTouch: []
+    };
+
+    // Info tab missing fields - exactly match the scoring logic
+    if (!contact.first_name || !contact.first_name.trim()) missing.info.push('first_name');
+    if (!contact.last_name || !contact.last_name.trim()) missing.info.push('last_name');
+    if (!contact.category) missing.info.push('category');
+    if (!contact.score || contact.score <= 0) missing.info.push('score');
+    if (!contact.description || !contact.description.trim()) missing.info.push('description');
+
+    // Work tab fields
+    if (!contact.job_role || !contact.job_role.trim()) missing.work.push('job_role');
+    if (!contact.linkedin || !contact.linkedin.trim()) missing.work.push('linkedin');
+
+    // Contacts tab - check if contact has emails/mobiles arrays
+    if (!contact.contact_emails || contact.contact_emails.length === 0) missing.contacts.push('email');
+    if (!contact.contact_mobiles || contact.contact_mobiles.length === 0) missing.contacts.push('mobile');
+
+    // Work tab - check if contact has companies
+    if (!contact.companies || contact.companies.length === 0) missing.work.push('company');
+
+    // Related tab - only check if arrays are explicitly empty (not undefined/not loaded)
+    if (contact.contact_cities !== undefined && (!contact.contact_cities || contact.contact_cities.length === 0)) missing.related.push('cities');
+    if (contact.contact_tags !== undefined && (!contact.contact_tags || contact.contact_tags.length === 0)) missing.related.push('tags');
+
+    // Keep in Touch tab - check actual values (including birthday which is in this tab)
+    if (!contact.birthday) missing.keepInTouch.push('birthday');
+    if (!contact.keep_in_touch_frequency && !contact.kit_frequency) missing.keepInTouch.push('frequency');
+    if (!contact.christmas) missing.keepInTouch.push('christmas');
+    if (!contact.easter) missing.keepInTouch.push('easter');
+
+    console.log('Simplified missing analysis for:', contact.first_name, contact.last_name);
+    console.log('Contact arrays check:', {
+      contact_emails: contact.contact_emails,
+      contact_mobiles: contact.contact_mobiles,
+      companies: contact.companies,
+      contact_cities: contact.contact_cities,
+      contact_tags: contact.contact_tags,
+      birthday: contact.birthday,
+      christmas: contact.christmas,
+      easter: contact.easter
+    });
+    console.log('Missing:', missing);
+
+    return missing;
+  };
+
+  const getVisibleTabs = (contact, forceShowMissing = null) => {
+    if (!contact) return [];
+
+    const showMissing = forceShowMissing !== null ? forceShowMissing : showMissingFieldsOnly;
+
+    if (!showMissing) {
+      // Show all tabs in normal mode
+      return [
+        { id: 'Info', label: 'Info', icon: FaInfoCircle },
+        { id: 'Contacts', label: 'Contacts', icon: FaEnvelope },
+        { id: 'Work', label: 'Work', icon: FaBriefcase },
+        { id: 'Related', label: 'Related', icon: FaLink },
+        { id: 'Keep in touch', label: 'Keep in touch', icon: FaHandshake }
+      ];
+    }
+
+    // In missing fields mode, only show tabs that have missing fields
+    const allTabs = [
+      { id: 'Info', label: 'Info', icon: FaInfoCircle },
+      { id: 'Contacts', label: 'Contacts', icon: FaEnvelope },
+      { id: 'Work', label: 'Work', icon: FaBriefcase },
+      { id: 'Related', label: 'Related', icon: FaLink },
+      { id: 'Keep in touch', label: 'Keep in touch', icon: FaHandshake }
+    ];
+
+    return allTabs.filter(tab => shouldShowTab(contact, tab.id));
+  };
+
+  const shouldShowField = (contact, fieldName) => {
+    if (!contact || !showMissingFieldsOnly) return true;
+
+
+    // Direct field checking - show field if it's missing/empty
+    switch (fieldName) {
+      case 'first_name': return !contact.first_name || !contact.first_name.trim();
+      case 'last_name': return !contact.last_name || !contact.last_name.trim();
+      case 'category': return !contact.category || contact.category === 'Not Set';
+      case 'score': return !contact.score || contact.score <= 0;
+      case 'description': return !contact.description || !contact.description.trim();
+      case 'job_role': return !contact.job_role || !contact.job_role.trim();
+      case 'linkedin': return !contact.linkedin || !contact.linkedin.trim();
+      case 'email': return !contact.contact_emails || contact.contact_emails.length === 0;
+      case 'mobile': return !contact.contact_mobiles || contact.contact_mobiles.length === 0;
+      case 'company': return !contact.companies || contact.companies.length === 0;
+      case 'cities': return contact.contact_cities !== undefined && (!contact.contact_cities || contact.contact_cities.length === 0);
+      case 'tags': return contact.contact_tags !== undefined && (!contact.contact_tags || contact.contact_tags.length === 0);
+      case 'birthday': return !contact.birthday || contact.birthday === null || contact.birthday === '' || (typeof contact.birthday === 'string' && contact.birthday.trim() === '');
+      case 'frequency': return !contact.keep_in_touch_frequency;
+      case 'christmas': return !contact.christmas || contact.christmas === 'no wishes set';
+      case 'easter': return !contact.easter || contact.easter === 'no wishes set';
+      default: return true;
+    }
+  };
+
+  // Check if a tab should be shown (show tab if at least one field in it should be shown)
+  const shouldShowTab = (contact, tabName) => {
+    if (!contact || !showMissingFieldsOnly) return true;
+
+    const tabFields = {
+      'Info': ['first_name', 'last_name', 'category', 'score', 'description'],
+      'Contacts': ['email', 'mobile'],
+      'Work': ['job_role', 'linkedin', 'company'],
+      'Related': ['cities', 'tags'],
+      'Keep in touch': ['birthday', 'frequency', 'christmas', 'easter']
+    };
+
+    const fieldsForTab = tabFields[tabName] || [];
+    const showTab = fieldsForTab.some(field => shouldShowField(contact, field));
+
+
+    return showTab;
+  };
+
+  // Get completeness display info (icon, color, text)
+  const getCompletenessDisplay = (completenessScore) => {
+    if (completenessScore >= 100) {
+      return {
+        icon: '⭐',
+        color: '#10B981', // Green
+        backgroundColor: '#10B981',
+        text: 'Perfect',
+        title: `${completenessScore}% Complete - Perfect!`
+      };
+    } else if (completenessScore > 80) {
+      return {
+        icon: '🟢',
+        color: '#34D399', // Lighter green
+        backgroundColor: '#34D399',
+        text: 'Complete',
+        title: `${completenessScore}% Complete - Excellent!`
+      };
+    } else if (completenessScore >= 60) {
+      return {
+        icon: '🟡',
+        color: '#F59E0B', // Yellow
+        backgroundColor: '#F59E0B',
+        text: 'Good',
+        title: `${completenessScore}% Complete - Almost there!`
+      };
+    } else {
+      return {
+        icon: '🔴',
+        color: '#EF4444', // Red
+        backgroundColor: '#EF4444',
+        text: 'Incomplete',
+        title: `${completenessScore}% Complete - Missing fields`
+      };
     }
   };
 
@@ -680,10 +872,29 @@ const ContactsList = ({
   };
 
   // Handle opening quick edit contact modal
-  const handleOpenQuickEditContactModal = async (contact, e) => {
+  const handleOpenQuickEditContactModal = async (contact, e, missingFieldsOnly = false) => {
     if (e) e.stopPropagation();
+
+
+    // Set missing fields mode based on parameter
+    setShowMissingFieldsOnly(missingFieldsOnly);
     setContactForQuickEdit(contact);
-    setQuickEditActiveTab('Info');
+
+    // Set initial tab based on mode
+    if (missingFieldsOnly) {
+      // In missing fields mode, prioritize Keep in Touch tab if it has missing fields
+      const visibleTabs = getVisibleTabs(contact, true);
+      if (visibleTabs.length > 0) {
+        // If Keep in Touch is visible, prioritize it, otherwise use first tab
+        const keepInTouchTab = visibleTabs.find(tab => tab.id === 'Keep in touch');
+        const selectedTab = keepInTouchTab ? keepInTouchTab.id : visibleTabs[0].id;
+        setQuickEditActiveTab(selectedTab);
+      } else {
+        setQuickEditActiveTab('Info'); // fallback
+      }
+    } else {
+      setQuickEditActiveTab('Info');
+    }
     setQuickEditDescriptionText(contact.description || '');
     setQuickEditJobRoleText(contact.job_role || '');
     setQuickEditContactCategory(contact.category || 'Not Set');
@@ -2192,15 +2403,14 @@ const ContactsList = ({
 
                   <CardActionButton
                     theme={theme}
-                    onClick={(e) => handleOpenKeepInTouchModal(contact, e)}
-                    $keepInTouch
-                    title={getKeepInTouchDisplay(contact).title}
+                    onClick={(e) => handleOpenMissingFieldsModal(contact, e)}
+                    title={getCompletenessDisplay(getContactCompleteness(contact)).title}
                     style={{
-                      backgroundColor: getKeepInTouchDisplay(contact).backgroundColor,
+                      backgroundColor: getCompletenessDisplay(getContactCompleteness(contact)).backgroundColor,
                       color: 'white'
                     }}
                   >
-                    {getKeepInTouchDisplay(contact).icon}
+                    {getCompletenessDisplay(getContactCompleteness(contact)).icon}
                   </CardActionButton>
 
                   <CardActionButton
@@ -3078,6 +3288,7 @@ const ContactsList = ({
         isOpen={quickEditContactModalOpen}
         onRequestClose={() => {
           setQuickEditContactModalOpen(false);
+          setShowMissingFieldsOnly(false);
           setQuickEditDescriptionText('');
           setQuickEditJobRoleText('');
           setQuickEditContactCategory('Not Set');
@@ -3142,13 +3353,7 @@ const ContactsList = ({
           <FrequencyModalBody>
             {/* Tab Navigation - Using Spam Submenu UI Pattern */}
             <QuickEditTabMenu theme={theme}>
-              {[
-                { id: 'Info', label: 'Info', icon: FaInfoCircle },
-                { id: 'Contacts', label: 'Contacts', icon: FaEnvelope },
-                { id: 'Work', label: 'Work', icon: FaBriefcase },
-                { id: 'Related', label: 'Related', icon: FaLink },
-                { id: 'Keep in touch', label: 'Keep in touch', icon: FaHandshake }
-              ].map(tab => {
+              {getVisibleTabs(contactForQuickEdit).map(tab => {
                 const IconComponent = tab.icon;
                 const isActive = quickEditActiveTab === tab.id;
                 return (
@@ -3177,35 +3382,38 @@ const ContactsList = ({
                   marginRight: '-8px'
                 }}>
                   {/* First Name */}
-                  <div style={{ marginBottom: '16px' }}>
-                    <label style={{
-                      display: 'block',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      marginBottom: '8px',
-                      color: theme === 'light' ? '#111827' : '#F9FAFB'
-                    }}>
-                      First Name
-                    </label>
-                    <input
-                      type="text"
-                      value={quickEditFirstName}
-                      onChange={(e) => setQuickEditFirstName(e.target.value)}
-                      placeholder="Enter first name..."
-                      style={{
-                        width: '100%',
-                        padding: '12px',
-                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
-                        borderRadius: '6px',
-                        backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
-                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                  {shouldShowField(contactForQuickEdit, 'first_name') && (
+                    <div style={{ marginBottom: '16px' }}>
+                      <label style={{
+                        display: 'block',
                         fontSize: '14px',
-                        fontFamily: 'inherit'
-                      }}
-                    />
-                  </div>
+                        fontWeight: '500',
+                        marginBottom: '8px',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB'
+                      }}>
+                        First Name
+                      </label>
+                      <input
+                        type="text"
+                        value={quickEditFirstName}
+                        onChange={(e) => setQuickEditFirstName(e.target.value)}
+                        placeholder="Enter first name..."
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                          borderRadius: '6px',
+                          backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                          fontSize: '14px',
+                          fontFamily: 'inherit'
+                        }}
+                      />
+                    </div>
+                  )}
 
                   {/* Last Name */}
+                  {shouldShowField(contactForQuickEdit, 'last_name') && (
                   <div style={{ marginBottom: '16px' }}>
                     <label style={{
                       display: 'block',
@@ -3233,8 +3441,10 @@ const ContactsList = ({
                       }}
                     />
                   </div>
+                  )}
 
                   {/* Category Dropdown */}
+                  {shouldShowField(contactForQuickEdit, 'category') && (
                   <div style={{ marginBottom: '16px' }}>
                     <label style={{
                       display: 'block',
@@ -3264,8 +3474,10 @@ const ContactsList = ({
                       ))}
                     </select>
                   </div>
+                  )}
 
                   {/* Score Rating */}
+                  {shouldShowField(contactForQuickEdit, 'score') && (
                   <div style={{ marginBottom: '16px' }}>
                     <label style={{
                       display: 'block',
@@ -3308,8 +3520,10 @@ const ContactsList = ({
                       </span>
                     </div>
                   </div>
+                  )}
 
                   {/* Description */}
+                  {shouldShowField(contactForQuickEdit, 'description') && (
                   <div style={{ marginBottom: '20px' }}>
                     <label style={{
                       display: 'block',
@@ -3339,6 +3553,7 @@ const ContactsList = ({
                       }}
                     />
                   </div>
+                  )}
                 </div>
               )}
 
@@ -3351,6 +3566,7 @@ const ContactsList = ({
                   marginRight: '-8px'
                 }}>
                   {/* Emails Section */}
+                  {shouldShowField(contactForQuickEdit, 'email') && (
                   <div style={{ marginBottom: '32px' }}>
                     <div style={{
                       display: 'flex',
@@ -3550,8 +3766,10 @@ const ContactsList = ({
                       )}
                     </div>
                   </div>
+                  )}
 
                   {/* Mobile Numbers Section */}
+                  {shouldShowField(contactForQuickEdit, 'mobile') && (
                   <div>
                     <div style={{
                       display: 'flex',
@@ -3751,6 +3969,7 @@ const ContactsList = ({
                       )}
                     </div>
                   </div>
+                  )}
                 </div>
               )}
 
@@ -3763,6 +3982,7 @@ const ContactsList = ({
                   marginRight: '-8px'
                 }}>
                   {/* Job Title */}
+                  {shouldShowField(contactForQuickEdit, 'job_role') && (
                   <div style={{ marginBottom: '16px' }}>
                     <label style={{
                       display: 'block',
@@ -3790,8 +4010,10 @@ const ContactsList = ({
                       }}
                     />
                   </div>
+                  )}
 
                   {/* LinkedIn */}
+                  {shouldShowField(contactForQuickEdit, 'linkedin') && (
                   <div style={{ marginBottom: '16px' }}>
                     <label style={{
                       display: 'block',
@@ -3819,8 +4041,10 @@ const ContactsList = ({
                       }}
                     />
                   </div>
+                  )}
 
                   {/* Company Associations */}
+                  {shouldShowField(contactForQuickEdit, 'company') && (
                   <div style={{ marginBottom: '20px' }}>
                     <div style={{
                       display: 'flex',
@@ -3991,6 +4215,7 @@ const ContactsList = ({
                       )}
                     </div>
                   </div>
+                  )}
                 </div>
               )}
 
@@ -4003,6 +4228,7 @@ const ContactsList = ({
                   marginRight: '-8px'
                 }}>
                   {/* Cities Section */}
+                  {shouldShowField(contactForQuickEdit, 'cities') && (
                   <div style={{ marginBottom: '32px' }}>
                     <div style={{
                       display: 'flex',
@@ -4116,8 +4342,10 @@ const ContactsList = ({
                       )}
                     </div>
                   </div>
+                  )}
 
                   {/* Tags Section */}
+                  {shouldShowField(contactForQuickEdit, 'tags') && (
                   <div>
                     <div style={{
                       display: 'flex',
@@ -4228,6 +4456,7 @@ const ContactsList = ({
                       )}
                     </div>
                   </div>
+                  )}
                 </div>
               )}
 
@@ -4240,6 +4469,7 @@ const ContactsList = ({
                   marginRight: '-8px'
                 }}>
                   {/* Keep in Touch Frequency */}
+                  {shouldShowField(contactForQuickEdit, 'frequency') && (
                   <div style={{ marginBottom: '20px' }}>
                     <label style={{
                       display: 'block',
@@ -4276,8 +4506,10 @@ const ContactsList = ({
                       <option value="Do not keep in touch">Do not keep in touch</option>
                     </select>
                   </div>
+                  )}
 
                   {/* Date of Birth */}
+                  {shouldShowField(contactForQuickEdit, 'birthday') && (
                   <div style={{ marginBottom: '20px' }}>
                     <div style={{
                       display: 'flex',
@@ -4437,8 +4669,10 @@ const ContactsList = ({
                       </button>
                     </div>
                   </div>
+                  )}
 
                   {/* Christmas Wishes */}
+                  {shouldShowField(contactForQuickEdit, 'christmas') && (
                   <div style={{ marginBottom: '20px' }}>
                     <label style={{
                       display: 'block',
@@ -4476,8 +4710,10 @@ const ContactsList = ({
                       <option value="present">Present</option>
                     </select>
                   </div>
+                  )}
 
                   {/* Easter Wishes */}
+                  {shouldShowField(contactForQuickEdit, 'easter') && (
                   <div style={{ marginBottom: '20px' }}>
                     <label style={{
                       display: 'block',
@@ -4515,6 +4751,7 @@ const ContactsList = ({
                       <option value="present">Present</option>
                     </select>
                   </div>
+                  )}
                 </div>
               )}
 

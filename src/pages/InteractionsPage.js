@@ -105,6 +105,22 @@ const InteractionsPage = ({ theme }) => {
 
       if (error) throw error;
 
+      // Fetch completeness scores for the contacts
+      let completenessScores = {};
+      if (data && data.length > 0) {
+        const contactIds = data.map(contact => contact.contact_id);
+        const { data: completenessData, error: completenessError } = await supabase
+          .from('contact_completeness')
+          .select('contact_id, completeness_score')
+          .in('contact_id', contactIds);
+
+        if (!completenessError && completenessData) {
+          completenessScores = completenessData.reduce((acc, item) => {
+            acc[item.contact_id] = item.completeness_score;
+            return acc;
+          }, {});
+        }
+      }
 
       // Transform the data structure to match what ContactsList expects
       const transformedContacts = (data || []).map(contact => ({
@@ -117,7 +133,9 @@ const InteractionsPage = ({ theme }) => {
         // Handle both object and array formats
         keep_in_touch_frequency: contact.keep_in_touch?.frequency || contact.keep_in_touch?.[0]?.frequency || null,
         christmas: contact.keep_in_touch?.christmas || contact.keep_in_touch?.[0]?.christmas || null,
-        easter: contact.keep_in_touch?.easter || contact.keep_in_touch?.[0]?.easter || null
+        easter: contact.keep_in_touch?.easter || contact.keep_in_touch?.[0]?.easter || null,
+        // Add completeness score from the view
+        completeness_score: completenessScores[contact.contact_id] || null
       }));
 
       setContacts(transformedContacts);
