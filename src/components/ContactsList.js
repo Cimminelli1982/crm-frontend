@@ -163,6 +163,14 @@ const ContactsList = ({
   const [quickEditLastName, setQuickEditLastName] = useState('');
   const [quickEditLinkedin, setQuickEditLinkedin] = useState('');
 
+  // Keep in Touch fields for Quick Edit Modal
+  const [quickEditKeepInTouchFrequency, setQuickEditKeepInTouchFrequency] = useState('');
+  const [quickEditBirthdayDay, setQuickEditBirthdayDay] = useState('');
+  const [quickEditBirthdayMonth, setQuickEditBirthdayMonth] = useState('');
+  const [quickEditAgeEstimate, setQuickEditAgeEstimate] = useState('');
+  const [quickEditChristmasWishes, setQuickEditChristmasWishes] = useState('');
+  const [quickEditEasterWishes, setQuickEditEasterWishes] = useState('');
+
   // Contact emails and mobiles for Quick Edit Modal
   const [quickEditContactEmails, setQuickEditContactEmails] = useState([]);
   const [quickEditContactMobiles, setQuickEditContactMobiles] = useState([]);
@@ -784,6 +792,36 @@ const ContactsList = ({
       setQuickEditContactTags([]);
     }
 
+    // Load Keep in Touch data
+    try {
+      const { data: existingKeepInTouchData, error } = await supabase
+        .from('keep_in_touch')
+        .select('frequency, christmas, easter')
+        .eq('contact_id', contact.contact_id)
+        .single();
+
+      // Parse existing birthday into components
+      const birthdayComponents = parseBirthdayIntoComponents(contact.birthday);
+
+      // Populate Keep in Touch form fields
+      setQuickEditKeepInTouchFrequency(existingKeepInTouchData?.frequency || '');
+      setQuickEditBirthdayDay(birthdayComponents.day);
+      setQuickEditBirthdayMonth(birthdayComponents.month);
+      setQuickEditAgeEstimate(birthdayComponents.ageEstimate);
+      setQuickEditChristmasWishes(existingKeepInTouchData?.christmas || '');
+      setQuickEditEasterWishes(existingKeepInTouchData?.easter || '');
+    } catch (error) {
+      console.error('Error loading Keep in Touch data:', error);
+      // Set default values
+      const birthdayComponents = parseBirthdayIntoComponents(contact.birthday);
+      setQuickEditKeepInTouchFrequency('');
+      setQuickEditBirthdayDay(birthdayComponents.day);
+      setQuickEditBirthdayMonth(birthdayComponents.month);
+      setQuickEditAgeEstimate(birthdayComponents.ageEstimate);
+      setQuickEditChristmasWishes('');
+      setQuickEditEasterWishes('');
+    }
+
     setQuickEditContactModalOpen(true);
   };
 
@@ -1168,6 +1206,169 @@ const ContactsList = ({
     }
   };
 
+  // Auto-save Keep in Touch frequency
+  const handleSaveQuickEditFrequency = async (frequency) => {
+    if (!contactForQuickEdit) return;
+
+    try {
+      // Check if keep_in_touch record exists
+      const { data: existingRecord, error: checkError } = await supabase
+        .from('keep_in_touch')
+        .select('id')
+        .eq('contact_id', contactForQuickEdit.contact_id)
+        .single();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        throw checkError;
+      }
+
+      if (existingRecord) {
+        // Update existing record
+        const { error: updateError } = await supabase
+          .from('keep_in_touch')
+          .update({ frequency: frequency || null })
+          .eq('contact_id', contactForQuickEdit.contact_id);
+
+        if (updateError) throw updateError;
+      } else {
+        // Create new record
+        const { error: insertError } = await supabase
+          .from('keep_in_touch')
+          .insert({
+            contact_id: contactForQuickEdit.contact_id,
+            frequency: frequency || null
+          });
+
+        if (insertError) throw insertError;
+      }
+
+      if (onContactUpdate) onContactUpdate();
+    } catch (error) {
+      console.error('Error updating frequency:', error);
+      toast.error('Failed to update frequency');
+    }
+  };
+
+  // Auto-save Christmas wishes
+  const handleSaveQuickEditChristmasWishes = async (wishes) => {
+    if (!contactForQuickEdit) return;
+
+    try {
+      // Check if keep_in_touch record exists
+      const { data: existingRecord, error: checkError } = await supabase
+        .from('keep_in_touch')
+        .select('id')
+        .eq('contact_id', contactForQuickEdit.contact_id)
+        .single();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        throw checkError;
+      }
+
+      if (existingRecord) {
+        // Update existing record
+        const { error: updateError } = await supabase
+          .from('keep_in_touch')
+          .update({ christmas: wishes || null })
+          .eq('contact_id', contactForQuickEdit.contact_id);
+
+        if (updateError) throw updateError;
+      } else {
+        // Create new record
+        const { error: insertError } = await supabase
+          .from('keep_in_touch')
+          .insert({
+            contact_id: contactForQuickEdit.contact_id,
+            christmas: wishes || null
+          });
+
+        if (insertError) throw insertError;
+      }
+
+      if (onContactUpdate) onContactUpdate();
+    } catch (error) {
+      console.error('Error updating Christmas wishes:', error);
+      toast.error('Failed to update Christmas wishes');
+    }
+  };
+
+  // Auto-save Easter wishes
+  const handleSaveQuickEditEasterWishes = async (wishes) => {
+    if (!contactForQuickEdit) return;
+
+    try {
+      // Check if keep_in_touch record exists
+      const { data: existingRecord, error: checkError } = await supabase
+        .from('keep_in_touch')
+        .select('id')
+        .eq('contact_id', contactForQuickEdit.contact_id)
+        .single();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        throw checkError;
+      }
+
+      if (existingRecord) {
+        // Update existing record
+        const { error: updateError } = await supabase
+          .from('keep_in_touch')
+          .update({ easter: wishes || null })
+          .eq('contact_id', contactForQuickEdit.contact_id);
+
+        if (updateError) throw updateError;
+      } else {
+        // Create new record
+        const { error: insertError } = await supabase
+          .from('keep_in_touch')
+          .insert({
+            contact_id: contactForQuickEdit.contact_id,
+            easter: wishes || null
+          });
+
+        if (insertError) throw insertError;
+      }
+
+      if (onContactUpdate) onContactUpdate();
+    } catch (error) {
+      console.error('Error updating Easter wishes:', error);
+      toast.error('Failed to update Easter wishes');
+    }
+  };
+
+  // Handle saving birthday only (for the save button)
+  const handleSaveQuickEditBirthday = async () => {
+    if (!contactForQuickEdit) return;
+
+    try {
+      // Calculate birthday from components
+      const birthday = calculateBirthdayFromComponents(
+        quickEditBirthdayDay,
+        quickEditBirthdayMonth,
+        quickEditAgeEstimate
+      );
+
+      // Update birthday in contacts table if it changed
+      if (birthday !== contactForQuickEdit.birthday) {
+        const { error: contactError } = await supabase
+          .from('contacts')
+          .update({ birthday: birthday || null })
+          .eq('contact_id', contactForQuickEdit.contact_id);
+
+        if (contactError) throw contactError;
+      }
+
+      toast.success('Birthday updated successfully!');
+
+      // Refresh data if callback provided
+      if (onContactUpdate) {
+        onContactUpdate();
+      }
+    } catch (error) {
+      console.error('Error updating birthday:', error);
+      toast.error('Failed to update birthday: ' + (error.message || 'Unknown error'));
+    }
+  };
+
   // Handle saving quick edit contact details
   const handleSaveQuickEditContact = async () => {
     if (!contactForQuickEdit) return;
@@ -1206,6 +1407,12 @@ const ContactsList = ({
       setQuickEditContactTags([]);
       setQuickEditCityModalOpen(false);
       setQuickEditTagModalOpen(false);
+      setQuickEditKeepInTouchFrequency('');
+      setQuickEditBirthdayDay('');
+      setQuickEditBirthdayMonth('');
+      setQuickEditAgeEstimate('');
+      setQuickEditChristmasWishes('');
+      setQuickEditEasterWishes('');
       if (onContactUpdate) onContactUpdate();
     } catch (error) {
       console.error('Error updating contact details:', error);
@@ -4027,29 +4234,287 @@ const ContactsList = ({
               {/* Keep in touch Tab */}
               {quickEditActiveTab === 'Keep in touch' && (
                 <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
                   height: '460px',
-                  textAlign: 'center'
+                  overflow: 'auto',
+                  paddingRight: '8px',
+                  marginRight: '-8px'
                 }}>
-                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>🤝</div>
-                  <h4 style={{
-                    fontSize: '18px',
-                    fontWeight: '600',
-                    color: theme === 'light' ? '#111827' : '#F9FAFB',
-                    marginBottom: '8px'
-                  }}>
-                    Keep in Touch - Coming Soon
-                  </h4>
-                  <p style={{
-                    fontSize: '14px',
-                    color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                    lineHeight: 1.5
-                  }}>
-                    Keep in touch scheduling and reminder features will be available here soon.
-                  </p>
+                  {/* Keep in Touch Frequency */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      marginBottom: '8px',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB'
+                    }}>
+                      <FaHeart style={{ marginRight: '6px' }} />
+                      Keep in Touch Frequency
+                    </label>
+                    <select
+                      value={quickEditKeepInTouchFrequency}
+                      onChange={(e) => {
+                        setQuickEditKeepInTouchFrequency(e.target.value);
+                        handleSaveQuickEditFrequency(e.target.value);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        borderRadius: '6px',
+                        backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px'
+                      }}
+                    >
+                      <option value="">Select frequency...</option>
+                      <option value="Weekly">Weekly</option>
+                      <option value="Monthly">Monthly</option>
+                      <option value="Quarterly">Quarterly</option>
+                      <option value="Twice per Year">Twice per Year</option>
+                      <option value="Once per Year">Once per Year</option>
+                      <option value="Do not keep in touch">Do not keep in touch</option>
+                    </select>
+                  </div>
+
+                  {/* Date of Birth */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: '8px'
+                    }}>
+                      <label style={{
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB'
+                      }}>
+                        <FaCalendarAlt style={{ marginRight: '6px' }} />
+                        Date of Birth
+                      </label>
+                      <button
+                        onClick={async () => {
+                          try {
+                            // Clear birthday in database
+                            const { error } = await supabase
+                              .from('contacts')
+                              .update({ birthday: null })
+                              .eq('contact_id', contactForQuickEdit.contact_id);
+
+                            if (error) throw error;
+
+                            // Clear form fields
+                            setQuickEditBirthdayDay('');
+                            setQuickEditBirthdayMonth('');
+                            setQuickEditAgeEstimate('');
+
+                            toast.success('Birthday cleared successfully!');
+                          } catch (error) {
+                            console.error('Error clearing birthday:', error);
+                            toast.error('Failed to clear birthday');
+                          }
+                        }}
+                        style={{
+                          padding: '4px 6px',
+                          border: 'none',
+                          borderRadius: '4px',
+                          backgroundColor: theme === 'light' ? '#EF4444' : '#DC2626',
+                          color: '#FFFFFF',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          fontWeight: '500'
+                        }}
+                        title="Clear birthday"
+                      >
+                        <FiX size={14} />
+                      </button>
+                    </div>
+
+                    {/* Day and Month dropdowns in same row */}
+                    <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                      <select
+                        value={quickEditBirthdayDay}
+                        onChange={(e) => setQuickEditBirthdayDay(e.target.value)}
+                        style={{
+                          flex: 1,
+                          padding: '10px',
+                          border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                          borderRadius: '6px',
+                          backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                          fontSize: '14px'
+                        }}
+                      >
+                        <option value="">Day</option>
+                        {Array.from({length: 31}, (_, i) => i + 1).map(day => (
+                          <option key={day} value={day}>{day}</option>
+                        ))}
+                      </select>
+
+                      <select
+                        value={quickEditBirthdayMonth}
+                        onChange={(e) => setQuickEditBirthdayMonth(e.target.value)}
+                        style={{
+                          flex: 1,
+                          padding: '10px',
+                          border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                          borderRadius: '6px',
+                          backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                          fontSize: '14px'
+                        }}
+                      >
+                        <option value="">Month</option>
+                        <option value="1">January</option>
+                        <option value="2">February</option>
+                        <option value="3">March</option>
+                        <option value="4">April</option>
+                        <option value="5">May</option>
+                        <option value="6">June</option>
+                        <option value="7">July</option>
+                        <option value="8">August</option>
+                        <option value="9">September</option>
+                        <option value="10">October</option>
+                        <option value="11">November</option>
+                        <option value="12">December</option>
+                      </select>
+                    </div>
+
+                    {/* Age estimate dropdown */}
+                    <select
+                      value={quickEditAgeEstimate}
+                      onChange={(e) => setQuickEditAgeEstimate(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '10px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        borderRadius: '6px',
+                        backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px'
+                      }}
+                    >
+                      <option value="">Age estimate (for birthday calculation)</option>
+                      <option value="20">20</option>
+                      <option value="25">25</option>
+                      <option value="30">30</option>
+                      <option value="35">35</option>
+                      <option value="40">40</option>
+                      <option value="45">45</option>
+                      <option value="50">50</option>
+                      <option value="55">55</option>
+                      <option value="60">60</option>
+                      <option value="65">65</option>
+                      <option value="70">70</option>
+                      <option value="75">75</option>
+                      <option value="80">80</option>
+                      <option value="80+">80+</option>
+                    </select>
+
+                    {/* Save Birthday Button */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'flex-end',
+                      marginTop: '12px'
+                    }}>
+                      <button
+                        onClick={handleSaveQuickEditBirthday}
+                        style={{
+                          padding: '8px 16px',
+                          border: 'none',
+                          borderRadius: '6px',
+                          backgroundColor: '#3B82F6',
+                          color: '#FFFFFF',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          fontWeight: '500'
+                        }}
+                      >
+                        Save Birthday
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Christmas Wishes */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      marginBottom: '8px',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB'
+                    }}>
+                      🎄 Christmas Wishes
+                    </label>
+                    <select
+                      value={quickEditChristmasWishes}
+                      onChange={(e) => {
+                        setQuickEditChristmasWishes(e.target.value);
+                        handleSaveQuickEditChristmasWishes(e.target.value);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        borderRadius: '6px',
+                        backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px'
+                      }}
+                    >
+                      <option value="">Select Christmas wishes...</option>
+                      <option value="no wishes set">Not set</option>
+                      <option value="no wishes">No wishes</option>
+                      <option value="whatsapp standard">WhatsApp standard</option>
+                      <option value="email standard">Email standard</option>
+                      <option value="email custom">Email custom</option>
+                      <option value="whatsapp custom">WhatsApp custom</option>
+                      <option value="call">Call</option>
+                      <option value="present">Present</option>
+                    </select>
+                  </div>
+
+                  {/* Easter Wishes */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      marginBottom: '8px',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB'
+                    }}>
+                      🐰 Easter Wishes
+                    </label>
+                    <select
+                      value={quickEditEasterWishes}
+                      onChange={(e) => {
+                        setQuickEditEasterWishes(e.target.value);
+                        handleSaveQuickEditEasterWishes(e.target.value);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        borderRadius: '6px',
+                        backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px'
+                      }}
+                    >
+                      <option value="">Select Easter wishes...</option>
+                      <option value="no wishes set">Not set</option>
+                      <option value="no wishes">No wishes</option>
+                      <option value="whatsapp standard">WhatsApp standard</option>
+                      <option value="email standard">Email standard</option>
+                      <option value="email custom">Email custom</option>
+                      <option value="whatsapp custom">WhatsApp custom</option>
+                      <option value="call">Call</option>
+                      <option value="present">Present</option>
+                    </select>
+                  </div>
                 </div>
               )}
 
