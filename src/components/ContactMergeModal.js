@@ -255,7 +255,7 @@ const ContactMergeModal = ({
       style={{
         overlay: {
           backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          zIndex: 9999
+          zIndex: 10000
         },
         content: {
           top: '50%',
