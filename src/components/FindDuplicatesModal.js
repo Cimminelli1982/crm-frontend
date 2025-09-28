@@ -5,6 +5,7 @@ import { FiX, FiSearch, FiArrowRight } from 'react-icons/fi';
 import { FaUser, FaEnvelope, FaPhone, FaBuilding } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import { toast } from 'react-hot-toast';
+import ContactMergeModal from './ContactMergeModal';
 
 const FindDuplicatesModal = ({
   isOpen,
@@ -17,6 +18,10 @@ const FindDuplicatesModal = ({
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+
+  // Contact Merge Modal state
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [selectedContactForMerge, setSelectedContactForMerge] = useState(null);
 
   // Clear search when modal opens/closes
   useEffect(() => {
@@ -241,9 +246,17 @@ const FindDuplicatesModal = ({
   };
 
   const handleMergeClick = (targetContact) => {
+    setSelectedContactForMerge(targetContact);
+    setShowMergeModal(true);
+  };
+
+  const handleMergeComplete = (primaryContact, duplicateContact) => {
+    // Notify parent component about successful merge
     if (onMergeContact) {
-      onMergeContact(contact, targetContact);
+      onMergeContact(primaryContact, duplicateContact);
     }
+    // Close both modals
+    setShowMergeModal(false);
     onClose();
   };
 
@@ -262,7 +275,8 @@ const FindDuplicatesModal = ({
   };
 
   return (
-    <Modal
+    <>
+      <Modal
       isOpen={isOpen}
       onRequestClose={onClose}
       style={{
@@ -582,7 +596,17 @@ const FindDuplicatesModal = ({
           </ResultsSection>
         </ModalBody>
       </ModalContent>
-    </Modal>
+      </Modal>
+
+      <ContactMergeModal
+        isOpen={showMergeModal}
+        onClose={() => setShowMergeModal(false)}
+        primaryContact={contact}
+        duplicateContact={selectedContactForMerge}
+        theme={theme}
+        onMergeComplete={handleMergeComplete}
+      />
+    </>
   );
 };
 
