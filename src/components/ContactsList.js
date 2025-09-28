@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
 import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaEdit, FaClock, FaTimes, FaCalendarAlt, FaHeart, FaCog, FaInfoCircle, FaStar, FaPlus, FaBriefcase, FaLink, FaHandshake, FaBolt, FaTrash, FaMapMarkerAlt, FaTag, FaExternalLinkAlt } from 'react-icons/fa';
-import { FiSkipForward, FiAlertTriangle, FiX, FiMessageCircle } from 'react-icons/fi';
+import { FiSkipForward, FiAlertTriangle, FiX, FiMessageCircle, FiSearch } from 'react-icons/fi';
 import { toast } from 'react-hot-toast';
 import Modal from 'react-modal';
 import { CityManagementModal, TagManagementModal } from './RelatedSection';
+import FindDuplicatesModal from './FindDuplicatesModal';
 // Remove CompanyMainModal import - we'll handle this inline
 
 const ContactsList = ({
@@ -202,6 +203,10 @@ const ContactsList = ({
   const [powerupsMenuOpen, setPowerupsMenuOpen] = useState(false);
   const [contactForPowerups, setContactForPowerups] = useState(null);
 
+  // Find Duplicates modal state
+  const [findDuplicatesModalOpen, setFindDuplicatesModalOpen] = useState(false);
+  const [contactForDuplicates, setContactForDuplicates] = useState(null);
+
   const frequencyOptions = [
     'Weekly',
     'Monthly',
@@ -260,6 +265,19 @@ const ContactsList = ({
     if (e) e.stopPropagation();
     setContactForPowerups(contact);
     setPowerupsMenuOpen(true);
+  };
+
+  const handleOpenFindDuplicatesModal = (contact, e) => {
+    if (e) e.stopPropagation();
+    setContactForDuplicates(contact);
+    setFindDuplicatesModalOpen(true);
+    setPowerupsMenuOpen(false); // Close powerups menu
+  };
+
+  const handleMergeContact = (sourceContact, targetContact) => {
+    // TODO: Implement contacts merging modal
+    console.log('Open contacts merging modal:', sourceContact?.first_name, sourceContact?.last_name, 'with', targetContact?.first_name, targetContact?.last_name);
+    toast.success('Merging functionality will be implemented in the next step');
   };
 
   const handleSkipContact = async (contact, e) => {
@@ -5097,17 +5115,15 @@ const ContactsList = ({
             <PowerupsMenuItem
               theme={theme}
               onClick={() => {
-                setPowerupsMenuOpen(false);
-                // TODO: Open merge modal
-                console.log('Open merge modal for:', contactForPowerups?.first_name, contactForPowerups?.last_name);
+                handleOpenFindDuplicatesModal(contactForPowerups);
               }}
             >
               <PowerupsMenuIcon>
-                <FaHandshake />
+                <FiSearch />
               </PowerupsMenuIcon>
               <PowerupsMenuText theme={theme}>
                 <PowerupsMenuItemTitle theme={theme}>Merge Contacts</PowerupsMenuItemTitle>
-                <PowerupsMenuItemSubtitle theme={theme}>Combine duplicate contacts</PowerupsMenuItemSubtitle>
+                <PowerupsMenuItemSubtitle theme={theme}>Search & merge duplicate contacts</PowerupsMenuItemSubtitle>
               </PowerupsMenuText>
             </PowerupsMenuItem>
 
@@ -5130,6 +5146,18 @@ const ContactsList = ({
           </PowerupsMenuContent>
         </PowerupsMenuContainer>
       </Modal>
+
+      {/* Find Duplicates Modal */}
+      <FindDuplicatesModal
+        isOpen={findDuplicatesModalOpen}
+        onClose={() => {
+          setFindDuplicatesModalOpen(false);
+          setContactForDuplicates(null);
+        }}
+        contact={contactForDuplicates}
+        theme={theme}
+        onMergeContact={handleMergeContact}
+      />
     </ContactsListContainer>
   );
 };
