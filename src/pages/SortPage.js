@@ -128,6 +128,152 @@ const SortPage = ({ theme, onInboxCountChange }) => {
               companies: [] // Explicitly empty since these are contacts without companies
             }));
           }
+        } else if (missingSubCategory === 'Tags') {
+          console.log('🔍 Loading contacts without tags...');
+
+          const { data: tagsData, error: tagsError } = await supabase
+            .from('contacts_without_tags')
+            .select('*')
+            .not('last_interaction_at', 'is', null)
+            .order('last_interaction_at', { ascending: false })
+            .limit(100);
+
+          if (tagsError) {
+            console.error('❌ Error fetching contacts without tags:', tagsError);
+            throw tagsError;
+          }
+
+          console.log(`✅ Fetched ${tagsData?.length || 0} contacts without tags`);
+
+          data = (tagsData || []).map(contact => ({
+            ...contact,
+            emails: [],
+            mobiles: [],
+            companies: [],
+            tags: []
+          }));
+
+        } else if (missingSubCategory === 'Cities') {
+          console.log('🔍 Loading contacts without cities...');
+
+          const { data: citiesData, error: citiesError } = await supabase
+            .from('contacts_without_cities')
+            .select('*')
+            .not('last_interaction_at', 'is', null)
+            .order('last_interaction_at', { ascending: false })
+            .limit(100);
+
+          if (citiesError) {
+            console.error('❌ Error fetching contacts without cities:', citiesError);
+            throw citiesError;
+          }
+
+          console.log(`✅ Fetched ${citiesData?.length || 0} contacts without cities`);
+
+          data = (citiesData || []).map(contact => ({
+            ...contact,
+            emails: [],
+            mobiles: [],
+            companies: [],
+            cities: []
+          }));
+
+        } else if (missingSubCategory === 'Score') {
+          console.log('🔍 Loading contacts without score...');
+
+          const { data: scoreData, error: scoreError } = await supabase
+            .from('contacts_without_score')
+            .select('*')
+            .not('last_interaction_at', 'is', null)
+            .order('last_interaction_at', { ascending: false })
+            .limit(100);
+
+          if (scoreError) {
+            console.error('❌ Error fetching contacts without score:', scoreError);
+            throw scoreError;
+          }
+
+          console.log(`✅ Fetched ${scoreData?.length || 0} contacts without score`);
+
+          data = (scoreData || []).map(contact => ({
+            ...contact,
+            emails: [],
+            mobiles: [],
+            companies: []
+          }));
+
+        } else if (missingSubCategory === 'Keep in touch') {
+          console.log('🔍 Loading contacts without keep in touch settings...');
+
+          const { data: kitData, error: kitError } = await supabase
+            .from('contacts_without_keep_in_touch')
+            .select('*')
+            .not('last_interaction_at', 'is', null)
+            .order('last_interaction_at', { ascending: false })
+            .limit(100);
+
+          if (kitError) {
+            console.error('❌ Error fetching contacts without keep in touch:', kitError);
+            throw kitError;
+          }
+
+          console.log(`✅ Fetched ${kitData?.length || 0} contacts without keep in touch settings`);
+
+          data = (kitData || []).map(contact => ({
+            ...contact,
+            emails: [],
+            mobiles: [],
+            companies: []
+          }));
+
+        } else if (missingSubCategory === 'Birthday') {
+          console.log('🔍 Loading contacts without birthday...');
+
+          const { data: birthdayData, error: birthdayError } = await supabase
+            .from('contacts_without_birthday')
+            .select('*')
+            .not('last_interaction_at', 'is', null)
+            .order('last_interaction_at', { ascending: false })
+            .limit(100);
+
+          if (birthdayError) {
+            console.error('❌ Error fetching contacts without birthday:', birthdayError);
+            throw birthdayError;
+          }
+
+          console.log(`✅ Fetched ${birthdayData?.length || 0} contacts without birthday`);
+
+          data = (birthdayData || []).map(contact => ({
+            ...contact,
+            emails: [],
+            mobiles: [],
+            companies: []
+          }));
+
+        } else if (missingSubCategory === 'Basics') {
+          console.log('🔍 Loading contacts without basic info...');
+
+          const { data: basicsData, error: basicsError } = await supabase
+            .from('contacts_without_basics')
+            .select('*')
+            .not('last_interaction_at', 'is', null)
+            .order('last_interaction_at', { ascending: false })
+            .limit(100);
+
+          if (basicsError) {
+            console.error('❌ Error fetching contacts without basics:', basicsError);
+            throw basicsError;
+          }
+
+          console.log(`✅ Fetched ${basicsData?.length || 0} contacts without basic info`);
+
+          data = (basicsData || []).map(contact => ({
+            ...contact,
+            emails: [],
+            mobiles: [],
+            companies: []
+          }));
+
         } else {
           // For other Missing subcategories, keep "Coming Soon" behavior
           data = [];
