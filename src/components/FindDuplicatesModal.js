@@ -246,8 +246,10 @@ const FindDuplicatesModal = ({
   };
 
   const handleMergeClick = (targetContact) => {
+    console.log('handleMergeClick called with:', targetContact);
     setSelectedContactForMerge(targetContact);
     setShowMergeModal(true);
+    console.log('showMergeModal set to true');
   };
 
   const handleMergeComplete = (primaryContact, duplicateContact) => {
@@ -600,7 +602,10 @@ const FindDuplicatesModal = ({
 
       <ContactMergeModal
         isOpen={showMergeModal}
-        onClose={() => setShowMergeModal(false)}
+        onClose={() => {
+          console.log('ContactMergeModal onClose called');
+          setShowMergeModal(false);
+        }}
         primaryContact={contact}
         duplicateContact={selectedContactForMerge}
         theme={theme}
