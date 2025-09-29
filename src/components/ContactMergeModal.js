@@ -36,7 +36,10 @@ const ContactMergeModal = ({
   const [duplicateContactData, setDuplicateContactData] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editLastName, setEditLastName] = useState('');
   const [customValues, setCustomValues] = useState({});
+  const [updateTrigger, setUpdateTrigger] = useState(0);
 
   const currentField = mergeFields[currentFieldIndex];
   const isLastField = currentFieldIndex === mergeFields.length - 1;
@@ -123,53 +126,148 @@ const ContactMergeModal = ({
     setMergeSelections(initialSelections);
   };
 
-  const handleFieldChoice = (choice) => {
-    setMergeSelections(prev => ({
-      ...prev,
-      [currentField.key]: choice
-    }));
+  const handleFieldChoice = async (choice) => {
+    if (choice === 'primary') {
+      // Keep primary - no database update needed, just move to next field
+      moveToNextField();
+    } else if (choice === 'duplicate') {
+      // Keep duplicate - immediately update primary contact with duplicate's value
+      await updatePrimaryContactField(choice);
+    }
+  };
 
-    // Move to next field after a brief delay for visual feedback
+  const updatePrimaryContactField = async (choice) => {
+    try {
+      let updateData = {};
+
+      if (currentField.key === 'name') {
+        // Handle name field
+        if (choice === 'duplicate') {
+          updateData.first_name = duplicateContactData?.first_name || '';
+          updateData.last_name = duplicateContactData?.last_name || '';
+        }
+      } else if (currentField.type === 'single') {
+        // Handle single fields
+        if (choice === 'duplicate') {
+          updateData[currentField.key] = duplicateContactData?.[currentField.key] || '';
+        }
+      }
+
+      if (Object.keys(updateData).length > 0) {
+        const { error } = await supabase
+          .from('contacts')
+          .update(updateData)
+          .eq('contact_id', primaryContact.contact_id);
+
+        if (error) throw error;
+
+        // Update local primary contact data
+        setPrimaryContactData(prev => ({
+          ...prev,
+          ...updateData
+        }));
+
+        console.log('Field updated successfully:', currentField.label, updateData);
+        toast.success(`${currentField.label} updated successfully`);
+        setUpdateTrigger(prev => prev + 1); // Force re-render
+      }
+
+      moveToNextField();
+    } catch (error) {
+      console.error('Error updating contact field:', error);
+      toast.error(`Failed to update ${currentField.label}`);
+    }
+  };
+
+  const moveToNextField = () => {
     setTimeout(() => {
       if (isLastField) {
-        // If last field, show completion and process merge
-        processMerge();
+        // All fields processed, complete the merge by deleting duplicate
+        completeFieldProcessing();
       } else {
         setCurrentFieldIndex(prev => prev + 1);
       }
     }, 200);
+  };
+
+  const completeFieldProcessing = async () => {
+    try {
+      // Delete the duplicate contact since all processing is complete
+      const { error: deleteError } = await supabase
+        .from('contacts')
+        .delete()
+        .eq('contact_id', duplicateContact.contact_id);
+
+      if (deleteError) throw deleteError;
+
+      toast.success('Contacts merged successfully');
+      onMergeComplete?.(primaryContact, duplicateContact);
+      onClose();
+    } catch (error) {
+      console.error('Error completing merge:', error);
+      toast.error('Failed to complete merge');
+    }
   };
 
   const handleEdit = () => {
-    const currentValue = getCurrentFieldValue();
-    setEditValue(currentValue);
+    if (currentField.key === 'name') {
+      // For name field, populate first and last name separately
+      const primaryFirst = primaryContactData?.first_name || '';
+      const primaryLast = primaryContactData?.last_name || '';
+      setEditFirstName(primaryFirst);
+      setEditLastName(primaryLast);
+    } else {
+      const currentValue = getCurrentFieldValue();
+      setEditValue(currentValue);
+    }
     setIsEditing(true);
   };
 
-  const handleSaveEdit = () => {
-    setCustomValues(prev => ({
-      ...prev,
-      [currentField.key]: editValue
-    }));
-    setMergeSelections(prev => ({
-      ...prev,
-      [currentField.key]: 'custom'
-    }));
-    setIsEditing(false);
+  const handleSaveEdit = async () => {
+    try {
+      let updateData = {};
 
-    // Move to next field
-    setTimeout(() => {
-      if (isLastField) {
-        processMerge();
+      if (currentField.key === 'name') {
+        // For name field, update both first_name and last_name
+        updateData.first_name = editFirstName.trim();
+        updateData.last_name = editLastName.trim();
       } else {
-        setCurrentFieldIndex(prev => prev + 1);
+        // For other single fields
+        updateData[currentField.key] = editValue.trim();
       }
-    }, 200);
+
+      // Update in database
+      const { error } = await supabase
+        .from('contacts')
+        .update(updateData)
+        .eq('contact_id', primaryContact.contact_id);
+
+      if (error) throw error;
+
+      // Update local primary contact data
+      setPrimaryContactData(prev => ({
+        ...prev,
+        ...updateData
+      }));
+
+      console.log('Field updated successfully:', currentField.label, updateData);
+      toast.success(`${currentField.label} updated successfully`);
+      setIsEditing(false);
+      setUpdateTrigger(prev => prev + 1); // Force re-render
+
+      // Move to next field
+      moveToNextField();
+    } catch (error) {
+      console.error('Error updating contact field:', error);
+      toast.error(`Failed to update ${currentField.label}`);
+    }
   };
 
   const handleCancelEdit = () => {
     setIsEditing(false);
     setEditValue('');
+    setEditFirstName('');
+    setEditLastName('');
   };
 
   const getCurrentFieldValue = () => {
@@ -199,82 +297,7 @@ const ContactMergeModal = ({
     }
   };
 
-  const processMerge = async () => {
-    if (!primaryContactData || !duplicateContactData) return;
-
-    setIsProcessing(true);
-    try {
-      // Process merge based on selections (simplified version of the logic from ContactCrmWorkflow)
-      const mergedData = {};
-
-      // Process each field based on selection
-      for (const field of mergeFields) {
-        const selection = mergeSelections[field.key];
-
-        if (field.type === 'single') {
-          if (selection === 'primary') {
-            mergedData[field.key] = primaryContactData[field.key];
-          } else if (selection === 'duplicate') {
-            mergedData[field.key] = duplicateContactData[field.key];
-          } else if (selection === 'custom') {
-            // Handle custom edited values
-            if (field.key === 'name') {
-              // For name field, split into first_name and last_name
-              const customName = customValues[field.key] || '';
-              const nameParts = customName.trim().split(' ');
-              if (nameParts.length >= 2) {
-                mergedData.first_name = nameParts[0];
-                mergedData.last_name = nameParts.slice(1).join(' ');
-              } else {
-                mergedData.first_name = nameParts[0] || '';
-                mergedData.last_name = '';
-              }
-            } else {
-              mergedData[field.key] = customValues[field.key];
-            }
-          }
-        } else if (field.type === 'array') {
-          // Handle array merging (simplified)
-          if (selection === 'primary') {
-            mergedData[field.key] = primaryContactData[field.key] || [];
-          } else if (selection === 'duplicate') {
-            mergedData[field.key] = duplicateContactData[field.key] || [];
-          } else if (selection === 'combine') {
-            // Combine arrays (this would need more sophisticated logic)
-            mergedData[field.key] = [
-              ...(primaryContactData[field.key] || []),
-              ...(duplicateContactData[field.key] || [])
-            ];
-          }
-        }
-      }
-
-      // Update the primary contact with merged data
-      const { error: updateError } = await supabase
-        .from('contacts')
-        .update(mergedData)
-        .eq('contact_id', primaryContact.contact_id);
-
-      if (updateError) throw updateError;
-
-      // Delete the duplicate contact
-      const { error: deleteError } = await supabase
-        .from('contacts')
-        .delete()
-        .eq('contact_id', duplicateContact.contact_id);
-
-      if (deleteError) throw deleteError;
-
-      toast.success('Contacts merged successfully');
-      onMergeComplete?.(primaryContact, duplicateContact);
-      onClose();
-    } catch (error) {
-      console.error('Error merging contacts:', error);
-      toast.error('Failed to merge contacts');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+  // Removed old processMerge function - now using immediate field updates
 
   const formatFieldValue = (contact, field) => {
     if (!contact) return 'Loading...';
@@ -369,7 +392,7 @@ const ContactMergeModal = ({
         <ModalBody>
           {!isProcessing ? (
             <>
-              <FieldCard theme={theme}>
+              <FieldCard theme={theme} key={`${currentField.key}-${updateTrigger}`}>
                 <FieldIcon>
                   <currentField.icon />
                 </FieldIcon>
@@ -379,7 +402,7 @@ const ContactMergeModal = ({
                   <ContactOption theme={theme}>
                     <OptionHeader theme={theme}>Primary Contact</OptionHeader>
                     <OptionName theme={theme}>
-                      {primaryContact?.first_name} {primaryContact?.last_name}
+                      {primaryContactData?.first_name || primaryContact?.first_name} {primaryContactData?.last_name || primaryContact?.last_name}
                     </OptionName>
                     <OptionValue theme={theme}>
                       {formatFieldValue(primaryContactData, currentField)}
@@ -402,14 +425,34 @@ const ContactMergeModal = ({
 
               {isEditing ? (
                 <EditContainer>
-                  <EditInput
-                    type="text"
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                    placeholder="Enter custom value"
-                    theme={theme}
-                    autoFocus
-                  />
+                  {currentField.key === 'name' ? (
+                    <NameEditContainer>
+                      <EditInput
+                        type="text"
+                        value={editFirstName}
+                        onChange={(e) => setEditFirstName(e.target.value)}
+                        placeholder="First name"
+                        theme={theme}
+                        autoFocus
+                      />
+                      <EditInput
+                        type="text"
+                        value={editLastName}
+                        onChange={(e) => setEditLastName(e.target.value)}
+                        placeholder="Last name"
+                        theme={theme}
+                      />
+                    </NameEditContainer>
+                  ) : (
+                    <EditInput
+                      type="text"
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      placeholder="Enter custom value"
+                      theme={theme}
+                      autoFocus
+                    />
+                  )}
                   <EditButtonContainer>
                     <EditActionButton
                       variant="save"
@@ -749,6 +792,11 @@ const EditContainer = styled.div`
   flex-direction: column;
   gap: 16px;
   margin-top: auto;
+`;
+
+const NameEditContainer = styled.div`
+  display: flex;
+  gap: 12px;
 `;
 
 const EditInput = styled.input`
