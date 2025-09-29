@@ -8,6 +8,7 @@ import { toast } from 'react-hot-toast';
 import Modal from 'react-modal';
 import { CityManagementModal, TagManagementModal } from './RelatedSection';
 import FindDuplicatesModal from './FindDuplicatesModal';
+import ContactEnrichModal from './modals/ContactEnrichModal';
 // Remove CompanyMainModal import - we'll handle this inline
 
 const ContactsList = ({
@@ -207,6 +208,10 @@ const ContactsList = ({
   const [findDuplicatesModalOpen, setFindDuplicatesModalOpen] = useState(false);
   const [contactForDuplicates, setContactForDuplicates] = useState(null);
 
+  // Contact Enrich modal state
+  const [contactEnrichModalOpen, setContactEnrichModalOpen] = useState(false);
+  const [contactForEnrich, setContactForEnrich] = useState(null);
+
   const frequencyOptions = [
     'Weekly',
     'Monthly',
@@ -271,6 +276,18 @@ const ContactsList = ({
     if (e) e.stopPropagation();
     setContactForDuplicates(contact);
     setFindDuplicatesModalOpen(true);
+    setPowerupsMenuOpen(false); // Close powerups menu
+  };
+
+  const handleOpenContactEnrichModal = (contact, e) => {
+    if (e) e.stopPropagation();
+    // Check if LinkedIn URL is missing
+    if (contact.linkedin) {
+      toast.error('Contact already has a LinkedIn URL. Use the existing LinkedIn enrichment feature.');
+      return;
+    }
+    setContactForEnrich(contact);
+    setContactEnrichModalOpen(true);
     setPowerupsMenuOpen(false); // Close powerups menu
   };
 
@@ -5130,9 +5147,7 @@ const ContactsList = ({
             <PowerupsMenuItem
               theme={theme}
               onClick={() => {
-                setPowerupsMenuOpen(false);
-                // TODO: Open enrich modal
-                console.log('Open enrich modal for:', contactForPowerups?.first_name, contactForPowerups?.last_name);
+                handleOpenContactEnrichModal(contactForPowerups);
               }}
             >
               <PowerupsMenuIcon>
@@ -5157,6 +5172,25 @@ const ContactsList = ({
         contact={contactForDuplicates}
         theme={theme}
         onMergeContact={handleMergeContact}
+      />
+
+      {/* Contact Enrich Modal */}
+      <ContactEnrichModal
+        isOpen={contactEnrichModalOpen}
+        onClose={() => {
+          setContactEnrichModalOpen(false);
+          setContactForEnrich(null);
+        }}
+        contact={contactForEnrich}
+        theme={theme}
+        onEnrichComplete={() => {
+          setContactEnrichModalOpen(false);
+          setContactForEnrich(null);
+          // Refresh data if needed
+          if (onContactUpdate) {
+            onContactUpdate();
+          }
+        }}
       />
     </ContactsListContainer>
   );
