@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import Modal from 'react-modal';
-import { FiX, FiChevronLeft, FiChevronRight, FiCheck } from 'react-icons/fi';
+import { FiX, FiChevronLeft, FiChevronRight, FiCheck, FiEdit2 } from 'react-icons/fi';
 import { FaUser, FaEnvelope, FaPhone, FaBuilding, FaLinkedin, FaTag, FaMapMarkerAlt } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import { toast } from 'react-hot-toast';
@@ -34,6 +34,9 @@ const ContactMergeModal = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [primaryContactData, setPrimaryContactData] = useState(null);
   const [duplicateContactData, setDuplicateContactData] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState('');
+  const [customValues, setCustomValues] = useState({});
 
   const currentField = mergeFields[currentFieldIndex];
   const isLastField = currentFieldIndex === mergeFields.length - 1;
@@ -137,6 +140,53 @@ const ContactMergeModal = ({
     }, 200);
   };
 
+  const handleEdit = () => {
+    const currentValue = getCurrentFieldValue();
+    setEditValue(currentValue);
+    setIsEditing(true);
+  };
+
+  const handleSaveEdit = () => {
+    setCustomValues(prev => ({
+      ...prev,
+      [currentField.key]: editValue
+    }));
+    setMergeSelections(prev => ({
+      ...prev,
+      [currentField.key]: 'custom'
+    }));
+    setIsEditing(false);
+
+    // Move to next field
+    setTimeout(() => {
+      if (isLastField) {
+        processMerge();
+      } else {
+        setCurrentFieldIndex(prev => prev + 1);
+      }
+    }, 200);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditValue('');
+  };
+
+  const getCurrentFieldValue = () => {
+    // Start with primary contact value as default
+    const primaryValue = formatFieldValue(primaryContactData, currentField);
+    const duplicateValue = formatFieldValue(duplicateContactData, currentField);
+
+    // For name field, combine first and last name
+    if (currentField.key === 'name') {
+      const primaryFirst = primaryContactData?.first_name || '';
+      const primaryLast = primaryContactData?.last_name || '';
+      return `${primaryFirst} ${primaryLast}`.trim();
+    }
+
+    return primaryValue !== 'Loading...' ? primaryValue : duplicateValue;
+  };
+
   const goToPreviousField = () => {
     if (!isFirstField) {
       setCurrentFieldIndex(prev => prev - 1);
@@ -166,6 +216,22 @@ const ContactMergeModal = ({
             mergedData[field.key] = primaryContactData[field.key];
           } else if (selection === 'duplicate') {
             mergedData[field.key] = duplicateContactData[field.key];
+          } else if (selection === 'custom') {
+            // Handle custom edited values
+            if (field.key === 'name') {
+              // For name field, split into first_name and last_name
+              const customName = customValues[field.key] || '';
+              const nameParts = customName.trim().split(' ');
+              if (nameParts.length >= 2) {
+                mergedData.first_name = nameParts[0];
+                mergedData.last_name = nameParts.slice(1).join(' ');
+              } else {
+                mergedData.first_name = nameParts[0] || '';
+                mergedData.last_name = '';
+              }
+            } else {
+              mergedData[field.key] = customValues[field.key];
+            }
           }
         } else if (field.type === 'array') {
           // Handle array merging (simplified)
@@ -334,33 +400,70 @@ const ContactMergeModal = ({
                 </ComparisonContainer>
               </FieldCard>
 
-              <ButtonContainer>
-                <TinderButton
-                  variant="primary"
-                  onClick={() => handleFieldChoice('primary')}
-                  theme={theme}
-                >
-                  👈 Keep Primary
-                </TinderButton>
-
-                {canCombine && (
+              {isEditing ? (
+                <EditContainer>
+                  <EditInput
+                    type="text"
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    placeholder="Enter custom value"
+                    theme={theme}
+                    autoFocus
+                  />
+                  <EditButtonContainer>
+                    <EditActionButton
+                      variant="save"
+                      onClick={handleSaveEdit}
+                      theme={theme}
+                    >
+                      <FiCheck /> Save
+                    </EditActionButton>
+                    <EditActionButton
+                      variant="cancel"
+                      onClick={handleCancelEdit}
+                      theme={theme}
+                    >
+                      <FiX /> Cancel
+                    </EditActionButton>
+                  </EditButtonContainer>
+                </EditContainer>
+              ) : (
+                <ButtonContainer>
                   <TinderButton
-                    variant="combine"
-                    onClick={() => handleFieldChoice('combine')}
+                    variant="primary"
+                    onClick={() => handleFieldChoice('primary')}
                     theme={theme}
                   >
-                    🔀 Combine
+                    👈 Keep Primary
                   </TinderButton>
-                )}
 
-                <TinderButton
-                  variant="duplicate"
-                  onClick={() => handleFieldChoice('duplicate')}
-                  theme={theme}
-                >
-                  👉 Keep Duplicate
-                </TinderButton>
-              </ButtonContainer>
+                  <TinderButton
+                    variant="edit"
+                    onClick={handleEdit}
+                    theme={theme}
+                  >
+                    <FiEdit2 /> Edit
+                  </TinderButton>
+
+                  {canCombine && (
+                    <TinderButton
+                      variant="combine"
+                      onClick={() => handleFieldChoice('combine')}
+                      theme={theme}
+                    >
+                      🔀 Combine
+                    </TinderButton>
+                  )}
+
+                  <TinderButton
+                    variant="duplicate"
+                    onClick={() => handleFieldChoice('duplicate')}
+                    theme={theme}
+                  >
+                    👉 Keep Duplicate
+                  </TinderButton>
+                </ButtonContainer>
+              )}
 
               <NavigationContainer>
                 <NavButton
@@ -556,6 +659,7 @@ const TinderButton = styled.button`
   background: ${props => {
     switch (props.variant) {
       case 'primary': return '#EF4444';
+      case 'edit': return '#3B82F6';
       case 'combine': return '#3B82F6';
       case 'duplicate': return '#10B981';
       default: return '#6B7280';
@@ -637,6 +741,73 @@ const ProcessingText = styled.div`
   font-size: 18px;
   font-weight: 500;
   color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+`;
+
+const EditContainer = styled.div`
+  padding: 16px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: auto;
+`;
+
+const EditInput = styled.input`
+  padding: 12px 16px;
+  border: 2px solid #3B82F6;
+  border-radius: 8px;
+  font-size: 16px;
+  font-family: inherit;
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+
+  &:focus {
+    outline: none;
+    border-color: #2563EB;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+
+  &::placeholder {
+    color: ${props => props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
+  }
+`;
+
+const EditButtonContainer = styled.div`
+  display: flex;
+  gap: 12px;
+`;
+
+const EditActionButton = styled.button`
+  flex: 1;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+
+  background: ${props => {
+    switch (props.variant) {
+      case 'save': return '#10B981';
+      case 'cancel': return '#6B7280';
+      default: return '#6B7280';
+    }
+  }};
+
+  color: white;
+
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
 `;
 
 export default ContactMergeModal;
