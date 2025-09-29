@@ -209,95 +209,242 @@ const ContactsListDRY = ({
       } else if (dataSource.type === 'missing') {
         // Fetch missing data based on subCategory
         const subCategory = dataSource.subCategory || 'Basics';
-        let query = supabase
-          .from('contacts')
-          .select(`
-            *,
-            contact_companies (
-              company_id,
-              is_primary,
-              companies (
-                company_id,
-                name
-              )
-            ),
-            contact_emails (
-              email_id,
-              email,
-              type,
-              is_primary
-            ),
-            contact_mobiles (
-              mobile_id,
-              mobile,
-              type,
-              is_primary
-            ),
-            contact_cities (
-              city_id,
-              cities (
-                city_id,
-                name
-              )
-            ),
-            contact_tags (
-              tag_id,
-              tags (
-                tag_id,
-                name
-              )
-            ),
-            keep_in_touch (
-              frequency,
-              christmas,
-              easter
-            )
-          `)
-          .not('category', 'in', '("Skip","WhatsApp Group Contact","System","Not Set","Inbox")');
 
-        // Apply missing data filters based on subCategory
-        if (subCategory === 'Company') {
-          // Missing company - no companies or companies is empty
-          query = query.or('contact_companies.is.null,contact_companies.eq.{}');
-        } else if (subCategory === 'Email') {
-          query = query.or('contact_emails.is.null,contact_emails.eq.{}');
-        } else if (subCategory === 'Mobile') {
-          query = query.or('contact_mobiles.is.null,contact_mobiles.eq.{}');
-        } else if (subCategory === 'LinkedIn') {
-          query = query.or('linkedin.is.null,linkedin.eq.""');
-        } else if (subCategory === 'Job Role') {
-          query = query.or('job_role.is.null,job_role.eq.""');
-        } else if (subCategory === 'Category') {
-          query = query.or('category.is.null,category.eq.""');
-        } else if (subCategory === 'Score') {
-          query = query.or('score.is.null,score.eq.0');
-        } else if (subCategory === 'City') {
-          query = query.or('contact_cities.is.null,contact_cities.eq.{}');
+        if (subCategory === 'Basics') {
+          // Use the dedicated view for contacts without basic info
+          const { data: basicsData, error } = await supabase
+            .from('contacts_without_basics')
+            .select('*')
+            .not('last_interaction_at', 'is', null)
+            .order('last_interaction_at', { ascending: false })
+            .limit(100);
+
+          if (error) throw error;
+
+          // Transform data
+          data = (basicsData || []).map(contact => ({
+            ...contact,
+            emails: [],
+            mobiles: [],
+            companies: [],
+            contact_emails: [], // Keep empty for compatibility
+          }));
+
+        } else if (subCategory === 'Company') {
+          // Use the optimized view for contacts without companies
+          const { data: companyData, error } = await supabase
+            .from('contacts_without_companies')
+            .select('*')
+            .not('category', 'in', '("Skip","WhatsApp Group Contact","System","Not Set","Inbox")')
+            .not('last_interaction_at', 'is', null)
+            .order('last_interaction_at', { ascending: false })
+            .limit(100);
+
+          if (error) throw error;
+
+          // Transform data
+          data = (companyData || []).map(contact => ({
+            ...contact,
+            emails: contact.emails || [],
+            mobiles: contact.mobiles || [],
+            companies: [],
+            contact_emails: contact.emails || [], // Map emails to contact_emails for compatibility
+          }));
+
         } else if (subCategory === 'Tags') {
-          query = query.or('contact_tags.is.null,contact_tags.eq.{}');
-        } else if (subCategory === 'Basics') {
-          // Missing basic info - any of first_name, last_name, email, mobile
-          query = query.or('first_name.is.null,first_name.eq."",last_name.is.null,last_name.eq."",contact_emails.is.null,contact_emails.eq.{},contact_mobiles.is.null,contact_mobiles.eq.{}');
+          // Use the dedicated view for contacts without tags
+          const { data: tagsData, error } = await supabase
+            .from('contacts_without_tags')
+            .select('*')
+            .not('last_interaction_at', 'is', null)
+            .order('last_interaction_at', { ascending: false })
+            .limit(100);
+
+          if (error) throw error;
+
+          // Transform data
+          data = (tagsData || []).map(contact => ({
+            ...contact,
+            emails: [],
+            mobiles: [],
+            companies: [],
+            tags: [],
+            contact_emails: [], // Keep empty for compatibility
+          }));
+
+        } else if (subCategory === 'Cities') {
+          // Use the dedicated view for contacts without cities
+          const { data: citiesData, error } = await supabase
+            .from('contacts_without_cities')
+            .select('*')
+            .not('last_interaction_at', 'is', null)
+            .order('last_interaction_at', { ascending: false })
+            .limit(100);
+
+          if (error) throw error;
+
+          // Transform data
+          data = (citiesData || []).map(contact => ({
+            ...contact,
+            emails: [],
+            mobiles: [],
+            companies: [],
+            cities: [],
+            contact_emails: [], // Keep empty for compatibility
+          }));
+
+        } else if (subCategory === 'Score') {
+          // Use the dedicated view for contacts without score
+          const { data: scoreData, error } = await supabase
+            .from('contacts_without_score')
+            .select('*')
+            .not('last_interaction_at', 'is', null)
+            .order('last_interaction_at', { ascending: false })
+            .limit(100);
+
+          if (error) throw error;
+
+          // Transform data
+          data = (scoreData || []).map(contact => ({
+            ...contact,
+            emails: [],
+            mobiles: [],
+            companies: [],
+            contact_emails: [], // Keep empty for compatibility
+          }));
+
+        } else if (subCategory === 'Keep in touch') {
+          // Use the dedicated view for contacts without keep in touch
+          const { data: kitData, error } = await supabase
+            .from('contacts_without_keep_in_touch')
+            .select('*')
+            .not('last_interaction_at', 'is', null)
+            .order('last_interaction_at', { ascending: false })
+            .limit(100);
+
+          if (error) throw error;
+
+          // Transform data
+          data = (kitData || []).map(contact => ({
+            ...contact,
+            emails: [],
+            mobiles: [],
+            companies: [],
+            keep_in_touch: null,
+            contact_emails: [], // Keep empty for compatibility
+          }));
+
+        } else if (subCategory === 'Birthday') {
+          // Use the dedicated view for contacts without birthday
+          const { data: birthdayData, error } = await supabase
+            .from('contacts_without_birthday')
+            .select('*')
+            .not('last_interaction_at', 'is', null)
+            .order('last_interaction_at', { ascending: false })
+            .limit(100);
+
+          if (error) throw error;
+
+          // Transform data
+          data = (birthdayData || []).map(contact => ({
+            ...contact,
+            emails: [],
+            mobiles: [],
+            companies: [],
+            birthday: null,
+            contact_emails: [], // Keep empty for compatibility
+          }));
+
+        } else {
+          // For other subcategories, use generic query approach
+          let query = supabase
+            .from('contacts')
+            .select(`
+              *,
+              contact_companies (
+                company_id,
+                is_primary,
+                companies (
+                  company_id,
+                  name
+                )
+              ),
+              contact_emails (
+                email_id,
+                email,
+                type,
+                is_primary
+              ),
+              contact_mobiles (
+                mobile_id,
+                mobile,
+                type,
+                is_primary
+              ),
+              contact_cities (
+                city_id,
+                cities (
+                  city_id,
+                  name
+                )
+              ),
+              contact_tags (
+                tag_id,
+                tags (
+                  tag_id,
+                  name
+                )
+              ),
+              keep_in_touch (
+                frequency,
+                christmas,
+                easter
+              )
+            `)
+            .not('category', 'in', '("Skip","WhatsApp Group Contact","System","Not Set","Inbox")');
+
+          // Apply missing data filters based on subCategory
+          if (subCategory === 'Email') {
+            query = query.or('contact_emails.is.null,contact_emails.eq.{}');
+          } else if (subCategory === 'Mobile') {
+            query = query.or('contact_mobiles.is.null,contact_mobiles.eq.{}');
+          } else if (subCategory === 'LinkedIn') {
+            query = query.or('linkedin.is.null,linkedin.eq.""');
+          } else if (subCategory === 'Job Role') {
+            query = query.or('job_role.is.null,job_role.eq.""');
+          } else if (subCategory === 'Category') {
+            query = query.or('category.is.null,category.eq.""');
+          } else if (subCategory === 'Score') {
+            query = query.or('score.is.null,score.eq.0');
+          } else if (subCategory === 'City' || subCategory === 'Cities') {
+            query = query.or('contact_cities.is.null,contact_cities.eq.{}');
+          } else if (subCategory === 'Tags') {
+            query = query.or('contact_tags.is.null,contact_tags.eq.{}');
+          } else if (subCategory === 'Keep in touch') {
+            query = query.or('keep_in_touch.is.null,keep_in_touch.eq.{}');
+          } else if (subCategory === 'Birthday') {
+            query = query.or('birthday.is.null,birthday.eq.""');
+          }
+
+          const { data: contactsData, error } = await query
+            .order('last_interaction_at', { ascending: false, nullsLast: true })
+            .limit(100);
+
+          if (error) throw error;
+
+          // Transform data
+          data = (contactsData || []).map(contact => ({
+            ...contact,
+            companies: contact.contact_companies?.map(cc => ({
+              ...cc.companies,
+              company_id: cc.company_id
+            })).filter(Boolean) || [],
+            contact_emails: contact.contact_emails || [],
+            keep_in_touch_frequency: contact.keep_in_touch?.frequency || contact.keep_in_touch?.[0]?.frequency || null,
+            christmas: contact.keep_in_touch?.christmas || contact.keep_in_touch?.[0]?.christmas || null,
+            easter: contact.keep_in_touch?.easter || contact.keep_in_touch?.[0]?.easter || null
+          }));
         }
-
-        const { data: contactsData, error } = await query
-          .order('last_interaction_at', { ascending: false, nullsLast: true })
-          .limit(100);
-
-        if (error) throw error;
-
-        // Transform data
-        data = (contactsData || []).map(contact => ({
-          ...contact,
-          companies: contact.contact_companies?.map(cc => ({
-            ...cc.companies,
-            company_id: cc.company_id
-          })).filter(Boolean) || [],
-          contact_emails: contact.contact_emails || [], // Keep emails!
-          keep_in_touch_frequency: contact.keep_in_touch?.frequency || contact.keep_in_touch?.[0]?.frequency || null,
-          christmas: contact.keep_in_touch?.christmas || contact.keep_in_touch?.[0]?.christmas || null,
-          easter: contact.keep_in_touch?.easter || contact.keep_in_touch?.[0]?.easter || null
-        }));
 
       } else if (dataSource.type === 'mail_filter') {
         // Fetch mail filter data - contacts that need email filtering
