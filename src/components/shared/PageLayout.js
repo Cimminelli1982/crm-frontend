@@ -1,128 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
 import { FaSync } from 'react-icons/fa';
-import { toast } from 'react-hot-toast';
-import ContactsListDRY from '../components/ContactsListDRY';
 
-const InteractionsPage = ({ theme }) => {
-  const navigate = useNavigate();
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [filterCategory, setFilterCategory] = useState('All');
-  const [timeFilter, setTimeFilter] = useState('Today'); // Today, This Week, This Month
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
-
-  const handleManualRefresh = () => {
-    setIsRefreshing(true);
-    setRefreshTrigger(prev => prev + 1);
-    setTimeout(() => setIsRefreshing(false), 1000);
-  };
-
-  const interactionCategories = ['All', 'Founders', 'Investors', 'Family and Friends'];
-
-  return (
-    <PageContainer theme={theme}>
-      <InteractionsView>
-        <InteractionsHeader theme={theme}>
-          <HeaderContent>
-            <HeaderText>
-              <PageTitle theme={theme}>Interactions</PageTitle>
-              <PageSubtitle theme={theme}>
-                View and manage all contact interactions
-              </PageSubtitle>
-            </HeaderText>
-            <RefreshButton
-              theme={theme}
-              onClick={handleManualRefresh}
-              disabled={isRefreshing}
-              $isRefreshing={isRefreshing}
-            >
-              <FaSync />
-            </RefreshButton>
-          </HeaderContent>
-
-          <FilterTabs theme={theme}>
-            {interactionCategories.map(category => (
-              <FilterTab
-                key={category}
-                theme={theme}
-                $active={filterCategory === category}
-                onClick={() => setFilterCategory(category)}
-              >
-                {category}
-              </FilterTab>
-            ))}
-          </FilterTabs>
-        </InteractionsHeader>
-
-        {/* Time Filter Submenu - in gray area below header */}
-        {filterCategory === 'All' && (
-          <TimeSubMenu theme={theme}>
-            <TimeSubTab
-              theme={theme}
-              $active={timeFilter === 'Today'}
-              onClick={() => setTimeFilter('Today')}
-            >
-              Today
-            </TimeSubTab>
-            <TimeSubTab
-              theme={theme}
-              $active={timeFilter === 'This Week'}
-              onClick={() => setTimeFilter('This Week')}
-            >
-              This Week
-            </TimeSubTab>
-            <TimeSubTab
-              theme={theme}
-              $active={timeFilter === 'This Month'}
-              onClick={() => setTimeFilter('This Month')}
-            >
-              This Month
-            </TimeSubTab>
-          </TimeSubMenu>
-        )}
-
-        <ContentArea>
-          <ContactsListDRY
-            dataSource={{
-              type: 'interactions',
-              timeFilter: filterCategory === 'All' ? timeFilter : 'Today',
-              filterCategory: filterCategory
-            }}
-            refreshTrigger={refreshTrigger}
-            theme={theme}
-            emptyStateConfig={{
-              icon: '🔄',
-              title: 'No recent interactions',
-              text: 'No contacts have had interactions in the last 30 days.'
-            }}
-            onContactUpdate={() => setRefreshTrigger(prev => prev + 1)}
-            showActions={true}
-            badgeType="category"
-            pageContext="interactions"
-          />
-        </ContentArea>
-      </InteractionsView>
-    </PageContainer>
-  );
-};
-
-// Styled Components (same as Sort page pattern)
-const PageContainer = styled.div`
+// Shared Page Layout Components
+export const PageContainer = styled.div`
   min-height: 100vh;
   background: ${props => props.theme === 'light' ? '#F9FAFB' : '#111827'};
   transition: background-color 0.3s ease;
 `;
 
-const InteractionsView = styled.div`
+export const PageView = styled.div`
   height: 100vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 `;
 
-const InteractionsHeader = styled.div`
+export const PageHeader = styled.div`
   background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
   border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
   padding: 24px 20px 24px 20px;
@@ -131,7 +24,7 @@ const InteractionsHeader = styled.div`
   z-index: 10;
 `;
 
-const HeaderContent = styled.div`
+export const HeaderContent = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -139,24 +32,24 @@ const HeaderContent = styled.div`
   margin: 0 auto 20px auto;
 `;
 
-const HeaderText = styled.div`
+export const HeaderText = styled.div`
   flex: 1;
 `;
 
-const PageTitle = styled.h1`
+export const PageTitle = styled.h1`
   font-size: 28px;
   font-weight: 700;
   color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
   margin: 0 0 8px 0;
 `;
 
-const PageSubtitle = styled.p`
+export const PageSubtitle = styled.p`
   color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
   margin: 0;
   font-size: 16px;
 `;
 
-const RefreshButton = styled.button`
+export const RefreshButton = styled.button`
   background: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
   color: white;
   border: none;
@@ -191,7 +84,7 @@ const RefreshButton = styled.button`
   }
 `;
 
-const FilterTabs = styled.div`
+export const FilterTabs = styled.div`
   display: flex;
   justify-content: center;
   align-items: center;
@@ -208,7 +101,7 @@ const FilterTabs = styled.div`
   };
 `;
 
-const FilterTab = styled.button`
+export const FilterTab = styled.button`
   background: ${props => props.$active
     ? (props.theme === 'light' ? '#FFFFFF' : '#1F2937')
     : 'transparent'
@@ -253,26 +146,38 @@ const FilterTab = styled.button`
   }
 `;
 
-const ContentArea = styled.div`
+export const ContentArea = styled.div`
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
 `;
 
-const TimeSubMenu = styled.div`
+export const SubMenu = styled.div`
   display: flex;
   justify-content: center;
   align-items: center;
   gap: 2px;
-  max-width: 500px;
+  max-width: 90%;
   margin: 15px auto 0 auto;
   background: ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
   border-radius: 8px;
   padding: 4px;
   width: fit-content;
+  flex-wrap: wrap;
+
+  @media (max-width: 1024px) {
+    max-width: 95%;
+    gap: 1px;
+  }
+
+  @media (max-width: 768px) {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    max-width: 100%;
+  }
 `;
 
-const TimeSubTab = styled.button`
+export const SubTab = styled.button`
   background: ${props => props.$active
     ? (props.theme === 'light' ? '#FFFFFF' : '#1F2937')
     : 'transparent'
@@ -314,5 +219,3 @@ const TimeSubTab = styled.button`
     transform: scale(0.98);
   }
 `;
-
-export default InteractionsPage;

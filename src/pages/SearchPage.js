@@ -4,7 +4,7 @@ import styled from 'styled-components';
 import { FaSync, FaSearch } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import { toast } from 'react-hot-toast';
-import ContactsList from '../components/ContactsList';
+import ContactsListDRY from '../components/ContactsListDRY';
 
 const SearchPage = ({ theme }) => {
   const navigate = useNavigate();
@@ -365,9 +365,14 @@ const SearchPage = ({ theme }) => {
           )}
 
           {hasSearched && (
-            <ContactsList
-              contacts={contacts}
-              loading={loading}
+            <ContactsListDRY
+              dataSource={{
+                type: 'search',
+                searchQuery: searchQuery,
+                filterCategory: filterCategory,
+                preloadedData: contacts
+              }}
+              refreshTrigger={isRefreshing}
               theme={theme}
               emptyStateConfig={{
                 icon: '🔍',
@@ -378,6 +383,7 @@ const SearchPage = ({ theme }) => {
               onContactClick={handleItemClick}
               showActions={true}
               badgeType="category"
+              pageContext="search"
             />
           )}
         </ContentArea>
