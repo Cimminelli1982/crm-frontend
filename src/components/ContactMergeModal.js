@@ -14,19 +14,19 @@ const ContactMergeModal = ({
   theme,
   onMergeComplete
 }) => {
-  // Define the fields to merge through
+  // Define the fields to merge through - UPDATED ORDER
   const mergeFields = [
     { key: 'name', label: 'Name', icon: FaUser, type: 'single' },
     { key: 'category', label: 'Category', icon: FaUser, type: 'single' },
     { key: 'job_role', label: 'Job Role', icon: FaBuilding, type: 'single' },
+    { key: 'linkedin', label: 'LinkedIn', icon: FaLinkedin, type: 'single' },
+    { key: 'score', label: 'Score', icon: FaUser, type: 'single' },
+    { key: 'keep_in_touch_frequency', label: 'Keep in Touch', icon: FaUser, type: 'single' },
+    { key: 'cities', label: 'Cities', icon: FaMapMarkerAlt, type: 'array' },
+    { key: 'tags', label: 'Tags', icon: FaTag, type: 'array' },
     { key: 'emails', label: 'Emails', icon: FaEnvelope, type: 'array' },
     { key: 'mobiles', label: 'Mobiles', icon: FaPhone, type: 'array' },
-    { key: 'linkedin', label: 'LinkedIn', icon: FaLinkedin, type: 'single' },
-    { key: 'tags', label: 'Tags', icon: FaTag, type: 'array' },
-    { key: 'cities', label: 'Cities', icon: FaMapMarkerAlt, type: 'array' },
-    { key: 'companies', label: 'Companies', icon: FaBuilding, type: 'array' },
-    { key: 'score', label: 'Score', icon: FaUser, type: 'single' },
-    { key: 'keep_in_touch_frequency', label: 'Keep in Touch', icon: FaUser, type: 'single' }
+    { key: 'companies', label: 'Companies', icon: FaBuilding, type: 'array' }
   ];
 
   const [currentFieldIndex, setCurrentFieldIndex] = useState(0);
@@ -39,6 +39,7 @@ const ContactMergeModal = ({
   const [editFirstName, setEditFirstName] = useState('');
   const [editLastName, setEditLastName] = useState('');
   const [editCategory, setEditCategory] = useState('');
+  const [editKeepInTouchFrequency, setEditKeepInTouchFrequency] = useState('');
   const [customValues, setCustomValues] = useState({});
   const [updateTrigger, setUpdateTrigger] = useState(0);
   const [emailsBeingProcessed, setEmailsBeingProcessed] = useState(new Set());
@@ -49,6 +50,30 @@ const ContactMergeModal = ({
   const [showAddMobile, setShowAddMobile] = useState(false);
   const [newMobile, setNewMobile] = useState('');
   const [newMobileType, setNewMobileType] = useState('personal');
+  const [tagsBeingProcessed, setTagsBeingProcessed] = useState(new Set());
+  const [showAddTag, setShowAddTag] = useState(false);
+  const [newTagName, setNewTagName] = useState('');
+  const [tagSuggestions, setTagSuggestions] = useState([]);
+  const [filteredSuggestions, setFilteredSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
+  const [citiesBeingProcessed, setCitiesBeingProcessed] = useState(new Set());
+  const [showAddCity, setShowAddCity] = useState(false);
+  const [newCityName, setNewCityName] = useState('');
+  const [newCityCountry, setNewCityCountry] = useState('');
+  const [citySuggestions, setCitySuggestions] = useState([]);
+  const [filteredCitySuggestions, setFilteredCitySuggestions] = useState([]);
+  const [showCitySuggestions, setShowCitySuggestions] = useState(false);
+  const [selectedCitySuggestionIndex, setSelectedCitySuggestionIndex] = useState(-1);
+  const [companiesBeingProcessed, setCompaniesBeingProcessed] = useState(new Set());
+  const [showAddCompany, setShowAddCompany] = useState(false);
+  const [newCompanyName, setNewCompanyName] = useState('');
+  const [newCompanyCategory, setNewCompanyCategory] = useState('');
+  const [newCompanyRelationship, setNewCompanyRelationship] = useState('employee');
+  const [companySuggestions, setCompanySuggestions] = useState([]);
+  const [filteredCompanySuggestions, setFilteredCompanySuggestions] = useState([]);
+  const [showCompanySuggestions, setShowCompanySuggestions] = useState(false);
+  const [selectedCompanySuggestionIndex, setSelectedCompanySuggestionIndex] = useState(-1);
 
   // Category enum values from Supabase
   const categoryOptions = [
@@ -58,6 +83,12 @@ const ContactMergeModal = ({
     'Institution', 'SUBSCRIBER NEWSLETTER', 'System'
   ];
 
+  // Keep in Touch Frequency enum values from Supabase
+  const keepInTouchOptions = [
+    'Not Set', 'Weekly', 'Monthly', 'Quarterly',
+    'Twice per Year', 'Once per Year', 'Do not keep in touch'
+  ];
+
   const currentField = mergeFields[currentFieldIndex];
   const isLastField = currentFieldIndex === mergeFields.length - 1;
   const isFirstField = currentFieldIndex === 0;
@@ -65,6 +96,7 @@ const ContactMergeModal = ({
   // Load full contact data when modal opens
   useEffect(() => {
     if (isOpen && primaryContact && duplicateContact) {
+      setCurrentFieldIndex(0); // Reset to first field
       loadContactData();
       initializeMergeSelections();
     }
@@ -221,6 +253,35 @@ const ContactMergeModal = ({
       setUpdateTrigger(prev => prev + 1);
     }
 
+    // If we're leaving the tags field, clean up duplicate tags immediately
+    if (currentField?.key === 'tags') {
+      await cleanupDuplicateTags();
+      await loadContactData();
+      setUpdateTrigger(prev => prev + 1);
+    }
+
+    // If we're leaving the cities field, clean up duplicate cities immediately
+    if (currentField?.key === 'cities') {
+      await cleanupDuplicateCities();
+      await loadContactData();
+      setUpdateTrigger(prev => prev + 1);
+    }
+
+    // If we're leaving the keep_in_touch_frequency field, clean up duplicate keep_in_touch data
+    if (currentField?.key === 'keep_in_touch_frequency') {
+      await cleanupDuplicateKeepInTouch();
+      await loadContactData();
+      setUpdateTrigger(prev => prev + 1);
+    }
+
+    // If we're leaving the companies field, clean up duplicate company ASSOCIATIONS immediately
+    // NOTE: We clean up associations, not companies themselves!
+    if (currentField?.key === 'companies') {
+      await cleanupDuplicateCompanyAssociations();
+      await loadContactData();
+      setUpdateTrigger(prev => prev + 1);
+    }
+
     setTimeout(() => {
       if (isLastField) {
         // All fields processed, complete the merge by deleting duplicate
@@ -231,10 +292,53 @@ const ContactMergeModal = ({
     }, 200);
   };
 
-  const completeFieldProcessing = async () => {
+  const transferAllResidualsAndComplete = async () => {
     try {
-      // Delete the duplicate contact since all processing is complete
-      // (emails were already cleaned up when leaving the emails field)
+      console.log('Starting comprehensive transfer of all residual associations...');
+
+      // Transfer all residual associations from duplicate to primary contact
+      const transfers = [
+        // Core association tables
+        supabase.from('attachments').update({contact_id: primaryContact.contact_id}).eq('contact_id', duplicateContact.contact_id),
+        supabase.from('contact_chats').update({contact_id: primaryContact.contact_id}).eq('contact_id', duplicateContact.contact_id),
+        supabase.from('interactions').update({contact_id: primaryContact.contact_id}).eq('contact_id', duplicateContact.contact_id),
+        supabase.from('notes_contacts').update({contact_id: primaryContact.contact_id}).eq('contact_id', duplicateContact.contact_id),
+        supabase.from('meeting_contacts').update({contact_id: primaryContact.contact_id}).eq('contact_id', duplicateContact.contact_id),
+
+        // Deal-related tables
+        supabase.from('deals_contacts').update({contact_id: primaryContact.contact_id}).eq('contact_id', duplicateContact.contact_id),
+        supabase.from('investments_contacts').update({contact_id: primaryContact.contact_id}).eq('contact_id', duplicateContact.contact_id),
+
+        // Email-related tables
+        supabase.from('email_receivers').update({contact_id: primaryContact.contact_id}).eq('contact_id', duplicateContact.contact_id),
+        supabase.from('email_participants').update({contact_id: primaryContact.contact_id}).eq('contact_id', duplicateContact.contact_id),
+        supabase.from('contact_email_threads').update({contact_id: primaryContact.contact_id}).eq('contact_id', duplicateContact.contact_id),
+        supabase.from('email_list_members').update({contact_id: primaryContact.contact_id}).eq('contact_id', duplicateContact.contact_id),
+        supabase.from('email_campaign_logs').update({contact_id: primaryContact.contact_id}).eq('contact_id', duplicateContact.contact_id),
+
+        // Special case: emails where this contact is the sender
+        supabase.from('emails').update({sender_contact_id: primaryContact.contact_id}).eq('sender_contact_id', duplicateContact.contact_id),
+
+        // Special case: deals where this contact is the introducer
+        supabase.from('deals').update({introducer: primaryContact.contact_id}).eq('introducer', duplicateContact.contact_id),
+
+        // Contact duplicates table (remove any references to this duplicate)
+        supabase.from('contact_duplicates').delete().or(`primary_contact_id.eq.${duplicateContact.contact_id},duplicate_contact_id.eq.${duplicateContact.contact_id}`)
+      ];
+
+      // Execute all transfers in parallel
+      const results = await Promise.allSettled(transfers);
+
+      // Log any transfer errors but don't fail the whole operation
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          console.warn(`Transfer ${index} failed:`, result.reason);
+        }
+      });
+
+      console.log('All residual associations transferred, now deleting duplicate contact...');
+
+      // Now safe to delete the duplicate contact
       const { error: deleteError } = await supabase
         .from('contacts')
         .delete()
@@ -242,13 +346,17 @@ const ContactMergeModal = ({
 
       if (deleteError) throw deleteError;
 
-      toast.success('Contacts merged successfully');
+      toast.success('Contacts merged successfully - all data preserved');
       onMergeComplete?.(primaryContact, duplicateContact);
       onClose();
     } catch (error) {
       console.error('Error completing merge:', error);
       toast.error('Failed to complete merge');
     }
+  };
+
+  const completeFieldProcessing = async () => {
+    await transferAllResidualsAndComplete();
   };
 
   // Email management functions
@@ -605,6 +713,714 @@ const ContactMergeModal = ({
     setNewMobileType('personal');
   };
 
+  // Tag management functions
+  const moveTagToPrimary = async (entryId, tagName) => {
+    if (tagsBeingProcessed.has(entryId)) return;
+    setTagsBeingProcessed(prev => new Set([...prev, entryId]));
+
+    try {
+      // Check if primary already has this tag
+      const existingTag = primaryContactData?.contact_tags?.find(t => t.tags?.name === tagName);
+
+      if (existingTag) {
+        // Delete duplicate version
+        const { error } = await supabase
+          .from('contact_tags')
+          .delete()
+          .eq('entry_id', entryId);
+        if (error) throw error;
+        toast.success('Duplicate tag removed');
+      } else {
+        // Move tag to primary contact
+        const { error } = await supabase
+          .from('contact_tags')
+          .update({ contact_id: primaryContact.contact_id })
+          .eq('entry_id', entryId);
+        if (error) throw error;
+        toast.success('Tag moved to primary contact');
+      }
+
+      await loadContactData();
+      setUpdateTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('Error moving tag:', error);
+      toast.error('Failed to move tag');
+    } finally {
+      setTagsBeingProcessed(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(entryId);
+        return newSet;
+      });
+    }
+  };
+
+  const removeTagFromPrimary = async (entryId) => {
+    if (tagsBeingProcessed.has(entryId)) return;
+    setTagsBeingProcessed(prev => new Set([...prev, entryId]));
+
+    try {
+      const { error } = await supabase
+        .from('contact_tags')
+        .delete()
+        .eq('entry_id', entryId);
+      if (error) throw error;
+
+      toast.success('Tag removed');
+      await loadContactData();
+      setUpdateTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('Error removing tag:', error);
+      toast.error('Failed to remove tag');
+    } finally {
+      setTagsBeingProcessed(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(entryId);
+        return newSet;
+      });
+    }
+  };
+
+  const cleanupDuplicateTags = async () => {
+    try {
+      const { error } = await supabase
+        .from('contact_tags')
+        .delete()
+        .eq('contact_id', duplicateContact.contact_id);
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error cleaning up duplicate tags:', error);
+    }
+  };
+
+  const addNewTag = async () => {
+    if (!newTagName.trim()) {
+      toast.error('Please enter a tag name');
+      return;
+    }
+
+    try {
+      // Check if tag already exists for this contact
+      const existingContactTag = primaryContactData?.contact_tags?.find(t => t.tags?.name === newTagName.trim());
+      if (existingContactTag) {
+        toast.error('Tag already exists for this contact');
+        return;
+      }
+
+      // Check if tag exists in suggestions (existing in database)
+      const existingTagInDb = tagSuggestions.find(tag =>
+        tag.name.toLowerCase() === newTagName.trim().toLowerCase()
+      );
+
+      let tagId;
+      let actionMessage;
+
+      if (existingTagInDb) {
+        // Associate with existing tag
+        tagId = existingTagInDb.tag_id;
+        actionMessage = `Tag "${newTagName.trim()}" associated successfully`;
+      } else {
+        // Create new tag
+        const { data: newTagData, error: createError } = await supabase
+          .from('tags')
+          .insert({ name: newTagName.trim() })
+          .select('tag_id')
+          .single();
+
+        if (createError) throw createError;
+        tagId = newTagData.tag_id;
+        actionMessage = `New tag "${newTagName.trim()}" created and added successfully`;
+      }
+
+      // Link tag to contact
+      const { error: linkError } = await supabase
+        .from('contact_tags')
+        .insert({
+          contact_id: primaryContact.contact_id,
+          tag_id: tagId
+        });
+
+      if (linkError) throw linkError;
+
+      toast.success(actionMessage);
+      setShowAddTag(false);
+      setNewTagName('');
+      setTagSuggestions([]);
+      setFilteredSuggestions([]);
+      setShowSuggestions(false);
+      setSelectedSuggestionIndex(-1);
+
+      await loadContactData();
+      setUpdateTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('Error adding tag:', error);
+      if (error.message?.includes('Failed to fetch')) {
+        toast.error('Connection lost. Please try again.');
+      } else {
+        toast.error('Failed to add tag. Please try again.');
+      }
+    }
+  };
+
+  const cancelAddTag = () => {
+    setShowAddTag(false);
+    setNewTagName('');
+    setTagSuggestions([]);
+    setFilteredSuggestions([]);
+    setShowSuggestions(false);
+    setSelectedSuggestionIndex(-1);
+  };
+
+  const loadTagSuggestions = async () => {
+    try {
+      const { data: existingTags, error } = await supabase
+        .from('tags')
+        .select('tag_id, name')
+        .order('name');
+
+      if (error) throw error;
+
+      setTagSuggestions(existingTags || []);
+    } catch (error) {
+      console.error('Error loading tag suggestions:', error);
+      setTagSuggestions([]);
+    }
+  };
+
+  const handleTagNameChange = (e) => {
+    const value = e.target.value;
+    setNewTagName(value);
+
+    if (value.trim()) {
+      // Filter suggestions based on input
+      const filtered = tagSuggestions.filter(tag =>
+        tag.name.toLowerCase().includes(value.toLowerCase())
+      );
+      setFilteredSuggestions(filtered);
+      setShowSuggestions(filtered.length > 0);
+      setSelectedSuggestionIndex(-1);
+    } else {
+      setShowSuggestions(false);
+      setFilteredSuggestions([]);
+    }
+  };
+
+  const selectSuggestion = (suggestion) => {
+    setNewTagName(suggestion.name);
+    setShowSuggestions(false);
+    setSelectedSuggestionIndex(-1);
+  };
+
+  const handleTagKeyDown = (e) => {
+    if (!showSuggestions) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedSuggestionIndex(prev =>
+        prev < filteredSuggestions.length - 1 ? prev + 1 : prev
+      );
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedSuggestionIndex(prev => prev > 0 ? prev - 1 : -1);
+    } else if (e.key === 'Enter' && selectedSuggestionIndex >= 0) {
+      e.preventDefault();
+      selectSuggestion(filteredSuggestions[selectedSuggestionIndex]);
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false);
+      setSelectedSuggestionIndex(-1);
+    }
+  };
+
+  // City management functions
+  const moveCityToPrimary = async (entryId, cityName, cityCountry) => {
+    if (citiesBeingProcessed.has(entryId)) return;
+    setCitiesBeingProcessed(prev => new Set([...prev, entryId]));
+
+    try {
+      // Check if primary already has this city
+      const existingCity = primaryContactData?.contact_cities?.find(c =>
+        c.cities?.name === cityName && c.cities?.country === cityCountry
+      );
+
+      if (existingCity) {
+        // Delete duplicate version
+        const { error } = await supabase
+          .from('contact_cities')
+          .delete()
+          .eq('entry_id', entryId);
+        if (error) throw error;
+        toast.success('Duplicate city removed');
+      } else {
+        // Move city to primary contact
+        const { error } = await supabase
+          .from('contact_cities')
+          .update({ contact_id: primaryContact.contact_id })
+          .eq('entry_id', entryId);
+        if (error) throw error;
+        toast.success('City moved to primary contact');
+      }
+
+      await loadContactData();
+      setUpdateTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('Error moving city:', error);
+      toast.error('Failed to move city');
+    } finally {
+      setCitiesBeingProcessed(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(entryId);
+        return newSet;
+      });
+    }
+  };
+
+  const removeCityFromPrimary = async (entryId) => {
+    if (citiesBeingProcessed.has(entryId)) return;
+    setCitiesBeingProcessed(prev => new Set([...prev, entryId]));
+
+    try {
+      const { error } = await supabase
+        .from('contact_cities')
+        .delete()
+        .eq('entry_id', entryId);
+      if (error) throw error;
+
+      toast.success('City removed');
+      await loadContactData();
+      setUpdateTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('Error removing city:', error);
+      toast.error('Failed to remove city');
+    } finally {
+      setCitiesBeingProcessed(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(entryId);
+        return newSet;
+      });
+    }
+  };
+
+  const cleanupDuplicateCities = async () => {
+    try {
+      const { error } = await supabase
+        .from('contact_cities')
+        .delete()
+        .eq('contact_id', duplicateContact.contact_id);
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error cleaning up duplicate cities:', error);
+    }
+  };
+
+  const addNewCity = async () => {
+    if (!newCityName.trim()) {
+      toast.error('Please enter a city name');
+      return;
+    }
+
+    if (!newCityCountry.trim()) {
+      toast.error('Please enter a country');
+      return;
+    }
+
+    try {
+      // Check if city already exists for this contact
+      const existingContactCity = primaryContactData?.contact_cities?.find(c =>
+        c.cities?.name === newCityName.trim() && c.cities?.country === newCityCountry.trim()
+      );
+      if (existingContactCity) {
+        toast.error('City already exists for this contact');
+        return;
+      }
+
+      // Check if city exists in suggestions (existing in database)
+      const existingCityInDb = citySuggestions.find(city =>
+        city.name.toLowerCase() === newCityName.trim().toLowerCase() &&
+        city.country.toLowerCase() === newCityCountry.trim().toLowerCase()
+      );
+
+      let cityId;
+      let actionMessage;
+
+      if (existingCityInDb) {
+        // Associate with existing city
+        cityId = existingCityInDb.city_id;
+        actionMessage = `City "${newCityName.trim()}, ${newCityCountry.trim()}" associated successfully`;
+      } else {
+        // Create new city
+        const { data: newCityData, error: createError } = await supabase
+          .from('cities')
+          .insert({
+            name: newCityName.trim(),
+            country: newCityCountry.trim()
+          })
+          .select('city_id')
+          .single();
+
+        if (createError) throw createError;
+        cityId = newCityData.city_id;
+        actionMessage = `New city "${newCityName.trim()}, ${newCityCountry.trim()}" created and added successfully`;
+      }
+
+      // Link city to contact
+      const { error: linkError } = await supabase
+        .from('contact_cities')
+        .insert({
+          contact_id: primaryContact.contact_id,
+          city_id: cityId
+        });
+
+      if (linkError) throw linkError;
+
+      toast.success(actionMessage);
+      setShowAddCity(false);
+      setNewCityName('');
+      setNewCityCountry('');
+      setCitySuggestions([]);
+      setFilteredCitySuggestions([]);
+      setShowCitySuggestions(false);
+      setSelectedCitySuggestionIndex(-1);
+
+      await loadContactData();
+      setUpdateTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('Error adding city:', error);
+      if (error.message?.includes('Failed to fetch')) {
+        toast.error('Connection lost. Please try again.');
+      } else {
+        toast.error('Failed to add city. Please try again.');
+      }
+    }
+  };
+
+  const cancelAddCity = () => {
+    setShowAddCity(false);
+    setNewCityName('');
+    setNewCityCountry('');
+    setCitySuggestions([]);
+    setFilteredCitySuggestions([]);
+    setShowCitySuggestions(false);
+    setSelectedCitySuggestionIndex(-1);
+  };
+
+  const loadCitySuggestions = async () => {
+    try {
+      const { data: existingCities, error } = await supabase
+        .from('cities')
+        .select('city_id, name, country')
+        .order('name');
+
+      if (error) throw error;
+
+      setCitySuggestions(existingCities || []);
+    } catch (error) {
+      console.error('Error loading city suggestions:', error);
+      setCitySuggestions([]);
+    }
+  };
+
+  const handleCityNameChange = (e) => {
+    const value = e.target.value;
+    setNewCityName(value);
+
+    if (value.trim()) {
+      // Filter suggestions based on city name input
+      const filtered = citySuggestions.filter(city =>
+        city.name.toLowerCase().includes(value.toLowerCase())
+      );
+      setFilteredCitySuggestions(filtered);
+      setShowCitySuggestions(filtered.length > 0);
+      setSelectedCitySuggestionIndex(-1);
+    } else {
+      setShowCitySuggestions(false);
+      setFilteredCitySuggestions([]);
+    }
+  };
+
+  const selectCitySuggestion = (suggestion) => {
+    setNewCityName(suggestion.name);
+    setNewCityCountry(suggestion.country);
+    setShowCitySuggestions(false);
+    setSelectedCitySuggestionIndex(-1);
+  };
+
+  const handleCityKeyDown = (e) => {
+    if (!showCitySuggestions) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedCitySuggestionIndex(prev =>
+        prev < filteredCitySuggestions.length - 1 ? prev + 1 : prev
+      );
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedCitySuggestionIndex(prev => prev > 0 ? prev - 1 : -1);
+    } else if (e.key === 'Enter' && selectedCitySuggestionIndex >= 0) {
+      e.preventDefault();
+      selectCitySuggestion(filteredCitySuggestions[selectedCitySuggestionIndex]);
+    } else if (e.key === 'Escape') {
+      setShowCitySuggestions(false);
+      setSelectedCitySuggestionIndex(-1);
+    }
+  };
+
+  // Company management functions
+  const moveCompanyToPrimary = async (contactCompanyId, companyName, relationship) => {
+    if (companiesBeingProcessed.has(contactCompanyId)) return;
+    setCompaniesBeingProcessed(prev => new Set([...prev, contactCompanyId]));
+
+    try {
+      // Check if primary already has this company with the same relationship
+      const existingAssociation = primaryContactData?.contact_companies?.find(cc =>
+        cc.companies?.name === companyName && cc.relationship === relationship
+      );
+
+      if (existingAssociation) {
+        // Delete duplicate association
+        const { error } = await supabase
+          .from('contact_companies')
+          .delete()
+          .eq('contact_companies_id', contactCompanyId);
+        if (error) throw error;
+        toast.success('Duplicate company association removed');
+      } else {
+        // Move association to primary contact
+        const { error } = await supabase
+          .from('contact_companies')
+          .update({ contact_id: primaryContact.contact_id })
+          .eq('contact_companies_id', contactCompanyId);
+        if (error) throw error;
+        toast.success('Company association moved to primary contact');
+      }
+
+      await loadContactData();
+      setUpdateTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('Error moving company:', error);
+      toast.error('Failed to move company');
+    } finally {
+      setCompaniesBeingProcessed(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(contactCompanyId);
+        return newSet;
+      });
+    }
+  };
+
+  const removeCompanyFromPrimary = async (contactCompanyId) => {
+    if (companiesBeingProcessed.has(contactCompanyId)) return;
+    setCompaniesBeingProcessed(prev => new Set([...prev, contactCompanyId]));
+
+    try {
+      const { error } = await supabase
+        .from('contact_companies')
+        .delete()
+        .eq('contact_companies_id', contactCompanyId);
+      if (error) throw error;
+
+      toast.success('Company association removed');
+      await loadContactData();
+      setUpdateTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('Error removing company:', error);
+      toast.error('Failed to remove company association');
+    } finally {
+      setCompaniesBeingProcessed(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(contactCompanyId);
+        return newSet;
+      });
+    }
+  };
+
+  const cleanupDuplicateCompanyAssociations = async () => {
+    try {
+      // CRITICAL: Only delete the associations from contact_companies table
+      // Do NOT delete companies from the companies table!
+      const { error } = await supabase
+        .from('contact_companies')
+        .delete()
+        .eq('contact_id', duplicateContact.contact_id);
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error cleaning up duplicate company associations:', error);
+    }
+  };
+
+  const cleanupDuplicateKeepInTouch = async () => {
+    try {
+      // Clear the field in contacts table
+      const { error: contactsError } = await supabase
+        .from('contacts')
+        .update({ keep_in_touch_frequency: null })
+        .eq('contact_id', duplicateContact.contact_id);
+      if (contactsError) throw contactsError;
+
+      // Delete detailed entry in keep_in_touch table
+      const { error: keepInTouchError } = await supabase
+        .from('keep_in_touch')
+        .delete()
+        .eq('contact_id', duplicateContact.contact_id);
+      if (keepInTouchError) throw keepInTouchError;
+    } catch (error) {
+      console.error('Error cleaning up duplicate keep_in_touch:', error);
+    }
+  };
+
+  const addNewCompany = async () => {
+    if (!newCompanyName.trim()) {
+      toast.error('Please enter a company name');
+      return;
+    }
+
+    if (!newCompanyCategory.trim()) {
+      toast.error('Please enter a company category');
+      return;
+    }
+
+    try {
+      // Check if association already exists for this contact
+      const existingAssociation = primaryContactData?.contact_companies?.find(cc =>
+        cc.companies?.name === newCompanyName.trim() && cc.relationship === newCompanyRelationship
+      );
+      if (existingAssociation) {
+        toast.error('Company association already exists for this contact');
+        return;
+      }
+
+      // Check if company exists in suggestions (existing in database)
+      const existingCompanyInDb = companySuggestions.find(company =>
+        company.name.toLowerCase() === newCompanyName.trim().toLowerCase()
+      );
+
+      let companyId;
+      let actionMessage;
+
+      if (existingCompanyInDb) {
+        // Associate with existing company
+        companyId = existingCompanyInDb.company_id;
+        actionMessage = `Company "${newCompanyName.trim()}" associated successfully`;
+      } else {
+        // Create new company
+        const { data: newCompanyData, error: createError } = await supabase
+          .from('companies')
+          .insert({
+            name: newCompanyName.trim(),
+            category: newCompanyCategory.trim()
+          })
+          .select('company_id')
+          .single();
+
+        if (createError) throw createError;
+        companyId = newCompanyData.company_id;
+        actionMessage = `New company "${newCompanyName.trim()}" created and associated successfully`;
+      }
+
+      // Create association between contact and company
+      const { error: linkError } = await supabase
+        .from('contact_companies')
+        .insert({
+          contact_id: primaryContact.contact_id,
+          company_id: companyId,
+          relationship: newCompanyRelationship,
+          is_primary: primaryContactData?.contact_companies?.length === 0 // Make primary if no other companies
+        });
+
+      if (linkError) throw linkError;
+
+      toast.success(actionMessage);
+      setShowAddCompany(false);
+      setNewCompanyName('');
+      setNewCompanyCategory('');
+      setNewCompanyRelationship('employee');
+      setCompanySuggestions([]);
+      setFilteredCompanySuggestions([]);
+      setShowCompanySuggestions(false);
+      setSelectedCompanySuggestionIndex(-1);
+
+      await loadContactData();
+      setUpdateTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('Error adding company:', error);
+      if (error.message?.includes('Failed to fetch')) {
+        toast.error('Connection lost. Please try again.');
+      } else {
+        toast.error('Failed to add company. Please try again.');
+      }
+    }
+  };
+
+  const cancelAddCompany = () => {
+    setShowAddCompany(false);
+    setNewCompanyName('');
+    setNewCompanyCategory('');
+    setNewCompanyRelationship('employee');
+    setCompanySuggestions([]);
+    setFilteredCompanySuggestions([]);
+    setShowCompanySuggestions(false);
+    setSelectedCompanySuggestionIndex(-1);
+  };
+
+  const loadCompanySuggestions = async () => {
+    try {
+      const { data: existingCompanies, error } = await supabase
+        .from('companies')
+        .select('company_id, name, category')
+        .order('name');
+
+      if (error) throw error;
+
+      setCompanySuggestions(existingCompanies || []);
+    } catch (error) {
+      console.error('Error loading company suggestions:', error);
+      setCompanySuggestions([]);
+    }
+  };
+
+  const handleCompanyNameChange = (e) => {
+    const value = e.target.value;
+    setNewCompanyName(value);
+
+    if (value.trim()) {
+      // Filter suggestions based on company name input
+      const filtered = companySuggestions.filter(company =>
+        company.name.toLowerCase().includes(value.toLowerCase())
+      );
+      setFilteredCompanySuggestions(filtered);
+      setShowCompanySuggestions(filtered.length > 0);
+      setSelectedCompanySuggestionIndex(-1);
+    } else {
+      setShowCompanySuggestions(false);
+      setFilteredCompanySuggestions([]);
+    }
+  };
+
+  const selectCompanySuggestion = (suggestion) => {
+    setNewCompanyName(suggestion.name);
+    setNewCompanyCategory(suggestion.category);
+    setShowCompanySuggestions(false);
+    setSelectedCompanySuggestionIndex(-1);
+  };
+
+  const handleCompanyKeyDown = (e) => {
+    if (!showCompanySuggestions) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedCompanySuggestionIndex(prev =>
+        prev < filteredCompanySuggestions.length - 1 ? prev + 1 : prev
+      );
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedCompanySuggestionIndex(prev => prev > 0 ? prev - 1 : -1);
+    } else if (e.key === 'Enter' && selectedCompanySuggestionIndex >= 0) {
+      e.preventDefault();
+      selectCompanySuggestion(filteredCompanySuggestions[selectedCompanySuggestionIndex]);
+    } else if (e.key === 'Escape') {
+      setShowCompanySuggestions(false);
+      setSelectedCompanySuggestionIndex(-1);
+    }
+  };
+
   const handleEdit = () => {
     if (currentField.key === 'name') {
       // For name field, populate first and last name separately
@@ -616,6 +1432,10 @@ const ContactMergeModal = ({
       // For category field, populate current category
       const currentCategory = primaryContactData?.category || '';
       setEditCategory(currentCategory);
+    } else if (currentField.key === 'keep_in_touch_frequency') {
+      // For keep_in_touch_frequency field, populate current frequency
+      const currentFrequency = primaryContactData?.keep_in_touch_frequency || '';
+      setEditKeepInTouchFrequency(currentFrequency);
     } else {
       const currentValue = getCurrentFieldValue();
       setEditValue(currentValue);
@@ -634,6 +1454,9 @@ const ContactMergeModal = ({
       } else if (currentField.key === 'category') {
         // For category field, update category
         updateData.category = editCategory;
+      } else if (currentField.key === 'keep_in_touch_frequency') {
+        // For keep_in_touch_frequency field, update frequency
+        updateData.keep_in_touch_frequency = editKeepInTouchFrequency;
       } else {
         // For other single fields
         updateData[currentField.key] = editValue.trim();
@@ -672,6 +1495,7 @@ const ContactMergeModal = ({
     setEditFirstName('');
     setEditLastName('');
     setEditCategory('');
+    setEditKeepInTouchFrequency('');
   };
 
   const getCurrentFieldValue = () => {
@@ -802,7 +1626,7 @@ const ContactMergeModal = ({
                 </FieldIcon>
                 <FieldTitle theme={theme}>{currentField.label}</FieldTitle>
 
-                {currentField.key !== 'emails' && currentField.key !== 'mobiles' && (
+                {currentField.key !== 'emails' && currentField.key !== 'mobiles' && currentField.key !== 'tags' && currentField.key !== 'cities' && currentField.key !== 'companies' && (
                   <ComparisonContainer>
                     <ContactOption theme={theme}>
                       <OptionHeader theme={theme}>Primary Contact</OptionHeader>
@@ -838,7 +1662,7 @@ const ContactMergeModal = ({
                       {primaryContactData?.contact_emails?.map((email) => (
                         <EmailBubble key={email.email_id} theme={theme}>
                           <EmailContent>
-                            <EmailAddress primary={email.is_primary}>
+                            <EmailAddress $primary={email.is_primary}>
                               {email.email}
                               {email.is_primary && <PrimaryBadge theme={theme}>PRIMARY</PrimaryBadge>}
                             </EmailAddress>
@@ -902,7 +1726,7 @@ const ContactMergeModal = ({
                         return (
                           <EmailBubble key={email.email_id} theme={theme} faded={alreadyInPrimary}>
                             <EmailContent>
-                              <EmailAddress primary={email.is_primary}>
+                              <EmailAddress $primary={email.is_primary}>
                                 {email.email}
                                 {email.is_primary && <PrimaryBadge theme={theme}>PRIMARY</PrimaryBadge>}
                                 {alreadyInPrimary && <DuplicateBadge theme={theme}>DUPLICATE</DuplicateBadge>}
@@ -944,7 +1768,7 @@ const ContactMergeModal = ({
                       {primaryContactData?.contact_mobiles?.map((mobile) => (
                         <EmailBubble key={mobile.mobile_id} theme={theme}>
                           <EmailContent>
-                            <EmailAddress primary={mobile.is_primary}>
+                            <EmailAddress $primary={mobile.is_primary}>
                               {mobile.mobile}
                               {mobile.is_primary && <PrimaryBadge theme={theme}>PRIMARY</PrimaryBadge>}
                             </EmailAddress>
@@ -1008,7 +1832,7 @@ const ContactMergeModal = ({
                         return (
                           <EmailBubble key={mobile.mobile_id} theme={theme} faded={alreadyInPrimary}>
                             <EmailContent>
-                              <EmailAddress primary={mobile.is_primary}>
+                              <EmailAddress $primary={mobile.is_primary}>
                                 {mobile.mobile}
                                 {mobile.is_primary && <PrimaryBadge theme={theme}>PRIMARY</PrimaryBadge>}
                                 {alreadyInPrimary && <DuplicateBadge theme={theme}>DUPLICATE</DuplicateBadge>}
@@ -1039,6 +1863,439 @@ const ContactMergeModal = ({
                     theme={theme}
                   >
                     Next Field →
+                  </EmailNextButton>
+                </EmailBubblesContainer>
+              ) : currentField.key === 'tags' ? (
+                // Special tags bubble interface
+                <EmailBubblesContainer>
+                  <EmailSection>
+                    <EmailSectionTitle theme={theme}>Primary Contact Tags</EmailSectionTitle>
+                    <EmailBubbles>
+                      {primaryContactData?.contact_tags?.map((contactTag) => (
+                        <EmailBubble key={contactTag.entry_id} theme={theme}>
+                          <EmailContent>
+                            <EmailAddress>
+                              {contactTag.tags?.name}
+                            </EmailAddress>
+                          </EmailContent>
+                          <EmailAction
+                            onClick={() => removeTagFromPrimary(contactTag.entry_id)}
+                            disabled={tagsBeingProcessed.has(contactTag.entry_id)}
+                            theme={theme}
+                            title="Remove tag"
+                          >
+                            {tagsBeingProcessed.has(contactTag.entry_id) ? '⏳' : '❌'}
+                          </EmailAction>
+                        </EmailBubble>
+                      ))}
+                      {(!primaryContactData?.contact_tags || primaryContactData.contact_tags.length === 0) && (
+                        <NoEmailsMessage theme={theme}>No tags</NoEmailsMessage>
+                      )}
+
+                      {showAddTag ? (
+                        <AddEmailForm>
+                          <TagInputContainer>
+                            <AddEmailInput
+                              type="text"
+                              value={newTagName}
+                              onChange={handleTagNameChange}
+                              onKeyDown={handleTagKeyDown}
+                              placeholder="Enter tag name or select from suggestions"
+                              autoFocus
+                            />
+                            {showSuggestions && (
+                              <TagSuggestionsList>
+                                {filteredSuggestions.map((suggestion, index) => (
+                                  <TagSuggestionItem
+                                    key={suggestion.tag_id}
+                                    selected={index === selectedSuggestionIndex}
+                                    onClick={() => selectSuggestion(suggestion)}
+                                    theme={theme}
+                                  >
+                                    <TagSuggestionName>{suggestion.name}</TagSuggestionName>
+                                    <TagSuggestionBadge>existing</TagSuggestionBadge>
+                                  </TagSuggestionItem>
+                                ))}
+                                {newTagName.trim() && !filteredSuggestions.some(s =>
+                                  s.name.toLowerCase() === newTagName.trim().toLowerCase()
+                                ) && (
+                                  <TagSuggestionItem theme={theme}>
+                                    <TagSuggestionName>"{newTagName.trim()}"</TagSuggestionName>
+                                    <TagSuggestionBadge variant="new">create new</TagSuggestionBadge>
+                                  </TagSuggestionItem>
+                                )}
+                              </TagSuggestionsList>
+                            )}
+                          </TagInputContainer>
+                          <AddEmailActions>
+                            <AddEmailButton onClick={addNewTag} variant="save">
+                              ✓ Add
+                            </AddEmailButton>
+                            <AddEmailButton onClick={cancelAddTag} variant="cancel">
+                              ✕ Cancel
+                            </AddEmailButton>
+                          </AddEmailActions>
+                        </AddEmailForm>
+                      ) : (
+                        <AddNewEmailButton
+                          onClick={async () => {
+                            setShowAddTag(true);
+                            await loadTagSuggestions();
+                          }}
+                          theme={theme}
+                        >
+                          + Add New Tag
+                        </AddNewEmailButton>
+                      )}
+                    </EmailBubbles>
+                  </EmailSection>
+
+                  <EmailSection>
+                    <EmailSectionTitle theme={theme}>Duplicate Contact Tags</EmailSectionTitle>
+                    <EmailBubbles>
+                      {duplicateContactData?.contact_tags?.map((contactTag) => {
+                        // Check if this tag already exists in primary
+                        const alreadyInPrimary = primaryContactData?.contact_tags?.some(pt => pt.tags?.name === contactTag.tags?.name);
+
+                        return (
+                          <EmailBubble key={contactTag.entry_id} theme={theme} faded={alreadyInPrimary}>
+                            <EmailContent>
+                              <EmailAddress>
+                                {contactTag.tags?.name}
+                                {alreadyInPrimary && <DuplicateBadge theme={theme}>DUPLICATE</DuplicateBadge>}
+                              </EmailAddress>
+                            </EmailContent>
+                            {!alreadyInPrimary && (
+                              <EmailAction
+                                onClick={() => moveTagToPrimary(contactTag.entry_id, contactTag.tags?.name)}
+                                disabled={tagsBeingProcessed.has(contactTag.entry_id)}
+                                theme={theme}
+                                title="Move to primary"
+                              >
+                                {tagsBeingProcessed.has(contactTag.entry_id) ? '⏳' : '➡️'}
+                              </EmailAction>
+                            )}
+                          </EmailBubble>
+                        );
+                      })}
+                      {(!duplicateContactData?.contact_tags || duplicateContactData.contact_tags.length === 0) && (
+                        <NoEmailsMessage theme={theme}>No tags</NoEmailsMessage>
+                      )}
+                    </EmailBubbles>
+                  </EmailSection>
+
+                  <EmailNextButton
+                    onClick={moveToNextField}
+                    theme={theme}
+                  >
+                    Next Field →
+                  </EmailNextButton>
+                </EmailBubblesContainer>
+              ) : currentField.key === 'cities' ? (
+                // Special cities bubble interface
+                <EmailBubblesContainer>
+                  <EmailSection>
+                    <EmailSectionTitle theme={theme}>Primary Contact Cities</EmailSectionTitle>
+                    <EmailBubbles>
+                      {primaryContactData?.contact_cities?.map((contactCity) => (
+                        <EmailBubble key={contactCity.entry_id} theme={theme}>
+                          <EmailContent>
+                            <EmailAddress>
+                              {contactCity.cities?.name}, {contactCity.cities?.country}
+                            </EmailAddress>
+                          </EmailContent>
+                          <EmailAction
+                            onClick={() => removeCityFromPrimary(contactCity.entry_id)}
+                            disabled={citiesBeingProcessed.has(contactCity.entry_id)}
+                            theme={theme}
+                            title="Remove city"
+                          >
+                            {citiesBeingProcessed.has(contactCity.entry_id) ? '⏳' : '❌'}
+                          </EmailAction>
+                        </EmailBubble>
+                      ))}
+                      {(!primaryContactData?.contact_cities || primaryContactData.contact_cities.length === 0) && (
+                        <NoEmailsMessage theme={theme}>No cities</NoEmailsMessage>
+                      )}
+
+                      {showAddCity ? (
+                        <AddEmailForm>
+                          <CityInputContainer>
+                            <AddEmailInput
+                              type="text"
+                              value={newCityName}
+                              onChange={handleCityNameChange}
+                              onKeyDown={handleCityKeyDown}
+                              placeholder="Enter city name or select from suggestions"
+                              autoFocus
+                            />
+                            {showCitySuggestions && (
+                              <TagSuggestionsList>
+                                {filteredCitySuggestions.map((suggestion, index) => (
+                                  <TagSuggestionItem
+                                    key={suggestion.city_id}
+                                    selected={index === selectedCitySuggestionIndex}
+                                    onClick={() => selectCitySuggestion(suggestion)}
+                                    theme={theme}
+                                  >
+                                    <TagSuggestionName>
+                                      {suggestion.name}, {suggestion.country}
+                                    </TagSuggestionName>
+                                    <TagSuggestionBadge>existing</TagSuggestionBadge>
+                                  </TagSuggestionItem>
+                                ))}
+                                {newCityName.trim() && !filteredCitySuggestions.some(s =>
+                                  s.name.toLowerCase() === newCityName.trim().toLowerCase()
+                                ) && (
+                                  <TagSuggestionItem theme={theme}>
+                                    <TagSuggestionName>
+                                      "{newCityName.trim()}, {newCityCountry || '?'}"
+                                    </TagSuggestionName>
+                                    <TagSuggestionBadge variant="new">create new</TagSuggestionBadge>
+                                  </TagSuggestionItem>
+                                )}
+                              </TagSuggestionsList>
+                            )}
+                          </CityInputContainer>
+                          <AddEmailInput
+                            type="text"
+                            value={newCityCountry}
+                            onChange={(e) => setNewCityCountry(e.target.value)}
+                            placeholder="Enter country"
+                            style={{ marginTop: '8px' }}
+                          />
+                          <AddEmailActions>
+                            <AddEmailButton onClick={addNewCity} variant="save">
+                              ✓ Add
+                            </AddEmailButton>
+                            <AddEmailButton onClick={cancelAddCity} variant="cancel">
+                              ✕ Cancel
+                            </AddEmailButton>
+                          </AddEmailActions>
+                        </AddEmailForm>
+                      ) : (
+                        <AddNewEmailButton
+                          onClick={async () => {
+                            setShowAddCity(true);
+                            await loadCitySuggestions();
+                          }}
+                          theme={theme}
+                        >
+                          + Add New City
+                        </AddNewEmailButton>
+                      )}
+                    </EmailBubbles>
+                  </EmailSection>
+
+                  <EmailSection>
+                    <EmailSectionTitle theme={theme}>Duplicate Contact Cities</EmailSectionTitle>
+                    <EmailBubbles>
+                      {duplicateContactData?.contact_cities?.map((contactCity) => {
+                        // Check if this city already exists in primary
+                        const alreadyInPrimary = primaryContactData?.contact_cities?.some(pc =>
+                          pc.cities?.name === contactCity.cities?.name &&
+                          pc.cities?.country === contactCity.cities?.country
+                        );
+
+                        return (
+                          <EmailBubble key={contactCity.entry_id} theme={theme} faded={alreadyInPrimary}>
+                            <EmailContent>
+                              <EmailAddress>
+                                {contactCity.cities?.name}, {contactCity.cities?.country}
+                                {alreadyInPrimary && <DuplicateBadge theme={theme}>DUPLICATE</DuplicateBadge>}
+                              </EmailAddress>
+                            </EmailContent>
+                            {!alreadyInPrimary && (
+                              <EmailAction
+                                onClick={() => moveCityToPrimary(
+                                  contactCity.entry_id,
+                                  contactCity.cities?.name,
+                                  contactCity.cities?.country
+                                )}
+                                disabled={citiesBeingProcessed.has(contactCity.entry_id)}
+                                theme={theme}
+                                title="Move to primary"
+                              >
+                                {citiesBeingProcessed.has(contactCity.entry_id) ? '⏳' : '➡️'}
+                              </EmailAction>
+                            )}
+                          </EmailBubble>
+                        );
+                      })}
+                      {(!duplicateContactData?.contact_cities || duplicateContactData.contact_cities.length === 0) && (
+                        <NoEmailsMessage theme={theme}>No cities</NoEmailsMessage>
+                      )}
+                    </EmailBubbles>
+                  </EmailSection>
+
+                  <EmailNextButton
+                    onClick={moveToNextField}
+                    theme={theme}
+                  >
+                    Next Field →
+                  </EmailNextButton>
+                </EmailBubblesContainer>
+              ) : currentField.key === 'companies' ? (
+                // Special companies bubble interface
+                <EmailBubblesContainer>
+                  <EmailSection>
+                    <EmailSectionTitle theme={theme}>Primary Contact Companies</EmailSectionTitle>
+                    <EmailBubbles>
+                      {primaryContactData?.contact_companies?.map((contactCompany) => (
+                        <EmailBubble key={contactCompany.contact_companies_id} theme={theme}>
+                          <EmailContent>
+                            <EmailAddress>
+                              {contactCompany.companies?.name}
+                              {contactCompany.is_primary && <PrimaryBadge theme={theme}>PRIMARY</PrimaryBadge>}
+                            </EmailAddress>
+                            <EmailType theme={theme}>{contactCompany.relationship} • {contactCompany.companies?.category}</EmailType>
+                          </EmailContent>
+                          <EmailAction
+                            onClick={() => removeCompanyFromPrimary(contactCompany.contact_companies_id)}
+                            disabled={companiesBeingProcessed.has(contactCompany.contact_companies_id)}
+                            theme={theme}
+                            title="Remove company association"
+                          >
+                            {companiesBeingProcessed.has(contactCompany.contact_companies_id) ? '⏳' : '❌'}
+                          </EmailAction>
+                        </EmailBubble>
+                      ))}
+                      {(!primaryContactData?.contact_companies || primaryContactData.contact_companies.length === 0) && (
+                        <NoEmailsMessage theme={theme}>No companies</NoEmailsMessage>
+                      )}
+
+                      {showAddCompany ? (
+                        <AddEmailForm>
+                          <CompanyInputContainer>
+                            <AddEmailInput
+                              type="text"
+                              value={newCompanyName}
+                              onChange={handleCompanyNameChange}
+                              onKeyDown={handleCompanyKeyDown}
+                              placeholder="Enter company name or select from suggestions"
+                              autoFocus
+                            />
+                            {showCompanySuggestions && (
+                              <TagSuggestionsList>
+                                {filteredCompanySuggestions.map((suggestion, index) => (
+                                  <TagSuggestionItem
+                                    key={suggestion.company_id}
+                                    selected={index === selectedCompanySuggestionIndex}
+                                    onClick={() => selectCompanySuggestion(suggestion)}
+                                    theme={theme}
+                                  >
+                                    <TagSuggestionName>
+                                      {suggestion.name} ({suggestion.category})
+                                    </TagSuggestionName>
+                                    <TagSuggestionBadge>existing</TagSuggestionBadge>
+                                  </TagSuggestionItem>
+                                ))}
+                                {newCompanyName.trim() && !filteredCompanySuggestions.some(s =>
+                                  s.name.toLowerCase() === newCompanyName.trim().toLowerCase()
+                                ) && (
+                                  <TagSuggestionItem theme={theme}>
+                                    <TagSuggestionName>
+                                      "{newCompanyName.trim()}"
+                                    </TagSuggestionName>
+                                    <TagSuggestionBadge variant="new">create new</TagSuggestionBadge>
+                                  </TagSuggestionItem>
+                                )}
+                              </TagSuggestionsList>
+                            )}
+                          </CompanyInputContainer>
+                          <AddEmailInput
+                            type="text"
+                            value={newCompanyCategory}
+                            onChange={(e) => setNewCompanyCategory(e.target.value)}
+                            placeholder="Enter company category"
+                            style={{ marginTop: '8px' }}
+                          />
+                          <AddEmailTypeSelect
+                            value={newCompanyRelationship}
+                            onChange={(e) => setNewCompanyRelationship(e.target.value)}
+                            style={{ marginTop: '8px' }}
+                          >
+                            <option value="employee">Employee</option>
+                            <option value="contractor">Contractor</option>
+                            <option value="consultant">Consultant</option>
+                            <option value="client">Client</option>
+                            <option value="vendor">Vendor</option>
+                            <option value="partner">Partner</option>
+                            <option value="investor">Investor</option>
+                            <option value="advisor">Advisor</option>
+                            <option value="other">Other</option>
+                          </AddEmailTypeSelect>
+                          <AddEmailActions>
+                            <AddEmailButton onClick={addNewCompany} variant="save">
+                              ✓ Add
+                            </AddEmailButton>
+                            <AddEmailButton onClick={cancelAddCompany} variant="cancel">
+                              ✕ Cancel
+                            </AddEmailButton>
+                          </AddEmailActions>
+                        </AddEmailForm>
+                      ) : (
+                        <AddNewEmailButton
+                          onClick={async () => {
+                            setShowAddCompany(true);
+                            await loadCompanySuggestions();
+                          }}
+                          theme={theme}
+                        >
+                          + Add New Company
+                        </AddNewEmailButton>
+                      )}
+                    </EmailBubbles>
+                  </EmailSection>
+
+                  <EmailSection>
+                    <EmailSectionTitle theme={theme}>Duplicate Contact Companies</EmailSectionTitle>
+                    <EmailBubbles>
+                      {duplicateContactData?.contact_companies?.map((contactCompany) => {
+                        // Check if this company already exists in primary with same relationship
+                        const alreadyInPrimary = primaryContactData?.contact_companies?.some(pc =>
+                          pc.companies?.name === contactCompany.companies?.name &&
+                          pc.relationship === contactCompany.relationship
+                        );
+
+                        return (
+                          <EmailBubble key={contactCompany.contact_companies_id} theme={theme} faded={alreadyInPrimary}>
+                            <EmailContent>
+                              <EmailAddress>
+                                {contactCompany.companies?.name}
+                                {contactCompany.is_primary && <PrimaryBadge theme={theme}>PRIMARY</PrimaryBadge>}
+                                {alreadyInPrimary && <DuplicateBadge theme={theme}>DUPLICATE</DuplicateBadge>}
+                              </EmailAddress>
+                              <EmailType theme={theme}>{contactCompany.relationship} • {contactCompany.companies?.category}</EmailType>
+                            </EmailContent>
+                            {!alreadyInPrimary && (
+                              <EmailAction
+                                onClick={() => moveCompanyToPrimary(
+                                  contactCompany.contact_companies_id,
+                                  contactCompany.companies?.name,
+                                  contactCompany.relationship
+                                )}
+                                disabled={companiesBeingProcessed.has(contactCompany.contact_companies_id)}
+                                theme={theme}
+                                title="Move to primary"
+                              >
+                                {companiesBeingProcessed.has(contactCompany.contact_companies_id) ? '⏳' : '➡️'}
+                              </EmailAction>
+                            )}
+                          </EmailBubble>
+                        );
+                      })}
+                      {(!duplicateContactData?.contact_companies || duplicateContactData.contact_companies.length === 0) && (
+                        <NoEmailsMessage theme={theme}>No companies</NoEmailsMessage>
+                      )}
+                    </EmailBubbles>
+                  </EmailSection>
+
+                  <EmailNextButton
+                    onClick={moveToNextField}
+                    theme={theme}
+                  >
+                    Complete Merge →
                   </EmailNextButton>
                 </EmailBubblesContainer>
               ) : isEditing ? (
@@ -1072,6 +2329,20 @@ const ContactMergeModal = ({
                       {categoryOptions.map((category) => (
                         <option key={category} value={category}>
                           {category}
+                        </option>
+                      ))}
+                    </CategoryDropdown>
+                  ) : currentField.key === 'keep_in_touch_frequency' ? (
+                    <CategoryDropdown
+                      value={editKeepInTouchFrequency}
+                      onChange={(e) => setEditKeepInTouchFrequency(e.target.value)}
+                      theme={theme}
+                      autoFocus
+                    >
+                      <option value="">Select frequency...</option>
+                      {keepInTouchOptions.map((frequency) => (
+                        <option key={frequency} value={frequency}>
+                          {frequency}
                         </option>
                       ))}
                     </CategoryDropdown>
@@ -1592,7 +2863,7 @@ const EmailContent = styled.div`
 
 const EmailAddress = styled.div`
   font-size: 14px;
-  font-weight: ${props => props.primary ? 600 : 500};
+  font-weight: ${props => props.$primary ? 600 : 500};
   color: #000000;
   display: flex;
   align-items: center;
@@ -1763,5 +3034,66 @@ const AddEmailButton = styled.button`
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   }
 `;
+
+// Tag Suggestions Styled Components
+const TagInputContainer = styled.div`
+  position: relative;
+  width: 100%;
+`;
+
+const TagSuggestionsList = styled.div`
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #D1D5DB;
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1000;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+`;
+
+const TagSuggestionItem = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  cursor: pointer;
+  background: ${props => props.selected ? '#EBF8FF' : 'white'};
+  border-bottom: 1px solid #F3F4F6;
+
+  &:hover {
+    background: #F9FAFB;
+  }
+
+  &:last-child {
+    border-bottom: none;
+  }
+`;
+
+const TagSuggestionName = styled.span`
+  font-size: 14px;
+  color: #374151;
+  flex: 1;
+`;
+
+const TagSuggestionBadge = styled.span`
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  background: ${props => props.variant === 'new' ? '#FEF3C7' : '#DBEAFE'};
+  color: ${props => props.variant === 'new' ? '#92400E' : '#1E40AF'};
+`;
+
+// City Input Container (reuses TagInputContainer styling)
+const CityInputContainer = styled(TagInputContainer)``;
+
+// Company Input Container (reuses TagInputContainer styling)
+const CompanyInputContainer = styled(TagInputContainer)``;
 
 export default ContactMergeModal;
