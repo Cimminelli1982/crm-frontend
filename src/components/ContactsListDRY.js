@@ -183,28 +183,62 @@ const ContactsListDRY = ({
       } else if (dataSource.type === 'spam') {
         // Fetch spam data based on subCategory
         const subCategory = dataSource.subCategory || 'Email';
-        let query;
 
         if (subCategory === 'Email') {
-          query = supabase
-            .from('email_spam')
+          // Fetch emails pending spam review (special_case = 'pending_approval')
+          const { data: spamEmails, error } = await supabase
+            .from('email_inbox')
             .select('*')
-            .order('email', { ascending: true });
-        } else if (subCategory === 'Domain') {
-          query = supabase
-            .from('domain_spam')
-            .select('*')
-            .order('domain', { ascending: true });
-        } else if (subCategory === 'IP') {
-          query = supabase
-            .from('ip_spam')
-            .select('*')
-            .order('ip', { ascending: true });
-        }
+            .eq('special_case', 'pending_approval')
+            .order('message_timestamp', { ascending: false })
+            .limit(100);
 
-        const { data: spamData, error } = await query;
-        if (error) throw error;
-        data = spamData || [];
+          if (error) throw error;
+
+          // Transform spam emails to contact format
+          data = (spamEmails || []).map(email => {
+            const isSent = email.direction?.toLowerCase() === 'sent';
+            const contactEmail = isSent ? email.to_email : email.from_email;
+            const contactName = isSent ? email.to_name : email.from_name;
+
+            return {
+              contact_id: `spam-email-${email.id}`,
+              first_name: contactName || contactEmail?.split('@')[0] || 'Unknown',
+              last_name: contactEmail ? `(${contactEmail.split('@')[1]})` : '(Spam)',
+              email: contactEmail || '',
+              mobile: email.subject || '(No Subject)',
+              last_interaction_at: email.message_timestamp,
+              created_at: email.message_timestamp,
+              category: 'Spam',
+              direction: email.direction,
+              email_data: email
+            };
+          });
+
+        } else if (subCategory === 'WhatsApp') {
+          // For WhatsApp spam, check if there's a whatsapp_spam table or similar
+          const { data: spamData, error } = await supabase
+            .from('whatsapp_spam')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(100);
+
+          if (error) {
+            console.warn('WhatsApp spam table not available:', error);
+            data = [];
+          } else {
+            // Transform WhatsApp spam data
+            data = (spamData || []).map(spam => ({
+              contact_id: `spam-whatsapp-${spam.id || Date.now()}`,
+              first_name: spam.phone_number || 'Unknown',
+              last_name: '(WhatsApp Spam)',
+              mobile: spam.phone_number || null,
+              category: 'Spam',
+              created_at: spam.created_at,
+              ...spam
+            }));
+          }
+        }
 
       } else if (dataSource.type === 'missing') {
         // Fetch missing data based on subCategory
@@ -472,14 +506,36 @@ const ContactsListDRY = ({
         }));
 
       } else if (dataSource.type === 'inbox') {
-        // Fetch inbox data - contacts with category='Inbox' and recent interactions (last 100 days)
-        // This matches the exact logic from the original SortPage
-        const oneHundredDaysAgo = new Date();
-        oneHundredDaysAgo.setDate(oneHundredDaysAgo.getDate() - 100);
-        const formattedDate = oneHundredDaysAgo.toISOString();
+        // Fetch inbox data using the new view with time filtering
+        const timeFilter = dataSource.timeFilter || 'Today';
+
+        // Calculate date range based on time filter - matching interactions logic
+        let startDate = new Date();
+        let endDate = new Date();
+
+        if (timeFilter === 'Today') {
+          startDate.setHours(0, 0, 0, 0);
+          endDate.setHours(23, 59, 59, 999);
+        } else if (timeFilter === 'This Week') {
+          // This Week = 7 days ago to yesterday (excluding today)
+          endDate = new Date();
+          endDate.setDate(endDate.getDate() - 1);
+          endDate.setHours(23, 59, 59, 999);
+          startDate = new Date();
+          startDate.setDate(startDate.getDate() - 7);
+          startDate.setHours(0, 0, 0, 0);
+        } else if (timeFilter === 'This Month') {
+          // This Month = 30 days ago to 8 days ago (excluding last week)
+          endDate = new Date();
+          endDate.setDate(endDate.getDate() - 8);
+          endDate.setHours(23, 59, 59, 999);
+          startDate = new Date();
+          startDate.setDate(startDate.getDate() - 30);
+          startDate.setHours(0, 0, 0, 0);
+        }
 
         const { data: contactsData, error } = await supabase
-          .from('contacts')
+          .from('inbox_contacts_with_interactions')
           .select(`
             *,
             contact_companies (
@@ -522,9 +578,9 @@ const ContactsListDRY = ({
               easter
             )
           `)
-          .eq('category', 'Inbox')
-          .gte('last_interaction_at', formattedDate)  // Only show contacts with interactions in the last 100 days
-          .order('last_interaction_at', { ascending: false, nullsLast: true })
+          .gte('computed_last_interaction', startDate.toISOString())
+          .lte('computed_last_interaction', endDate.toISOString())
+          .order('computed_last_interaction', { ascending: false, nullsLast: true })
           .limit(100);
 
         if (error) throw error;
