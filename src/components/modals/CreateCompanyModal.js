@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { FiX, FiSave, FiCheck, FiPlus } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
-// Styled components
+// Styled components with theme support
 const ModalContainer = styled.div`
   width: 100%;
   max-width: 600px;
@@ -17,11 +17,15 @@ const Header = styled.div`
   align-items: center;
   margin-bottom: 20px;
   padding-bottom: 15px;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid ${props => props.$isNewCrm
+    ? (props.theme === 'light' ? '#E5E7EB' : '#374151')
+    : '#333'};
 `;
 
 const Title = styled.h2`
-  color: #fff;
+  color: ${props => props.$isNewCrm
+    ? (props.theme === 'light' ? '#111827' : '#F9FAFB')
+    : '#fff'};
   font-size: 20px;
   font-weight: 500;
   margin: 0;
@@ -29,7 +33,9 @@ const Title = styled.h2`
 
 const CloseButton = styled.button`
   background: transparent;
-  color: #00ff00;
+  color: ${props => props.$isNewCrm
+    ? (props.theme === 'light' ? '#6B7280' : '#9CA3AF')
+    : '#00ff00'};
   border: none;
   cursor: pointer;
   display: flex;
@@ -40,7 +46,9 @@ const CloseButton = styled.button`
   border-radius: 4px;
 
   &:hover {
-    background: #333;
+    background: ${props => props.$isNewCrm
+      ? (props.theme === 'light' ? '#F3F4F6' : '#374151')
+      : '#333'};
   }
 `;
 
@@ -51,7 +59,9 @@ const FormGroup = styled.div`
 const FormLabel = styled.label`
   display: block;
   margin-bottom: 8px;
-  color: #00ff00;
+  color: ${props => props.$isNewCrm
+    ? (props.theme === 'light' ? '#374151' : '#D1D5DB')
+    : '#00ff00'};
   font-size: 14px;
   font-weight: 500;
 `;
@@ -59,27 +69,41 @@ const FormLabel = styled.label`
 const Input = styled.input`
   width: 100%;
   padding: 10px 12px;
-  background: #333;
-  border: 1px solid #444;
+  background: ${props => props.$isNewCrm
+    ? (props.theme === 'light' ? '#FFFFFF' : '#374151')
+    : '#333'};
+  border: 1px solid ${props => props.$isNewCrm
+    ? (props.theme === 'light' ? '#D1D5DB' : '#4B5563')
+    : '#444'};
   border-radius: 4px;
-  color: #fff;
+  color: ${props => props.$isNewCrm
+    ? (props.theme === 'light' ? '#111827' : '#F9FAFB')
+    : '#fff'};
   font-size: 14px;
   height: 40px;
   box-sizing: border-box;
 
   &:focus {
     outline: none;
-    border-color: #00ff00;
+    border-color: ${props => props.$isNewCrm
+      ? '#3B82F6'
+      : '#00ff00'};
   }
 `;
 
 const Textarea = styled.textarea`
   width: 100%;
   padding: 10px 12px;
-  background: #333;
-  border: 1px solid #444;
+  background: ${props => props.$isNewCrm
+    ? (props.theme === 'light' ? '#FFFFFF' : '#374151')
+    : '#333'};
+  border: 1px solid ${props => props.$isNewCrm
+    ? (props.theme === 'light' ? '#D1D5DB' : '#4B5563')
+    : '#444'};
   border-radius: 4px;
-  color: #fff;
+  color: ${props => props.$isNewCrm
+    ? (props.theme === 'light' ? '#111827' : '#F9FAFB')
+    : '#fff'};
   font-size: 14px;
   min-height: 100px;
   resize: vertical;
@@ -87,17 +111,25 @@ const Textarea = styled.textarea`
 
   &:focus {
     outline: none;
-    border-color: #00ff00;
+    border-color: ${props => props.$isNewCrm
+      ? '#3B82F6'
+      : '#00ff00'};
   }
 `;
 
 const Select = styled.select`
   width: 100%;
   padding: 10px 12px;
-  background: #333;
-  border: 1px solid #444;
+  background: ${props => props.$isNewCrm
+    ? (props.theme === 'light' ? '#FFFFFF' : '#374151')
+    : '#333'};
+  border: 1px solid ${props => props.$isNewCrm
+    ? (props.theme === 'light' ? '#D1D5DB' : '#4B5563')
+    : '#444'};
   border-radius: 4px;
-  color: #fff;
+  color: ${props => props.$isNewCrm
+    ? (props.theme === 'light' ? '#111827' : '#F9FAFB')
+    : '#fff'};
   font-size: 14px;
   height: 40px;
   box-sizing: border-box;
@@ -109,7 +141,9 @@ const Select = styled.select`
 
   &:focus {
     outline: none;
-    border-color: #00ff00;
+    border-color: ${props => props.$isNewCrm
+      ? '#3B82F6'
+      : '#00ff00'};
   }
 `;
 
@@ -125,28 +159,44 @@ const Button = styled.button`
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  border-radius: 4px;
+  border-radius: ${props => props.$isNewCrm ? '8px' : '4px'};
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
-  
+
   &.primary {
-    background: #333;
-    color: #00ff00;
-    border: 1px solid #00ff00;
-    
+    background: ${props => props.$isNewCrm
+      ? '#3B82F6'
+      : '#333'};
+    color: ${props => props.$isNewCrm
+      ? '#FFFFFF'
+      : '#00ff00'};
+    border: 1px solid ${props => props.$isNewCrm
+      ? '#3B82F6'
+      : '#00ff00'};
+
     &:hover {
-      background: #444;
+      background: ${props => props.$isNewCrm
+        ? '#2563EB'
+        : '#444'};
     }
   }
-  
+
   &.cancel {
-    background: transparent;
-    color: #fff;
-    border: 1px solid #555;
-    
+    background: ${props => props.$isNewCrm
+      ? (props.theme === 'light' ? '#F3F4F6' : '#374151')
+      : 'transparent'};
+    color: ${props => props.$isNewCrm
+      ? (props.theme === 'light' ? '#374151' : '#F9FAFB')
+      : '#fff'};
+    border: 1px solid ${props => props.$isNewCrm
+      ? (props.theme === 'light' ? '#D1D5DB' : '#4B5563')
+      : '#555'};
+
     &:hover {
-      background: #333;
+      background: ${props => props.$isNewCrm
+        ? (props.theme === 'light' ? '#E5E7EB' : '#4B5563')
+        : '#333'};
     }
   }
 `;
@@ -163,9 +213,13 @@ const Tag = styled.div`
   align-items: center;
   gap: 5px;
   padding: 3px 8px;
-  border: 1px solid #00ff00;
+  border: 1px solid ${props => props.$isNewCrm
+    ? '#3B82F6'
+    : '#00ff00'};
   border-radius: 4px;
-  color: #00ff00;
+  color: ${props => props.$isNewCrm
+    ? '#3B82F6'
+    : '#00ff00'};
   font-size: 12px;
 `;
 
@@ -175,22 +229,32 @@ const TagButton = styled.button`
   justify-content: center;
   background: transparent;
   border: none;
-  color: #00ff00;
+  color: ${props => props.$isNewCrm
+    ? '#6B7280'
+    : '#00ff00'};
   cursor: pointer;
   padding: 2px;
 
   &:hover {
-    color: #ff5555;
+    color: ${props => props.$isNewCrm
+      ? '#EF4444'
+      : '#ff5555'};
   }
 `;
 
 const TagsSearchInput = styled.input`
   width: 100%;
   padding: 10px 12px;
-  background: #333;
-  border: 1px solid #444;
+  background: ${props => props.$isNewCrm
+    ? (props.theme === 'light' ? '#FFFFFF' : '#374151')
+    : '#333'};
+  border: 1px solid ${props => props.$isNewCrm
+    ? (props.theme === 'light' ? '#D1D5DB' : '#4B5563')
+    : '#444'};
   border-radius: 4px;
-  color: #fff;
+  color: ${props => props.$isNewCrm
+    ? (props.theme === 'light' ? '#111827' : '#F9FAFB')
+    : '#fff'};
   font-size: 14px;
   height: 40px;
   box-sizing: border-box;
@@ -198,13 +262,19 @@ const TagsSearchInput = styled.input`
 
   &:focus {
     outline: none;
-    border-color: #00ff00;
+    border-color: ${props => props.$isNewCrm
+      ? '#3B82F6'
+      : '#00ff00'};
   }
 `;
 
 const TagSuggestions = styled.div`
-  background: #222;
-  border: 1px solid #444;
+  background: ${props => props.$isNewCrm
+    ? (props.theme === 'light' ? '#FFFFFF' : '#374151')
+    : '#222'};
+  border: 1px solid ${props => props.$isNewCrm
+    ? (props.theme === 'light' ? '#D1D5DB' : '#4B5563')
+    : '#444'};
   border-radius: 4px;
   max-height: 200px;
   overflow-y: auto;
@@ -217,10 +287,17 @@ const TagSuggestions = styled.div`
 const TagSuggestion = styled.div`
   padding: 8px 12px;
   cursor: pointer;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid ${props => props.$isNewCrm
+    ? (props.theme === 'light' ? '#E5E7EB' : '#4B5563')
+    : '#333'};
+  color: ${props => props.$isNewCrm
+    ? (props.theme === 'light' ? '#111827' : '#F9FAFB')
+    : '#fff'};
 
   &:hover {
-    background: #333;
+    background: ${props => props.$isNewCrm
+      ? (props.theme === 'light' ? '#F3F4F6' : '#4B5563')
+      : '#333'};
   }
 
   &:last-child {
@@ -254,13 +331,22 @@ const RELATIONSHIP_TYPES = [
   "other"
 ];
 
-const CreateCompanyModal = ({ 
-  isOpen, 
-  onRequestClose, 
+const CreateCompanyModal = ({
+  isOpen,
+  onRequestClose,
   initialName = '',
   contactId,
-  onCompanyCreated = () => {} 
+  contactEmail = '',
+  theme = 'dark',
+  isNewCrm = false,
+  onCompanyCreated = () => {}
 }) => {
+  // Extract domain from email if provided
+  const extractDomainFromEmail = (email) => {
+    if (!email || !email.includes('@')) return '';
+    return email.substring(email.indexOf('@') + 1);
+  };
+
   // State for company data
   const [companyData, setCompanyData] = useState({
     name: '',
@@ -283,14 +369,15 @@ const CreateCompanyModal = ({
   // Refs
   const nameInputRef = useRef(null);
   
-  // Initialize form with initial name if provided
+  // Initialize form with initial name and domain if provided
   useEffect(() => {
     if (isOpen) {
       setCompanyData(prev => ({
         ...prev,
-        name: initialName
+        name: initialName,
+        website: extractDomainFromEmail(contactEmail)
       }));
-      
+
       // Focus the name input when modal opens
       if (nameInputRef.current) {
         setTimeout(() => {
@@ -298,7 +385,7 @@ const CreateCompanyModal = ({
         }, 100);
       }
     }
-  }, [isOpen, initialName]);
+  }, [isOpen, initialName, contactEmail]);
   
   // Handle input changes
   const handleInputChange = (field, value) => {
@@ -519,10 +606,16 @@ const CreateCompanyModal = ({
           marginRight: '-50%',
           transform: 'translate(-50%, -50%)',
           padding: '25px',
-          border: '1px solid #444',
-          borderRadius: '8px',
-          backgroundColor: '#111',
-          color: '#fff',
+          border: isNewCrm
+            ? 'none'
+            : '1px solid #444',
+          borderRadius: isNewCrm ? '12px' : '8px',
+          backgroundColor: isNewCrm
+            ? (theme === 'light' ? '#FFFFFF' : '#1F2937')
+            : '#111',
+          color: isNewCrm
+            ? (theme === 'light' ? '#111827' : '#F9FAFB')
+            : '#fff',
           maxWidth: '600px',
           width: '90%',
           maxHeight: '90vh',
@@ -536,16 +629,18 @@ const CreateCompanyModal = ({
       }}
     >
       <ModalContainer>
-        <Header>
-          <Title>Create New Company</Title>
-          <CloseButton onClick={onRequestClose}>
+        <Header theme={theme} $isNewCrm={isNewCrm}>
+          <Title theme={theme} $isNewCrm={isNewCrm}>Create New Company</Title>
+          <CloseButton theme={theme} $isNewCrm={isNewCrm} onClick={onRequestClose}>
             <FiX size={20} />
           </CloseButton>
         </Header>
         
         <FormGroup>
-          <FormLabel>Company Name *</FormLabel>
-          <Input 
+          <FormLabel theme={theme} $isNewCrm={isNewCrm}>Company Name *</FormLabel>
+          <Input
+            theme={theme}
+            $isNewCrm={isNewCrm} 
             ref={nameInputRef}
             type="text" 
             value={companyData.name} 
@@ -556,8 +651,10 @@ const CreateCompanyModal = ({
         
         <div style={{ display: 'flex', gap: '15px' }}>
           <FormGroup style={{ flex: 1 }}>
-            <FormLabel>Domain</FormLabel>
-            <Input 
+            <FormLabel theme={theme} $isNewCrm={isNewCrm}>Domain</FormLabel>
+            <Input
+              theme={theme}
+              $isNewCrm={isNewCrm} 
               type="text" 
               value={companyData.website} 
               onChange={(e) => handleInputChange('website', e.target.value)}
@@ -566,8 +663,10 @@ const CreateCompanyModal = ({
           </FormGroup>
           
           <FormGroup style={{ flex: 1 }}>
-            <FormLabel>LinkedIn URL</FormLabel>
-            <Input 
+            <FormLabel theme={theme} $isNewCrm={isNewCrm}>LinkedIn URL</FormLabel>
+            <Input
+              theme={theme}
+              $isNewCrm={isNewCrm} 
               type="text" 
               value={companyData.linkedin} 
               onChange={(e) => handleInputChange('linkedin', e.target.value)}
@@ -578,8 +677,10 @@ const CreateCompanyModal = ({
         
         <div style={{ display: 'flex', gap: '15px' }}>
           <FormGroup style={{ flex: 1 }}>
-            <FormLabel>Category</FormLabel>
-            <Select 
+            <FormLabel theme={theme} $isNewCrm={isNewCrm}>Category</FormLabel>
+            <Select
+              theme={theme}
+              $isNewCrm={isNewCrm} 
               value={companyData.category} 
               onChange={(e) => handleInputChange('category', e.target.value)}
             >
@@ -591,8 +692,10 @@ const CreateCompanyModal = ({
           
           {contactId && (
             <FormGroup style={{ flex: 1 }}>
-              <FormLabel>Relationship</FormLabel>
-              <Select 
+              <FormLabel theme={theme} $isNewCrm={isNewCrm}>Relationship</FormLabel>
+              <Select
+                theme={theme}
+                $isNewCrm={isNewCrm} 
                 value={relationship} 
                 onChange={(e) => setRelationship(e.target.value)}
               >
@@ -616,7 +719,11 @@ const CreateCompanyModal = ({
                 onChange={(e) => setIsPrimary(e.target.checked)}
                 style={{ marginRight: '10px' }}
               />
-              <label htmlFor="isPrimary" style={{ color: '#fff' }}>
+              <label htmlFor="isPrimary" style={{
+                color: isNewCrm
+                  ? (theme === 'light' ? '#111827' : '#F9FAFB')
+                  : '#fff'
+              }}>
                 Set as primary company
               </label>
             </div>
@@ -624,8 +731,10 @@ const CreateCompanyModal = ({
         )}
         
         <FormGroup>
-          <FormLabel>Description</FormLabel>
-          <Textarea 
+          <FormLabel theme={theme} $isNewCrm={isNewCrm}>Description</FormLabel>
+          <Textarea
+            theme={theme}
+            $isNewCrm={isNewCrm} 
             value={companyData.description} 
             onChange={(e) => handleInputChange('description', e.target.value)}
             placeholder="Enter company description..."
@@ -633,9 +742,11 @@ const CreateCompanyModal = ({
         </FormGroup>
         
         <FormGroup>
-          <FormLabel>Tags</FormLabel>
+          <FormLabel theme={theme} $isNewCrm={isNewCrm}>Tags</FormLabel>
           <div style={{ position: 'relative' }}>
-            <TagsSearchInput 
+            <TagsSearchInput
+              theme={theme}
+              $isNewCrm={isNewCrm} 
               type="text" 
               value={tagSearch} 
               onChange={(e) => handleTagSearch(e.target.value)}
@@ -644,10 +755,12 @@ const CreateCompanyModal = ({
             />
             
             {showTagSuggestions && tagSuggestions.length > 0 && (
-              <TagSuggestions>
+              <TagSuggestions theme={theme} $isNewCrm={isNewCrm}>
                 {tagSuggestions.map(tag => (
-                  <TagSuggestion 
+                  <TagSuggestion
                     key={tag.tag_id}
+                    theme={theme}
+                    $isNewCrm={isNewCrm}
                     onClick={() => handleAddTag(tag)}
                   >
                     {tag.name}
@@ -657,8 +770,8 @@ const CreateCompanyModal = ({
             )}
             
             {showTagSuggestions && tagSearch.trim() && !tagSuggestions.find(s => s.name.toLowerCase() === tagSearch.toLowerCase()) && (
-              <TagSuggestions>
-                <TagSuggestion onClick={handleCreateTag}>
+              <TagSuggestions theme={theme} $isNewCrm={isNewCrm}>
+                <TagSuggestion theme={theme} $isNewCrm={isNewCrm} onClick={handleCreateTag}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                     <FiPlus size={14} /> Create "{tagSearch}" tag
                   </span>
@@ -670,26 +783,32 @@ const CreateCompanyModal = ({
           {tags.length > 0 ? (
             <TagsContainer>
               {tags.map(tag => (
-                <Tag key={tag.tag_id}>
+                <Tag key={tag.tag_id} $isNewCrm={isNewCrm}>
                   {tag.name}
-                  <TagButton onClick={() => handleRemoveTag(tag.tag_id)}>
+                  <TagButton $isNewCrm={isNewCrm} onClick={() => handleRemoveTag(tag.tag_id)}>
                     <FiX size={10} />
                   </TagButton>
                 </Tag>
               ))}
             </TagsContainer>
           ) : (
-            <div style={{ color: '#999', fontSize: '14px', marginTop: '10px' }}>
+            <div style={{
+              color: isNewCrm
+                ? (theme === 'light' ? '#6B7280' : '#9CA3AF')
+                : '#999',
+              fontSize: '14px',
+              marginTop: '10px'
+            }}>
               No tags added
             </div>
           )}
         </FormGroup>
         
         <ButtonGroup>
-          <Button className="cancel" onClick={onRequestClose}>
+          <Button className="cancel" theme={theme} $isNewCrm={isNewCrm} onClick={onRequestClose}>
             Cancel
           </Button>
-          <Button className="primary" onClick={handleCreateCompany}>
+          <Button className="primary" theme={theme} $isNewCrm={isNewCrm} onClick={handleCreateCompany}>
             <FiSave size={16} /> Create Company
           </Button>
         </ButtonGroup>

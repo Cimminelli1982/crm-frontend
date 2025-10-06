@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
-import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaEdit, FaClock, FaTimes, FaCalendarAlt, FaHeart, FaCog, FaInfoCircle, FaStar, FaPlus, FaBriefcase, FaLink, FaHandshake, FaBolt, FaTrash, FaMapMarkerAlt, FaTag, FaExternalLinkAlt } from 'react-icons/fa';
+import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaEdit, FaClock, FaTimes, FaCalendarAlt, FaHeart, FaCog, FaInfoCircle, FaStar, FaPlus, FaBriefcase, FaLink, FaHandshake, FaBolt, FaTrash, FaMapMarkerAlt, FaTag, FaExternalLinkAlt, FaSkull } from 'react-icons/fa';
 import { FiSkipForward, FiAlertTriangle, FiX, FiMessageCircle, FiSearch } from 'react-icons/fi';
 import { toast } from 'react-hot-toast';
 import Modal from 'react-modal';
 import { CityManagementModal, TagManagementModal } from './RelatedSection';
 import FindDuplicatesModal from './FindDuplicatesModal';
 import ContactEnrichModal from './modals/ContactEnrichModal';
+import CreateCompanyModal from './modals/CreateCompanyModal';
 // Remove CompanyMainModal import - we'll handle this inline
 
 const ContactsListDRY = ({
@@ -872,6 +873,8 @@ const ContactsListDRY = ({
   // Company association for Quick Edit Modal
   const [quickEditAssociateCompanyModalOpen, setQuickEditAssociateCompanyModalOpen] = useState(false);
   const [quickEditContactCompanies, setQuickEditContactCompanies] = useState([]);
+  const [showCreateCompanyModal, setShowCreateCompanyModal] = useState(false);
+  const [createCompanyInitialName, setCreateCompanyInitialName] = useState('');
 
   // Company association modal state
   const [companyModalOpen, setCompanyModalOpen] = useState(false);
@@ -4092,25 +4095,42 @@ const ContactsListDRY = ({
             <h3 style={{ margin: 0, fontSize: '18px' }}>
               Editing: {contactForQuickEdit?.first_name} {contactForQuickEdit?.last_name}
             </h3>
-            <FrequencyModalCloseButton
-              onClick={() => {
-                setQuickEditContactModalOpen(false);
-                setQuickEditDescriptionText('');
-                setQuickEditJobRoleText('');
-                setContactForQuickEdit(null);
-                setNewEmailText('');
-                setNewEmailType('personal');
-                setNewMobileText('');
-                setNewMobileType('personal');
-                setQuickEditContactCities([]);
-                setQuickEditContactTags([]);
-                setQuickEditCityModalOpen(false);
-                setQuickEditTagModalOpen(false);
-              }}
-              theme={theme}
-            >
-              <FiX />
-            </FrequencyModalCloseButton>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <FrequencyModalCloseButton
+                onClick={() => {
+                  setQuickEditContactModalOpen(false);
+                  handleOpenDeleteModal(contactForQuickEdit);
+                }}
+                theme={theme}
+                title="Delete or Skip Contact"
+                style={{
+                  background: theme === 'light' ? '#FEE2E2' : '#7F1D1D',
+                  color: theme === 'light' ? '#DC2626' : '#FCA5A5'
+                }}
+              >
+                <FaSkull />
+              </FrequencyModalCloseButton>
+              <FrequencyModalCloseButton
+                onClick={() => {
+                  setQuickEditContactModalOpen(false);
+                  setQuickEditDescriptionText('');
+                  setQuickEditJobRoleText('');
+                  setContactForQuickEdit(null);
+                  setNewEmailText('');
+                  setNewEmailType('personal');
+                  setNewMobileText('');
+                  setNewMobileType('personal');
+                  setQuickEditContactCities([]);
+                  setQuickEditContactTags([]);
+                  setQuickEditCityModalOpen(false);
+                  setQuickEditTagModalOpen(false);
+                }}
+                theme={theme}
+                title="Close"
+              >
+                <FiX />
+              </FrequencyModalCloseButton>
+            </div>
           </FrequencyModalHeader>
           <FrequencyModalBody>
             {/* Tab Navigation - Using Spam Submenu UI Pattern */}
@@ -5609,8 +5629,36 @@ const ContactsListDRY = ({
           onCompanyAdded={handleQuickEditCompanyAdded}
           onCompanyRemoved={handleQuickEditCompanyAdded}
           onClose={() => setQuickEditAssociateCompanyModalOpen(false)}
+          onCreateCompany={(companyName) => {
+            setCreateCompanyInitialName(companyName);
+            setShowCreateCompanyModal(true);
+            setQuickEditAssociateCompanyModalOpen(false);
+          }}
         />
       </Modal>
+
+      {/* Create Company Modal */}
+      {showCreateCompanyModal && (
+        <CreateCompanyModal
+          isOpen={showCreateCompanyModal}
+          onRequestClose={() => {
+            setShowCreateCompanyModal(false);
+            setCreateCompanyInitialName('');
+          }}
+          initialName={createCompanyInitialName}
+          contactId={contactForQuickEdit?.contact_id}
+          contactEmail={contactForQuickEdit?.emails?.[0]?.email || contactForQuickEdit?.email}
+          theme={theme}
+          isNewCrm={true}
+          onCompanyCreated={(companyData) => {
+            // Refresh the company list by calling the same handler
+            handleQuickEditCompanyAdded();
+            setShowCreateCompanyModal(false);
+            setCreateCompanyInitialName('');
+            toast.success(`Company "${companyData.company.name}" created and associated successfully`);
+          }}
+        />
+      )}
 
       {/* Quick Edit City Modal */}
       <Modal
@@ -6848,7 +6896,7 @@ const InfoIconButton = styled.button`
 `;
 
 // Quick Edit Associate Company Modal Component
-const QuickEditAssociateCompanyModal = ({ theme, contact, contactCompanies, onCompanyAdded, onCompanyRemoved, onClose }) => {
+const QuickEditAssociateCompanyModal = ({ theme, contact, contactCompanies, onCompanyAdded, onCompanyRemoved, onClose, onCreateCompany }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -7317,13 +7365,58 @@ const QuickEditAssociateCompanyModal = ({ theme, contact, contactCompanies, onCo
                     </div>
                   </QuickEditCompanySuggestionItem>
                 ))
-              : <QuickEditCompanyEmptyMessage theme={theme}>
-                  No companies found matching "{searchTerm}"
-                </QuickEditCompanyEmptyMessage>
+              : <div>
+                  <QuickEditCompanyEmptyMessage theme={theme}>
+                    No companies found matching "{searchTerm}"
+                  </QuickEditCompanyEmptyMessage>
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '12px',
+                    marginTop: '16px',
+                    paddingBottom: '16px'
+                  }}>
+                    <button
+                      onClick={() => {
+                        if (onCreateCompany) {
+                          onCreateCompany(searchTerm);
+                        }
+                        onClose(); // Close the current modal
+                      }}
+                      style={{
+                        padding: '10px 20px',
+                        backgroundColor: theme === 'light' ? '#3B82F6' : '#60A5FA',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '8px',
+                        fontSize: '14px',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        transition: 'all 0.2s ease'
+                      }}
+                      onMouseOver={(e) => {
+                        e.target.style.backgroundColor = theme === 'light' ? '#2563EB' : '#3B82F6';
+                        e.target.style.transform = 'translateY(-1px)';
+                      }}
+                      onMouseOut={(e) => {
+                        e.target.style.backgroundColor = theme === 'light' ? '#3B82F6' : '#60A5FA';
+                        e.target.style.transform = 'translateY(0)';
+                      }}
+                    >
+                      <FaPlus size={12} />
+                      Create "{searchTerm}" as new company
+                    </button>
+                  </div>
+                </div>
             }
           </QuickEditCompanySuggestionsContainer>
         )}
       </QuickEditCompanyModalContent>
+
     </QuickEditCompanyModalContainer>
   );
 };

@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
-import { FaArrowLeft, FaEdit, FaTrash, FaGlobe, FaLinkedin, FaLayerGroup } from 'react-icons/fa';
+import { FaArrowLeft, FaEdit, FaTrash, FaGlobe, FaLinkedin, FaLayerGroup, FaRocket } from 'react-icons/fa';
 import { toast } from 'react-hot-toast';
 import ContactsList from '../components/ContactsList';
 import EditCompanyModal from '../components/modals/EditCompanyModal';
 import CompanyContactsModal from '../components/modals/CompanyContactsModal';
 import CompanyDuplicateModal from '../components/modals/CompanyDuplicateModal';
+import CompanyEnrichmentModal from '../components/modals/CompanyEnrichmentModal';
 import CompanyFiles from '../components/CompanyFiles';
 
 const CompanyDetailPage = ({ theme }) => {
@@ -46,6 +47,9 @@ const CompanyDetailPage = ({ theme }) => {
 
   // Merge modal state
   const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
+
+  // Enrichment modal state
+  const [isEnrichmentModalOpen, setIsEnrichmentModalOpen] = useState(false);
 
   const fetchCompany = async () => {
     if (!companyId) return;
@@ -442,6 +446,17 @@ const CompanyDetailPage = ({ theme }) => {
     fetchRelatedData();
   };
 
+  const handleEnrich = () => {
+    setIsEnrichmentModalOpen(true);
+  };
+
+  const handleEnrichmentModalClose = () => {
+    setIsEnrichmentModalOpen(false);
+    // Refresh company data after enrichment
+    fetchCompany();
+    fetchRelatedData();
+  };
+
   const handleLogoUpload = () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -748,6 +763,10 @@ const CompanyDetailPage = ({ theme }) => {
                 <FaEdit />
                 <ActionButtonText>Edit</ActionButtonText>
               </ActionButton>
+              <ActionButton theme={theme} $enrich onClick={handleEnrich}>
+                <FaRocket />
+                <ActionButtonText>Enrich</ActionButtonText>
+              </ActionButton>
               <ActionButton theme={theme} $merge onClick={handleMerge}>
                 <FaLayerGroup />
                 <ActionButtonText>Merge</ActionButtonText>
@@ -907,6 +926,16 @@ const CompanyDetailPage = ({ theme }) => {
         isOpen={isMergeModalOpen}
         onRequestClose={handleMergeModalClose}
         company={company}
+      />
+
+      {/* Company Enrichment Modal */}
+      <CompanyEnrichmentModal
+        isOpen={isEnrichmentModalOpen}
+        onClose={handleEnrichmentModalClose}
+        company={company}
+        companyDomains={companyDomains}
+        onEnrichComplete={handleEnrichmentModalClose}
+        theme={theme}
       />
     </PageContainer>
   );
@@ -1218,6 +1247,15 @@ const ActionButton = styled.button`
     }
   `}
 
+  ${props => props.$enrich && `
+    background: ${props.theme === 'light' ? '#8B5CF6' : '#A78BFA'};
+    color: white;
+
+    &:hover {
+      background: ${props.theme === 'light' ? '#7C3AED' : '#8B5CF6'};
+    }
+  `}
+
   ${props => props.$merge && `
     background: ${props.theme === 'light' ? '#F59E0B' : '#FBBF24'};
     color: white;
@@ -1227,7 +1265,7 @@ const ActionButton = styled.button`
     }
   `}
 
-  ${props => !props.$primary && !props.$danger && !props.$merge && `
+  ${props => !props.$primary && !props.$danger && !props.$enrich && !props.$merge && `
     background: ${props.theme === 'light' ? '#F3F4F6' : '#374151'};
     color: ${props.theme === 'light' ? '#374151' : '#D1D5DB'};
 

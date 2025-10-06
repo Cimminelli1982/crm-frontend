@@ -286,7 +286,7 @@ const SortPage = ({ theme, onInboxCountChange }) => {
     }
   }, [filterCategory, refreshTrigger]);
 
-  const sortCategories = ['Inbox', 'Mail Filter', 'Missing', 'Spam'];
+  const sortCategories = ['Inbox', 'Mail Filter', 'Missing']; // 'Spam' tab hidden for now
 
   return (
     <PageContainer theme={theme}>
