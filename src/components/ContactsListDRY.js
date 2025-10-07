@@ -1101,7 +1101,7 @@ const ContactsListDRY = ({
         .from('keep_in_touch')
         .select('frequency, christmas, easter')
         .eq('contact_id', contact.contact_id)
-        .single();
+        .maybeSingle();
 
       if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
         console.error('Error loading keep in touch data:', error);
@@ -1416,7 +1416,7 @@ const ContactsListDRY = ({
         .from('keep_in_touch')
         .select('id')
         .eq('contact_id', contactForKeepInTouch.contact_id)
-        .single();
+        .maybeSingle();
 
       if (checkError && checkError.code !== 'PGRST116') {
         throw checkError;
@@ -1748,7 +1748,7 @@ const ContactsListDRY = ({
         .from('keep_in_touch')
         .select('frequency, christmas, easter')
         .eq('contact_id', contact.contact_id)
-        .single();
+        .maybeSingle();
 
       // Parse existing birthday into components
       const birthdayComponents = parseBirthdayIntoComponents(contact.birthday);
@@ -2166,7 +2166,7 @@ const ContactsListDRY = ({
         .from('keep_in_touch')
         .select('id')
         .eq('contact_id', contactForQuickEdit.contact_id)
-        .single();
+        .maybeSingle();
 
       if (checkError && checkError.code !== 'PGRST116') {
         throw checkError;
@@ -2209,7 +2209,7 @@ const ContactsListDRY = ({
         .from('keep_in_touch')
         .select('id')
         .eq('contact_id', contactForQuickEdit.contact_id)
-        .single();
+        .maybeSingle();
 
       if (checkError && checkError.code !== 'PGRST116') {
         throw checkError;
@@ -2252,7 +2252,7 @@ const ContactsListDRY = ({
         .from('keep_in_touch')
         .select('id')
         .eq('contact_id', contactForQuickEdit.contact_id)
-        .single();
+        .maybeSingle();
 
       if (checkError && checkError.code !== 'PGRST116') {
         throw checkError;
@@ -2316,6 +2316,153 @@ const ContactsListDRY = ({
     } catch (error) {
       console.error('Error updating birthday:', error);
       toast.error('Failed to update birthday: ' + (error.message || 'Unknown error'));
+    }
+  };
+
+  // Handle automation actions
+  const handleAutomation = async (automationType) => {
+    if (!contactForQuickEdit) return;
+
+    try {
+      if (automationType === 'cold_contacted_founder') {
+        // Apply Cold contacted founder automation
+        // Set the fields according to the automation
+        setQuickEditDescriptionText('Founder a cui ho dato picche senza allocare troppo tempo');
+        setQuickEditContactCategory('Founder');
+        setQuickEditContactScore(3);
+        setQuickEditJobRoleText('CEO & Founder');
+
+        // Update contact details in database
+        const { error: contactError } = await supabase
+          .from('contacts')
+          .update({
+            first_name: quickEditFirstName.trim() || null,
+            last_name: quickEditLastName.trim() || null,
+            description: 'Founder a cui ho dato picche senza allocare troppo tempo',
+            job_role: 'CEO & Founder',
+            category: 'Founder',
+            score: 3,
+            linkedin: quickEditLinkedin.trim() || null
+          })
+          .eq('contact_id', contactForQuickEdit.contact_id);
+
+        if (contactError) throw contactError;
+
+        // Update or create keep_in_touch record
+        // First check if record exists
+        const { data: existingKIT, error: checkError } = await supabase
+          .from('keep_in_touch')
+          .select('id')
+          .eq('contact_id', contactForQuickEdit.contact_id)
+          .maybeSingle(); // Use maybeSingle instead of single to avoid 406 errors
+
+        if (existingKIT) {
+          // Update existing record
+          const { error: kitError } = await supabase
+            .from('keep_in_touch')
+            .update({
+              frequency: 'Do not keep in touch',
+              christmas: 'no wishes',
+              easter: 'no wishes'
+            })
+            .eq('contact_id', contactForQuickEdit.contact_id);
+
+          if (kitError) throw kitError;
+        } else {
+          // Create new record
+          const { error: kitError } = await supabase
+            .from('keep_in_touch')
+            .insert({
+              contact_id: contactForQuickEdit.contact_id,
+              frequency: 'Do not keep in touch',
+              christmas: 'no wishes',
+              easter: 'no wishes'
+            });
+
+          if (kitError) throw kitError;
+        }
+
+        // Update UI fields to reflect the automation changes
+        setQuickEditKeepInTouchFrequency('Do not keep in touch');
+        setQuickEditChristmasWishes('no wishes');
+        setQuickEditEasterWishes('no wishes');
+
+        // Add to Apollo_Enrichment_Inbox (check if exists first to avoid duplicates)
+        const { data: existingApollo, error: apolloCheckError } = await supabase
+          .from('apollo_enrichment_inbox')
+          .select('id')
+          .eq('contact_id', contactForQuickEdit.contact_id)
+          .maybeSingle();
+
+        if (!existingApollo) {
+          // Record doesn't exist, so insert it
+          const { error: apolloError } = await supabase
+            .from('apollo_enrichment_inbox')
+            .insert({
+              contact_id: contactForQuickEdit.contact_id
+            });
+
+          if (apolloError) throw apolloError;
+        }
+
+        toast.success('Cold contacted founder automation applied successfully');
+
+        // Refresh data if needed
+        if (handleContactUpdate) {
+          handleContactUpdate();
+        }
+
+        // Close modal after successful automation
+        setTimeout(() => {
+          setQuickEditContactModalOpen(false);
+          setContactForQuickEdit(null);
+          // Reset all fields
+          setQuickEditDescriptionText('');
+          setQuickEditJobRoleText('');
+          setQuickEditContactCategory('');
+          setQuickEditContactScore(0);
+          setQuickEditFirstName('');
+          setQuickEditLastName('');
+          setQuickEditLinkedin('');
+        }, 1000);
+      } else if (automationType === 'quick_skip') {
+        // Apply Quick Skip automation - just set category to Skip
+        setQuickEditContactCategory('Skip');
+
+        // Update contact in database
+        const { error: contactError } = await supabase
+          .from('contacts')
+          .update({
+            category: 'Skip'
+          })
+          .eq('contact_id', contactForQuickEdit.contact_id);
+
+        if (contactError) throw contactError;
+
+        toast.success('Contact marked as Skip');
+
+        // Refresh data if needed
+        if (handleContactUpdate) {
+          handleContactUpdate();
+        }
+
+        // Close modal after successful automation
+        setTimeout(() => {
+          setQuickEditContactModalOpen(false);
+          setContactForQuickEdit(null);
+          // Reset all fields
+          setQuickEditDescriptionText('');
+          setQuickEditJobRoleText('');
+          setQuickEditContactCategory('');
+          setQuickEditContactScore(0);
+          setQuickEditFirstName('');
+          setQuickEditLastName('');
+          setQuickEditLinkedin('');
+        }, 500);
+      }
+    } catch (error) {
+      console.error('Error applying automation:', error);
+      toast.error('Failed to apply automation: ' + (error.message || 'Unknown error'));
     }
   };
 
@@ -5541,7 +5688,8 @@ const ContactsListDRY = ({
               <div style={{
                 display: 'flex',
                 gap: '12px',
-                justifyContent: 'flex-end',
+                justifyContent: 'space-between',
+                alignItems: 'center',
                 marginTop: '24px',
                 paddingTop: '20px',
                 borderTop: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
@@ -5576,21 +5724,44 @@ const ContactsListDRY = ({
                 >
                   Cancel
                 </button>
-                <button
-                  onClick={handleSaveQuickEditContact}
-                  style={{
-                    padding: '10px 20px',
-                    border: 'none',
-                    borderRadius: '6px',
-                    backgroundColor: '#3B82F6',
-                    color: '#FFFFFF',
-                    fontSize: '14px',
-                    cursor: 'pointer',
-                    fontWeight: '500'
-                  }}
-                >
-                  Save Details
-                </button>
+
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  {/* Automation Dropdown */}
+                  <select
+                    onChange={(e) => handleAutomation(e.target.value)}
+                    style={{
+                      padding: '10px 15px',
+                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                      borderRadius: '6px',
+                      backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB',
+                      fontSize: '14px',
+                      cursor: 'pointer',
+                      minWidth: '180px'
+                    }}
+                    value=""
+                  >
+                    <option value="" disabled>🤖 Automations</option>
+                    <option value="cold_contacted_founder">Cold contacted founder</option>
+                    <option value="quick_skip">Quick Skip</option>
+                  </select>
+
+                  <button
+                    onClick={handleSaveQuickEditContact}
+                    style={{
+                      padding: '10px 20px',
+                      border: 'none',
+                      borderRadius: '6px',
+                      backgroundColor: '#3B82F6',
+                      color: '#FFFFFF',
+                      fontSize: '14px',
+                      cursor: 'pointer',
+                      fontWeight: '500'
+                    }}
+                  >
+                    Save Details
+                  </button>
+                </div>
               </div>
             </div>
           </FrequencyModalBody>

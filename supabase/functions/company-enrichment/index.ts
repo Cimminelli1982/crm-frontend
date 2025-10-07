@@ -16,6 +16,7 @@ interface EnrichmentRequest {
   companyId: string;
   website?: string;
   companyName?: string;
+  linkedinUrl?: string;
 }
 
 interface ApolloOrganization {
@@ -112,9 +113,9 @@ Deno.serve(async (req: Request) => {
 
     // Parse request
     const requestData: EnrichmentRequest = await req.json();
-    const { companyId, website, companyName } = requestData;
+    const { companyId, website, companyName, linkedinUrl } = requestData;
 
-    console.log('Company enrichment request:', { companyId, website, companyName });
+    console.log('Company enrichment request:', { companyId, website, companyName, linkedinUrl });
 
     if (!companyId) {
       return new Response(
@@ -126,37 +127,50 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Fetch company from database if we need additional info
-    let company: any = null;
-    if (!website || !companyName) {
+    // Use provided data first
+    let searchDomain = website;
+    let searchName = companyName;
+    let searchLinkedIn = linkedinUrl;
+
+    // Only fetch from database if we're missing ALL critical info
+    // IMPORTANT: If LinkedIn URL is provided, we can use it directly without checking database
+    if (!linkedinUrl && !website && !companyName) {
+      console.log('No search parameters provided, checking database...');
       const { data, error } = await supabase
         .from('companies')
         .select('company_id, name, website, description, linkedin')
         .eq('company_id', companyId)
         .single();
 
-      if (error || !data) {
-        console.error('Failed to fetch company:', error);
+      if (error) {
+        console.error('Database error fetching company:', error);
         return new Response(
-          JSON.stringify({ success: false, error: 'Company not found' }),
+          JSON.stringify({ success: false, error: 'No search parameters provided and company not found in database' }),
           {
             status: 404,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           }
         );
+      } else {
+        // Only use database values if not provided in request
+        searchDomain = searchDomain || data?.website;
+        searchName = searchName || data?.name;
+        searchLinkedIn = searchLinkedIn || data?.linkedin;
       }
-      company = data;
     }
 
-    // Use provided data or fallback to database data
-    const searchDomain = website || company?.website;
-    const searchName = companyName || company?.name;
+    // Clean up empty strings
+    const cleanDomain = searchDomain && searchDomain.trim() !== '' ? searchDomain : null;
+    const cleanName = searchName && searchName.trim() !== '' ? searchName : null;
+    const cleanLinkedIn = searchLinkedIn && searchLinkedIn.trim() !== '' ? searchLinkedIn : null;
 
-    if (!searchDomain && !searchName) {
+    if (!cleanDomain && !cleanName && !cleanLinkedIn) {
+      console.log('No domain, name, or LinkedIn available for enrichment');
       return new Response(
         JSON.stringify({
           success: false,
-          error: 'Either website or company name is required for enrichment'
+          error: 'Either website, company name, or LinkedIn URL is required for enrichment',
+          message: 'Please add a website domain, LinkedIn URL, or ensure the company has a name'
         }),
         {
           status: 400,
@@ -166,20 +180,34 @@ Deno.serve(async (req: Request) => {
     }
 
     // Prepare Apollo API request
-    const processedDomain = searchDomain
-      ? searchDomain.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0]
+    const processedDomain = cleanDomain
+      ? cleanDomain.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0]
       : null;
 
     let apolloRequestData: any = {
       api_key: APOLLO_API_KEY
     };
 
-    // Try domain search first if available
-    if (processedDomain) {
+    // Priority order for Apollo search:
+    // 1. Domain if available (most reliable)
+    // 2. If LinkedIn URL exists without domain, use the slug
+    // 3. Company name as fallback
+
+    if (processedDomain && processedDomain.trim() !== '') {
       apolloRequestData.domain = processedDomain;
-    } else if (searchName) {
-      // Fallback to name search
-      apolloRequestData.q_organization_name = searchName;
+      console.log('Searching Apollo by domain:', processedDomain);
+    } else if (cleanLinkedIn && !processedDomain) {
+      // When we have LinkedIn but no domain, extract and use the slug
+      const match = cleanLinkedIn.match(/linkedin\.com\/company\/([^\/\?]+)/);
+      if (match && match[1]) {
+        // Try the exact slug with spaces instead of hyphens
+        const linkedinSlug = match[1].replace(/-/g, ' ');
+        apolloRequestData.q_organization_name = linkedinSlug;
+        console.log('Searching Apollo using LinkedIn slug:', linkedinSlug);
+      }
+    } else if (cleanName) {
+      apolloRequestData.q_organization_name = cleanName;
+      console.log('Searching Apollo by company name:', cleanName);
     }
 
     console.log('Apollo API request:', apolloRequestData);
@@ -197,40 +225,72 @@ Deno.serve(async (req: Request) => {
     console.log('Apollo API response status:', apolloResponse.status);
     console.log('Apollo API response:', JSON.stringify(apolloData).substring(0, 500));
 
-    // If domain search failed and we have a name, try name search
-    if (!apolloData.organization && processedDomain && searchName) {
-      console.log('Domain search failed, trying name search...');
+    // If LinkedIn search failed, try other methods as fallback
+    if (!apolloData.organization && cleanLinkedIn) {
+      console.log('LinkedIn URL search did not find a match, trying fallback methods...');
 
-      apolloRequestData = {
-        api_key: APOLLO_API_KEY,
-        q_organization_name: searchName
-      };
+      // Try domain if available
+      if (processedDomain) {
+        apolloRequestData = {
+          api_key: APOLLO_API_KEY,
+          domain: processedDomain
+        };
 
-      const nameResponse = await fetch(APOLLO_ENRICH_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(apolloRequestData),
-      });
+        console.log('Fallback: trying domain search...');
+        const domainResponse = await fetch(APOLLO_ENRICH_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(apolloRequestData),
+        });
 
-      const nameData = await nameResponse.json();
-      if (nameData.organization) {
-        apolloData.organization = nameData.organization;
-        console.log('Found organization via name search');
+        const domainData = await domainResponse.json();
+        if (domainData.organization) {
+          apolloData.organization = domainData.organization;
+          console.log('Found organization via domain search');
+        }
+      }
+
+      // Try company name if still not found
+      if (!apolloData.organization && cleanName) {
+        apolloRequestData = {
+          api_key: APOLLO_API_KEY,
+          q_organization_name: cleanName
+        };
+
+        console.log('Fallback: trying company name search...');
+        const nameResponse = await fetch(APOLLO_ENRICH_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(apolloRequestData),
+        });
+
+        const nameData = await nameResponse.json();
+        if (nameData.organization) {
+          apolloData.organization = nameData.organization;
+          console.log('Found organization via name search');
+        }
       }
     }
 
     if (!apolloData.organization) {
-      console.log('No organization data found');
+      const searchedMethod = cleanLinkedIn ? 'LinkedIn URL' : (processedDomain ? 'domain' : 'company name');
+      const searchedValue = cleanLinkedIn || processedDomain || cleanName;
+      console.log(`No organization data found using ${searchedMethod}:`, searchedValue);
+
       return new Response(
         JSON.stringify({
           success: false,
           error: 'No organization data found',
-          message: 'Apollo API could not find matching organization data'
+          message: `Apollo API could not find data for the provided ${searchedMethod}: "${searchedValue}". ${
+            cleanLinkedIn ? 'The LinkedIn URL may not be in Apollo\'s database. ' : ''
+          }Try ${cleanLinkedIn ? 'adding a website domain or company name' : 'checking the company information'}.`
         }),
         {
-          status: 404,
+          status: 200,  // Return 200 even when no data found, as the API call itself succeeded
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );

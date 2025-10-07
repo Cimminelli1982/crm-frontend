@@ -525,7 +525,7 @@ const CompanyEnrichmentModal = ({
       const suggestedUrl = `https://linkedin.com/company/${company.name.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '')}`;
       setLinkedInSuggestion(suggestedUrl);
       setSuggestionConfidence(30); // Low confidence for error fallback
-      toast.warning('Using fallback LinkedIn URL suggestion');
+      toast('Using fallback LinkedIn URL suggestion', { icon: '⚠️' });
     } finally {
       setSearchingLinkedIn(false);
     }
@@ -572,12 +572,30 @@ const CompanyEnrichmentModal = ({
                            companyDomains?.[0]?.domain ||
                            company.website;
 
+      // If no domain is available, try to extract from LinkedIn URL
+      let websiteToUse = primaryDomain;
+      if (!websiteToUse && linkedinUrl) {
+        // Try to extract company slug from LinkedIn URL for domain hint
+        const linkedinMatch = linkedinUrl.match(/linkedin\.com\/company\/([^\/]+)/);
+        if (linkedinMatch) {
+          // Use company name as primary search method when no domain
+          console.log('No domain found, will search by company name:', company.name);
+        }
+      }
+
+      if (!websiteToUse && !company.name) {
+        toast.error('No website or company name available for enrichment');
+        setEnriching(false);
+        return;
+      }
+
       // Call the new Supabase edge function
       const response = await supabase.functions.invoke('company-enrichment', {
         body: {
           companyId: company.company_id,
-          website: primaryDomain,
-          companyName: company.name
+          website: websiteToUse || undefined,  // Pass undefined instead of null
+          companyName: company.name,
+          linkedinUrl: linkedinUrl || company.linkedin || undefined  // Pass the LinkedIn URL from state or company data!
         }
       });
 
@@ -615,15 +633,15 @@ const CompanyEnrichmentModal = ({
           if (apolloData.confidence >= 80) {
             toast.success(`Company data enriched successfully! (${apolloData.confidence}% confidence)`);
           } else if (apolloData.confidence >= 50) {
-            toast.info(`Company data enriched with moderate confidence (${apolloData.confidence}%)`);
+            toast(`Company data enriched with moderate confidence (${apolloData.confidence}%)`, { icon: '⚠️' });
           } else {
-            toast.warning(`Limited enrichment data available (${apolloData.confidence}% confidence)`);
+            toast(`Limited enrichment data available (${apolloData.confidence}% confidence)`, { icon: '⚠️' });
           }
         } else {
           toast.success('Company data enriched successfully!');
         }
       } else {
-        toast.warning(data.message || 'Limited enrichment data available');
+        toast(data.message || 'Limited enrichment data available', { icon: '⚠️' });
       }
     } catch (error) {
       console.error('Error enriching company:', error);
