@@ -141,9 +141,32 @@ const QuickEditModal = ({
     >
       <ModalContent theme={theme}>
         <ModalHeader theme={theme}>
-          <h3 style={{ margin: 0, fontSize: '18px' }}>
-            Editing: {contact?.first_name} {contact?.last_name}
-          </h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1 }}>
+            <h3 style={{ margin: 0, fontSize: '18px' }}>
+              Editing: {contact?.first_name} {contact?.last_name}
+            </h3>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginLeft: 'auto',
+              marginRight: '16px'
+            }}>
+              <span style={{
+                fontSize: '13px',
+                color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+              }}>
+                Track Missing Info
+              </span>
+              <ToggleSwitch
+                theme={theme}
+                $checked={quickEditShowMissing}
+                onClick={() => setQuickEditShowMissing(!quickEditShowMissing)}
+              >
+                <ToggleSlider $checked={quickEditShowMissing} />
+              </ToggleSwitch>
+            </div>
+          </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <CloseButton
               onClick={() => {
@@ -193,40 +216,6 @@ const QuickEditModal = ({
             {/* Info Tab */}
             {quickEditActiveTab === 'Info' && (
               <TabContent>
-                {/* Show Missing Toggle - Always visible at the top */}
-                <FormGroup style={{
-                  padding: '16px',
-                  backgroundColor: theme === 'light' ? '#F3F4F6' : '#1a1a1a',
-                  borderRadius: '8px',
-                  marginBottom: '24px'
-                }}>
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
-                  }}>
-                    <div>
-                      <Label theme={theme} style={{ margin: 0, fontWeight: '600' }}>
-                        Track Missing Information
-                      </Label>
-                      <p style={{
-                        margin: '4px 0 0 0',
-                        fontSize: '12px',
-                        color: theme === 'light' ? '#6B7280' : '#9CA3AF'
-                      }}>
-                        Include this contact in the missing information view
-                      </p>
-                    </div>
-                    <ToggleSwitch
-                      theme={theme}
-                      $checked={quickEditShowMissing}
-                      onClick={() => setQuickEditShowMissing(!quickEditShowMissing)}
-                    >
-                      <ToggleSlider $checked={quickEditShowMissing} />
-                    </ToggleSwitch>
-                  </div>
-                </FormGroup>
-
                 {/* First Name */}
                 {shouldShowField(contact, 'first_name') && (
                   <FormGroup>
