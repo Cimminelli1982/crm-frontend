@@ -3,7 +3,7 @@ import Modal from 'react-modal';
 import styled from 'styled-components';
 import { FiX, FiLink, FiCheck, FiEdit2, FiUser, FiLoader, FiSave, FiExternalLink, FiSearch } from 'react-icons/fi';
 import { supabase } from '../../lib/supabaseClient';
-import { toast } from 'react-toastify';
+import { toast } from 'react-hot-toast';
 
 // Styled components
 const ModalHeader = styled.div`

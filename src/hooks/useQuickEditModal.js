@@ -643,6 +643,7 @@ export const useQuickEditModal = (onContactUpdate) => {
     if (!contactForQuickEdit) return;
 
     try {
+      // Save contact details
       const { error } = await supabase
         .from('contacts')
         .update({
@@ -658,6 +659,43 @@ export const useQuickEditModal = (onContactUpdate) => {
         .eq('contact_id', contactForQuickEdit.contact_id);
 
       if (error) throw error;
+
+      // Save keep_in_touch data if any fields have values
+      if (quickEditKeepInTouchFrequency || quickEditChristmasWishes || quickEditEasterWishes) {
+        const { data: existingRecord, error: checkError } = await supabase
+          .from('keep_in_touch')
+          .select('id')
+          .eq('contact_id', contactForQuickEdit.contact_id)
+          .maybeSingle();
+
+        if (checkError && checkError.code !== 'PGRST116') {
+          throw checkError;
+        }
+
+        const keepInTouchData = {
+          frequency: quickEditKeepInTouchFrequency || null,
+          christmas: quickEditChristmasWishes || null,
+          easter: quickEditEasterWishes || null
+        };
+
+        if (existingRecord) {
+          const { error: updateError } = await supabase
+            .from('keep_in_touch')
+            .update(keepInTouchData)
+            .eq('contact_id', contactForQuickEdit.contact_id);
+
+          if (updateError) throw updateError;
+        } else {
+          const { error: insertError } = await supabase
+            .from('keep_in_touch')
+            .insert({
+              contact_id: contactForQuickEdit.contact_id,
+              ...keepInTouchData
+            });
+
+          if (insertError) throw insertError;
+        }
+      }
 
       toast.success('Contact details updated successfully');
       closeModal();
@@ -679,6 +717,9 @@ export const useQuickEditModal = (onContactUpdate) => {
     quickEditContactScore,
     quickEditLinkedin,
     quickEditShowMissing,
+    quickEditKeepInTouchFrequency,
+    quickEditChristmasWishes,
+    quickEditEasterWishes,
     onContactUpdate
   ]);
 

@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Modal from 'react-modal';
 import { FiX } from 'react-icons/fi';
 import { FaSkull, FaInfoCircle, FaEnvelope, FaBriefcase, FaMapMarkerAlt, FaHeart } from 'react-icons/fa';
+import ContactEnrichModal from './modals/ContactEnrichModal';
+import { supabase } from '../lib/supabaseClient';
 
 // Tab Components
 import InfoTab from './quickEditModal/InfoTab';
@@ -126,6 +128,8 @@ const QuickEditModalRefactored = ({
   ],
   frequencyOptions = ['Weekly', 'Monthly', 'Quarterly', 'Twice per Year', 'Once per Year', 'Do not keep in touch']
 }) => {
+  const [contactEnrichModalOpen, setContactEnrichModalOpen] = useState(false);
+
   if (!contact) return null;
 
   const handleClose = () => {
@@ -195,6 +199,7 @@ const QuickEditModalRefactored = ({
       case 'Work':
         return (
           <WorkTab
+            contact={contact}
             jobRole={quickEditJobRoleText}
             setJobRole={setQuickEditJobRoleText}
             linkedin={quickEditLinkedin}
@@ -205,6 +210,7 @@ const QuickEditModalRefactored = ({
             handleUpdateCompanyCategory={handleUpdateCompanyCategory}
             theme={theme}
             shouldShowField={shouldShowField}
+            onOpenEnrichModal={() => setContactEnrichModalOpen(true)}
           />
         );
 
@@ -254,9 +260,10 @@ const QuickEditModalRefactored = ({
   };
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onRequestClose={handleClose}
+    <>
+      <Modal
+        isOpen={isOpen}
+        onRequestClose={handleClose}
       shouldCloseOnOverlayClick={true}
       style={{
         content: {
@@ -452,6 +459,37 @@ const QuickEditModalRefactored = ({
         </ModalBody>
       </ModalContent>
     </Modal>
+
+      {/* Contact Enrich Modal */}
+      <ContactEnrichModal
+        isOpen={contactEnrichModalOpen}
+        onClose={() => setContactEnrichModalOpen(false)}
+        contact={contact}
+        theme={theme}
+        onEnrichComplete={async () => {
+          setContactEnrichModalOpen(false);
+          // Refresh the contact data to get the updated LinkedIn URL
+          if (contact?.contact_id) {
+            try {
+              const { data, error } = await supabase
+                .from('contacts')
+                .select('linkedin')
+                .eq('contact_id', contact.contact_id)
+                .single();
+
+              if (!error && data) {
+                // Update the local state with the new LinkedIn URL
+                setQuickEditLinkedin(data.linkedin || '');
+                // Update the contact object as well
+                contact.linkedin = data.linkedin;
+              }
+            } catch (err) {
+              console.error('Error fetching updated LinkedIn URL:', err);
+            }
+          }
+        }}
+      />
+    </>
   );
 };
 

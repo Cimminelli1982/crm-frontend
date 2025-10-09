@@ -1,4 +1,8 @@
+import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
+import { supabase } from '../lib/supabaseClient';
+import { toast } from 'react-hot-toast';
+import { FaPlus } from 'react-icons/fa';
 
 export const LoadingContainer = styled.div`
   display: flex;

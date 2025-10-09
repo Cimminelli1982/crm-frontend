@@ -16,6 +16,7 @@ import {
 } from './StyledComponents';
 
 const WorkTab = ({
+  contact,
   jobRole,
   setJobRole,
   linkedin,
@@ -25,7 +26,8 @@ const WorkTab = ({
   handleUpdateCompanyRelationship,
   handleUpdateCompanyCategory,
   theme,
-  shouldShowField
+  shouldShowField,
+  onOpenEnrichModal
 }) => {
   return (
     <>
@@ -46,7 +48,19 @@ const WorkTab = ({
       {/* LinkedIn */}
       {shouldShowField('linkedin') && (
         <FormGroup>
-          <Label theme={theme}>LinkedIn Profile</Label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <Label theme={theme} style={{ margin: 0 }}>LinkedIn Profile</Label>
+            {(!contact?.linkedin || contact?.linkedin === '') && onOpenEnrichModal && (
+              <ManageButton
+                onClick={(e) => {
+                  e.preventDefault();
+                  onOpenEnrichModal();
+                }}
+              >
+                🔍 Find with Apollo
+              </ManageButton>
+            )}
+          </div>
           <Input
             type="url"
             value={linkedin}

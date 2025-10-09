@@ -150,7 +150,7 @@ const KeepInTouchTab = ({
             value={christmasWishes}
             onChange={(e) => {
               setChristmasWishes(e.target.value);
-              handleSaveChristmasWishes(e.target.value);
+              // Removed immediate save - will save with main Save Details button
             }}
             theme={theme}
           >
@@ -177,7 +177,7 @@ const KeepInTouchTab = ({
             value={easterWishes}
             onChange={(e) => {
               setEasterWishes(e.target.value);
-              handleSaveEasterWishes(e.target.value);
+              // Removed immediate save - will save with main Save Details button
             }}
             theme={theme}
           >
