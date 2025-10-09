@@ -127,7 +127,7 @@ const QuickEditModal = ({
           padding: '0',
           border: 'none',
           borderRadius: '12px',
-          maxWidth: '600px',
+          maxWidth: '500px',
           width: '90%',
           background: 'transparent'
         },
@@ -854,62 +854,95 @@ const QuickEditModal = ({
               </TabContent>
             )}
 
-            {/* Action Buttons */}
-            <ActionButtons theme={theme}>
-              <button
-                onClick={handleClose}
+          </div>
+
+          {/* Action Buttons */}
+          <ActionButtons theme={theme}>
+            <button
+              onClick={handleClose}
+              style={{
+                padding: '11px 24px',
+                border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                borderRadius: '8px',
+                backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.backgroundColor = theme === 'light' ? '#F9FAFB' : '#111827';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.backgroundColor = theme === 'light' ? '#FFFFFF' : '#1F2937';
+              }}
+            >
+              Cancel
+            </button>
+
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              {/* Automation Dropdown */}
+              <select
+                onChange={(e) => handleAutomation(e.target.value)}
                 style={{
-                  padding: '10px 20px',
+                  padding: '11px 16px',
+                  paddingRight: '40px',
                   border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
-                  borderRadius: '6px',
-                  backgroundColor: 'transparent',
-                  color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                  borderRadius: '8px',
+                  backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                  color: theme === 'light' ? '#111827' : '#F9FAFB',
                   fontSize: '14px',
-                  cursor: 'pointer'
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  minWidth: '170px',
+                  appearance: 'none',
+                  backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='${theme === 'light' ? '%236B7280' : '%239CA3AF'}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 12px center',
+                  backgroundSize: '16px',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.borderColor = theme === 'light' ? '#9CA3AF' : '#6B7280';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.borderColor = theme === 'light' ? '#D1D5DB' : '#4B5563';
+                }}
+                value=""
+              >
+                <option value="" disabled>🤖 Automations</option>
+                <option value="cold_contacted_founder">Cold contacted founder</option>
+                <option value="quick_skip">Quick Skip</option>
+              </select>
+
+              <button
+                onClick={onSave}
+                style={{
+                  padding: '11px 24px',
+                  border: 'none',
+                  borderRadius: '8px',
+                  backgroundColor: '#3B82F6',
+                  color: '#FFFFFF',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.backgroundColor = '#2563EB';
+                  e.target.style.boxShadow = '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.backgroundColor = '#3B82F6';
+                  e.target.style.boxShadow = '0 1px 2px 0 rgba(0, 0, 0, 0.05)';
                 }}
               >
-                Cancel
+                Save Details
               </button>
-
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                {/* Automation Dropdown */}
-                <select
-                  onChange={(e) => handleAutomation(e.target.value)}
-                  style={{
-                    padding: '10px 15px',
-                    border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
-                    borderRadius: '6px',
-                    backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
-                    color: theme === 'light' ? '#111827' : '#F9FAFB',
-                    fontSize: '14px',
-                    cursor: 'pointer',
-                    minWidth: '180px'
-                  }}
-                  value=""
-                >
-                  <option value="" disabled>🤖 Automations</option>
-                  <option value="cold_contacted_founder">Cold contacted founder</option>
-                  <option value="quick_skip">Quick Skip</option>
-                </select>
-
-                <button
-                  onClick={onSave}
-                  style={{
-                    padding: '10px 20px',
-                    border: 'none',
-                    borderRadius: '6px',
-                    backgroundColor: '#3B82F6',
-                    color: '#FFFFFF',
-                    fontSize: '14px',
-                    cursor: 'pointer',
-                    fontWeight: '500'
-                  }}
-                >
-                  Save Details
-                </button>
-              </div>
-            </ActionButtons>
-          </div>
+            </div>
+          </ActionButtons>
         </ModalBody>
       </ModalContent>
     </Modal>
@@ -1380,12 +1413,11 @@ const ActionButtons = styled.div`
   gap: 12px;
   justify-content: space-between;
   align-items: center;
-  margin-top: 24px;
-  padding: 20px;
+  padding: 16px 20px;
   border-top: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
-  margin-left: -20px;
-  margin-right: -20px;
-  margin-bottom: -20px;
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+  border-radius: 0 0 12px 12px;
+  margin: 0;
 `;
 
 export default QuickEditModal;

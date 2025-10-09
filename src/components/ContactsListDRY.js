@@ -12,6 +12,7 @@ import ContactEnrichModal from './modals/ContactEnrichModal';
 import CreateCompanyModal from './modals/CreateCompanyModal';
 import ContactCard from './ContactCard';
 import QuickEditModal from './QuickEditModal';
+import { useQuickEditModal } from '../hooks/useQuickEditModal';
 // Remove CompanyMainModal import - we'll handle this inline
 
 const ContactsListDRY = ({
@@ -835,46 +836,93 @@ const ContactsListDRY = ({
     easterWishes: ''
   });
 
-  // Quick Edit Contact modal state
-  const [quickEditContactModalOpen, setQuickEditContactModalOpen] = useState(false);
-  const [contactForQuickEdit, setContactForQuickEdit] = useState(null);
-  const [showMissingFieldsOnly, setShowMissingFieldsOnly] = useState(false);
-  const [quickEditActiveTab, setQuickEditActiveTab] = useState('Info');
-  const [quickEditDescriptionText, setQuickEditDescriptionText] = useState('');
-  const [quickEditJobRoleText, setQuickEditJobRoleText] = useState('');
-  const [quickEditContactCategory, setQuickEditContactCategory] = useState('');
-  const [quickEditContactScore, setQuickEditContactScore] = useState(0);
-  const [quickEditFirstName, setQuickEditFirstName] = useState('');
-  const [quickEditLastName, setQuickEditLastName] = useState('');
-  const [quickEditLinkedin, setQuickEditLinkedin] = useState('');
+  // Quick Edit Modal - use the custom hook
+  const quickEditModal = useQuickEditModal(handleContactUpdate);
 
-  // Keep in Touch fields for Quick Edit Modal
-  const [quickEditKeepInTouchFrequency, setQuickEditKeepInTouchFrequency] = useState('');
-  const [quickEditBirthdayDay, setQuickEditBirthdayDay] = useState('');
-  const [quickEditBirthdayMonth, setQuickEditBirthdayMonth] = useState('');
-  const [quickEditAgeEstimate, setQuickEditAgeEstimate] = useState('');
-  const [quickEditChristmasWishes, setQuickEditChristmasWishes] = useState('');
-  const [quickEditEasterWishes, setQuickEditEasterWishes] = useState('');
+  // Destructure for backward compatibility
+  const {
+    quickEditContactModalOpen,
+    contactForQuickEdit,
+    showMissingFieldsOnly,
+    quickEditActiveTab,
+    setQuickEditActiveTab,
+    quickEditDescriptionText,
+    setQuickEditDescriptionText,
+    quickEditJobRoleText,
+    setQuickEditJobRoleText,
+    quickEditContactCategory,
+    setQuickEditContactCategory,
+    quickEditContactScore,
+    setQuickEditContactScore,
+    quickEditFirstName,
+    setQuickEditFirstName,
+    quickEditLastName,
+    setQuickEditLastName,
+    quickEditLinkedin,
+    setQuickEditLinkedin,
+    quickEditKeepInTouchFrequency,
+    setQuickEditKeepInTouchFrequency,
+    quickEditBirthdayDay,
+    setQuickEditBirthdayDay,
+    quickEditBirthdayMonth,
+    setQuickEditBirthdayMonth,
+    quickEditAgeEstimate,
+    setQuickEditAgeEstimate,
+    quickEditChristmasWishes,
+    setQuickEditChristmasWishes,
+    quickEditEasterWishes,
+    setQuickEditEasterWishes,
+    quickEditContactEmails,
+    setQuickEditContactEmails,
+    quickEditContactMobiles,
+    setQuickEditContactMobiles,
+    newEmailText,
+    setNewEmailText,
+    newEmailType,
+    setNewEmailType,
+    newMobileText,
+    setNewMobileText,
+    newMobileType,
+    setNewMobileType,
+    quickEditContactCities,
+    setQuickEditContactCities,
+    quickEditContactTags,
+    setQuickEditContactTags,
+    quickEditCityModalOpen,
+    setQuickEditCityModalOpen,
+    quickEditTagModalOpen,
+    setQuickEditTagModalOpen,
+    quickEditAssociateCompanyModalOpen,
+    setQuickEditAssociateCompanyModalOpen,
+    quickEditContactCompanies,
+    setQuickEditContactCompanies,
+    // Handlers
+    openModal: handleOpenQuickEditContactModal,
+    closeModal,
+    handleSaveQuickEditContact,
+    handleAddEmail,
+    handleRemoveEmail,
+    handleUpdateEmailType,
+    handleSetEmailPrimary,
+    handleAddMobile,
+    handleRemoveMobile,
+    handleUpdateMobileType,
+    handleSetMobilePrimary,
+    handleRemoveCity,
+    handleRemoveTag,
+    handleUpdateCompanyRelationship,
+    handleUpdateCompanyCategory,
+    handleSaveQuickEditFrequency,
+    handleSaveQuickEditBirthday,
+    handleSaveQuickEditChristmasWishes,
+    handleSaveQuickEditEasterWishes,
+    handleAutomation,
+    handleQuickEditCompanyAdded,
+    handleQuickEditCityAdded,
+    handleQuickEditTagAdded,
+  } = quickEditModal;
 
-  // Contact emails and mobiles for Quick Edit Modal
-  const [quickEditContactEmails, setQuickEditContactEmails] = useState([]);
-  const [quickEditContactMobiles, setQuickEditContactMobiles] = useState([]);
-  const [newEmailText, setNewEmailText] = useState('');
-  const [newEmailType, setNewEmailType] = useState('personal');
-  const [newMobileText, setNewMobileText] = useState('');
-  const [newMobileType, setNewMobileType] = useState('personal');
-
-  // Contact cities and tags for Quick Edit Modal
-  const [quickEditContactCities, setQuickEditContactCities] = useState([]);
-  const [quickEditContactTags, setQuickEditContactTags] = useState([]);
-
-  // City and Tag modals for Quick Edit Modal
-  const [quickEditCityModalOpen, setQuickEditCityModalOpen] = useState(false);
-  const [quickEditTagModalOpen, setQuickEditTagModalOpen] = useState(false);
-
-  // Company association for Quick Edit Modal
-  const [quickEditAssociateCompanyModalOpen, setQuickEditAssociateCompanyModalOpen] = useState(false);
-  const [quickEditContactCompanies, setQuickEditContactCompanies] = useState([]);
+  // Additional state for Create Company Modal (not in hook)
   const [showCreateCompanyModal, setShowCreateCompanyModal] = useState(false);
   const [createCompanyInitialName, setCreateCompanyInitialName] = useState('');
 
@@ -1591,933 +1639,7 @@ const ContactsListDRY = ({
     }
   };
 
-  // Handle opening quick edit contact modal
-  const handleOpenQuickEditContactModal = async (contact, e, missingFieldsOnly = false) => {
-    if (e) e.stopPropagation();
-
-
-    // Set missing fields mode based on parameter
-    setShowMissingFieldsOnly(missingFieldsOnly);
-    setContactForQuickEdit(contact);
-
-    // Set initial tab based on mode
-    if (missingFieldsOnly) {
-      // In missing fields mode, prioritize tab that contains the most missing fields
-      const visibleTabs = getVisibleTabs(contact, true);
-      if (visibleTabs.length > 0) {
-        // Get missing fields analysis
-        const missing = getMissingFields(contact);
-
-        // Count missing fields per tab
-        const tabMissingCount = {
-          'Info': missing.info.length,
-          'Contacts': missing.contacts.length,
-          'Work': missing.work.length,
-          'Related': missing.related.length,
-          'Keep in touch': missing.keepInTouch.length
-        };
-
-        // Find tab with most missing fields among visible tabs
-        let selectedTab = visibleTabs[0].id; // fallback
-        let maxMissingFields = 0;
-
-        for (const tab of visibleTabs) {
-          const missingCount = tabMissingCount[tab.id] || 0;
-          if (missingCount > maxMissingFields) {
-            maxMissingFields = missingCount;
-            selectedTab = tab.id;
-          }
-        }
-
-        setQuickEditActiveTab(selectedTab);
-      } else {
-        setQuickEditActiveTab('Info'); // fallback
-      }
-    } else {
-      setQuickEditActiveTab('Info');
-    }
-    setQuickEditDescriptionText(contact.description || '');
-    setQuickEditJobRoleText(contact.job_role || '');
-    setQuickEditContactCategory(contact.category || 'Not Set');
-    setQuickEditContactScore(contact.score || 0);
-    setQuickEditFirstName(contact.first_name || '');
-    setQuickEditLastName(contact.last_name || '');
-    setQuickEditLinkedin(contact.linkedin || '');
-
-    // Load company associations
-    try {
-      const { data: companiesData, error } = await supabase
-        .from('contact_companies')
-        .select(`
-          contact_companies_id,
-          company_id,
-          is_primary,
-          relationship,
-          companies (
-            company_id,
-            name,
-            category,
-            website
-          )
-        `)
-        .eq('contact_id', contact.contact_id);
-
-      if (error) throw error;
-      setQuickEditContactCompanies(companiesData || []);
-    } catch (error) {
-      console.error('Error loading company associations:', error);
-      setQuickEditContactCompanies([]);
-    }
-
-    // Load contact emails
-    try {
-      const { data: emailsData, error: emailsError } = await supabase
-        .from('contact_emails')
-        .select('email_id, email, type, is_primary')
-        .eq('contact_id', contact.contact_id)
-        .order('is_primary', { ascending: false });
-
-      if (emailsError) throw emailsError;
-      setQuickEditContactEmails(emailsData || []);
-    } catch (error) {
-      console.error('Error loading contact emails:', error);
-      setQuickEditContactEmails([]);
-    }
-
-    // Load contact mobiles
-    try {
-      const { data: mobilesData, error: mobilesError } = await supabase
-        .from('contact_mobiles')
-        .select('mobile_id, mobile, type, is_primary')
-        .eq('contact_id', contact.contact_id)
-        .order('is_primary', { ascending: false });
-
-      if (mobilesError) throw mobilesError;
-      setQuickEditContactMobiles(mobilesData || []);
-    } catch (error) {
-      console.error('Error loading contact mobiles:', error);
-      setQuickEditContactMobiles([]);
-    }
-
-    // Load contact cities
-    try {
-      const { data: citiesData, error: citiesError } = await supabase
-        .from('contact_cities')
-        .select(`
-          entry_id,
-          contact_id,
-          city_id,
-          cities (
-            city_id,
-            name,
-            country
-          )
-        `)
-        .eq('contact_id', contact.contact_id);
-
-      if (citiesError) throw citiesError;
-      setQuickEditContactCities(citiesData || []);
-    } catch (error) {
-      console.error('Error loading contact cities:', error);
-      setQuickEditContactCities([]);
-    }
-
-    // Load contact tags
-    try {
-      const { data: tagsData, error: tagsError } = await supabase
-        .from('contact_tags')
-        .select(`
-          entry_id,
-          contact_id,
-          tag_id,
-          tags (
-            tag_id,
-            name
-          )
-        `)
-        .eq('contact_id', contact.contact_id);
-
-      if (tagsError) throw tagsError;
-      setQuickEditContactTags(tagsData || []);
-    } catch (error) {
-      console.error('Error loading contact tags:', error);
-      setQuickEditContactTags([]);
-    }
-
-    // Load Keep in Touch data
-    try {
-      const { data: existingKeepInTouchData, error } = await supabase
-        .from('keep_in_touch')
-        .select('frequency, christmas, easter')
-        .eq('contact_id', contact.contact_id)
-        .maybeSingle();
-
-      // Parse existing birthday into components
-      const birthdayComponents = parseBirthdayIntoComponents(contact.birthday);
-
-      // Populate Keep in Touch form fields
-      setQuickEditKeepInTouchFrequency(existingKeepInTouchData?.frequency || '');
-      setQuickEditBirthdayDay(birthdayComponents.day);
-      setQuickEditBirthdayMonth(birthdayComponents.month);
-      setQuickEditAgeEstimate(birthdayComponents.ageEstimate);
-      setQuickEditChristmasWishes(existingKeepInTouchData?.christmas || '');
-      setQuickEditEasterWishes(existingKeepInTouchData?.easter || '');
-    } catch (error) {
-      console.error('Error loading Keep in Touch data:', error);
-      // Set default values
-      const birthdayComponents = parseBirthdayIntoComponents(contact.birthday);
-      setQuickEditKeepInTouchFrequency('');
-      setQuickEditBirthdayDay(birthdayComponents.day);
-      setQuickEditBirthdayMonth(birthdayComponents.month);
-      setQuickEditAgeEstimate(birthdayComponents.ageEstimate);
-      setQuickEditChristmasWishes('');
-      setQuickEditEasterWishes('');
-    }
-
-    setQuickEditContactModalOpen(true);
-  };
-
-  // Handle company association changes
-  const handleQuickEditCompanyAdded = async () => {
-    // Reload company associations after adding/removing
-    if (contactForQuickEdit) {
-      try {
-        const { data: companiesData, error } = await supabase
-          .from('contact_companies')
-          .select(`
-            contact_companies_id,
-            company_id,
-            is_primary,
-            relationship,
-            companies (
-              company_id,
-              name,
-              category,
-              website
-            )
-          `)
-          .eq('contact_id', contactForQuickEdit.contact_id);
-
-        if (error) throw error;
-        setQuickEditContactCompanies(companiesData || []);
-      } catch (error) {
-        console.error('Error reloading company associations:', error);
-      }
-    }
-  };
-
-  // Handle company relationship type updates
-  const handleUpdateCompanyRelationship = async (contactCompaniesId, newRelationship) => {
-    try {
-      const { error } = await supabase
-        .from('contact_companies')
-        .update({ relationship: newRelationship })
-        .eq('contact_companies_id', contactCompaniesId);
-
-      if (error) throw error;
-
-      // Update local state
-      setQuickEditContactCompanies(prev =>
-        prev.map(relation =>
-          relation.contact_companies_id === contactCompaniesId
-            ? { ...relation, relationship: newRelationship }
-            : relation
-        )
-      );
-
-      toast.success('Relationship type updated successfully');
-    } catch (err) {
-      console.error('Error updating company relationship:', err);
-      toast.error('Failed to update relationship type');
-    }
-  };
-
-  // Handle company category updates
-  const handleUpdateCompanyCategory = async (companyId, newCategory) => {
-    try {
-      const { error } = await supabase
-        .from('companies')
-        .update({ category: newCategory })
-        .eq('company_id', companyId);
-
-      if (error) throw error;
-
-      // Update local state
-      setQuickEditContactCompanies(prev =>
-        prev.map(relation => {
-          if ((relation.companies?.company_id || relation.companies?.id) === companyId) {
-            return {
-              ...relation,
-              companies: {
-                ...relation.companies,
-                category: newCategory
-              }
-            };
-          }
-          return relation;
-        })
-      );
-
-      toast.success('Company category updated successfully');
-    } catch (err) {
-      console.error('Error updating company category:', err);
-      toast.error('Failed to update company category');
-    }
-  };
-
-  // Handle adding new email
-  const handleAddEmail = async (email, type = 'personal') => {
-    if (!contactForQuickEdit || !email.trim()) return;
-
-    try {
-      const { data: newEmail, error } = await supabase
-        .from('contact_emails')
-        .insert({
-          contact_id: contactForQuickEdit.contact_id,
-          email: email.trim(),
-          type: type,
-          is_primary: quickEditContactEmails.length === 0
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      setQuickEditContactEmails(prev => [...prev, newEmail]);
-      toast.success('Email added successfully');
-    } catch (error) {
-      console.error('Error adding email:', error);
-      toast.error('Failed to add email');
-    }
-  };
-
-  // Handle removing email
-  const handleRemoveEmail = async (emailId) => {
-    try {
-      const { error } = await supabase
-        .from('contact_emails')
-        .delete()
-        .eq('email_id', emailId);
-
-      if (error) throw error;
-
-      setQuickEditContactEmails(prev => prev.filter(e => e.email_id !== emailId));
-      toast.success('Email removed successfully');
-    } catch (error) {
-      console.error('Error removing email:', error);
-      toast.error('Failed to remove email');
-    }
-  };
-
-  // Handle updating email type
-  const handleUpdateEmailType = async (emailId, newType) => {
-    try {
-      const { error } = await supabase
-        .from('contact_emails')
-        .update({ type: newType })
-        .eq('email_id', emailId);
-
-      if (error) throw error;
-
-      setQuickEditContactEmails(prev =>
-        prev.map(email =>
-          email.email_id === emailId ? { ...email, type: newType } : email
-        )
-      );
-      toast.success('Email type updated successfully');
-    } catch (error) {
-      console.error('Error updating email type:', error);
-      toast.error('Failed to update email type');
-    }
-  };
-
-  // Handle setting email as primary
-  const handleSetEmailPrimary = async (emailId) => {
-    try {
-      // First, remove primary status from all emails
-      const { error: removeError } = await supabase
-        .from('contact_emails')
-        .update({ is_primary: false })
-        .eq('contact_id', contactForQuickEdit.contact_id);
-
-      if (removeError) throw removeError;
-
-      // Then set the selected email as primary
-      const { error: setPrimaryError } = await supabase
-        .from('contact_emails')
-        .update({ is_primary: true })
-        .eq('email_id', emailId);
-
-      if (setPrimaryError) throw setPrimaryError;
-
-      setQuickEditContactEmails(prev =>
-        prev.map(email => ({
-          ...email,
-          is_primary: email.email_id === emailId
-        }))
-      );
-      toast.success('Primary email updated successfully');
-    } catch (error) {
-      console.error('Error setting primary email:', error);
-      toast.error('Failed to set primary email');
-    }
-  };
-
-  // Handle adding new mobile
-  const handleAddMobile = async (mobile, type = 'personal') => {
-    if (!contactForQuickEdit || !mobile.trim()) return;
-
-    try {
-      const { data: newMobile, error } = await supabase
-        .from('contact_mobiles')
-        .insert({
-          contact_id: contactForQuickEdit.contact_id,
-          mobile: mobile.trim(),
-          type: type,
-          is_primary: quickEditContactMobiles.length === 0
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      setQuickEditContactMobiles(prev => [...prev, newMobile]);
-      toast.success('Mobile added successfully');
-    } catch (error) {
-      console.error('Error adding mobile:', error);
-      toast.error('Failed to add mobile');
-    }
-  };
-
-  // Handle removing mobile
-  const handleRemoveMobile = async (mobileId) => {
-    try {
-      const { error } = await supabase
-        .from('contact_mobiles')
-        .delete()
-        .eq('mobile_id', mobileId);
-
-      if (error) throw error;
-
-      setQuickEditContactMobiles(prev => prev.filter(m => m.mobile_id !== mobileId));
-      toast.success('Mobile removed successfully');
-    } catch (error) {
-      console.error('Error removing mobile:', error);
-      toast.error('Failed to remove mobile');
-    }
-  };
-
-  // Handle updating mobile type
-  const handleUpdateMobileType = async (mobileId, newType) => {
-    try {
-      const { error } = await supabase
-        .from('contact_mobiles')
-        .update({ type: newType })
-        .eq('mobile_id', mobileId);
-
-      if (error) throw error;
-
-      setQuickEditContactMobiles(prev =>
-        prev.map(mobile =>
-          mobile.mobile_id === mobileId ? { ...mobile, type: newType } : mobile
-        )
-      );
-      toast.success('Mobile type updated successfully');
-    } catch (error) {
-      console.error('Error updating mobile type:', error);
-      toast.error('Failed to update mobile type');
-    }
-  };
-
-  // Handle setting mobile as primary
-  const handleSetMobilePrimary = async (mobileId) => {
-    try {
-      // First, remove primary status from all mobiles
-      const { error: removeError } = await supabase
-        .from('contact_mobiles')
-        .update({ is_primary: false })
-        .eq('contact_id', contactForQuickEdit.contact_id);
-
-      if (removeError) throw removeError;
-
-      // Then set the selected mobile as primary
-      const { error: setPrimaryError } = await supabase
-        .from('contact_mobiles')
-        .update({ is_primary: true })
-        .eq('mobile_id', mobileId);
-
-      if (setPrimaryError) throw setPrimaryError;
-
-      setQuickEditContactMobiles(prev =>
-        prev.map(mobile => ({
-          ...mobile,
-          is_primary: mobile.mobile_id === mobileId
-        }))
-      );
-      toast.success('Primary mobile updated successfully');
-    } catch (error) {
-      console.error('Error setting primary mobile:', error);
-      toast.error('Failed to set primary mobile');
-    }
-  };
-
-  // Handle removing city
-  const handleRemoveCity = async (entryId) => {
-    try {
-      const { error } = await supabase
-        .from('contact_cities')
-        .delete()
-        .eq('entry_id', entryId);
-
-      if (error) throw error;
-
-      setQuickEditContactCities(prev => prev.filter(c => c.entry_id !== entryId));
-      toast.success('City removed successfully');
-    } catch (error) {
-      console.error('Error removing city:', error);
-      toast.error('Failed to remove city');
-    }
-  };
-
-  // Handle removing tag
-  const handleRemoveTag = async (entryId) => {
-    try {
-      const { error } = await supabase
-        .from('contact_tags')
-        .delete()
-        .eq('entry_id', entryId);
-
-      if (error) throw error;
-
-      setQuickEditContactTags(prev => prev.filter(t => t.entry_id !== entryId));
-      toast.success('Tag removed successfully');
-    } catch (error) {
-      console.error('Error removing tag:', error);
-      toast.error('Failed to remove tag');
-    }
-  };
-
-  // Handle city added callback
-  const handleQuickEditCityAdded = () => {
-    // Reload cities after adding
-    if (contactForQuickEdit) {
-      const contact = contactForQuickEdit;
-      const loadCities = async () => {
-        try {
-          const { data: citiesData, error: citiesError } = await supabase
-            .from('contact_cities')
-            .select(`
-              entry_id,
-              contact_id,
-              city_id,
-              cities (
-                city_id,
-                name,
-                country
-              )
-            `)
-            .eq('contact_id', contact.contact_id);
-
-          if (citiesError) throw citiesError;
-          setQuickEditContactCities(citiesData || []);
-        } catch (error) {
-          console.error('Error reloading contact cities:', error);
-        }
-      };
-      loadCities();
-    }
-  };
-
-  // Handle tag added callback
-  const handleQuickEditTagAdded = () => {
-    // Reload tags after adding
-    if (contactForQuickEdit) {
-      const contact = contactForQuickEdit;
-      const loadTags = async () => {
-        try {
-          const { data: tagsData, error: tagsError } = await supabase
-            .from('contact_tags')
-            .select(`
-              entry_id,
-              contact_id,
-              tag_id,
-              tags (
-                tag_id,
-                name
-              )
-            `)
-            .eq('contact_id', contact.contact_id);
-
-          if (tagsError) throw tagsError;
-          setQuickEditContactTags(tagsData || []);
-        } catch (error) {
-          console.error('Error reloading contact tags:', error);
-        }
-      };
-      loadTags();
-    }
-  };
-
-  // Auto-save Keep in Touch frequency
-  const handleSaveQuickEditFrequency = async (frequency) => {
-    if (!contactForQuickEdit) return;
-
-    try {
-      // Check if keep_in_touch record exists
-      const { data: existingRecord, error: checkError } = await supabase
-        .from('keep_in_touch')
-        .select('id')
-        .eq('contact_id', contactForQuickEdit.contact_id)
-        .maybeSingle();
-
-      if (checkError && checkError.code !== 'PGRST116') {
-        throw checkError;
-      }
-
-      if (existingRecord) {
-        // Update existing record
-        const { error: updateError } = await supabase
-          .from('keep_in_touch')
-          .update({ frequency: frequency || null })
-          .eq('contact_id', contactForQuickEdit.contact_id);
-
-        if (updateError) throw updateError;
-      } else {
-        // Create new record
-        const { error: insertError } = await supabase
-          .from('keep_in_touch')
-          .insert({
-            contact_id: contactForQuickEdit.contact_id,
-            frequency: frequency || null
-          });
-
-        if (insertError) throw insertError;
-      }
-
-      if (handleContactUpdate) handleContactUpdate();
-    } catch (error) {
-      console.error('Error updating frequency:', error);
-      toast.error('Failed to update frequency');
-    }
-  };
-
-  // Auto-save Christmas wishes
-  const handleSaveQuickEditChristmasWishes = async (wishes) => {
-    if (!contactForQuickEdit) return;
-
-    try {
-      // Check if keep_in_touch record exists
-      const { data: existingRecord, error: checkError } = await supabase
-        .from('keep_in_touch')
-        .select('id')
-        .eq('contact_id', contactForQuickEdit.contact_id)
-        .maybeSingle();
-
-      if (checkError && checkError.code !== 'PGRST116') {
-        throw checkError;
-      }
-
-      if (existingRecord) {
-        // Update existing record
-        const { error: updateError } = await supabase
-          .from('keep_in_touch')
-          .update({ christmas: wishes || null })
-          .eq('contact_id', contactForQuickEdit.contact_id);
-
-        if (updateError) throw updateError;
-      } else {
-        // Create new record
-        const { error: insertError } = await supabase
-          .from('keep_in_touch')
-          .insert({
-            contact_id: contactForQuickEdit.contact_id,
-            christmas: wishes || null
-          });
-
-        if (insertError) throw insertError;
-      }
-
-      if (handleContactUpdate) handleContactUpdate();
-    } catch (error) {
-      console.error('Error updating Christmas wishes:', error);
-      toast.error('Failed to update Christmas wishes');
-    }
-  };
-
-  // Auto-save Easter wishes
-  const handleSaveQuickEditEasterWishes = async (wishes) => {
-    if (!contactForQuickEdit) return;
-
-    try {
-      // Check if keep_in_touch record exists
-      const { data: existingRecord, error: checkError } = await supabase
-        .from('keep_in_touch')
-        .select('id')
-        .eq('contact_id', contactForQuickEdit.contact_id)
-        .maybeSingle();
-
-      if (checkError && checkError.code !== 'PGRST116') {
-        throw checkError;
-      }
-
-      if (existingRecord) {
-        // Update existing record
-        const { error: updateError } = await supabase
-          .from('keep_in_touch')
-          .update({ easter: wishes || null })
-          .eq('contact_id', contactForQuickEdit.contact_id);
-
-        if (updateError) throw updateError;
-      } else {
-        // Create new record
-        const { error: insertError } = await supabase
-          .from('keep_in_touch')
-          .insert({
-            contact_id: contactForQuickEdit.contact_id,
-            easter: wishes || null
-          });
-
-        if (insertError) throw insertError;
-      }
-
-      if (handleContactUpdate) handleContactUpdate();
-    } catch (error) {
-      console.error('Error updating Easter wishes:', error);
-      toast.error('Failed to update Easter wishes');
-    }
-  };
-
-  // Handle saving birthday only (for the save button)
-  const handleSaveQuickEditBirthday = async () => {
-    if (!contactForQuickEdit) return;
-
-    try {
-      // Calculate birthday from components
-      const birthday = calculateBirthdayFromComponents(
-        quickEditBirthdayDay,
-        quickEditBirthdayMonth,
-        quickEditAgeEstimate
-      );
-
-      // Update birthday in contacts table if it changed
-      if (birthday !== contactForQuickEdit.birthday) {
-        const { error: contactError } = await supabase
-          .from('contacts')
-          .update({ birthday: birthday || null })
-          .eq('contact_id', contactForQuickEdit.contact_id);
-
-        if (contactError) throw contactError;
-      }
-
-      toast.success('Birthday updated successfully!');
-
-      // Refresh data if callback provided
-      if (handleContactUpdate) {
-        handleContactUpdate();
-      }
-    } catch (error) {
-      console.error('Error updating birthday:', error);
-      toast.error('Failed to update birthday: ' + (error.message || 'Unknown error'));
-    }
-  };
-
-  // Handle automation actions
-  const handleAutomation = async (automationType) => {
-    if (!contactForQuickEdit) return;
-
-    try {
-      if (automationType === 'cold_contacted_founder') {
-        // Apply Cold contacted founder automation
-        // Set the fields according to the automation
-        setQuickEditDescriptionText('Founder a cui ho dato picche senza allocare troppo tempo');
-        setQuickEditContactCategory('Founder');
-        setQuickEditContactScore(3);
-        setQuickEditJobRoleText('CEO & Founder');
-
-        // Update contact details in database
-        const { error: contactError } = await supabase
-          .from('contacts')
-          .update({
-            first_name: quickEditFirstName.trim() || null,
-            last_name: quickEditLastName.trim() || null,
-            description: 'Founder a cui ho dato picche senza allocare troppo tempo',
-            job_role: 'CEO & Founder',
-            category: 'Founder',
-            score: 3,
-            linkedin: quickEditLinkedin.trim() || null
-          })
-          .eq('contact_id', contactForQuickEdit.contact_id);
-
-        if (contactError) throw contactError;
-
-        // Update or create keep_in_touch record
-        // First check if record exists
-        const { data: existingKIT, error: checkError } = await supabase
-          .from('keep_in_touch')
-          .select('id')
-          .eq('contact_id', contactForQuickEdit.contact_id)
-          .maybeSingle(); // Use maybeSingle instead of single to avoid 406 errors
-
-        if (existingKIT) {
-          // Update existing record
-          const { error: kitError } = await supabase
-            .from('keep_in_touch')
-            .update({
-              frequency: 'Do not keep in touch',
-              christmas: 'no wishes',
-              easter: 'no wishes'
-            })
-            .eq('contact_id', contactForQuickEdit.contact_id);
-
-          if (kitError) throw kitError;
-        } else {
-          // Create new record
-          const { error: kitError } = await supabase
-            .from('keep_in_touch')
-            .insert({
-              contact_id: contactForQuickEdit.contact_id,
-              frequency: 'Do not keep in touch',
-              christmas: 'no wishes',
-              easter: 'no wishes'
-            });
-
-          if (kitError) throw kitError;
-        }
-
-        // Update UI fields to reflect the automation changes
-        setQuickEditKeepInTouchFrequency('Do not keep in touch');
-        setQuickEditChristmasWishes('no wishes');
-        setQuickEditEasterWishes('no wishes');
-
-        // Add to Apollo_Enrichment_Inbox (check if exists first to avoid duplicates)
-        const { data: existingApollo, error: apolloCheckError } = await supabase
-          .from('apollo_enrichment_inbox')
-          .select('id')
-          .eq('contact_id', contactForQuickEdit.contact_id)
-          .maybeSingle();
-
-        if (!existingApollo) {
-          // Record doesn't exist, so insert it
-          const { error: apolloError } = await supabase
-            .from('apollo_enrichment_inbox')
-            .insert({
-              contact_id: contactForQuickEdit.contact_id
-            });
-
-          if (apolloError) throw apolloError;
-        }
-
-        toast.success('Cold contacted founder automation applied successfully');
-
-        // Refresh data if needed
-        if (handleContactUpdate) {
-          handleContactUpdate();
-        }
-
-        // Close modal after successful automation
-        setTimeout(() => {
-          setQuickEditContactModalOpen(false);
-          setContactForQuickEdit(null);
-          // Reset all fields
-          setQuickEditDescriptionText('');
-          setQuickEditJobRoleText('');
-          setQuickEditContactCategory('');
-          setQuickEditContactScore(0);
-          setQuickEditFirstName('');
-          setQuickEditLastName('');
-          setQuickEditLinkedin('');
-        }, 1000);
-      } else if (automationType === 'quick_skip') {
-        // Apply Quick Skip automation - just set category to Skip
-        setQuickEditContactCategory('Skip');
-
-        // Update contact in database
-        const { error: contactError } = await supabase
-          .from('contacts')
-          .update({
-            category: 'Skip'
-          })
-          .eq('contact_id', contactForQuickEdit.contact_id);
-
-        if (contactError) throw contactError;
-
-        toast.success('Contact marked as Skip');
-
-        // Refresh data if needed
-        if (handleContactUpdate) {
-          handleContactUpdate();
-        }
-
-        // Close modal after successful automation
-        setTimeout(() => {
-          setQuickEditContactModalOpen(false);
-          setContactForQuickEdit(null);
-          // Reset all fields
-          setQuickEditDescriptionText('');
-          setQuickEditJobRoleText('');
-          setQuickEditContactCategory('');
-          setQuickEditContactScore(0);
-          setQuickEditFirstName('');
-          setQuickEditLastName('');
-          setQuickEditLinkedin('');
-        }, 500);
-      }
-    } catch (error) {
-      console.error('Error applying automation:', error);
-      toast.error('Failed to apply automation: ' + (error.message || 'Unknown error'));
-    }
-  };
-
-  // Handle saving quick edit contact details
-  const handleSaveQuickEditContact = async () => {
-    if (!contactForQuickEdit) return;
-
-    try {
-      const { error } = await supabase
-        .from('contacts')
-        .update({
-          first_name: quickEditFirstName.trim() || null,
-          last_name: quickEditLastName.trim() || null,
-          description: quickEditDescriptionText.trim() || null,
-          job_role: quickEditJobRoleText.trim() || null,
-          category: quickEditContactCategory || 'Not Set',
-          score: quickEditContactScore > 0 ? quickEditContactScore : null,
-          linkedin: quickEditLinkedin.trim() || null
-        })
-        .eq('contact_id', contactForQuickEdit.contact_id);
-
-      if (error) throw error;
-
-      toast.success('Contact details updated successfully');
-      setQuickEditContactModalOpen(false);
-      setContactForQuickEdit(null);
-      setQuickEditDescriptionText('');
-      setQuickEditJobRoleText('');
-      setQuickEditContactCategory('');
-      setQuickEditContactScore(0);
-      setQuickEditFirstName('');
-      setQuickEditLastName('');
-      setQuickEditLinkedin('');
-      setNewEmailText('');
-      setNewEmailType('personal');
-      setNewMobileText('');
-      setNewMobileType('personal');
-      setQuickEditContactCities([]);
-      setQuickEditContactTags([]);
-      setQuickEditCityModalOpen(false);
-      setQuickEditTagModalOpen(false);
-      setQuickEditKeepInTouchFrequency('');
-      setQuickEditBirthdayDay('');
-      setQuickEditBirthdayMonth('');
-      setQuickEditAgeEstimate('');
-      setQuickEditChristmasWishes('');
-      setQuickEditEasterWishes('');
-      if (handleContactUpdate) handleContactUpdate();
-    } catch (error) {
-      console.error('Error updating contact details:', error);
-      toast.error('Failed to update contact details');
-    }
-  };
+  // Quick Edit handlers are now coming from the useQuickEditModal hook
 
   // Handle company click
   const handleCompanyClick = (companyId, e) => {
@@ -2904,7 +2026,7 @@ const ContactsListDRY = ({
 
   // Handle delete from Quick Edit modal
   const handleDeleteFromQuickEdit = (contact) => {
-    setQuickEditContactModalOpen(false);
+    closeModal(); // Use closeModal from the hook
     handleOpenDeleteModal(contact);
   };
 
@@ -3983,11 +3105,7 @@ const ContactsListDRY = ({
       {/* Quick Edit Contact Modal */}
       <QuickEditModal
         isOpen={quickEditContactModalOpen}
-        onClose={() => {
-          setQuickEditContactModalOpen(false);
-          setShowMissingFieldsOnly(false);
-          setContactForQuickEdit(null);
-        }}
+        onClose={closeModal}
         contact={contactForQuickEdit}
         theme={theme}
         showMissingFieldsOnly={showMissingFieldsOnly}
