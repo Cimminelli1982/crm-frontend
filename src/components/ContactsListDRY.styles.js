@@ -384,6 +384,8 @@ export const QuickEditAssociateCompanyModal = ({ theme, contact, contactCompanie
   const [removingCompany, setRemovingCompany] = useState(null);
   const [emailDomains, setEmailDomains] = useState([]);
   const [similarCompanies, setSimilarCompanies] = useState([]);
+  const [apolloCompanySuggestion, setApolloCompanySuggestion] = useState(null);
+  const [loadingApolloSuggestion, setLoadingApolloSuggestion] = useState(false);
 
   // Calculate similarity percentage between two strings using Levenshtein distance
   const calculateSimilarity = (str1, str2) => {
@@ -587,6 +589,79 @@ export const QuickEditAssociateCompanyModal = ({ theme, contact, contactCompanie
     }
   };
 
+  // Fetch Apollo company suggestions
+  const fetchApolloCompanySuggestion = async () => {
+    if (!contact) return;
+
+    setLoadingApolloSuggestion(true);
+    try {
+      // For now, simulate Apollo response with edge function
+      // In production, this would call the actual Apollo API
+      const response = await supabase.functions.invoke('company-finder', {
+        body: {
+          contactId: contact.contact_id,
+          linkedin: contact.linkedin,
+          firstName: contact.first_name,
+          lastName: contact.last_name
+        }
+      });
+
+      if (response.error) {
+        console.error('Company finder error:', response.error);
+        // Fallback to email domain suggestions if available
+        if (emailDomains.length > 0) {
+          setApolloCompanySuggestion({
+            name: emailDomains[0],
+            domain: `${emailDomains[0].toLowerCase()}.com`,
+            confidence: 75,
+            source: 'email_domain'
+          });
+        } else {
+          setApolloCompanySuggestion(null);
+        }
+        return;
+      }
+
+      const data = response.data;
+
+      if (data.success && data.company) {
+        setApolloCompanySuggestion({
+          name: data.company.name,
+          domain: data.company.domain,
+          industry: data.company.industry,
+          size: data.company.employee_count,
+          description: data.company.description,
+          confidence: data.confidence || 90
+        });
+      } else if (emailDomains.length > 0) {
+        // Fallback to email domain
+        setApolloCompanySuggestion({
+          name: emailDomains[0],
+          domain: `${emailDomains[0].toLowerCase()}.com`,
+          confidence: 75,
+          source: 'email_domain'
+        });
+      } else {
+        setApolloCompanySuggestion(null);
+      }
+    } catch (error) {
+      console.error('Error loading Apollo company suggestion:', error);
+      // Fallback to email domain suggestions
+      if (emailDomains.length > 0) {
+        setApolloCompanySuggestion({
+          name: emailDomains[0],
+          domain: `${emailDomains[0].toLowerCase()}.com`,
+          confidence: 75,
+          source: 'email_domain'
+        });
+      } else {
+        setApolloCompanySuggestion(null);
+      }
+    } finally {
+      setLoadingApolloSuggestion(false);
+    }
+  };
+
   useEffect(() => {
     if (searchTerm.length >= 3) {
       fetchCompanySuggestions(searchTerm);
@@ -597,10 +672,12 @@ export const QuickEditAssociateCompanyModal = ({ theme, contact, contactCompanie
     }
   }, [searchTerm, contactCompanies]);
 
-  // Fetch email domains when modal opens
+  // Fetch email domains and Apollo suggestions when modal opens
   useEffect(() => {
     if (contact) {
       fetchEmailDomains();
+      // Fetch Apollo suggestions (will use LinkedIn if available, fallback to email)
+      fetchApolloCompanySuggestion();
     }
   }, [contact]);
 
@@ -709,6 +786,98 @@ export const QuickEditAssociateCompanyModal = ({ theme, contact, contactCompanie
         {/* Add Companies Section */}
         <QuickEditCompanyModalSection>
           <QuickEditCompanyModalSectionTitle theme={theme}>Add Company</QuickEditCompanyModalSectionTitle>
+
+          {/* Apollo Company Suggestion */}
+          {(loadingApolloSuggestion || apolloCompanySuggestion) && searchTerm.length < 3 && (
+            <div style={{
+              marginBottom: '16px',
+              padding: '12px',
+              background: theme === 'light' ? '#EBF5FF' : '#1E3A8A',
+              border: `1px solid ${theme === 'light' ? '#3B82F6' : '#60A5FA'}`,
+              borderRadius: '8px'
+            }}>
+              <div style={{
+                fontSize: '13px',
+                fontWeight: '600',
+                color: theme === 'light' ? '#1E40AF' : '#93C5FD',
+                marginBottom: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                🎯 Apollo Suggestion
+              </div>
+
+              {loadingApolloSuggestion ? (
+                <div style={{
+                  fontSize: '12px',
+                  color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                }}>
+                  Loading Apollo suggestion...
+                </div>
+              ) : apolloCompanySuggestion ? (
+                <div>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '8px'
+                  }}>
+                    <div>
+                      <div style={{
+                        fontSize: '14px',
+                        fontWeight: '600',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        marginBottom: '4px'
+                      }}>
+                        {apolloCompanySuggestion.name}
+                      </div>
+                      {apolloCompanySuggestion.industry && (
+                        <div style={{
+                          fontSize: '11px',
+                          color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                        }}>
+                          {apolloCompanySuggestion.industry}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{
+                      fontSize: '11px',
+                      color: theme === 'light' ? '#10B981' : '#34D399',
+                      fontWeight: '600'
+                    }}>
+                      {apolloCompanySuggestion.confidence}% match
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setSearchTerm(apolloCompanySuggestion.name)}
+                    style={{
+                      width: '100%',
+                      padding: '6px 12px',
+                      fontSize: '12px',
+                      fontWeight: '500',
+                      color: 'white',
+                      backgroundColor: '#3B82F6',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.backgroundColor = '#2563EB';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.backgroundColor = '#3B82F6';
+                    }}
+                  >
+                    Use This Company
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          )}
+
           <QuickEditCompanySearchContainer>
             <QuickEditCompanySearchInput
               theme={theme}

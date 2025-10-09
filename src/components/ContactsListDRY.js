@@ -568,6 +568,11 @@ const ContactsListDRY = ({
     return shouldShowField(contact, fieldName, showMissingFieldsOnly);
   };
 
+  // Create a bound version for the modal that has the contact already provided
+  const shouldShowFieldForModal = (fieldName) => {
+    return shouldShowField(contactForQuickEdit, fieldName, showMissingFieldsOnly);
+  };
+
   // Check if a tab should be shown (show tab if at least one field in it should be shown)
   const shouldShowTab = (contact, tabName) => {
     if (!contact || !showMissingFieldsOnly) return true;
@@ -1038,7 +1043,7 @@ const ContactsListDRY = ({
         handleAutomation={handleAutomation}
         // Helper functions
         getVisibleTabs={getVisibleTabsWithContext}
-        shouldShowField={shouldShowFieldWithContext}
+        shouldShowField={shouldShowFieldForModal}
         categoryOptions={categoryOptions}
       />
 
