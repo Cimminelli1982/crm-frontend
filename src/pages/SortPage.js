@@ -208,13 +208,13 @@ const SortPage = ({ theme, onInboxCountChange }) => {
     setConfirmSpam(emailData);
   };
 
-  // Handle marking an email as spam after confirmation
+  // Handle marking an email as spam (individual email only)
   const handleConfirmSpam = async () => {
     if (!confirmSpam) return;
 
     const emailData = confirmSpam;
     try {
-      // Update the email record to mark it as reject
+      // Update the email record to mark it as reject (individual email)
       const { error } = await supabase
         .from('email_inbox')
         .update({
@@ -239,6 +239,48 @@ const SortPage = ({ theme, onInboxCountChange }) => {
     } catch (err) {
       console.error('Error marking email as spam:', err);
       toast.error('Failed to mark email as spam');
+    }
+  };
+
+  // Handle marking entire domain as spam
+  const handleConfirmDomainSpam = async () => {
+    if (!confirmSpam) return;
+
+    const emailData = confirmSpam;
+    const fromEmail = emailData.email_data?.from_email || '';
+    const domain = fromEmail.includes('@') ? fromEmail.split('@')[1] : '';
+
+    if (!domain) {
+      toast.error('Could not extract domain from email address');
+      return;
+    }
+
+    try {
+      // Update the email record to mark it as reject_domain
+      const { error } = await supabase
+        .from('email_inbox')
+        .update({
+          special_case: 'reject_domain',
+          last_processed_at: new Date().toISOString()
+        })
+        .eq('id', emailData.email_data.id);
+
+      if (error) throw error;
+
+      // Trigger refresh
+      setRefreshTrigger(prev => prev + 1);
+
+      // Trigger count refresh
+      window.dispatchEvent(new CustomEvent('refreshInboxCounts'));
+
+      // Close the confirmation dialog
+      setConfirmSpam(null);
+
+      toast.success(`All emails from @${domain} will be blocked`);
+      console.log('Domain marked as spam:', domain);
+    } catch (err) {
+      console.error('Error marking domain as spam:', err);
+      toast.error('Failed to mark domain as spam');
     }
   };
 
@@ -550,44 +592,124 @@ const SortPage = ({ theme, onInboxCountChange }) => {
             <ModalContent
               onClick={(e) => e.stopPropagation()}
               theme={theme}
-              style={{ maxWidth: '400px', padding: '20px' }}
+              style={{ maxWidth: '500px', padding: '20px' }}
             >
               <ModalHeader theme={theme}>
                 <ModalTitle theme={theme}>
-                  <FiXCircle style={{ marginRight: '10px', color: '#ff5555' }} /> Confirm Spam
+                  <FiXCircle style={{ marginRight: '10px', color: '#ff5555' }} /> Block Spam Email
                 </ModalTitle>
                 <ModalCloseButton onClick={() => setConfirmSpam(null)} theme={theme}>×</ModalCloseButton>
               </ModalHeader>
 
               <ModalBody theme={theme}>
-                <p style={{ marginBottom: '20px' }}>
-                  Are you sure you want to mark this email as spam?
+                <p style={{ marginBottom: '20px', fontSize: '16px', fontWeight: '500' }}>
+                  How would you like to block emails from this sender?
                 </p>
                 <div style={{
                   backgroundColor: theme === 'light' ? '#F3F4F6' : '#1a1a1a',
-                  padding: '10px',
-                  borderRadius: '4px',
+                  padding: '15px',
+                  borderRadius: '8px',
                   marginBottom: '20px'
                 }}>
-                  <p><strong>From:</strong> {confirmSpam.first_name} {confirmSpam.last_name}</p>
-                  <p><strong>Subject:</strong> {confirmSpam.email_data?.subject || '(No Subject)'}</p>
+                  <p style={{ marginBottom: '8px' }}>
+                    <strong>From:</strong> {confirmSpam.email_data?.from_email || 'Unknown'}
+                  </p>
+                  <p style={{ marginBottom: '8px' }}>
+                    <strong>Name:</strong> {confirmSpam.first_name} {confirmSpam.last_name}
+                  </p>
+                  <p>
+                    <strong>Subject:</strong> {confirmSpam.email_data?.subject || '(No Subject)'}
+                  </p>
+                </div>
+
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                  marginTop: '20px'
+                }}>
+                  <div style={{
+                    padding: '12px',
+                    border: `1px solid ${theme === 'light' ? '#e5e7eb' : '#374151'}`,
+                    borderRadius: '8px',
+                    backgroundColor: theme === 'light' ? '#fff' : '#1f2937'
+                  }}>
+                    <p style={{
+                      fontWeight: '500',
+                      marginBottom: '4px',
+                      display: 'flex',
+                      alignItems: 'center'
+                    }}>
+                      <span style={{ marginRight: '8px' }}>📧</span>
+                      Block this email only
+                    </p>
+                    <p style={{
+                      fontSize: '14px',
+                      color: theme === 'light' ? '#6b7280' : '#9ca3af',
+                      marginLeft: '28px'
+                    }}>
+                      Block: {confirmSpam.email_data?.from_email || 'this sender'}
+                    </p>
+                  </div>
+
+                  <div style={{
+                    padding: '12px',
+                    border: `1px solid ${theme === 'light' ? '#fee2e2' : '#7f1d1d'}`,
+                    borderRadius: '8px',
+                    backgroundColor: theme === 'light' ? '#fef2f2' : '#2a1a1a'
+                  }}>
+                    <p style={{
+                      fontWeight: '500',
+                      marginBottom: '4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      color: '#ef4444'
+                    }}>
+                      <span style={{ marginRight: '8px' }}>🚫</span>
+                      Block entire domain
+                    </p>
+                    <p style={{
+                      fontSize: '14px',
+                      color: theme === 'light' ? '#6b7280' : '#9ca3af',
+                      marginLeft: '28px'
+                    }}>
+                      Block all emails from: @{confirmSpam.email_data?.from_email?.split('@')[1] || 'domain'}
+                    </p>
+                  </div>
                 </div>
               </ModalBody>
 
-              <ModalFooter theme={theme}>
+              <ModalFooter theme={theme} style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: '10px',
+                marginTop: '20px'
+              }}>
                 <ActionButton
                   onClick={() => setConfirmSpam(null)}
                   theme={theme}
                   $variant="secondary"
+                  style={{ flex: '1' }}
                 >
                   Cancel
                 </ActionButton>
                 <ActionButton
                   onClick={handleConfirmSpam}
                   theme={theme}
-                  $variant="danger"
+                  $variant="warning"
+                  style={{ flex: '1' }}
                 >
-                  <FiXCircle /> Mark as Spam
+                  <FiUser style={{ marginRight: '6px' }} />
+                  Block Email
+                </ActionButton>
+                <ActionButton
+                  onClick={handleConfirmDomainSpam}
+                  theme={theme}
+                  $variant="danger"
+                  style={{ flex: '1' }}
+                >
+                  <FiXCircle style={{ marginRight: '6px' }} />
+                  Block Domain
                 </ActionButton>
               </ModalFooter>
             </ModalContent>
