@@ -837,6 +837,123 @@ const TagManagementModal = ({ theme, contact, contactTags, onTagAdded, onTagRemo
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [suggestedTags, setSuggestedTags] = useState([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+
+  // Extract keywords from text for tag suggestions
+  const extractKeywords = (text) => {
+    if (!text) return [];
+
+    // Common stop words to filter out
+    const stopWords = ['a', 'an', 'the', 'is', 'at', 'which', 'on', 'and', 'or', 'but', 'in', 'with', 'to', 'for', 'of', 'as', 'by', 'that', 'this', 'it', 'from', 'be', 'are', 'was', 'were', 'been'];
+
+    // Extract words and filter
+    const words = text.toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter(word => word.length > 2 && !stopWords.includes(word));
+
+    // Count word frequency
+    const wordCount = {};
+    words.forEach(word => {
+      wordCount[word] = (wordCount[word] || 0) + 1;
+    });
+
+    // Sort by frequency and return top keywords
+    return Object.entries(wordCount)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([word]) => word);
+  };
+
+  // Fetch intelligent tag suggestions based on contact data
+  const fetchIntelligentSuggestions = async () => {
+    try {
+      setLoadingSuggestions(true);
+
+      // Extract keywords from job title and description
+      const keywords = [
+        ...extractKeywords(contact?.job_role || ''),
+        ...extractKeywords(contact?.description || '')
+      ];
+
+      if (keywords.length === 0) {
+        setSuggestedTags([]);
+        return;
+      }
+
+      // Build search conditions for similar concepts
+      const searchConditions = keywords.map(keyword =>
+        `name.ilike.%${keyword}%`
+      ).join(',');
+
+      // Query tags table for matching tags
+      const { data, error } = await supabase
+        .from('tags')
+        .select('*')
+        .or(searchConditions)
+        .limit(20);
+
+      if (error) throw error;
+
+      // Filter out tags already associated with contact
+      const filteredSuggestions = data.filter(tag => {
+        const isAlreadyAssociated = contactTags.some(contactTag => {
+          const contactTagId = contactTag.tags?.tag_id || contactTag.tags?.id || contactTag.tag_id;
+          const suggestionTagId = tag.tag_id || tag.id;
+          return contactTagId === suggestionTagId;
+        });
+        return !isAlreadyAssociated;
+      });
+
+      // Score and sort suggestions by relevance
+      const scoredSuggestions = filteredSuggestions.map(tag => {
+        let score = 0;
+        const tagNameLower = tag.name.toLowerCase();
+
+        // Higher score for exact keyword matches
+        keywords.forEach(keyword => {
+          if (tagNameLower.includes(keyword)) {
+            score += 3;
+          }
+          // Bonus for exact word match
+          if (tagNameLower === keyword) {
+            score += 5;
+          }
+        });
+
+        // Check for common tech/role patterns
+        const techPatterns = ['developer', 'engineer', 'designer', 'manager', 'analyst', 'consultant', 'architect', 'lead', 'senior', 'junior'];
+        techPatterns.forEach(pattern => {
+          if (tagNameLower.includes(pattern) && (contact?.job_role?.toLowerCase().includes(pattern) || contact?.description?.toLowerCase().includes(pattern))) {
+            score += 2;
+          }
+        });
+
+        return { ...tag, score };
+      });
+
+      // Sort by score and take top suggestions
+      const topSuggestions = scoredSuggestions
+        .sort((a, b) => b.score - a.score)
+        .filter(tag => tag.score > 0)
+        .slice(0, 8);
+
+      setSuggestedTags(topSuggestions);
+    } catch (error) {
+      console.error('Error fetching intelligent suggestions:', error);
+      setSuggestedTags([]);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  };
+
+  // Fetch intelligent suggestions when modal opens
+  useEffect(() => {
+    if (contact) {
+      fetchIntelligentSuggestions();
+    }
+  }, [contact, contactTags]);
 
   // Fetch tag suggestions
   const fetchTagSuggestions = async (search) => {
@@ -1021,6 +1138,85 @@ const TagManagementModal = ({ theme, contact, contactTags, onTagAdded, onTagRemo
             )}
           </TagsList>
         </TagModalSection>
+
+        {/* Suggested Tags Section */}
+        {suggestedTags.length > 0 && (
+          <TagModalSection style={{
+            background: theme === 'light' ? '#F0F9FF' : '#1E293B',
+            padding: '12px',
+            borderRadius: '8px',
+            marginBottom: '16px'
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginBottom: '12px'
+            }}>
+              <span style={{ fontSize: '16px' }}>💡</span>
+              <TagModalSectionTitle theme={theme} style={{ margin: 0 }}>
+                Suggested Tags
+              </TagModalSectionTitle>
+              <span style={{
+                fontSize: '11px',
+                color: theme === 'light' ? '#64748B' : '#94A3B8',
+                fontStyle: 'italic'
+              }}>
+                Based on job role & description
+              </span>
+            </div>
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '8px'
+            }}>
+              {loadingSuggestions ? (
+                <span style={{
+                  color: theme === 'light' ? '#64748B' : '#94A3B8',
+                  fontSize: '12px'
+                }}>
+                  Loading suggestions...
+                </span>
+              ) : (
+                suggestedTags.map((tag, index) => (
+                  <button
+                    key={index}
+                    onClick={() => handleAddTag(tag)}
+                    disabled={loading}
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: '12px',
+                      border: `1px solid ${theme === 'light' ? '#3B82F6' : '#60A5FA'}`,
+                      borderRadius: '16px',
+                      background: theme === 'light' ? '#EFF6FF' : '#1E3A8A',
+                      color: theme === 'light' ? '#1E40AF' : '#93C5FD',
+                      cursor: loading ? 'not-allowed' : 'pointer',
+                      opacity: loading ? 0.5 : 1,
+                      fontWeight: '500',
+                      transition: 'all 0.2s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!loading) {
+                        e.target.style.background = theme === 'light' ? '#DBEAFE' : '#1E40AF';
+                        e.target.style.transform = 'translateY(-1px)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.background = theme === 'light' ? '#EFF6FF' : '#1E3A8A';
+                      e.target.style.transform = 'translateY(0)';
+                    }}
+                  >
+                    <span style={{ fontSize: '14px' }}>+</span>
+                    {tag.name}
+                  </button>
+                ))
+              )}
+            </div>
+          </TagModalSection>
+        )}
 
         <TagModalSection>
           <TagModalSectionTitle theme={theme}>Add Tags</TagModalSectionTitle>

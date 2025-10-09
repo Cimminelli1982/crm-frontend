@@ -965,6 +965,7 @@ const ContactsListDRY = ({
         contact={contactForQuickEdit}
         theme={theme}
         showMissingFieldsOnly={showMissingFieldsOnly}
+        onRefresh={refetch}
         // State props
         quickEditActiveTab={quickEditActiveTab}
         setQuickEditActiveTab={setQuickEditActiveTab}
@@ -1132,7 +1133,7 @@ const ContactsListDRY = ({
           },
           overlay: {
             backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            zIndex: 1000
+            zIndex: 1200
           }
         }}
       >
@@ -1168,7 +1169,7 @@ const ContactsListDRY = ({
           },
           overlay: {
             backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            zIndex: 1000
+            zIndex: 1200
           }
         }}
       >
@@ -1217,7 +1218,7 @@ const ContactsListDRY = ({
           },
           overlay: {
             backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            zIndex: 1000
+            zIndex: 1200
           }
         }}
       >

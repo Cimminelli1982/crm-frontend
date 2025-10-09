@@ -32,6 +32,7 @@ const QuickEditModalRefactored = ({
   contact,
   theme,
   showMissingFieldsOnly,
+  onRefresh,
   // State props from hook
   quickEditActiveTab,
   setQuickEditActiveTab,
@@ -129,6 +130,7 @@ const QuickEditModalRefactored = ({
   frequencyOptions = ['Weekly', 'Monthly', 'Quarterly', 'Twice per Year', 'Once per Year', 'Do not keep in touch']
 }) => {
   const [contactEnrichModalOpen, setContactEnrichModalOpen] = useState(false);
+  const [savingToggle, setSavingToggle] = useState(false);
 
   if (!contact) return null;
 
@@ -298,7 +300,52 @@ const QuickEditModalRefactored = ({
             <ToggleSwitch
               theme={theme}
               $checked={quickEditShowMissing}
-              onClick={() => setQuickEditShowMissing(!quickEditShowMissing)}
+              onClick={async () => {
+                if (savingToggle) return; // Prevent multiple clicks
+
+                // Toggle the state
+                const newShowMissingValue = !quickEditShowMissing;
+                setQuickEditShowMissing(newShowMissingValue);
+
+                // Start saving
+                setSavingToggle(true);
+
+                try {
+                  // Update the show_missing field directly first
+                  const { error: updateError } = await supabase
+                    .from('contacts')
+                    .update({
+                      show_missing: newShowMissingValue,
+                      last_modified_at: new Date().toISOString()
+                    })
+                    .eq('contact_id', contact.contact_id);
+
+                  if (updateError) throw updateError;
+
+                  // Save all other current changes
+                  await onSave();
+
+                  // Close the modal after successful save
+                  setTimeout(() => {
+                    handleClose();
+                    // Refresh the parent list
+                    if (onRefresh) {
+                      onRefresh();
+                    }
+                  }, 100);
+                } catch (error) {
+                  console.error('Error saving changes on toggle:', error);
+                  // Revert the toggle on error
+                  setQuickEditShowMissing(!newShowMissingValue);
+                } finally {
+                  setSavingToggle(false);
+                }
+              }}
+              disabled={savingToggle}
+              style={{
+                opacity: savingToggle ? 0.6 : 1,
+                cursor: savingToggle ? 'wait' : 'pointer'
+              }}
             >
               <ToggleSlider $checked={quickEditShowMissing} />
             </ToggleSwitch>

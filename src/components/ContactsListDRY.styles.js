@@ -595,14 +595,14 @@ export const QuickEditAssociateCompanyModal = ({ theme, contact, contactCompanie
 
     setLoadingApolloSuggestion(true);
     try {
-      // For now, simulate Apollo response with edge function
-      // In production, this would call the actual Apollo API
+      // Call edge function in CHECK mode to get suggestion without creating company
       const response = await supabase.functions.invoke('company-finder', {
         body: {
           contactId: contact.contact_id,
           linkedin: contact.linkedin,
           firstName: contact.first_name,
-          lastName: contact.last_name
+          lastName: contact.last_name,
+          mode: 'check'  // Just check, don't create
         }
       });
 
@@ -626,12 +626,15 @@ export const QuickEditAssociateCompanyModal = ({ theme, contact, contactCompanie
 
       if (data.success && data.company) {
         setApolloCompanySuggestion({
+          company_id: data.company.company_id,
           name: data.company.name,
           domain: data.company.domain,
           industry: data.company.industry,
           size: data.company.employee_count,
           description: data.company.description,
-          confidence: data.confidence || 90
+          confidence: data.confidence || 90,
+          exists_in_db: data.company.exists_in_db,
+          apollo_data: data.company.apollo_data
         });
       } else if (emailDomains.length > 0) {
         // Fallback to email domain
@@ -851,27 +854,59 @@ export const QuickEditAssociateCompanyModal = ({ theme, contact, contactCompanie
                   </div>
 
                   <button
-                    onClick={() => setSearchTerm(apolloCompanySuggestion.name)}
+                    onClick={async () => {
+                      // If company already exists in DB, use it directly
+                      if (apolloCompanySuggestion.exists_in_db && apolloCompanySuggestion.company_id) {
+                        handleAddCompany(apolloCompanySuggestion);
+                      } else {
+                        // Company doesn't exist - call edge function in CREATE mode
+                        try {
+                          setLoadingApolloSuggestion(true);
+                          const response = await supabase.functions.invoke('company-finder', {
+                            body: {
+                              contactId: contact.contact_id,
+                              linkedin: contact.linkedin,
+                              firstName: contact.first_name,
+                              lastName: contact.last_name,
+                              mode: 'create'  // Create the company now
+                            }
+                          });
+
+                          if (response.data?.success && response.data.company) {
+                            // Company created, now add the association
+                            handleAddCompany(response.data.company);
+                          } else {
+                            toast.error('Failed to create company');
+                          }
+                        } catch (error) {
+                          console.error('Error creating company:', error);
+                          toast.error('Failed to create company');
+                        } finally {
+                          setLoadingApolloSuggestion(false);
+                        }
+                      }
+                    }}
                     style={{
                       width: '100%',
                       padding: '6px 12px',
                       fontSize: '12px',
                       fontWeight: '500',
                       color: 'white',
-                      backgroundColor: '#3B82F6',
+                      backgroundColor: loadingApolloSuggestion ? '#9CA3AF' : '#3B82F6',
                       border: 'none',
                       borderRadius: '6px',
-                      cursor: 'pointer',
+                      cursor: loadingApolloSuggestion ? 'wait' : 'pointer',
                       transition: 'all 0.2s ease'
                     }}
+                    disabled={loadingApolloSuggestion}
                     onMouseEnter={(e) => {
-                      e.target.style.backgroundColor = '#2563EB';
+                      if (!loadingApolloSuggestion) e.target.style.backgroundColor = '#2563EB';
                     }}
                     onMouseLeave={(e) => {
-                      e.target.style.backgroundColor = '#3B82F6';
+                      if (!loadingApolloSuggestion) e.target.style.backgroundColor = '#3B82F6';
                     }}
                   >
-                    Use This Company
+                    {loadingApolloSuggestion ? 'Creating...' : 'Use This Company'}
                   </button>
                 </div>
               ) : null}
