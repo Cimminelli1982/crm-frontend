@@ -203,6 +203,8 @@ const ContactsListDRY = ({
     setQuickEditChristmasWishes,
     quickEditEasterWishes,
     setQuickEditEasterWishes,
+    quickEditShowMissing,
+    setQuickEditShowMissing,
     quickEditContactEmails,
     setQuickEditContactEmails,
     quickEditContactMobiles,
