@@ -2902,12 +2902,6 @@ const ContactsListDRY = ({
     setCompanyModalOpen(true);
   };
 
-  // Handle delete from Quick Edit modal
-  const handleDeleteFromQuickEdit = (contact) => {
-    setQuickEditContactModalOpen(false);
-    handleOpenDeleteModal(contact);
-  };
-
   // Handle opening delete modal with spam functionality
   const handleOpenDeleteModal = async (contact, e) => {
     if (e) e.stopPropagation();
@@ -4070,6 +4064,1530 @@ const ContactsListDRY = ({
         shouldShowField={shouldShowField}
         categoryOptions={categoryOptions}
       />
+            <h3 style={{ margin: 0, fontSize: '18px' }}>
+              Editing: {contactForQuickEdit?.first_name} {contactForQuickEdit?.last_name}
+            </h3>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <FrequencyModalCloseButton
+                onClick={() => {
+                  setQuickEditContactModalOpen(false);
+                  handleOpenDeleteModal(contactForQuickEdit);
+                }}
+                theme={theme}
+                title="Delete or Skip Contact"
+                style={{
+                  background: theme === 'light' ? '#FEE2E2' : '#7F1D1D',
+                  color: theme === 'light' ? '#DC2626' : '#FCA5A5'
+                }}
+              >
+                <FaSkull />
+              </FrequencyModalCloseButton>
+              <FrequencyModalCloseButton
+                onClick={() => {
+                  setQuickEditContactModalOpen(false);
+                  setQuickEditDescriptionText('');
+                  setQuickEditJobRoleText('');
+                  setContactForQuickEdit(null);
+                  setNewEmailText('');
+                  setNewEmailType('personal');
+                  setNewMobileText('');
+                  setNewMobileType('personal');
+                  setQuickEditContactCities([]);
+                  setQuickEditContactTags([]);
+                  setQuickEditCityModalOpen(false);
+                  setQuickEditTagModalOpen(false);
+                }}
+                theme={theme}
+                title="Close"
+              >
+                <FiX />
+              </FrequencyModalCloseButton>
+            </div>
+          </FrequencyModalHeader>
+          <FrequencyModalBody>
+            {/* Tab Navigation - Using Spam Submenu UI Pattern */}
+            <QuickEditTabMenu theme={theme}>
+              {getVisibleTabs(contactForQuickEdit).map(tab => {
+                const IconComponent = tab.icon;
+                const isActive = quickEditActiveTab === tab.id;
+                return (
+                  <QuickEditTab
+                    key={tab.id}
+                    theme={theme}
+                    $active={isActive}
+                    onClick={() => setQuickEditActiveTab(tab.id)}
+                  >
+                    <IconComponent style={{ fontSize: '14px' }} />
+                    <span className="tab-text">{tab.label}</span>
+                  </QuickEditTab>
+                );
+              })}
+            </QuickEditTabMenu>
+
+            {/* Tab Content */}
+            <div style={{ padding: '0 20px 20px 20px', minHeight: '500px' }}>
+
+              {/* Info Tab */}
+              {quickEditActiveTab === 'Info' && (
+                <div style={{
+                  height: '460px',
+                  overflow: 'auto',
+                  paddingRight: '8px',
+                  marginRight: '-8px'
+                }}>
+                  {/* First Name */}
+                  {shouldShowField(contactForQuickEdit, 'first_name') && (
+                    <div style={{ marginBottom: '16px' }}>
+                      <label style={{
+                        display: 'block',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        marginBottom: '8px',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB'
+                      }}>
+                        First Name
+                      </label>
+                      <input
+                        type="text"
+                        value={quickEditFirstName}
+                        onChange={(e) => setQuickEditFirstName(e.target.value)}
+                        placeholder="Enter first name..."
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                          borderRadius: '6px',
+                          backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                          fontSize: '14px',
+                          fontFamily: 'inherit'
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {/* Last Name */}
+                  {shouldShowField(contactForQuickEdit, 'last_name') && (
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      marginBottom: '8px',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB'
+                    }}>
+                      Last Name
+                    </label>
+                    <input
+                      type="text"
+                      value={quickEditLastName}
+                      onChange={(e) => setQuickEditLastName(e.target.value)}
+                      placeholder="Enter last name..."
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        borderRadius: '6px',
+                        backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px',
+                        fontFamily: 'inherit'
+                      }}
+                    />
+                  </div>
+                  )}
+
+                  {/* Category Dropdown */}
+                  {shouldShowField(contactForQuickEdit, 'category') && (
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      marginBottom: '8px',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB'
+                    }}>
+                      Category
+                    </label>
+                    <select
+                      value={quickEditContactCategory}
+                      onChange={(e) => setQuickEditContactCategory(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        borderRadius: '6px',
+                        backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px',
+                        fontFamily: 'inherit'
+                      }}
+                    >
+                      {categoryOptions.map(category => (
+                        <option key={category} value={category}>{category}</option>
+                      ))}
+                    </select>
+                  </div>
+                  )}
+
+                  {/* Score Rating */}
+                  {shouldShowField(contactForQuickEdit, 'score') && (
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      marginBottom: '8px',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB'
+                    }}>
+                      Score Rating
+                    </label>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '12px',
+                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                      borderRadius: '6px',
+                      backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937'
+                    }}>
+                      {[1, 2, 3, 4, 5].map(star => (
+                        <FaStar
+                          key={star}
+                          onClick={() => setQuickEditContactScore(star)}
+                          style={{
+                            fontSize: '18px',
+                            color: star <= quickEditContactScore ? '#F59E0B' : '#D1D5DB',
+                            cursor: 'pointer',
+                            transition: 'color 0.2s ease'
+                          }}
+                          onMouseEnter={(e) => e.target.style.transform = 'scale(1.1)'}
+                          onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
+                        />
+                      ))}
+                      <span style={{
+                        marginLeft: '12px',
+                        fontSize: '14px',
+                        color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                      }}>
+                        {quickEditContactScore > 0 ? `${quickEditContactScore}/5` : 'Not rated'}
+                      </span>
+                    </div>
+                  </div>
+                  )}
+
+                  {/* Description */}
+                  {shouldShowField(contactForQuickEdit, 'description') && (
+                  <div style={{ marginBottom: '20px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      marginBottom: '8px',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB'
+                    }}>
+                      Description / Notes
+                    </label>
+                    <textarea
+                      value={quickEditDescriptionText}
+                      onChange={(e) => setQuickEditDescriptionText(e.target.value)}
+                      placeholder="Enter description or notes..."
+                      rows={4}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        borderRadius: '6px',
+                        backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px',
+                        fontFamily: 'inherit',
+                        resize: 'vertical',
+                        minHeight: '80px'
+                      }}
+                    />
+                  </div>
+                  )}
+                </div>
+              )}
+
+              {/* Contacts Tab */}
+              {quickEditActiveTab === 'Contacts' && (
+                <div style={{
+                  height: '460px',
+                  overflow: 'auto',
+                  paddingRight: '8px',
+                  marginRight: '-8px'
+                }}>
+                  {/* Emails Section */}
+                  {shouldShowField(contactForQuickEdit, 'email') && (
+                  <div style={{ marginBottom: '32px' }}>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: '12px'
+                    }}>
+                      <label style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB'
+                      }}>
+                        <FaEnvelope style={{ fontSize: '14px', color: '#3B82F6' }} />
+                        Email Addresses
+                      </label>
+                    </div>
+
+                    {/* Add New Email */}
+                    <div style={{
+                      marginBottom: '16px',
+                      display: 'flex',
+                      gap: '8px',
+                      alignItems: 'center'
+                    }}>
+                      <input
+                        type="email"
+                        value={newEmailText}
+                        onChange={(e) => setNewEmailText(e.target.value)}
+                        placeholder="Add email address..."
+                        style={{
+                          flex: 1,
+                          padding: '8px 12px',
+                          border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                          borderRadius: '6px',
+                          backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                          fontSize: '14px',
+                          fontFamily: 'inherit'
+                        }}
+                      />
+                      <select
+                        value={newEmailType}
+                        onChange={(e) => setNewEmailType(e.target.value)}
+                        style={{
+                          padding: '8px 12px',
+                          border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                          borderRadius: '6px',
+                          backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                          fontSize: '14px',
+                          fontFamily: 'inherit'
+                        }}
+                      >
+                        <option value="personal">Personal</option>
+                        <option value="work">Work</option>
+                        <option value="other">Other</option>
+                      </select>
+                      <button
+                        onClick={() => {
+                          if (newEmailText.trim()) {
+                            handleAddEmail(newEmailText, newEmailType);
+                            setNewEmailText('');
+                          }
+                        }}
+                        style={{
+                          padding: '8px 12px',
+                          backgroundColor: '#3B82F6',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '14px',
+                          fontWeight: '500',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <FaPlus style={{ fontSize: '12px' }} />
+                        Add
+                      </button>
+                    </div>
+
+                    {/* Email List */}
+                    <div style={{
+                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                      borderRadius: '6px',
+                      backgroundColor: theme === 'light' ? '#F9FAFB' : '#111827',
+                      fontSize: '14px',
+                      minHeight: '100px',
+                      maxHeight: '200px',
+                      overflowY: 'auto'
+                    }}>
+                      {quickEditContactEmails?.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                          {quickEditContactEmails.map((emailData, index) => (
+                            <div key={emailData.email_id} style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: '12px',
+                              backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                              borderRadius: index === 0 ? '6px 6px 0 0' : index === quickEditContactEmails.length - 1 ? '0 0 6px 6px' : '0'
+                            }}>
+                              <FaEnvelope style={{ fontSize: '14px', color: '#3B82F6' }} />
+                              <div style={{ flex: 1 }}>
+                                <div style={{
+                                  color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                  fontWeight: '500',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px'
+                                }}>
+                                  {emailData.email}
+                                  {emailData.is_primary && (
+                                    <span style={{
+                                      fontSize: '10px',
+                                      padding: '2px 6px',
+                                      backgroundColor: '#10B981',
+                                      color: 'white',
+                                      borderRadius: '10px',
+                                      fontWeight: '600'
+                                    }}>
+                                      PRIMARY
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <select
+                                value={emailData.type}
+                                onChange={(e) => handleUpdateEmailType(emailData.email_id, e.target.value)}
+                                style={{
+                                  padding: '4px 8px',
+                                  border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                                  borderRadius: '4px',
+                                  backgroundColor: theme === 'light' ? '#FFFFFF' : '#374151',
+                                  color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                  fontSize: '12px',
+                                  fontFamily: 'inherit'
+                                }}
+                              >
+                                <option value="personal">Personal</option>
+                                <option value="work">Work</option>
+                                <option value="other">Other</option>
+                              </select>
+                              {!emailData.is_primary && (
+                                <button
+                                  onClick={() => handleSetEmailPrimary(emailData.email_id)}
+                                  style={{
+                                    padding: '4px 6px',
+                                    backgroundColor: 'transparent',
+                                    color: '#10B981',
+                                    border: `1px solid #10B981`,
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                    fontSize: '10px',
+                                    fontWeight: '500'
+                                  }}
+                                >
+                                  Set Primary
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleRemoveEmail(emailData.email_id)}
+                                style={{
+                                  padding: '4px',
+                                  backgroundColor: 'transparent',
+                                  color: '#EF4444',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  fontSize: '12px'
+                                }}
+                              >
+                                <FaTrash />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          height: '80px',
+                          color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                          textAlign: 'center'
+                        }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                            <FaEnvelope style={{ fontSize: '24px', opacity: 0.5 }} />
+                            <span>No email addresses</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  )}
+
+                  {/* Mobile Numbers Section */}
+                  {shouldShowField(contactForQuickEdit, 'mobile') && (
+                  <div>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: '12px'
+                    }}>
+                      <label style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB'
+                      }}>
+                        <FaPhone style={{ fontSize: '14px', color: '#3B82F6' }} />
+                        Mobile Numbers
+                      </label>
+                    </div>
+
+                    {/* Add New Mobile */}
+                    <div style={{
+                      marginBottom: '16px',
+                      display: 'flex',
+                      gap: '8px',
+                      alignItems: 'center'
+                    }}>
+                      <input
+                        type="tel"
+                        value={newMobileText}
+                        onChange={(e) => setNewMobileText(e.target.value)}
+                        placeholder="Add mobile number..."
+                        style={{
+                          flex: 1,
+                          padding: '8px 12px',
+                          border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                          borderRadius: '6px',
+                          backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                          fontSize: '14px',
+                          fontFamily: 'inherit'
+                        }}
+                      />
+                      <select
+                        value={newMobileType}
+                        onChange={(e) => setNewMobileType(e.target.value)}
+                        style={{
+                          padding: '8px 12px',
+                          border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                          borderRadius: '6px',
+                          backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                          fontSize: '14px',
+                          fontFamily: 'inherit'
+                        }}
+                      >
+                        <option value="personal">Personal</option>
+                        <option value="work">Work</option>
+                        <option value="other">Other</option>
+                      </select>
+                      <button
+                        onClick={() => {
+                          if (newMobileText.trim()) {
+                            handleAddMobile(newMobileText, newMobileType);
+                            setNewMobileText('');
+                          }
+                        }}
+                        style={{
+                          padding: '8px 12px',
+                          backgroundColor: '#3B82F6',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '14px',
+                          fontWeight: '500',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <FaPlus style={{ fontSize: '12px' }} />
+                        Add
+                      </button>
+                    </div>
+
+                    {/* Mobile List */}
+                    <div style={{
+                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                      borderRadius: '6px',
+                      backgroundColor: theme === 'light' ? '#F9FAFB' : '#111827',
+                      fontSize: '14px',
+                      minHeight: '100px',
+                      maxHeight: '200px',
+                      overflowY: 'auto'
+                    }}>
+                      {quickEditContactMobiles?.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                          {quickEditContactMobiles.map((mobileData, index) => (
+                            <div key={mobileData.mobile_id} style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: '12px',
+                              backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                              borderRadius: index === 0 ? '6px 6px 0 0' : index === quickEditContactMobiles.length - 1 ? '0 0 6px 6px' : '0'
+                            }}>
+                              <FaPhone style={{ fontSize: '14px', color: '#3B82F6' }} />
+                              <div style={{ flex: 1 }}>
+                                <div style={{
+                                  color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                  fontWeight: '500',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px'
+                                }}>
+                                  {mobileData.mobile}
+                                  {mobileData.is_primary && (
+                                    <span style={{
+                                      fontSize: '10px',
+                                      padding: '2px 6px',
+                                      backgroundColor: '#10B981',
+                                      color: 'white',
+                                      borderRadius: '10px',
+                                      fontWeight: '600'
+                                    }}>
+                                      PRIMARY
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <select
+                                value={mobileData.type}
+                                onChange={(e) => handleUpdateMobileType(mobileData.mobile_id, e.target.value)}
+                                style={{
+                                  padding: '4px 8px',
+                                  border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                                  borderRadius: '4px',
+                                  backgroundColor: theme === 'light' ? '#FFFFFF' : '#374151',
+                                  color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                  fontSize: '12px',
+                                  fontFamily: 'inherit'
+                                }}
+                              >
+                                <option value="personal">Personal</option>
+                                <option value="work">Work</option>
+                                <option value="other">Other</option>
+                              </select>
+                              {!mobileData.is_primary && (
+                                <button
+                                  onClick={() => handleSetMobilePrimary(mobileData.mobile_id)}
+                                  style={{
+                                    padding: '4px 6px',
+                                    backgroundColor: 'transparent',
+                                    color: '#10B981',
+                                    border: `1px solid #10B981`,
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                    fontSize: '10px',
+                                    fontWeight: '500'
+                                  }}
+                                >
+                                  Set Primary
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleRemoveMobile(mobileData.mobile_id)}
+                                style={{
+                                  padding: '4px',
+                                  backgroundColor: 'transparent',
+                                  color: '#EF4444',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  fontSize: '12px'
+                                }}
+                              >
+                                <FaTrash />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          height: '80px',
+                          color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                          textAlign: 'center'
+                        }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                            <FaPhone style={{ fontSize: '24px', opacity: 0.5 }} />
+                            <span>No mobile numbers</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  )}
+                </div>
+              )}
+
+              {/* Work Tab */}
+              {quickEditActiveTab === 'Work' && (
+                <div style={{
+                  height: '460px',
+                  overflow: 'auto',
+                  paddingRight: '8px',
+                  marginRight: '-8px'
+                }}>
+                  {/* Job Title */}
+                  {shouldShowField(contactForQuickEdit, 'job_role') && (
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      marginBottom: '8px',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB'
+                    }}>
+                      Job Title
+                    </label>
+                    <input
+                      type="text"
+                      value={quickEditJobRoleText}
+                      onChange={(e) => setQuickEditJobRoleText(e.target.value)}
+                      placeholder="Enter job title..."
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        borderRadius: '6px',
+                        backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px',
+                        fontFamily: 'inherit'
+                      }}
+                    />
+                  </div>
+                  )}
+
+                  {/* LinkedIn */}
+                  {shouldShowField(contactForQuickEdit, 'linkedin') && (
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      marginBottom: '8px',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB'
+                    }}>
+                      LinkedIn Profile
+                    </label>
+                    <input
+                      type="url"
+                      value={quickEditLinkedin}
+                      onChange={(e) => setQuickEditLinkedin(e.target.value)}
+                      placeholder="https://linkedin.com/in/..."
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        borderRadius: '6px',
+                        backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px',
+                        fontFamily: 'inherit'
+                      }}
+                    />
+                  </div>
+                  )}
+
+                  {/* Company Associations */}
+                  {shouldShowField(contactForQuickEdit, 'company') && (
+                  <div style={{ marginBottom: '20px' }}>
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '8px'
+                    }}>
+                      <label style={{
+                        display: 'block',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB'
+                      }}>
+                        Company Associations
+                      </label>
+                      <button
+                        onClick={() => setQuickEditAssociateCompanyModalOpen(true)}
+                        style={{
+                          background: '#3B82F6',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          padding: '6px 12px',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          fontWeight: '500'
+                        }}
+                      >
+                        + Manage Companies
+                      </button>
+                    </div>
+
+                    <div style={{
+                      padding: '16px',
+                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                      borderRadius: '6px',
+                      backgroundColor: theme === 'light' ? '#F9FAFB' : '#111827',
+                      fontSize: '14px',
+                      minHeight: '150px',
+                      maxHeight: '300px',
+                      overflowY: 'auto'
+                    }}>
+                      {quickEditContactCompanies?.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {quickEditContactCompanies.map((companyRelation, index) => (
+                            <div key={companyRelation.contact_companies_id} style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: '8px',
+                              backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                              borderRadius: '4px',
+                              border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
+                            }}>
+                              <FaBuilding style={{ fontSize: '14px', color: '#3B82F6' }} />
+                              <div style={{ flex: 1 }}>
+                                <div style={{
+                                  color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                  fontWeight: '500',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px'
+                                }}>
+                                  {companyRelation.companies?.name || 'Unknown Company'}
+                                  {companyRelation.is_primary && (
+                                    <span style={{
+                                      fontSize: '10px',
+                                      padding: '2px 6px',
+                                      backgroundColor: '#10B981',
+                                      color: 'white',
+                                      borderRadius: '10px',
+                                      fontWeight: '600'
+                                    }}>
+                                      PRIMARY
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Relationship Type Dropdown */}
+                                <div style={{ marginTop: '8px', marginBottom: '4px' }}>
+                                  <label style={{
+                                    fontSize: '10px',
+                                    color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                    marginBottom: '2px',
+                                    display: 'block'
+                                  }}>
+                                    Relationship
+                                  </label>
+                                  <select
+                                    value={companyRelation.relationship || 'not_set'}
+                                    onChange={(e) => handleUpdateCompanyRelationship(companyRelation.contact_companies_id, e.target.value)}
+                                    style={{
+                                      width: '100%',
+                                      padding: '4px 8px',
+                                      fontSize: '12px',
+                                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                                      borderRadius: '4px',
+                                      backgroundColor: theme === 'light' ? '#FFFFFF' : '#374151',
+                                      color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                      fontFamily: 'inherit'
+                                    }}
+                                  >
+                                    <option value="not_set">Not Set</option>
+                                    <option value="employee">Employee</option>
+                                    <option value="founder">Founder</option>
+                                    <option value="advisor">Advisor</option>
+                                    <option value="manager">Manager</option>
+                                    <option value="investor">Investor</option>
+                                    <option value="other">Other</option>
+                                    <option value="suggestion">Suggestion</option>
+                                  </select>
+                                </div>
+
+                                {/* Company Category Dropdown */}
+                                <div style={{ marginTop: '8px', marginBottom: '4px' }}>
+                                  <label style={{
+                                    fontSize: '10px',
+                                    color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                    marginBottom: '2px',
+                                    display: 'block'
+                                  }}>
+                                    Company Category
+                                  </label>
+                                  <select
+                                    value={companyRelation.companies?.category || 'Not Set'}
+                                    onChange={(e) => handleUpdateCompanyCategory(companyRelation.companies?.company_id || companyRelation.companies?.id, e.target.value)}
+                                    style={{
+                                      width: '100%',
+                                      padding: '4px 8px',
+                                      fontSize: '12px',
+                                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                                      borderRadius: '4px',
+                                      backgroundColor: theme === 'light' ? '#FFFFFF' : '#374151',
+                                      color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                      fontFamily: 'inherit'
+                                    }}
+                                  >
+                                    <option value="Not Set">Not Set</option>
+                                    <option value="Advisory">Advisory</option>
+                                    <option value="Corporate">Corporate</option>
+                                    <option value="Corporation">Corporation</option>
+                                    <option value="Inbox">Inbox</option>
+                                    <option value="Institution">Institution</option>
+                                    <option value="Media">Media</option>
+                                    <option value="Professional Investor">Professional Investor</option>
+                                    <option value="SME">SME</option>
+                                    <option value="Skip">Skip</option>
+                                    <option value="Startup">Startup</option>
+                                  </select>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          height: '80px',
+                          color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                          textAlign: 'center'
+                        }}>
+                          <FaBuilding style={{ fontSize: '24px', marginBottom: '8px', opacity: 0.5 }} />
+                          <span>No companies associated</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  )}
+                </div>
+              )}
+
+              {/* Related Tab */}
+              {quickEditActiveTab === 'Related' && (
+                <div style={{
+                  height: '460px',
+                  overflow: 'auto',
+                  paddingRight: '8px',
+                  marginRight: '-8px'
+                }}>
+                  {/* Cities Section */}
+                  {shouldShowField(contactForQuickEdit, 'cities') && (
+                  <div style={{ marginBottom: '32px' }}>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: '12px'
+                    }}>
+                      <label style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB'
+                      }}>
+                        <FaMapMarkerAlt style={{ fontSize: '14px', color: '#3B82F6' }} />
+                        Cities
+                      </label>
+                      <button
+                        onClick={() => setQuickEditCityModalOpen(true)}
+                        style={{
+                          padding: '6px 12px',
+                          backgroundColor: '#3B82F6',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                          fontWeight: '500',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <FaPlus style={{ fontSize: '10px' }} />
+                        Add Cities
+                      </button>
+                    </div>
+
+                    {/* Cities List */}
+                    <div style={{
+                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                      borderRadius: '6px',
+                      backgroundColor: theme === 'light' ? '#F9FAFB' : '#111827',
+                      fontSize: '14px',
+                      minHeight: '100px',
+                      maxHeight: '200px',
+                      overflowY: 'auto'
+                    }}>
+                      {quickEditContactCities?.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                          {quickEditContactCities.map((cityData, index) => (
+                            <div key={cityData.entry_id} style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: '12px',
+                              backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                              borderRadius: index === 0 ? '6px 6px 0 0' : index === quickEditContactCities.length - 1 ? '0 0 6px 6px' : '0'
+                            }}>
+                              <FaMapMarkerAlt style={{ fontSize: '14px', color: '#3B82F6' }} />
+                              <div style={{ flex: 1 }}>
+                                <div style={{
+                                  color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                  fontWeight: '500'
+                                }}>
+                                  {cityData.cities?.name || 'Unknown City'}
+                                  {cityData.cities?.country && cityData.cities.country !== 'Unknown' && (
+                                    <span style={{
+                                      fontSize: '12px',
+                                      color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                      fontWeight: 'normal',
+                                      marginLeft: '8px'
+                                    }}>
+                                      {cityData.cities.country}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => handleRemoveCity(cityData.entry_id)}
+                                style={{
+                                  padding: '4px',
+                                  backgroundColor: 'transparent',
+                                  color: '#EF4444',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  fontSize: '12px'
+                                }}
+                              >
+                                <FaTrash />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          height: '80px',
+                          color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                          textAlign: 'center'
+                        }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                            <FaMapMarkerAlt style={{ fontSize: '24px', opacity: 0.5 }} />
+                            <span>No cities associated</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  )}
+
+                  {/* Tags Section */}
+                  {shouldShowField(contactForQuickEdit, 'tags') && (
+                  <div>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: '12px'
+                    }}>
+                      <label style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB'
+                      }}>
+                        <FaTag style={{ fontSize: '14px', color: '#3B82F6' }} />
+                        Tags
+                      </label>
+                      <button
+                        onClick={() => setQuickEditTagModalOpen(true)}
+                        style={{
+                          padding: '6px 12px',
+                          backgroundColor: '#3B82F6',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                          fontWeight: '500',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <FaPlus style={{ fontSize: '10px' }} />
+                        Add Tags
+                      </button>
+                    </div>
+
+                    {/* Tags List */}
+                    <div style={{
+                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                      borderRadius: '6px',
+                      backgroundColor: theme === 'light' ? '#F9FAFB' : '#111827',
+                      fontSize: '14px',
+                      minHeight: '100px',
+                      maxHeight: '200px',
+                      overflowY: 'auto',
+                      padding: '12px'
+                    }}>
+                      {quickEditContactTags?.length > 0 ? (
+                        <div style={{
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          gap: '8px'
+                        }}>
+                          {quickEditContactTags.map((tagData) => (
+                            <div
+                              key={tagData.entry_id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '6px 10px',
+                                backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                                border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                                borderRadius: '20px',
+                                fontSize: '12px',
+                                fontWeight: '500',
+                                color: theme === 'light' ? '#111827' : '#F9FAFB'
+                              }}
+                            >
+                              <FaTag style={{ fontSize: '10px', color: '#3B82F6' }} />
+                              <span>{tagData.tags?.name || 'Unknown Tag'}</span>
+                              <button
+                                onClick={() => handleRemoveTag(tagData.entry_id)}
+                                style={{
+                                  padding: '2px',
+                                  backgroundColor: 'transparent',
+                                  color: '#EF4444',
+                                  border: 'none',
+                                  borderRadius: '2px',
+                                  cursor: 'pointer',
+                                  fontSize: '10px',
+                                  display: 'flex',
+                                  alignItems: 'center'
+                                }}
+                              >
+                                <FaTrash />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          height: '68px',
+                          color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                          textAlign: 'center'
+                        }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                            <FaTag style={{ fontSize: '24px', opacity: 0.5 }} />
+                            <span>No tags associated</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  )}
+                </div>
+              )}
+
+              {/* Keep in touch Tab */}
+              {quickEditActiveTab === 'Keep in touch' && (
+                <div style={{
+                  height: '460px',
+                  overflow: 'auto',
+                  paddingRight: '8px',
+                  marginRight: '-8px'
+                }}>
+                  {/* Keep in Touch Frequency */}
+                  {shouldShowField(contactForQuickEdit, 'frequency') && (
+                  <div style={{ marginBottom: '20px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      marginBottom: '8px',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB'
+                    }}>
+                      <FaHeart style={{ marginRight: '6px' }} />
+                      Keep in Touch Frequency
+                    </label>
+                    <select
+                      value={quickEditKeepInTouchFrequency}
+                      onChange={(e) => {
+                        setQuickEditKeepInTouchFrequency(e.target.value);
+                        handleSaveQuickEditFrequency(e.target.value);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        borderRadius: '6px',
+                        backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px'
+                      }}
+                    >
+                      <option value="">Select frequency...</option>
+                      <option value="Weekly">Weekly</option>
+                      <option value="Monthly">Monthly</option>
+                      <option value="Quarterly">Quarterly</option>
+                      <option value="Twice per Year">Twice per Year</option>
+                      <option value="Once per Year">Once per Year</option>
+                      <option value="Do not keep in touch">Do not keep in touch</option>
+                    </select>
+                  </div>
+                  )}
+
+                  {/* Date of Birth */}
+                  {shouldShowField(contactForQuickEdit, 'birthday') && (
+                  <div style={{ marginBottom: '20px' }}>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: '8px'
+                    }}>
+                      <label style={{
+                        fontSize: '14px',
+                        fontWeight: '500',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB'
+                      }}>
+                        <FaCalendarAlt style={{ marginRight: '6px' }} />
+                        Date of Birth
+                      </label>
+                      <button
+                        onClick={async () => {
+                          try {
+                            // Clear birthday in database
+                            const { error } = await supabase
+                              .from('contacts')
+                              .update({ birthday: null })
+                              .eq('contact_id', contactForQuickEdit.contact_id);
+
+                            if (error) throw error;
+
+                            // Clear form fields
+                            setQuickEditBirthdayDay('');
+                            setQuickEditBirthdayMonth('');
+                            setQuickEditAgeEstimate('');
+
+                            toast.success('Birthday cleared successfully!');
+                          } catch (error) {
+                            console.error('Error clearing birthday:', error);
+                            toast.error('Failed to clear birthday');
+                          }
+                        }}
+                        style={{
+                          padding: '4px 6px',
+                          border: 'none',
+                          borderRadius: '4px',
+                          backgroundColor: theme === 'light' ? '#EF4444' : '#DC2626',
+                          color: '#FFFFFF',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          fontWeight: '500'
+                        }}
+                        title="Clear birthday"
+                      >
+                        <FiX size={14} />
+                      </button>
+                    </div>
+
+                    {/* Day and Month dropdowns in same row */}
+                    <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                      <select
+                        value={quickEditBirthdayDay}
+                        onChange={(e) => setQuickEditBirthdayDay(e.target.value)}
+                        style={{
+                          flex: 1,
+                          padding: '10px',
+                          border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                          borderRadius: '6px',
+                          backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                          fontSize: '14px'
+                        }}
+                      >
+                        <option value="">Day</option>
+                        {Array.from({length: 31}, (_, i) => i + 1).map(day => (
+                          <option key={day} value={day}>{day}</option>
+                        ))}
+                      </select>
+
+                      <select
+                        value={quickEditBirthdayMonth}
+                        onChange={(e) => setQuickEditBirthdayMonth(e.target.value)}
+                        style={{
+                          flex: 1,
+                          padding: '10px',
+                          border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                          borderRadius: '6px',
+                          backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                          fontSize: '14px'
+                        }}
+                      >
+                        <option value="">Month</option>
+                        <option value="1">January</option>
+                        <option value="2">February</option>
+                        <option value="3">March</option>
+                        <option value="4">April</option>
+                        <option value="5">May</option>
+                        <option value="6">June</option>
+                        <option value="7">July</option>
+                        <option value="8">August</option>
+                        <option value="9">September</option>
+                        <option value="10">October</option>
+                        <option value="11">November</option>
+                        <option value="12">December</option>
+                      </select>
+                    </div>
+
+                    {/* Age estimate dropdown */}
+                    <select
+                      value={quickEditAgeEstimate}
+                      onChange={(e) => setQuickEditAgeEstimate(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '10px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        borderRadius: '6px',
+                        backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px'
+                      }}
+                    >
+                      <option value="">Age estimate (for birthday calculation)</option>
+                      <option value="20">20</option>
+                      <option value="25">25</option>
+                      <option value="30">30</option>
+                      <option value="35">35</option>
+                      <option value="40">40</option>
+                      <option value="45">45</option>
+                      <option value="50">50</option>
+                      <option value="55">55</option>
+                      <option value="60">60</option>
+                      <option value="65">65</option>
+                      <option value="70">70</option>
+                      <option value="75">75</option>
+                      <option value="80">80</option>
+                      <option value="80+">80+</option>
+                    </select>
+
+                    {/* Save Birthday Button */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'flex-end',
+                      marginTop: '12px'
+                    }}>
+                      <button
+                        onClick={handleSaveQuickEditBirthday}
+                        style={{
+                          padding: '8px 16px',
+                          border: 'none',
+                          borderRadius: '6px',
+                          backgroundColor: '#3B82F6',
+                          color: '#FFFFFF',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          fontWeight: '500'
+                        }}
+                      >
+                        Save Birthday
+                      </button>
+                    </div>
+                  </div>
+                  )}
+
+                  {/* Christmas Wishes */}
+                  {shouldShowField(contactForQuickEdit, 'christmas') && (
+                  <div style={{ marginBottom: '20px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      marginBottom: '8px',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB'
+                    }}>
+                      🎄 Christmas Wishes
+                    </label>
+                    <select
+                      value={quickEditChristmasWishes}
+                      onChange={(e) => {
+                        setQuickEditChristmasWishes(e.target.value);
+                        handleSaveQuickEditChristmasWishes(e.target.value);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        borderRadius: '6px',
+                        backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px'
+                      }}
+                    >
+                      <option value="">Select Christmas wishes...</option>
+                      <option value="no wishes set">Not set</option>
+                      <option value="no wishes">No wishes</option>
+                      <option value="whatsapp standard">WhatsApp standard</option>
+                      <option value="email standard">Email standard</option>
+                      <option value="email custom">Email custom</option>
+                      <option value="whatsapp custom">WhatsApp custom</option>
+                      <option value="call">Call</option>
+                      <option value="present">Present</option>
+                    </select>
+                  </div>
+                  )}
+
+                  {/* Easter Wishes */}
+                  {shouldShowField(contactForQuickEdit, 'easter') && (
+                  <div style={{ marginBottom: '20px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      marginBottom: '8px',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB'
+                    }}>
+                      🐰 Easter Wishes
+                    </label>
+                    <select
+                      value={quickEditEasterWishes}
+                      onChange={(e) => {
+                        setQuickEditEasterWishes(e.target.value);
+                        handleSaveQuickEditEasterWishes(e.target.value);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        borderRadius: '6px',
+                        backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px'
+                      }}
+                    >
+                      <option value="">Select Easter wishes...</option>
+                      <option value="no wishes set">Not set</option>
+                      <option value="no wishes">No wishes</option>
+                      <option value="whatsapp standard">WhatsApp standard</option>
+                      <option value="email standard">Email standard</option>
+                      <option value="email custom">Email custom</option>
+                      <option value="whatsapp custom">WhatsApp custom</option>
+                      <option value="call">Call</option>
+                      <option value="present">Present</option>
+                    </select>
+                  </div>
+                  )}
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div style={{
+                display: 'flex',
+                gap: '12px',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginTop: '24px',
+                paddingTop: '20px',
+                borderTop: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
+              }}>
+                <button
+                  onClick={() => {
+                    setQuickEditContactModalOpen(false);
+                    setQuickEditDescriptionText('');
+                    setQuickEditJobRoleText('');
+                    setQuickEditFirstName('');
+                    setQuickEditLastName('');
+                    setQuickEditLinkedin('');
+                    setContactForQuickEdit(null);
+                    setNewEmailText('');
+                    setNewEmailType('personal');
+                    setNewMobileText('');
+                    setNewMobileType('personal');
+                    setQuickEditContactCities([]);
+                    setQuickEditContactTags([]);
+                    setQuickEditCityModalOpen(false);
+                    setQuickEditTagModalOpen(false);
+                  }}
+                  style={{
+                    padding: '10px 20px',
+                    border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                    borderRadius: '6px',
+                    backgroundColor: 'transparent',
+                    color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                    fontSize: '14px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  {/* Automation Dropdown */}
+                  <select
+                    onChange={(e) => handleAutomation(e.target.value)}
+                    style={{
+                      padding: '10px 15px',
+                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                      borderRadius: '6px',
+                      backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB',
+                      fontSize: '14px',
+                      cursor: 'pointer',
+                      minWidth: '180px'
+                    }}
+                    value=""
+                  >
+                    <option value="" disabled>🤖 Automations</option>
+                    <option value="cold_contacted_founder">Cold contacted founder</option>
+                    <option value="quick_skip">Quick Skip</option>
+                  </select>
+
+                  <button
+                    onClick={handleSaveQuickEditContact}
+                    style={{
+                      padding: '10px 20px',
+                      border: 'none',
+                      borderRadius: '6px',
+                      backgroundColor: '#3B82F6',
+                      color: '#FFFFFF',
+                      fontSize: '14px',
+                      cursor: 'pointer',
+                      fontWeight: '500'
+                    }}
+                  >
+                    Save Details
+                  </button>
+                </div>
+              </div>
 
       {/* Quick Edit Associate Company Modal */}
       <Modal
