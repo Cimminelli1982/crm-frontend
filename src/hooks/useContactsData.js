@@ -234,11 +234,27 @@ export const useContactsData = (dataSource, refreshTrigger, onDataLoad) => {
 
   // Fetch missing data
   const fetchMissingData = async (dataSource) => {
-    const subCategory = dataSource.subCategory || 'Basics';
+    const subCategory = dataSource.subCategory || 'Need Input';
     let data = [];
 
     // Handle dedicated views for different missing data types
-    if (subCategory === 'Basics') {
+    if (subCategory === 'Need Input') {
+      // Use the new contacts_missing_info view
+      const { data: missingInfoData, error } = await supabase
+        .from('contacts_missing_info')
+        .select('*')
+        .limit(100);
+
+      if (error) throw error;
+
+      data = (missingInfoData || []).map(contact => ({
+        ...contact,
+        emails: [],
+        mobiles: [],
+        companies: [],
+        contact_emails: [],
+      }));
+    } else if (subCategory === 'Basics') {
       const { data: basicsData, error } = await supabase
         .from('contacts_without_basics')
         .select('*')

@@ -29,7 +29,7 @@ const SortPage = ({ theme, onInboxCountChange }) => {
   const [filterCategory, setFilterCategory] = useState('Inbox');
   const [inboxTimeFilter, setInboxTimeFilter] = useState('Today'); // Time filter for Inbox
   const [spamSubCategory, setSpamSubCategory] = useState('Email');
-  const [missingSubCategory, setMissingSubCategory] = useState('Basics');
+  const [missingSubCategory, setMissingSubCategory] = useState('Need Input');
   const [selectedEmail, setSelectedEmail] = useState(null);
   const [confirmSpam, setConfirmSpam] = useState(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -463,45 +463,10 @@ const SortPage = ({ theme, onInboxCountChange }) => {
           <SubMenu theme={theme}>
             <SubTab
               theme={theme}
-              $active={missingSubCategory === 'Basics'}
-              onClick={() => setMissingSubCategory('Basics')}
+              $active={missingSubCategory === 'Need Input'}
+              onClick={() => setMissingSubCategory('Need Input')}
             >
-              Basics
-            </SubTab>
-            <SubTab
-              theme={theme}
-              $active={missingSubCategory === 'Company'}
-              onClick={() => setMissingSubCategory('Company')}
-            >
-              Company
-            </SubTab>
-            <SubTab
-              theme={theme}
-              $active={missingSubCategory === 'Tags'}
-              onClick={() => setMissingSubCategory('Tags')}
-            >
-              Tags
-            </SubTab>
-            <SubTab
-              theme={theme}
-              $active={missingSubCategory === 'Cities'}
-              onClick={() => setMissingSubCategory('Cities')}
-            >
-              Cities
-            </SubTab>
-            <SubTab
-              theme={theme}
-              $active={missingSubCategory === 'Score'}
-              onClick={() => setMissingSubCategory('Score')}
-            >
-              Score
-            </SubTab>
-            <SubTab
-              theme={theme}
-              $active={missingSubCategory === 'Keep in touch'}
-              onClick={() => setMissingSubCategory('Keep in touch')}
-            >
-              Keep in touch
+              Need Input
             </SubTab>
             <SubTab
               theme={theme}
