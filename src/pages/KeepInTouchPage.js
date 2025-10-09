@@ -1,238 +1,60 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient';
-import styled from 'styled-components';
+import React, { useState } from 'react';
 import { FaSync } from 'react-icons/fa';
-import { toast } from 'react-hot-toast';
-import ContactsList from '../components/ContactsList';
+import ContactsListDRY from '../components/ContactsListDRY';
+import {
+  PageContainer,
+  PageView,
+  PageHeader,
+  HeaderContent,
+  HeaderText,
+  PageTitle,
+  PageSubtitle,
+  RefreshButton,
+  FilterTabs,
+  FilterTab,
+  ContentArea,
+  SubMenu,
+  SubTab
+} from '../components/shared/PageLayout';
 
 const KeepInTouchPage = ({ theme, onKeepInTouchCountChange }) => {
-  const navigate = useNavigate();
-  const [contacts, setContacts] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [filterCategory, setFilterCategory] = useState('Touch Base');
   const [subCategory, setSubCategory] = useState('Over Due');
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  const fetchContacts = async () => {
-    setLoading(true);
-    try {
-      let query = supabase
-        .from('v_keep_in_touch')
-        .select('*');
+  // Create data source for ContactsListDRY
+  const getDataSource = () => {
+    if (filterCategory === 'Touch Base') {
+      return {
+        type: 'keepInTouch',
+        filterCategory: 'Touch Base',
+        subCategory: subCategory
+      };
+    } else if (filterCategory === 'Birthday') {
+      return {
+        type: 'keepInTouch',
+        filterCategory: 'Birthday',
+        subCategory: subCategory
+      };
+    }
+    return {
+      type: 'keepInTouch',
+      filterCategory: filterCategory
+    };
+  };
 
-      // Apply category-specific filters
-      if (filterCategory === 'Touch Base') {
-        // Apply mutually exclusive subcategory filters
-        if (subCategory === 'Over Due') {
-          // Very long overdue (more than 30 days overdue)
-          query = query.lt('days_until_next', -30);
-        } else if (subCategory === 'Due') {
-          // Small delay (overdue but within 30 days)
-          query = query.gte('days_until_next', -30).lt('days_until_next', 0);
-        } else if (subCategory === 'Soon') {
-          // Due in the future but soon (0-7 days)
-          query = query.gte('days_until_next', 0).lte('days_until_next', 7);
-        } else if (subCategory === 'Relax') {
-          // Due in a very long time (more than 7 days)
-          query = query.gt('days_until_next', 7);
-        }
-      } else if (filterCategory === 'Birthday') {
-        // Birthday filtering - get contacts with upcoming birthdays
-        const today = new Date();
-        const currentMonth = today.getMonth() + 1; // JavaScript months are 0-11, but we need 1-12
-        const currentDay = today.getDate();
-
-        // Get contacts with upcoming birthdays in the next 2 months
-        const { data: birthdayContacts, error: birthdayError } = await supabase
-          .from('contacts')
-          .select(`
-            *,
-            contact_emails (email, type, is_primary),
-            contact_mobiles (mobile, type, is_primary),
-            contact_companies (
-              company_id,
-              relationship,
-              is_primary,
-              companies (name, website, category)
-            ),
-            contact_tags (
-              tags (name)
-            ),
-            contact_cities (
-              cities (name, country)
-            )
-          `)
-          .not('birthday', 'is', null)
-          .order('first_name', { ascending: true });
-
-        if (birthdayError) throw birthdayError;
-
-        // Process birthday contacts and calculate days until birthday
-        const processedBirthdayContacts = (birthdayContacts || []).map(contact => {
-          // Extract year, month and day from birthday string (YYYY-MM-DD format)
-          const birthdayParts = contact.birthday.split('-');
-          const birthYear = parseInt(birthdayParts[0]); // YYYY
-          const birthdayMonth = parseInt(birthdayParts[1]); // MM (1-12)
-          const birthdayDay = parseInt(birthdayParts[2]); // DD (1-31)
-
-          // Calculate this year's birthday using today's year
-          let nextBirthday = new Date(today.getFullYear(), birthdayMonth - 1, birthdayDay);
-
-          // If birthday already passed this year, use next year
-          let birthdayYear = today.getFullYear();
-          if (nextBirthday < today) {
-            nextBirthday = new Date(today.getFullYear() + 1, birthdayMonth - 1, birthdayDay);
-            birthdayYear = today.getFullYear() + 1;
-          }
-
-          // Calculate age they will turn (or have turned if today)
-          const turningAge = birthdayYear - birthYear;
-
-          // Calculate days until birthday (0 means today)
-          const daysDiff = Math.floor((nextBirthday - today) / (1000 * 60 * 60 * 24));
-
-          return {
-            ...contact,
-            emails: contact.contact_emails || [],
-            mobiles: contact.contact_mobiles || [],
-            companies: contact.contact_companies?.map(cc => ({
-              ...cc.companies,
-              company_id: cc.company_id // Preserve company_id from the join table
-            })).filter(Boolean) || [],
-            tags: contact.contact_tags?.map(ct => ct.tags?.name).filter(Boolean) || [],
-            cities: contact.contact_cities?.map(cc => cc.cities).filter(Boolean) || [],
-            // Add birthday-specific fields
-            days_until_birthday: daysDiff,
-            next_birthday: nextBirthday,
-            birthday_month: birthdayMonth,
-            birthday_day: birthdayDay,
-            turning_age: turningAge,
-            birth_year: birthYear
-          };
-        })
-        // Filter based on selected birthday subcategory
-        .filter(contact => {
-          const days = contact.days_until_birthday;
-
-          switch (subCategory) {
-            case 'Today':
-              return days === 0;
-            case 'This Week':
-              return days <= 7;
-            case 'This Month':
-              return days <= 30;
-            case 'Next 3 Months':
-              return days <= 90;
-            case 'All':
-            default:
-              return true; // Show all birthdays
-          }
-        })
-        // Sort by days until birthday (closest first)
-        .sort((a, b) => a.days_until_birthday - b.days_until_birthday);
-
-        setContacts(processedBirthdayContacts);
-        if (onKeepInTouchCountChange) {
-          onKeepInTouchCountChange(processedBirthdayContacts.length);
-        }
-        setLoading(false);
-        return;
-      } else {
-        // Other main categories will be implemented later
-        setContacts([]);
-        if (onKeepInTouchCountChange) {
-          onKeepInTouchCountChange(0);
-        }
-        setLoading(false);
-        return;
-      }
-
-      // Order by priority: overdue first (most negative), then by days until next
-      const { data: keepInTouchData, error: keepInTouchError } = await query
-        .order('days_until_next', { ascending: true })
-        .limit(100);
-
-      if (keepInTouchError) throw keepInTouchError;
-
-      // Get full contact details for each keep-in-touch contact
-      const contactIds = (keepInTouchData || []).map(kit => kit.contact_id);
-
-      let processedContacts = [];
-
-      if (contactIds.length > 0) {
-        const { data: contactsData, error: contactsError } = await supabase
-          .from('contacts')
-          .select(`
-            *,
-            contact_emails (email, type, is_primary),
-            contact_mobiles (mobile, type, is_primary),
-            contact_companies (
-              company_id,
-              relationship,
-              is_primary,
-              companies (name, website, category)
-            ),
-            contact_tags (
-              tags (name)
-            ),
-            contact_cities (
-              cities (name, country)
-            )
-          `)
-          .in('contact_id', contactIds);
-
-        if (contactsError) throw contactsError;
-
-        // Merge keep-in-touch data with contact data
-        processedContacts = (keepInTouchData || []).map(kitData => {
-          const contact = (contactsData || []).find(c => c.contact_id === kitData.contact_id);
-          if (!contact) return null;
-
-          return {
-            ...contact,
-            // Add keep-in-touch specific fields
-            keep_in_touch_frequency: kitData.frequency,
-            christmas: kitData.christmas,
-            easter: kitData.easter,
-            days_until_next: kitData.days_until_next,
-            next_interaction_date: kitData.next_interaction_date,
-            why_keeping_in_touch: kitData.why_keeping_in_touch,
-            next_follow_up_notes: kitData.next_follow_up_notes,
-            // Process related data
-            emails: contact.contact_emails || [],
-            mobiles: contact.contact_mobiles || [],
-            companies: contact.contact_companies?.map(cc => ({
-              ...cc.companies,
-              company_id: cc.company_id // Preserve company_id from the join table
-            })).filter(Boolean) || [],
-            tags: contact.contact_tags?.map(ct => ct.tags?.name).filter(Boolean) || [],
-            cities: contact.contact_cities?.map(cc => cc.cities).filter(Boolean) || []
-          };
-        }).filter(Boolean);
-      }
-
-      setContacts(processedContacts);
-
-      // Update keep in touch count if we have a callback
-      if (onKeepInTouchCountChange) {
-        onKeepInTouchCountChange(processedContacts.length);
-      }
-    } catch (error) {
-      console.error(`Error fetching ${filterCategory} keep-in-touch contacts:`, error);
-      toast.error(`Failed to load ${filterCategory} keep-in-touch contacts`);
-    } finally {
-      setLoading(false);
+  const handleDataLoad = (data) => {
+    // Update keep in touch count if we have a callback
+    if (onKeepInTouchCountChange) {
+      onKeepInTouchCountChange(data.length);
     }
   };
 
-  useEffect(() => {
-    fetchContacts();
-  }, [filterCategory, subCategory]);
 
-  const handleManualRefresh = async () => {
+  const handleManualRefresh = () => {
     setIsRefreshing(true);
-    await fetchContacts();
+    setRefreshTrigger(prev => prev + 1);
     setTimeout(() => setIsRefreshing(false), 1000);
   };
 
@@ -242,8 +64,8 @@ const KeepInTouchPage = ({ theme, onKeepInTouchCountChange }) => {
 
   return (
     <PageContainer theme={theme}>
-      <KeepInTouchView>
-        <KeepInTouchHeader theme={theme}>
+      <PageView>
+        <PageHeader theme={theme}>
           <HeaderContent>
             <HeaderText>
               <PageTitle theme={theme}>Keep in Touch</PageTitle>
@@ -273,298 +95,64 @@ const KeepInTouchPage = ({ theme, onKeepInTouchCountChange }) => {
               </FilterTab>
             ))}
           </FilterTabs>
-
-        </KeepInTouchHeader>
+        </PageHeader>
 
         {/* Touch Base Submenu - in gray area below header */}
         {filterCategory === 'Touch Base' && (
-          <TouchBaseSubMenu theme={theme}>
+          <SubMenu theme={theme}>
             {touchBaseSubCategories.map(subCat => (
-              <TouchBaseSubTab
+              <SubTab
                 key={subCat}
                 theme={theme}
                 $active={subCategory === subCat}
                 onClick={() => setSubCategory(subCat)}
               >
                 {subCat}
-              </TouchBaseSubTab>
+              </SubTab>
             ))}
-          </TouchBaseSubMenu>
+          </SubMenu>
         )}
 
         {/* Birthday Submenu - in gray area below header */}
         {filterCategory === 'Birthday' && (
-          <TouchBaseSubMenu theme={theme}>
+          <SubMenu theme={theme}>
             {birthdaySubCategories.map(subCat => (
-              <TouchBaseSubTab
+              <SubTab
                 key={subCat}
                 theme={theme}
                 $active={subCategory === subCat}
                 onClick={() => setSubCategory(subCat)}
               >
                 {subCat}
-              </TouchBaseSubTab>
+              </SubTab>
             ))}
-          </TouchBaseSubMenu>
+          </SubMenu>
         )}
 
         <ContentArea>
-          <ContactsList
-            contacts={contacts}
-            loading={loading}
+          <ContactsListDRY
+            dataSource={getDataSource()}
+            refreshTrigger={refreshTrigger}
             theme={theme}
             emptyStateConfig={{
               icon: '📞',
               title: 'No keep-in-touch contacts!',
               text: 'All contacts are up to date with follow-ups.'
             }}
-            onContactUpdate={fetchContacts}
+            onDataLoad={handleDataLoad}
+            onContactUpdate={() => setRefreshTrigger(prev => prev + 1)}
             showActions={true}
             pageContext="keepInTouch"
-            keepInTouchData={{
+            keepInTouchConfig={{
               showDaysCounter: true,
               showFrequencyBadge: true
             }}
             filterCategory={filterCategory}
           />
         </ContentArea>
-      </KeepInTouchView>
+      </PageView>
     </PageContainer>
   );
 };
-
-// Styled Components (based on SortPage)
-const PageContainer = styled.div`
-  min-height: 100vh;
-  background: ${props => props.theme === 'light' ? '#F9FAFB' : '#111827'};
-  transition: background-color 0.3s ease;
-`;
-
-const KeepInTouchView = styled.div`
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-`;
-
-const KeepInTouchHeader = styled.div`
-  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
-  border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
-  padding: 24px 20px 24px 20px;
-  position: sticky;
-  top: 0;
-  z-index: 10;
-`;
-
-const HeaderContent = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  max-width: 1200px;
-  margin: 0 auto 20px auto;
-`;
-
-const HeaderText = styled.div`
-  flex: 1;
-`;
-
-const PageTitle = styled.h1`
-  font-size: 28px;
-  font-weight: 700;
-  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
-  margin: 0 0 8px 0;
-`;
-
-const PageSubtitle = styled.p`
-  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
-  margin: 0;
-  font-size: 16px;
-`;
-
-const RefreshButton = styled.button`
-  background: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
-  color: white;
-  border: none;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-
-  ${props => props.$isRefreshing && `
-    svg {
-      animation: spin 1s linear infinite;
-    }
-  `}
-
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-
-  &:hover {
-    transform: scale(1.05);
-  }
-
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none;
-  }
-`;
-
-const FilterTabs = styled.div`
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 2px;
-  max-width: 1200px;
-  margin: 20px auto 0 auto;
-  background: ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
-  border-radius: 12px;
-  padding: 6px;
-  width: fit-content;
-  box-shadow: ${props => props.theme === 'light'
-    ? '0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06)'
-    : '0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2)'
-  };
-`;
-
-const FilterTab = styled.button`
-  background: ${props => props.$active
-    ? (props.theme === 'light' ? '#FFFFFF' : '#1F2937')
-    : 'transparent'
-  };
-  color: ${props => props.$active
-    ? (props.theme === 'light' ? '#111827' : '#F9FAFB')
-    : (props.theme === 'light' ? '#6B7280' : '#9CA3AF')
-  };
-  border: none;
-  padding: 10px 20px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
-  font-size: 15px;
-  font-weight: ${props => props.$active ? '600' : '500'};
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-width: fit-content;
-  white-space: nowrap;
-  position: relative;
-  box-shadow: ${props => props.$active
-    ? (props.theme === 'light'
-        ? '0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08)'
-        : '0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3)')
-    : 'none'
-  };
-
-  &:hover {
-    background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
-    color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
-    transform: translateY(-1px);
-    box-shadow: ${props => props.theme === 'light'
-      ? '0 2px 8px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1)'
-      : '0 2px 8px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4)'
-    };
-  }
-
-  &:active {
-    transform: translateY(0);
-  }
-`;
-
-const ContentArea = styled.div`
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-`;
-
-const ComingSoonContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 40px;
-  text-align: center;
-  max-width: 500px;
-  margin: 0 auto;
-`;
-
-const ComingSoonIcon = styled.div`
-  font-size: 64px;
-  margin-bottom: 24px;
-`;
-
-const ComingSoonTitle = styled.h2`
-  font-size: 32px;
-  font-weight: 600;
-  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
-  margin: 0 0 16px 0;
-`;
-
-const ComingSoonText = styled.p`
-  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
-  font-size: 18px;
-  line-height: 1.6;
-  margin: 0;
-`;
-
-// Touch Base submenu styled components
-const TouchBaseSubMenu = styled.div`
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 2px;
-  max-width: 500px;
-  margin: 15px auto 0 auto;
-  background: ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
-  border-radius: 8px;
-  padding: 4px;
-  width: fit-content;
-`;
-
-const TouchBaseSubTab = styled.button`
-  background: ${props => props.$active
-    ? (props.theme === 'light' ? '#FFFFFF' : '#1F2937')
-    : 'transparent'
-  };
-  color: ${props => props.$active
-    ? (props.theme === 'light' ? '#111827' : '#F9FAFB')
-    : (props.theme === 'light' ? '#6B7280' : '#9CA3AF')
-  };
-  border: none;
-  padding: 8px 16px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 14px;
-  font-weight: ${props => props.$active ? '600' : '500'};
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-width: fit-content;
-  white-space: nowrap;
-  box-shadow: ${props => props.$active
-    ? (props.theme === 'light'
-        ? '0 1px 2px rgba(0, 0, 0, 0.1)'
-        : '0 1px 2px rgba(0, 0, 0, 0.2)')
-    : 'none'
-  };
-
-  &:hover:not([disabled]) {
-    background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
-    color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
-    box-shadow: ${props => props.theme === 'light'
-      ? '0 1px 3px rgba(0, 0, 0, 0.15)'
-      : '0 1px 3px rgba(0, 0, 0, 0.3)'
-    };
-  }
-`;
 
 export default KeepInTouchPage;

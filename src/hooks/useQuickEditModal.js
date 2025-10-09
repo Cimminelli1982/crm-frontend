@@ -728,7 +728,38 @@ export const useQuickEditModal = (onContactUpdate) => {
         .eq('contact_id', contact.contact_id)
         .order('is_primary', { ascending: false });
 
-      setQuickEditContactEmails(emailsData || []);
+      // Ensure only one email is marked as primary (fix data inconsistencies)
+      if (emailsData && emailsData.length > 0) {
+        // Check if multiple emails are marked as primary
+        const primaryEmails = emailsData.filter(e => e.is_primary);
+
+        if (primaryEmails.length > 1) {
+          // Fix the database: keep only the first as primary
+          const primaryToKeep = primaryEmails[0];
+          const emailsToFix = primaryEmails.slice(1);
+
+          // Update database to remove extra primary flags
+          for (const email of emailsToFix) {
+            await supabase
+              .from('contact_emails')
+              .update({ is_primary: false })
+              .eq('email_id', email.email_id);
+          }
+
+          // Update local state with corrected data
+          const cleanedEmails = emailsData.map(email => ({
+            ...email,
+            is_primary: email.email_id === primaryToKeep.email_id
+          }));
+          setQuickEditContactEmails(cleanedEmails);
+
+          console.log(`Fixed ${emailsToFix.length} duplicate primary emails for contact ${contact.contact_id}`);
+        } else {
+          setQuickEditContactEmails(emailsData);
+        }
+      } else {
+        setQuickEditContactEmails([]);
+      }
 
       // Load mobiles
       const { data: mobilesData } = await supabase
@@ -737,7 +768,38 @@ export const useQuickEditModal = (onContactUpdate) => {
         .eq('contact_id', contact.contact_id)
         .order('is_primary', { ascending: false });
 
-      setQuickEditContactMobiles(mobilesData || []);
+      // Ensure only one mobile is marked as primary (fix data inconsistencies)
+      if (mobilesData && mobilesData.length > 0) {
+        // Check if multiple mobiles are marked as primary
+        const primaryMobiles = mobilesData.filter(m => m.is_primary);
+
+        if (primaryMobiles.length > 1) {
+          // Fix the database: keep only the first as primary
+          const primaryToKeep = primaryMobiles[0];
+          const mobilesToFix = primaryMobiles.slice(1);
+
+          // Update database to remove extra primary flags
+          for (const mobile of mobilesToFix) {
+            await supabase
+              .from('contact_mobiles')
+              .update({ is_primary: false })
+              .eq('mobile_id', mobile.mobile_id);
+          }
+
+          // Update local state with corrected data
+          const cleanedMobiles = mobilesData.map(mobile => ({
+            ...mobile,
+            is_primary: mobile.mobile_id === primaryToKeep.mobile_id
+          }));
+          setQuickEditContactMobiles(cleanedMobiles);
+
+          console.log(`Fixed ${mobilesToFix.length} duplicate primary mobiles for contact ${contact.contact_id}`);
+        } else {
+          setQuickEditContactMobiles(mobilesData);
+        }
+      } else {
+        setQuickEditContactMobiles([]);
+      }
 
       // Load cities
       const { data: citiesData } = await supabase
