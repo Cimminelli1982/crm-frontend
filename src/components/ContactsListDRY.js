@@ -12,6 +12,10 @@ import CreateCompanyModal from './modals/CreateCompanyModal';
 import ContactCard from './ContactCard';
 import DeleteContactModal from './DeleteContactModal';
 import KeepInTouchModal from './KeepInTouchModal';
+import FrequencyModal from './FrequencyModal';
+import CommunicationModal from './CommunicationModal';
+import BirthdayModal from './BirthdayModal';
+import PowerupsMenuModal from './PowerupsMenuModal';
 import QuickEditModal from './QuickEditModal';
 import { useQuickEditModal } from '../hooks/useQuickEditModal';
 import { useContactsData } from '../hooks/useContactsData';
@@ -184,7 +188,6 @@ const ContactsListDRY = ({
   // Birthday edit modal state
   const [birthdayModalOpen, setBirthdayModalOpen] = useState(false);
   const [contactForBirthday, setContactForBirthday] = useState(null);
-  const [selectedBirthday, setSelectedBirthday] = useState('');
 
   // Communication modal state (for interactions page)
   const [communicationModalOpen, setCommunicationModalOpen] = useState(false);
@@ -314,13 +317,6 @@ const ContactsListDRY = ({
   const [contactEnrichModalOpen, setContactEnrichModalOpen] = useState(false);
   const [contactForEnrich, setContactForEnrich] = useState(null);
 
-  const frequencyOptions = [
-    'Weekly',
-    'Monthly',
-    'Quarterly',
-    'Twice per Year',
-    'Once per Year'
-  ];
 
   const categoryOptions = [
     'Inbox',
@@ -443,58 +439,14 @@ const ContactsListDRY = ({
     setFrequencyModalOpen(true);
   };
 
-  const handleUpdateFrequency = async () => {
-    if (!contactForFrequency || !selectedFrequency) return;
-
-    try {
-      const { error } = await supabase
-        .from('keep_in_touch')
-        .update({ frequency: selectedFrequency })
-        .eq('contact_id', contactForFrequency.contact_id);
-
-      if (error) throw error;
-
-      toast.success(`Keep in touch frequency updated to ${selectedFrequency}`);
-      setFrequencyModalOpen(false);
-      setContactForFrequency(null);
-      setSelectedFrequency('');
-      if (handleContactUpdate) handleContactUpdate();
-    } catch (error) {
-      console.error('Error updating frequency:', error);
-      toast.error('Failed to update frequency');
-    }
-  };
 
   // Handle opening birthday modal
   const handleOpenBirthdayModal = (contact, e) => {
     if (e) e.stopPropagation();
     setContactForBirthday(contact);
-    setSelectedBirthday(contact.birthday || '');
     setBirthdayModalOpen(true);
   };
 
-  // Handle updating birthday
-  const handleUpdateBirthday = async () => {
-    if (!contactForBirthday) return;
-
-    try {
-      const { error } = await supabase
-        .from('contacts')
-        .update({ birthday: selectedBirthday || null })
-        .eq('contact_id', contactForBirthday.contact_id);
-
-      if (error) throw error;
-
-      toast.success('Birthday updated successfully');
-      setBirthdayModalOpen(false);
-      setContactForBirthday(null);
-      setSelectedBirthday('');
-      if (handleContactUpdate) handleContactUpdate();
-    } catch (error) {
-      console.error('Error updating birthday:', error);
-      toast.error('Failed to update birthday');
-    }
-  };
 
   // Handle opening communication modal (for interactions page)
   const handleOpenCommunicationModal = (contact, e) => {
@@ -973,21 +925,6 @@ const ContactsListDRY = ({
     }
   };
 
-  // Handle communication actions
-  const handleWhatsAppClick = (mobile) => {
-    const cleanMobile = mobile.replace(/[^\d]/g, ''); // Remove non-digit characters
-    const whatsappUrl = `https://wa.me/${cleanMobile}`;
-    window.open(whatsappUrl, '_blank');
-  };
-
-  const handleEmailClick = (email) => {
-    const mailtoUrl = `mailto:${email}`;
-    window.open(mailtoUrl, '_blank');
-  };
-
-  const handleLinkedInClick = (linkedinUrl) => {
-    window.open(linkedinUrl, '_blank');
-  };
 
   // Handle removing birthday
   const handleRemoveBirthday = async (contact, e) => {
@@ -1605,250 +1542,37 @@ const ContactsListDRY = ({
       />
 
       {/* Frequency Modal */}
-      <Modal
+      <FrequencyModal
         isOpen={frequencyModalOpen}
-        onRequestClose={() => setFrequencyModalOpen(false)}
-        style={{
-          overlay: {
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            zIndex: 9999
-          },
-          content: {
-            top: '50%',
-            left: '50%',
-            right: 'auto',
-            bottom: 'auto',
-            marginRight: '-50%',
-            transform: 'translate(-50%, -50%)',
-            padding: '0',
-            border: 'none',
-            borderRadius: '12px',
-            backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
-            maxWidth: '400px',
-            width: '90%'
-          }
+        onClose={() => {
+          setFrequencyModalOpen(false);
+          setContactForFrequency(null);
+          setSelectedFrequency('');
         }}
-      >
-        <FrequencyModalContent theme={theme}>
-          <FrequencyModalHeader theme={theme}>
-            <h3>Change Keep in Touch Frequency</h3>
-            <FrequencyModalCloseButton
-              theme={theme}
-              onClick={() => setFrequencyModalOpen(false)}
-            >
-              <FiX />
-            </FrequencyModalCloseButton>
-          </FrequencyModalHeader>
-
-          <FrequencyModalBody>
-            <ContactNameDisplay theme={theme}>
-              {contactForFrequency?.first_name} {contactForFrequency?.last_name}
-            </ContactNameDisplay>
-
-            <FrequencyOptionsContainer>
-              {frequencyOptions.map(frequency => (
-                <FrequencyOption
-                  key={frequency}
-                  theme={theme}
-                  $selected={selectedFrequency === frequency}
-                  onClick={() => setSelectedFrequency(frequency)}
-                >
-                  {frequency}
-                </FrequencyOption>
-              ))}
-            </FrequencyOptionsContainer>
-
-            <ButtonGroup>
-              <CancelButton
-                theme={theme}
-                onClick={() => setFrequencyModalOpen(false)}
-              >
-                Cancel
-              </CancelButton>
-              <UpdateFrequencyButton
-                theme={theme}
-                onClick={handleUpdateFrequency}
-                disabled={!selectedFrequency}
-              >
-                Update Frequency
-              </UpdateFrequencyButton>
-            </ButtonGroup>
-          </FrequencyModalBody>
-        </FrequencyModalContent>
-      </Modal>
+        contact={contactForFrequency}
+        theme={theme}
+        onContactUpdate={handleContactUpdate}
+      />
 
       {/* Birthday Modal */}
-      <Modal
+      <BirthdayModal
         isOpen={birthdayModalOpen}
-        onRequestClose={() => setBirthdayModalOpen(false)}
-        style={{
-          overlay: {
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            zIndex: 9999
-          },
-          content: {
-            top: '50%',
-            left: '50%',
-            right: 'auto',
-            bottom: 'auto',
-            marginRight: '-50%',
-            transform: 'translate(-50%, -50%)',
-            padding: '0',
-            border: 'none',
-            borderRadius: '12px',
-            backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
-            maxWidth: '400px',
-            width: '90%'
-          }
+        onClose={() => {
+          setBirthdayModalOpen(false);
+          setContactForBirthday(null);
         }}
-      >
-        <FrequencyModalContent theme={theme}>
-          <FrequencyModalHeader theme={theme}>
-            <h3>Edit Birthday</h3>
-            <FrequencyModalCloseButton
-              theme={theme}
-              onClick={() => setBirthdayModalOpen(false)}
-            >
-              <FiX />
-            </FrequencyModalCloseButton>
-          </FrequencyModalHeader>
-
-          <FrequencyModalBody>
-            <ContactNameDisplay theme={theme}>
-              {contactForBirthday?.first_name} {contactForBirthday?.last_name}
-            </ContactNameDisplay>
-
-            <BirthdayInputContainer>
-              <BirthdayLabel theme={theme}>Birthday</BirthdayLabel>
-              <BirthdayInput
-                type="date"
-                theme={theme}
-                value={selectedBirthday}
-                onChange={(e) => setSelectedBirthday(e.target.value)}
-              />
-            </BirthdayInputContainer>
-
-            <ButtonGroup>
-              <CancelButton
-                theme={theme}
-                onClick={() => setBirthdayModalOpen(false)}
-              >
-                Cancel
-              </CancelButton>
-              <UpdateFrequencyButton
-                theme={theme}
-                onClick={handleUpdateBirthday}
-              >
-                Update Birthday
-              </UpdateFrequencyButton>
-            </ButtonGroup>
-          </FrequencyModalBody>
-        </FrequencyModalContent>
-      </Modal>
+        contact={contactForBirthday}
+        theme={theme}
+        onContactUpdate={handleContactUpdate}
+      />
 
       {/* Communication Modal (for interactions page) */}
-      <Modal
+      <CommunicationModal
         isOpen={communicationModalOpen}
-        onRequestClose={() => setCommunicationModalOpen(false)}
-        shouldCloseOnOverlayClick={true}
-        style={{
-          content: {
-            top: '50%',
-            left: '50%',
-            right: 'auto',
-            bottom: 'auto',
-            marginRight: '-50%',
-            transform: 'translate(-50%, -50%)',
-            padding: '0',
-            border: 'none',
-            borderRadius: '12px',
-            maxWidth: '400px',
-            width: '90%',
-            maxHeight: '80vh',
-            overflow: 'auto',
-            background: 'transparent'
-          },
-          overlay: {
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            zIndex: 1000
-          }
-        }}
-      >
-        <FrequencyModalContent theme={theme}>
-          <FrequencyModalHeader theme={theme}>
-            <h3 style={{ margin: 0, fontSize: '18px' }}>Contact {contactForCommunication?.first_name} {contactForCommunication?.last_name}</h3>
-            <FrequencyModalCloseButton
-              onClick={() => setCommunicationModalOpen(false)}
-              theme={theme}
-            >
-              <FiX />
-            </FrequencyModalCloseButton>
-          </FrequencyModalHeader>
-          <FrequencyModalBody>
-            {/* Mobile Numbers */}
-            {contactForCommunication?.contact_mobiles?.length > 0 && (
-              <div style={{ marginBottom: '20px' }}>
-                <h4 style={{ margin: '0 0 12px 0', fontSize: '16px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>📱 Mobile Numbers</h4>
-                {contactForCommunication.contact_mobiles.map((mobileObj, index) => (
-                  <FrequencyOption
-                    key={index}
-                    theme={theme}
-                    onClick={() => handleWhatsAppClick(mobileObj.mobile)}
-                    style={{ cursor: 'pointer', marginBottom: '8px' }}
-                  >
-                    <FaPhone style={{ marginRight: '8px' }} />
-                    {mobileObj.mobile}
-                    {mobileObj.is_primary && <span style={{ fontSize: '12px', marginLeft: '8px', opacity: 0.7 }}>(Primary)</span>}
-                  </FrequencyOption>
-                ))}
-              </div>
-            )}
-
-            {/* Email Addresses */}
-            {contactForCommunication?.contact_emails?.length > 0 && (
-              <div style={{ marginBottom: '20px' }}>
-                <h4 style={{ margin: '0 0 12px 0', fontSize: '16px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>📧 Email Addresses</h4>
-                {contactForCommunication.contact_emails.map((emailObj, index) => (
-                  <FrequencyOption
-                    key={index}
-                    theme={theme}
-                    onClick={() => handleEmailClick(emailObj.email)}
-                    style={{ cursor: 'pointer', marginBottom: '8px' }}
-                  >
-                    <FaEnvelope style={{ marginRight: '8px' }} />
-                    {emailObj.email}
-                    {emailObj.is_primary && <span style={{ fontSize: '12px', marginLeft: '8px', opacity: 0.7 }}>(Primary)</span>}
-                  </FrequencyOption>
-                ))}
-              </div>
-            )}
-
-            {/* LinkedIn */}
-            {contactForCommunication?.linkedin && (
-              <div style={{ marginBottom: '20px' }}>
-                <h4 style={{ margin: '0 0 12px 0', fontSize: '16px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>🔗 LinkedIn</h4>
-                <FrequencyOption
-                  theme={theme}
-                  onClick={() => handleLinkedInClick(contactForCommunication.linkedin)}
-                  style={{ cursor: 'pointer', marginBottom: '8px' }}
-                >
-                  <FaBuilding style={{ marginRight: '8px' }} />
-                  View LinkedIn Profile
-                </FrequencyOption>
-              </div>
-            )}
-
-            {/* No contact info available */}
-            {(!contactForCommunication?.contact_mobiles?.length &&
-              !contactForCommunication?.contact_emails?.length &&
-              !contactForCommunication?.linkedin) && (
-              <div style={{ textAlign: 'center', padding: '20px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
-                No contact information available for this contact.
-              </div>
-            )}
-          </FrequencyModalBody>
-        </FrequencyModalContent>
-      </Modal>
+        onClose={() => setCommunicationModalOpen(false)}
+        contact={contactForCommunication}
+        theme={theme}
+      />
 
       {/* Keep in Touch Data Input Modal (for interactions page) */}
       <KeepInTouchModal
@@ -2143,93 +1867,18 @@ const ContactsListDRY = ({
       </Modal>
 
       {/* Contacts Powerups Menu Modal */}
-      <Modal
+      <PowerupsMenuModal
         isOpen={powerupsMenuOpen}
-        onRequestClose={() => setPowerupsMenuOpen(false)}
-        style={{
-          content: {
-            top: '50%',
-            left: '50%',
-            right: 'auto',
-            bottom: 'auto',
-            marginRight: '-50%',
-            transform: 'translate(-50%, -50%)',
-            background: theme === 'light' ? '#FFFFFF' : '#1F2937',
-            border: theme === 'light' ? '1px solid #E5E7EB' : '1px solid #374151',
-            borderRadius: '12px',
-            padding: '0',
-            width: '320px',
-            maxWidth: '90%'
-          },
-          overlay: {
-            backgroundColor: 'rgba(0, 0, 0, 0.75)',
-            zIndex: 1000
-          }
+        onClose={() => {
+          setPowerupsMenuOpen(false);
+          setContactForPowerups(null);
         }}
-        contentLabel="Contact Power-ups"
-      >
-        <PowerupsMenuContainer theme={theme}>
-          <PowerupsMenuHeader theme={theme}>
-            <PowerupsMenuTitle theme={theme}>
-              ⚡ Contact Power-ups
-            </PowerupsMenuTitle>
-            <PowerupsMenuCloseButton
-              theme={theme}
-              onClick={() => setPowerupsMenuOpen(false)}
-            >
-              <FiX />
-            </PowerupsMenuCloseButton>
-          </PowerupsMenuHeader>
-
-          <PowerupsMenuContent>
-            <PowerupsMenuItem
-              theme={theme}
-              onClick={() => {
-                setPowerupsMenuOpen(false);
-                handleOpenQuickEditContactModal(contactForPowerups);
-              }}
-            >
-              <PowerupsMenuIcon>
-                <FaEdit />
-              </PowerupsMenuIcon>
-              <PowerupsMenuText theme={theme}>
-                <PowerupsMenuItemTitle theme={theme}>Edit Contact</PowerupsMenuItemTitle>
-                <PowerupsMenuItemSubtitle theme={theme}>Quick edit contact details</PowerupsMenuItemSubtitle>
-              </PowerupsMenuText>
-            </PowerupsMenuItem>
-
-            <PowerupsMenuItem
-              theme={theme}
-              onClick={() => {
-                handleOpenFindDuplicatesModal(contactForPowerups);
-              }}
-            >
-              <PowerupsMenuIcon>
-                <FiSearch />
-              </PowerupsMenuIcon>
-              <PowerupsMenuText theme={theme}>
-                <PowerupsMenuItemTitle theme={theme}>Merge Contacts</PowerupsMenuItemTitle>
-                <PowerupsMenuItemSubtitle theme={theme}>Search & merge duplicate contacts</PowerupsMenuItemSubtitle>
-              </PowerupsMenuText>
-            </PowerupsMenuItem>
-
-            <PowerupsMenuItem
-              theme={theme}
-              onClick={() => {
-                handleOpenContactEnrichModal(contactForPowerups);
-              }}
-            >
-              <PowerupsMenuIcon>
-                <FaBriefcase />
-              </PowerupsMenuIcon>
-              <PowerupsMenuText theme={theme}>
-                <PowerupsMenuItemTitle theme={theme}>Enrich Contact</PowerupsMenuItemTitle>
-                <PowerupsMenuItemSubtitle theme={theme}>Add LinkedIn & company data</PowerupsMenuItemSubtitle>
-              </PowerupsMenuText>
-            </PowerupsMenuItem>
-          </PowerupsMenuContent>
-        </PowerupsMenuContainer>
-      </Modal>
+        contact={contactForPowerups}
+        theme={theme}
+        onEditContact={handleOpenQuickEditContactModal}
+        onFindDuplicates={handleOpenFindDuplicatesModal}
+        onEnrichContact={handleOpenContactEnrichModal}
+      />
 
       {/* Find Duplicates Modal */}
       <FindDuplicatesModal
