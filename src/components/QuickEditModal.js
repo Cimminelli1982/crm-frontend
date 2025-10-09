@@ -41,6 +41,8 @@ const QuickEditModal = ({
   setQuickEditChristmasWishes,
   quickEditEasterWishes,
   setQuickEditEasterWishes,
+  quickEditShowMissing,
+  setQuickEditShowMissing,
   quickEditContactEmails,
   setQuickEditContactEmails,
   quickEditContactMobiles,
@@ -191,6 +193,40 @@ const QuickEditModal = ({
             {/* Info Tab */}
             {quickEditActiveTab === 'Info' && (
               <TabContent>
+                {/* Show Missing Toggle - Always visible at the top */}
+                <FormGroup style={{
+                  padding: '16px',
+                  backgroundColor: theme === 'light' ? '#F3F4F6' : '#1a1a1a',
+                  borderRadius: '8px',
+                  marginBottom: '24px'
+                }}>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                  }}>
+                    <div>
+                      <Label theme={theme} style={{ margin: 0, fontWeight: '600' }}>
+                        Track Missing Information
+                      </Label>
+                      <p style={{
+                        margin: '4px 0 0 0',
+                        fontSize: '12px',
+                        color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                      }}>
+                        Include this contact in the missing information view
+                      </p>
+                    </div>
+                    <ToggleSwitch
+                      theme={theme}
+                      $checked={quickEditShowMissing}
+                      onClick={() => setQuickEditShowMissing(!quickEditShowMissing)}
+                    >
+                      <ToggleSlider $checked={quickEditShowMissing} />
+                    </ToggleSwitch>
+                  </div>
+                </FormGroup>
+
                 {/* First Name */}
                 {shouldShowField(contact, 'first_name') && (
                   <FormGroup>
@@ -1418,6 +1454,41 @@ const ActionButtons = styled.div`
   background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
   border-radius: 0 0 12px 12px;
   margin: 0;
+`;
+
+const ToggleSwitch = styled.button`
+  position: relative;
+  width: 48px;
+  height: 24px;
+  background-color: ${props => props.$checked ? '#3B82F6' :
+    (props.theme === 'light' ? '#D1D5DB' : '#4B5563')};
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  padding: 2px;
+
+  &:hover {
+    background-color: ${props => props.$checked ? '#2563EB' :
+      (props.theme === 'light' ? '#9CA3AF' : '#6B7280')};
+  }
+
+  &:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px ${props => props.theme === 'light' ? '#DBEAFE' : '#1E3A8A'};
+  }
+`;
+
+const ToggleSlider = styled.div`
+  position: absolute;
+  top: 2px;
+  left: ${props => props.$checked ? '26px' : '2px'};
+  width: 20px;
+  height: 20px;
+  background-color: white;
+  border-radius: 10px;
+  transition: left 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 `;
 
 export default QuickEditModal;

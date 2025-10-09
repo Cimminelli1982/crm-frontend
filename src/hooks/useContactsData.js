@@ -239,21 +239,83 @@ export const useContactsData = (dataSource, refreshTrigger, onDataLoad) => {
 
     // Handle dedicated views for different missing data types
     if (subCategory === 'Need Input') {
-      // Use the new contacts_missing_info view
-      const { data: missingInfoData, error } = await supabase
+      // First get contact IDs from the view
+      const { data: missingInfoData, error: viewError } = await supabase
         .from('contacts_missing_info')
-        .select('*')
+        .select('contact_id')
         .limit(100);
 
-      if (error) throw error;
+      if (viewError) throw viewError;
 
-      data = (missingInfoData || []).map(contact => ({
-        ...contact,
-        emails: [],
-        mobiles: [],
-        companies: [],
-        contact_emails: [],
-      }));
+      // If we have contacts, fetch their full data with relationships
+      if (missingInfoData && missingInfoData.length > 0) {
+        const contactIds = missingInfoData.map(c => c.contact_id);
+
+        const { data: contactsData, error } = await supabase
+          .from('contacts')
+          .select(`
+            *,
+            contact_companies (
+              company_id,
+              is_primary,
+              companies (
+                company_id,
+                name
+              )
+            ),
+            contact_emails (
+              email_id,
+              email,
+              type,
+              is_primary
+            ),
+            contact_mobiles (
+              mobile_id,
+              mobile,
+              type,
+              is_primary
+            ),
+            contact_cities (
+              city_id,
+              cities (
+                city_id,
+                name
+              )
+            ),
+            contact_tags (
+              tag_id,
+              tags (
+                tag_id,
+                name
+              )
+            ),
+            keep_in_touch (
+              frequency,
+              christmas,
+              easter
+            )
+          `)
+          .in('contact_id', contactIds)
+          .order('last_interaction_at', { ascending: false })
+          .limit(100);
+
+        if (error) throw error;
+
+        // Transform data similar to inbox
+        data = (contactsData || []).map(contact => ({
+          ...contact,
+          companies: contact.contact_companies?.map(cc => ({
+            ...cc.companies,
+            company_id: cc.company_id
+          })).filter(Boolean) || [],
+          contact_emails: contact.contact_emails || [],
+          keep_in_touch_frequency: contact.keep_in_touch?.frequency || contact.keep_in_touch?.[0]?.frequency || null,
+          christmas: contact.keep_in_touch?.christmas || contact.keep_in_touch?.[0]?.christmas || null,
+          easter: contact.keep_in_touch?.easter || contact.keep_in_touch?.[0]?.easter || null
+        }));
+      } else {
+        data = [];
+      }
     } else if (subCategory === 'Basics') {
       const { data: basicsData, error } = await supabase
         .from('contacts_without_basics')
@@ -361,23 +423,84 @@ export const useContactsData = (dataSource, refreshTrigger, onDataLoad) => {
         contact_emails: [],
       }));
     } else if (subCategory === 'Birthday') {
-      const { data: birthdayData, error } = await supabase
+      // First get contact IDs from the birthday view
+      const { data: birthdayData, error: viewError } = await supabase
         .from('contacts_without_birthday')
-        .select('*')
+        .select('contact_id')
         .not('last_interaction_at', 'is', null)
-        .order('last_interaction_at', { ascending: false })
         .limit(100);
 
-      if (error) throw error;
+      if (viewError) throw viewError;
 
-      data = (birthdayData || []).map(contact => ({
-        ...contact,
-        emails: [],
-        mobiles: [],
-        companies: [],
-        birthday: null,
-        contact_emails: [],
-      }));
+      // If we have contacts, fetch their full data with relationships
+      if (birthdayData && birthdayData.length > 0) {
+        const contactIds = birthdayData.map(c => c.contact_id);
+
+        const { data: contactsData, error } = await supabase
+          .from('contacts')
+          .select(`
+            *,
+            contact_companies (
+              company_id,
+              is_primary,
+              companies (
+                company_id,
+                name
+              )
+            ),
+            contact_emails (
+              email_id,
+              email,
+              type,
+              is_primary
+            ),
+            contact_mobiles (
+              mobile_id,
+              mobile,
+              type,
+              is_primary
+            ),
+            contact_cities (
+              city_id,
+              cities (
+                city_id,
+                name
+              )
+            ),
+            contact_tags (
+              tag_id,
+              tags (
+                tag_id,
+                name
+              )
+            ),
+            keep_in_touch (
+              frequency,
+              christmas,
+              easter
+            )
+          `)
+          .in('contact_id', contactIds)
+          .order('last_interaction_at', { ascending: false })
+          .limit(100);
+
+        if (error) throw error;
+
+        // Transform data similar to inbox
+        data = (contactsData || []).map(contact => ({
+          ...contact,
+          companies: contact.contact_companies?.map(cc => ({
+            ...cc.companies,
+            company_id: cc.company_id
+          })).filter(Boolean) || [],
+          contact_emails: contact.contact_emails || [],
+          keep_in_touch_frequency: contact.keep_in_touch?.frequency || contact.keep_in_touch?.[0]?.frequency || null,
+          christmas: contact.keep_in_touch?.christmas || contact.keep_in_touch?.[0]?.christmas || null,
+          easter: contact.keep_in_touch?.easter || contact.keep_in_touch?.[0]?.easter || null
+        }));
+      } else {
+        data = [];
+      }
     } else {
       // Generic query for other missing data types
       data = await fetchMissingDataGeneric(subCategory);

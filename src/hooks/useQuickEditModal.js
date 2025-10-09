@@ -19,6 +19,7 @@ export const useQuickEditModal = (onContactUpdate) => {
   const [quickEditContactCategory, setQuickEditContactCategory] = useState('');
   const [quickEditContactScore, setQuickEditContactScore] = useState(0);
   const [quickEditLinkedin, setQuickEditLinkedin] = useState('');
+  const [quickEditShowMissing, setQuickEditShowMissing] = useState(true);
 
   // Keep in Touch fields
   const [quickEditKeepInTouchFrequency, setQuickEditKeepInTouchFrequency] = useState('');
@@ -651,7 +652,8 @@ export const useQuickEditModal = (onContactUpdate) => {
           job_role: quickEditJobRoleText.trim() || null,
           category: quickEditContactCategory || 'Not Set',
           score: quickEditContactScore > 0 ? quickEditContactScore : null,
-          linkedin: quickEditLinkedin.trim() || null
+          linkedin: quickEditLinkedin.trim() || null,
+          show_missing: quickEditShowMissing
         })
         .eq('contact_id', contactForQuickEdit.contact_id);
 
@@ -676,6 +678,7 @@ export const useQuickEditModal = (onContactUpdate) => {
     quickEditContactCategory,
     quickEditContactScore,
     quickEditLinkedin,
+    quickEditShowMissing,
     onContactUpdate
   ]);
 
@@ -695,6 +698,7 @@ export const useQuickEditModal = (onContactUpdate) => {
     setQuickEditFirstName(contact.first_name || '');
     setQuickEditLastName(contact.last_name || '');
     setQuickEditLinkedin(contact.linkedin || '');
+    setQuickEditShowMissing(contact.show_missing !== false); // Default to true if undefined
 
     // Load related data
     try {
@@ -925,6 +929,8 @@ export const useQuickEditModal = (onContactUpdate) => {
     setQuickEditContactScore,
     quickEditLinkedin,
     setQuickEditLinkedin,
+    quickEditShowMissing,
+    setQuickEditShowMissing,
 
     // Keep in Touch fields
     quickEditKeepInTouchFrequency,
