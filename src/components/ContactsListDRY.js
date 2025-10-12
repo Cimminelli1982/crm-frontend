@@ -1299,11 +1299,13 @@ const ContactsListDRY = ({
         contact={profileImageModal.contact}
         uploading={profileImageModal.uploading}
         fetchingFromLinkedIn={profileImageModal.fetchingFromLinkedIn}
+        fetchingFromWhatsApp={profileImageModal.fetchingFromWhatsApp}
         imagePreview={profileImageModal.imagePreview}
         selectedFile={profileImageModal.selectedFile}
         onFileSelect={profileImageModal.handleFileSelect}
         onSave={profileImageModal.saveProfileImage}
         onFetchFromLinkedIn={profileImageModal.fetchFromLinkedIn}
+        onFetchFromWhatsApp={profileImageModal.fetchFromWhatsApp}
         onRemoveImage={profileImageModal.removeProfileImage}
         theme={theme}
       />

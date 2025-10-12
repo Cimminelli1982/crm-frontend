@@ -1,6 +1,6 @@
 import React from 'react';
 import Modal from 'react-modal';
-import { FiX, FiUpload, FiLinkedin, FiUser, FiSave, FiLoader, FiTrash2, FiImage } from 'react-icons/fi';
+import { FiX, FiUpload, FiLinkedin, FiUser, FiSave, FiLoader, FiTrash2, FiImage, FiMessageCircle } from 'react-icons/fi';
 import {
   ModalContainer,
   ModalHeader,
@@ -40,11 +40,13 @@ const ProfileImageModal = ({
   contact,
   uploading,
   fetchingFromLinkedIn,
+  fetchingFromWhatsApp,
   imagePreview,
   selectedFile,
   onFileSelect,
   onSave,
   onFetchFromLinkedIn,
+  onFetchFromWhatsApp,
   onRemoveImage,
   theme = 'light'
 }) => {
@@ -118,7 +120,7 @@ const ProfileImageModal = ({
                   <FiUser />
                 </NoImageIcon>
               )}
-              {(uploading || fetchingFromLinkedIn) && (
+              {(uploading || fetchingFromLinkedIn || fetchingFromWhatsApp) && (
                 <LoadingOverlay>
                   <LoadingSpinner />
                 </LoadingOverlay>
@@ -187,6 +189,36 @@ const ProfileImageModal = ({
                 </HelpText>
               )}
             </ActionGroup>
+
+            <ActionGroup theme={theme}>
+              <ActionTitle theme={theme}>
+                <FiMessageCircle size={14} />
+                Import from WhatsApp
+              </ActionTitle>
+              <LinkedInButton
+                onClick={onFetchFromWhatsApp}
+                disabled={fetchingFromWhatsApp || uploading || fetchingFromLinkedIn}
+                theme={theme}
+                style={{ background: '#25D366' }}
+              >
+                {fetchingFromWhatsApp ? (
+                  <>
+                    <SpinningIcon>
+                      <FiLoader size={16} />
+                    </SpinningIcon>
+                    Fetching...
+                  </>
+                ) : (
+                  <>
+                    <FiMessageCircle size={16} />
+                    Fetch from WhatsApp
+                  </>
+                )}
+              </LinkedInButton>
+              <HelpText theme={theme}>
+                Fetches profile image from WhatsApp chat history via Timelines
+              </HelpText>
+            </ActionGroup>
           </ActionSection>
 
           <ButtonGroup theme={theme}>
@@ -196,7 +228,7 @@ const ProfileImageModal = ({
             <SaveButton
               theme={theme}
               onClick={onSave}
-              disabled={!hasChanges || uploading || fetchingFromLinkedIn}
+              disabled={!hasChanges || uploading || fetchingFromLinkedIn || fetchingFromWhatsApp}
             >
               {uploading ? (
                 <>

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaEdit, FaClock, FaTimes, FaCalendarAlt, FaHeart, FaCog, FaInfoCircle, FaStar, FaPlus, FaBriefcase, FaLink, FaHandshake, FaBolt, FaTrash, FaMapMarkerAlt, FaTag, FaExternalLinkAlt, FaSkull } from 'react-icons/fa';
+import { supabase } from '../lib/supabaseClient';
 import { FiSkipForward, FiAlertTriangle, FiX, FiMessageCircle, FiSearch } from 'react-icons/fi';
 
 const ContactCard = ({
@@ -34,6 +35,44 @@ const ContactCard = ({
   getUrgencyColor,
   renderScoreStars
 }) => {
+  const [resolvedProfileImageUrl, setResolvedProfileImageUrl] = useState(null);
+
+  // Resolve attachment reference for profile image
+  useEffect(() => {
+    const resolveProfileImage = async () => {
+      if (!contact?.profile_image_url) {
+        setResolvedProfileImageUrl(null);
+        return;
+      }
+
+      // Check if it's an attachment reference
+      if (contact.profile_image_url.startsWith('attachment:')) {
+        const attachmentId = contact.profile_image_url.replace('attachment:', '');
+        try {
+          const { data, error } = await supabase
+            .from('attachments')
+            .select('permanent_url, file_url')
+            .eq('attachment_id', attachmentId)
+            .single();
+
+          if (!error && data) {
+            setResolvedProfileImageUrl(data.permanent_url || data.file_url);
+          } else {
+            setResolvedProfileImageUrl(contact.profile_image_url);
+          }
+        } catch (err) {
+          console.error('Error resolving attachment:', err);
+          setResolvedProfileImageUrl(contact.profile_image_url);
+        }
+      } else {
+        // Direct URL
+        setResolvedProfileImageUrl(contact.profile_image_url);
+      }
+    };
+
+    resolveProfileImage();
+  }, [contact?.profile_image_url]);
+
   const handleContactClick = () => {
     if (onContactClick) {
       onContactClick(contact);
@@ -85,8 +124,8 @@ const ContactCard = ({
           >
             {contact.isCompanyRecord ? (
               <FaBuilding style={{ color: '#3B82F6', fontSize: '20px' }} />
-            ) : contact.profile_image_url ? (
-              <img src={contact.profile_image_url} alt="Profile" />
+            ) : resolvedProfileImageUrl ? (
+              <img src={resolvedProfileImageUrl} alt="Profile" />
             ) : (
               <InfoIconButton
                 onClick={(e) => {

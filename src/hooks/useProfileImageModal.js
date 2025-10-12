@@ -7,6 +7,7 @@ export const useProfileImageModal = (onImageUpdate) => {
   const [contact, setContact] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [fetchingFromLinkedIn, setFetchingFromLinkedIn] = useState(false);
+  const [fetchingFromWhatsApp, setFetchingFromWhatsApp] = useState(false);
   const [imagePreview, setImagePreview] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
 
@@ -23,6 +24,7 @@ export const useProfileImageModal = (onImageUpdate) => {
     setSelectedFile(null);
     setUploading(false);
     setFetchingFromLinkedIn(false);
+    setFetchingFromWhatsApp(false);
   }, []);
 
   const handleFileSelect = useCallback((event) => {
@@ -90,6 +92,7 @@ export const useProfileImageModal = (onImageUpdate) => {
     setUploading(true);
     try {
       let imageUrl = imagePreview;
+      let needsAttachmentRecord = false;
 
       // If a new file was selected, upload it first
       if (selectedFile) {
@@ -97,9 +100,38 @@ export const useProfileImageModal = (onImageUpdate) => {
         if (!imageUrl) {
           throw new Error('Failed to upload image');
         }
+      } else if (imagePreview && (imagePreview.startsWith('https://tl-prod-data.s3.amazonaws.com') || imagePreview.length > 255)) {
+        // This is a WhatsApp/external image URL that's too long - save to attachments table
+        needsAttachmentRecord = true;
+
+        // First, remove any existing profile image attachments for this contact
+        // We'll identify them by the file_name pattern
+        await supabase
+          .from('attachments')
+          .delete()
+          .eq('contact_id', contact.contact_id)
+          .like('file_name', '%_profile_image.jpg');
+
+        // Create attachment record for the external image
+        const { data: attachmentData, error: attachmentError } = await supabase
+          .from('attachments')
+          .insert({
+            contact_id: contact.contact_id,
+            file_name: `${contact.first_name || 'contact'}_${contact.last_name || 'profile'}_profile_image.jpg`,
+            file_url: imagePreview,
+            permanent_url: imagePreview,
+            file_type: 'image/jpeg'
+          })
+          .select()
+          .single();
+
+        if (attachmentError) throw attachmentError;
+
+        // Use the attachment ID as reference in contacts table
+        imageUrl = `attachment:${attachmentData.attachment_id}`;
       }
 
-      // Update contact with new profile image URL
+      // Update contact with new profile image URL (or attachment reference)
       const { error } = await supabase
         .from('contacts')
         .update({ profile_image_url: imageUrl })
@@ -162,6 +194,38 @@ export const useProfileImageModal = (onImageUpdate) => {
     }
   }, [contact]);
 
+  const fetchFromWhatsApp = useCallback(async () => {
+    if (!contact) return;
+
+    setFetchingFromWhatsApp(true);
+    try {
+      // Call the edge function to fetch profile image from WhatsApp via Timelines
+      const { data, error } = await supabase.functions.invoke('whatsapp-profile-image', {
+        body: {
+          contactId: contact.contact_id
+        }
+      });
+
+      if (error) {
+        console.error('Edge function error:', error);
+        throw error;
+      }
+
+      if (data?.success && data?.profileImageUrl) {
+        // Set the preview but don't save yet - let user confirm
+        setImagePreview(data.profileImageUrl);
+        toast.success('Profile image fetched from WhatsApp! Click Save to apply.');
+      } else {
+        toast.error(data?.message || 'No WhatsApp profile image found');
+      }
+    } catch (error) {
+      console.error('Error fetching WhatsApp profile image:', error);
+      toast.error('Failed to fetch profile image from WhatsApp');
+    } finally {
+      setFetchingFromWhatsApp(false);
+    }
+  }, [contact]);
+
   const removeProfileImage = useCallback(async () => {
     if (!contact) return;
 
@@ -194,6 +258,7 @@ export const useProfileImageModal = (onImageUpdate) => {
     contact,
     uploading,
     fetchingFromLinkedIn,
+    fetchingFromWhatsApp,
     imagePreview,
     selectedFile,
     // Actions
@@ -202,6 +267,7 @@ export const useProfileImageModal = (onImageUpdate) => {
     handleFileSelect,
     saveProfileImage,
     fetchFromLinkedIn,
+    fetchFromWhatsApp,
     removeProfileImage
   };
 };
