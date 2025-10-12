@@ -622,6 +622,119 @@ const CityManagementModal = ({ theme, contact, contactCities, onCityAdded, onCit
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [suggestedCities, setSuggestedCities] = useState([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+
+  // Fetch intelligent city suggestions based on contact's description
+  const fetchIntelligentCitySuggestions = async () => {
+    if (!contact?.description && !contact?.job_role) {
+      setSuggestedCities([]);
+      return;
+    }
+
+    try {
+      setLoadingSuggestions(true);
+
+      // Extract keywords from description and job_role
+      const text = `${contact.description || ''} ${contact.job_role || ''}`.toLowerCase();
+
+      // Common city patterns and keywords
+      const cityPatterns = [
+        /\b(new york|nyc|ny)\b/gi,
+        /\b(los angeles|la|l\.a\.)\b/gi,
+        /\b(san francisco|sf|bay area)\b/gi,
+        /\b(chicago|chi-town)\b/gi,
+        /\b(boston|bos)\b/gi,
+        /\b(seattle|sea)\b/gi,
+        /\b(austin|atx)\b/gi,
+        /\b(miami|mia)\b/gi,
+        /\b(london|ldn)\b/gi,
+        /\b(paris)\b/gi,
+        /\b(berlin)\b/gi,
+        /\b(tokyo)\b/gi,
+        /\b(singapore|sgp)\b/gi,
+        /\b(dubai)\b/gi,
+        /\b(toronto)\b/gi,
+        /\b(vancouver)\b/gi,
+        /\b(sydney|syd)\b/gi,
+        /\b(amsterdam|ams)\b/gi,
+        /\b(barcelona|bcn)\b/gi,
+        /\b(madrid)\b/gi
+      ];
+
+      // Extract potential city names
+      const potentialCities = [];
+      cityPatterns.forEach(pattern => {
+        const matches = text.match(pattern);
+        if (matches) {
+          potentialCities.push(...matches);
+        }
+      });
+
+      // Also look for capitalized words that might be cities
+      const capitalizedWords = (contact.description || '').match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g) || [];
+      const allPotentialCities = [...new Set([...potentialCities, ...capitalizedWords])];
+
+      if (allPotentialCities.length === 0) {
+        setSuggestedCities([]);
+        return;
+      }
+
+      // Search for these cities in database
+      const { data, error } = await supabase
+        .from('cities')
+        .select('*')
+        .or(allPotentialCities.map(city => `name.ilike.%${city}%`).join(','))
+        .limit(8);
+
+      if (error) throw error;
+
+      // Filter out cities already associated
+      const filteredSuggestions = data.filter(city =>
+        !contactCities.some(related => related.city_id === city.city_id)
+      );
+
+      // Score and sort suggestions
+      const scoredSuggestions = filteredSuggestions.map(city => {
+        let score = 0;
+        const cityNameLower = city.name.toLowerCase();
+
+        // Higher score for exact matches
+        if (text.includes(cityNameLower)) {
+          score += 5;
+        }
+
+        // Check for partial matches
+        allPotentialCities.forEach(potential => {
+          if (cityNameLower.includes(potential.toLowerCase())) {
+            score += 3;
+          }
+        });
+
+        return { ...city, score };
+      });
+
+      // Sort by score and take top suggestions
+      const topSuggestions = scoredSuggestions
+        .sort((a, b) => b.score - a.score)
+        .filter(city => city.score > 0)
+        .slice(0, 5);
+
+      setSuggestedCities(topSuggestions);
+    } catch (error) {
+      console.error('Error fetching intelligent city suggestions:', error);
+      setSuggestedCities([]);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  };
+
+  // Fetch intelligent suggestions when modal opens
+  useEffect(() => {
+    if (contact) {
+      fetchIntelligentCitySuggestions();
+    }
+  }, [contact, contactCities]);
 
   const fetchCitySuggestions = async (search) => {
     try {
@@ -769,6 +882,91 @@ const CityManagementModal = ({ theme, contact, contactCities, onCityAdded, onCit
             )}
           </CitiesList>
         </CityModalSection>
+
+        {/* Suggested Cities Section */}
+        {suggestedCities.length > 0 && (
+          <CityModalSection style={{
+            background: theme === 'light' ? '#F0F9FF' : '#1E293B',
+            padding: '12px',
+            borderRadius: '8px',
+            marginBottom: '16px'
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginBottom: '12px'
+            }}>
+              <span style={{ fontSize: '16px' }}>💡</span>
+              <CityModalSectionTitle theme={theme} style={{ margin: 0 }}>
+                Suggested Cities
+              </CityModalSectionTitle>
+              <span style={{
+                fontSize: '11px',
+                color: theme === 'light' ? '#64748B' : '#94A3B8',
+                fontStyle: 'italic'
+              }}>
+                Based on job role & description
+              </span>
+            </div>
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '8px'
+            }}>
+              {loadingSuggestions ? (
+                <span style={{
+                  color: theme === 'light' ? '#64748B' : '#94A3B8',
+                  fontSize: '12px'
+                }}>
+                  Loading suggestions...
+                </span>
+              ) : (
+                suggestedCities.map((city) => (
+                  <button
+                    key={city.city_id}
+                    onClick={() => handleAddCity(city)}
+                    disabled={loading}
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: '12px',
+                      border: `1px solid ${theme === 'light' ? '#3B82F6' : '#60A5FA'}`,
+                      borderRadius: '16px',
+                      background: theme === 'light' ? '#EFF6FF' : '#1E3A8A',
+                      color: theme === 'light' ? '#1E40AF' : '#93C5FD',
+                      cursor: loading ? 'not-allowed' : 'pointer',
+                      opacity: loading ? 0.5 : 1,
+                      fontWeight: '500',
+                      transition: 'all 0.2s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!loading) {
+                        e.target.style.background = theme === 'light' ? '#DBEAFE' : '#1E40AF';
+                        e.target.style.transform = 'translateY(-1px)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.background = theme === 'light' ? '#EFF6FF' : '#1E3A8A';
+                      e.target.style.transform = 'translateY(0)';
+                    }}
+                  >
+                    <span style={{ fontSize: '14px' }}>+</span>
+                    {city.name}
+                    {city.country && city.country !== 'Unknown' && (
+                      <span style={{ opacity: 0.7, marginLeft: '4px' }}>
+                        ({city.country})
+                      </span>
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+          </CityModalSection>
+        )}
+
         <CityModalSection>
           <CityModalSectionTitle theme={theme}>Add Cities</CityModalSectionTitle>
           <CitySearchContainer>

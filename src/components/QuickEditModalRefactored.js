@@ -92,6 +92,7 @@ const QuickEditModalRefactored = ({
   // Handler functions
   onSave,
   onDelete,
+  handleSilentSave,
   handleAddEmail,
   handleRemoveEmail,
   handleUpdateEmailType,
@@ -400,7 +401,17 @@ const QuickEditModalRefactored = ({
                   key={tab.id}
                   theme={theme}
                   $active={isActive}
-                  onClick={() => setQuickEditActiveTab(tab.id)}
+                  onClick={async () => {
+                    // Save current tab data before switching (silently, without closing modal)
+                    if (!isActive) {
+                      try {
+                        await handleSilentSave();
+                      } catch (error) {
+                        console.error('Error saving tab data:', error);
+                      }
+                      setQuickEditActiveTab(tab.id);
+                    }
+                  }}
                   title={tab.label} // Tooltip for accessibility
                 >
                   {tabIcons[tab.id]}

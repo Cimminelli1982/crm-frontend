@@ -638,6 +638,108 @@ export const useQuickEditModal = (onContactUpdate) => {
     }
   }, [contactForQuickEdit, quickEditFirstName, quickEditLastName, quickEditLinkedin, onContactUpdate, closeModal]);
 
+  // Silent save function that doesn't trigger onContactUpdate (doesn't close modal)
+  const handleSilentSave = useCallback(async () => {
+    if (!contactForQuickEdit) return;
+
+    try {
+      // Save contact details
+      const { error } = await supabase
+        .from('contacts')
+        .update({
+          first_name: quickEditFirstName?.trim() || null,
+          last_name: quickEditLastName?.trim() || null,
+          description: quickEditDescriptionText?.trim() || null,
+          job_role: quickEditJobRoleText?.trim() || null,
+          category: quickEditContactCategory || 'Not Set',
+          score: quickEditContactScore > 0 ? quickEditContactScore : null,
+          linkedin: quickEditLinkedin?.trim() || null
+        })
+        .eq('contact_id', contactForQuickEdit.contact_id);
+
+      if (error) throw error;
+
+      // Save keep_in_touch data if any fields have values
+      if (quickEditKeepInTouchFrequency || quickEditChristmasWishes || quickEditEasterWishes) {
+        const { data: existingRecord, error: checkError } = await supabase
+          .from('keep_in_touch')
+          .select('id')
+          .eq('contact_id', contactForQuickEdit.contact_id)
+          .maybeSingle();
+
+        if (checkError && checkError.code !== 'PGRST116') {
+          throw checkError;
+        }
+
+        const keepInTouchData = {
+          frequency: quickEditKeepInTouchFrequency || null,
+          christmas: quickEditChristmasWishes || null,
+          easter: quickEditEasterWishes || null
+        };
+
+        if (existingRecord) {
+          const { error: updateError } = await supabase
+            .from('keep_in_touch')
+            .update(keepInTouchData)
+            .eq('contact_id', contactForQuickEdit.contact_id);
+          if (updateError) throw updateError;
+        } else {
+          const { error: insertError } = await supabase
+            .from('keep_in_touch')
+            .insert({
+              contact_id: contactForQuickEdit.contact_id,
+              ...keepInTouchData
+            });
+          if (insertError) throw insertError;
+        }
+      }
+
+      // Save birthday
+      if (quickEditBirthdayDay && quickEditBirthdayMonth && quickEditAgeEstimate) {
+        const currentYear = new Date().getFullYear();
+        let birthYear;
+
+        if (quickEditAgeEstimate === '80+') {
+          birthYear = currentYear - 85;
+        } else {
+          birthYear = currentYear - parseInt(quickEditAgeEstimate);
+        }
+
+        const paddedMonth = quickEditBirthdayMonth.toString().padStart(2, '0');
+        const paddedDay = quickEditBirthdayDay.toString().padStart(2, '0');
+        const birthday = `${birthYear}-${paddedMonth}-${paddedDay}`;
+
+        const { error: birthdayError } = await supabase
+          .from('contacts')
+          .update({ birthday })
+          .eq('contact_id', contactForQuickEdit.contact_id);
+
+        if (birthdayError) throw birthdayError;
+      }
+
+      // Don't call onContactUpdate to avoid modal close
+      return true;
+    } catch (error) {
+      console.error('Error in silent save:', error);
+      return false;
+    }
+  }, [
+    contactForQuickEdit,
+    quickEditFirstName,
+    quickEditLastName,
+    quickEditDescriptionText,
+    quickEditJobRoleText,
+    quickEditContactCategory,
+    quickEditContactScore,
+    quickEditLinkedin,
+    quickEditKeepInTouchFrequency,
+    quickEditChristmasWishes,
+    quickEditEasterWishes,
+    quickEditBirthdayDay,
+    quickEditBirthdayMonth,
+    quickEditAgeEstimate
+  ]);
+
   // Save contact handler
   const handleSaveQuickEditContact = useCallback(async () => {
     if (!contactForQuickEdit) return;
@@ -1083,6 +1185,7 @@ export const useQuickEditModal = (onContactUpdate) => {
     openModal,
     closeModal,
     handleSaveQuickEditContact,
+    handleSilentSave,
     handleAddEmail,
     handleRemoveEmail,
     handleUpdateEmailType,

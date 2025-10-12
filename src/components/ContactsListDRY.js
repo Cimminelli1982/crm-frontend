@@ -234,6 +234,7 @@ const ContactsListDRY = ({
     openModal: handleOpenQuickEditContactModal,
     closeModal,
     handleSaveQuickEditContact,
+    handleSilentSave,
     handleAddEmail,
     handleRemoveEmail,
     handleUpdateEmailType,
@@ -1025,6 +1026,7 @@ const ContactsListDRY = ({
         // Handler functions
         onSave={handleSaveQuickEditContact}
         onDelete={handleDeleteFromQuickEdit}
+        handleSilentSave={handleSilentSave}
         handleAddEmail={handleAddEmail}
         handleRemoveEmail={handleRemoveEmail}
         handleUpdateEmailType={handleUpdateEmailType}

@@ -64,8 +64,15 @@ const KeepInTouchTab = ({
           <Select
             value={frequency}
             onChange={(e) => {
-              setFrequency(e.target.value);
-              handleSaveFrequency(e.target.value);
+              const newFrequency = e.target.value;
+              setFrequency(newFrequency);
+
+              // If "Do not keep in touch" is selected, set both wishes to "no wishes"
+              if (newFrequency === 'Do not keep in touch') {
+                setChristmasWishes('no wishes');
+                setEasterWishes('no wishes');
+              }
+              // Removed immediate save - will save with main Save Details button
             }}
             theme={theme}
           >
@@ -192,39 +199,78 @@ const KeepInTouchTab = ({
             <option value="present">Present</option>
           </Select>
 
-          {/* WhatsApp Standard Quick Button */}
-          <button
-            onClick={() => {
-              setChristmasWishes('whatsapp standard');
-              setEasterWishes('whatsapp standard');
-              toast.success('Set both to WhatsApp Standard');
-            }}
-            style={{
-              marginTop: '10px',
-              padding: '8px 16px',
-              background: '#25D366',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              fontSize: '14px',
-              fontWeight: '500',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              width: '100%',
-              justifyContent: 'center',
-              transition: 'background 0.2s ease'
-            }}
-            onMouseEnter={(e) => {
-              e.target.style.background = '#20B858';
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.background = '#25D366';
-            }}
-          >
-            WhatsApp Standard 🎄🐰
-          </button>
+          {/* Quick Action Buttons */}
+          <div style={{
+            display: 'flex',
+            gap: '10px',
+            marginTop: '10px'
+          }}>
+            {/* WhatsApp Standard Quick Button */}
+            <button
+              onClick={() => {
+                setChristmasWishes('whatsapp standard');
+                setEasterWishes('whatsapp standard');
+                toast.success('Set both to WhatsApp Standard');
+              }}
+              style={{
+                flex: 1,
+                padding: '8px 16px',
+                background: '#25D366',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                justifyContent: 'center',
+                transition: 'background 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background = '#20B858';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = '#25D366';
+              }}
+            >
+              WhatsApp Standard 🎄🐰
+            </button>
+
+            {/* No Wishes Quick Button */}
+            <button
+              onClick={() => {
+                setChristmasWishes('no wishes');
+                setEasterWishes('no wishes');
+                toast.success('Set both to No wishes');
+              }}
+              style={{
+                flex: 1,
+                padding: '8px 16px',
+                background: theme === 'light' ? '#E5E7EB' : '#374151',
+                color: theme === 'light' ? '#4B5563' : '#9CA3AF',
+                border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                borderRadius: '6px',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                justifyContent: 'center',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background = theme === 'light' ? '#D1D5DB' : '#4B5563';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = theme === 'light' ? '#E5E7EB' : '#374151';
+              }}
+            >
+              No wishes 🚫
+            </button>
+          </div>
         </FormGroup>
       )}
     </>
