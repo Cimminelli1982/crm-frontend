@@ -156,6 +156,8 @@ const QuickEditModalRefactored = ({
       case 'Info':
         return (
           <InfoTab
+            contact={contact}
+            linkedin={quickEditLinkedin}
             firstName={quickEditFirstName}
             setFirstName={setQuickEditFirstName}
             lastName={quickEditLastName}

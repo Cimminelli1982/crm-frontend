@@ -1,5 +1,5 @@
-import React from 'react';
-import { FaBuilding } from 'react-icons/fa';
+import React, { useState } from 'react';
+import { FaBuilding, FaMagic } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import { toast } from 'react-hot-toast';
 import {
@@ -31,6 +31,8 @@ const WorkTab = ({
   shouldShowField,
   onOpenEnrichModal
 }) => {
+  const [fetchingJobTitle, setFetchingJobTitle] = useState(false);
+
   // Auto-save job role to database
   const handleSetJobRole = async (newJobRole) => {
     setJobRole(newJobRole);
@@ -51,12 +53,80 @@ const WorkTab = ({
       }
     }
   };
+
+  // Fetch job title from Apollo using LinkedIn URL
+  const handleFetchJobTitle = async () => {
+    if (!linkedin || !contact?.contact_id) {
+      toast.error('LinkedIn URL is required');
+      return;
+    }
+
+    setFetchingJobTitle(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('apollo-job-title', {
+        body: {
+          contactId: contact.contact_id,
+          linkedinUrl: linkedin
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.success && data?.jobTitle) {
+        setJobRole(data.jobTitle);
+        toast.success(`Job title fetched: ${data.jobTitle}`);
+      } else {
+        toast.error(data?.message || 'No job title found');
+      }
+    } catch (error) {
+      console.error('Error fetching job title:', error);
+      toast.error('Failed to fetch job title from Apollo');
+    } finally {
+      setFetchingJobTitle(false);
+    }
+  };
   return (
     <>
       {/* Job Title */}
       {shouldShowField('job_role') && (
         <FormGroup>
-          <Label theme={theme}>Job Title</Label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+            <Label theme={theme} style={{ margin: 0 }}>Job Title</Label>
+            {linkedin && (
+              <button
+                onClick={handleFetchJobTitle}
+                disabled={fetchingJobTitle}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '4px 10px',
+                  fontSize: '12px',
+                  background: fetchingJobTitle ? '#9CA3AF' : '#8B5CF6',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: fetchingJobTitle ? 'wait' : 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  if (!fetchingJobTitle) {
+                    e.target.style.background = '#7C3AED';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!fetchingJobTitle) {
+                    e.target.style.background = '#8B5CF6';
+                  }
+                }}
+                title="Fetch job title from Apollo using LinkedIn URL"
+              >
+                <FaMagic size={10} />
+                {fetchingJobTitle ? 'Fetching...' : 'Apollo Magic'}
+              </button>
+            )}
+          </div>
           <Input
             type="text"
             value={jobRole}
