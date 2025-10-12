@@ -10,6 +10,7 @@ import FindDuplicatesModal from './FindDuplicatesModal';
 import ContactEnrichModal from './modals/ContactEnrichModal';
 import CreateCompanyModal from './modals/CreateCompanyModal';
 import CompanyAssociationModal from './modals/CompanyAssociationModal';
+import ProfileImageModal from './modals/ProfileImageModal';
 import ContactCard from './ContactCard';
 import DeleteContactModal from './DeleteContactModal';
 import KeepInTouchModal from './KeepInTouchModal';
@@ -19,6 +20,7 @@ import BirthdayModal from './BirthdayModal';
 import PowerupsMenuModal from './PowerupsMenuModal';
 import QuickEditModal from './QuickEditModalRefactored';
 import { useQuickEditModal } from '../hooks/useQuickEditModal';
+import { useProfileImageModal } from '../hooks/useProfileImageModal';
 import { useContactsData } from '../hooks/useContactsData';
 import { useKeepInTouch } from '../hooks/useKeepInTouch';
 import { useCompanySuggestions } from '../hooks/useCompanySuggestions';
@@ -135,6 +137,9 @@ const ContactsListDRY = ({
     getEnhancedKeepInTouchStatus,
     getKeepInTouchDisplay
   } = useKeepInTouch();
+
+  // Use the Profile Image Modal hook
+  const profileImageModal = useProfileImageModal(handleContactUpdate);
 
   // Delete modal state
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -889,6 +894,7 @@ const ContactsListDRY = ({
           onAcceptSuggestion={handleAcceptSuggestion}
           onRejectSuggestion={handleRejectSuggestion}
           onAddCompanyClick={handleAddCompanyClick}
+          onOpenProfileImageModal={profileImageModal.openModal}
           getContactPriorityScore={getContactPriorityScore}
           getContactPriorityLabel={getContactPriorityLabelWithContext}
           getContactCompleteness={getContactCompleteness}
@@ -1284,6 +1290,22 @@ const ContactsListDRY = ({
             handleContactUpdate();
           }
         }}
+      />
+
+      {/* Profile Image Modal */}
+      <ProfileImageModal
+        isOpen={profileImageModal.isOpen}
+        onClose={profileImageModal.closeModal}
+        contact={profileImageModal.contact}
+        uploading={profileImageModal.uploading}
+        fetchingFromLinkedIn={profileImageModal.fetchingFromLinkedIn}
+        imagePreview={profileImageModal.imagePreview}
+        selectedFile={profileImageModal.selectedFile}
+        onFileSelect={profileImageModal.handleFileSelect}
+        onSave={profileImageModal.saveProfileImage}
+        onFetchFromLinkedIn={profileImageModal.fetchFromLinkedIn}
+        onRemoveImage={profileImageModal.removeProfileImage}
+        theme={theme}
       />
     </ContactsListContainer>
   );

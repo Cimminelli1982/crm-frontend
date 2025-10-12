@@ -24,6 +24,7 @@ const ContactCard = ({
   onAcceptSuggestion,
   onRejectSuggestion,
   onAddCompanyClick,
+  onOpenProfileImageModal,
   getContactPriorityScore,
   getContactPriorityLabel,
   getContactCompleteness,
@@ -71,16 +72,31 @@ const ContactCard = ({
     <StyledContactCard theme={theme} $isCompany={contact.isCompanyRecord}>
       <ContactCardContent onClick={handleContactClick}>
         <ContactCardHeader>
-          <ContactAvatar $isCompany={contact.isCompanyRecord}>
+          <ContactAvatar
+            $isCompany={contact.isCompanyRecord}
+            onClick={(e) => {
+              if (!contact.isCompanyRecord && onOpenProfileImageModal) {
+                e.stopPropagation();
+                onOpenProfileImageModal(contact);
+              }
+            }}
+            style={{ cursor: !contact.isCompanyRecord ? 'pointer' : 'default' }}
+            title={!contact.isCompanyRecord ? 'Click to manage profile image' : ''}
+          >
             {contact.isCompanyRecord ? (
               <FaBuilding style={{ color: '#3B82F6', fontSize: '20px' }} />
             ) : contact.profile_image_url ? (
               <img src={contact.profile_image_url} alt="Profile" />
             ) : (
               <InfoIconButton
-                onClick={(e) => onOpenQuickEditContactModal(contact, e)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onOpenProfileImageModal) {
+                    onOpenProfileImageModal(contact);
+                  }
+                }}
                 theme={theme}
-                title="Quick Edit Contact Details"
+                title="Click to add profile image"
               >
                 <FaInfoCircle />
               </InfoIconButton>
