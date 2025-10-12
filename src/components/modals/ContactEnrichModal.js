@@ -245,34 +245,6 @@ const SaveUrlButton = styled.button`
   }
 `;
 
-const EnrichButton = styled.button`
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  background: ${props => {
-    if (!props.enabled) return props.theme === 'light' ? '#E5E7EB' : '#666';
-    return props.theme === 'light' ? '#DC2626' : '#ff6b35';
-  }};
-  color: ${props => {
-    if (!props.enabled) return props.theme === 'light' ? '#9CA3AF' : 'white';
-    return 'white';
-  }};
-  border: none;
-  border-radius: 6px;
-  padding: 12px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: ${props => props.enabled ? 'pointer' : 'not-allowed'};
-
-  &:hover {
-    background: ${props => {
-      if (!props.enabled) return props.theme === 'light' ? '#E5E7EB' : '#666';
-      return props.theme === 'light' ? '#B91C1C' : '#e55a2b';
-    }};
-  }
-`;
 
 // Modal styles - dynamic based on theme, same width as Power-ups modal
 const getModalStyles = (theme) => ({
@@ -389,10 +361,64 @@ const ContactEnrichModal = ({
       return;
     }
 
-    setLinkedinUrl(apolloSuggestion.linkedinUrl);
+    setSaving(true);
+    try {
+      // Save both LinkedIn URL and job title
+      const updateData = {
+        linkedin: apolloSuggestion.linkedinUrl
+      };
 
-    // Auto-save the suggested LinkedIn URL
-    await saveLinkedInUrl(apolloSuggestion.linkedinUrl);
+      // Only update job_role if there's a valid job title from Apollo
+      if (apolloSuggestion.jobTitle && apolloSuggestion.jobTitle !== 'Professional') {
+        updateData.job_role = apolloSuggestion.jobTitle;
+      }
+
+      const { error } = await supabase
+        .from('contacts')
+        .update(updateData)
+        .eq('contact_id', contact.contact_id);
+
+      if (error) throw error;
+
+      toast.success('LinkedIn URL and job title saved successfully!');
+
+      // Try to fetch the LinkedIn About section as well
+      try {
+        const { data: aboutData, error: aboutError } = await supabase.functions.invoke('apollo-about', {
+          body: {
+            contactId: contact.contact_id,
+            linkedinUrl: apolloSuggestion.linkedinUrl
+          }
+        });
+
+        if (!aboutError && aboutData?.success && aboutData?.aboutText) {
+          // Save the About text to the description field
+          await supabase
+            .from('contacts')
+            .update({ description: aboutData.aboutText })
+            .eq('contact_id', contact.contact_id);
+
+          toast.success('LinkedIn About section also fetched!');
+        }
+      } catch (aboutErr) {
+        // Don't fail the whole operation if About fetching fails
+        console.log('Could not fetch About section:', aboutErr);
+      }
+
+      // Call the onEnrichComplete callback to refresh the Quick Edit modal
+      if (onEnrichComplete) {
+        onEnrichComplete();
+      }
+
+      // Close this modal
+      onClose();
+
+    } catch (error) {
+      console.error('Error saving contact data:', error);
+      toast.error('Failed to save contact data');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const saveLinkedInUrl = async (urlToSave = linkedinUrl) => {
@@ -429,19 +455,6 @@ const ContactEnrichModal = ({
     window.open(searchUrl, '_blank');
   };
 
-  const handleEnrichWithApollo = () => {
-    if (!urlSaved) {
-      toast.warning('Please save the LinkedIn URL first');
-      return;
-    }
-
-    // TODO: Open Apollo enrichment modal
-    toast.info('Apollo enrichment modal will be implemented next');
-
-    if (onEnrichComplete) {
-      onEnrichComplete();
-    }
-  };
 
   if (!contact) return null;
 
@@ -589,17 +602,6 @@ const ContactEnrichModal = ({
           </SaveUrlButton>
         </ActionSection>
 
-        {/* Apollo Enrich Button */}
-        <EnrichButton
-          theme={theme}
-          enabled={urlSaved}
-          onClick={handleEnrichWithApollo}
-          disabled={!urlSaved}
-        >
-          <FiUser size={16} />
-          Enrich via Apollo
-          {!urlSaved && ' (Save URL first)'}
-        </EnrichButton>
       </ModalContent>
 
       <style jsx>{`

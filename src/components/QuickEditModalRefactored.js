@@ -532,23 +532,27 @@ const QuickEditModalRefactored = ({
         theme={theme}
         onEnrichComplete={async () => {
           setContactEnrichModalOpen(false);
-          // Refresh the contact data to get the updated LinkedIn URL
+          // Refresh the contact data to get the updated LinkedIn URL, job_role, and description
           if (contact?.contact_id) {
             try {
               const { data, error } = await supabase
                 .from('contacts')
-                .select('linkedin')
+                .select('linkedin, job_role, description')
                 .eq('contact_id', contact.contact_id)
                 .single();
 
               if (!error && data) {
-                // Update the local state with the new LinkedIn URL
+                // Update the local state with the new LinkedIn URL, job role, and description
                 setQuickEditLinkedin(data.linkedin || '');
+                setQuickEditJobRoleText(data.job_role || '');
+                setQuickEditDescriptionText(data.description || '');
                 // Update the contact object as well
                 contact.linkedin = data.linkedin;
+                contact.job_role = data.job_role;
+                contact.description = data.description;
               }
             } catch (err) {
-              console.error('Error fetching updated LinkedIn URL:', err);
+              console.error('Error fetching updated contact data:', err);
             }
           }
         }}
