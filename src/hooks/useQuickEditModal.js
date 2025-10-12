@@ -643,7 +643,7 @@ export const useQuickEditModal = (onContactUpdate) => {
     if (!contactForQuickEdit) return;
 
     try {
-      // Save contact details
+      // Save contact details (but NOT show_missing - that's handled separately)
       const { error } = await supabase
         .from('contacts')
         .update({
@@ -653,8 +653,8 @@ export const useQuickEditModal = (onContactUpdate) => {
           job_role: quickEditJobRoleText.trim() || null,
           category: quickEditContactCategory || 'Not Set',
           score: quickEditContactScore > 0 ? quickEditContactScore : null,
-          linkedin: quickEditLinkedin.trim() || null,
-          show_missing: quickEditShowMissing
+          linkedin: quickEditLinkedin.trim() || null
+          // Removed show_missing - it should only be updated via the "Mark as Complete" button
         })
         .eq('contact_id', contactForQuickEdit.contact_id);
 

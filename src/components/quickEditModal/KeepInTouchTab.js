@@ -191,6 +191,40 @@ const KeepInTouchTab = ({
             <option value="call">Call</option>
             <option value="present">Present</option>
           </Select>
+
+          {/* WhatsApp Standard Quick Button */}
+          <button
+            onClick={() => {
+              setChristmasWishes('whatsapp standard');
+              setEasterWishes('whatsapp standard');
+              toast.success('Set both to WhatsApp Standard');
+            }}
+            style={{
+              marginTop: '10px',
+              padding: '8px 16px',
+              background: '#25D366',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              width: '100%',
+              justifyContent: 'center',
+              transition: 'background 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.background = '#20B858';
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.background = '#25D366';
+            }}
+          >
+            WhatsApp Standard 🎄🐰
+          </button>
         </FormGroup>
       )}
     </>

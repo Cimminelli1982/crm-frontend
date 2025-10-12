@@ -1,5 +1,7 @@
 import React from 'react';
 import { FaBuilding } from 'react-icons/fa';
+import { supabase } from '../../lib/supabaseClient';
+import { toast } from 'react-hot-toast';
 import {
   FormGroup,
   Label,
@@ -29,6 +31,26 @@ const WorkTab = ({
   shouldShowField,
   onOpenEnrichModal
 }) => {
+  // Auto-save job role to database
+  const handleSetJobRole = async (newJobRole) => {
+    setJobRole(newJobRole);
+
+    // Save directly to database
+    if (contact?.contact_id) {
+      try {
+        const { error } = await supabase
+          .from('contacts')
+          .update({ job_role: newJobRole })
+          .eq('contact_id', contact.contact_id);
+
+        if (error) throw error;
+        toast.success(`Job role set to: ${newJobRole}`);
+      } catch (error) {
+        console.error('Error saving job role:', error);
+        toast.error('Failed to save job role');
+      }
+    }
+  };
   return (
     <>
       {/* Job Title */}
@@ -42,6 +64,92 @@ const WorkTab = ({
             placeholder="Enter job title..."
             theme={theme}
           />
+
+          {/* Frequently Used Job Titles */}
+          <div style={{
+            marginTop: '8px',
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '6px',
+            alignItems: 'center'
+          }}>
+            <span style={{
+              fontSize: '12px',
+              color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+              marginRight: '4px'
+            }}>
+              Frequently used:
+            </span>
+            <button
+              onClick={() => handleSetJobRole('CEO & Co-Founder')}
+              style={{
+                padding: '4px 10px',
+                fontSize: '12px',
+                background: theme === 'light' ? '#F3F4F6' : '#374151',
+                color: theme === 'light' ? '#374151' : '#E5E7EB',
+                border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#4B5563'}`,
+                borderRadius: '4px',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background = theme === 'light' ? '#E5E7EB' : '#4B5563';
+                e.target.style.borderColor = theme === 'light' ? '#D1D5DB' : '#6B7280';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = theme === 'light' ? '#F3F4F6' : '#374151';
+                e.target.style.borderColor = theme === 'light' ? '#E5E7EB' : '#4B5563';
+              }}
+            >
+              CEO & Co-Founder
+            </button>
+            <button
+              onClick={() => handleSetJobRole('VC')}
+              style={{
+                padding: '4px 10px',
+                fontSize: '12px',
+                background: theme === 'light' ? '#F3F4F6' : '#374151',
+                color: theme === 'light' ? '#374151' : '#E5E7EB',
+                border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#4B5563'}`,
+                borderRadius: '4px',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background = theme === 'light' ? '#E5E7EB' : '#4B5563';
+                e.target.style.borderColor = theme === 'light' ? '#D1D5DB' : '#6B7280';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = theme === 'light' ? '#F3F4F6' : '#374151';
+                e.target.style.borderColor = theme === 'light' ? '#E5E7EB' : '#4B5563';
+              }}
+            >
+              VC
+            </button>
+            <button
+              onClick={() => handleSetJobRole('Family Office')}
+              style={{
+                padding: '4px 10px',
+                fontSize: '12px',
+                background: theme === 'light' ? '#F3F4F6' : '#374151',
+                color: theme === 'light' ? '#374151' : '#E5E7EB',
+                border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#4B5563'}`,
+                borderRadius: '4px',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background = theme === 'light' ? '#E5E7EB' : '#4B5563';
+                e.target.style.borderColor = theme === 'light' ? '#D1D5DB' : '#6B7280';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = theme === 'light' ? '#F3F4F6' : '#374151';
+                e.target.style.borderColor = theme === 'light' ? '#E5E7EB' : '#4B5563';
+              }}
+            >
+              Family Office
+            </button>
+          </div>
         </FormGroup>
       )}
 

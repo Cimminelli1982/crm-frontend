@@ -295,27 +295,21 @@ const QuickEditModalRefactored = ({
               fontSize: '14px',
               color: theme === 'light' ? '#6B7280' : '#9CA3AF'
             }}>
-              Track Missing Info
+              Mark as Complete
             </span>
-            <ToggleSwitch
-              theme={theme}
-              $checked={quickEditShowMissing}
+            <button
               onClick={async () => {
                 if (savingToggle) return; // Prevent multiple clicks
-
-                // Toggle the state
-                const newShowMissingValue = !quickEditShowMissing;
-                setQuickEditShowMissing(newShowMissingValue);
 
                 // Start saving
                 setSavingToggle(true);
 
                 try {
-                  // Update the show_missing field directly first
+                  // Set show_missing to false - user is satisfied with current info
                   const { error: updateError } = await supabase
                     .from('contacts')
                     .update({
-                      show_missing: newShowMissingValue,
+                      show_missing: false,
                       last_modified_at: new Date().toISOString()
                     })
                     .eq('contact_id', contact.contact_id);
@@ -334,21 +328,31 @@ const QuickEditModalRefactored = ({
                     }
                   }, 100);
                 } catch (error) {
-                  console.error('Error saving changes on toggle:', error);
-                  // Revert the toggle on error
-                  setQuickEditShowMissing(!newShowMissingValue);
+                  console.error('Error marking contact as complete:', error);
                 } finally {
                   setSavingToggle(false);
                 }
               }}
-              disabled={savingToggle}
+              disabled={savingToggle || !contact.show_missing}
               style={{
-                opacity: savingToggle ? 0.6 : 1,
-                cursor: savingToggle ? 'wait' : 'pointer'
+                padding: '4px 12px',
+                borderRadius: '6px',
+                border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                background: contact.show_missing
+                  ? (theme === 'light' ? '#10B981' : '#059669')
+                  : (theme === 'light' ? '#E5E7EB' : '#374151'),
+                color: contact.show_missing
+                  ? '#FFFFFF'
+                  : (theme === 'light' ? '#9CA3AF' : '#6B7280'),
+                fontSize: '13px',
+                fontWeight: '500',
+                cursor: contact.show_missing ? (savingToggle ? 'wait' : 'pointer') : 'not-allowed',
+                opacity: savingToggle || !contact.show_missing ? 0.6 : 1,
+                transition: 'all 0.2s ease'
               }}
             >
-              <ToggleSlider $checked={quickEditShowMissing} />
-            </ToggleSwitch>
+              {contact.show_missing ? '✓' : 'Complete'}
+            </button>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <CloseButton
