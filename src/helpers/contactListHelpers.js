@@ -154,13 +154,16 @@ export const getVisibleTabs = (contact, showMissingFieldsOnly = false) => {
 
 // Check if a field should be shown based on missing data
 export const shouldShowField = (contact, fieldName, showMissingFieldsOnly = false) => {
-  if (!contact || !showMissingFieldsOnly) return true;
+  // If not in missing-only mode, show all fields
+  if (!showMissingFieldsOnly) return true;
+  // If no contact, show field
+  if (!contact) return true;
 
   // Direct field checking - show field if it's missing/empty
   switch (fieldName) {
     case 'first_name': return !contact.first_name || !contact.first_name.trim();
     case 'last_name': return !contact.last_name || !contact.last_name.trim();
-    case 'category': return !contact.category || contact.category === 'Not Set';
+    case 'category': return !contact.category || contact.category === 'Not Set' || contact.category === 'Inbox';
     case 'score': return !contact.score || contact.score <= 0;
     case 'description': return !contact.description || !contact.description.trim();
     case 'job_role': return !contact.job_role || !contact.job_role.trim();
@@ -171,9 +174,10 @@ export const shouldShowField = (contact, fieldName, showMissingFieldsOnly = fals
     case 'cities': return contact.contact_cities !== undefined && (!contact.contact_cities || contact.contact_cities.length === 0);
     case 'tags': return contact.contact_tags !== undefined && (!contact.contact_tags || contact.contact_tags.length === 0);
     case 'birthday': return !contact.birthday || !contact.birthday.trim();
-    case 'keep_in_touch_frequency': return !contact.keep_in_touch_frequency || contact.keep_in_touch_frequency === 'Not Set';
-    case 'christmas': return !contact.christmas || contact.christmas === 'no wishes set';
-    case 'easter': return !contact.easter || contact.easter === 'no wishes set';
+    case 'frequency': // Map 'frequency' to keep_in_touch_frequency
+    case 'keep_in_touch_frequency': return !contact.keep_in_touch_frequency || contact.keep_in_touch_frequency === 'Not Set' || !contact.keep_in_touch_frequency.trim();
+    case 'christmas': return !contact.christmas || contact.christmas === 'no wishes set' || !contact.christmas.trim();
+    case 'easter': return !contact.easter || contact.easter === 'no wishes set' || !contact.easter.trim();
     case 'age_estimate': return !contact.age_estimate || contact.age_estimate <= 0;
     default: return true;
   }
@@ -200,7 +204,7 @@ export const getMissingFields = (contact) => {
   // Info tab missing fields - exactly match the scoring logic
   if (!contact.first_name || !contact.first_name.trim()) missing.info.push('first_name');
   if (!contact.last_name || !contact.last_name.trim()) missing.info.push('last_name');
-  if (!contact.category) missing.info.push('category');
+  if (!contact.category || contact.category === 'Inbox') missing.info.push('category');
   if (!contact.score || contact.score <= 0) missing.info.push('score');
   if (!contact.description || !contact.description.trim()) missing.info.push('description');
 

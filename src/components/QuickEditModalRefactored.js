@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import Modal from 'react-modal';
-import { FiX, FiGitMerge } from 'react-icons/fi';
+import { FiX, FiGitMerge, FiCheck } from 'react-icons/fi';
 import { FaSkull, FaInfoCircle, FaEnvelope, FaBriefcase, FaMapMarkerAlt, FaHeart } from 'react-icons/fa';
 import ContactEnrichModal from './modals/ContactEnrichModal';
 import FindDuplicatesModal from './FindDuplicatesModal';
@@ -134,6 +134,13 @@ const QuickEditModalRefactored = ({
   const [contactEnrichModalOpen, setContactEnrichModalOpen] = useState(false);
   const [findDuplicatesModalOpen, setFindDuplicatesModalOpen] = useState(false);
   const [savingToggle, setSavingToggle] = useState(false);
+  const [missingOnly, setMissingOnly] = useState(showMissingFieldsOnly); // Use the prop value
+
+
+  // Sync missingOnly with showMissingFieldsOnly prop when it changes
+  React.useEffect(() => {
+    setMissingOnly(showMissingFieldsOnly);
+  }, [showMissingFieldsOnly]);
 
   if (!contact) return null;
 
@@ -172,7 +179,7 @@ const QuickEditModalRefactored = ({
             description={quickEditDescriptionText}
             setDescription={setQuickEditDescriptionText}
             theme={theme}
-            shouldShowField={shouldShowField}
+            shouldShowField={(field) => shouldShowField(field, missingOnly)}
             categoryOptions={categoryOptions}
           />
         );
@@ -199,7 +206,7 @@ const QuickEditModalRefactored = ({
             handleUpdateMobileType={handleUpdateMobileType}
             handleSetMobilePrimary={handleSetMobilePrimary}
             theme={theme}
-            shouldShowField={shouldShowField}
+            shouldShowField={(field) => shouldShowField(field, missingOnly)}
           />
         );
 
@@ -216,7 +223,7 @@ const QuickEditModalRefactored = ({
             handleUpdateCompanyRelationship={handleUpdateCompanyRelationship}
             handleUpdateCompanyCategory={handleUpdateCompanyCategory}
             theme={theme}
-            shouldShowField={shouldShowField}
+            shouldShowField={(field) => shouldShowField(field, missingOnly)}
             onOpenEnrichModal={() => setContactEnrichModalOpen(true)}
           />
         );
@@ -231,7 +238,7 @@ const QuickEditModalRefactored = ({
             handleRemoveCity={handleRemoveCity}
             handleRemoveTag={handleRemoveTag}
             theme={theme}
-            shouldShowField={shouldShowField}
+            shouldShowField={(field) => shouldShowField(field, missingOnly)}
           />
         );
 
@@ -256,7 +263,7 @@ const QuickEditModalRefactored = ({
             handleSaveChristmasWishes={handleSaveQuickEditChristmasWishes}
             handleSaveEasterWishes={handleSaveQuickEditEasterWishes}
             theme={theme}
-            shouldShowField={shouldShowField}
+            shouldShowField={(field) => shouldShowField(field, missingOnly)}
             frequencyOptions={frequencyOptions}
           />
         );
@@ -295,14 +302,37 @@ const QuickEditModalRefactored = ({
     >
       <ModalContent theme={theme}>
         <ModalHeader theme={theme}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
-            <span style={{
-              fontSize: '14px',
-              color: theme === 'light' ? '#6B7280' : '#9CA3AF'
-            }}>
-              Mark as Complete
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+            {/* Missing only toggle button */}
             <button
+              onClick={() => {
+                setMissingOnly(!missingOnly);
+                // Force re-render of tabs
+                setQuickEditActiveTab('');
+                setTimeout(() => setQuickEditActiveTab('Info'), 0);
+              }}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '6px',
+                border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                background: missingOnly
+                  ? (theme === 'light' ? '#3B82F6' : '#2563EB')
+                  : (theme === 'light' ? '#FFFFFF' : '#1F2937'),
+                color: missingOnly
+                  ? '#FFFFFF'
+                  : (theme === 'light' ? '#374151' : '#D1D5DB'),
+                fontSize: '13px',
+                fontWeight: '500',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              {missingOnly ? '✓ Missing only' : 'Missing only'}
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {/* Check button for marking complete */}
+            <CloseButton
               onClick={async () => {
                 if (savingToggle) return; // Prevent multiple clicks
 
@@ -355,11 +385,20 @@ const QuickEditModalRefactored = ({
                 opacity: savingToggle || !contact.show_missing ? 0.6 : 1,
                 transition: 'all 0.2s ease'
               }}
+              theme={theme}
+              title="Mark as Complete"
+              style={{
+                background: contact.show_missing
+                  ? (theme === 'light' ? '#10B981' : '#059669')
+                  : (theme === 'light' ? '#E5E7EB' : '#374151'),
+                color: contact.show_missing
+                  ? '#FFFFFF'
+                  : (theme === 'light' ? '#9CA3AF' : '#6B7280'),
+                opacity: savingToggle || !contact.show_missing ? 0.6 : 1
+              }}
             >
-              {contact.show_missing ? '✓' : 'Complete'}
-            </button>
-          </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <FiCheck />
+            </CloseButton>
             <CloseButton
               onClick={() => {
                 setFindDuplicatesModalOpen(true);
@@ -400,7 +439,7 @@ const QuickEditModalRefactored = ({
         <ModalBody>
           {/* Tab Navigation */}
           <TabsContainer theme={theme}>
-            {getVisibleTabs(contact).map(tab => {
+            {getVisibleTabs(contact, missingOnly).map(tab => {
               const isActive = quickEditActiveTab === tab.id;
               // Map tab IDs to icons
               const tabIcons = {

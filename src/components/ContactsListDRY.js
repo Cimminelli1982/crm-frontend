@@ -408,8 +408,8 @@ const ContactsListDRY = ({
   // Handle opening missing fields modal (completeness-focused Quick Edit)
   const handleOpenMissingFieldsModal = async (contact, e) => {
     if (e) e.stopPropagation();
-    // Reuse the existing Quick Edit modal but in "missing fields" mode
-    await handleOpenQuickEditContactModal(contact, e, true);
+    // Always open with missing fields only when clicking the completeness icon
+    await handleOpenQuickEditContactModal(contact, true);
   };
 
   // Handle opening keep in touch data input modal (for interactions page)
@@ -538,7 +538,7 @@ const ContactsListDRY = ({
     return allTabs.filter(tab => shouldShowTab(contact, tab.id));
   };
 
-  const shouldShowField = (contact, fieldName) => {
+  const shouldShowFieldLocal = (contact, fieldName) => {
     if (!contact || !showMissingFieldsOnly) return true;
 
 
@@ -574,9 +574,25 @@ const ContactsListDRY = ({
     return shouldShowField(contact, fieldName, showMissingFieldsOnly);
   };
 
-  // Create a bound version for the modal that has the contact already provided
-  const shouldShowFieldForModal = (fieldName) => {
-    return shouldShowField(contactForQuickEdit, fieldName, showMissingFieldsOnly);
+  // Create a bound version for the modal that checks current state values
+  const shouldShowFieldForModal = (fieldName, missingOnly = showMissingFieldsOnly) => {
+    // If not in missing-only mode, show all fields
+    if (!missingOnly) return true;
+
+    // Check the current state values for Keep in Touch fields
+    switch (fieldName) {
+      case 'frequency':
+        return !quickEditKeepInTouchFrequency || quickEditKeepInTouchFrequency === '' || quickEditKeepInTouchFrequency === 'Not Set';
+      case 'christmas':
+        return !quickEditChristmasWishes || quickEditChristmasWishes === '' || quickEditChristmasWishes === 'no wishes set';
+      case 'easter':
+        return !quickEditEasterWishes || quickEditEasterWishes === '' || quickEditEasterWishes === 'no wishes set';
+      case 'birthday':
+        return !quickEditBirthdayDay || !quickEditBirthdayMonth;
+      default:
+        // For other fields, use the regular shouldShowField function
+        return shouldShowField(contactForQuickEdit, fieldName, missingOnly);
+    }
   };
 
   // Check if a tab should be shown (show tab if at least one field in it should be shown)
