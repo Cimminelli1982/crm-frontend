@@ -1,6 +1,7 @@
 import React from 'react';
 import Modal from 'react-modal';
-import { FiX, FiUpload, FiLinkedin, FiUser, FiSave, FiLoader, FiTrash2, FiImage, FiMessageCircle } from 'react-icons/fi';
+import { toast } from 'react-hot-toast';
+import { FiX, FiUpload, FiLinkedin, FiUser, FiSave, FiLoader, FiTrash2, FiImage, FiMessageCircle, FiSearch } from 'react-icons/fi';
 import {
   ModalContainer,
   ModalHeader,
@@ -22,6 +23,7 @@ import {
   LinkedInButton,
   HelpText,
   ButtonGroup,
+  ButtonRow,
   CancelButton,
   SaveButton,
   LoadingOverlay,
@@ -161,62 +163,63 @@ const ProfileImageModal = ({
 
             <ActionGroup theme={theme}>
               <ActionTitle theme={theme}>
-                <FiLinkedin size={14} />
-                Import from LinkedIn
+                <FiSearch size={14} />
+                Import from Online Sources
               </ActionTitle>
-              <LinkedInButton
-                onClick={onFetchFromLinkedIn}
-                disabled={!hasLinkedIn || fetchingFromLinkedIn || uploading}
-                theme={theme}
-              >
-                {fetchingFromLinkedIn ? (
-                  <>
+              <ButtonRow>
+                <LinkedInButton
+                  onClick={onFetchFromLinkedIn}
+                  disabled={!hasLinkedIn || fetchingFromLinkedIn || uploading}
+                  theme={theme}
+                  title={hasLinkedIn ? 'Fetch from Apollo' : 'LinkedIn URL Required'}
+                >
+                  {fetchingFromLinkedIn ? (
                     <SpinningIcon>
                       <FiLoader size={16} />
                     </SpinningIcon>
-                    Fetching...
-                  </>
-                ) : (
-                  <>
+                  ) : (
                     <FiLinkedin size={16} />
-                    {hasLinkedIn ? 'Fetch from Apollo' : 'LinkedIn URL Required'}
-                  </>
-                )}
-              </LinkedInButton>
-              {!hasLinkedIn && (
-                <HelpText theme={theme}>
-                  Add a LinkedIn URL to the contact first to use this feature
-                </HelpText>
-              )}
-            </ActionGroup>
+                  )}
+                  <span>LinkedIn</span>
+                </LinkedInButton>
 
-            <ActionGroup theme={theme}>
-              <ActionTitle theme={theme}>
-                <FiMessageCircle size={14} />
-                Import from WhatsApp
-              </ActionTitle>
-              <LinkedInButton
-                onClick={onFetchFromWhatsApp}
-                disabled={fetchingFromWhatsApp || uploading || fetchingFromLinkedIn}
-                theme={theme}
-                style={{ background: '#25D366' }}
-              >
-                {fetchingFromWhatsApp ? (
-                  <>
+                <LinkedInButton
+                  onClick={onFetchFromWhatsApp}
+                  disabled={fetchingFromWhatsApp || uploading || fetchingFromLinkedIn}
+                  theme={theme}
+                  style={{ background: '#25D366' }}
+                  title="Fetch from WhatsApp"
+                >
+                  {fetchingFromWhatsApp ? (
                     <SpinningIcon>
                       <FiLoader size={16} />
                     </SpinningIcon>
-                    Fetching...
-                  </>
-                ) : (
-                  <>
+                  ) : (
                     <FiMessageCircle size={16} />
-                    Fetch from WhatsApp
-                  </>
-                )}
-              </LinkedInButton>
+                  )}
+                  <span>WhatsApp</span>
+                </LinkedInButton>
+
+                <LinkedInButton
+                  onClick={() => {
+                    const searchQuery = `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+                    if (searchQuery) {
+                      window.open(`https://www.google.com/search?q=${encodeURIComponent(searchQuery)}&tbm=isch`, '_blank');
+                    } else {
+                      toast.error('Contact name is required for search');
+                    }
+                  }}
+                  disabled={!contact.first_name && !contact.last_name}
+                  theme={theme}
+                  style={{ background: '#4285F4' }}
+                  title="Search on Google Images"
+                >
+                  <FiSearch size={16} />
+                  <span>Google</span>
+                </LinkedInButton>
+              </ButtonRow>
               <HelpText theme={theme}>
-                Fetches profile image from WhatsApp chat history via Timelines
+                Fetch from LinkedIn/WhatsApp or search on Google Images
               </HelpText>
             </ActionGroup>
           </ActionSection>

@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
 import { FaArrowLeft, FaEdit, FaTrash, FaGlobe, FaLinkedin, FaLayerGroup, FaRocket } from 'react-icons/fa';
 import { toast } from 'react-hot-toast';
-import ContactsList from '../components/ContactsList';
+import ContactsListDRY from '../components/ContactsListDRY';
 import EditCompanyModal from '../components/modals/EditCompanyModal';
 import CompanyContactsModal from '../components/modals/CompanyContactsModal';
 import CompanyDuplicateModal from '../components/modals/CompanyDuplicateModal';
@@ -119,7 +119,7 @@ const CompanyDetailPage = ({ theme }) => {
 
     setLoadingRelatedData(true);
     try {
-      // Fetch contacts associated with this company
+      // Fetch contacts associated with this company with all required fields for ContactCard
       const { data: contacts, error: contactsError } = await supabase
         .from('contact_companies')
         .select(`
@@ -131,25 +131,79 @@ const CompanyDetailPage = ({ theme }) => {
             first_name,
             last_name,
             job_role,
-            category
+            category,
+            score,
+            description,
+            linkedin,
+            profile_image_url,
+            birthday
           )
         `)
         .eq('company_id', companyId);
 
       if (contactsError) throw contactsError;
 
-      // Transform the contacts data to match ContactsList expectations
+      // Fetch contact emails and mobiles for all contacts
+      const contactIds = (contacts || []).map(cr => cr.contacts?.contact_id).filter(Boolean);
+
+      const [emailsResult, mobilesResult, keepInTouchResult] = await Promise.all([
+        supabase
+          .from('contact_emails')
+          .select('contact_id, email, is_primary, type')
+          .in('contact_id', contactIds),
+        supabase
+          .from('contact_mobiles')
+          .select('contact_id, mobile, is_primary, type')
+          .in('contact_id', contactIds),
+        supabase
+          .from('keep_in_touch')
+          .select('contact_id, frequency, christmas, easter')
+          .in('contact_id', contactIds)
+      ]);
+
+      // Create lookup maps
+      const emailsByContact = {};
+      const mobilesByContact = {};
+      const keepInTouchByContact = {};
+
+      (emailsResult.data || []).forEach(email => {
+        if (!emailsByContact[email.contact_id]) {
+          emailsByContact[email.contact_id] = [];
+        }
+        emailsByContact[email.contact_id].push(email);
+      });
+
+      (mobilesResult.data || []).forEach(mobile => {
+        if (!mobilesByContact[mobile.contact_id]) {
+          mobilesByContact[mobile.contact_id] = [];
+        }
+        mobilesByContact[mobile.contact_id].push(mobile);
+      });
+
+      (keepInTouchResult.data || []).forEach(kit => {
+        keepInTouchByContact[kit.contact_id] = kit;
+      });
+
+      // Transform the contacts data to match ContactCard expectations
       const transformedContacts = (contacts || []).map(contactRelation => {
         const contact = contactRelation.contacts;
+        const kitData = keepInTouchByContact[contact.contact_id] || {};
         return {
           ...contact,
+          // Add keep in touch data
+          keep_in_touch_frequency: kitData.frequency,
+          christmas: kitData.christmas,
+          easter: kitData.easter,
           // Add relationship info for display
           company_relationship: contactRelation.relationship,
           is_primary_company_contact: contactRelation.is_primary,
-          // Format expected arrays
-          emails: [],
-          mobiles: [],
-          companies: [{ name: company.name }] // Add current company for display
+          // Add emails and mobiles
+          emails: emailsByContact[contact.contact_id] || [],
+          mobiles: mobilesByContact[contact.contact_id] || [],
+          companies: [{
+            company_id: companyId,
+            name: company.name
+          }]
         };
       });
 
@@ -186,7 +240,12 @@ const CompanyDetailPage = ({ theme }) => {
       setCompanyCities(cities || []);
       setCompanyTags(tags || []);
 
-      console.log('Related data loaded:', { contacts, cities, tags });
+      console.log('Related data loaded:', {
+        originalContacts: contacts,
+        transformedContacts,
+        cities,
+        tags
+      });
     } catch (error) {
       console.error('Error fetching related data:', error);
       toast.error('Failed to load related data');
@@ -242,12 +301,19 @@ const CompanyDetailPage = ({ theme }) => {
           .select(`
             contact_id,
             email,
+            is_primary,
+            type,
             contacts (
               contact_id,
               first_name,
               last_name,
               job_role,
               category,
+              score,
+              description,
+              linkedin,
+              profile_image_url,
+              birthday,
               created_at
             )
           `)
@@ -307,6 +373,28 @@ const CompanyDetailPage = ({ theme }) => {
         }
         return acc;
       }, []);
+
+      // Fetch mobiles for suggested contacts
+      if (uniqueContacts.length > 0) {
+        const suggestedContactIds = uniqueContacts.map(c => c.contact_id);
+        const { data: mobilesData } = await supabase
+          .from('contact_mobiles')
+          .select('contact_id, mobile, is_primary, type')
+          .in('contact_id', suggestedContactIds);
+
+        // Add mobiles to contacts
+        const mobilesByContactId = {};
+        (mobilesData || []).forEach(mobile => {
+          if (!mobilesByContactId[mobile.contact_id]) {
+            mobilesByContactId[mobile.contact_id] = [];
+          }
+          mobilesByContactId[mobile.contact_id].push(mobile);
+        });
+
+        uniqueContacts.forEach(contact => {
+          contact.mobiles = mobilesByContactId[contact.contact_id] || [];
+        });
+      }
 
       console.log(`✅ Found ${uniqueContacts.length} contacts matching company domains`);
       setSuggestedContacts(uniqueContacts);
@@ -829,44 +917,70 @@ const CompanyDetailPage = ({ theme }) => {
 
               {/* Associated Contacts */}
               {activeContactsSubTab === 'Associated' && (
-                <ContactsList
-                  contacts={companyContacts}
-                  loading={loadingRelatedData}
-                  theme={theme}
-                  emptyStateConfig={{
-                    icon: '🧑‍💼',
-                    title: 'No contacts associated',
-                    text: 'No contacts are currently associated with this company.'
-                  }}
-                  onContactUpdate={() => {
-                    fetchRelatedData();
-                    fetchSuggestedContacts(); // Refresh suggestions when contacts change
-                  }}
-                  showActions={true}
-                  badgeType="category"
-                  onContactClick={(contact) => handleContactClick({ contacts: contact })}
-                />
+                <ContactsContainer>
+                  {loadingRelatedData ? (
+                    <LoadingContainer>
+                      <LoadingSpinner theme={theme} />
+                      <LoadingText theme={theme}>Loading contacts...</LoadingText>
+                    </LoadingContainer>
+                  ) : (
+                    <ContactsListDRY
+                      dataSource={{ type: 'search', preloadedData: companyContacts }}
+                      refreshTrigger={companyContacts.length}
+                      theme={theme}
+                      emptyStateConfig={{
+                        icon: '🧑‍💼',
+                        title: 'No contacts associated',
+                        text: 'No contacts are currently associated with this company.'
+                      }}
+                      onContactUpdate={() => {
+                        fetchRelatedData();
+                        fetchSuggestedContacts(); // Refresh suggestions when contacts change
+                      }}
+                      showActions={true}
+                      badgeType="category"
+                      onContactClick={(contact) => {
+                        navigate(`/contact/${contact.contact_id}`, {
+                          state: {
+                            activeTab: 'Related',
+                            activeRelatedTab: 'Companies',
+                            previousCompanyId: companyId
+                          }
+                        });
+                      }}
+                    />
+                  )}
+                </ContactsContainer>
               )}
 
               {/* Suggested Contacts */}
               {activeContactsSubTab === 'Suggested' && suggestedContacts.length > 0 && (
-                <ContactsList
-                  contacts={suggestedContacts}
-                  loading={false}
-                  theme={theme}
-                  emptyStateConfig={{
-                    icon: '💡',
-                    title: 'No suggestions found',
-                    text: 'No contacts found with matching email domains.'
-                  }}
-                  onContactUpdate={() => {
-                    fetchRelatedData();
-                    fetchSuggestedContacts();
-                  }}
-                  showActions={true}
-                  badgeType="category"
-                  onContactClick={(contact) => handleContactClick({ contacts: contact })}
-                />
+                <ContactsContainer>
+                  <ContactsListDRY
+                    dataSource={{ type: 'search', preloadedData: suggestedContacts }}
+                    theme={theme}
+                    emptyStateConfig={{
+                      icon: '💡',
+                      title: 'No suggestions found',
+                      text: 'No contacts found with matching email domains.'
+                    }}
+                    onContactUpdate={() => {
+                      fetchRelatedData();
+                      fetchSuggestedContacts();
+                    }}
+                    showActions={true}
+                    badgeType="category"
+                    onContactClick={(contact) => {
+                      navigate(`/contact/${contact.contact_id}`, {
+                        state: {
+                          activeTab: 'Related',
+                          activeRelatedTab: 'Companies',
+                          previousCompanyId: companyId
+                        }
+                      });
+                    }}
+                  />
+                </ContactsContainer>
               )}
             </RelatedSection>
           )}
@@ -1467,6 +1581,43 @@ const ComingSoonTitle = styled.h3`
 const ComingSoonText = styled.p`
   color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
   font-size: 16px;
+  margin: 0;
+`;
+
+const ContactsContainer = styled.div`
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+`;
+
+const ContactCardWrapper = styled.div`
+  margin-bottom: 0;
+`;
+
+const EmptyState = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 24px;
+  text-align: center;
+`;
+
+const EmptyIcon = styled.div`
+  font-size: 48px;
+  margin-bottom: 16px;
+`;
+
+const EmptyTitle = styled.h3`
+  font-size: 18px;
+  font-weight: 600;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  margin: 0 0 8px 0;
+`;
+
+const EmptyText = styled.p`
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  font-size: 14px;
   margin: 0;
 `;
 

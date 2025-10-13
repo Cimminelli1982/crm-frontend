@@ -171,27 +171,43 @@ export const UploadButton = styled.label`
 `;
 
 export const LinkedInButton = styled.button`
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 10px 16px;
+  gap: 6px;
+  padding: 8px 12px;
   background: #0077B5;
   border: none;
   border-radius: 6px;
   color: white;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
+  min-width: 0;
 
   &:hover:not(:disabled) {
     background: #005885;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   }
 
   &:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+    background: ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+    color: ${props => props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
+  }
+
+  span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    @media (max-width: 480px) {
+      display: none;
+    }
   }
 `;
 
@@ -200,6 +216,12 @@ export const HelpText = styled.p`
   color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
   margin: 8px 0 0 0;
   font-style: italic;
+`;
+
+export const ButtonRow = styled.div`
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
 `;
 
 export const ButtonGroup = styled.div`
