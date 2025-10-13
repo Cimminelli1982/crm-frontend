@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import Modal from 'react-modal';
-import { FiX } from 'react-icons/fi';
+import { FiX, FiGitMerge } from 'react-icons/fi';
 import { FaSkull, FaInfoCircle, FaEnvelope, FaBriefcase, FaMapMarkerAlt, FaHeart } from 'react-icons/fa';
 import ContactEnrichModal from './modals/ContactEnrichModal';
+import FindDuplicatesModal from './FindDuplicatesModal';
 import { supabase } from '../lib/supabaseClient';
 
 // Tab Components
@@ -131,6 +132,7 @@ const QuickEditModalRefactored = ({
   frequencyOptions = ['Weekly', 'Monthly', 'Quarterly', 'Twice per Year', 'Once per Year', 'Do not keep in touch']
 }) => {
   const [contactEnrichModalOpen, setContactEnrichModalOpen] = useState(false);
+  const [findDuplicatesModalOpen, setFindDuplicatesModalOpen] = useState(false);
   const [savingToggle, setSavingToggle] = useState(false);
 
   if (!contact) return null;
@@ -360,6 +362,19 @@ const QuickEditModalRefactored = ({
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <CloseButton
               onClick={() => {
+                setFindDuplicatesModalOpen(true);
+              }}
+              theme={theme}
+              title="Find and Merge Duplicates"
+              style={{
+                background: theme === 'light' ? '#EDE9FE' : '#4C1D95',
+                color: theme === 'light' ? '#7C3AED' : '#DDD6FE'
+              }}
+            >
+              <FiGitMerge />
+            </CloseButton>
+            <CloseButton
+              onClick={() => {
                 handleClose();
                 if (onDelete) onDelete(contact);
               }}
@@ -555,6 +570,18 @@ const QuickEditModalRefactored = ({
               console.error('Error fetching updated contact data:', err);
             }
           }
+        }}
+      />
+
+      {/* Find Duplicates Modal */}
+      <FindDuplicatesModal
+        isOpen={findDuplicatesModalOpen}
+        onClose={() => setFindDuplicatesModalOpen(false)}
+        contact={contact}
+        theme={theme}
+        onMergeContact={(sourceContact, targetContact) => {
+          console.log('Merging contacts:', sourceContact, targetContact);
+          // The actual merge is handled by the ContactMergeModal
         }}
       />
     </>

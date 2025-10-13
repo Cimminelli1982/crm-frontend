@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import Modal from 'react-modal';
-import { FiX, FiChevronLeft, FiChevronRight, FiCheck, FiEdit2 } from 'react-icons/fi';
+import { FiX, FiChevronLeft, FiChevronRight, FiCheck, FiEdit2, FiRefreshCw } from 'react-icons/fi';
 import { FaUser, FaEnvelope, FaPhone, FaBuilding, FaLinkedin, FaTag, FaMapMarkerAlt } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import { toast } from 'react-hot-toast';
@@ -9,11 +9,15 @@ import { toast } from 'react-hot-toast';
 const ContactMergeModal = ({
   isOpen,
   onClose,
-  primaryContact,
-  duplicateContact,
+  primaryContact: initialPrimaryContact,
+  duplicateContact: initialDuplicateContact,
   theme,
   onMergeComplete
 }) => {
+  // Allow swapping primary and duplicate contacts
+  const [primaryContact, setPrimaryContact] = useState(initialPrimaryContact);
+  const [duplicateContact, setDuplicateContact] = useState(initialDuplicateContact);
+  const [hasSwapped, setHasSwapped] = useState(false);
   // Define the fields to merge through - UPDATED ORDER
   const mergeFields = [
     { key: 'name', label: 'Name', icon: FaUser, type: 'single' },
@@ -92,6 +96,34 @@ const ContactMergeModal = ({
   const currentField = mergeFields[currentFieldIndex];
   const isLastField = currentFieldIndex === mergeFields.length - 1;
   const isFirstField = currentFieldIndex === 0;
+
+  // Function to swap primary and duplicate contacts
+  const handleSwapContacts = () => {
+    // Swap the contacts
+    const temp = primaryContact;
+    setPrimaryContact(duplicateContact);
+    setDuplicateContact(temp);
+
+    // Also swap the loaded data
+    const tempData = primaryContactData;
+    setPrimaryContactData(duplicateContactData);
+    setDuplicateContactData(tempData);
+
+    // Track that we've swapped
+    setHasSwapped(!hasSwapped);
+
+    // Reset merge selections since the context has changed
+    initializeMergeSelections();
+
+    toast.success('Swapped primary and duplicate contacts');
+  };
+
+  // Update contact references when props change
+  useEffect(() => {
+    setPrimaryContact(initialPrimaryContact);
+    setDuplicateContact(initialDuplicateContact);
+    setHasSwapped(false);
+  }, [initialPrimaryContact, initialDuplicateContact]);
 
   // Load full contact data when modal opens
   useEffect(() => {
@@ -184,6 +216,22 @@ const ContactMergeModal = ({
   };
 
   const handleFieldChoice = async (choice) => {
+    // If we're on the keep_in_touch_frequency field, always delete duplicate's keep_in_touch entry
+    if (currentField.key === 'keep_in_touch_frequency') {
+      try {
+        const { error: deleteError } = await supabase
+          .from('keep_in_touch')
+          .delete()
+          .eq('contact_id', duplicateContact.contact_id);
+
+        if (deleteError && deleteError.code !== 'PGRST116') {
+          console.error('Error deleting duplicate keep_in_touch entry:', deleteError);
+        }
+      } catch (error) {
+        console.error('Error cleaning up duplicate keep_in_touch:', error);
+      }
+    }
+
     if (choice === 'primary') {
       // Keep primary - no database update needed, just move to next field
       moveToNextField();
@@ -217,6 +265,8 @@ const ContactMergeModal = ({
           .eq('contact_id', primaryContact.contact_id);
 
         if (error) throw error;
+
+        // Note: The duplicate's keep_in_touch entry is already deleted in handleFieldChoice
 
         // Update local primary contact data
         setPrimaryContactData(prev => ({
@@ -1595,8 +1645,16 @@ const ContactMergeModal = ({
       <ModalContent theme={theme}>
         <ModalHeader theme={theme}>
           <div>
-            <h3 style={{ margin: 0, fontSize: '18px' }}>
+            <h3 style={{ margin: 0, fontSize: '18px', display: 'flex', alignItems: 'center', gap: '12px' }}>
               Merge Contacts
+              <SwapButton
+                onClick={handleSwapContacts}
+                theme={theme}
+                title="Swap primary and duplicate contacts"
+              >
+                <FiRefreshCw />
+                <span>Swap</span>
+              </SwapButton>
             </h3>
             <ProgressText theme={theme}>
               {currentFieldIndex + 1} of {mergeFields.length} fields
@@ -2497,6 +2555,36 @@ const CloseButton = styled.button`
   }
 `;
 
+const SwapButton = styled.button`
+  background: ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  color: ${props => props.theme === 'light' ? '#4B5563' : '#D1D5DB'};
+  border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s;
+
+  svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+    color: ${props => props.theme === 'light' ? '#374151' : '#F3F4F6'};
+    transform: scale(1.05);
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+`;
+
 const ProgressBar = styled.div`
   display: flex;
   height: 4px;
@@ -2569,6 +2657,26 @@ const OptionHeader = styled.div`
   color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
   text-transform: uppercase;
   margin-bottom: 8px;
+`;
+
+const PrimaryBadge = styled.span`
+  background: ${props => props.theme === 'light' ? '#10B981' : '#059669'};
+  color: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+`;
+
+const DuplicateBadge = styled.span`
+  background: ${props => props.theme === 'light' ? '#EF4444' : '#DC2626'};
+  color: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
 `;
 
 const OptionName = styled.div`
@@ -2874,26 +2982,6 @@ const EmailType = styled.div`
   font-size: 12px;
   color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
   text-transform: capitalize;
-`;
-
-const PrimaryBadge = styled.span`
-  font-size: 10px;
-  font-weight: 700;
-  padding: 2px 6px;
-  background: #10B981;
-  color: white;
-  border-radius: 4px;
-  text-transform: uppercase;
-`;
-
-const DuplicateBadge = styled.span`
-  font-size: 10px;
-  font-weight: 700;
-  padding: 2px 6px;
-  background: #F59E0B;
-  color: white;
-  border-radius: 4px;
-  text-transform: uppercase;
 `;
 
 const EmailAction = styled.button`
