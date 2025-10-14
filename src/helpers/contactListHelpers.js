@@ -33,47 +33,26 @@ export const getContactCompleteness = (contact) => {
   return 50; // Default neutral score
 };
 
-// Get completeness display info (icon, color, text)
-export const getCompletenessDisplay = (completenessScore) => {
-  if (completenessScore >= 100) {
+// Get completeness display info (simplified version - only 2 states)
+export const getCompletenessDisplay = (contact) => {
+  // Simple check: is the contact ID in contacts_missing_info view?
+  const hasMissingInfo = contact.is_missing_info === true;
+
+  if (hasMissingInfo) {
     return {
-      icon: '⭐',
-      color: '#10B981', // Green
-      backgroundColor: '#10B981',
-      text: 'Perfect',
-      title: `${completenessScore}% Complete - Perfect!`
-    };
-  } else if (completenessScore > 80) {
-    return {
-      icon: '🟢',
-      color: '#34D399', // Lighter green
-      backgroundColor: '#34D399',
-      text: 'Complete',
-      title: `${completenessScore}% Complete - Excellent!`
-    };
-  } else if (completenessScore > 60) {
-    return {
-      icon: '🟡',
-      color: '#FCD34D', // Yellow
-      backgroundColor: '#FCD34D',
-      text: 'Good',
-      title: `${completenessScore}% Complete - Good`
-    };
-  } else if (completenessScore > 40) {
-    return {
-      icon: '🟠',
-      color: '#FB923C', // Orange
-      backgroundColor: '#FB923C',
-      text: 'Fair',
-      title: `${completenessScore}% Complete - Needs work`
+      icon: '⚠️', // Warning/exclamation mark
+      color: '#FFFFFF',
+      backgroundColor: '#EF4444', // Red
+      text: 'Missing Info',
+      title: 'Missing Information - Click to complete'
     };
   } else {
     return {
-      icon: '🔴',
-      color: '#F87171', // Red
-      backgroundColor: '#F87171',
-      text: 'Poor',
-      title: `${completenessScore}% Complete - Incomplete`
+      icon: '✏️', // Pen/edit icon
+      color: '#FFFFFF',
+      backgroundColor: '#10B981', // Green
+      text: 'Edit',
+      title: 'Edit Contact'
     };
   }
 };

@@ -364,13 +364,13 @@ const ContactCard = ({
               <CardActionButton
                 theme={theme}
                 onClick={(e) => onOpenMissingFieldsModal(contact, e)}
-                title={getCompletenessDisplay(getContactCompleteness(contact)).title}
+                title={getCompletenessDisplay(contact).title}
                 style={{
-                  backgroundColor: getCompletenessDisplay(getContactCompleteness(contact)).backgroundColor,
+                  backgroundColor: getCompletenessDisplay(contact).backgroundColor,
                   color: 'white'
                 }}
               >
-                {getCompletenessDisplay(getContactCompleteness(contact)).icon}
+                {getCompletenessDisplay(contact).icon}
               </CardActionButton>
 
               {pageContext === 'sort' ? (

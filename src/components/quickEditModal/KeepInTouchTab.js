@@ -85,7 +85,12 @@ const KeepInTouchTab = ({
       )}
 
       {/* Date of Birth */}
-      {shouldShowField('birthday') && (
+      {(() => {
+        // Always show birthday fields if contact.birthday is null/empty,
+        // regardless of whether day/month are selected
+        const showBirthday = !contact?.birthday || contact.birthday === null || contact.birthday === '';
+        return showBirthday || shouldShowField('birthday');
+      })() && (
         <FormGroup>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
             <Label theme={theme} style={{ margin: 0 }}>

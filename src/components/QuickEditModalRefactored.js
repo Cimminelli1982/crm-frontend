@@ -4,6 +4,7 @@ import { FiX, FiGitMerge, FiCheck } from 'react-icons/fi';
 import { FaSkull, FaInfoCircle, FaEnvelope, FaBriefcase, FaMapMarkerAlt, FaHeart } from 'react-icons/fa';
 import ContactEnrichModal from './modals/ContactEnrichModal';
 import FindDuplicatesModal from './FindDuplicatesModal';
+import DeleteSkipSpamModal from './DeleteSkipSpamModal';
 import { supabase } from '../lib/supabaseClient';
 import { toast } from 'react-hot-toast';
 
@@ -135,6 +136,7 @@ const QuickEditModalRefactored = ({
 }) => {
   const [contactEnrichModalOpen, setContactEnrichModalOpen] = useState(false);
   const [findDuplicatesModalOpen, setFindDuplicatesModalOpen] = useState(false);
+  const [deleteSkipSpamModalOpen, setDeleteSkipSpamModalOpen] = useState(false);
   const [savingToggle, setSavingToggle] = useState(false);
   const [missingOnly, setMissingOnly] = useState(showMissingFieldsOnly); // Use the prop value
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
@@ -425,8 +427,7 @@ const QuickEditModalRefactored = ({
             </CloseButton>
             <CloseButton
               onClick={() => {
-                handleClose();
-                if (onDelete) onDelete(contact);
+                setDeleteSkipSpamModalOpen(true);
               }}
               theme={theme}
               title="Delete or Skip Contact"
@@ -633,6 +634,14 @@ const QuickEditModalRefactored = ({
           console.log('Merging contacts:', sourceContact, targetContact);
           // The actual merge is handled by the ContactMergeModal
         }}
+      />
+
+      {/* Delete/Skip/Spam Modal */}
+      <DeleteSkipSpamModal
+        isOpen={deleteSkipSpamModalOpen}
+        onClose={() => setDeleteSkipSpamModalOpen(false)}
+        contact={contact}
+        theme={theme}
       />
 
       {/* Category Selection Modal */}

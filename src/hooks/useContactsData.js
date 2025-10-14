@@ -5,6 +5,26 @@ import { toast } from 'react-hot-toast';
 export const useContactsData = (dataSource, refreshTrigger, onDataLoad) => {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [missingInfoContactIds, setMissingInfoContactIds] = useState(new Set());
+
+  // Fetch all contact IDs that are in contacts_missing_info view
+  const fetchMissingInfoIds = async () => {
+    try {
+      const { data: missingData, error } = await supabase
+        .from('contacts_missing_info')
+        .select('contact_id');
+
+      if (!error && missingData) {
+        const idSet = new Set(missingData.map(item => item.contact_id));
+        setMissingInfoContactIds(idSet);
+        return idSet;
+      }
+      return new Set();
+    } catch (error) {
+      console.error('Error fetching missing info IDs:', error);
+      return new Set();
+    }
+  };
 
   const fetchData = async () => {
     console.log('[useContactsData] fetchData called');
@@ -14,6 +34,9 @@ export const useContactsData = (dataSource, refreshTrigger, onDataLoad) => {
 
     setLoading(true);
     try {
+      // First, fetch the missing info IDs
+      const missingIds = await fetchMissingInfoIds();
+
       let data = [];
 
       if (dataSource.type === 'interactions') {
@@ -33,6 +56,12 @@ export const useContactsData = (dataSource, refreshTrigger, onDataLoad) => {
       } else if (dataSource.type === 'contacts') {
         data = await fetchContactsByCategory(dataSource);
       }
+
+      // Add is_missing_info flag to each contact based on the fetched IDs
+      data = data.map(contact => ({
+        ...contact,
+        is_missing_info: missingIds.has(contact.contact_id)
+      }));
 
       setContacts(data);
       if (onDataLoad) onDataLoad(data);
