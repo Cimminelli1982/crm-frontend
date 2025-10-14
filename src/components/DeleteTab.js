@@ -11,6 +11,7 @@ const DeleteTab = ({ contactId, theme, onClose }) => {
   const [selectedItems, setSelectedItems] = useState({});
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteContact, setDeleteContact] = useState(false);
+  const [spamOption, setSpamOption] = useState('none'); // 'none', 'email', 'domain'
 
   useEffect(() => {
     if (contactId) {
@@ -256,6 +257,44 @@ const DeleteTab = ({ contactId, theme, onClose }) => {
     const errors = [];
 
     try {
+      // Handle spam options if deleting contact
+      if (deleteContact && spamOption !== 'none' && associatedData.emails?.length > 0) {
+        const uniqueEmails = [...new Set(associatedData.emails.map(e => e.email.toLowerCase()))];
+
+        if (spamOption === 'email') {
+          // Add all contact emails to emails_spam table
+          for (const email of uniqueEmails) {
+            const { error } = await supabase
+              .from('emails_spam')
+              .insert({ email: email })
+              .single();
+
+            if (error && !error.message.includes('duplicate')) {
+              console.log('Error adding email to spam:', error);
+            }
+          }
+          toast.success(`Added ${uniqueEmails.length} email(s) to spam list`);
+        } else if (spamOption === 'domain') {
+          // Extract unique domains and add to domains_spam table
+          const uniqueDomains = [...new Set(
+            uniqueEmails
+              .map(email => email.split('@')[1])
+              .filter(domain => domain) // Filter out any undefined domains
+          )];
+
+          for (const domain of uniqueDomains) {
+            const { error } = await supabase
+              .from('domains_spam')
+              .insert({ domain: domain })
+              .single();
+
+            if (error && !error.message.includes('duplicate')) {
+              console.log('Error adding domain to spam:', error);
+            }
+          }
+          toast.success(`Added ${uniqueDomains.length} domain(s) to spam list`);
+        }
+      }
       // Delete selected items from each table
       for (const [section, items] of Object.entries(selectedItems)) {
         const selectedIds = Object.entries(items)
@@ -531,12 +570,91 @@ const DeleteTab = ({ contactId, theme, onClose }) => {
         {renderSection('Deals', associatedData.deals, <FiBriefcase />, 'deals')}
         {renderSection('Introductions', associatedData.introductions, <FiUsers />, 'introductions')}
 
+        {/* Spam Options Section - Only show if contact has emails */}
+        {associatedData.emails?.length > 0 && (
+          <SpamOptionsSection theme={theme}>
+            <SpamOptionsHeader theme={theme}>
+              <FiAlertTriangle />
+              <span>Spam Management Options</span>
+            </SpamOptionsHeader>
+            <SpamOptionsContent>
+              <RadioOption theme={theme}>
+                <input
+                  type="radio"
+                  id="spamNone"
+                  name="spamOption"
+                  value="none"
+                  checked={spamOption === 'none'}
+                  onChange={(e) => setSpamOption(e.target.value)}
+                  disabled={!deleteContact || isDeleting}
+                />
+                <label htmlFor="spamNone">
+                  <strong>Don't add to spam</strong>
+                  <p>Contact will be deleted without marking as spam</p>
+                </label>
+              </RadioOption>
+
+              <RadioOption theme={theme}>
+                <input
+                  type="radio"
+                  id="spamEmail"
+                  name="spamOption"
+                  value="email"
+                  checked={spamOption === 'email'}
+                  onChange={(e) => setSpamOption(e.target.value)}
+                  disabled={!deleteContact || isDeleting}
+                />
+                <label htmlFor="spamEmail">
+                  <strong>Add email(s) to spam</strong>
+                  <p>
+                    Will add: {associatedData.emails
+                      .slice(0, 3)
+                      .map(e => e.email)
+                      .join(', ')}
+                    {associatedData.emails.length > 3 && ` and ${associatedData.emails.length - 3} more`}
+                  </p>
+                </label>
+              </RadioOption>
+
+              <RadioOption theme={theme}>
+                <input
+                  type="radio"
+                  id="spamDomain"
+                  name="spamOption"
+                  value="domain"
+                  checked={spamOption === 'domain'}
+                  onChange={(e) => setSpamOption(e.target.value)}
+                  disabled={!deleteContact || isDeleting}
+                />
+                <label htmlFor="spamDomain">
+                  <strong>Add domain(s) to spam</strong>
+                  <p>
+                    Will add: {[...new Set(associatedData.emails
+                      .map(e => e.email.split('@')[1])
+                      .filter(d => d))]
+                      .slice(0, 3)
+                      .join(', ')}
+                    {[...new Set(associatedData.emails.map(e => e.email.split('@')[1]).filter(d => d))].length > 3 &&
+                      ` and ${[...new Set(associatedData.emails.map(e => e.email.split('@')[1]).filter(d => d))].length - 3} more`}
+                  </p>
+                </label>
+              </RadioOption>
+            </SpamOptionsContent>
+          </SpamOptionsSection>
+        )}
+
         <DeleteContactSection theme={theme}>
           <Checkbox
             type="checkbox"
             id="deleteContact"
             checked={deleteContact}
-            onChange={(e) => setDeleteContact(e.target.checked)}
+            onChange={(e) => {
+              setDeleteContact(e.target.checked);
+              // Reset spam option when unchecking delete contact
+              if (!e.target.checked) {
+                setSpamOption('none');
+              }
+            }}
             disabled={isDeleting}
           />
           <label htmlFor="deleteContact">
@@ -550,6 +668,8 @@ const DeleteTab = ({ contactId, theme, onClose }) => {
         <FooterInfo>
           {getSelectedCount()} items selected
           {deleteContact && ' + contact record'}
+          {deleteContact && spamOption === 'email' && ' (emails → spam)'}
+          {deleteContact && spamOption === 'domain' && ' (domains → spam)'}
         </FooterInfo>
         <DeleteButton
           onClick={handleDelete}
@@ -710,6 +830,84 @@ const PrimaryBadge = styled.span`
 const WhatsAppBadge = styled(PrimaryBadge)`
   background: #D1FAE5;
   color: #065F46;
+`;
+
+const SpamOptionsSection = styled.div`
+  margin-top: 24px;
+  padding: 0;
+  background: ${props => props.theme === 'light' ? '#FFF7ED' : '#451A03'};
+  border: 2px solid ${props => props.theme === 'light' ? '#FED7AA' : '#92400E'};
+  border-radius: 8px;
+  overflow: hidden;
+`;
+
+const SpamOptionsHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: ${props => props.theme === 'light' ? '#FFEDD5' : '#78350F'};
+  border-bottom: 1px solid ${props => props.theme === 'light' ? '#FED7AA' : '#92400E'};
+
+  svg {
+    color: ${props => props.theme === 'light' ? '#EA580C' : '#FB923C'};
+  }
+
+  span {
+    font-weight: 600;
+    color: ${props => props.theme === 'light' ? '#9A3412' : '#FED7AA'};
+  }
+`;
+
+const SpamOptionsContent = styled.div`
+  padding: 16px;
+`;
+
+const RadioOption = styled.div`
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  input[type="radio"] {
+    width: 18px;
+    height: 18px;
+    margin-top: 2px;
+    cursor: pointer;
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+  }
+
+  label {
+    flex: 1;
+    cursor: pointer;
+
+    strong {
+      display: block;
+      color: ${props => props.theme === 'light' ? '#92400E' : '#FED7AA'};
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+
+    p {
+      margin: 0;
+      font-size: 13px;
+      color: ${props => props.theme === 'light' ? '#78350F' : '#FFEDD5'};
+      line-height: 1.4;
+    }
+  }
+
+  input:disabled + label {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
 `;
 
 const DeleteContactSection = styled.div`
