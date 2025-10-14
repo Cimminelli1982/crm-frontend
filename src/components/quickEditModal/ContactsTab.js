@@ -173,6 +173,8 @@ const ContactsTab = ({
             >
               <option value="personal">Personal</option>
               <option value="work">Work</option>
+              <option value="WhatsApp">WhatsApp</option>
+              <option value="WhatsApp Group">WhatsApp Group</option>
               <option value="other">Other</option>
             </Select>
             <AddButton
@@ -216,6 +218,8 @@ const ContactsTab = ({
                     >
                       <option value="personal">Personal</option>
                       <option value="work">Work</option>
+                      <option value="WhatsApp">WhatsApp</option>
+                      <option value="WhatsApp Group">WhatsApp Group</option>
                       <option value="other">Other</option>
                     </Select>
                     <input

@@ -112,6 +112,7 @@ const QuickEditModalRefactored = ({
   handleSaveQuickEditChristmasWishes,
   handleSaveQuickEditEasterWishes,
   handleAutomation,
+  handleMarkCompleteWithCategory,
   // Helper functions
   getVisibleTabs,
   shouldShowField,
@@ -136,6 +137,8 @@ const QuickEditModalRefactored = ({
   const [findDuplicatesModalOpen, setFindDuplicatesModalOpen] = useState(false);
   const [savingToggle, setSavingToggle] = useState(false);
   const [missingOnly, setMissingOnly] = useState(showMissingFieldsOnly); // Use the prop value
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState('');
 
 
   // Sync missingOnly with showMissingFieldsOnly prop when it changes
@@ -337,9 +340,9 @@ const QuickEditModalRefactored = ({
               onClick={async () => {
                 if (savingToggle) return; // Prevent multiple clicks
 
-                // Check if category is Inbox
+                // Check if category is Inbox - open modal for category selection
                 if (contact.category === 'Inbox' || quickEditContactCategory === 'Inbox') {
-                  toast.error('Cannot mark as complete: Please move contact out of Inbox first');
+                  setCategoryModalOpen(true);
                   return;
                 }
 
@@ -631,6 +634,152 @@ const QuickEditModalRefactored = ({
           // The actual merge is handled by the ContactMergeModal
         }}
       />
+
+      {/* Category Selection Modal */}
+      <Modal
+        isOpen={categoryModalOpen}
+        onRequestClose={() => {
+          setCategoryModalOpen(false);
+          setSelectedCategory('');
+        }}
+        shouldCloseOnOverlayClick={true}
+        style={{
+          content: {
+            top: '50%',
+            left: '50%',
+            right: 'auto',
+            bottom: 'auto',
+            marginRight: '-50%',
+            transform: 'translate(-50%, -50%)',
+            padding: '24px',
+            border: 'none',
+            borderRadius: '12px',
+            maxWidth: '400px',
+            width: '90%',
+            background: theme === 'light' ? '#FFFFFF' : '#1F2937'
+          },
+          overlay: {
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 1001
+          }
+        }}
+      >
+        <div>
+          <h3 style={{
+            margin: '0 0 16px 0',
+            fontSize: '18px',
+            fontWeight: '600',
+            color: theme === 'light' ? '#111827' : '#F9FAFB'
+          }}>
+            Select Category Before Completing
+          </h3>
+          <p style={{
+            margin: '0 0 20px 0',
+            fontSize: '14px',
+            color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+          }}>
+            This contact is in Inbox. Please select a category before marking as complete.
+          </p>
+
+          <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '10px',
+              borderRadius: '8px',
+              border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+              backgroundColor: theme === 'light' ? '#FFFFFF' : '#111827',
+              color: theme === 'light' ? '#111827' : '#F9FAFB',
+              fontSize: '14px',
+              marginBottom: '20px'
+            }}
+          >
+            <option value="">Select a category...</option>
+            <option value="Not Set">Not Set</option>
+            <option value="Skip">Skip</option>
+            <option value="Professional Investor">Professional Investor</option>
+            <option value="Team">Team</option>
+            <option value="Advisor">Advisor</option>
+            <option value="WhatsApp Group Contact">WhatsApp Group Contact</option>
+            <option value="Supplier">Supplier</option>
+            <option value="Founder">Founder</option>
+            <option value="Manager">Manager</option>
+            <option value="Friend and Family">Friend and Family</option>
+            <option value="Other">Other</option>
+            <option value="Student">Student</option>
+            <option value="Media">Media</option>
+            <option value="Institution">Institution</option>
+            <option value="SUBSCRIBER NEWSLETTER">SUBSCRIBER NEWSLETTER</option>
+            <option value="System">System</option>
+          </select>
+
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button
+              onClick={() => {
+                setCategoryModalOpen(false);
+                setSelectedCategory('');
+              }}
+              style={{
+                flex: 1,
+                padding: '10px',
+                borderRadius: '8px',
+                border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                color: theme === 'light' ? '#374151' : '#D1D5DB',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer'
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={async () => {
+                if (!selectedCategory) {
+                  toast.error('Please select a category');
+                  return;
+                }
+
+                setSavingToggle(true);
+
+                // Use the handler from the hook
+                const success = await handleMarkCompleteWithCategory(selectedCategory);
+
+                if (success) {
+                  // Close modals
+                  setCategoryModalOpen(false);
+                  setSelectedCategory('');
+
+                  setTimeout(() => {
+                    handleClose();
+                    if (onRefresh) {
+                      onRefresh();
+                    }
+                  }, 100);
+                }
+
+                setSavingToggle(false);
+              }}
+              disabled={!selectedCategory || savingToggle}
+              style={{
+                flex: 1,
+                padding: '10px',
+                borderRadius: '8px',
+                border: 'none',
+                backgroundColor: selectedCategory ? '#3B82F6' : '#9CA3AF',
+                color: '#FFFFFF',
+                fontSize: '14px',
+                fontWeight: '600',
+                cursor: selectedCategory && !savingToggle ? 'pointer' : 'not-allowed',
+                opacity: savingToggle ? 0.7 : 1
+              }}
+            >
+              {savingToggle ? 'Updating...' : 'Update & Complete'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </>
   );
 };

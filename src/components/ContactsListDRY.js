@@ -258,6 +258,7 @@ const ContactsListDRY = ({
     handleSaveQuickEditChristmasWishes,
     handleSaveQuickEditEasterWishes,
     handleAutomation,
+    handleMarkCompleteWithCategory,
     handleQuickEditCompanyAdded,
     handleQuickEditCityAdded,
     handleQuickEditTagAdded,
@@ -1078,6 +1079,7 @@ const ContactsListDRY = ({
         handleSaveQuickEditChristmasWishes={handleSaveQuickEditChristmasWishes}
         handleSaveQuickEditEasterWishes={handleSaveQuickEditEasterWishes}
         handleAutomation={handleAutomation}
+        handleMarkCompleteWithCategory={handleMarkCompleteWithCategory}
         // Helper functions
         getVisibleTabs={getVisibleTabsWithContext}
         shouldShowField={shouldShowFieldForModal}

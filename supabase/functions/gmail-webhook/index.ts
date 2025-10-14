@@ -391,6 +391,32 @@ async function processEmailById(messageId) {
     // SPAM / DOMAIN SPAM / CONTACT / PENDING APPROVAL LOGIC
     let special_case = null;
     let processing_notes = null;
+
+    // Check for special skip cases based on sender name
+    if (direction === "received" && (
+      (fromName?.toLowerCase() === "the spectator") ||
+      (fromName?.toLowerCase() === "hide my email") ||
+      (fromName?.toLowerCase().includes("the") && fromName?.toLowerCase().includes("spectator")) ||
+      (fromName?.toLowerCase().includes("hide") && fromName?.toLowerCase().includes("my email"))
+    )) {
+      console.log(`   🚫 [SPECIAL SKIP CASE] Sender "${fromName}" matches skip pattern. Skipping email.`);
+      console.log(`   🔄 Adding ${fromEmailLower} to spam list.`);
+
+      // Add to spam list for future filtering
+      const { error: insertError } = await supabase.from("emails_spam").insert({
+        email: fromEmailLower,
+        counter: 1
+      });
+
+      if (insertError && !insertError.message.includes("duplicate")) {
+        console.error(`   ❌ Error adding to spam list: ${insertError.message}`);
+      } else if (!insertError) {
+        console.log(`   ✅ Added ${fromEmailLower} to spam list`);
+      }
+
+      return true; // Skip processing this email
+    }
+
     if (direction === "received" && fromEmailLower && fromEmailLower !== userEmailLower) {
       console.log(`\n🔍 [SPAM FILTERING] Checking sender: ${fromEmailLower}`);
 

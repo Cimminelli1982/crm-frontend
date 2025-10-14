@@ -263,18 +263,26 @@ const ContactCard = ({
         </ContactCardHeader>
 
         <ContactCardDetails>
-          {pageContext !== 'keepInTouch' && contact.emails?.length > 0 && contact.emails[0]?.email && (
-            <ContactDetail theme={theme}>
-              <FaEnvelope />
-              <span>{contact.emails[0].email}</span>
-            </ContactDetail>
-          )}
-          {pageContext !== 'keepInTouch' && contact.mobiles?.length > 0 && contact.mobiles[0]?.mobile && (
-            <ContactDetail theme={theme}>
-              <FaPhone />
-              <span>{contact.mobiles[0].mobile}</span>
-            </ContactDetail>
-          )}
+          {pageContext !== 'keepInTouch' && contact.emails?.length > 0 && (() => {
+            // Find primary email or use first one
+            const primaryEmail = contact.emails.find(e => e.is_primary) || contact.emails[0];
+            return primaryEmail?.email ? (
+              <ContactDetail theme={theme}>
+                <FaEnvelope />
+                <span>{primaryEmail.email}</span>
+              </ContactDetail>
+            ) : null;
+          })()}
+          {pageContext !== 'keepInTouch' && contact.mobiles?.length > 0 && (() => {
+            // Find primary mobile or use first one
+            const primaryMobile = contact.mobiles.find(m => m.is_primary) || contact.mobiles[0];
+            return primaryMobile?.mobile ? (
+              <ContactDetail theme={theme}>
+                <FaPhone />
+                <span>{primaryMobile.mobile}</span>
+              </ContactDetail>
+            ) : null;
+          })()}
         </ContactCardDetails>
       </ContactCardContent>
 

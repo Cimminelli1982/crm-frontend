@@ -740,6 +740,46 @@ export const useQuickEditModal = (onContactUpdate) => {
     quickEditAgeEstimate
   ]);
 
+  // Mark as complete with category handler
+  const handleMarkCompleteWithCategory = useCallback(async (newCategory) => {
+    if (!contactForQuickEdit) return;
+
+    try {
+      // Update both category and show_missing in one call
+      const { error } = await supabase
+        .from('contacts')
+        .update({
+          category: newCategory,
+          show_missing: false,
+          last_modified_at: new Date().toISOString()
+        })
+        .eq('contact_id', contactForQuickEdit.contact_id);
+
+      if (error) throw error;
+
+      // Update local state
+      setQuickEditContactCategory(newCategory);
+      setQuickEditShowMissing(false);
+
+      // Update the contact object
+      contactForQuickEdit.category = newCategory;
+      contactForQuickEdit.show_missing = false;
+
+      toast.success(`Category updated to ${newCategory} and marked as complete`);
+
+      // Trigger refresh if callback exists
+      if (onContactUpdate) {
+        onContactUpdate();
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error updating contact category and marking complete:', error);
+      toast.error('Failed to update category: ' + (error.message || 'Unknown error'));
+      return false;
+    }
+  }, [contactForQuickEdit, onContactUpdate]);
+
   // Save contact handler
   const handleSaveQuickEditContact = useCallback(async () => {
     if (!contactForQuickEdit) return;
@@ -1185,6 +1225,7 @@ export const useQuickEditModal = (onContactUpdate) => {
     openModal,
     closeModal,
     handleSaveQuickEditContact,
+    handleMarkCompleteWithCategory,
     handleSilentSave,
     handleAddEmail,
     handleRemoveEmail,
