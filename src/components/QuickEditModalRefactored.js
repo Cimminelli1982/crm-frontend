@@ -5,6 +5,7 @@ import { FaSkull, FaInfoCircle, FaEnvelope, FaBriefcase, FaMapMarkerAlt, FaHeart
 import ContactEnrichModal from './modals/ContactEnrichModal';
 import FindDuplicatesModal from './FindDuplicatesModal';
 import { supabase } from '../lib/supabaseClient';
+import { toast } from 'react-hot-toast';
 
 // Tab Components
 import InfoTab from './quickEditModal/InfoTab';
@@ -336,6 +337,12 @@ const QuickEditModalRefactored = ({
               onClick={async () => {
                 if (savingToggle) return; // Prevent multiple clicks
 
+                // Check if category is Inbox
+                if (contact.category === 'Inbox' || quickEditContactCategory === 'Inbox') {
+                  toast.error('Cannot mark as complete: Please move contact out of Inbox first');
+                  return;
+                }
+
                 // Start saving
                 setSavingToggle(true);
 
@@ -364,34 +371,35 @@ const QuickEditModalRefactored = ({
                   }, 100);
                 } catch (error) {
                   console.error('Error marking contact as complete:', error);
+                  toast.error('Failed to mark as complete');
                 } finally {
                   setSavingToggle(false);
                 }
               }}
-              disabled={savingToggle || !contact.show_missing}
+              disabled={savingToggle || contact.show_missing === false}
               style={{
                 padding: '4px 12px',
                 borderRadius: '6px',
                 border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
-                background: contact.show_missing
+                background: contact.show_missing !== false
                   ? (theme === 'light' ? '#10B981' : '#059669')
                   : (theme === 'light' ? '#E5E7EB' : '#374151'),
-                color: contact.show_missing
+                color: contact.show_missing !== false
                   ? '#FFFFFF'
                   : (theme === 'light' ? '#9CA3AF' : '#6B7280'),
                 fontSize: '13px',
                 fontWeight: '500',
-                cursor: contact.show_missing ? (savingToggle ? 'wait' : 'pointer') : 'not-allowed',
-                opacity: savingToggle || !contact.show_missing ? 0.6 : 1,
+                cursor: contact.show_missing !== false ? (savingToggle ? 'wait' : 'pointer') : 'not-allowed',
+                opacity: savingToggle || contact.show_missing === false ? 0.6 : 1,
                 transition: 'all 0.2s ease'
               }}
               theme={theme}
               title="Mark as Complete"
               style={{
-                background: contact.show_missing
+                background: contact.show_missing !== false
                   ? (theme === 'light' ? '#10B981' : '#059669')
                   : (theme === 'light' ? '#E5E7EB' : '#374151'),
-                color: contact.show_missing
+                color: contact.show_missing !== false
                   ? '#FFFFFF'
                   : (theme === 'light' ? '#9CA3AF' : '#6B7280'),
                 opacity: savingToggle || !contact.show_missing ? 0.6 : 1

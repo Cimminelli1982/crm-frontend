@@ -27,7 +27,7 @@ const SortPage = ({ theme, onInboxCountChange }) => {
   const navigate = useNavigate();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [filterCategory, setFilterCategory] = useState('Inbox');
-  const [inboxTimeFilter, setInboxTimeFilter] = useState('Today'); // Time filter for Inbox
+  const [inboxTimeFilter, setInboxTimeFilter] = useState('This Week'); // Time filter for Inbox
   const [spamSubCategory, setSpamSubCategory] = useState('Email');
   const [missingSubCategory, setMissingSubCategory] = useState('Need Input');
   const [selectedEmail, setSelectedEmail] = useState(null);
@@ -36,9 +36,9 @@ const SortPage = ({ theme, onInboxCountChange }) => {
   const [mailFilterContacts, setMailFilterContacts] = useState([]);
   const [mailFilterLoading, setMailFilterLoading] = useState(false);
   const [inboxTimeCounts, setInboxTimeCounts] = useState({
-    'Today': 0,
     'This Week': 0,
-    'This Month': 0
+    'This Month': 0,
+    'All': 0
   });
   const [currentInboxCount, setCurrentInboxCount] = useState(0);
 
@@ -62,6 +62,10 @@ const SortPage = ({ theme, onInboxCountChange }) => {
         type: 'inbox',
         category: 'Inbox',
         timeFilter: inboxTimeFilter
+      };
+    } else if (filterCategory === 'Duplicates') {
+      return {
+        type: 'duplicates'
       };
     } else {
       return {
@@ -93,35 +97,22 @@ const SortPage = ({ theme, onInboxCountChange }) => {
     try {
       const { supabase } = await import('../lib/supabaseClient');
 
-      // Today
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-      const todayEnd = new Date();
-      todayEnd.setHours(23, 59, 59, 999);
-
-      // This Week (7 days ago to yesterday)
-      const weekEnd = new Date();
-      weekEnd.setDate(weekEnd.getDate() - 1);
-      weekEnd.setHours(23, 59, 59, 999);
+      // This Week (last 7 days)
       const weekStart = new Date();
       weekStart.setDate(weekStart.getDate() - 7);
       weekStart.setHours(0, 0, 0, 0);
+      const weekEnd = new Date();
+      weekEnd.setHours(23, 59, 59, 999);
 
-      // This Month (30 days ago to 8 days ago)
-      const monthEnd = new Date();
-      monthEnd.setDate(monthEnd.getDate() - 8);
-      monthEnd.setHours(23, 59, 59, 999);
+      // This Month (last 30 days)
       const monthStart = new Date();
       monthStart.setDate(monthStart.getDate() - 30);
       monthStart.setHours(0, 0, 0, 0);
+      const monthEnd = new Date();
+      monthEnd.setHours(23, 59, 59, 999);
 
       // Fetch counts
-      const [todayResult, weekResult, monthResult] = await Promise.all([
-        supabase
-          .from('inbox_contacts_with_interactions')
-          .select('contact_id', { count: 'exact', head: true })
-          .gte('computed_last_interaction', todayStart.toISOString())
-          .lte('computed_last_interaction', todayEnd.toISOString()),
+      const [weekResult, monthResult, allResult] = await Promise.all([
         supabase
           .from('inbox_contacts_with_interactions')
           .select('contact_id', { count: 'exact', head: true })
@@ -131,13 +122,16 @@ const SortPage = ({ theme, onInboxCountChange }) => {
           .from('inbox_contacts_with_interactions')
           .select('contact_id', { count: 'exact', head: true })
           .gte('computed_last_interaction', monthStart.toISOString())
-          .lte('computed_last_interaction', monthEnd.toISOString())
+          .lte('computed_last_interaction', monthEnd.toISOString()),
+        supabase
+          .from('inbox_contacts_with_interactions')
+          .select('contact_id', { count: 'exact', head: true })
       ]);
 
       setInboxTimeCounts({
-        'Today': todayResult.count || 0,
         'This Week': weekResult.count || 0,
-        'This Month': monthResult.count || 0
+        'This Month': monthResult.count || 0,
+        'All': allResult.count || 0
       });
     } catch (error) {
       console.error('Error fetching inbox counts:', error);
@@ -328,7 +322,7 @@ const SortPage = ({ theme, onInboxCountChange }) => {
     }
   }, [filterCategory, refreshTrigger]);
 
-  const sortCategories = ['Inbox', 'Mail Filter', 'Missing']; // 'Spam' tab hidden for now
+  const sortCategories = ['Inbox', 'Mail Filter', 'Missing', 'Duplicates']; // 'Spam' tab hidden for now
 
   return (
     <PageContainer theme={theme}>
@@ -368,35 +362,6 @@ const SortPage = ({ theme, onInboxCountChange }) => {
         {/* Inbox Time Filter Submenu */}
         {filterCategory === 'Inbox' && (
           <SubMenu theme={theme}>
-            <SubTab
-              theme={theme}
-              $active={inboxTimeFilter === 'Today'}
-              onClick={() => setInboxTimeFilter('Today')}
-              style={{ position: 'relative' }}
-            >
-              Today
-              {inboxTimeFilter === 'Today' && currentInboxCount > 0 && (
-                <span style={{
-                  marginLeft: '6px',
-                  fontSize: '12px',
-                  color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                  fontWeight: '500'
-                }}>
-                  ({currentInboxCount})
-                </span>
-              )}
-              {inboxTimeFilter !== 'Today' && inboxTimeCounts['Today'] > 0 && (
-                <span style={{
-                  position: 'absolute',
-                  top: '4px',
-                  right: '4px',
-                  width: '6px',
-                  height: '6px',
-                  backgroundColor: '#3B82F6',
-                  borderRadius: '50%'
-                }} />
-              )}
-            </SubTab>
             <SubTab
               theme={theme}
               $active={inboxTimeFilter === 'This Week'}
@@ -444,6 +409,35 @@ const SortPage = ({ theme, onInboxCountChange }) => {
                 </span>
               )}
               {inboxTimeFilter !== 'This Month' && inboxTimeCounts['This Month'] > 0 && (
+                <span style={{
+                  position: 'absolute',
+                  top: '4px',
+                  right: '4px',
+                  width: '6px',
+                  height: '6px',
+                  backgroundColor: '#3B82F6',
+                  borderRadius: '50%'
+                }} />
+              )}
+            </SubTab>
+            <SubTab
+              theme={theme}
+              $active={inboxTimeFilter === 'All'}
+              onClick={() => setInboxTimeFilter('All')}
+              style={{ position: 'relative' }}
+            >
+              All
+              {inboxTimeFilter === 'All' && currentInboxCount > 0 && (
+                <span style={{
+                  marginLeft: '6px',
+                  fontSize: '12px',
+                  color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                  fontWeight: '500'
+                }}>
+                  ({currentInboxCount})
+                </span>
+              )}
+              {inboxTimeFilter !== 'All' && inboxTimeCounts['All'] > 0 && (
                 <span style={{
                   position: 'absolute',
                   top: '4px',
@@ -520,14 +514,17 @@ const SortPage = ({ theme, onInboxCountChange }) => {
                 icon: filterCategory === 'Inbox' ? '📥' :
                       filterCategory === 'Missing' ? (missingSubCategory === 'Company' ? '🏢' : '🚧') :
                       filterCategory === 'Spam' ? '🚫' :
+                      filterCategory === 'Duplicates' ? '👥' :
                       '📧',
                 title: filterCategory === 'Inbox' ? 'Inbox is empty!' :
                         filterCategory === 'Missing' ? (missingSubCategory === 'Company' ? 'All contacts have companies!' : 'Coming Soon!') :
                         filterCategory === 'Spam' ? 'No spam contacts!' :
+                        filterCategory === 'Duplicates' ? 'No duplicate contacts!' :
                         'No mail filter contacts!',
                 text: filterCategory === 'Inbox' ? 'All contacts have been categorized. Great work!' :
                       filterCategory === 'Missing' ? (missingSubCategory === 'Company' ? 'Every contact is associated with a company. Great organization!' : `The ${missingSubCategory} feature is coming soon. Stay tuned!`) :
                       filterCategory === 'Spam' ? 'No contacts have been marked as spam.' :
+                      filterCategory === 'Duplicates' ? 'No contacts with duplicate names found.' :
                       'No contacts from email filtering.'
               }}
               onDataLoad={handleDataLoad}

@@ -26,6 +26,8 @@ export const useContactsData = (dataSource, refreshTrigger, onDataLoad) => {
         data = await fetchMailFilterData();
       } else if (dataSource.type === 'inbox') {
         data = await fetchInboxData(dataSource);
+      } else if (dataSource.type === 'duplicates') {
+        data = await fetchDuplicatesData();
       } else if (dataSource.type === 'search') {
         data = dataSource.preloadedData || [];
       } else if (dataSource.type === 'contacts') {
@@ -625,33 +627,95 @@ export const useContactsData = (dataSource, refreshTrigger, onDataLoad) => {
     }));
   };
 
+  // Fetch duplicates data
+  const fetchDuplicatesData = async () => {
+    const { data: duplicatesData, error } = await supabase
+      .from('contacts_with_duplicate_names')
+      .select(`
+        *,
+        contact_companies:contact_companies!contact_id (
+          company_id,
+          is_primary,
+          companies (
+            company_id,
+            name
+          )
+        ),
+        contact_emails (
+          email_id,
+          email,
+          type,
+          is_primary
+        ),
+        contact_mobiles (
+          mobile_id,
+          mobile,
+          type,
+          is_primary
+        ),
+        contact_cities (
+          city_id,
+          cities (
+            city_id,
+            name
+          )
+        ),
+        contact_tags (
+          tag_id,
+          tags (
+            tag_id,
+            name
+          )
+        ),
+        keep_in_touch (
+          frequency,
+          christmas,
+          easter
+        )
+      `)
+      .order('first_name', { ascending: true })
+      .order('last_name', { ascending: true })
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+
+    return (duplicatesData || []).map(contact => ({
+      ...contact,
+      companies: contact.contact_companies?.map(cc => ({
+        ...cc.companies,
+        company_id: cc.company_id,
+        is_primary: cc.is_primary
+      })).filter(Boolean) || [],
+      emails: contact.contact_emails?.map(ce => ({
+        email: ce.email,
+        type: ce.type,
+        is_primary: ce.is_primary
+      })) || [],
+      mobiles: contact.contact_mobiles?.map(cm => ({
+        mobile: cm.mobile,
+        type: cm.type,
+        is_primary: cm.is_primary
+      })) || [],
+      cities: contact.contact_cities?.map(cc => ({
+        ...cc.cities,
+        city_id: cc.city_id
+      })).filter(Boolean) || [],
+      tags: contact.contact_tags?.map(ct => ({
+        ...ct.tags,
+        tag_id: ct.tag_id
+      })).filter(Boolean) || [],
+      contact_emails: contact.contact_emails || [],
+      keep_in_touch_frequency: contact.keep_in_touch?.frequency || contact.keep_in_touch?.[0]?.frequency || null,
+      christmas: contact.keep_in_touch?.christmas || contact.keep_in_touch?.[0]?.christmas || null,
+      easter: contact.keep_in_touch?.easter || contact.keep_in_touch?.[0]?.easter || null
+    }));
+  };
+
   // Fetch inbox data
   const fetchInboxData = async (dataSource) => {
-    const timeFilter = dataSource.timeFilter || 'Today';
+    const timeFilter = dataSource.timeFilter || 'This Week';
 
-    let startDate = new Date();
-    let endDate = new Date();
-
-    if (timeFilter === 'Today') {
-      startDate.setHours(0, 0, 0, 0);
-      endDate.setHours(23, 59, 59, 999);
-    } else if (timeFilter === 'This Week') {
-      endDate = new Date();
-      endDate.setDate(endDate.getDate() - 1);
-      endDate.setHours(23, 59, 59, 999);
-      startDate = new Date();
-      startDate.setDate(startDate.getDate() - 7);
-      startDate.setHours(0, 0, 0, 0);
-    } else if (timeFilter === 'This Month') {
-      endDate = new Date();
-      endDate.setDate(endDate.getDate() - 8);
-      endDate.setHours(23, 59, 59, 999);
-      startDate = new Date();
-      startDate.setDate(startDate.getDate() - 30);
-      startDate.setHours(0, 0, 0, 0);
-    }
-
-    const { data: contactsData, error } = await supabase
+    let query = supabase
       .from('inbox_contacts_with_interactions')
       .select(`
         *,
@@ -694,11 +758,39 @@ export const useContactsData = (dataSource, refreshTrigger, onDataLoad) => {
           christmas,
           easter
         )
-      `)
-      .gte('computed_last_interaction', startDate.toISOString())
-      .lte('computed_last_interaction', endDate.toISOString())
-      .order('computed_last_interaction', { ascending: false, nullsLast: true })
-      .limit(100);
+      `);
+
+    if (timeFilter === 'This Week') {
+      // Last 7 days (day 1-7)
+      const endDate = new Date();
+      endDate.setHours(23, 59, 59, 999);
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 7);
+      startDate.setHours(0, 0, 0, 0);
+      query = query
+        .gte('computed_last_interaction', startDate.toISOString())
+        .lte('computed_last_interaction', endDate.toISOString());
+    } else if (timeFilter === 'This Month') {
+      // Day 8 to day 30
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() - 8);
+      endDate.setHours(23, 59, 59, 999);
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 30);
+      startDate.setHours(0, 0, 0, 0);
+      query = query
+        .gte('computed_last_interaction', startDate.toISOString())
+        .lte('computed_last_interaction', endDate.toISOString());
+    } else if (timeFilter === 'All') {
+      // Day 31 and older
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - 31);
+      cutoffDate.setHours(23, 59, 59, 999);
+      query = query.lte('computed_last_interaction', cutoffDate.toISOString());
+    }
+
+    const { data: contactsData, error } = await query
+      .order('computed_last_interaction', { ascending: false, nullsLast: true });
 
     if (error) throw error;
 

@@ -18,6 +18,7 @@ import FrequencyModal from './FrequencyModal';
 import CommunicationModal from './CommunicationModal';
 import BirthdayModal from './BirthdayModal';
 import PowerupsMenuModal from './PowerupsMenuModal';
+import DeleteSkipSpamModal from './DeleteSkipSpamModal';
 import QuickEditModal from './QuickEditModalRefactored';
 import { useQuickEditModal } from '../hooks/useQuickEditModal';
 import { useProfileImageModal } from '../hooks/useProfileImageModal';
@@ -277,6 +278,10 @@ const ContactsListDRY = ({
   const [powerupsMenuOpen, setPowerupsMenuOpen] = useState(false);
   const [contactForPowerups, setContactForPowerups] = useState(null);
 
+  // Delete Skip Spam modal state
+  const [deleteSkipSpamModalOpen, setDeleteSkipSpamModalOpen] = useState(false);
+  const [contactForDeleteSkipSpam, setContactForDeleteSkipSpam] = useState(null);
+
   // Find Duplicates modal state
   const [findDuplicatesModalOpen, setFindDuplicatesModalOpen] = useState(false);
   const [contactForDuplicates, setContactForDuplicates] = useState(null);
@@ -318,6 +323,12 @@ const ContactsListDRY = ({
     if (e) e.stopPropagation();
     setContactForPowerups(contact);
     setPowerupsMenuOpen(true);
+  };
+
+  const handleOpenDeleteSkipSpamModal = (contact, e) => {
+    if (e) e.stopPropagation();
+    setContactForDeleteSkipSpam(contact);
+    setDeleteSkipSpamModalOpen(true);
   };
 
   const handleOpenFindDuplicatesModal = (contact, e) => {
@@ -902,6 +913,7 @@ const ContactsListDRY = ({
           onOpenCommunicationModal={handleOpenCommunicationModal}
           onOpenMissingFieldsModal={handleOpenMissingFieldsModal}
           onOpenPowerupsMenu={handleOpenPowerupsMenu}
+          onOpenDeleteSkipSpamModal={handleOpenDeleteSkipSpamModal}
           onOpenFrequencyModal={handleOpenFrequencyModal}
           onOpenBirthdayModal={handleOpenBirthdayModal}
           onRemoveFromKeepInTouch={handleRemoveFromKeepInTouch}
@@ -1275,6 +1287,17 @@ const ContactsListDRY = ({
         onEditContact={handleOpenQuickEditContactModal}
         onFindDuplicates={handleOpenFindDuplicatesModal}
         onEnrichContact={handleOpenContactEnrichModal}
+      />
+
+      {/* Delete Skip Spam Modal */}
+      <DeleteSkipSpamModal
+        isOpen={deleteSkipSpamModalOpen}
+        onClose={() => {
+          setDeleteSkipSpamModalOpen(false);
+          setContactForDeleteSkipSpam(null);
+        }}
+        contact={contactForDeleteSkipSpam}
+        theme={theme}
       />
 
       {/* Find Duplicates Modal */}

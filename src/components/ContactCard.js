@@ -17,6 +17,7 @@ const ContactCard = ({
   onOpenCommunicationModal,
   onOpenMissingFieldsModal,
   onOpenPowerupsMenu,
+  onOpenDeleteSkipSpamModal,
   onOpenFrequencyModal,
   onOpenBirthdayModal,
   onRemoveFromKeepInTouch,
@@ -364,14 +365,25 @@ const ContactCard = ({
                 {getCompletenessDisplay(getContactCompleteness(contact)).icon}
               </CardActionButton>
 
-              <CardActionButton
-                theme={theme}
-                onClick={(e) => onOpenPowerupsMenu(contact, e)}
-                $powerups
-                title="Contact Power-ups"
-              >
-                <FaBolt />
-              </CardActionButton>
+              {pageContext === 'sort' ? (
+                <CardActionButton
+                  theme={theme}
+                  onClick={(e) => onOpenDeleteSkipSpamModal(contact, e)}
+                  $delete
+                  title="Delete, Skip or Spam"
+                >
+                  <FaTrash />
+                </CardActionButton>
+              ) : (
+                <CardActionButton
+                  theme={theme}
+                  onClick={(e) => onOpenPowerupsMenu(contact, e)}
+                  $powerups
+                  title="Contact Power-ups"
+                >
+                  <FaBolt />
+                </CardActionButton>
+              )}
             </>
           )}
         </ContactCardActions>
