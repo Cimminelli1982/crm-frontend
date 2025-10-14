@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { FiTrash, FiAlertTriangle, FiChevronDown, FiChevronRight, FiMail, FiPhone, FiTag, FiMapPin, FiBriefcase, FiMessageCircle, FiFileText, FiClock, FiUsers } from 'react-icons/fi';
+import { FiTrash, FiAlertTriangle, FiChevronDown, FiChevronRight, FiMail, FiPhone, FiTag, FiMapPin, FiBriefcase, FiMessageCircle, FiFileText, FiClock, FiUsers, FiExternalLink } from 'react-icons/fi';
 import { toast } from 'react-hot-toast';
 import styled from 'styled-components';
+import EmailThreadDetail from './EmailThreadDetail';
 
 const DeleteTab = ({ contactId, theme, onClose }) => {
   const [associatedData, setAssociatedData] = useState({});
@@ -12,6 +13,7 @@ const DeleteTab = ({ contactId, theme, onClose }) => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteContact, setDeleteContact] = useState(false);
   const [spamOption, setSpamOption] = useState('none'); // 'none', 'email', 'domain'
+  const [selectedThreadId, setSelectedThreadId] = useState(null);
 
   useEffect(() => {
     if (contactId) {
@@ -519,9 +521,19 @@ const DeleteTab = ({ contactId, theme, onClose }) => {
         );
       case 'emailThreads':
         return (
-          <>
+          <ThreadItemContent>
             <strong style={{ color: theme === 'light' ? '#111827' : '#F9FAFB' }}>Thread ID: {item.email_thread_id}</strong>
-          </>
+            <ViewThreadButton
+              theme={theme}
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedThreadId(item.email_thread_id);
+              }}
+            >
+              <FiExternalLink size={14} />
+              View Thread
+            </ViewThreadButton>
+          </ThreadItemContent>
         );
       case 'attachments':
         return (
@@ -555,20 +567,21 @@ const DeleteTab = ({ contactId, theme, onClose }) => {
   }
 
   return (
-    <Container theme={theme}>
-      <ScrollableContent>
-        {renderSection('Email Addresses', associatedData.emails, <FiMail />, 'emails')}
-        {renderSection('Phone Numbers', associatedData.mobiles, <FiPhone />, 'mobiles')}
-        {renderSection('Tags', associatedData.tags, <FiTag />, 'tags')}
-        {renderSection('Cities', associatedData.cities, <FiMapPin />, 'cities')}
-        {renderSection('Companies', associatedData.companies, <FiBriefcase />, 'companies')}
-        {renderSection('Interactions', associatedData.interactions, <FiMessageCircle />, 'interactions')}
-        {renderSection('Notes', associatedData.notes, <FiFileText />, 'notes')}
-        {renderSection('Keep in Touch', associatedData.keepInTouch, <FiClock />, 'keepInTouch')}
-        {renderSection('Email Threads', associatedData.emailThreads, <FiMail />, 'emailThreads')}
-        {renderSection('Attachments', associatedData.attachments, <FiFileText />, 'attachments')}
-        {renderSection('Deals', associatedData.deals, <FiBriefcase />, 'deals')}
-        {renderSection('Introductions', associatedData.introductions, <FiUsers />, 'introductions')}
+    <>
+      <Container theme={theme}>
+        <ScrollableContent>
+          {renderSection('Email Addresses', associatedData.emails, <FiMail />, 'emails')}
+          {renderSection('Phone Numbers', associatedData.mobiles, <FiPhone />, 'mobiles')}
+          {renderSection('Tags', associatedData.tags, <FiTag />, 'tags')}
+          {renderSection('Cities', associatedData.cities, <FiMapPin />, 'cities')}
+          {renderSection('Companies', associatedData.companies, <FiBriefcase />, 'companies')}
+          {renderSection('Interactions', associatedData.interactions, <FiMessageCircle />, 'interactions')}
+          {renderSection('Notes', associatedData.notes, <FiFileText />, 'notes')}
+          {renderSection('Keep in Touch', associatedData.keepInTouch, <FiClock />, 'keepInTouch')}
+          {renderSection('Email Threads', associatedData.emailThreads, <FiMail />, 'emailThreads')}
+          {renderSection('Attachments', associatedData.attachments, <FiFileText />, 'attachments')}
+          {renderSection('Deals', associatedData.deals, <FiBriefcase />, 'deals')}
+          {renderSection('Introductions', associatedData.introductions, <FiUsers />, 'introductions')}
 
         {/* Spam Options Section - Only show if contact has emails */}
         {associatedData.emails?.length > 0 && (
@@ -680,6 +693,15 @@ const DeleteTab = ({ contactId, theme, onClose }) => {
         </DeleteButton>
       </Footer>
     </Container>
+
+    {selectedThreadId && (
+      <EmailThreadDetail
+        threadId={selectedThreadId}
+        onClose={() => setSelectedThreadId(null)}
+        theme={theme}
+      />
+    )}
+    </>
   );
 };
 
@@ -983,6 +1005,43 @@ const LoadingContainer = styled.div`
   align-items: center;
   height: 200px;
   color: #6B7280;
+`;
+
+const ThreadItemContent = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+`;
+
+const ViewThreadButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: ${props => props.theme === 'light' ? '#EBF8FF' : '#1E3A8A'};
+  color: ${props => props.theme === 'light' ? '#2563EB' : '#93BBFC'};
+  border: 1px solid ${props => props.theme === 'light' ? '#93C5FD' : '#2563EB'};
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#DBEAFE' : '#2563EB'};
+    border-color: ${props => props.theme === 'light' ? '#60A5FA' : '#3B82F6'};
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  svg {
+    transition: transform 0.2s;
+  }
+
+  &:hover svg {
+    transform: rotate(12deg);
+  }
 `;
 
 export default DeleteTab;
