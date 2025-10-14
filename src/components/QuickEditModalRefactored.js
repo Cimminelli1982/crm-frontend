@@ -141,6 +141,8 @@ const QuickEditModalRefactored = ({
   const [missingOnly, setMissingOnly] = useState(showMissingFieldsOnly); // Use the prop value
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('');
+  const [missingFieldsModalOpen, setMissingFieldsModalOpen] = useState(false);
+  const [missingFieldsList, setMissingFieldsList] = useState([]);
 
 
   // Sync missingOnly with showMissingFieldsOnly prop when it changes
@@ -559,7 +561,15 @@ const QuickEditModalRefactored = ({
               </button>
 
               <button
-                onClick={onSave}
+                onClick={async () => {
+                  const result = await onSave();
+
+                  // Check if we need to show the missing fields modal
+                  if (result && result.needsConfirmation) {
+                    setMissingFieldsList(result.missingFields);
+                    setMissingFieldsModalOpen(true);
+                  }
+                }}
                 style={{
                   flex: 1,
                   padding: '11px 24px',
@@ -785,6 +795,165 @@ const QuickEditModalRefactored = ({
               }}
             >
               {savingToggle ? 'Updating...' : 'Update & Complete'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Missing Fields Modal */}
+      <Modal
+        isOpen={missingFieldsModalOpen}
+        onRequestClose={() => {
+          setMissingFieldsModalOpen(false);
+          setMissingFieldsList([]);
+        }}
+        shouldCloseOnOverlayClick={true}
+        style={{
+          content: {
+            top: '50%',
+            left: '50%',
+            right: 'auto',
+            bottom: 'auto',
+            marginRight: '-50%',
+            transform: 'translate(-50%, -50%)',
+            padding: '24px',
+            border: 'none',
+            borderRadius: '12px',
+            maxWidth: '450px',
+            width: '90%',
+            background: theme === 'light' ? '#FFFFFF' : '#1F2937'
+          },
+          overlay: {
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 1001
+          }
+        }}
+      >
+        <div>
+          <h3 style={{
+            margin: '0 0 16px 0',
+            fontSize: '18px',
+            fontWeight: '600',
+            color: theme === 'light' ? '#111827' : '#F9FAFB'
+          }}>
+            Missing Information Detected
+          </h3>
+          <p style={{
+            margin: '0 0 20px 0',
+            fontSize: '14px',
+            color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+          }}>
+            The following fields are still missing:
+          </p>
+
+          {/* List of missing fields */}
+          <div style={{
+            marginBottom: '20px',
+            padding: '12px',
+            borderRadius: '8px',
+            background: theme === 'light' ? '#FEF3C7' : '#78350F',
+            border: `1px solid ${theme === 'light' ? '#FCD34D' : '#92400E'}`
+          }}>
+            <ul style={{
+              margin: 0,
+              paddingLeft: '20px',
+              color: theme === 'light' ? '#92400E' : '#FEF3C7'
+            }}>
+              {missingFieldsList.map((field, index) => (
+                <li key={index} style={{ marginBottom: '4px', fontSize: '14px' }}>
+                  {field}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <p style={{
+            margin: '0 0 20px 0',
+            fontSize: '14px',
+            color: theme === 'light' ? '#374151' : '#D1D5DB'
+          }}>
+            Would you like to mark this contact as complete anyway?
+          </p>
+
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button
+              onClick={() => {
+                setMissingFieldsModalOpen(false);
+                setMissingFieldsList([]);
+              }}
+              style={{
+                flex: 1,
+                padding: '10px',
+                borderRadius: '8px',
+                border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                color: theme === 'light' ? '#374151' : '#D1D5DB',
+                fontSize: '14px',
+                fontWeight: '500',
+                cursor: 'pointer'
+              }}
+            >
+              Continue Editing
+            </button>
+            <button
+              onClick={async () => {
+                setSavingToggle(true);
+
+                // Save without checking missing fields and skip the modal
+                const result = await onSave(true, false);
+
+                if (result && result.success) {
+                  setMissingFieldsModalOpen(false);
+                  setMissingFieldsList([]);
+                }
+
+                setSavingToggle(false);
+              }}
+              disabled={savingToggle}
+              style={{
+                flex: 1,
+                padding: '10px',
+                borderRadius: '8px',
+                border: 'none',
+                backgroundColor: '#3B82F6',
+                color: '#FFFFFF',
+                fontSize: '14px',
+                fontWeight: '600',
+                cursor: savingToggle ? 'wait' : 'pointer',
+                opacity: savingToggle ? 0.7 : 1
+              }}
+            >
+              {savingToggle ? 'Saving...' : 'Save Anyway'}
+            </button>
+            <button
+              onClick={async () => {
+                setSavingToggle(true);
+
+                // Save with marking complete (set show_missing to false)
+                const result = await onSave(true, true);
+
+                if (result && result.success) {
+                  setMissingFieldsModalOpen(false);
+                  setMissingFieldsList([]);
+                }
+
+                setSavingToggle(false);
+              }}
+              disabled={savingToggle}
+              style={{
+                flex: 1,
+                padding: '10px',
+                borderRadius: '8px',
+                border: 'none',
+                backgroundColor: '#10B981',
+                color: '#FFFFFF',
+                fontSize: '14px',
+                fontWeight: '600',
+                cursor: savingToggle ? 'wait' : 'pointer',
+                opacity: savingToggle ? 0.7 : 1
+              }}
+            >
+              {savingToggle ? 'Saving...' : 'Mark Complete'}
             </button>
           </div>
         </div>

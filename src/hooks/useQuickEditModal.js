@@ -780,24 +780,101 @@ export const useQuickEditModal = (onContactUpdate) => {
     }
   }, [contactForQuickEdit, onContactUpdate]);
 
+  // Helper function to get missing fields for a contact (matching contacts_missing_info view)
+  const getMissingFields = useCallback(() => {
+    const missing = [];
+
+    // Check what fields are still missing based on the view's criteria
+    if (!quickEditFirstName || quickEditFirstName.trim() === '') {
+      missing.push('First Name');
+    }
+    if (!quickEditLastName || quickEditLastName.trim() === '') {
+      missing.push('Last Name');
+    }
+    if (!quickEditContactScore || quickEditContactScore === 0) {
+      missing.push('Score');
+    }
+    if (!quickEditDescriptionText || quickEditDescriptionText.trim() === '') {
+      missing.push('Description');
+    }
+    if (!quickEditJobRoleText || quickEditJobRoleText.trim() === '') {
+      missing.push('Job Role');
+    }
+    if (!quickEditLinkedin || quickEditLinkedin.trim() === '') {
+      missing.push('LinkedIn');
+    }
+    if (!quickEditContactCities || quickEditContactCities.length === 0) {
+      missing.push('City');
+    }
+    if (!quickEditContactCompanies || quickEditContactCompanies.length === 0) {
+      missing.push('Company');
+    }
+    if (!quickEditContactTags || quickEditContactTags.length === 0) {
+      missing.push('Tags');
+    }
+    if (!quickEditKeepInTouchFrequency || quickEditKeepInTouchFrequency === 'Not Set' || quickEditKeepInTouchFrequency === 'Do not keep in touch') {
+      missing.push('Keep in Touch Frequency');
+    }
+    if (!quickEditChristmasWishes || quickEditChristmasWishes === 'no wishes set') {
+      missing.push('Christmas Wishes');
+    }
+    if (!quickEditEasterWishes || quickEditEasterWishes === 'no wishes set') {
+      missing.push('Easter Wishes');
+    }
+
+    return missing;
+  }, [
+    quickEditFirstName,
+    quickEditLastName,
+    quickEditContactScore,
+    quickEditDescriptionText,
+    quickEditJobRoleText,
+    quickEditLinkedin,
+    quickEditContactCities,
+    quickEditContactCompanies,
+    quickEditContactTags,
+    quickEditKeepInTouchFrequency,
+    quickEditChristmasWishes,
+    quickEditEasterWishes
+  ]);
+
   // Save contact handler
-  const handleSaveQuickEditContact = useCallback(async () => {
+  const handleSaveQuickEditContact = useCallback(async (skipMissingCheck = false, markComplete = false) => {
     if (!contactForQuickEdit) return;
 
     try {
-      // Save contact details (but NOT show_missing - that's handled separately)
+      // Check for missing fields if we haven't opted to skip
+      // and the contact isn't already marked as complete (show_missing = false)
+      if (!skipMissingCheck && contactForQuickEdit.show_missing !== false) {
+        const missingFields = getMissingFields();
+
+        // Only show modal if there are actually missing fields
+        if (missingFields.length > 0) {
+          // Return the missing fields to trigger the modal
+          return { missingFields, needsConfirmation: true };
+        }
+      }
+
+      // Save contact details
+      const updateData = {
+        first_name: quickEditFirstName.trim() || null,
+        last_name: quickEditLastName.trim() || null,
+        description: quickEditDescriptionText.trim() || null,
+        job_role: quickEditJobRoleText.trim() || null,
+        category: quickEditContactCategory || 'Not Set',
+        score: quickEditContactScore > 0 ? quickEditContactScore : null,
+        linkedin: quickEditLinkedin.trim() || null
+      };
+
+      // If marking complete, set show_missing to false
+      if (markComplete) {
+        updateData.show_missing = false;
+        updateData.last_modified_at = new Date().toISOString();
+      }
+
       const { error } = await supabase
         .from('contacts')
-        .update({
-          first_name: quickEditFirstName.trim() || null,
-          last_name: quickEditLastName.trim() || null,
-          description: quickEditDescriptionText.trim() || null,
-          job_role: quickEditJobRoleText.trim() || null,
-          category: quickEditContactCategory || 'Not Set',
-          score: quickEditContactScore > 0 ? quickEditContactScore : null,
-          linkedin: quickEditLinkedin.trim() || null
-          // Removed show_missing - it should only be updated via the "Mark as Complete" button
-        })
+        .update(updateData)
         .eq('contact_id', contactForQuickEdit.contact_id);
 
       if (error) throw error;
@@ -839,15 +916,24 @@ export const useQuickEditModal = (onContactUpdate) => {
         }
       }
 
+      // Update local state if marking complete
+      if (markComplete) {
+        setQuickEditShowMissing(false);
+        contactForQuickEdit.show_missing = false;
+      }
+
       toast.success('Contact details updated successfully');
       closeModal();
 
       if (onContactUpdate) {
         onContactUpdate();
       }
+
+      return { success: true };
     } catch (error) {
       console.error('Error saving contact:', error);
       toast.error('Failed to save contact: ' + (error.message || 'Unknown error'));
+      return { success: false, error };
     }
   }, [
     contactForQuickEdit,
@@ -862,6 +948,8 @@ export const useQuickEditModal = (onContactUpdate) => {
     quickEditKeepInTouchFrequency,
     quickEditChristmasWishes,
     quickEditEasterWishes,
+    getMissingFields,
+    closeModal,
     onContactUpdate
   ]);
 
