@@ -35,6 +35,8 @@ const SortPage = ({ theme, onInboxCountChange }) => {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [mailFilterContacts, setMailFilterContacts] = useState([]);
   const [mailFilterLoading, setMailFilterLoading] = useState(false);
+  const [selectedEmails, setSelectedEmails] = useState(new Set());
+  const [selectAll, setSelectAll] = useState(false);
   const [inboxTimeCounts, setInboxTimeCounts] = useState({
     'This Week': 0,
     'This Month': 0,
@@ -307,12 +309,216 @@ const SortPage = ({ theme, onInboxCountChange }) => {
     }
   };
 
+  // Handle email selection
+  const handleEmailSelect = (emailId, isSelected) => {
+    setSelectedEmails(prev => {
+      const newSelected = new Set(prev);
+      if (isSelected) {
+        newSelected.add(emailId);
+      } else {
+        newSelected.delete(emailId);
+      }
+
+      // Update select all state based on current selection
+      setSelectAll(newSelected.size === mailFilterContacts.length && mailFilterContacts.length > 0);
+
+      return newSelected;
+    });
+  };
+
+  // Handle select all
+  const handleSelectAll = (isSelectAll) => {
+    setSelectAll(isSelectAll);
+    if (isSelectAll) {
+      setSelectedEmails(new Set(mailFilterContacts.map(contact => contact.id)));
+    } else {
+      setSelectedEmails(new Set());
+    }
+  };
+
+  // Handle bulk spam action
+  const handleBulkSpam = async () => {
+    if (selectedEmails.size === 0) {
+      toast.error('No emails selected');
+      return;
+    }
+
+    try {
+      // Get the selected contacts and extract their email_data.id values
+      const selectedContacts = mailFilterContacts.filter(contact =>
+        selectedEmails.has(contact.id)
+      );
+
+      const emailIds = selectedContacts
+        .map(contact => contact.email_data?.id)
+        .filter(id => id !== undefined && id !== null);
+
+      if (emailIds.length === 0) {
+        toast.error('Invalid email selection');
+        return;
+      }
+
+      console.log('Bulk spam - processing email IDs one by one:', emailIds);
+
+      toast.loading(`Processing ${emailIds.length} emails...`);
+
+      let successCount = 0;
+      let errorCount = 0;
+
+      // Process each email individually to avoid trigger conflicts
+      for (const [index, emailId] of emailIds.entries()) {
+        try {
+          console.log(`Processing email ${index + 1}/${emailIds.length}: ${emailId}`);
+
+          const { error } = await supabase
+            .from('email_inbox')
+            .update({
+              special_case: 'reject',
+              last_processed_at: new Date().toISOString()
+            })
+            .eq('id', emailId);
+
+          if (error) {
+            console.error(`Error processing email ${emailId}:`, error);
+            errorCount++;
+          } else {
+            successCount++;
+          }
+
+          // Small delay between requests to be gentle on the database
+          if (index < emailIds.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 50));
+          }
+        } catch (err) {
+          console.error(`Exception processing email ${emailId}:`, err);
+          errorCount++;
+        }
+      }
+
+      // Clear selection
+      setSelectedEmails(new Set());
+      setSelectAll(false);
+
+      // Trigger refresh
+      setRefreshTrigger(prev => prev + 1);
+
+      // Trigger count refresh
+      window.dispatchEvent(new CustomEvent('refreshInboxCounts'));
+
+      toast.dismiss();
+
+      if (errorCount === 0) {
+        toast.success(`${successCount} emails marked as spam`);
+      } else if (successCount > 0) {
+        toast.success(`${successCount} emails marked as spam, ${errorCount} failed`);
+      } else {
+        toast.error(`Failed to mark any emails as spam`);
+      }
+
+      console.log(`Bulk spam completed: ${successCount} success, ${errorCount} errors`);
+    } catch (err) {
+      console.error('Error in bulk spam operation:', err);
+      toast.dismiss();
+      toast.error('Failed to mark emails as spam');
+    }
+  };
+
+  // Handle bulk add to CRM action
+  const handleBulkAddToCRM = async () => {
+    if (selectedEmails.size === 0) {
+      toast.error('No emails selected');
+      return;
+    }
+
+    try {
+      // Get the selected contacts and extract their email_data.id values
+      const selectedContacts = mailFilterContacts.filter(contact =>
+        selectedEmails.has(contact.id)
+      );
+
+      const emailIds = selectedContacts
+        .map(contact => contact.email_data?.id)
+        .filter(id => id !== undefined && id !== null);
+
+      if (emailIds.length === 0) {
+        toast.error('Invalid email selection');
+        return;
+      }
+
+      console.log('Bulk add to CRM - processing email IDs one by one:', emailIds);
+
+      toast.loading(`Adding ${emailIds.length} emails to CRM...`);
+
+      let successCount = 0;
+      let errorCount = 0;
+
+      // Process each email individually to avoid trigger conflicts
+      for (const [index, emailId] of emailIds.entries()) {
+        try {
+          console.log(`Processing email ${index + 1}/${emailIds.length}: ${emailId}`);
+
+          const { error } = await supabase
+            .from('email_inbox')
+            .update({
+              special_case: null,
+              last_processed_at: new Date().toISOString()
+            })
+            .eq('id', emailId);
+
+          if (error) {
+            console.error(`Error processing email ${emailId}:`, error);
+            errorCount++;
+          } else {
+            successCount++;
+          }
+
+          // Small delay between requests to be gentle on the database
+          if (index < emailIds.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 50));
+          }
+        } catch (err) {
+          console.error(`Exception processing email ${emailId}:`, err);
+          errorCount++;
+        }
+      }
+
+      // Clear selection
+      setSelectedEmails(new Set());
+      setSelectAll(false);
+
+      // Trigger refresh
+      setRefreshTrigger(prev => prev + 1);
+
+      // Trigger count refresh
+      window.dispatchEvent(new CustomEvent('refreshInboxCounts'));
+
+      toast.dismiss();
+
+      if (errorCount === 0) {
+        toast.success(`${successCount} emails added to CRM`);
+      } else if (successCount > 0) {
+        toast.success(`${successCount} emails added to CRM, ${errorCount} failed`);
+      } else {
+        toast.error(`Failed to add any emails to CRM`);
+      }
+
+      console.log(`Bulk add to CRM completed: ${successCount} success, ${errorCount} errors`);
+    } catch (err) {
+      console.error('Error in bulk add to CRM operation:', err);
+      toast.dismiss();
+      toast.error('Failed to add emails to CRM');
+    }
+  };
+
 
   // Fetch Mail Filter emails when the tab is selected
   useEffect(() => {
     if (filterCategory === 'Mail Filter') {
       fetchMailFilterEmails();
     }
+    // Reset selection when switching categories or refreshing
+    setSelectedEmails(new Set());
+    setSelectAll(false);
   }, [filterCategory, refreshTrigger]);
 
   // Fetch inbox counts when Inbox is selected
@@ -503,6 +709,12 @@ const SortPage = ({ theme, onInboxCountChange }) => {
               onSpamClick={handleSpamClick}
               onAddToCRM={handleAddToCRM}
               onViewEmail={handleViewEmail}
+              selectedEmails={selectedEmails}
+              selectAll={selectAll}
+              onEmailSelect={handleEmailSelect}
+              onSelectAll={handleSelectAll}
+              onBulkSpam={handleBulkSpam}
+              onBulkAddToCRM={handleBulkAddToCRM}
             />
           ) : (
             <ContactsListDRY

@@ -3,7 +3,20 @@ import styled from 'styled-components';
 import { FiCheckCircle, FiXCircle, FiArrowRight, FiArrowLeft, FiMail, FiUser, FiCalendar, FiMessageSquare, FiExternalLink } from 'react-icons/fi';
 
 // Email List Component for Mail Filter
-export const MailFilterEmailList = ({ contacts, loading, theme, onSpamClick, onAddToCRM, onViewEmail }) => {
+export const MailFilterEmailList = ({
+  contacts,
+  loading,
+  theme,
+  onSpamClick,
+  onAddToCRM,
+  onViewEmail,
+  selectedEmails = new Set(),
+  selectAll = false,
+  onEmailSelect,
+  onSelectAll,
+  onBulkSpam,
+  onBulkAddToCRM
+}) => {
   if (loading) {
     return (
       <div style={{
@@ -39,9 +52,55 @@ export const MailFilterEmailList = ({ contacts, loading, theme, onSpamClick, onA
 
   return (
     <EmailListContainer theme={theme}>
+      {/* Header with select all and bulk actions */}
+      {contacts.length > 0 && (
+        <EmailListHeader theme={theme}>
+          <SelectAllSection>
+            <SelectAllCheckbox
+              type="checkbox"
+              checked={selectAll}
+              onChange={(e) => onSelectAll && onSelectAll(e.target.checked)}
+              theme={theme}
+            />
+            <span style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF', fontSize: '14px' }}>
+              {selectedEmails.size > 0 ? `${selectedEmails.size} selected` : 'Select all'}
+            </span>
+          </SelectAllSection>
+
+          {selectedEmails.size > 0 && (
+            <BulkActions>
+              <BulkActionButton
+                onClick={onBulkAddToCRM}
+                theme={theme}
+                $variant="success"
+              >
+                <FiCheckCircle /> Add {selectedEmails.size} to CRM
+              </BulkActionButton>
+              <BulkActionButton
+                onClick={onBulkSpam}
+                theme={theme}
+                $variant="danger"
+              >
+                <FiXCircle /> Mark {selectedEmails.size} as Spam
+              </BulkActionButton>
+            </BulkActions>
+          )}
+        </EmailListHeader>
+      )}
+
       {contacts.map(contact => (
         <EmailItem key={contact.id} theme={theme} onClick={() => onViewEmail(contact)}>
           <EmailInfo>
+            <EmailCheckbox
+              type="checkbox"
+              checked={selectedEmails.has(contact.id)}
+              onChange={(e) => {
+                e.stopPropagation();
+                onEmailSelect && onEmailSelect(contact.id, e.target.checked);
+              }}
+              onClick={(e) => e.stopPropagation()}
+              theme={theme}
+            />
             <EmailDirection theme={theme}>
               {contact.direction?.toLowerCase() === 'sent' ? (
                 <FiArrowLeft color="#60A5FA" size={16} />
@@ -497,4 +556,81 @@ const EmailSubjectModal = styled.div`
   margin-bottom: 20px;
   border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
   padding-bottom: 10px;
+`;
+
+// New styled components for selection functionality
+const EmailListHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+  background-color: ${props => props.theme === 'light' ? '#F9FAFB' : '#111827'};
+  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  border-radius: 8px;
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+`;
+
+const SelectAllSection = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const SelectAllCheckbox = styled.input`
+  width: 16px;
+  height: 16px;
+  accent-color: #3B82F6;
+  cursor: pointer;
+`;
+
+const EmailCheckbox = styled.input`
+  width: 16px;
+  height: 16px;
+  accent-color: #3B82F6;
+  cursor: pointer;
+  margin-right: 12px;
+`;
+
+const BulkActions = styled.div`
+  display: flex;
+  gap: 8px;
+
+  @media (max-width: 768px) {
+    width: 100%;
+    justify-content: flex-end;
+  }
+`;
+
+const BulkActionButton = styled.button`
+  background-color: ${props => {
+    if (props.$variant === 'danger') return '#DC2626';
+    if (props.$variant === 'success') return '#059669';
+    return '#3B82F6';
+  }};
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+
+  &:hover {
+    opacity: 0.8;
+  }
+
+  @media (max-width: 768px) {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
 `;
