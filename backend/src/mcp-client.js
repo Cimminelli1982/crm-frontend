@@ -8,10 +8,20 @@ import { createClient } from '@supabase/supabase-js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Supabase client for CRM tools
+// Supabase client for CRM tools - lazy initialization
 const supabaseUrl = process.env.SUPABASE_URL || 'https://efazuvegwxouysfcgwja.supabase.co';
-const supabaseKey = process.env.SUPABASE_ANON_KEY;
-const supabaseCRM = supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
+let supabaseCRM = null;
+
+function getSupabaseCRM() {
+  if (!supabaseCRM) {
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+    if (supabaseKey) {
+      supabaseCRM = createClient(supabaseUrl, supabaseKey);
+      console.log('[CRM] Supabase client initialized');
+    }
+  }
+  return supabaseCRM;
+}
 
 // MCP Client Manager - connects to MCP servers and provides tools to Claude
 class MCPClientManager {
@@ -131,24 +141,32 @@ class MCPClientManager {
 
   // CRM Tool Handlers
   async handleFindDuplicates({ method, search_term, limit = 20 }) {
-    if (!supabaseCRM) throw new Error('Supabase not configured');
+    const supabase = getSupabaseCRM();
+    if (!supabase) throw new Error('Supabase not configured - SUPABASE_ANON_KEY missing');
 
     let results = [];
 
     if (method === 'pending_queue') {
-      const { data, error } = await supabaseCRM
+      // First get the duplicate records
+      const { data: duplicates, error } = await supabase
         .from('contact_duplicates')
-        .select(`
-          *,
-          contact1:contacts!contact_duplicates_contact_id_1_fkey(contact_id, first_name, last_name, created_at),
-          contact2:contacts!contact_duplicates_contact_id_2_fkey(contact_id, first_name, last_name, created_at)
-        `)
+        .select('*')
         .order('created_at', { ascending: false })
         .limit(limit);
       if (error) throw error;
-      results = data || [];
+
+      // Then fetch contact details for each pair
+      for (const dup of duplicates || []) {
+        const [c1, c2] = await Promise.all([
+          supabase.from('contacts').select('contact_id, first_name, last_name, created_at').eq('contact_id', dup.contact_id_1).single(),
+          supabase.from('contacts').select('contact_id, first_name, last_name, created_at').eq('contact_id', dup.contact_id_2).single()
+        ]);
+        dup.contact1 = c1.data;
+        dup.contact2 = c2.data;
+      }
+      results = duplicates || [];
     } else if (method === 'name_search' && search_term) {
-      const { data, error } = await supabaseCRM
+      const { data, error } = await supabase
         .from('contacts')
         .select('contact_id, first_name, last_name, created_at')
         .or(`first_name.ilike.%${search_term}%,last_name.ilike.%${search_term}%`)
@@ -157,7 +175,7 @@ class MCPClientManager {
       if (error) throw error;
       results = data || [];
     } else if (method === 'email_domain' && search_term) {
-      const { data, error } = await supabaseCRM
+      const { data, error } = await supabase
         .from('contact_emails')
         .select(`email, contacts(contact_id, first_name, last_name, created_at)`)
         .ilike('email', `%@${search_term}%`)
@@ -170,9 +188,10 @@ class MCPClientManager {
   }
 
   async handleGetContactDetails({ contact_id }) {
-    if (!supabaseCRM) throw new Error('Supabase not configured');
+    const supabase = getSupabaseCRM();
+    if (!supabase) throw new Error('Supabase not configured - SUPABASE_ANON_KEY missing');
 
-    const { data: contact, error } = await supabaseCRM
+    const { data: contact, error } = await supabase
       .from('contacts')
       .select('*')
       .eq('contact_id', contact_id)
@@ -180,11 +199,11 @@ class MCPClientManager {
     if (error) throw error;
 
     const [emails, mobiles, companies, tags, deals] = await Promise.all([
-      supabaseCRM.from('contact_emails').select('*').eq('contact_id', contact_id),
-      supabaseCRM.from('contact_mobiles').select('*').eq('contact_id', contact_id),
-      supabaseCRM.from('contact_companies').select('*, companies(company_id, name)').eq('contact_id', contact_id),
-      supabaseCRM.from('contact_tags').select('*, tags(tag_id, name)').eq('contact_id', contact_id),
-      supabaseCRM.from('deals_contacts').select('*, deals(deal_id, name)').eq('contact_id', contact_id),
+      supabase.from('contact_emails').select('*').eq('contact_id', contact_id),
+      supabase.from('contact_mobiles').select('*').eq('contact_id', contact_id),
+      supabase.from('contact_companies').select('*, companies(company_id, name)').eq('contact_id', contact_id),
+      supabase.from('contact_tags').select('*, tags(tag_id, name)').eq('contact_id', contact_id),
+      supabase.from('deals_contacts').select('*, deals(deal_id, name)').eq('contact_id', contact_id),
     ]);
 
     return {
@@ -230,7 +249,8 @@ class MCPClientManager {
   }
 
   async handleMergeContacts({ primary_contact_id, duplicate_contact_id, dry_run = true }) {
-    if (!supabaseCRM) throw new Error('Supabase not configured');
+    const supabase = getSupabaseCRM();
+    if (!supabase) throw new Error('Supabase not configured - SUPABASE_ANON_KEY missing');
 
     const junctionTables = [
       { table: 'contact_emails', fk: 'contact_id' },
@@ -247,8 +267,8 @@ class MCPClientManager {
 
     // Check both contacts exist
     const [p, d] = await Promise.all([
-      supabaseCRM.from('contacts').select('*').eq('contact_id', primary_contact_id).single(),
-      supabaseCRM.from('contacts').select('*').eq('contact_id', duplicate_contact_id).single(),
+      supabase.from('contacts').select('*').eq('contact_id', primary_contact_id).single(),
+      supabase.from('contacts').select('*').eq('contact_id', duplicate_contact_id).single(),
     ]);
     if (p.error) throw new Error(`Primary contact not found`);
     if (d.error) throw new Error(`Duplicate contact not found`);
@@ -257,7 +277,7 @@ class MCPClientManager {
 
     // Check each junction table
     for (const t of junctionTables) {
-      const { data } = await supabaseCRM.from(t.table).select('*').eq(t.fk, duplicate_contact_id);
+      const { data } = await supabase.from(t.table).select('*').eq(t.fk, duplicate_contact_id);
       if (data?.length > 0) {
         operations.push({ table: t.table, records: data.length, action: 'move to primary' });
       }
@@ -271,21 +291,21 @@ class MCPClientManager {
     for (const t of junctionTables) {
       if (t.unique) {
         // Delete duplicates first
-        const { data: primaryRecs } = await supabaseCRM.from(t.table).select('*').eq(t.fk, primary_contact_id);
+        const { data: primaryRecs } = await supabase.from(t.table).select('*').eq(t.fk, primary_contact_id);
         const primaryKeys = new Set(primaryRecs?.map(r => r[t.unique[0]]) || []);
 
-        const { data: dupRecs } = await supabaseCRM.from(t.table).select('*').eq(t.fk, duplicate_contact_id);
+        const { data: dupRecs } = await supabase.from(t.table).select('*').eq(t.fk, duplicate_contact_id);
         for (const rec of dupRecs || []) {
           if (primaryKeys.has(rec[t.unique[0]])) {
-            await supabaseCRM.from(t.table).delete().eq(t.fk, duplicate_contact_id).eq(t.unique[0], rec[t.unique[0]]);
+            await supabase.from(t.table).delete().eq(t.fk, duplicate_contact_id).eq(t.unique[0], rec[t.unique[0]]);
           }
         }
       }
-      await supabaseCRM.from(t.table).update({ [t.fk]: primary_contact_id }).eq(t.fk, duplicate_contact_id);
+      await supabase.from(t.table).update({ [t.fk]: primary_contact_id }).eq(t.fk, duplicate_contact_id);
     }
 
     // Update emails table sender
-    await supabaseCRM.from('emails').update({ sender_contact_id: primary_contact_id }).eq('sender_contact_id', duplicate_contact_id);
+    await supabase.from('emails').update({ sender_contact_id: primary_contact_id }).eq('sender_contact_id', duplicate_contact_id);
 
     // Merge fields
     const updates = {};
@@ -293,11 +313,11 @@ class MCPClientManager {
       if (!p.data[f] && d.data[f]) updates[f] = d.data[f];
     });
     if (Object.keys(updates).length > 0) {
-      await supabaseCRM.from('contacts').update(updates).eq('contact_id', primary_contact_id);
+      await supabase.from('contacts').update(updates).eq('contact_id', primary_contact_id);
     }
 
     // Save audit log
-    await supabaseCRM.from('contact_duplicates_completed').insert({
+    await supabase.from('contact_duplicates_completed').insert({
       primary_contact_id,
       duplicate_contact_id,
       merged_data: { primary: p.data, duplicate: d.data },
@@ -305,19 +325,20 @@ class MCPClientManager {
     });
 
     // Remove from queue
-    await supabaseCRM.from('contact_duplicates').delete()
+    await supabase.from('contact_duplicates').delete()
       .or(`contact_id_1.eq.${duplicate_contact_id},contact_id_2.eq.${duplicate_contact_id}`);
 
     // Delete duplicate
-    await supabaseCRM.from('contacts').delete().eq('contact_id', duplicate_contact_id);
+    await supabase.from('contacts').delete().eq('contact_id', duplicate_contact_id);
 
     return { success: true, message: `Merged ${d.data.first_name} ${d.data.last_name} into ${p.data.first_name} ${p.data.last_name}`, operations };
   }
 
   async handleMarkNotDuplicate({ contact_id_1, contact_id_2 }) {
-    if (!supabaseCRM) throw new Error('Supabase not configured');
+    const supabase = getSupabaseCRM();
+    if (!supabase) throw new Error('Supabase not configured - SUPABASE_ANON_KEY missing');
 
-    await supabaseCRM.from('contact_duplicates').delete()
+    await supabase.from('contact_duplicates').delete()
       .or(`and(contact_id_1.eq.${contact_id_1},contact_id_2.eq.${contact_id_2}),and(contact_id_1.eq.${contact_id_2},contact_id_2.eq.${contact_id_1})`);
 
     return { success: true, message: 'Marked as not duplicates' };

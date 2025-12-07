@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
-import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload } from 'react-icons/fa';
+import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import QuickEditModal from '../components/QuickEditModalRefactored';
@@ -2285,6 +2285,28 @@ ${emailsText}
 `;
   };
 
+  // Build instruction for duplicate processing
+  const buildDuplicateMCPInstruction = () => {
+    const instruction = `Help me clean up duplicate contacts using your CRM tools.
+
+1. First, use crm_find_duplicate_contacts with method="pending_queue" to see pending duplicates
+2. For each pair, use crm_compare_contacts to show me a side-by-side comparison
+3. I'll tell you which one to keep as primary
+4. Use crm_merge_contacts with dry_run=true first to preview changes
+5. If I approve, run crm_merge_contacts with dry_run=false to execute
+6. If not duplicates, use crm_mark_not_duplicate
+
+Let's start - show me the pending duplicates queue.`;
+
+    return instruction;
+  };
+
+  // Send MCP duplicate instruction to chat
+  const sendDuplicateMCPInstruction = () => {
+    const instruction = buildDuplicateMCPInstruction();
+    sendMessageToClaude(instruction);
+  };
+
   // Handle image file selection for chat
   const handleChatImageSelect = async (e) => {
     const files = Array.from(e.target.files);
@@ -3960,6 +3982,19 @@ internet businesses.`;
                     </QuickActionChip>
                     <QuickActionChip theme={theme} onClick={() => handleQuickAction('Any deadlines or asks I need to note?')}>
                       Deadlines
+                    </QuickActionChip>
+                    <QuickActionChip
+                      theme={theme}
+                      onClick={sendDuplicateMCPInstruction}
+                      style={{
+                        background: theme === 'light' ? '#8B5CF6' : '#7C3AED',
+                        color: '#FFFFFF',
+                        border: 'none'
+                      }}
+                      title="Process duplicate contacts with MCP"
+                    >
+                      <FaUser size={12} style={{ marginRight: '4px' }} />
+                      Duplicates
                     </QuickActionChip>
                   </QuickActionsContainer>
 

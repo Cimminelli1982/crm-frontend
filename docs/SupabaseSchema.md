@@ -1,454 +1,169 @@
-{\rtf1\ansi\ansicpg1252\cocoartf2761
-\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
-{\colortbl;\red255\green255\blue255;}
-{\*\expandedcolortbl;;}
-\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
-\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+# Supabase CRM Schema
 
-\f0\fs24 \cf0 | table_schema | table_name                      | column_name                 | data_type                | is_nullable | column_default                               | table_comment                                                                 |\
-| ------------ | ------------------------------- | --------------------------- | ------------------------ | ----------- | -------------------------------------------- | ----------------------------------------------------------------------------- |\
-| public       | attachments                     | attachment_id               | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | attachments                     | note_id                     | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | attachments                     | file_name                   | character varying        | NO          | null                                         | null                                                                          |\
-| public       | attachments                     | file_url                    | character varying        | NO          | null                                         | null                                                                          |\
-| public       | attachments                     | file_type                   | character varying        | YES         | null                                         | null                                                                          |\
-| public       | attachments                     | file_size                   | bigint                   | YES         | null                                         | null                                                                          |\
-| public       | attachments                     | description                 | text                     | YES         | null                                         | null                                                                          |\
-| public       | attachments                     | created_by                  | USER-DEFINED             | YES         | 'User'::creator_type                         | null                                                                          |\
-| public       | attachments                     | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | attachments                     | processing_status           | text                     | YES         | 'pending'::text                              | null                                                                          |\
-| public       | attachments                     | permanent_url               | text                     | YES         | null                                         | null                                                                          |\
-| public       | attachments                     | text_content                | text                     | YES         | null                                         | null                                                                          |\
-| public       | attachments                     | processed_at                | timestamp with time zone | YES         | null                                         | null                                                                          |\
-| public       | attachments                     | processing_error            | text                     | YES         | null                                         | null                                                                          |\
-| public       | attachments                     | error_at                    | timestamp with time zone | YES         | null                                         | null                                                                          |\
-| public       | attachments                     | contact_id                  | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | attachments                     | interaction_id              | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | attachments                     | chat_id                     | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | attachments                     | processed                   | boolean                  | YES         | null                                         | null                                                                          |\
-| public       | attachments                     | processing_log              | text                     | YES         | null                                         | null                                                                          |\
-| public       | attachments                     | external_reference          | text                     | YES         | null                                         | null                                                                          |\
-| public       | attachments                     | email_thread_id             | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | chats                           | id                          | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | chats                           | chat_name                   | text                     | NO          | null                                         | null                                                                          |\
-| public       | chats                           | category                    | USER-DEFINED             | NO          | 'individual'::chat_category                  | null                                                                          |\
-| public       | chats                           | is_group_chat               | boolean                  | NO          | false                                        | null                                                                          |\
-| public       | chats                           | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | chats                           | created_by                  | text                     | YES         | 'Edge Function'::text                        | null                                                                          |\
-| public       | chats                           | external_chat_id            | text                     | YES         | null                                         | null                                                                          |\
-| public       | cities                          | city_id                     | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | cities                          | name                        | character varying        | NO          | null                                         | null                                                                          |\
-| public       | cities                          | country                     | character varying        | NO          | null                                         | null                                                                          |\
-| public       | cities                          | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | cities                          | last_modified_at            | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | companies                       | company_id                  | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | companies                       | name                        | text                     | NO          | null                                         | null                                                                          |\
-| public       | companies                       | website                     | character varying        | YES         | null                                         | null                                                                          |\
-| public       | companies                       | category                    | USER-DEFINED             | YES         | 'Inbox'::company_category                    | null                                                                          |\
-| public       | companies                       | description                 | text                     | YES         | null                                         | null                                                                          |\
-| public       | companies                       | linkedin                    | character varying        | YES         | null                                         | null                                                                          |\
-| public       | companies                       | created_by                  | USER-DEFINED             | YES         | 'User'::creation_source                      | null                                                                          |\
-| public       | companies                       | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | companies                       | last_modified_by            | USER-DEFINED             | YES         | 'User'::creation_source                      | null                                                                          |\
-| public       | companies                       | last_modified_at            | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | companies                       | airtable_id                 | text                     | YES         | null                                         | null                                                                          |\
-| public       | companies                       | hubspot_id                  | text                     | YES         | null                                         | null                                                                          |\
-| public       | company_attachments             | company_attachment_id       | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | company_attachments             | company_id                  | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | company_attachments             | attachment_id               | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | company_attachments             | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | company_attachments             | created_by                  | text                     | YES         | 'User'::text                                 | null                                                                          |\
-| public       | company_cities                  | entry_id                    | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | company_cities                  | company_id                  | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | company_cities                  | city_id                     | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | company_cities                  | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | company_cities                  | last_modified_at            | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | company_tags                    | entry_id                    | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | company_tags                    | company_id                  | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | company_tags                    | tag_id                      | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | company_tags                    | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | contact_chats                   | id                          | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | contact_chats                   | contact_id                  | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | contact_chats                   | chat_id                     | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | contact_chats                   | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | contact_cities                  | entry_id                    | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | contact_cities                  | contact_id                  | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | contact_cities                  | city_id                     | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | contact_cities                  | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | contact_cities                  | last_modified_at            | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | contact_companies               | contact_companies_id        | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | contact_companies               | contact_id                  | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | contact_companies               | company_id                  | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | contact_companies               | relationship                | USER-DEFINED             | YES         | 'not_set'::contact_company_relationship_type | null                                                                          |\
-| public       | contact_companies               | is_primary                  | boolean                  | YES         | false                                        | null                                                                          |\
-| public       | contact_companies               | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | contact_duplicates              | duplicate_id                | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | contact_duplicates              | primary_contact_id          | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | contact_duplicates              | duplicate_contact_id        | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | contact_duplicates              | mobile_number               | text                     | YES         | null                                         | null                                                                          |\
-| public       | contact_duplicates              | detected_at                 | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | contact_duplicates              | status                      | text                     | NO          | 'pending'::text                              | null                                                                          |\
-| public       | contact_duplicates              | resolved_at                 | timestamp with time zone | YES         | null                                         | null                                                                          |\
-| public       | contact_duplicates              | resolved_by                 | text                     | YES         | null                                         | null                                                                          |\
-| public       | contact_duplicates              | notes                       | text                     | YES         | null                                         | null                                                                          |\
-| public       | contact_duplicates              | email                       | text                     | YES         | null                                         | null                                                                          |\
-| public       | contact_duplicates              | merge_selections            | jsonb                    | YES         | null                                         | null                                                                          |\
-| public       | contact_duplicates              | duplicate_data              | jsonb                    | YES         | null                                         | null                                                                          |\
-| public       | contact_duplicates              | error_message               | text                     | YES         | null                                         | null                                                                          |\
-| public       | contact_duplicates              | start_trigger               | boolean                  | YES         | null                                         | null                                                                          |\
-| public       | contact_duplicates_completed    | completed_merge_id          | uuid                     | NO          | gen_random_uuid()                            | Records successful contact merge operations.                                  |\
-| public       | contact_duplicates_completed    | original_duplicate_id       | uuid                     | NO          | null                                         | Records successful contact merge operations.                                  |\
-| public       | contact_duplicates_completed    | primary_contact_id          | uuid                     | NO          | null                                         | Records successful contact merge operations.                                  |\
-| public       | contact_duplicates_completed    | merged_duplicate_contact_id | uuid                     | NO          | null                                         | Records successful contact merge operations.                                  |\
-| public       | contact_duplicates_completed    | merge_selections            | jsonb                    | YES         | null                                         | Records successful contact merge operations.                                  |\
-| public       | contact_duplicates_completed    | detected_at                 | timestamp with time zone | NO          | null                                         | Records successful contact merge operations.                                  |\
-| public       | contact_duplicates_completed    | resolved_at                 | timestamp with time zone | NO          | now()                                        | Records successful contact merge operations.                                  |\
-| public       | contact_duplicates_completed    | initial_notes               | text                     | YES         | null                                         | Records successful contact merge operations.                                  |\
-| public       | contact_duplicates_completed    | final_notes                 | text                     | YES         | null                                         | Records successful contact merge operations.                                  |\
-| public       | contact_email_threads           | contact_id                  | uuid                     | NO          | null                                         | Many-to-many link between contacts and email threads they participated in.    |\
-| public       | contact_email_threads           | email_thread_id             | uuid                     | NO          | null                                         | Many-to-many link between contacts and email threads they participated in.    |\
-| public       | contact_email_threads           | created_at                  | timestamp with time zone | NO          | now()                                        | Many-to-many link between contacts and email threads they participated in.    |\
-| public       | contact_emails                  | email_id                    | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | contact_emails                  | contact_id                  | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | contact_emails                  | email                       | character varying        | NO          | null                                         | null                                                                          |\
-| public       | contact_emails                  | type                        | USER-DEFINED             | NO          | 'personal'::contact_point_type               | null                                                                          |\
-| public       | contact_emails                  | is_primary                  | boolean                  | NO          | false                                        | null                                                                          |\
-| public       | contact_emails                  | created_at                  | timestamp with time zone | NO          | now()                                        | null                                                                          |\
-| public       | contact_emails                  | last_modified_at            | timestamp with time zone | NO          | now()                                        | null                                                                          |\
-| public       | contact_mobiles                 | mobile_id                   | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | contact_mobiles                 | contact_id                  | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | contact_mobiles                 | mobile                      | text                     | NO          | null                                         | null                                                                          |\
-| public       | contact_mobiles                 | type                        | USER-DEFINED             | YES         | 'personal'::contact_point_type               | null                                                                          |\
-| public       | contact_mobiles                 | is_primary                  | boolean                  | YES         | false                                        | null                                                                          |\
-| public       | contact_mobiles                 | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | contact_mobiles                 | last_modified_at            | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | contact_mobiles_backup          | mobile_id                   | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | contact_mobiles_backup          | contact_id                  | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | contact_mobiles_backup          | mobile                      | text                     | YES         | null                                         | null                                                                          |\
-| public       | contact_mobiles_backup          | type                        | USER-DEFINED             | YES         | null                                         | null                                                                          |\
-| public       | contact_mobiles_backup          | is_primary                  | boolean                  | YES         | null                                         | null                                                                          |\
-| public       | contact_mobiles_backup          | created_at                  | timestamp with time zone | YES         | null                                         | null                                                                          |\
-| public       | contact_mobiles_backup          | last_modified_at            | timestamp with time zone | YES         | null                                         | null                                                                          |\
-| public       | contact_tags                    | entry_id                    | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | contact_tags                    | contact_id                  | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | contact_tags                    | tag_id                      | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | contact_tags                    | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | contacts                        | contact_id                  | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | contacts                        | first_name                  | text                     | YES         | null                                         | null                                                                          |\
-| public       | contacts                        | last_name                   | text                     | YES         | null                                         | null                                                                          |\
-| public       | contacts                        | linkedin                    | character varying        | YES         | null                                         | null                                                                          |\
-| public       | contacts                        | category                    | USER-DEFINED             | YES         | 'Inbox'::contact_category                    | null                                                                          |\
-| public       | contacts                        | job_role                    | text                     | YES         | null                                         | null                                                                          |\
-| public       | contacts                        | description                 | text                     | YES         | null                                         | null                                                                          |\
-| public       | contacts                        | score                       | integer                  | YES         | null                                         | null                                                                          |\
-| public       | contacts                        | keep_in_touch_frequency     | USER-DEFINED             | YES         | 'Not Set'::keep_in_touch_frequency           | null                                                                          |\
-| public       | contacts                        | birthday                    | date                     | YES         | null                                         | null                                                                          |\
-| public       | contacts                        | created_by                  | USER-DEFINED             | YES         | 'User'::creation_source                      | null                                                                          |\
-| public       | contacts                        | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | contacts                        | last_modified_by            | USER-DEFINED             | YES         | 'User'::creation_source                      | null                                                                          |\
-| public       | contacts                        | last_modified_at            | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | contacts                        | profile_image_url           | character varying        | YES         | null                                         | null                                                                          |\
-| public       | contacts                        | hubspot_id                  | text                     | YES         | null                                         | null                                                                          |\
-| public       | contacts                        | supabase_crm_old_id         | text                     | YES         | null                                         | null                                                                          |\
-| public       | contacts                        | airtable_id                 | text                     | YES         | null                                         | null                                                                          |\
-| public       | contacts                        | last_interaction_at         | timestamp with time zone | YES         | null                                         | null                                                                          |\
-| public       | db_version                      | version_id                  | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | db_version                      | version                     | character varying        | NO          | null                                         | null                                                                          |\
-| public       | db_version                      | description                 | text                     | YES         | null                                         | null                                                                          |\
-| public       | db_version                      | applied_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | db_version                      | applied_by                  | character varying        | YES         | CURRENT_USER                                 | null                                                                          |\
-| public       | db_version                      | script_name                 | character varying        | YES         | null                                         | null                                                                          |\
-| public       | db_version                      | checksum                    | character varying        | YES         | null                                         | null                                                                          |\
-| public       | db_version                      | is_current                  | boolean                  | YES         | false                                        | null                                                                          |\
-| public       | deal_attachments                | deal_attachment_id          | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | deal_attachments                | deal_id                     | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | deal_attachments                | attachment_id               | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | deal_attachments                | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | deal_attachments                | created_by                  | text                     | YES         | 'User'::text                                 | null                                                                          |\
-| public       | deal_tags                       | entry_id                    | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | deal_tags                       | deal_id                     | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | deal_tags                       | tag_id                      | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | deal_tags                       | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | deals                           | deal_id                     | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | deals                           | opportunity                 | character varying        | NO          | null                                         | null                                                                          |\
-| public       | deals                           | source_category             | USER-DEFINED             | YES         | 'Not Set'::deal_source_category              | null                                                                          |\
-| public       | deals                           | introducer                  | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | deals                           | category                    | USER-DEFINED             | YES         | 'Inbox'::deal_category                       | null                                                                          |\
-| public       | deals                           | stage                       | USER-DEFINED             | YES         | 'Lead'::deal_stage                           | null                                                                          |\
-| public       | deals                           | description                 | text                     | YES         | null                                         | null                                                                          |\
-| public       | deals                           | total_investment            | numeric                  | YES         | null                                         | null                                                                          |\
-| public       | deals                           | created_by                  | USER-DEFINED             | YES         | 'User'::creation_source                      | null                                                                          |\
-| public       | deals                           | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | deals                           | last_modified_by            | USER-DEFINED             | YES         | 'User'::creation_source                      | null                                                                          |\
-| public       | deals                           | last_modified_at            | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | deals_contacts                  | deals_contacts_id           | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | deals_contacts                  | deal_id                     | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | deals_contacts                  | contact_id                  | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | deals_contacts                  | relationship                | USER-DEFINED             | NO          | null                                         | null                                                                          |\
-| public       | deals_contacts                  | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | debug_logs                      | id                          | integer                  | NO          | nextval('debug_logs_id_seq'::regclass)       | null                                                                          |\
-| public       | debug_logs                      | timestamp                   | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | debug_logs                      | message                     | text                     | YES         | null                                         | null                                                                          |\
-| public       | debug_logs                      | data                        | jsonb                    | YES         | null                                         | null                                                                          |\
-| public       | email_inbox                     | id                          | uuid                     | NO          | gen_random_uuid()                            | null                                                                          |\
-| public       | email_inbox                     | gmail_id                    | text                     | NO          | null                                         | null                                                                          |\
-| public       | email_inbox                     | thread_id                   | text                     | YES         | null                                         | null                                                                          |\
-| public       | email_inbox                     | from_email                  | text                     | NO          | null                                         | null                                                                          |\
-| public       | email_inbox                     | from_name                   | text                     | YES         | null                                         | null                                                                          |\
-| public       | email_inbox                     | to_email                    | text                     | NO          | null                                         | null                                                                          |\
-| public       | email_inbox                     | to_name                     | text                     | YES         | null                                         | null                                                                          |\
-| public       | email_inbox                     | cc_email                    | text                     | YES         | null                                         | null                                                                          |\
-| public       | email_inbox                     | cc_name                     | text                     | YES         | null                                         | null                                                                          |\
-| public       | email_inbox                     | bcc_email                   | text                     | YES         | null                                         | null                                                                          |\
-| public       | email_inbox                     | subject                     | text                     | YES         | null                                         | null                                                                          |\
-| public       | email_inbox                     | message_text                | text                     | YES         | null                                         | null                                                                          |\
-| public       | email_inbox                     | message_timestamp           | timestamp with time zone | NO          | null                                         | null                                                                          |\
-| public       | email_inbox                     | direction                   | text                     | NO          | null                                         | null                                                                          |\
-| public       | email_inbox                     | created_at                  | timestamp with time zone | NO          | now()                                        | null                                                                          |\
-| public       | email_inbox                     | processed                   | boolean                  | YES         | false                                        | null                                                                          |\
-| public       | email_inbox                     | processing_error            | boolean                  | YES         | false                                        | null                                                                          |\
-| public       | email_inbox                     | error_message               | text                     | YES         | null                                         | null                                                                          |\
-| public       | email_inbox                     | retry_count                 | integer                  | YES         | 0                                            | null                                                                          |\
-| public       | email_inbox                     | last_processed_at           | timestamp with time zone | YES         | null                                         | null                                                                          |\
-| public       | email_inbox                     | has_attachments             | boolean                  | YES         | false                                        | null                                                                          |\
-| public       | email_inbox                     | attachment_count            | integer                  | YES         | 0                                            | null                                                                          |\
-| public       | email_inbox                     | llm_processed               | boolean                  | YES         | false                                        | null                                                                          |\
-| public       | email_inbox                     | llm_decision                | text                     | YES         | null                                         | null                                                                          |\
-| public       | email_inbox                     | llm_reason                  | text                     | YES         | null                                         | null                                                                          |\
-| public       | email_inbox                     | processing_notes            | text                     | YES         | null                                         | null                                                                          |\
-| public       | email_inbox                     | bcc_name                    | text                     | YES         | null                                         | null                                                                          |\
-| public       | email_inbox                     | special_case                | USER-DEFINED             | YES         | null                                         | null                                                                          |\
-| public       | email_inbox                     | start_trigger               | boolean                  | NO          | false                                        | null                                                                          |\
-| public       | email_inbox                     | attachment_details          | jsonb                    | YES         | null                                         | null                                                                          |\
-| public       | email_participants              | participant_id              | uuid                     | NO          | uuid_generate_v4()                           | Links contacts to specific emails, defining their role (sender, to, cc, bcc). |\
-| public       | email_participants              | email_id                    | uuid                     | NO          | null                                         | Links contacts to specific emails, defining their role (sender, to, cc, bcc). |\
-| public       | email_participants              | contact_id                  | uuid                     | NO          | null                                         | Links contacts to specific emails, defining their role (sender, to, cc, bcc). |\
-| public       | email_participants              | participant_type            | USER-DEFINED             | NO          | null                                         | Links contacts to specific emails, defining their role (sender, to, cc, bcc). |\
-| public       | email_participants              | created_at                  | timestamp with time zone | NO          | now()                                        | Links contacts to specific emails, defining their role (sender, to, cc, bcc). |\
-| public       | email_receivers                 | email_receiver_id           | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | email_receivers                 | email_id                    | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | email_receivers                 | contact_id                  | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | email_receivers                 | receiver_type               | USER-DEFINED             | YES         | null                                         | null                                                                          |\
-| public       | email_receivers                 | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | email_threads                   | email_thread_id             | uuid                     | NO          | uuid_generate_v4()                           | Stores information about distinct email conversation threads.                 |\
-| public       | email_threads                   | thread_id                   | text                     | NO          | null                                         | Stores information about distinct email conversation threads.                 |\
-| public       | email_threads                   | subject                     | text                     | YES         | null                                         | Stores information about distinct email conversation threads.                 |\
-| public       | email_threads                   | last_message_timestamp      | timestamp with time zone | YES         | null                                         | Stores information about distinct email conversation threads.                 |\
-| public       | email_threads                   | created_at                  | timestamp with time zone | NO          | now()                                        | Stores information about distinct email conversation threads.                 |\
-| public       | email_threads                   | updated_at                  | timestamp with time zone | NO          | now()                                        | Stores information about distinct email conversation threads.                 |\
-| public       | emails                          | email_id                    | uuid                     | NO          | uuid_generate_v4()                           | Stores details about individual email messages within threads.                |\
-| public       | emails                          | gmail_id                    | text                     | NO          | null                                         | Stores details about individual email messages within threads.                |\
-| public       | emails                          | thread_id                   | text                     | NO          | null                                         | Stores details about individual email messages within threads.                |\
-| public       | emails                          | sender_contact_id           | uuid                     | NO          | null                                         | Stores details about individual email messages within threads.                |\
-| public       | emails                          | subject                     | text                     | YES         | null                                         | Stores details about individual email messages within threads.                |\
-| public       | emails                          | body_plain                  | text                     | YES         | null                                         | Stores details about individual email messages within threads.                |\
-| public       | emails                          | body_html                   | text                     | YES         | null                                         | Stores details about individual email messages within threads.                |\
-| public       | emails                          | message_timestamp           | timestamp with time zone | NO          | null                                         | Stores details about individual email messages within threads.                |\
-| public       | emails                          | labels                      | jsonb                    | YES         | null                                         | Stores details about individual email messages within threads.                |\
-| public       | emails                          | is_read                     | boolean                  | YES         | false                                        | Stores details about individual email messages within threads.                |\
-| public       | emails                          | is_starred                  | boolean                  | YES         | false                                        | Stores details about individual email messages within threads.                |\
-| public       | emails                          | created_at                  | timestamp with time zone | YES         | now()                                        | Stores details about individual email messages within threads.                |\
-| public       | emails                          | created_by                  | text                     | YES         | 'Edge Function'::text                        | Stores details about individual email messages within threads.                |\
-| public       | emails                          | email_thread_id             | uuid                     | YES         | null                                         | Stores details about individual email messages within threads.                |\
-| public       | emails                          | direction                   | text                     | NO          | 'neutral'::text                              | Stores details about individual email messages within threads.                |\
-| public       | emails                          | has_attachments             | boolean                  | NO          | false                                        | Stores details about individual email messages within threads.                |\
-| public       | emails                          | attachment_count            | integer                  | NO          | 0                                            | Stores details about individual email messages within threads.                |\
-| public       | emails                          | special_case                | text                     | YES         | null                                         | Stores details about individual email messages within threads.                |\
-| public       | emails_spam                     | email                       | text                     | NO          | null                                         | null                                                                          |\
-| public       | emails_spam                     | counter                     | numeric                  | YES         | null                                         | null                                                                          |\
-| public       | emails_spam                     | created_at                  | timestamp with time zone | NO          | now()                                        | null                                                                          |\
-| public       | emails_spam                     | last_modified_at            | timestamp with time zone | NO          | now()                                        | null                                                                          |\
-| public       | interactions                    | interaction_id              | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | interactions                    | contact_id                  | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | interactions                    | interaction_type            | USER-DEFINED             | NO          | null                                         | null                                                                          |\
-| public       | interactions                    | direction                   | USER-DEFINED             | NO          | null                                         | null                                                                          |\
-| public       | interactions                    | interaction_date            | timestamp with time zone | NO          | null                                         | null                                                                          |\
-| public       | interactions                    | chat_id                     | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | interactions                    | summary                     | text                     | YES         | null                                         | null                                                                          |\
-| public       | interactions                    | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | interactions                    | external_interaction_id     | text                     | YES         | null                                         | null                                                                          |\
-| public       | interactions                    | special_case_tag            | text                     | YES         | null                                         | null                                                                          |\
-| public       | interactions                    | email_thread_id             | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | introductions                   | introduction_id             | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | introductions                   | contact_ids                 | ARRAY                    | NO          | null                                         | null                                                                          |\
-| public       | introductions                   | introduction_date           | date                     | YES         | null                                         | null                                                                          |\
-| public       | introductions                   | introduction_tool           | USER-DEFINED             | NO          | null                                         | null                                                                          |\
-| public       | introductions                   | category                    | USER-DEFINED             | NO          | null                                         | null                                                                          |\
-| public       | introductions                   | text                        | text                     | YES         | null                                         | null                                                                          |\
-| public       | introductions                   | status                      | USER-DEFINED             | NO          | 'Requested'::introduction_status             | null                                                                          |\
-| public       | introductions                   | created_by                  | USER-DEFINED             | YES         | 'User'::creation_source                      | null                                                                          |\
-| public       | introductions                   | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | introductions                   | last_modified_by            | USER-DEFINED             | YES         | 'User'::creation_source                      | null                                                                          |\
-| public       | introductions                   | last_modified_at            | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | investment_tags                 | entry_id                    | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | investment_tags                 | investment_id               | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | investment_tags                 | tag_id                      | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | investment_tags                 | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | investments                     | investment_id               | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | investments                     | related_company             | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | investments                     | investment_date             | date                     | YES         | null                                         | null                                                                          |\
-| public       | investments                     | description                 | text                     | YES         | null                                         | null                                                                          |\
-| public       | investments                     | category                    | USER-DEFINED             | YES         | 'Inbox'::investment_category                 | null                                                                          |\
-| public       | investments                     | amount_invested             | numeric                  | YES         | null                                         | null                                                                          |\
-| public       | investments                     | valuation_at_cost           | numeric                  | YES         | null                                         | null                                                                          |\
-| public       | investments                     | valuation_now               | numeric                  | YES         | null                                         | null                                                                          |\
-| public       | investments                     | tax_benefits                | numeric                  | YES         | null                                         | null                                                                          |\
-| public       | investments                     | cash_in                     | numeric                  | YES         | null                                         | null                                                                          |\
-| public       | investments                     | created_by                  | USER-DEFINED             | YES         | 'User'::creation_source                      | null                                                                          |\
-| public       | investments                     | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | investments                     | last_modified_by            | USER-DEFINED             | YES         | 'User'::creation_source                      | null                                                                          |\
-| public       | investments                     | last_modified_at            | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | investments_contacts            | investments_contacts_id     | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | investments_contacts            | investment_id               | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | investments_contacts            | contact_id                  | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | investments_contacts            | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | keep_in_touch                   | id                          | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | keep_in_touch                   | contact_id                  | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | keep_in_touch                   | frequency                   | USER-DEFINED             | NO          | null                                         | null                                                                          |\
-| public       | keep_in_touch                   | why_keeping_in_touch        | text                     | YES         | null                                         | null                                                                          |\
-| public       | keep_in_touch                   | snooze_days                 | integer                  | YES         | 0                                            | null                                                                          |\
-| public       | keep_in_touch                   | next_follow_up_notes        | text                     | YES         | null                                         | null                                                                          |\
-| public       | keep_in_touch                   | christmas                   | USER-DEFINED             | YES         | 'no wishes set'::wishes_type                 | null                                                                          |\
-| public       | keep_in_touch                   | easter                      | USER-DEFINED             | YES         | 'no wishes set'::wishes_type                 | null                                                                          |\
-| public       | keep_in_touch                   | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | keep_in_touch                   | updated_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | meeting_contacts                | meeting_contact_id          | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | meeting_contacts                | meeting_id                  | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | meeting_contacts                | contact_id                  | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | meeting_contacts                | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | meeting_deals                   | meeting_deal_id             | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | meeting_deals                   | meeting_id                  | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | meeting_deals                   | deal_id                     | uuid                     | NO          | null                                         | null                                                                          |\
-| public       | meeting_deals                   | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | meetings                        | meeting_id                  | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | meetings                        | meeting_name                | character varying        | NO          | null                                         | null                                                                          |\
-| public       | meetings                        | description                 | text                     | YES         | null                                         | null                                                                          |\
-| public       | meetings                        | meeting_date                | timestamp with time zone | NO          | null                                         | null                                                                          |\
-| public       | meetings                        | meeting_status              | USER-DEFINED             | NO          | 'Scheduled'::meeting_status                  | null                                                                          |\
-| public       | meetings                        | recording_url               | character varying        | YES         | null                                         | null                                                                          |\
-| public       | meetings                        | notes                       | text                     | YES         | null                                         | null                                                                          |\
-| public       | meetings                        | created_by                  | USER-DEFINED             | YES         | 'User'::creation_source                      | null                                                                          |\
-| public       | meetings                        | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | meetings                        | last_modified_by            | USER-DEFINED             | YES         | 'User'::creation_source                      | null                                                                          |\
-| public       | meetings                        | last_modified_at            | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | meetings                        | score                       | USER-DEFINED             | YES         | null                                         | null                                                                          |\
-| public       | migration_history               | migration_id                | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | migration_history               | filename                    | character varying        | NO          | null                                         | null                                                                          |\
-| public       | migration_history               | applied_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | migration_history               | applied_by                  | character varying        | YES         | CURRENT_USER                                 | null                                                                          |\
-| public       | migration_history               | checksum                    | character varying        | YES         | null                                         | null                                                                          |\
-| public       | migration_history               | version_id                  | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | note_vectors                    | vector_id                   | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | note_vectors                    | note_id                     | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | note_vectors                    | vector_data                 | USER-DEFINED             | YES         | null                                         | null                                                                          |\
-| public       | note_vectors                    | embedding_model             | character varying        | YES         | 'text-embedding-ada-002'::character varying  | null                                                                          |\
-| public       | note_vectors                    | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | note_vectors                    | last_updated_at             | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | notes                           | note_id                     | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | notes                           | title                       | character varying        | NO          | null                                         | null                                                                          |\
-| public       | notes                           | text                        | text                     | YES         | null                                         | null                                                                          |\
-| public       | notes                           | created_by                  | USER-DEFINED             | YES         | 'User'::creator_type                         | null                                                                          |\
-| public       | notes                           | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | notes                           | last_modified_by            | USER-DEFINED             | YES         | 'User'::creator_type                         | null                                                                          |\
-| public       | notes                           | last_modified_at            | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | notes_companies                 | note_company_id             | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | notes_companies                 | note_id                     | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | notes_companies                 | company_id                  | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | notes_companies                 | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | notes_contacts                  | note_contact_id             | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | notes_contacts                  | note_id                     | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | notes_contacts                  | contact_id                  | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | notes_contacts                  | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | notes_deals                     | note_deal_id                | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | notes_deals                     | note_id                     | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | notes_deals                     | deal_id                     | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | notes_deals                     | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | notes_investments               | note_investment_id          | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | notes_investments               | note_id                     | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | notes_investments               | investment_id               | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | notes_investments               | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | passed                          | passed_id                   | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | passed                          | passed_date                 | date                     | YES         | null                                         | null                                                                          |\
-| public       | passed                          | passed_rationale            | text                     | YES         | null                                         | null                                                                          |\
-| public       | passed                          | passed_confidence           | integer                  | YES         | null                                         | null                                                                          |\
-| public       | passed                          | passed_stage                | USER-DEFINED             | NO          | null                                         | null                                                                          |\
-| public       | passed                          | created_by                  | USER-DEFINED             | YES         | 'User'::creation_source                      | null                                                                          |\
-| public       | passed                          | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | passed                          | last_modified_by            | USER-DEFINED             | YES         | 'User'::creation_source                      | null                                                                          |\
-| public       | passed                          | last_modified_at            | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | passed                          | deal_id                     | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | passed                          | passed_category             | USER-DEFINED             | YES         | null                                         | null                                                                          |\
-| public       | settings                        | key                         | text                     | NO          | null                                         | null                                                                          |\
-| public       | settings                        | value                       | text                     | YES         | null                                         | null                                                                          |\
-| public       | settings                        | updated_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | tags                            | tag_id                      | uuid                     | NO          | uuid_generate_v4()                           | null                                                                          |\
-| public       | tags                            | name                        | character varying        | NO          | null                                         | null                                                                          |\
-| public       | tags                            | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | tags                            | last_modified_at            | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | v_chat_participants             | chat_id                     | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | v_chat_participants             | chat_name                   | text                     | YES         | null                                         | null                                                                          |\
-| public       | v_chat_participants             | is_group_chat               | boolean                  | YES         | null                                         | null                                                                          |\
-| public       | v_chat_participants             | external_chat_id            | text                     | YES         | null                                         | null                                                                          |\
-| public       | v_chat_participants             | contact_id                  | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | v_chat_participants             | first_name                  | text                     | YES         | null                                         | null                                                                          |\
-| public       | v_chat_participants             | last_name                   | text                     | YES         | null                                         | null                                                                          |\
-| public       | v_chat_participants             | full_name                   | text                     | YES         | null                                         | null                                                                          |\
-| public       | v_chat_participants             | phone_number                | text                     | YES         | null                                         | null                                                                          |\
-| public       | v_chat_participants             | joined_at                   | timestamp with time zone | YES         | null                                         | null                                                                          |\
-| public       | v_chat_participants             | last_activity               | timestamp with time zone | YES         | null                                         | null                                                                          |\
-| public       | v_chat_participants             | message_count               | bigint                   | YES         | null                                         | null                                                                          |\
-| public       | v_contact_companies_with_old_id | contact_companies_id        | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | v_contact_companies_with_old_id | contact_id                  | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | v_contact_companies_with_old_id | company_id                  | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | v_contact_companies_with_old_id | relationship                | USER-DEFINED             | YES         | null                                         | null                                                                          |\
-| public       | v_contact_companies_with_old_id | is_primary                  | boolean                  | YES         | null                                         | null                                                                          |\
-| public       | v_contact_companies_with_old_id | created_at                  | timestamp with time zone | YES         | null                                         | null                                                                          |\
-| public       | v_contact_companies_with_old_id | contact_old_id              | text                     | YES         | null                                         | null                                                                          |\
-| public       | v_contact_companies_with_old_id | company_old_id              | text                     | YES         | null                                         | null                                                                          |\
-| public       | v_interaction_counts            | contact_id                  | uuid                     | YES         | null                                         | null                                                                          |\
-| public       | v_interaction_counts            | interaction_type            | USER-DEFINED             | YES         | null                                         | null                                                                          |\
-| public       | v_interaction_counts            | count                       | bigint                   | YES         | null                                         | null                                                                          |\
-| public       | v_interaction_counts            | latest_date                 | timestamp with time zone | YES         | null                                         | null                                                                          |\
-| public       | v_keep_in_touch                 | full_name                   | text                     | YES         | null                                         | null                                                                          |\
-| public       | v_keep_in_touch                 | last_interaction_at         | timestamp with time zone | YES         | null                                         | null                                                                          |\
-| public       | v_keep_in_touch                 | frequency                   | USER-DEFINED             | YES         | null                                         | null                                                                          |\
-| public       | v_keep_in_touch                 | why_keeping_in_touch        | text                     | YES         | null                                         | null                                                                          |\
-| public       | v_keep_in_touch                 | snooze_days                 | integer                  | YES         | null                                         | null                                                                          |\
-| public       | v_keep_in_touch                 | next_follow_up_notes        | text                     | YES         | null                                         | null                                                                          |\
-| public       | v_keep_in_touch                 | christmas                   | USER-DEFINED             | YES         | null                                         | null                                                                          |\
-| public       | v_keep_in_touch                 | easter                      | USER-DEFINED             | YES         | null                                         | null                                                                          |\
-| public       | v_keep_in_touch                 | next_interaction_date       | timestamp with time zone | YES         | null                                         | null                                                                          |\
-| public       | v_keep_in_touch                 | days_until_next             | numeric                  | YES         | null                                         | null                                                                          |\
-| public       | v_migration_status              | filename                    | character varying        | YES         | null                                         | null                                                                          |\
-| public       | v_migration_status              | applied_at                  | timestamp with time zone | YES         | null                                         | null                                                                          |\
-| public       | v_migration_status              | applied_by                  | character varying        | YES         | null                                         | null                                                                          |\
-| public       | v_migration_status              | version                     | character varying        | YES         | null                                         | null                                                                          |\
-| public       | v_migration_status              | description                 | text                     | YES         | null                                         | null                                                                          |\
-| public       | v_migration_status              | is_current                  | boolean                  | YES         | null                                         | null                                                                          |\
-| public       | whatsapp_inbox                  | id                          | uuid                     | NO          | gen_random_uuid()                            | null                                                                          |\
-| public       | whatsapp_inbox                  | first_name                  | text                     | YES         | null                                         | null                                                                          |\
-| public       | whatsapp_inbox                  | contact_number              | text                     | YES         | null                                         | null                                                                          |\
-| public       | whatsapp_inbox                  | direction                   | text                     | YES         | null                                         | null                                                                          |\
-| public       | whatsapp_inbox                  | is_group_chat               | boolean                  | YES         | null                                         | null                                                                          |\
-| public       | whatsapp_inbox                  | chat_name                   | text                     | YES         | null                                         | null                                                                          |\
-| public       | whatsapp_inbox                  | chat_id                     | text                     | YES         | null                                         | null                                                                          |\
-| public       | whatsapp_inbox                  | message_timestamp           | timestamp with time zone | YES         | null                                         | null                                                                          |\
-| public       | whatsapp_inbox                  | message_text                | text                     | YES         | null                                         | null                                                                          |\
-| public       | whatsapp_inbox                  | message_uid                 | text                     | YES         | null                                         | null                                                                          |\
-| public       | whatsapp_inbox                  | attachment_type             | text                     | YES         | null                                         | null                                                                          |\
-| public       | whatsapp_inbox                  | attachment_url              | text                     | YES         | null                                         | null                                                                          |\
-| public       | whatsapp_inbox                  | attachment_filename         | text                     | YES         | null                                         | null                                                                          |\
-| public       | whatsapp_inbox                  | attachment_size             | integer                  | YES         | null                                         | null                                                                          |\
-| public       | whatsapp_inbox                  | created_at                  | timestamp with time zone | YES         | now()                                        | null                                                                          |\
-| public       | whatsapp_inbox                  | receiver                    | text                     | YES         | null                                         | null                                                                          |\
-| public       | whatsapp_inbox                  | processing_error            | boolean                  | YES         | false                                        | null                                                                          |\
-| public       | whatsapp_inbox                  | error_message               | text                     | YES         | null                                         | null                                                                          |\
-| public       | whatsapp_inbox                  | retry_count                 | integer                  | YES         | 0                                            | null                                                                          |\
-| public       | whatsapp_inbox                  | last_processed_at           | timestamp with time zone | YES         | null                                         | null                                                                          |\
-| public       | whatsapp_inbox                  | last_name                   | text                     | YES         | null                                         | null                                                                          |\
-| public       | whatsapp_inbox                  | start_trigger               | boolean                  | YES         | false                                        | null                                                                          |\
-| public       | whatsapp_inbox                  | chat_jid                    | text                     | YES         | null                                         | null                                                                          |\
-| public       | whatsapp_spam                   | mobile_number               | text                     | NO          | null                                         | Table to store whatsapp spam records with counter to track spam attempts      |\
-| public       | whatsapp_spam                   | counter                     | numeric                  | YES         | null                                         | Table to store whatsapp spam records with counter to track spam attempts      |\
-| public       | whatsapp_spam                   | created_at                  | timestamp with time zone | NO          | now()                                        | Table to store whatsapp spam records with counter to track spam attempts      |\
-| public       | whatsapp_spam                   | last_modified_at            | timestamp with time zone | NO          | now()                                        | Table to store whatsapp spam records with counter to track spam attempts      |}
+Last updated: 2025-12-07
+
+## Tables Overview
+
+### Core Entity Tables
+| Table | Description |
+|-------|-------------|
+| `contacts` | Main contact records |
+| `companies` | Company/organization records |
+| `deals` | Deal/opportunity records |
+| `investments` | Investment tracking |
+| `meetings` | Meeting records |
+| `notes` | Notes (linked to Obsidian) |
+| `introductions` | Introduction tracking |
+| `tags` | Tag definitions |
+| `cities` | City reference data |
+
+### Contact-Related Junction Tables (MERGE REQUIRED)
+These tables have `contact_id` FK and need to be updated during contact merges:
+
+| Table | Merge Action | Notes |
+|-------|--------------|-------|
+| `contact_emails` | Move to primary | Email addresses |
+| `contact_mobiles` | Move to primary | Phone numbers |
+| `contact_companies` | Move to primary, avoid duplicates | Company relationships |
+| `contact_cities` | Move to primary, avoid duplicates | City associations |
+| `contact_tags` | Move to primary, avoid duplicates | Tag associations |
+| `contact_chats` | Move to primary | WhatsApp chat links |
+| `contact_email_threads` | Move to primary | Email thread participation |
+| `email_participants` | Update contact_id | Email participant records |
+| `email_receivers` | Update contact_id | Email receiver records |
+| `deals_contacts` | Move to primary, avoid duplicates | Deal relationships |
+| `investments_contacts` | Move to primary, avoid duplicates | Investment relationships |
+| `meeting_contacts` | Move to primary, avoid duplicates | Meeting participants |
+| `notes_contacts` | Move to primary, avoid duplicates | Note links |
+| `note_contacts` | Move to primary, avoid duplicates | Note links (alt table) |
+| `interactions` | Update contact_id | Interaction history |
+| `keep_in_touch` | Merge carefully | Keep-in-touch settings |
+| `attachments` | Update contact_id | File attachments |
+| `introduction_contacts` | Update contact_id | Introduction participants |
+
+### Tables with sender_contact_id
+| Table | Column | Merge Action |
+|-------|--------|--------------|
+| `emails` | `sender_contact_id` | Update to primary |
+
+### Duplicate Management Tables (DO NOT MERGE - Administrative)
+| Table | Purpose |
+|-------|---------|
+| `contact_duplicates` | Pending duplicate detection queue |
+| `contact_duplicates_completed` | Completed merge audit log |
+
+### Inbox/Processing Tables (Usually no action needed)
+| Table | Purpose |
+|-------|---------|
+| `email_inbox` | Raw email import queue |
+| `whatsapp_inbox` | Raw WhatsApp import queue |
+| `apollo_enrichment_inbox` | Apollo enrichment queue |
+| `airtable_contacts` | Airtable sync staging |
+
+### Views (Auto-updated, no merge needed)
+| View | Purpose |
+|------|---------|
+| `contact_emails_view` | Contact emails joined view |
+| `contact_overview` | Contact summary view |
+| `contact_completeness` | Data completeness metrics |
+| `contacts_birthdays` | Birthday tracking view |
+| `contacts_missing_info` | Missing data report |
+| `contacts_with_duplicate_names` | Duplicate detection view |
+| `contacts_without_*` | Various missing data views |
+| `v_*` | Various reporting views |
+| `mv_keep_in_touch` | Materialized view for KIT |
+
+### Backup Tables (Reference only)
+| Table | Purpose |
+|-------|---------|
+| `contact_mobiles_backup` | Mobile backup data |
+| `deleted_spam_domain_contacts_backup` | Deleted spam contacts |
+| `deleted_spam_skip_contacts_backup` | Deleted skip contacts |
+
+### Spam Management
+| Table | Purpose |
+|-------|---------|
+| `emails_spam` | Email spam list |
+| `domains_spam` | Domain spam list |
+| `whatsapp_spam` | WhatsApp spam list |
+| `skip_contacts_with_emails` | Contacts to skip |
+
+### Email Campaign Tables
+| Table | Purpose |
+|-------|---------|
+| `email_campaigns` | Campaign definitions |
+| `email_campaign_logs` | Campaign send logs |
+| `email_lists` | Email list definitions |
+| `email_list_members` | List membership (has contact_id) |
+| `emaillist_tags` | List tag associations |
+
+### Other Tables
+| Table | Purpose |
+|-------|---------|
+| `chats` | WhatsApp chat records |
+| `email_threads` | Email thread grouping |
+| `passed` | Passed deals |
+| `settings` | System settings |
+| `sync_state` | Sync status tracking |
+| `refresh_logs` | View refresh logs |
+| `debug_logs` | Debug logging |
+| `db_version` | Database version tracking |
+| `migration_history` | Migration tracking |
+
+---
+
+## Contact Merge Logic
+
+### Phase 1: Pre-Merge Snapshot
+1. Record both contact IDs in `contact_duplicates_completed`
+2. Store JSON snapshot of all related data
+
+### Phase 2: Update Foreign Keys
+For each table with `contact_id`:
+```sql
+UPDATE table_name
+SET contact_id = :primary_contact_id
+WHERE contact_id = :duplicate_contact_id;
+```
+
+### Phase 3: Handle Junction Table Duplicates
+For junction tables (contact_companies, contact_tags, etc.):
+```sql
+-- First, delete potential duplicates that would violate unique constraints
+DELETE FROM contact_companies
+WHERE contact_id = :duplicate_contact_id
+  AND company_id IN (
+    SELECT company_id FROM contact_companies
+    WHERE contact_id = :primary_contact_id
+  );
+-- Then move remaining
+UPDATE contact_companies
+SET contact_id = :primary_contact_id
+WHERE contact_id = :duplicate_contact_id;
+```
+
+### Phase 4: Merge Contact Fields
+Choose best values from both contacts:
+- Keep non-null values
+- Prefer primary for conflicts
+- Merge descriptions (append)
+- Keep older created_at
+
+### Phase 5: Delete Duplicate
+```sql
+DELETE FROM contacts WHERE contact_id = :duplicate_contact_id;
+```
+
+### Phase 6: Post-Merge Verification
+- Verify no orphaned records
+- Update materialized views
+- Log completion
+
+---
+
+## Total Tables: 90+
+- Core tables: ~15
+- Tables with contact_id: ~25
+- Views: ~20
+- Inbox/processing: ~10
+- Other: ~20
