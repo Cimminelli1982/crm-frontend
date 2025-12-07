@@ -11,6 +11,7 @@ import ProfileImageModal from '../components/modals/ProfileImageModal';
 import { useProfileImageModal } from '../hooks/useProfileImageModal';
 
 const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
+const AGENT_SERVICE_URL = 'http://localhost:8000'; // CRM Agent Service
 
 // Main container
 const PageContainer = styled.div`
@@ -1030,11 +1031,18 @@ const CommandCenterPage = ({ theme }) => {
   const [searchingIntroducee2, setSearchingIntroducee2] = useState(false);
   const [editingIntroduction, setEditingIntroduction] = useState(null); // intro being edited
 
-  // AI Suggestions state
+  // AI Suggestions state (legacy)
   const [aiSuggestions, setAiSuggestions] = useState([]);
   const [loadingAiSuggestions, setLoadingAiSuggestions] = useState(false);
   const [selectedSuggestion, setSelectedSuggestion] = useState(null);
   const [processingAction, setProcessingAction] = useState(false);
+
+  // Contact Audit state (new)
+  const [auditResult, setAuditResult] = useState(null);
+  const [auditActions, setAuditActions] = useState([]); // Actions from audit
+  const [selectedActions, setSelectedActions] = useState(new Set()); // Selected action indices
+  const [loadingAudit, setLoadingAudit] = useState(false);
+  const [executingActions, setExecutingActions] = useState(false);
 
   // Todoist Tasks state
   const [todoistTasks, setTodoistTasks] = useState([]);
@@ -1301,12 +1309,125 @@ const CommandCenterPage = ({ theme }) => {
     }
   };
 
-  // Fetch AI suggestions when tab is active
+  // Run contact audit for selected email
+  const runContactAudit = async () => {
+    if (!selectedThread || selectedThread.length === 0) {
+      toast.error('No email selected');
+      return;
+    }
+
+    const email = selectedThread[0]; // First email in thread
+    setLoadingAudit(true);
+    setAuditResult(null);
+    setAuditActions([]);
+    setSelectedActions(new Set());
+
+    try {
+      const response = await fetch(`${AGENT_SERVICE_URL}/audit-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: {
+            id: email.id,
+            fastmail_id: email.fastmail_id || '',
+            from_email: email.from_email,
+            from_name: email.from_name,
+            to_recipients: email.to_recipients || [],
+            cc_recipients: email.cc_recipients || [],
+            subject: email.subject,
+            body_text: email.body_text,
+            snippet: email.snippet,
+            date: email.date,
+          }
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setAuditResult(result.audit);
+        setAuditActions(result.actions || []);
+        // Pre-select all recommended actions
+        const allIndices = new Set(result.actions?.map((_, i) => i) || []);
+        setSelectedActions(allIndices);
+        toast.success(`Audit complete: ${result.action_count} actions found`);
+      } else {
+        const error = await response.json();
+        toast.error(error.detail || 'Audit failed');
+      }
+    } catch (error) {
+      console.error('Error running audit:', error);
+      toast.error('Could not connect to agent service');
+    }
+    setLoadingAudit(false);
+  };
+
+  // Execute selected actions
+  const executeSelectedActions = async () => {
+    if (selectedActions.size === 0) {
+      toast.error('No actions selected');
+      return;
+    }
+
+    const actionsToExecute = auditActions.filter((_, i) => selectedActions.has(i));
+    setExecutingActions(true);
+
+    try {
+      const response = await fetch(`${AGENT_SERVICE_URL}/execute-actions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(actionsToExecute),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          toast.success(`All ${result.successful} actions executed successfully`);
+        } else {
+          toast.success(`${result.successful}/${result.total} actions executed`);
+          if (result.failed > 0) {
+            result.results.filter(r => !r.success).forEach(r => {
+              toast.error(`Failed: ${r.action} - ${r.message}`);
+            });
+          }
+        }
+        // Clear audit after execution
+        setAuditResult(null);
+        setAuditActions([]);
+        setSelectedActions(new Set());
+        // Trigger refresh of email contacts by briefly clearing and re-setting selectedThread
+        if (selectedThread) {
+          const thread = selectedThread;
+          setSelectedThread(null);
+          setTimeout(() => setSelectedThread(thread), 100);
+        }
+      } else {
+        const error = await response.json();
+        toast.error(error.detail || 'Execution failed');
+      }
+    } catch (error) {
+      console.error('Error executing actions:', error);
+      toast.error('Could not connect to agent service');
+    }
+    setExecutingActions(false);
+  };
+
+  // Toggle action selection
+  const toggleActionSelection = (index) => {
+    const newSelected = new Set(selectedActions);
+    if (newSelected.has(index)) {
+      newSelected.delete(index);
+    } else {
+      newSelected.add(index);
+    }
+    setSelectedActions(newSelected);
+  };
+
+  // Fetch AI suggestions when action tab is active
   useEffect(() => {
-    if (activeTab === 'ai') {
+    if (activeActionTab === 'ai') {
       fetchAiSuggestions();
     }
-  }, [activeTab]);
+  }, [activeActionTab]);
 
   // Fetch Todoist tasks and projects
   const fetchTodoistData = async () => {
@@ -4322,7 +4443,7 @@ internet businesses.`;
             <ActionTabIcon theme={theme} $active={activeActionTab === 'chat'} onClick={() => setActiveActionTab('chat')} title="Chat & Reply Help">
               <FaLightbulb />
             </ActionTabIcon>
-            <ActionTabIcon theme={theme} $active={activeActionTab === 'ai'} onClick={() => setActiveActionTab('ai')} title="AI Suggestions">
+            <ActionTabIcon theme={theme} $active={activeActionTab === 'ai'} onClick={() => setActiveActionTab('ai')} title="Contact Audit">
               <FaRobot />
             </ActionTabIcon>
             <ActionTabIcon theme={theme} $active={activeActionTab === 'contacts'} onClick={() => setActiveActionTab('contacts')} title="Contacts">
@@ -4473,271 +4594,480 @@ internet businesses.`;
               )}
 
               {activeActionTab === 'ai' && (
-                <div style={{ padding: '16px', overflowY: 'auto', flex: 1 }}>
-                  {/* Header with refresh and scan buttons */}
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: '16px'
-                  }}>
-                    <div style={{
-                      fontSize: '14px',
-                      fontWeight: 600,
-                      color: theme === 'light' ? '#111827' : '#F9FAFB'
-                    }}>
-                      AI Suggestions
-                      {aiSuggestions.filter(s => s.status === 'pending').length > 0 && (
-                        <span style={{
-                          marginLeft: '8px',
-                          background: '#EF4444',
-                          color: 'white',
-                          padding: '2px 8px',
-                          borderRadius: '12px',
-                          fontSize: '12px'
-                        }}>
-                          {aiSuggestions.filter(s => s.status === 'pending').length}
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ padding: '12px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  {/* Audit Button */}
+                  {!auditResult && !loadingAudit && (
+                    <div style={{ marginBottom: '12px' }}>
                       <button
-                        onClick={fetchAiSuggestions}
-                        disabled={loadingAiSuggestions}
+                        onClick={runContactAudit}
+                        disabled={!selectedThread || selectedThread.length === 0}
                         style={{
-                          padding: '6px 12px',
-                          fontSize: '12px',
-                          background: theme === 'light' ? '#F3F4F6' : '#374151',
+                          width: '100%',
+                          padding: '12px',
+                          background: selectedThread ? '#3B82F6' : (theme === 'light' ? '#E5E7EB' : '#374151'),
+                          color: selectedThread ? 'white' : (theme === 'light' ? '#9CA3AF' : '#6B7280'),
                           border: 'none',
-                          borderRadius: '6px',
-                          cursor: 'pointer',
-                          color: theme === 'light' ? '#374151' : '#D1D5DB'
+                          borderRadius: '8px',
+                          cursor: selectedThread ? 'pointer' : 'not-allowed',
+                          fontSize: '14px',
+                          fontWeight: 500,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '8px'
                         }}
                       >
-                        Refresh
+                        <FaRobot /> Run Contact Audit
                       </button>
-                      <button
-                        onClick={triggerDuplicateScan}
-                        style={{
-                          padding: '6px 12px',
-                          fontSize: '12px',
-                          background: '#8B5CF6',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '6px',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        Scan Duplicates
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Suggestions List */}
-                  {loadingAiSuggestions ? (
-                    <div style={{ textAlign: 'center', padding: '24px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
-                      Loading suggestions...
-                    </div>
-                  ) : aiSuggestions.filter(s => s.status === 'pending').length === 0 ? (
-                    <div style={{
-                      textAlign: 'center',
-                      padding: '24px',
-                      color: theme === 'light' ? '#6B7280' : '#9CA3AF'
-                    }}>
-                      <FaRobot size={32} style={{ marginBottom: '12px', opacity: 0.5 }} />
-                      <div>No pending suggestions</div>
-                      <div style={{ fontSize: '12px', marginTop: '8px' }}>
-                        New suggestions appear when emails arrive
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {aiSuggestions.filter(s => s.status === 'pending').map(suggestion => (
-                        <div
-                          key={suggestion.id}
-                          style={{
-                            background: theme === 'light' ? '#FFFFFF' : '#1F2937',
-                            border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
-                            borderRadius: '8px',
-                            padding: '12px',
-                            cursor: 'pointer'
-                          }}
-                          onClick={() => setSelectedSuggestion(selectedSuggestion?.id === suggestion.id ? null : suggestion)}
-                        >
-                          {/* Suggestion Header */}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{
-                                padding: '2px 8px',
-                                borderRadius: '4px',
-                                fontSize: '11px',
-                                fontWeight: 600,
-                                textTransform: 'uppercase',
-                                background: suggestion.suggestion_type === 'duplicate' ? '#FEF3C7' :
-                                            suggestion.suggestion_type === 'enrichment' ? '#DBEAFE' : '#E0E7FF',
-                                color: suggestion.suggestion_type === 'duplicate' ? '#92400E' :
-                                       suggestion.suggestion_type === 'enrichment' ? '#1E40AF' : '#3730A3'
-                              }}>
-                                {suggestion.suggestion_type}
-                              </span>
-                              <span style={{
-                                padding: '2px 8px',
-                                borderRadius: '4px',
-                                fontSize: '11px',
-                                background: theme === 'light' ? '#F3F4F6' : '#374151',
-                                color: theme === 'light' ? '#6B7280' : '#9CA3AF'
-                              }}>
-                                {suggestion.entity_type}
-                              </span>
-                            </div>
-                            <span style={{
-                              fontSize: '11px',
-                              color: suggestion.confidence_score >= 0.8 ? '#10B981' :
-                                     suggestion.confidence_score >= 0.6 ? '#F59E0B' : '#EF4444'
-                            }}>
-                              {Math.round((suggestion.confidence_score || 0) * 100)}% confidence
-                            </span>
-                          </div>
-
-                          {/* Suggestion Preview */}
-                          <div style={{
-                            fontSize: '13px',
-                            color: theme === 'light' ? '#374151' : '#D1D5DB',
-                            marginBottom: '8px'
-                          }}>
-                            {suggestion.suggestion_type === 'duplicate' && suggestion.suggestion_data?.primary_contact && (
-                              <>
-                                <strong>{suggestion.suggestion_data.primary_contact.first_name} {suggestion.suggestion_data.primary_contact.last_name}</strong>
-                                {' '}might be duplicate of{' '}
-                                <strong>{suggestion.suggestion_data.duplicate_contact?.first_name} {suggestion.suggestion_data.duplicate_contact?.last_name}</strong>
-                              </>
-                            )}
-                            {suggestion.suggestion_type === 'enrichment' && (
-                              <>
-                                Suggested: <strong>{suggestion.suggestion_data?.field}</strong> = "{suggestion.suggestion_data?.suggested_value}"
-                              </>
-                            )}
-                            {suggestion.agent_reasoning && (
-                              <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginTop: '4px' }}>
-                                {suggestion.agent_reasoning}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Expanded Details */}
-                          {selectedSuggestion?.id === suggestion.id && (
-                            <div style={{
-                              marginTop: '12px',
-                              paddingTop: '12px',
-                              borderTop: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
-                            }}>
-                              {/* Show full suggestion data */}
-                              {suggestion.suggestion_type === 'duplicate' && suggestion.suggestion_data && (
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '12px' }}>
-                                  <div>
-                                    <div style={{ fontWeight: 600, marginBottom: '4px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>Primary Contact</div>
-                                    <div style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
-                                      {suggestion.suggestion_data.primary_contact?.emails?.join(', ') || 'No email'}
-                                    </div>
-                                    <div style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
-                                      {suggestion.suggestion_data.primary_contact?.mobiles?.join(', ') || 'No mobile'}
-                                    </div>
-                                  </div>
-                                  <div>
-                                    <div style={{ fontWeight: 600, marginBottom: '4px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>Duplicate Contact</div>
-                                    <div style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
-                                      {suggestion.suggestion_data.duplicate_contact?.emails?.join(', ') || 'No email'}
-                                    </div>
-                                    <div style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
-                                      {suggestion.suggestion_data.duplicate_contact?.mobiles?.join(', ') || 'No mobile'}
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Action Buttons */}
-                              <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSuggestionAction(suggestion.id, 'accept');
-                                  }}
-                                  disabled={processingAction}
-                                  style={{
-                                    flex: 1,
-                                    padding: '8px 16px',
-                                    background: '#10B981',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    cursor: 'pointer',
-                                    fontSize: '13px',
-                                    fontWeight: 500
-                                  }}
-                                >
-                                  <FaCheck style={{ marginRight: '6px' }} />
-                                  Accept
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSuggestionAction(suggestion.id, 'reject');
-                                  }}
-                                  disabled={processingAction}
-                                  style={{
-                                    flex: 1,
-                                    padding: '8px 16px',
-                                    background: theme === 'light' ? '#F3F4F6' : '#374151',
-                                    color: theme === 'light' ? '#374151' : '#D1D5DB',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    cursor: 'pointer',
-                                    fontSize: '13px',
-                                    fontWeight: 500
-                                  }}
-                                >
-                                  <FaTimes style={{ marginRight: '6px' }} />
-                                  Reject
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ))}
                     </div>
                   )}
 
-                  {/* Show recent processed suggestions */}
-                  {aiSuggestions.filter(s => s.status !== 'pending').length > 0 && (
-                    <div style={{ marginTop: '24px' }}>
+                  {/* Loading State */}
+                  {loadingAudit && (
+                    <div style={{ textAlign: 'center', padding: '40px 20px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                      <FaRobot size={24} style={{ marginBottom: '12px', opacity: 0.5 }} />
+                      <div style={{ fontSize: '14px', marginBottom: '8px' }}>Running audit...</div>
+                      <div style={{ fontSize: '12px', opacity: 0.7 }}>Checking contact, duplicates, company...</div>
+                    </div>
+                  )}
+
+                  {/* Audit Results */}
+                  {auditResult && !loadingAudit && (
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                      {/* Contact Header */}
                       <div style={{
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                        marginBottom: '8px'
+                        padding: '12px',
+                        background: theme === 'light' ? '#F9FAFB' : '#111827',
+                        borderRadius: '8px',
+                        marginBottom: '12px'
                       }}>
-                        Recently Processed
-                      </div>
-                      {aiSuggestions.filter(s => s.status !== 'pending').slice(0, 5).map(suggestion => (
-                        <div
-                          key={suggestion.id}
-                          style={{
-                            padding: '8px 12px',
-                            fontSize: '12px',
-                            color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                            borderLeft: `3px solid ${suggestion.status === 'accepted' ? '#10B981' : '#EF4444'}`,
-                            marginBottom: '4px',
-                            background: theme === 'light' ? '#F9FAFB' : '#111827',
-                            borderRadius: '0 4px 4px 0'
-                          }}
-                        >
-                          <span style={{ textTransform: 'capitalize' }}>{suggestion.suggestion_type}</span>
-                          {' - '}
-                          <span style={{ color: suggestion.status === 'accepted' ? '#10B981' : '#EF4444' }}>
-                            {suggestion.status}
-                          </span>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <div style={{ fontSize: '16px', fontWeight: 600, color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
+                            {auditResult.contact?.name || 'Unknown Contact'}
+                          </div>
+                          <button
+                            onClick={() => { setAuditResult(null); setAuditActions([]); setSelectedActions(new Set()); }}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: theme === 'light' ? '#6B7280' : '#9CA3AF', padding: '4px' }}
+                          >
+                            <FaTimes size={14} />
+                          </button>
                         </div>
-                      ))}
+                        {/* Completeness Bar */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                          <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>Completeness:</div>
+                          <div style={{ flex: 1, height: '8px', background: theme === 'light' ? '#E5E7EB' : '#374151', borderRadius: '4px', overflow: 'hidden' }}>
+                            <div style={{
+                              width: `${auditResult.contact?.completeness_score || 0}%`,
+                              height: '100%',
+                              background: (auditResult.contact?.completeness_score || 0) >= 70 ? '#10B981' : (auditResult.contact?.completeness_score || 0) >= 40 ? '#F59E0B' : '#EF4444',
+                              transition: 'width 0.3s'
+                            }} />
+                          </div>
+                          <div style={{ fontSize: '12px', fontWeight: 600, color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
+                            {auditResult.contact?.completeness_score || 0}%
+                          </div>
+                        </div>
+                        {/* Missing Fields */}
+                        {auditResult.contact?.missing_fields?.length > 0 && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                            {auditResult.contact.missing_fields.map((field, i) => (
+                              <span key={i} style={{
+                                fontSize: '10px',
+                                padding: '2px 6px',
+                                background: theme === 'light' ? '#FEE2E2' : '#7F1D1D',
+                                color: theme === 'light' ? '#B91C1C' : '#FCA5A5',
+                                borderRadius: '4px',
+                                textTransform: 'uppercase'
+                              }}>
+                                missing: {field}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {auditResult.contact?.found === false && (
+                          <div style={{ marginTop: '8px', padding: '6px 10px', background: '#FEF3C7', borderRadius: '4px', fontSize: '12px', color: '#92400E' }}>
+                            ⚠️ Contact not found in CRM - will create new
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Email Action */}
+                      {auditResult.email_action?.action !== 'none' && (
+                        <div style={{
+                          padding: '10px 12px',
+                          background: theme === 'light' ? '#DBEAFE' : '#1E3A5F',
+                          borderRadius: '8px',
+                          marginBottom: '8px',
+                          fontSize: '13px',
+                          color: theme === 'light' ? '#1E40AF' : '#93C5FD'
+                        }}>
+                          <strong>Email:</strong> {auditResult.email_action?.action === 'add' ? `Add ${auditResult.email_action?.email}` : auditResult.email_action?.reason}
+                        </div>
+                      )}
+
+                      {/* Duplicates */}
+                      {auditResult.contact_duplicates?.length > 0 && (
+                        <div style={{ marginBottom: '8px' }}>
+                          <div style={{ fontSize: '12px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '6px', textTransform: 'uppercase' }}>
+                            Duplicates ({auditResult.contact_duplicates.length})
+                          </div>
+                          {auditResult.contact_duplicates.map((dup, i) => (
+                            <div key={i} style={{
+                              padding: '8px 10px',
+                              background: theme === 'light' ? '#FEF2F2' : '#1C1917',
+                              borderRadius: '6px',
+                              marginBottom: '4px',
+                              fontSize: '12px',
+                              border: `1px solid ${theme === 'light' ? '#FECACA' : '#7F1D1D'}`
+                            }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ color: theme === 'light' ? '#111827' : '#F9FAFB', fontWeight: 500 }}>{dup.name}</span>
+                                <span style={{ color: '#EF4444', fontSize: '11px', textTransform: 'uppercase' }}>{dup.action}</span>
+                              </div>
+                              <div style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginTop: '2px' }}>
+                                {dup.reason} {dup.data_to_preserve?.length > 0 && `(preserve: ${dup.data_to_preserve.join(', ')})`}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Mobiles Section */}
+                      {auditResult.mobiles && (
+                        <div style={{ marginBottom: '8px' }}>
+                          <div style={{ fontSize: '12px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '6px', textTransform: 'uppercase' }}>
+                            Mobiles ({auditResult.mobiles.current?.length || 0}) {auditResult.mobiles.issues?.length > 0 && <span style={{ color: '#F59E0B' }}>• {auditResult.mobiles.issues.length} issue{auditResult.mobiles.issues.length > 1 ? 's' : ''}</span>}
+                          </div>
+                          {/* Current Mobiles */}
+                          {auditResult.mobiles.current?.map((mobile, i) => (
+                            <div key={i} style={{
+                              padding: '6px 10px',
+                              background: theme === 'light' ? '#F9FAFB' : '#111827',
+                              borderRadius: '6px',
+                              marginBottom: '4px',
+                              fontSize: '12px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center'
+                            }}>
+                              <span style={{ color: theme === 'light' ? '#111827' : '#F9FAFB' }}>{mobile.number}</span>
+                              <span style={{
+                                color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                fontSize: '10px',
+                                textTransform: 'uppercase',
+                                background: theme === 'light' ? '#E5E7EB' : '#374151',
+                                padding: '2px 6px',
+                                borderRadius: '4px'
+                              }}>
+                                {mobile.type} {mobile.is_primary && '• PRIMARY'}
+                              </span>
+                            </div>
+                          ))}
+                          {/* Mobile Issues */}
+                          {auditResult.mobiles.issues?.length > 0 && (
+                            <div style={{ marginTop: '8px' }}>
+                              {auditResult.mobiles.issues.map((issue, i) => (
+                                <div key={i} style={{
+                                  padding: '8px 10px',
+                                  background: theme === 'light' ? '#FFFBEB' : '#1C1917',
+                                  borderRadius: '6px',
+                                  marginBottom: '4px',
+                                  fontSize: '12px',
+                                  border: `1px solid ${theme === 'light' ? '#FCD34D' : '#92400E'}`
+                                }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ color: theme === 'light' ? '#111827' : '#F9FAFB', fontWeight: 500 }}>{issue.number}</span>
+                                    <span style={{ color: '#F59E0B', fontSize: '11px', textTransform: 'uppercase' }}>{issue.action}</span>
+                                  </div>
+                                  <div style={{ color: theme === 'light' ? '#92400E' : '#FCD34D', marginTop: '2px' }}>
+                                    {issue.reason}
+                                    {issue.suggested_type && (
+                                      <span style={{ fontWeight: 600 }}> → {issue.suggested_type}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Company */}
+                      {auditResult.company && (
+                        <div style={{ marginBottom: '8px' }}>
+                          <div style={{ fontSize: '12px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '6px', textTransform: 'uppercase' }}>
+                            Company {auditResult.company.issues?.length > 0 && <span style={{ color: '#F59E0B' }}>• {auditResult.company.issues.length} issue{auditResult.company.issues.length > 1 ? 's' : ''}</span>}
+                          </div>
+                          <div style={{
+                            padding: '10px 12px',
+                            background: auditResult.company.action === 'link'
+                              ? (theme === 'light' ? '#DBEAFE' : '#1E3A5F')
+                              : auditResult.company.action === 'skip'
+                                ? (theme === 'light' ? '#F3F4F6' : '#1F2937')
+                                : (theme === 'light' ? '#F0FDF4' : '#14532D'),
+                            borderRadius: '6px',
+                            fontSize: '12px',
+                            border: `1px solid ${auditResult.company.action === 'link'
+                              ? '#3B82F6'
+                              : auditResult.company.action === 'skip'
+                                ? (theme === 'light' ? '#E5E7EB' : '#374151')
+                                : (theme === 'light' ? '#86EFAC' : '#166534')}`
+                          }}>
+                            {auditResult.company.action === 'link' ? (
+                              <div>
+                                <div style={{ color: theme === 'light' ? '#1E40AF' : '#93C5FD', fontWeight: 600, marginBottom: '4px' }}>
+                                  <FaBuilding style={{ marginRight: '6px' }} />
+                                  Suggest Link: {auditResult.company.name}
+                                </div>
+                                <div style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF', fontSize: '11px' }}>
+                                  Company found by email domain but not yet linked
+                                </div>
+                              </div>
+                            ) : auditResult.company.action === 'skip' ? (
+                              <div style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                                <FaBuilding style={{ marginRight: '6px', opacity: 0.5 }} />
+                                {auditResult.company.reason || 'No company suggestion'}
+                              </div>
+                            ) : auditResult.company.linked ? (
+                              <div>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                  <span style={{ color: theme === 'light' ? '#166534' : '#86EFAC', fontWeight: 600 }}>
+                                    <FaBuilding style={{ marginRight: '6px' }} />
+                                    {auditResult.company.name}
+                                  </span>
+                                  <span style={{ color: '#10B981', fontSize: '10px', textTransform: 'uppercase', background: theme === 'light' ? '#D1FAE5' : '#064E3B', padding: '2px 6px', borderRadius: '4px' }}>
+                                    ✓ Linked
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                                <FaBuilding style={{ marginRight: '6px', opacity: 0.5 }} />
+                                No company linked
+                              </div>
+                            )}
+                            {/* Company Issues */}
+                            {auditResult.company.issues?.length > 0 && (
+                              <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}` }}>
+                                {auditResult.company.issues.map((issue, i) => (
+                                  <div key={i} style={{
+                                    color: '#F59E0B',
+                                    padding: '4px 8px',
+                                    background: theme === 'light' ? '#FFFBEB' : '#1C1917',
+                                    borderRadius: '4px',
+                                    marginTop: '4px',
+                                    fontSize: '11px'
+                                  }}>
+                                    ⚠️ {issue.field}: <code style={{ background: theme === 'light' ? '#FEF3C7' : '#78350F', padding: '1px 4px', borderRadius: '2px' }}>{issue.current}</code> → <code style={{ background: theme === 'light' ? '#D1FAE5' : '#064E3B', padding: '1px 4px', borderRadius: '2px' }}>{issue.fix}</code>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Company Duplicates */}
+                      {auditResult.company_duplicates?.length > 0 && (
+                        <div style={{ marginBottom: '8px' }}>
+                          <div style={{ fontSize: '12px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '6px', textTransform: 'uppercase' }}>
+                            Company Duplicates
+                          </div>
+                          {auditResult.company_duplicates.map((dup, i) => (
+                            <div key={i} style={{
+                              padding: '8px 10px',
+                              background: theme === 'light' ? '#FEF2F2' : '#1C1917',
+                              borderRadius: '6px',
+                              marginBottom: '4px',
+                              fontSize: '12px'
+                            }}>
+                              Merge "{dup.name}" into {dup.into}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Deals */}
+                      {auditResult.deals?.length > 0 && (
+                        <div style={{ marginBottom: '8px' }}>
+                          <div style={{ fontSize: '12px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '6px', textTransform: 'uppercase' }}>
+                            <FaDollarSign style={{ marginRight: '4px' }} /> Deals ({auditResult.deals.length})
+                          </div>
+                          {auditResult.deals.map((deal, i) => (
+                            <div key={i} style={{
+                              padding: '6px 10px',
+                              background: theme === 'light' ? '#EDE9FE' : '#4C1D95',
+                              borderRadius: '6px',
+                              marginBottom: '4px',
+                              fontSize: '12px',
+                              color: theme === 'light' ? '#5B21B6' : '#DDD6FE'
+                            }}>
+                              {deal.name || 'Unnamed deal'}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Introductions */}
+                      {auditResult.introductions?.length > 0 && (
+                        <div style={{ marginBottom: '8px' }}>
+                          <div style={{ fontSize: '12px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '6px', textTransform: 'uppercase' }}>
+                            <FaHandshake style={{ marginRight: '4px' }} /> Introductions ({auditResult.introductions.length})
+                          </div>
+                          {auditResult.introductions.map((intro, i) => (
+                            <div key={i} style={{
+                              padding: '6px 10px',
+                              background: theme === 'light' ? '#FEF3C7' : '#78350F',
+                              borderRadius: '6px',
+                              marginBottom: '4px',
+                              fontSize: '12px',
+                              color: theme === 'light' ? '#92400E' : '#FDE68A'
+                            }}>
+                              {intro.text || 'Introduction record'}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Communication Analysis */}
+                      {auditResult.communication && (
+                        <div style={{
+                          padding: '10px 12px',
+                          background: theme === 'light' ? '#F3F4F6' : '#1F2937',
+                          borderRadius: '6px',
+                          marginBottom: '12px',
+                          fontSize: '12px'
+                        }}>
+                          <div style={{ fontSize: '11px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '6px', textTransform: 'uppercase' }}>
+                            Email Analysis
+                          </div>
+                          <div style={{ color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
+                            <span style={{
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              marginRight: '8px',
+                              fontSize: '11px',
+                              textTransform: 'uppercase',
+                              fontWeight: 600,
+                              background: auditResult.communication.type === 'business'
+                                ? (theme === 'light' ? '#DBEAFE' : '#1E3A5F')
+                                : auditResult.communication.type === 'transactional'
+                                  ? (theme === 'light' ? '#F3F4F6' : '#374151')
+                                  : (theme === 'light' ? '#FCE7F3' : '#831843'),
+                              color: auditResult.communication.type === 'business'
+                                ? (theme === 'light' ? '#1E40AF' : '#93C5FD')
+                                : auditResult.communication.type === 'transactional'
+                                  ? (theme === 'light' ? '#6B7280' : '#9CA3AF')
+                                  : (theme === 'light' ? '#9D174D' : '#F9A8D4')
+                            }}>
+                              {auditResult.communication.type}
+                            </span>
+                            {auditResult.communication.involves_deal && (
+                              <span style={{ padding: '2px 8px', borderRadius: '4px', marginRight: '8px', fontSize: '11px', background: '#10B981', color: 'white' }}>
+                                💰 Deal
+                              </span>
+                            )}
+                            {auditResult.communication.involves_intro && (
+                              <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '11px', background: '#F59E0B', color: 'white' }}>
+                                🤝 Intro
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ marginTop: '6px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', fontSize: '11px' }}>
+                            {auditResult.communication.summary}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Actions List */}
+                      {auditActions.length > 0 && (
+                        <div style={{ marginTop: 'auto' }}>
+                          <div style={{ fontSize: '12px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '8px', textTransform: 'uppercase' }}>
+                            Actions ({selectedActions.size}/{auditActions.length} selected)
+                          </div>
+                          <div style={{ maxHeight: '200px', overflowY: 'auto', marginBottom: '12px' }}>
+                            {auditActions.map((action, i) => (
+                              <div
+                                key={i}
+                                onClick={() => toggleActionSelection(i)}
+                                style={{
+                                  padding: '8px 10px',
+                                  background: selectedActions.has(i)
+                                    ? (theme === 'light' ? '#DBEAFE' : '#1E3A5F')
+                                    : (theme === 'light' ? '#FFFFFF' : '#1F2937'),
+                                  border: `1px solid ${selectedActions.has(i) ? '#3B82F6' : (theme === 'light' ? '#E5E7EB' : '#374151')}`,
+                                  borderRadius: '6px',
+                                  marginBottom: '4px',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px'
+                                }}
+                              >
+                                <div style={{
+                                  width: '18px',
+                                  height: '18px',
+                                  borderRadius: '4px',
+                                  border: `2px solid ${selectedActions.has(i) ? '#3B82F6' : (theme === 'light' ? '#D1D5DB' : '#4B5563')}`,
+                                  background: selectedActions.has(i) ? '#3B82F6' : 'transparent',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center'
+                                }}>
+                                  {selectedActions.has(i) && <FaCheck size={10} color="white" />}
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ fontSize: '12px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
+                                    {action.description}
+                                  </div>
+                                  <div style={{ fontSize: '10px', color: theme === 'light' ? '#9CA3AF' : '#6B7280', textTransform: 'uppercase' }}>
+                                    {action.type}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Execute Button */}
+                          <button
+                            onClick={executeSelectedActions}
+                            disabled={executingActions || selectedActions.size === 0}
+                            style={{
+                              width: '100%',
+                              padding: '12px',
+                              background: selectedActions.size > 0 ? '#10B981' : (theme === 'light' ? '#E5E7EB' : '#374151'),
+                              color: selectedActions.size > 0 ? 'white' : (theme === 'light' ? '#9CA3AF' : '#6B7280'),
+                              border: 'none',
+                              borderRadius: '8px',
+                              cursor: selectedActions.size > 0 ? 'pointer' : 'not-allowed',
+                              fontSize: '14px',
+                              fontWeight: 500,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '8px'
+                            }}
+                          >
+                            {executingActions ? 'Executing...' : `Execute ${selectedActions.size} Action${selectedActions.size !== 1 ? 's' : ''}`}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* No Actions */}
+                      {auditActions.length === 0 && (
+                        <div style={{ textAlign: 'center', padding: '20px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                          <FaCheck size={20} style={{ marginBottom: '8px', color: '#10B981' }} />
+                          <div style={{ fontSize: '12px' }}>No actions needed</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* No email selected */}
+                  {!selectedThread && !loadingAudit && !auditResult && (
+                    <div style={{ textAlign: 'center', padding: '40px 20px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                      <FaRobot size={24} style={{ marginBottom: '12px', opacity: 0.5 }} />
+                      <div style={{ fontSize: '12px' }}>Select an email to run audit</div>
                     </div>
                   )}
                 </div>

@@ -239,15 +239,19 @@ Use the source_email_id "{email_data.get("id")}" when creating suggestions.
                 if match_type == "exact_email":
                     confidence = 0.95
                     priority = "high"
+                    short_reason = "Same email"
                 elif match_type == "exact_name":
                     confidence = 0.75
                     priority = "medium"
+                    short_reason = "Same name"
                 elif match_type == "mobile":
                     confidence = 0.85
                     priority = "high"
+                    short_reason = "Same phone"
                 else:
                     confidence = 0.6
                     priority = "low"
+                    short_reason = "Similar info"
 
                 # Create suggestion
                 suggestion = {
@@ -260,6 +264,7 @@ Use the source_email_id "{email_data.get("id")}" when creating suggestions.
                     "suggestion_data": {
                         "match_type": match_type,
                         "match_value": dupe.get("match_value"),
+                        "short_reason": short_reason,
                         "primary_contact": {
                             "contact_id": contact_id,
                             "first_name": full_contact.get("first_name"),

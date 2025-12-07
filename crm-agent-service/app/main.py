@@ -18,6 +18,8 @@ from app.models import (
 )
 from app.agent import agent
 from app.database import db
+from app.audit import auditor, AuditResult
+from app.actions import Action, execute_action, audit_to_actions
 
 # Configure structured logging
 structlog.configure(
@@ -314,4 +316,177 @@ async def get_stats():
 
     except Exception as e:
         logger.error("get_stats_error", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== NEW AUDIT ENDPOINTS ====================
+
+@app.post("/audit-email")
+async def audit_email(request: AnalyzeEmailRequest):
+    """
+    Perform complete audit of a contact based on an email.
+
+    Returns structured audit with executable actions.
+    """
+    logger.info("audit_email_request", email_id=str(request.email.id))
+
+    try:
+        email_data = {
+            "id": str(request.email.id),
+            "fastmail_id": request.email.fastmail_id,
+            "from_email": request.email.from_email,
+            "from_name": request.email.from_name,
+            "to_recipients": request.email.to_recipients,
+            "cc_recipients": request.email.cc_recipients,
+            "subject": request.email.subject,
+            "body_text": request.email.body_text,
+            "snippet": request.email.snippet,
+            "date": str(request.email.date) if request.email.date else None,
+        }
+
+        # Perform audit
+        audit_result = await auditor.audit_from_email(email_data)
+
+        # Convert to actions
+        actions = audit_to_actions(audit_result.dict())
+
+        return {
+            "success": True,
+            "audit": audit_result.dict(),
+            "actions": [a.dict() for a in actions],
+            "action_count": len(actions),
+        }
+
+    except Exception as e:
+        logger.error("audit_email_error", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/execute-action")
+async def execute_single_action(action_data: dict):
+    """
+    Execute a single action from an audit.
+
+    Takes action data and executes it.
+    """
+    logger.info("execute_action_request", action_type=action_data.get("type"))
+
+    try:
+        # Parse action
+        action = Action(**action_data)
+
+        # Execute
+        result = await execute_action(action)
+
+        # Log the action
+        await db.log_action({
+            "action_type": action.type.value,
+            "entity_type": "contact" if action.contact_id else "company",
+            "entity_id": action.contact_id or action.company_id,
+            "after_data": action.dict(),
+            "triggered_by": "user",
+        })
+
+        return {
+            "success": result.success,
+            "message": result.message,
+            "data": result.data,
+        }
+
+    except Exception as e:
+        logger.error("execute_action_error", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/execute-actions")
+async def execute_multiple_actions(actions_data: list[dict]):
+    """
+    Execute multiple actions from an audit.
+
+    Takes list of action data and executes them in order.
+    """
+    logger.info("execute_actions_request", count=len(actions_data))
+
+    results = []
+    for action_data in actions_data:
+        try:
+            action = Action(**action_data)
+            result = await execute_action(action)
+
+            # Log
+            await db.log_action({
+                "action_type": action.type.value,
+                "entity_type": "contact" if action.contact_id else "company",
+                "entity_id": action.contact_id or action.company_id,
+                "after_data": action.dict(),
+                "triggered_by": "user",
+            })
+
+            results.append({
+                "action": action.description,
+                "success": result.success,
+                "message": result.message,
+            })
+
+        except Exception as e:
+            results.append({
+                "action": action_data.get("description", "Unknown"),
+                "success": False,
+                "message": str(e),
+            })
+
+    successful = sum(1 for r in results if r["success"])
+    return {
+        "success": successful == len(results),
+        "total": len(results),
+        "successful": successful,
+        "failed": len(results) - successful,
+        "results": results,
+    }
+
+
+@app.get("/audit-contact/{contact_id}")
+async def audit_contact(contact_id: str):
+    """
+    Perform audit on a specific contact by ID.
+
+    Useful for direct contact cleanup.
+    """
+    logger.info("audit_contact_request", contact_id=contact_id)
+
+    try:
+        # Get contact
+        contact = await db.get_contact_by_id(contact_id)
+        if not contact:
+            raise HTTPException(status_code=404, detail="Contact not found")
+
+        # Build fake email data for audit
+        emails = contact.get("contact_emails", [])
+        primary_email = next((e.get("email") for e in emails if e.get("is_primary")), None)
+        any_email = emails[0].get("email") if emails else None
+        email = primary_email or any_email or ""
+
+        email_data = {
+            "id": contact_id,
+            "from_email": email,
+            "from_name": f"{contact.get('first_name', '')} {contact.get('last_name', '')}".strip(),
+            "subject": "",
+            "body_text": "",
+        }
+
+        # Perform audit
+        audit_result = await auditor.audit_from_email(email_data)
+        actions = audit_to_actions(audit_result.dict())
+
+        return {
+            "success": True,
+            "audit": audit_result.dict(),
+            "actions": [a.dict() for a in actions],
+            "action_count": len(actions),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("audit_contact_error", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))

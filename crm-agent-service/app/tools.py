@@ -232,10 +232,14 @@ TOOLS = [
                 },
                 "reasoning": {
                     "type": "string",
-                    "description": "Explanation of why this suggestion was made"
+                    "description": "Detailed explanation of why this suggestion was made"
+                },
+                "short_reason": {
+                    "type": "string",
+                    "description": "Very short reason (max 30 chars) like 'Same email' or 'Same name'"
                 }
             },
-            "required": ["suggestion_type", "entity_type", "suggestion_data", "reasoning"]
+            "required": ["suggestion_type", "entity_type", "suggestion_data", "reasoning", "short_reason"]
         }
     },
     {
@@ -319,6 +323,10 @@ async def execute_tool(name: str, input_data: dict) -> dict:
             if exists:
                 return {"created": False, "message": "Similar suggestion already exists"}
 
+            # Store short_reason in suggestion_data
+            suggestion_data = input_data["suggestion_data"]
+            suggestion_data["short_reason"] = input_data.get("short_reason", "")
+
             suggestion = {
                 "suggestion_type": input_data["suggestion_type"],
                 "entity_type": input_data["entity_type"],
@@ -326,7 +334,7 @@ async def execute_tool(name: str, input_data: dict) -> dict:
                 "secondary_entity_id": input_data.get("secondary_entity_id"),
                 "confidence_score": input_data.get("confidence_score", 0.5),
                 "priority": input_data.get("priority", "medium"),
-                "suggestion_data": input_data["suggestion_data"],
+                "suggestion_data": suggestion_data,
                 "agent_reasoning": input_data.get("reasoning"),
                 "source_email_id": input_data.get("source_email_id"),
                 "source_description": input_data.get("source_description"),

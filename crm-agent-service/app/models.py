@@ -19,7 +19,7 @@ class EmailPayload(BaseModel):
     subject: Optional[str] = None
     body_text: Optional[str] = None
     snippet: Optional[str] = None
-    date: datetime
+    date: Optional[datetime] = None
 
 
 class AnalyzeEmailRequest(BaseModel):
