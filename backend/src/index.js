@@ -953,14 +953,14 @@ app.put('/obsidian/notes', async (req, res) => {
   }
 });
 
-// Get note content from GitHub
-app.get('/obsidian/notes/*', async (req, res) => {
+// Get note content from GitHub (using query param for path)
+app.get('/obsidian/note', async (req, res) => {
   try {
     if (!GITHUB_TOKEN) {
       return res.status(500).json({ success: false, error: 'GitHub token not configured' });
     }
 
-    const filePath = req.params[0];
+    const filePath = req.query.path;
     const [owner, repo] = OBSIDIAN_REPO.split('/');
     const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`;
 
@@ -981,6 +981,63 @@ app.get('/obsidian/notes/*', async (req, res) => {
     res.json({ success: true, content, sha: file.sha });
   } catch (error) {
     console.error('[Obsidian] Error fetching note:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Delete a note from GitHub
+app.delete('/obsidian/notes', async (req, res) => {
+  try {
+    const { obsidianPath } = req.body;
+
+    if (!obsidianPath) {
+      return res.status(400).json({ success: false, error: 'obsidianPath is required' });
+    }
+
+    const filePath = obsidianPath.endsWith('.md') ? obsidianPath : `${obsidianPath}.md`;
+    const [owner, repo] = OBSIDIAN_REPO.split('/');
+    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`;
+
+    // First get the file SHA (required for deletion)
+    const getResponse = await fetch(apiUrl, {
+      headers: {
+        'Authorization': `token ${GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github.v3+json',
+      },
+    });
+
+    if (!getResponse.ok) {
+      if (getResponse.status === 404) {
+        // File doesn't exist in GitHub, that's okay
+        return res.json({ success: true, message: 'File not found in GitHub (already deleted or never synced)' });
+      }
+      throw new Error('Failed to get file info from GitHub');
+    }
+
+    const fileInfo = await getResponse.json();
+
+    // Delete the file
+    const deleteResponse = await fetch(apiUrl, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `token ${GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        message: `Delete note: ${obsidianPath}`,
+        sha: fileInfo.sha,
+      }),
+    });
+
+    if (!deleteResponse.ok) {
+      const error = await deleteResponse.json();
+      throw new Error(error.message || 'Failed to delete file from GitHub');
+    }
+
+    res.json({ success: true, path: filePath });
+  } catch (error) {
+    console.error('Error deleting note from GitHub:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

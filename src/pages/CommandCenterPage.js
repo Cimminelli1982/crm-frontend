@@ -1525,7 +1525,7 @@ const CommandCenterPage = ({ theme }) => {
             note_type: newNoteType,
             summary: newNoteSummary,
             obsidian_path: obsidianPath,
-            updated_at: new Date().toISOString()
+            last_modified_at: new Date().toISOString()
           })
           .eq('note_id', editingNote.note_id);
 
@@ -1609,7 +1609,8 @@ const CommandCenterPage = ({ theme }) => {
     const encodedVault = encodeURIComponent(OBSIDIAN_VAULT);
     const encodedPath = encodeURIComponent(obsidianPath);
     const obsidianUrl = `obsidian://open?vault=${encodedVault}&file=${encodedPath}`;
-    window.open(obsidianUrl, '_blank');
+    // Use location.href for custom protocol - window.open may be blocked
+    window.location.href = obsidianUrl;
   };
 
   // Create a new note in Obsidian (opens the new note dialog)
@@ -1632,10 +1633,25 @@ const CommandCenterPage = ({ theme }) => {
   };
 
   // Delete a note
-  const handleDeleteNote = async (noteId) => {
-    if (!window.confirm('Delete this note? This only removes the CRM record, not the Obsidian file.')) return;
+  const handleDeleteNote = async (noteId, obsidianPath) => {
+    if (!window.confirm('Delete this note? This will remove both the CRM record and the Obsidian file.')) return;
 
     try {
+      // Delete from GitHub/Obsidian first (if path exists)
+      if (obsidianPath) {
+        const obsidianResponse = await fetch(`${BACKEND_URL}/obsidian/notes`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ obsidianPath })
+        });
+        const obsidianResult = await obsidianResponse.json();
+        if (!obsidianResult.success) {
+          console.warn('Could not delete from Obsidian:', obsidianResult.error);
+          // Continue with Supabase deletion anyway
+        }
+      }
+
+      // Delete from Supabase
       const { error } = await supabase
         .from('notes')
         .delete()
@@ -4921,7 +4937,7 @@ internet businesses.`;
                             <SmallBtn theme={theme} onClick={() => openEditNote(note)} title="Edit">
                               <FaEdit />
                             </SmallBtn>
-                            <SmallBtn theme={theme} $variant="danger" onClick={() => handleDeleteNote(note.note_id)} title="Delete">
+                            <SmallBtn theme={theme} $variant="danger" onClick={() => handleDeleteNote(note.note_id, note.obsidian_path)} title="Delete">
                               <FaTrash />
                             </SmallBtn>
                           </ActionCardButtons>
