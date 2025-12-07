@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown } from 'react-icons/fa';
+import { useNavigate } from 'react-router-dom';
+import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import QuickEditModal from '../components/QuickEditModalRefactored';
@@ -367,6 +368,142 @@ const PendingCount = styled.div`
   font-size: 14px;
 `;
 
+// AI Chat Styled Components
+const ChatContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: calc(100vh - 200px);
+`;
+
+const ChatMessages = styled.div`
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+`;
+
+const ChatMessage = styled.div`
+  padding: 10px 14px;
+  border-radius: 12px;
+  max-width: 90%;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+
+  ${props => props.$isUser ? `
+    align-self: flex-end;
+    background: ${props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+    color: white;
+    border-bottom-right-radius: 4px;
+  ` : `
+    align-self: flex-start;
+    background: ${props.theme === 'light' ? '#F3F4F6' : '#374151'};
+    color: ${props.theme === 'light' ? '#111827' : '#F9FAFB'};
+    border-bottom-left-radius: 4px;
+  `}
+`;
+
+const ChatInputContainer = styled.div`
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+`;
+
+const ChatInput = styled.input`
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  border-radius: 8px;
+  font-size: 14px;
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#374151'};
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+
+  &:focus {
+    outline: none;
+    border-color: #3B82F6;
+  }
+
+  &::placeholder {
+    color: ${props => props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
+  }
+`;
+
+const ChatSendButton = styled.button`
+  padding: 10px 14px;
+  background: #3B82F6;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover {
+    background: #2563EB;
+  }
+
+  &:disabled {
+    background: #9CA3AF;
+    cursor: not-allowed;
+  }
+`;
+
+const TypingIndicator = styled.div`
+  display: flex;
+  gap: 4px;
+  padding: 10px 14px;
+  background: ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
+  border-radius: 12px;
+  border-bottom-left-radius: 4px;
+  align-self: flex-start;
+
+  span {
+    width: 8px;
+    height: 8px;
+    background: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+    border-radius: 50%;
+    animation: bounce 1.4s infinite ease-in-out;
+
+    &:nth-child(1) { animation-delay: -0.32s; }
+    &:nth-child(2) { animation-delay: -0.16s; }
+  }
+
+  @keyframes bounce {
+    0%, 80%, 100% { transform: translateY(0); }
+    40% { transform: translateY(-6px); }
+  }
+`;
+
+const QuickActionChip = styled.button`
+  padding: 6px 12px;
+  background: ${props => props.theme === 'light' ? '#EBF5FF' : '#1E3A5F'};
+  color: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+  border: 1px solid ${props => props.theme === 'light' ? '#BFDBFE' : '#3B82F6'};
+  border-radius: 16px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#DBEAFE' : '#2563EB'};
+  }
+`;
+
+const QuickActionsContainer = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+`;
+
 // Compose Modal
 const ModalOverlay = styled.div`
   position: fixed;
@@ -523,6 +660,7 @@ const CancelButton = styled.button`
 
 // Main Component
 const CommandCenterPage = ({ theme }) => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('email');
   const [emails, setEmails] = useState([]);
   const [threads, setThreads] = useState([]); // Grouped by thread_id
@@ -547,6 +685,12 @@ const CommandCenterPage = ({ theme }) => {
 
   // Companies from email domains (for Companies tab)
   const [emailCompanies, setEmailCompanies] = useState([]);
+
+  // AI Chat state
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatMessagesRef = React.useRef(null);
 
   // Quick Edit Modal - use the custom hook
   const quickEditModal = useQuickEditModal(() => {});
@@ -995,7 +1139,19 @@ const CommandCenterPage = ({ theme }) => {
       const companiesResult = [];
 
       // First add companies from domains
+      // Collect all domains that belong to known companies
+      const domainsWithCompanies = new Set();
+      Object.values(companyDomainsMap).forEach(domainsList => {
+        domainsList.forEach(d => domainsWithCompanies.add(d));
+      });
+
+      // Common email providers to hide
+      const hiddenDomains = new Set(['gmail.com', 'googlemail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'me.com', 'mac.com', 'live.com', 'msn.com', 'aol.com']);
+
       allDomains.forEach(domain => {
+        // Skip common email providers
+        if (hiddenDomains.has(domain.toLowerCase())) return;
+
         const company = domainToCompany[domain];
         if (company && !seenCompanyIds.has(company.company_id)) {
           seenCompanyIds.add(company.company_id);
@@ -1006,15 +1162,10 @@ const CommandCenterPage = ({ theme }) => {
             hasCompany: true,
             contacts: companyToContacts[company.company_id] || []
           });
-        } else if (!company) {
-          // Domain not in CRM
-          companiesResult.push({
-            domain,
-            domains: [domain],
-            company: null,
-            hasCompany: false,
-            contacts: []
-          });
+        } else if (!company && !domainsWithCompanies.has(domain)) {
+          // Domain not in CRM and not belonging to any known company - skip showing "+ Add"
+          // Only show if we want to suggest creating a new company for unknown domains
+          // For now, skip these to avoid showing domains that belong to already-shown companies
         }
       });
 
@@ -1037,6 +1188,121 @@ const CommandCenterPage = ({ theme }) => {
 
     fetchEmailCompanies();
   }, [selectedThread, emailContacts]);
+
+  // Scroll to bottom of chat when new messages arrive
+  useEffect(() => {
+    if (chatMessagesRef.current) {
+      chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight;
+    }
+  }, [chatMessages]);
+
+  // Clear chat when thread changes
+  useEffect(() => {
+    setChatMessages([]);
+    setChatInput('');
+  }, [selectedThread]);
+
+  // Build email context for Claude
+  const buildEmailContext = () => {
+    if (!selectedThread || selectedThread.length === 0) return '';
+
+    const threadSubject = selectedThread[0].subject?.replace(/^(Re: |Fwd: )+/i, '');
+    const participants = emailContacts.map(p => {
+      const name = p.contact ? `${p.contact.first_name} ${p.contact.last_name}` : p.name;
+      const role = p.contact?.job_role ? ` (${p.contact.job_role})` : '';
+      const company = p.contact?.company_name ? ` at ${p.contact.company_name}` : '';
+      return `- ${name}${role}${company}: ${p.email}`;
+    }).join('\n');
+
+    const emailsText = selectedThread.map(email => {
+      const sender = email.from_email?.toLowerCase() === MY_EMAIL ? 'Me' : (email.from_name || email.from_email);
+      const date = new Date(email.date).toLocaleString();
+      const body = email.body_text || email.snippet || '';
+      return `[${date}] From ${sender}:\n${body}`;
+    }).join('\n\n---\n\n');
+
+    return `
+EMAIL THREAD CONTEXT:
+Subject: ${threadSubject}
+
+Participants:
+${participants}
+
+Email Thread (${selectedThread.length} messages):
+${emailsText}
+`;
+  };
+
+  // Send message to Claude
+  const sendMessageToClaude = async (message) => {
+    if (!message.trim()) return;
+
+    // Add user message to chat
+    const userMessage = { role: 'user', content: message };
+    setChatMessages(prev => [...prev, userMessage]);
+    setChatInput('');
+    setChatLoading(true);
+
+    try {
+      const emailContext = buildEmailContext();
+      const systemPrompt = `You are Simone Cimminelli's AI assistant for email management.
+
+TONE & STYLE:
+- Be direct and concise. No fluff, no corporate speak.
+- Friendly but professional. Like talking to a smart colleague.
+- Use short sentences. Get to the point fast.
+- When drafting replies: warm, personal, efficient. Never robotic.
+- Italian-style warmth when appropriate (natural, not forced).
+
+RESPONSE FORMAT:
+- Summaries: Max 2-3 bullet points. Just the essentials.
+- Actions: One clear recommendation. Maybe a second option.
+- Drafts: Keep them short. Real humans don't write essays in emails.
+- Key points: List format, 3-5 items max.
+
+CONTEXT - Simone runs a newsletter business and is an investor. He values:
+- Building genuine relationships
+- Clear communication
+- Getting things done efficiently
+- Personal touch over corporate formality
+
+${emailContext}`;
+
+      const response = await fetch(`${BACKEND_URL}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [...chatMessages, userMessage].map(m => ({
+            role: m.role,
+            content: m.content
+          })),
+          systemPrompt,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get response from Claude');
+      }
+
+      const data = await response.json();
+      const assistantMessage = { role: 'assistant', content: data.response };
+      setChatMessages(prev => [...prev, assistantMessage]);
+    } catch (error) {
+      console.error('Chat error:', error);
+      toast.error('Failed to get AI response');
+      setChatMessages(prev => [...prev, {
+        role: 'assistant',
+        content: 'Sorry, I encountered an error. Please try again.'
+      }]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  // Handle quick action clicks
+  const handleQuickAction = (action) => {
+    sendMessageToClaude(action);
+  };
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -2222,19 +2488,79 @@ const CommandCenterPage = ({ theme }) => {
             <ActionTabIcon theme={theme} $active={activeActionTab === 'notes'} onClick={() => setActiveActionTab('notes')} title="Notes">
               <FaStickyNote />
             </ActionTabIcon>
+            <ActionTabIcon theme={theme} $active={activeActionTab === 'attachments'} onClick={() => setActiveActionTab('attachments')} title="Attachments">
+              <FaPaperclip />
+            </ActionTabIcon>
           </ActionsPanelTabs>
 
           {selectedThread && selectedThread.length > 0 && (
             <>
               {activeActionTab === 'suggestions' && (
-                <ActionCard theme={theme}>
-                  <ActionCardHeader theme={theme}>
-                    <FaLightbulb /> AI Suggestions
-                  </ActionCardHeader>
-                  <ActionCardContent theme={theme}>
-                    Analyze this email for suggested actions
-                  </ActionCardContent>
-                </ActionCard>
+                <ChatContainer>
+                  {/* Quick Actions */}
+                  <QuickActionsContainer theme={theme}>
+                    <QuickActionChip theme={theme} onClick={() => handleQuickAction('TL;DR - max 2-3 bullet points')}>
+                      TL;DR
+                    </QuickActionChip>
+                    <QuickActionChip theme={theme} onClick={() => handleQuickAction('What should I do? One clear action.')}>
+                      Next step
+                    </QuickActionChip>
+                    <QuickActionChip theme={theme} onClick={() => handleQuickAction('Draft a short, warm reply in my style')}>
+                      Draft reply
+                    </QuickActionChip>
+                    <QuickActionChip theme={theme} onClick={() => handleQuickAction('Any deadlines or asks I need to note?')}>
+                      Deadlines
+                    </QuickActionChip>
+                  </QuickActionsContainer>
+
+                  {/* Chat Messages */}
+                  <ChatMessages ref={chatMessagesRef} theme={theme}>
+                    {chatMessages.length === 0 && (
+                      <div style={{
+                        textAlign: 'center',
+                        color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                        padding: '24px',
+                        fontSize: '14px'
+                      }}>
+                        <FaRobot size={32} style={{ marginBottom: '12px', opacity: 0.5 }} />
+                        <div>Ask Claude about this email</div>
+                        <div style={{ fontSize: '12px', marginTop: '8px' }}>
+                          Try the quick actions above or type your question
+                        </div>
+                      </div>
+                    )}
+                    {chatMessages.map((msg, idx) => (
+                      <ChatMessage key={idx} theme={theme} $isUser={msg.role === 'user'}>
+                        {msg.content}
+                      </ChatMessage>
+                    ))}
+                    {chatLoading && (
+                      <TypingIndicator theme={theme}>
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                      </TypingIndicator>
+                    )}
+                  </ChatMessages>
+
+                  {/* Chat Input */}
+                  <ChatInputContainer theme={theme}>
+                    <ChatInput
+                      theme={theme}
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && !chatLoading && sendMessageToClaude(chatInput)}
+                      placeholder="Ask Claude about this email..."
+                      disabled={chatLoading}
+                    />
+                    <ChatSendButton
+                      onClick={() => sendMessageToClaude(chatInput)}
+                      disabled={chatLoading || !chatInput.trim()}
+                    >
+                      <FaPaperPlane size={14} />
+                    </ChatSendButton>
+                  </ChatInputContainer>
+                </ChatContainer>
               )}
 
               {activeActionTab === 'contacts' && (
@@ -2466,7 +2792,12 @@ const CommandCenterPage = ({ theme }) => {
                         Related
                       </div>
                       {emailCompanies.map((item, idx) => (
-                      <ActionCard key={item.domain + idx} theme={theme}>
+                      <ActionCard
+                        key={item.domain + idx}
+                        theme={theme}
+                        style={{ cursor: item.company?.company_id ? 'pointer' : 'default' }}
+                        onClick={() => item.company?.company_id && navigate(`/company/${item.company.company_id}`)}
+                      >
                         <ActionCardHeader theme={theme} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                           <div style={{ width: 40, height: 40, borderRadius: '50%', background: theme === 'light' ? '#E5E7EB' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
                             {item.company?.name ? item.company.name.substring(0, 2).toUpperCase() : item.domain?.substring(0, 2).toUpperCase() || '?'}
@@ -2570,6 +2901,71 @@ const CommandCenterPage = ({ theme }) => {
                     <SmallBtn theme={theme} $variant="danger">✗</SmallBtn>
                   </ActionCardButtons>
                 </ActionCard>
+              )}
+
+              {activeActionTab === 'attachments' && (
+                <>
+                  {(() => {
+                    // Collect all attachments from all emails in thread
+                    const allAttachments = selectedThread.flatMap(email =>
+                      (email.attachments || []).map(att => ({
+                        ...att,
+                        emailSubject: email.subject,
+                        emailDate: email.date,
+                        fastmailId: email.fastmail_id
+                      }))
+                    );
+
+                    if (allAttachments.length === 0) {
+                      return (
+                        <ActionCard theme={theme}>
+                          <ActionCardHeader theme={theme}>
+                            <FaPaperclip /> Attachments
+                          </ActionCardHeader>
+                          <ActionCardContent theme={theme} style={{ opacity: 0.6 }}>
+                            No attachments in this thread
+                          </ActionCardContent>
+                        </ActionCard>
+                      );
+                    }
+
+                    return (
+                      <>
+                        <div style={{
+                          padding: '8px 16px',
+                          fontSize: '12px',
+                          color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                          borderBottom: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
+                        }}>
+                          {allAttachments.length} attachment{allAttachments.length !== 1 ? 's' : ''} (stored in Fastmail)
+                        </div>
+                        {allAttachments.map((att, idx) => (
+                          <ActionCard key={idx} theme={theme}>
+                            <ActionCardHeader theme={theme}>
+                              <FaPaperclip /> {att.name || 'Unnamed file'}
+                            </ActionCardHeader>
+                            <ActionCardContent theme={theme}>
+                              <div style={{ fontSize: '13px', marginBottom: '4px' }}>
+                                {att.type || 'Unknown type'}
+                              </div>
+                              <div style={{ fontSize: '12px', opacity: 0.7 }}>
+                                {att.size ? `${(att.size / 1024).toFixed(1)} KB` : 'Size unknown'}
+                              </div>
+                            </ActionCardContent>
+                            <ActionCardButtons>
+                              <SmallBtn
+                                theme={theme}
+                                onClick={() => window.open(`https://app.fastmail.com/mail/${att.fastmailId}`, '_blank')}
+                              >
+                                Open in Fastmail
+                              </SmallBtn>
+                            </ActionCardButtons>
+                          </ActionCard>
+                        ))}
+                      </>
+                    );
+                  })()}
+                </>
               )}
             </>
           )}
