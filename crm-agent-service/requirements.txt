@@ -1,0 +1,22 @@
+# FastAPI and server
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-dotenv==1.0.1
+
+# Anthropic Claude Agent SDK
+anthropic>=0.40.0
+
+# Supabase
+supabase>=2.10.0
+
+# Fuzzy matching for duplicate detection
+rapidfuzz==3.10.1
+python-Levenshtein==0.26.1
+
+# Data handling
+pydantic>=2.10.0
+pydantic-settings>=2.6.0
+
+# Utilities
+tenacity>=9.0.0
+structlog>=24.4.0

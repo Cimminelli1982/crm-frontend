@@ -985,7 +985,7 @@ const CommandCenterPage = ({ theme }) => {
 
   // Spam menu state
   const [spamMenuOpen, setSpamMenuOpen] = useState(false);
-  const [activeActionTab, setActiveActionTab] = useState('suggestions');
+  const [activeActionTab, setActiveActionTab] = useState('chat');
 
   // Contacts from email (for Contacts tab)
   const [emailContacts, setEmailContacts] = useState([]);
@@ -1029,6 +1029,12 @@ const CommandCenterPage = ({ theme }) => {
   const [introducee2SearchResults, setIntroducee2SearchResults] = useState([]);
   const [searchingIntroducee2, setSearchingIntroducee2] = useState(false);
   const [editingIntroduction, setEditingIntroduction] = useState(null); // intro being edited
+
+  // AI Suggestions state
+  const [aiSuggestions, setAiSuggestions] = useState([]);
+  const [loadingAiSuggestions, setLoadingAiSuggestions] = useState(false);
+  const [selectedSuggestion, setSelectedSuggestion] = useState(null);
+  const [processingAction, setProcessingAction] = useState(false);
 
   // Todoist Tasks state
   const [todoistTasks, setTodoistTasks] = useState([]);
@@ -1217,6 +1223,88 @@ const CommandCenterPage = ({ theme }) => {
 
     if (activeTab === 'email') {
       fetchEmails();
+    }
+  }, [activeTab]);
+
+  // Fetch AI suggestions from Supabase
+  const fetchAiSuggestions = async () => {
+    setLoadingAiSuggestions(true);
+    try {
+      const { data, error } = await supabase
+        .from('agent_suggestions')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (error) {
+        console.error('Error fetching AI suggestions:', error);
+      } else {
+        setAiSuggestions(data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching AI suggestions:', error);
+    }
+    setLoadingAiSuggestions(false);
+  };
+
+  // Handle AI suggestion action (accept/reject)
+  const handleSuggestionAction = async (suggestionId, action, notes = null) => {
+    setProcessingAction(true);
+    try {
+      const newStatus = action === 'accept' ? 'accepted' : 'rejected';
+      const { error } = await supabase
+        .from('agent_suggestions')
+        .update({
+          status: newStatus,
+          reviewed_at: new Date().toISOString(),
+          reviewed_by: 'user',
+          user_notes: notes,
+        })
+        .eq('id', suggestionId);
+
+      if (error) {
+        console.error('Error updating suggestion:', error);
+        toast.error('Failed to update suggestion');
+      } else {
+        toast.success(`Suggestion ${action}ed`);
+        // Refresh suggestions
+        fetchAiSuggestions();
+        setSelectedSuggestion(null);
+      }
+    } catch (error) {
+      console.error('Error handling suggestion action:', error);
+      toast.error('Failed to process action');
+    }
+    setProcessingAction(false);
+  };
+
+  // Trigger duplicate scan
+  const triggerDuplicateScan = async () => {
+    try {
+      toast.loading('Running duplicate scan...');
+      const response = await fetch(`${BACKEND_URL}/agent/run-cleanup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entity_type: 'contact', limit: 100 }),
+      });
+      toast.dismiss();
+      if (response.ok) {
+        const result = await response.json();
+        toast.success(`Scan complete: ${result.suggestions_created} suggestions created`);
+        fetchAiSuggestions();
+      } else {
+        toast.error('Scan failed');
+      }
+    } catch (error) {
+      toast.dismiss();
+      toast.error('Could not connect to agent service');
+    }
+  };
+
+  // Fetch AI suggestions when tab is active
+  useEffect(() => {
+    if (activeTab === 'ai') {
+      fetchAiSuggestions();
     }
   }, [activeTab]);
 
@@ -2487,13 +2575,13 @@ ${emailContext}`;
   };
 
   // Handle click on email address in email header
-  const handleEmailAddressClick = (emailAddress, name) => {
+  const handleEmailAddressClick = async (emailAddress, name, emailDate) => {
     const contact = findContactByEmail(emailAddress);
     if (contact) {
-      // Contact exists - navigate to their page
-      navigate(`/new-crm/contact/${contact.contact_id}`);
+      // Contact exists - navigate to their page (basename is /new-crm)
+      navigate(`/contact/${contact.contact_id}`);
     } else {
-      // Contact doesn't exist - open add contact modal
+      // Contact doesn't exist - create new contact with full setup
       // Parse name into first and last name
       let firstName = '';
       let lastName = '';
@@ -2503,12 +2591,105 @@ ${emailContext}`;
         lastName = nameParts.slice(1).join(' ') || '';
       }
 
-      // Navigate to add contact page with pre-filled data
-      const params = new URLSearchParams();
-      if (firstName) params.set('firstName', firstName);
-      if (lastName) params.set('lastName', lastName);
-      params.set('email', emailAddress);
-      navigate(`/new-crm/contacts/new?${params.toString()}`);
+      // If no name, use email prefix
+      if (!firstName) {
+        firstName = emailAddress.split('@')[0];
+      }
+
+      // Extract domain for company lookup
+      const emailDomain = emailAddress.split('@')[1]?.toLowerCase();
+      const commonDomains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'me.com', 'live.com', 'msn.com', 'aol.com'];
+      const isPersonalEmail = commonDomains.includes(emailDomain);
+
+      // Use the email date for last_interaction
+      const interactionDate = emailDate ? new Date(emailDate).toISOString() : new Date().toISOString();
+
+      try {
+        toast.loading('Creating contact...', { id: 'create-contact' });
+
+        // 1. Create the contact
+        const { data: newContact, error: contactError } = await supabase
+          .from('contacts')
+          .insert({
+            first_name: firstName,
+            last_name: lastName || null,
+            category: 'Inbox',
+            last_interaction: interactionDate
+          })
+          .select()
+          .single();
+
+        if (contactError) throw contactError;
+
+        // 2. Add the email to contact_emails
+        const { error: emailError } = await supabase
+          .from('contact_emails')
+          .insert({
+            contact_id: newContact.contact_id,
+            email: emailAddress.toLowerCase(),
+            is_primary: true,
+            type: isPersonalEmail ? 'personal' : 'work'
+          });
+
+        if (emailError) console.error('Email insert error:', emailError);
+
+        // 3. Find or create company based on domain (if not personal email)
+        if (!isPersonalEmail && emailDomain) {
+          // Check if company exists via domain
+          const { data: existingDomain } = await supabase
+            .from('company_domains')
+            .select('company_id, companies(company_id, name)')
+            .eq('domain', emailDomain)
+            .single();
+
+          let companyId = existingDomain?.company_id;
+
+          if (!companyId) {
+            // Create new company from domain
+            const companyName = emailDomain.split('.')[0].charAt(0).toUpperCase() + emailDomain.split('.')[0].slice(1);
+            const { data: newCompany, error: companyError } = await supabase
+              .from('companies')
+              .insert({
+                name: companyName,
+                website: `https://${emailDomain}`,
+                category: 'Inbox'
+              })
+              .select()
+              .single();
+
+            if (!companyError && newCompany) {
+              companyId = newCompany.company_id;
+
+              // Add domain to company_domains
+              await supabase
+                .from('company_domains')
+                .insert({
+                  company_id: companyId,
+                  domain: emailDomain
+                });
+            }
+          }
+
+          // 4. Link contact to company via contact_companies
+          if (companyId) {
+            await supabase
+              .from('contact_companies')
+              .insert({
+                contact_id: newContact.contact_id,
+                company_id: companyId,
+                is_primary: true
+              });
+          }
+        }
+
+        toast.success(`Created: ${firstName} ${lastName || ''}`.trim(), { id: 'create-contact' });
+
+        // Navigate to the new contact
+        navigate(`/contact/${newContact.contact_id}`);
+      } catch (error) {
+        console.error('Error creating contact:', error);
+        toast.error('Failed to create contact', { id: 'create-contact' });
+      }
     }
   };
 
@@ -3783,7 +3964,7 @@ internet businesses.`;
                               width: '45px'
                             }}>From:</span>
                             <span
-                              onClick={() => email.from_email?.toLowerCase() !== MY_EMAIL && handleEmailAddressClick(email.from_email, email.from_name)}
+                              onClick={() => email.from_email?.toLowerCase() !== MY_EMAIL && handleEmailAddressClick(email.from_email, email.from_name, email.date)}
                               style={{
                                 fontSize: '14px',
                                 color: theme === 'light' ? '#111827' : '#F9FAFB',
@@ -3833,7 +4014,7 @@ internet businesses.`;
                                 {email.to_recipients.map((r, i) => (
                                   <span
                                     key={i}
-                                    onClick={() => r.email?.toLowerCase() !== MY_EMAIL && handleEmailAddressClick(r.email, r.name)}
+                                    onClick={() => r.email?.toLowerCase() !== MY_EMAIL && handleEmailAddressClick(r.email, r.name, email.date)}
                                     style={{
                                       cursor: r.email?.toLowerCase() !== MY_EMAIL ? 'pointer' : 'default',
                                       display: 'inline-flex',
@@ -3880,7 +4061,7 @@ internet businesses.`;
                                 {email.cc_recipients.map((r, i) => (
                                   <span
                                     key={i}
-                                    onClick={() => r.email?.toLowerCase() !== MY_EMAIL && handleEmailAddressClick(r.email, r.name)}
+                                    onClick={() => r.email?.toLowerCase() !== MY_EMAIL && handleEmailAddressClick(r.email, r.name, email.date)}
                                     style={{
                                       cursor: r.email?.toLowerCase() !== MY_EMAIL ? 'pointer' : 'default',
                                       display: 'inline-flex',
@@ -4138,8 +4319,11 @@ internet businesses.`;
         {/* Right: Actions Panel */}
         <ActionsPanel theme={theme}>
           <ActionsPanelTabs theme={theme}>
-            <ActionTabIcon theme={theme} $active={activeActionTab === 'suggestions'} onClick={() => setActiveActionTab('suggestions')} title="Suggestions">
+            <ActionTabIcon theme={theme} $active={activeActionTab === 'chat'} onClick={() => setActiveActionTab('chat')} title="Chat & Reply Help">
               <FaLightbulb />
+            </ActionTabIcon>
+            <ActionTabIcon theme={theme} $active={activeActionTab === 'ai'} onClick={() => setActiveActionTab('ai')} title="AI Suggestions">
+              <FaRobot />
             </ActionTabIcon>
             <ActionTabIcon theme={theme} $active={activeActionTab === 'contacts'} onClick={() => setActiveActionTab('contacts')} title="Contacts">
               <FaUser />
@@ -4163,7 +4347,7 @@ internet businesses.`;
 
           {selectedThread && selectedThread.length > 0 && (
             <>
-              {activeActionTab === 'suggestions' && (
+              {activeActionTab === 'chat' && (
                 <ChatContainer>
                   {/* Quick Actions */}
                   <QuickActionsContainer theme={theme}>
@@ -4286,6 +4470,277 @@ internet businesses.`;
                     </ChatSendButton>
                   </ChatInputContainer>
                 </ChatContainer>
+              )}
+
+              {activeActionTab === 'ai' && (
+                <div style={{ padding: '16px', overflowY: 'auto', flex: 1 }}>
+                  {/* Header with refresh and scan buttons */}
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '16px'
+                  }}>
+                    <div style={{
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      color: theme === 'light' ? '#111827' : '#F9FAFB'
+                    }}>
+                      AI Suggestions
+                      {aiSuggestions.filter(s => s.status === 'pending').length > 0 && (
+                        <span style={{
+                          marginLeft: '8px',
+                          background: '#EF4444',
+                          color: 'white',
+                          padding: '2px 8px',
+                          borderRadius: '12px',
+                          fontSize: '12px'
+                        }}>
+                          {aiSuggestions.filter(s => s.status === 'pending').length}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={fetchAiSuggestions}
+                        disabled={loadingAiSuggestions}
+                        style={{
+                          padding: '6px 12px',
+                          fontSize: '12px',
+                          background: theme === 'light' ? '#F3F4F6' : '#374151',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          color: theme === 'light' ? '#374151' : '#D1D5DB'
+                        }}
+                      >
+                        Refresh
+                      </button>
+                      <button
+                        onClick={triggerDuplicateScan}
+                        style={{
+                          padding: '6px 12px',
+                          fontSize: '12px',
+                          background: '#8B5CF6',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Scan Duplicates
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Suggestions List */}
+                  {loadingAiSuggestions ? (
+                    <div style={{ textAlign: 'center', padding: '24px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                      Loading suggestions...
+                    </div>
+                  ) : aiSuggestions.filter(s => s.status === 'pending').length === 0 ? (
+                    <div style={{
+                      textAlign: 'center',
+                      padding: '24px',
+                      color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                    }}>
+                      <FaRobot size={32} style={{ marginBottom: '12px', opacity: 0.5 }} />
+                      <div>No pending suggestions</div>
+                      <div style={{ fontSize: '12px', marginTop: '8px' }}>
+                        New suggestions appear when emails arrive
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {aiSuggestions.filter(s => s.status === 'pending').map(suggestion => (
+                        <div
+                          key={suggestion.id}
+                          style={{
+                            background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                            border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                            borderRadius: '8px',
+                            padding: '12px',
+                            cursor: 'pointer'
+                          }}
+                          onClick={() => setSelectedSuggestion(selectedSuggestion?.id === suggestion.id ? null : suggestion)}
+                        >
+                          {/* Suggestion Header */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                textTransform: 'uppercase',
+                                background: suggestion.suggestion_type === 'duplicate' ? '#FEF3C7' :
+                                            suggestion.suggestion_type === 'enrichment' ? '#DBEAFE' : '#E0E7FF',
+                                color: suggestion.suggestion_type === 'duplicate' ? '#92400E' :
+                                       suggestion.suggestion_type === 'enrichment' ? '#1E40AF' : '#3730A3'
+                              }}>
+                                {suggestion.suggestion_type}
+                              </span>
+                              <span style={{
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                background: theme === 'light' ? '#F3F4F6' : '#374151',
+                                color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                              }}>
+                                {suggestion.entity_type}
+                              </span>
+                            </div>
+                            <span style={{
+                              fontSize: '11px',
+                              color: suggestion.confidence_score >= 0.8 ? '#10B981' :
+                                     suggestion.confidence_score >= 0.6 ? '#F59E0B' : '#EF4444'
+                            }}>
+                              {Math.round((suggestion.confidence_score || 0) * 100)}% confidence
+                            </span>
+                          </div>
+
+                          {/* Suggestion Preview */}
+                          <div style={{
+                            fontSize: '13px',
+                            color: theme === 'light' ? '#374151' : '#D1D5DB',
+                            marginBottom: '8px'
+                          }}>
+                            {suggestion.suggestion_type === 'duplicate' && suggestion.suggestion_data?.primary_contact && (
+                              <>
+                                <strong>{suggestion.suggestion_data.primary_contact.first_name} {suggestion.suggestion_data.primary_contact.last_name}</strong>
+                                {' '}might be duplicate of{' '}
+                                <strong>{suggestion.suggestion_data.duplicate_contact?.first_name} {suggestion.suggestion_data.duplicate_contact?.last_name}</strong>
+                              </>
+                            )}
+                            {suggestion.suggestion_type === 'enrichment' && (
+                              <>
+                                Suggested: <strong>{suggestion.suggestion_data?.field}</strong> = "{suggestion.suggestion_data?.suggested_value}"
+                              </>
+                            )}
+                            {suggestion.agent_reasoning && (
+                              <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginTop: '4px' }}>
+                                {suggestion.agent_reasoning}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Expanded Details */}
+                          {selectedSuggestion?.id === suggestion.id && (
+                            <div style={{
+                              marginTop: '12px',
+                              paddingTop: '12px',
+                              borderTop: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
+                            }}>
+                              {/* Show full suggestion data */}
+                              {suggestion.suggestion_type === 'duplicate' && suggestion.suggestion_data && (
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '12px' }}>
+                                  <div>
+                                    <div style={{ fontWeight: 600, marginBottom: '4px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>Primary Contact</div>
+                                    <div style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                                      {suggestion.suggestion_data.primary_contact?.emails?.join(', ') || 'No email'}
+                                    </div>
+                                    <div style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                                      {suggestion.suggestion_data.primary_contact?.mobiles?.join(', ') || 'No mobile'}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div style={{ fontWeight: 600, marginBottom: '4px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>Duplicate Contact</div>
+                                    <div style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                                      {suggestion.suggestion_data.duplicate_contact?.emails?.join(', ') || 'No email'}
+                                    </div>
+                                    <div style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                                      {suggestion.suggestion_data.duplicate_contact?.mobiles?.join(', ') || 'No mobile'}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Action Buttons */}
+                              <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSuggestionAction(suggestion.id, 'accept');
+                                  }}
+                                  disabled={processingAction}
+                                  style={{
+                                    flex: 1,
+                                    padding: '8px 16px',
+                                    background: '#10B981',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    fontSize: '13px',
+                                    fontWeight: 500
+                                  }}
+                                >
+                                  <FaCheck style={{ marginRight: '6px' }} />
+                                  Accept
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSuggestionAction(suggestion.id, 'reject');
+                                  }}
+                                  disabled={processingAction}
+                                  style={{
+                                    flex: 1,
+                                    padding: '8px 16px',
+                                    background: theme === 'light' ? '#F3F4F6' : '#374151',
+                                    color: theme === 'light' ? '#374151' : '#D1D5DB',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    fontSize: '13px',
+                                    fontWeight: 500
+                                  }}
+                                >
+                                  <FaTimes style={{ marginRight: '6px' }} />
+                                  Reject
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Show recent processed suggestions */}
+                  {aiSuggestions.filter(s => s.status !== 'pending').length > 0 && (
+                    <div style={{ marginTop: '24px' }}>
+                      <div style={{
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                        marginBottom: '8px'
+                      }}>
+                        Recently Processed
+                      </div>
+                      {aiSuggestions.filter(s => s.status !== 'pending').slice(0, 5).map(suggestion => (
+                        <div
+                          key={suggestion.id}
+                          style={{
+                            padding: '8px 12px',
+                            fontSize: '12px',
+                            color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                            borderLeft: `3px solid ${suggestion.status === 'accepted' ? '#10B981' : '#EF4444'}`,
+                            marginBottom: '4px',
+                            background: theme === 'light' ? '#F9FAFB' : '#111827',
+                            borderRadius: '0 4px 4px 0'
+                          }}
+                        >
+                          <span style={{ textTransform: 'capitalize' }}>{suggestion.suggestion_type}</span>
+                          {' - '}
+                          <span style={{ color: suggestion.status === 'accepted' ? '#10B981' : '#EF4444' }}>
+                            {suggestion.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
 
               {activeActionTab === 'contacts' && (

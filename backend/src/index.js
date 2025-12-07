@@ -26,9 +26,50 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3001;
 const SYNC_INTERVAL = 60 * 1000; // 60 seconds
+const CRM_AGENT_URL = process.env.CRM_AGENT_URL || 'http://localhost:8000';
 
 let lastSyncTime = null;
 let syncCount = 0;
+
+// Send new emails to CRM Agent for analysis
+async function notifyAgentOfNewEmails(emails) {
+  if (!emails || emails.length === 0) return;
+
+  console.log(`[Agent] Sending ${emails.length} emails for analysis...`);
+
+  for (const email of emails) {
+    try {
+      const response = await fetch(`${CRM_AGENT_URL}/analyze-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: {
+            id: email.id,
+            fastmail_id: email.fastmail_id,
+            from_email: email.from_email,
+            from_name: email.from_name,
+            to_recipients: email.to_recipients,
+            cc_recipients: email.cc_recipients,
+            subject: email.subject,
+            body_text: email.body_text,
+            snippet: email.snippet,
+            date: email.date,
+          }
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log(`[Agent] Analyzed email from ${email.from_email}: ${result.suggestions_created} suggestions`);
+      } else {
+        console.error(`[Agent] Error analyzing email: ${response.status}`);
+      }
+    } catch (error) {
+      // Don't let agent errors block email sync
+      console.error(`[Agent] Failed to notify agent:`, error.message);
+    }
+  }
+}
 
 // Auto-sync function
 async function autoSync() {
@@ -100,6 +141,13 @@ async function autoSync() {
     syncCount++;
 
     console.log(`[${lastSyncTime}] Synced ${validEmails.length} emails (total syncs: ${syncCount})`);
+
+    // Notify CRM Agent of new emails (async, don't block)
+    if (validEmails.length > 0) {
+      notifyAgentOfNewEmails(validEmails).catch(err => {
+        console.error('[Agent] Background notification error:', err.message);
+      });
+    }
   } catch (error) {
     console.error(`[${new Date().toISOString()}] Auto-sync error:`, error.message);
   }
@@ -535,6 +583,34 @@ async function todoistRequest(endpoint, options = {}) {
 
   return response.json();
 }
+
+// ==================== CRM AGENT ENDPOINTS ====================
+
+// Run duplicate scan via CRM Agent
+app.post('/agent/run-cleanup', async (req, res) => {
+  try {
+    const { entity_type = 'contact', limit = 100 } = req.body;
+
+    const response = await fetch(`${CRM_AGENT_URL}/run-cleanup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entity_type, limit }),
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      res.json(result);
+    } else {
+      const error = await response.text();
+      res.status(response.status).json({ error });
+    }
+  } catch (error) {
+    console.error('[Agent] Cleanup error:', error.message);
+    res.status(500).json({ error: 'Failed to connect to agent service' });
+  }
+});
+
+// ==================== TODOIST ENDPOINTS ====================
 
 // Get all projects with sections
 app.get('/todoist/projects', async (req, res) => {
