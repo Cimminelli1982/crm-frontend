@@ -575,12 +575,63 @@ app.post('/todoist/tasks', async (req, res) => {
 app.patch('/todoist/tasks/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const updates = req.body;
+    const { section_id, project_id, ...updates } = req.body;
+    console.log(`[Todoist] Update request - id: ${id}, section_id: ${section_id}, project_id: ${project_id}, updates:`, updates);
 
+    // First, update basic task properties (content, description, priority, due_string)
     const task = await todoistRequest(`/tasks/${id}`, {
       method: 'POST',
       body: JSON.stringify(updates),
     });
+
+    // If section_id or project_id changed, we need to move the task
+    // Todoist REST API requires a separate call for moving tasks
+    if (section_id !== undefined || project_id !== undefined) {
+      const movePayload = {};
+      if (section_id !== undefined) movePayload.section_id = section_id || null;
+      if (project_id !== undefined) movePayload.project_id = project_id;
+
+      // Use the Sync API for moving tasks (REST API doesn't support it directly)
+      // Important: Only ONE of section_id or project_id can be specified per move command
+      const moveUuid = `move-${id}-${Date.now()}`;
+
+      // Determine move args - prioritize section_id if provided, else project_id
+      const moveArgs = { id: id };
+      if (section_id !== undefined && section_id) {
+        // Moving to a specific section (section_id implies the project)
+        moveArgs.section_id = section_id;
+      } else if (section_id === '' || section_id === null) {
+        // Moving out of section to project root - need project_id
+        moveArgs.project_id = project_id;
+      } else if (project_id !== undefined) {
+        // Moving to different project
+        moveArgs.project_id = project_id;
+      }
+
+      const syncResponse = await fetch('https://api.todoist.com/sync/v9/sync', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${TODOIST_TOKEN}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          commands: JSON.stringify([{
+            type: 'item_move',
+            uuid: moveUuid,
+            args: moveArgs
+          }])
+        }),
+      });
+
+      const syncResult = await syncResponse.json();
+      console.log(`[Todoist] Sync response:`, JSON.stringify(syncResult));
+
+      if (syncResult.sync_status && syncResult.sync_status[moveUuid] === 'ok') {
+        console.log(`[Todoist] Moved task ${id} to section ${section_id || 'none'}`);
+      } else if (syncResult.sync_status) {
+        console.error(`[Todoist] Move failed:`, syncResult.sync_status[moveUuid]);
+      }
+    }
 
     console.log(`[Todoist] Updated task ${id}`);
     res.json({ task });

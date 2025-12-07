@@ -987,7 +987,7 @@ const CommandCenterPage = ({ theme }) => {
   const [newTaskDescription, setNewTaskDescription] = useState('');
   const [creatingTask, setCreatingTask] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
-  const [expandedProjects, setExpandedProjects] = useState({}); // { projectId: true/false }
+  const [expandedProjects, setExpandedProjects] = useState({ '2335921711': true }); // Only Inbox expanded by default
   const [expandedSections, setExpandedSections] = useState({}); // { sectionId: true/false }
 
   // AI Chat state
@@ -1220,7 +1220,8 @@ const CommandCenterPage = ({ theme }) => {
         toast.success(editingTask ? 'Task updated!' : 'Task created!');
         setTaskModalOpen(false);
         resetTaskForm();
-        fetchTodoistData();
+        // Small delay to let Todoist sync complete before refreshing
+        setTimeout(() => fetchTodoistData(), 500);
       } else {
         const error = await response.json();
         toast.error(error.error || 'Failed to save task');
@@ -4215,28 +4216,16 @@ internet businesses.`;
 
               {activeActionTab === 'tasks' && (
                 <>
-                  {/* Add Task Button */}
-                  <div style={{
-                    padding: '12px 16px',
-                    borderBottom: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
+                  {/* Add New Task Button - matches Introduction style */}
+                  <ActionCard theme={theme} style={{ cursor: 'pointer' }} onClick={() => {
+                    resetTaskForm();
+                    setTaskModalOpen(true);
                   }}>
-                    <span style={{ fontSize: '14px', fontWeight: 500, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
-                      Todoist Tasks ({todoistTasks.length})
-                    </span>
-                    <SmallBtn
-                      theme={theme}
-                      $variant="success"
-                      onClick={() => {
-                        resetTaskForm();
-                        setTaskModalOpen(true);
-                      }}
-                    >
-                      <FaPlus style={{ marginRight: '4px' }} /> Add Task
-                    </SmallBtn>
-                  </div>
+                    <ActionCardContent theme={theme} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px' }}>
+                      <FaTasks style={{ color: '#10B981' }} />
+                      <span style={{ fontWeight: 600 }}>Add New Task</span>
+                    </ActionCardContent>
+                  </ActionCard>
 
                   {/* Loading State */}
                   {loadingTasks && (
@@ -4261,7 +4250,7 @@ internet businesses.`;
                     const projectTasks = todoistTasks.filter(t => t.project_id === project.id);
                     if (projectTasks.length === 0) return null;
 
-                    const isProjectExpanded = expandedProjects[project.id] !== false; // default expanded
+                    const isProjectExpanded = expandedProjects[project.id] === true; // default collapsed
                     const projectColor = getProjectColor(project.id);
 
                     // Group tasks by section
@@ -4374,12 +4363,16 @@ internet businesses.`;
                               </ActionCard>
                             ))}
 
-                            {/* Sections */}
-                            {project.sections && project.sections.map(section => {
+                            {/* Sections - sorted with Recurring always last */}
+                            {project.sections && [...project.sections].sort((a, b) => {
+                              if (a.name === 'Recurring') return 1;
+                              if (b.name === 'Recurring') return -1;
+                              return a.order - b.order;
+                            }).map(section => {
                               const sectionTasks = tasksBySection[section.id] || [];
                               if (sectionTasks.length === 0) return null;
 
-                              const isSectionExpanded = expandedSections[section.id] !== false; // default expanded
+                              const isSectionExpanded = expandedSections[section.id] === true; // default collapsed
 
                               return (
                                 <div key={section.id} style={{ marginTop: '4px' }}>
