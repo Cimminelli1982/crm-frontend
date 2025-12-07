@@ -2479,6 +2479,44 @@ ${emailContext}`;
     return recipients.map(r => r.name ? `${r.name} <${r.email}>` : r.email).join(', ');
   };
 
+  // Find contact by email in emailContacts
+  const findContactByEmail = (emailAddress) => {
+    if (!emailAddress || !emailContacts) return null;
+    const participant = emailContacts.find(p => p.email?.toLowerCase() === emailAddress.toLowerCase());
+    return participant?.contact || null;
+  };
+
+  // Handle click on email address in email header
+  const handleEmailAddressClick = (emailAddress, name) => {
+    const contact = findContactByEmail(emailAddress);
+    if (contact) {
+      // Contact exists - navigate to their page
+      navigate(`/new-crm/contact/${contact.contact_id}`);
+    } else {
+      // Contact doesn't exist - open add contact modal
+      // Parse name into first and last name
+      let firstName = '';
+      let lastName = '';
+      if (name && name !== emailAddress) {
+        const nameParts = name.trim().split(' ');
+        firstName = nameParts[0] || '';
+        lastName = nameParts.slice(1).join(' ') || '';
+      }
+
+      // Navigate to add contact page with pre-filled data
+      const params = new URLSearchParams();
+      if (firstName) params.set('firstName', firstName);
+      if (lastName) params.set('lastName', lastName);
+      params.set('email', emailAddress);
+      navigate(`/new-crm/contacts/new?${params.toString()}`);
+    }
+  };
+
+  // Check if email has a linked contact
+  const emailHasContact = (emailAddress) => {
+    return !!findContactByEmail(emailAddress);
+  };
+
   // Get the relevant person for email list (not me)
   const MY_EMAIL = 'simone@cimminelli.com';
   const getRelevantPerson = (email) => {
@@ -3744,11 +3782,21 @@ internet businesses.`;
                               display: 'inline-block',
                               width: '45px'
                             }}>From:</span>
-                            <span style={{
-                              fontSize: '14px',
-                              color: theme === 'light' ? '#111827' : '#F9FAFB',
-                              fontWeight: 500
-                            }}>
+                            <span
+                              onClick={() => email.from_email?.toLowerCase() !== MY_EMAIL && handleEmailAddressClick(email.from_email, email.from_name)}
+                              style={{
+                                fontSize: '14px',
+                                color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                fontWeight: 500,
+                                cursor: email.from_email?.toLowerCase() !== MY_EMAIL ? 'pointer' : 'default',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                              }}
+                              title={email.from_email?.toLowerCase() !== MY_EMAIL
+                                ? (emailHasContact(email.from_email) ? 'View contact' : 'Add as contact')
+                                : ''}
+                            >
                               {email.from_name && email.from_name !== email.from_email
                                 ? `${email.from_name} `
                                 : ''}
@@ -3760,6 +3808,13 @@ internet businesses.`;
                                   ? `<${email.from_email}>`
                                   : email.from_email}
                               </span>
+                              {email.from_email?.toLowerCase() !== MY_EMAIL && (
+                                emailHasContact(email.from_email) ? (
+                                  <FaUser size={10} style={{ color: theme === 'light' ? '#10B981' : '#34D399' }} title="Contact exists" />
+                                ) : (
+                                  <FaPlus size={10} style={{ color: theme === 'light' ? '#F59E0B' : '#FBBF24' }} title="Add contact" />
+                                )
+                              )}
                             </span>
                           </div>
 
@@ -3771,18 +3826,38 @@ internet businesses.`;
                                 fontWeight: 600,
                                 color: theme === 'light' ? '#6B7280' : '#9CA3AF',
                                 display: 'inline-block',
-                                width: '45px'
+                                width: '45px',
+                                verticalAlign: 'top'
                               }}>To:</span>
                               <span style={{ fontSize: '13px', color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
                                 {email.to_recipients.map((r, i) => (
-                                  <span key={i}>
-                                    {i > 0 && ', '}
+                                  <span
+                                    key={i}
+                                    onClick={() => r.email?.toLowerCase() !== MY_EMAIL && handleEmailAddressClick(r.email, r.name)}
+                                    style={{
+                                      cursor: r.email?.toLowerCase() !== MY_EMAIL ? 'pointer' : 'default',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px'
+                                    }}
+                                    title={r.email?.toLowerCase() !== MY_EMAIL
+                                      ? (emailHasContact(r.email) ? 'View contact' : 'Add as contact')
+                                      : ''}
+                                  >
+                                    {i > 0 && <span style={{ marginRight: '4px' }}>, </span>}
                                     {r.name && r.name !== r.email ? (
                                       <>
                                         {r.name} <span style={{ color: theme === 'light' ? '#3B82F6' : '#60A5FA' }}>&lt;{r.email}&gt;</span>
                                       </>
                                     ) : (
                                       <span style={{ color: theme === 'light' ? '#3B82F6' : '#60A5FA' }}>{r.email}</span>
+                                    )}
+                                    {r.email?.toLowerCase() !== MY_EMAIL && (
+                                      emailHasContact(r.email) ? (
+                                        <FaUser size={9} style={{ color: theme === 'light' ? '#10B981' : '#34D399' }} />
+                                      ) : (
+                                        <FaPlus size={9} style={{ color: theme === 'light' ? '#F59E0B' : '#FBBF24' }} />
+                                      )
                                     )}
                                   </span>
                                 ))}
@@ -3798,18 +3873,38 @@ internet businesses.`;
                                 fontWeight: 600,
                                 color: theme === 'light' ? '#6B7280' : '#9CA3AF',
                                 display: 'inline-block',
-                                width: '45px'
+                                width: '45px',
+                                verticalAlign: 'top'
                               }}>Cc:</span>
                               <span style={{ fontSize: '13px', color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
                                 {email.cc_recipients.map((r, i) => (
-                                  <span key={i}>
-                                    {i > 0 && ', '}
+                                  <span
+                                    key={i}
+                                    onClick={() => r.email?.toLowerCase() !== MY_EMAIL && handleEmailAddressClick(r.email, r.name)}
+                                    style={{
+                                      cursor: r.email?.toLowerCase() !== MY_EMAIL ? 'pointer' : 'default',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px'
+                                    }}
+                                    title={r.email?.toLowerCase() !== MY_EMAIL
+                                      ? (emailHasContact(r.email) ? 'View contact' : 'Add as contact')
+                                      : ''}
+                                  >
+                                    {i > 0 && <span style={{ marginRight: '4px' }}>, </span>}
                                     {r.name && r.name !== r.email ? (
                                       <>
                                         {r.name} <span style={{ color: theme === 'light' ? '#3B82F6' : '#60A5FA' }}>&lt;{r.email}&gt;</span>
                                       </>
                                     ) : (
                                       <span style={{ color: theme === 'light' ? '#3B82F6' : '#60A5FA' }}>{r.email}</span>
+                                    )}
+                                    {r.email?.toLowerCase() !== MY_EMAIL && (
+                                      emailHasContact(r.email) ? (
+                                        <FaUser size={9} style={{ color: theme === 'light' ? '#10B981' : '#34D399' }} />
+                                      ) : (
+                                        <FaPlus size={9} style={{ color: theme === 'light' ? '#F59E0B' : '#FBBF24' }} />
+                                      )
                                     )}
                                   </span>
                                 ))}
