@@ -2,11 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import styled from 'styled-components';
-import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaMapMarkerAlt, FaArrowLeft, FaEdit, FaStickyNote, FaComments, FaHandshake, FaSlack } from 'react-icons/fa';
+import { FaUser, FaPhone, FaEnvelope, FaBuilding, FaMapMarkerAlt, FaArrowLeft, FaEdit, FaStickyNote, FaComments, FaHandshake, FaSlack, FaTimes, FaLinkedin } from 'react-icons/fa';
 import { FiAlertTriangle, FiMail, FiUser, FiCalendar, FiMessageSquare, FiExternalLink } from 'react-icons/fi';
 import { toast } from 'react-hot-toast';
 import Modal from 'react-modal';
 import LinkedinSearchOpenEnrich from '../components/modals/Linkedin-Search-Open-Enrich';
+import ManageContactEmailsModal from '../components/modals/ManageContactEmailsModal';
+import ManageContactMobilesModal from '../components/modals/ManageContactMobilesModal';
+import EmailComposerModal from '../components/modals/EmailComposerModal';
+import QuickEditModal from '../components/QuickEditModalRefactored';
+import { useQuickEditModal } from '../hooks/useQuickEditModal';
+import { getVisibleTabs, shouldShowField } from '../helpers/contactListHelpers';
 
 // Set Modal app element for accessibility
 Modal.setAppElement('#root');
@@ -16,7 +22,7 @@ const ContactDetail = ({ theme }) => {
   const navigate = useNavigate();
   const [contact, setContact] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('Info');
+  const [activeTab, setActiveTab] = useState('Contacts');
   const [activeChatTab, setActiveChatTab] = useState('Timeline');
   const [activeRelatedTab, setActiveRelatedTab] = useState('Contacts');
   const [activeKeepInTouchTab, setActiveKeepInTouchTab] = useState('Next');
@@ -24,6 +30,12 @@ const ContactDetail = ({ theme }) => {
   // Email/Mobile selection modals
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [mobileModalOpen, setMobileModalOpen] = useState(false);
+
+  // Email management and composer modals
+  const [manageEmailsModalOpen, setManageEmailsModalOpen] = useState(false);
+  const [manageMobilesModalOpen, setManageMobilesModalOpen] = useState(false);
+  const [emailComposerOpen, setEmailComposerOpen] = useState(false);
+  const [composerToEmail, setComposerToEmail] = useState([]);
 
   // Email detail modal
   const [emailDetailModalOpen, setEmailDetailModalOpen] = useState(false);
@@ -81,6 +93,93 @@ const ContactDetail = ({ theme }) => {
   // Next event state
   const [nextEvent, setNextEvent] = useState(null);
   const [loadingNextEvent, setLoadingNextEvent] = useState(false);
+
+  // QuickEdit modal hook
+  const quickEditModal = useQuickEditModal(() => {
+    fetchContact();
+  });
+
+  const {
+    quickEditContactModalOpen,
+    contactForQuickEdit,
+    showMissingFieldsOnly,
+    quickEditActiveTab,
+    setQuickEditActiveTab,
+    quickEditDescriptionText,
+    setQuickEditDescriptionText,
+    quickEditJobRoleText,
+    setQuickEditJobRoleText,
+    quickEditContactCategory,
+    setQuickEditContactCategory,
+    quickEditContactScore,
+    setQuickEditContactScore,
+    quickEditFirstName,
+    setQuickEditFirstName,
+    quickEditLastName,
+    setQuickEditLastName,
+    quickEditLinkedin,
+    setQuickEditLinkedin,
+    quickEditKeepInTouchFrequency,
+    setQuickEditKeepInTouchFrequency,
+    quickEditBirthdayDay,
+    setQuickEditBirthdayDay,
+    quickEditBirthdayMonth,
+    setQuickEditBirthdayMonth,
+    quickEditAgeEstimate,
+    setQuickEditAgeEstimate,
+    quickEditChristmasWishes,
+    setQuickEditChristmasWishes,
+    quickEditEasterWishes,
+    setQuickEditEasterWishes,
+    quickEditShowMissing,
+    setQuickEditShowMissing,
+    quickEditContactEmails,
+    setQuickEditContactEmails,
+    quickEditContactMobiles,
+    setQuickEditContactMobiles,
+    quickEditContactCities,
+    setQuickEditContactCities,
+    quickEditContactTags,
+    setQuickEditContactTags,
+    quickEditContactCompanies,
+    setQuickEditContactCompanies,
+    newEmailText,
+    setNewEmailText,
+    newEmailType,
+    setNewEmailType,
+    newMobileText,
+    setNewMobileText,
+    newMobileType,
+    setNewMobileType,
+    quickEditCityModalOpen,
+    setQuickEditCityModalOpen,
+    quickEditTagModalOpen,
+    setQuickEditTagModalOpen,
+    quickEditAssociateCompanyModalOpen,
+    setQuickEditAssociateCompanyModalOpen,
+    openModal: handleOpenQuickEditModal,
+    closeModal: handleCloseQuickEditModal,
+    handleSaveQuickEditContact,
+    handleSilentSave,
+    handleAddEmail,
+    handleRemoveEmail,
+    handleUpdateEmailType,
+    handleSetEmailPrimary,
+    handleAddMobile,
+    handleRemoveMobile,
+    handleUpdateMobileType,
+    handleSetMobilePrimary,
+    handleRemoveCity,
+    handleRemoveTag,
+    handleUpdateCompanyRelationship,
+    handleUpdateCompanyCategory,
+    handleSaveQuickEditFrequency,
+    handleSaveQuickEditBirthday,
+    handleSaveQuickEditChristmasWishes,
+    handleSaveQuickEditEasterWishes,
+    handleAutomation,
+    handleMarkCompleteWithCategory,
+  } = quickEditModal;
 
   const fetchContact = async () => {
     if (!contactId) return;
@@ -859,12 +958,18 @@ const ContactDetail = ({ theme }) => {
     if (!contact?.emails?.length) return;
 
     if (contact.emails.length === 1) {
-      // Only one email, open directly
-      window.open(`mailto:${contact.emails[0].email}`, '_self');
+      // Only one email, open composer directly
+      openEmailComposer(contact.emails[0].email);
     } else {
-      // Multiple emails, show modal
+      // Multiple emails, show selection modal
       setEmailModalOpen(true);
     }
+  };
+
+  // Open email composer with a specific email
+  const openEmailComposer = (email) => {
+    setComposerToEmail([{ email, name: `${contact.first_name || ''} ${contact.last_name || ''}`.trim() }]);
+    setEmailComposerOpen(true);
   };
 
   const handleMobileClick = () => {
@@ -904,8 +1009,8 @@ const ContactDetail = ({ theme }) => {
   };
 
   const handleEmailSelect = (email) => {
-    window.open(`mailto:${email}`, '_self');
     setEmailModalOpen(false);
+    openEmailComposer(email);
   };
 
   const handleMobileSelect = (mobile) => {
@@ -1215,23 +1320,7 @@ const ContactDetail = ({ theme }) => {
 
   const handleEditContact = () => {
     if (!contact) return;
-    const url = `/contacts/workflow/${contact.contact_id}?step=2`;
-    const newTab = window.open(url, '_blank');
-
-    if (newTab) {
-      newTab.focus();
-      setTimeout(() => {
-        if (newTab.document && newTab.document.documentElement && newTab.document.documentElement.requestFullscreen) {
-          newTab.document.documentElement.requestFullscreen().catch(() => {
-            newTab.moveTo(0, 0);
-            newTab.resizeTo(window.screen.availWidth, window.screen.availHeight);
-          });
-        } else {
-          newTab.moveTo(0, 0);
-          newTab.resizeTo(window.screen.availWidth, window.screen.availHeight);
-        }
-      }, 100);
-    }
+    handleOpenQuickEditModal(contact);
   };
 
   const handleOpenObsidianNote = () => {
@@ -1564,11 +1653,6 @@ const ContactDetail = ({ theme }) => {
               <ProfileHeader>
                 <ProfileName theme={theme}>
                   {contact.first_name} {contact.last_name}
-                  {contact.companies?.length > 0 && (
-                    <CompanyNames theme={theme}>
-                      {contact.companies.map(company => company.name).join(', ')}
-                    </CompanyNames>
-                  )}
                 </ProfileName>
                 <ObsidianNoteButton
                   theme={theme}
@@ -1578,8 +1662,15 @@ const ContactDetail = ({ theme }) => {
                   <FaStickyNote />
                 </ObsidianNoteButton>
               </ProfileHeader>
-              {contact.job_role && (
-                <ProfileRole theme={theme}>{contact.job_role}</ProfileRole>
+              {(contact.job_role || contact.companies?.length > 0) && (
+                <ProfileRole theme={theme}>
+                  {contact.job_role}
+                  {contact.job_role && contact.companies?.length > 0 && ' at '}
+                  {contact.companies?.length > 0 && contact.companies.map(company => company.name).join(', ')}
+                </ProfileRole>
+              )}
+              {contact.description && (
+                <ProfileDescription theme={theme}>{contact.description}</ProfileDescription>
               )}
               <ProfileBadges>
                 {contact.category && (
@@ -1595,7 +1686,7 @@ const ContactDetail = ({ theme }) => {
           </ProfileSection>
 
           <NavTabs theme={theme}>
-            {['Info', 'Chats', 'Related', 'Keep in touch'].map(tab => (
+            {['Contacts', 'Related', 'Chats', 'Keep in touch'].map(tab => (
               <NavTab
                 key={tab}
                 theme={theme}
@@ -1607,104 +1698,70 @@ const ContactDetail = ({ theme }) => {
             ))}
           </NavTabs>
 
-          {activeTab === 'Info' && (
+          {activeTab === 'Contacts' && (
             <InfoGrid>
-            {(contact.emails?.length > 0 || contact.mobiles?.length > 0) && (
-              <InfoSection>
-                <SectionTitle theme={theme}>Contact Information</SectionTitle>
-                <InfoList>
-                  {contact.emails?.map((email, idx) => (
-                    <InfoItem key={`email-${idx}`}>
+            {/* Email Section */}
+            <InfoSection>
+              <SectionTitleRow theme={theme}>
+                <SectionTitle theme={theme}>Email</SectionTitle>
+                <EditSectionButton theme={theme} onClick={() => setManageEmailsModalOpen(true)} title="Manage emails">
+                  <FaEdit size={14} />
+                </EditSectionButton>
+              </SectionTitleRow>
+              <InfoList>
+                {contact.emails?.length > 0 ? (
+                  contact.emails.map((email, idx) => (
+                    <InfoItem key={`email-${idx}`} style={{ cursor: 'pointer' }} onClick={() => openEmailComposer(email.email)}>
                       <InfoItemIcon><FaEnvelope /></InfoItemIcon>
                       <InfoItemContent>
-                        <InfoItemLabel theme={theme}>{email.type} Email</InfoItemLabel>
+                        <InfoItemLabel theme={theme}>{email.type || 'Email'}</InfoItemLabel>
                         <InfoItemValue theme={theme}>
-                          <a href={`mailto:${email.email}`}>{email.email}</a>
+                          <span style={{ color: '#3B82F6' }}>{email.email}</span>
                           {email.is_primary && <PrimaryTag>Primary</PrimaryTag>}
                         </InfoItemValue>
                       </InfoItemContent>
                     </InfoItem>
-                  ))}
-                  {contact.mobiles?.map((mobile, idx) => (
+                  ))
+                ) : (
+                  <EmptyFieldText theme={theme}>No email addresses</EmptyFieldText>
+                )}
+              </InfoList>
+            </InfoSection>
+
+            {/* Mobile Section */}
+            <InfoSection>
+              <SectionTitleRow theme={theme}>
+                <SectionTitle theme={theme}>Mobile</SectionTitle>
+                <EditSectionButton theme={theme} onClick={() => setManageMobilesModalOpen(true)} title="Manage mobiles">
+                  <FaEdit size={14} />
+                </EditSectionButton>
+              </SectionTitleRow>
+              <InfoList>
+                {contact.mobiles?.length > 0 ? (
+                  contact.mobiles.map((mobile, idx) => (
                     <InfoItem key={`mobile-${idx}`}>
                       <InfoItemIcon><FaPhone /></InfoItemIcon>
                       <InfoItemContent>
-                        <InfoItemLabel theme={theme}>{mobile.type} Phone</InfoItemLabel>
+                        <InfoItemLabel theme={theme}>{mobile.type || 'Mobile'}</InfoItemLabel>
                         <InfoItemValue theme={theme}>
                           <a href={`https://wa.me/${mobile.mobile.replace(/\D/g, '')}`}>{mobile.mobile}</a>
                           {mobile.is_primary && <PrimaryTag>Primary</PrimaryTag>}
                         </InfoItemValue>
                       </InfoItemContent>
                     </InfoItem>
-                  ))}
-                </InfoList>
-              </InfoSection>
-            )}
-
-            {contact.companies?.length > 0 && (
-              <InfoSection>
-                <SectionTitle theme={theme}>Company Information</SectionTitle>
-                <InfoList>
-                  {contact.companies.map((company, idx) => (
-                    <InfoItem key={`company-${idx}`}>
-                      <InfoItemIcon><FaBuilding /></InfoItemIcon>
-                      <InfoItemContent>
-                        <InfoItemLabel theme={theme}>Company</InfoItemLabel>
-                        <InfoItemValue theme={theme}>{company.name}</InfoItemValue>
-                        {company.website && (
-                          <InfoItemSubValue theme={theme}>
-                            <a href={company.website} target="_blank" rel="noopener noreferrer">
-                              {company.website}
-                            </a>
-                          </InfoItemSubValue>
-                        )}
-                      </InfoItemContent>
-                    </InfoItem>
-                  ))}
-                </InfoList>
-              </InfoSection>
-            )}
-
-            {contact.cities?.length > 0 && (
-              <InfoSection>
-                <SectionTitle theme={theme}>Location</SectionTitle>
-                <InfoList>
-                  {contact.cities.map((city, idx) => (
-                    <InfoItem key={`city-${idx}`}>
-                      <InfoItemIcon><FaMapMarkerAlt /></InfoItemIcon>
-                      <InfoItemContent>
-                        <InfoItemLabel theme={theme}>Location</InfoItemLabel>
-                        <InfoItemValue theme={theme}>{city.name}, {city.country}</InfoItemValue>
-                      </InfoItemContent>
-                    </InfoItem>
-                  ))}
-                </InfoList>
-              </InfoSection>
-            )}
-
-            {contact.tags?.length > 0 && (
-              <InfoSection>
-                <SectionTitle theme={theme}>Tags</SectionTitle>
-                <TagList>
-                  {contact.tags.map((tag, idx) => (
-                    <Tag key={idx} theme={theme}>{tag.name}</Tag>
-                  ))}
-                </TagList>
-              </InfoSection>
-            )}
-
-            {contact.description && (
-              <InfoSection>
-                <SectionTitle theme={theme}>Notes</SectionTitle>
-                <NotesText theme={theme}>{contact.description}</NotesText>
-              </InfoSection>
-            )}
+                  ))
+                ) : (
+                  <EmptyFieldText theme={theme}>No mobile numbers</EmptyFieldText>
+                )}
+              </InfoList>
+            </InfoSection>
 
             {contact.linkedin && (
               <InfoSection>
                 <SectionTitle theme={theme}>Social Media</SectionTitle>
                 <InfoList>
                   <InfoItem>
+                    <InfoItemIcon><FaLinkedin /></InfoItemIcon>
                     <InfoItemContent>
                       <InfoItemLabel theme={theme}>LinkedIn Profile</InfoItemLabel>
                       <InfoItemValue theme={theme}>
@@ -1764,38 +1821,23 @@ const ContactDetail = ({ theme }) => {
 
           {activeTab === 'Related' && (
             <>
-              <RelatedSubMenu theme={theme}>
-                {['Contacts', 'Deals', 'Lists'].map(relatedTab => (
-                  <RelatedSubTab
-                    key={relatedTab}
-                    theme={theme}
-                    $active={activeRelatedTab === relatedTab}
-                    onClick={() => setActiveRelatedTab(relatedTab)}
-                  >
-                    {relatedTab}
-                  </RelatedSubTab>
-                ))}
-              </RelatedSubMenu>
-
-              {activeRelatedTab === 'Contacts' && (
+              {loadingRelatedData ? (
                 <RelatedContainer theme={theme}>
-                  {loadingRelatedData ? (
-                    <RelatedLoading theme={theme}>
-                      <LoadingSpinner />
-                      <span>Loading related data...</span>
-                    </RelatedLoading>
-                  ) : (
-                    <>
+                  <RelatedLoading theme={theme}>
+                    <LoadingSpinner />
+                    <span>Loading related data...</span>
+                  </RelatedLoading>
+                </RelatedContainer>
+              ) : (
+                <InfoGrid>
                       {/* Cities Section */}
-                      <RelatedSection theme={theme}>
-                        <RelatedSectionHeader>
-                          <RelatedSectionTitle theme={theme} style={{ borderBottom: 'none', paddingBottom: '0' }}>
-                            🌍 Cities
-                          </RelatedSectionTitle>
-                          <AddButton theme={theme} onClick={() => setCityModalOpen(true)}>
-                            + Add Cities
-                          </AddButton>
-                        </RelatedSectionHeader>
+                      <InfoSection>
+                        <SectionTitleRow theme={theme}>
+                          <SectionTitle theme={theme}>Cities</SectionTitle>
+                          <EditSectionButton theme={theme} onClick={() => setCityModalOpen(true)} title="Manage cities">
+                            <FaEdit size={14} />
+                          </EditSectionButton>
+                        </SectionTitleRow>
                         {contactCities.length === 0 ? (
                           <RelatedEmptyMessage theme={theme}>
                             No cities associated with this contact
@@ -1837,26 +1879,16 @@ const ContactDetail = ({ theme }) => {
                             ))}
                           </RelatedGrid>
                         )}
-                      </RelatedSection>
-
-                      {/* Divider before Tags */}
-                      <div style={{
-                        width: '100%',
-                        height: '1px',
-                        background: theme === 'light' ? '#E5E7EB' : '#374151',
-                        margin: '24px 0'
-                      }}></div>
+                      </InfoSection>
 
                       {/* Tags Section */}
-                      <RelatedSection theme={theme}>
-                        <RelatedSectionHeader>
-                          <RelatedSectionTitle theme={theme} style={{ borderBottom: 'none', paddingBottom: '0' }}>
-                            🏷️ Tags
-                          </RelatedSectionTitle>
-                          <AddButton theme={theme} onClick={() => setTagModalOpen(true)}>
-                            + Add Tags
-                          </AddButton>
-                        </RelatedSectionHeader>
+                      <InfoSection>
+                        <SectionTitleRow theme={theme}>
+                          <SectionTitle theme={theme}>Tags</SectionTitle>
+                          <EditSectionButton theme={theme} onClick={() => setTagModalOpen(true)} title="Manage tags">
+                            <FaEdit size={14} />
+                          </EditSectionButton>
+                        </SectionTitleRow>
                         {contactTags.length === 0 ? (
                           <RelatedEmptyMessage theme={theme}>
                             No tags associated with this contact
@@ -1875,31 +1907,16 @@ const ContactDetail = ({ theme }) => {
                             ))}
                           </TagsContainer>
                         )}
-                      </RelatedSection>
-
-                      {/* Divider after Tags and before Companies */}
-                      <div style={{
-                        width: '100%',
-                        height: '1px',
-                        background: theme === 'light' ? '#E5E7EB' : '#374151',
-                        margin: '24px 0 16px 0'
-                      }} />
+                      </InfoSection>
 
                       {/* Companies Section */}
-                      <RelatedSection theme={theme}>
-                        <RelatedSectionHeader>
-                          <RelatedSectionTitle theme={theme} style={{ borderBottom: 'none', paddingBottom: '0' }}>
-                            🏢 Companies
-                          </RelatedSectionTitle>
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <AddButton theme={theme} onClick={() => setAssociateCompanyModalOpen(true)}>
-                              + Add Companies
-                            </AddButton>
-                            <AddButton theme={theme} onClick={() => setLinkedinEnrichModalOpen(true)} style={{ background: '#0077b5', borderColor: '#0077b5' }}>
-                              🔗 LinkedIn Enrich
-                            </AddButton>
-                          </div>
-                        </RelatedSectionHeader>
+                      <InfoSection>
+                        <SectionTitleRow theme={theme}>
+                          <SectionTitle theme={theme}>Companies</SectionTitle>
+                          <EditSectionButton theme={theme} onClick={() => setAssociateCompanyModalOpen(true)} title="Manage companies">
+                            <FaEdit size={14} />
+                          </EditSectionButton>
+                        </SectionTitleRow>
                         {contactCompanies.length === 0 ? (
                           <RelatedEmptyMessage theme={theme}>
                             No companies associated with this contact
@@ -1943,23 +1960,8 @@ const ContactDetail = ({ theme }) => {
                             ))}
                           </RelatedGrid>
                         )}
-                      </RelatedSection>
-                    </>
-                  )}
-                </RelatedContainer>
-              )}
-
-
-              {activeRelatedTab === 'Deals' && (
-                <ComingSoonMessage theme={theme}>
-                  💼 Related deals coming soon
-                </ComingSoonMessage>
-              )}
-
-              {activeRelatedTab === 'Lists' && (
-                <ComingSoonMessage theme={theme}>
-                  📋 Related lists coming soon
-                </ComingSoonMessage>
+                      </InfoSection>
+                </InfoGrid>
               )}
             </>
           )}
@@ -2748,6 +2750,127 @@ const ContactDetail = ({ theme }) => {
         </SelectionList>
       </Modal>
 
+      {/* Manage Emails Modal */}
+      <ManageContactEmailsModal
+        isOpen={manageEmailsModalOpen}
+        onClose={() => setManageEmailsModalOpen(false)}
+        contact={contact}
+        theme={theme}
+        onEmailsUpdated={() => {
+          // Refresh contact data to get updated emails
+          fetchContact();
+        }}
+      />
+
+      {/* Manage Mobiles Modal */}
+      <ManageContactMobilesModal
+        isOpen={manageMobilesModalOpen}
+        onClose={() => setManageMobilesModalOpen(false)}
+        contact={contact}
+        theme={theme}
+        onMobilesUpdated={() => {
+          // Refresh contact data to get updated mobiles
+          fetchContact();
+        }}
+      />
+
+      {/* Email Composer Modal */}
+      <EmailComposerModal
+        isOpen={emailComposerOpen}
+        onClose={() => setEmailComposerOpen(false)}
+        theme={theme}
+        initialTo={composerToEmail}
+        initialSubject=""
+        mode="compose"
+      />
+
+      {/* QuickEdit Modal */}
+      <QuickEditModal
+        isOpen={quickEditContactModalOpen}
+        onClose={handleCloseQuickEditModal}
+        contact={contactForQuickEdit}
+        theme={theme}
+        showMissingFieldsOnly={showMissingFieldsOnly}
+        onRefresh={fetchContact}
+        quickEditActiveTab={quickEditActiveTab}
+        setQuickEditActiveTab={setQuickEditActiveTab}
+        quickEditDescriptionText={quickEditDescriptionText}
+        setQuickEditDescriptionText={setQuickEditDescriptionText}
+        quickEditJobRoleText={quickEditJobRoleText}
+        setQuickEditJobRoleText={setQuickEditJobRoleText}
+        quickEditContactCategory={quickEditContactCategory}
+        setQuickEditContactCategory={setQuickEditContactCategory}
+        quickEditContactScore={quickEditContactScore}
+        setQuickEditContactScore={setQuickEditContactScore}
+        quickEditFirstName={quickEditFirstName}
+        setQuickEditFirstName={setQuickEditFirstName}
+        quickEditLastName={quickEditLastName}
+        setQuickEditLastName={setQuickEditLastName}
+        quickEditLinkedin={quickEditLinkedin}
+        setQuickEditLinkedin={setQuickEditLinkedin}
+        quickEditKeepInTouchFrequency={quickEditKeepInTouchFrequency}
+        setQuickEditKeepInTouchFrequency={setQuickEditKeepInTouchFrequency}
+        quickEditBirthdayDay={quickEditBirthdayDay}
+        setQuickEditBirthdayDay={setQuickEditBirthdayDay}
+        quickEditBirthdayMonth={quickEditBirthdayMonth}
+        setQuickEditBirthdayMonth={setQuickEditBirthdayMonth}
+        quickEditAgeEstimate={quickEditAgeEstimate}
+        setQuickEditAgeEstimate={setQuickEditAgeEstimate}
+        quickEditChristmasWishes={quickEditChristmasWishes}
+        setQuickEditChristmasWishes={setQuickEditChristmasWishes}
+        quickEditEasterWishes={quickEditEasterWishes}
+        setQuickEditEasterWishes={setQuickEditEasterWishes}
+        quickEditShowMissing={quickEditShowMissing}
+        setQuickEditShowMissing={setQuickEditShowMissing}
+        quickEditContactEmails={quickEditContactEmails}
+        setQuickEditContactEmails={setQuickEditContactEmails}
+        quickEditContactMobiles={quickEditContactMobiles}
+        setQuickEditContactMobiles={setQuickEditContactMobiles}
+        quickEditContactCities={quickEditContactCities}
+        setQuickEditContactCities={setQuickEditContactCities}
+        quickEditContactTags={quickEditContactTags}
+        setQuickEditContactTags={setQuickEditContactTags}
+        quickEditContactCompanies={quickEditContactCompanies}
+        setQuickEditContactCompanies={setQuickEditContactCompanies}
+        newEmailText={newEmailText}
+        setNewEmailText={setNewEmailText}
+        newEmailType={newEmailType}
+        setNewEmailType={setNewEmailType}
+        newMobileText={newMobileText}
+        setNewMobileText={setNewMobileText}
+        newMobileType={newMobileType}
+        setNewMobileType={setNewMobileType}
+        quickEditCityModalOpen={quickEditCityModalOpen}
+        setQuickEditCityModalOpen={setQuickEditCityModalOpen}
+        quickEditTagModalOpen={quickEditTagModalOpen}
+        setQuickEditTagModalOpen={setQuickEditTagModalOpen}
+        quickEditAssociateCompanyModalOpen={quickEditAssociateCompanyModalOpen}
+        setQuickEditAssociateCompanyModalOpen={setQuickEditAssociateCompanyModalOpen}
+        onSave={handleSaveQuickEditContact}
+        onDelete={() => {}}
+        handleSilentSave={handleSilentSave}
+        handleAddEmail={handleAddEmail}
+        handleRemoveEmail={handleRemoveEmail}
+        handleUpdateEmailType={handleUpdateEmailType}
+        handleSetEmailPrimary={handleSetEmailPrimary}
+        handleAddMobile={handleAddMobile}
+        handleRemoveMobile={handleRemoveMobile}
+        handleUpdateMobileType={handleUpdateMobileType}
+        handleSetMobilePrimary={handleSetMobilePrimary}
+        handleRemoveCity={handleRemoveCity}
+        handleRemoveTag={handleRemoveTag}
+        handleUpdateCompanyRelationship={handleUpdateCompanyRelationship}
+        handleUpdateCompanyCategory={handleUpdateCompanyCategory}
+        handleSaveQuickEditFrequency={handleSaveQuickEditFrequency}
+        handleSaveQuickEditBirthday={handleSaveQuickEditBirthday}
+        handleSaveQuickEditChristmasWishes={handleSaveQuickEditChristmasWishes}
+        handleSaveQuickEditEasterWishes={handleSaveQuickEditEasterWishes}
+        handleAutomation={handleAutomation}
+        handleMarkCompleteWithCategory={handleMarkCompleteWithCategory}
+        getVisibleTabs={getVisibleTabs}
+        shouldShowField={shouldShowField}
+      />
+
       {/* Email Detail Modal */}
       <Modal
         isOpen={emailDetailModalOpen}
@@ -3357,7 +3480,15 @@ const ObsidianNoteButton = styled.button`
 const ProfileRole = styled.div`
   color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
   font-size: 16px;
+  margin-bottom: 4px;
+`;
+
+const ProfileDescription = styled.div`
+  color: ${props => props.theme === 'light' ? '#4B5563' : '#D1D5DB'};
+  font-size: 14px;
   margin-bottom: 8px;
+  font-style: italic;
+  max-width: 500px;
 `;
 
 const ProfileBadges = styled.div`
@@ -3403,6 +3534,49 @@ const SectionTitle = styled.h3`
   margin: 0 0 16px 0;
   padding-bottom: 8px;
   border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+`;
+
+const SectionTitleRow = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: none;
+
+  ${SectionTitle} {
+    margin: 0;
+    padding: 0;
+    border: none;
+    padding-bottom: 8px;
+    border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+    flex: 1;
+  }
+`;
+
+const EditSectionButton = styled.button`
+  background: none;
+  border: none;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
+    color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  }
+`;
+
+const EmptyFieldText = styled.div`
+  color: ${props => props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
+  font-size: 14px;
+  font-style: italic;
+  padding: 8px 0;
 `;
 
 const InfoList = styled.div`

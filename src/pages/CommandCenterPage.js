@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
-import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaImage } from 'react-icons/fa';
+import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaImage, FaEdit, FaPlus, FaExternalLinkAlt } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import QuickEditModal from '../components/QuickEditModalRefactored';
 import { useQuickEditModal } from '../hooks/useQuickEditModal';
 import { getVisibleTabs, shouldShowField } from '../helpers/contactListHelpers';
+import ProfileImageModal from '../components/modals/ProfileImageModal';
+import { useProfileImageModal } from '../hooks/useProfileImageModal';
 
 const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
 
@@ -820,6 +822,23 @@ const FormInput = styled.input`
   }
 `;
 
+const FormSelect = styled.select`
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  border-radius: 6px;
+  font-size: 14px;
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#374151'};
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  cursor: pointer;
+
+  &:focus {
+    outline: none;
+    border-color: #3B82F6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+`;
+
 const FormTextarea = styled.textarea`
   width: 100%;
   padding: 12px;
@@ -918,6 +937,59 @@ const CommandCenterPage = ({ theme }) => {
   // Companies from email domains (for Companies tab)
   const [emailCompanies, setEmailCompanies] = useState([]);
 
+  // Deals from contacts and companies (for Deals tab)
+  const [contactDeals, setContactDeals] = useState([]); // Deals linked to email contacts
+  const [companyDeals, setCompanyDeals] = useState([]); // Deals linked to companies of email contacts
+  const [dealModalOpen, setDealModalOpen] = useState(false);
+  const [dealSearchQuery, setDealSearchQuery] = useState('');
+  const [dealSearchResults, setDealSearchResults] = useState([]);
+  const [searchingDeals, setSearchingDeals] = useState(false);
+  const [newDealName, setNewDealName] = useState('');
+  const [creatingDeal, setCreatingDeal] = useState(false);
+  const [selectedDealContact, setSelectedDealContact] = useState(null); // Contact to associate with deal
+  const [dealRelationship, setDealRelationship] = useState('introducer'); // Relationship type
+
+  // Introductions from contacts (for Introductions tab)
+  const [contactIntroductions, setContactIntroductions] = useState([]); // Introductions linked to email contacts
+  const [introductionModalOpen, setIntroductionModalOpen] = useState(false);
+  const [introductionSearchQuery, setIntroductionSearchQuery] = useState('');
+  const [introductionSearchResults, setIntroductionSearchResults] = useState([]);
+  const [searchingIntroductions, setSearchingIntroductions] = useState(false);
+  const [selectedIntroducer, setSelectedIntroducer] = useState(null); // Contact who introduces
+  const [selectedIntroducee, setSelectedIntroducee] = useState(null); // Contact being introduced
+  const [introductionStatus, setIntroductionStatus] = useState('Requested'); // Status
+  const [introductionTool, setIntroductionTool] = useState('email'); // Tool used (lowercase enum)
+  const [introductionCategory, setIntroductionCategory] = useState('Karma Points'); // Category
+  const [introductionText, setIntroductionText] = useState(''); // Introduction text/notes
+  const [creatingIntroduction, setCreatingIntroduction] = useState(false);
+  const [introducerSearchQuery, setIntroducerSearchQuery] = useState('');
+  const [introducerSearchResults, setIntroducerSearchResults] = useState([]);
+  const [searchingIntroducer, setSearchingIntroducer] = useState(false);
+  const [introduceeSearchQuery, setIntroduceeSearchQuery] = useState('');
+  const [introduceeSearchResults, setIntroduceeSearchResults] = useState([]);
+  const [searchingIntroducee, setSearchingIntroducee] = useState(false);
+  const [selectedIntroducee2, setSelectedIntroducee2] = useState(null);
+  const [introducee2SearchQuery, setIntroducee2SearchQuery] = useState('');
+  const [introducee2SearchResults, setIntroducee2SearchResults] = useState([]);
+  const [searchingIntroducee2, setSearchingIntroducee2] = useState(false);
+  const [editingIntroduction, setEditingIntroduction] = useState(null); // intro being edited
+
+  // Todoist Tasks state
+  const [todoistTasks, setTodoistTasks] = useState([]);
+  const [todoistProjects, setTodoistProjects] = useState([]);
+  const [loadingTasks, setLoadingTasks] = useState(false);
+  const [taskModalOpen, setTaskModalOpen] = useState(false);
+  const [newTaskContent, setNewTaskContent] = useState('');
+  const [newTaskDueString, setNewTaskDueString] = useState('');
+  const [newTaskProjectId, setNewTaskProjectId] = useState('2335921711'); // Inbox
+  const [newTaskSectionId, setNewTaskSectionId] = useState('');
+  const [newTaskPriority, setNewTaskPriority] = useState(1);
+  const [newTaskDescription, setNewTaskDescription] = useState('');
+  const [creatingTask, setCreatingTask] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
+  const [expandedProjects, setExpandedProjects] = useState({}); // { projectId: true/false }
+  const [expandedSections, setExpandedSections] = useState({}); // { sectionId: true/false }
+
   // AI Chat state
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
@@ -1010,6 +1082,20 @@ const CommandCenterPage = ({ theme }) => {
     handleAutomation,
   } = quickEditModal;
 
+  // Profile Image Modal - use the custom hook
+  const handleProfileImageUpdate = (contactId, newImageUrl) => {
+    // Update the emailContacts state with the new image URL
+    setEmailContacts(prevContacts =>
+      prevContacts.map(p =>
+        p.contact?.contact_id === contactId
+          ? { ...p, contact: { ...p.contact, profile_image_url: newImageUrl } }
+          : p
+      )
+    );
+  };
+
+  const profileImageModal = useProfileImageModal(handleProfileImageUpdate);
+
   // Group emails by thread_id
   const groupByThread = (emailList) => {
     const threadMap = new Map();
@@ -1065,6 +1151,192 @@ const CommandCenterPage = ({ theme }) => {
       fetchEmails();
     }
   }, [activeTab]);
+
+  // Fetch Todoist tasks and projects
+  const fetchTodoistData = async () => {
+    setLoadingTasks(true);
+    try {
+      const [tasksRes, projectsRes] = await Promise.all([
+        fetch(`${BACKEND_URL}/todoist/tasks`),
+        fetch(`${BACKEND_URL}/todoist/projects`),
+      ]);
+
+      if (tasksRes.ok) {
+        const { tasks } = await tasksRes.json();
+        setTodoistTasks(tasks || []);
+      }
+
+      if (projectsRes.ok) {
+        const { projects } = await projectsRes.json();
+        setTodoistProjects(projects || []);
+      }
+    } catch (error) {
+      console.error('Error fetching Todoist data:', error);
+    }
+    setLoadingTasks(false);
+  };
+
+  // Load Todoist data when tasks tab is active
+  useEffect(() => {
+    if (activeActionTab === 'tasks' && selectedThread) {
+      fetchTodoistData();
+    }
+  }, [activeActionTab, selectedThread]);
+
+  // Create or update a task
+  const handleSaveTask = async () => {
+    if (!newTaskContent.trim()) {
+      toast.error('Task content is required');
+      return;
+    }
+
+    setCreatingTask(true);
+    try {
+      const taskData = {
+        content: newTaskContent.trim(),
+        description: newTaskDescription.trim(),
+        project_id: newTaskProjectId,
+        section_id: newTaskSectionId || undefined,
+        due_string: newTaskDueString || undefined,
+        priority: newTaskPriority,
+      };
+
+      let response;
+      if (editingTask) {
+        response = await fetch(`${BACKEND_URL}/todoist/tasks/${editingTask.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(taskData),
+        });
+      } else {
+        response = await fetch(`${BACKEND_URL}/todoist/tasks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(taskData),
+        });
+      }
+
+      if (response.ok) {
+        toast.success(editingTask ? 'Task updated!' : 'Task created!');
+        setTaskModalOpen(false);
+        resetTaskForm();
+        fetchTodoistData();
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Failed to save task');
+      }
+    } catch (error) {
+      console.error('Error saving task:', error);
+      toast.error('Failed to save task');
+    }
+    setCreatingTask(false);
+  };
+
+  // Complete a task
+  const handleCompleteTask = async (taskId) => {
+    try {
+      const response = await fetch(`${BACKEND_URL}/todoist/tasks/${taskId}/close`, {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        toast.success('Task completed!');
+        fetchTodoistData();
+      } else {
+        toast.error('Failed to complete task');
+      }
+    } catch (error) {
+      console.error('Error completing task:', error);
+      toast.error('Failed to complete task');
+    }
+  };
+
+  // Delete a task
+  const handleDeleteTask = async (taskId) => {
+    if (!window.confirm('Delete this task?')) return;
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/todoist/tasks/${taskId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        toast.success('Task deleted');
+        fetchTodoistData();
+      } else {
+        toast.error('Failed to delete task');
+      }
+    } catch (error) {
+      console.error('Error deleting task:', error);
+      toast.error('Failed to delete task');
+    }
+  };
+
+  // Reset task form
+  const resetTaskForm = () => {
+    setNewTaskContent('');
+    setNewTaskDescription('');
+    setNewTaskDueString('');
+    setNewTaskProjectId('2335921711');
+    setNewTaskSectionId('');
+    setNewTaskPriority(1);
+    setEditingTask(null);
+  };
+
+  // Open edit mode for a task
+  const openEditTask = (task) => {
+    setEditingTask(task);
+    setNewTaskContent(task.content);
+    setNewTaskDescription(task.description || '');
+    setNewTaskDueString(task.due?.string || '');
+    setNewTaskProjectId(task.project_id);
+    setNewTaskSectionId(task.section_id || '');
+    setNewTaskPriority(task.priority);
+    setTaskModalOpen(true);
+  };
+
+  // Get project name by ID
+  const getProjectName = (projectId) => {
+    const project = todoistProjects.find(p => p.id === projectId);
+    return project?.name || 'Unknown';
+  };
+
+  // Get section name by ID
+  const getSectionName = (sectionId) => {
+    for (const project of todoistProjects) {
+      const section = project.sections?.find(s => s.id === sectionId);
+      if (section) return section.name;
+    }
+    return null;
+  };
+
+  // Get project color
+  const getProjectColor = (projectId) => {
+    const project = todoistProjects.find(p => p.id === projectId);
+    const colors = {
+      'berry_red': '#b8255f',
+      'red': '#db4035',
+      'orange': '#ff9933',
+      'yellow': '#fad000',
+      'olive_green': '#afb83b',
+      'lime_green': '#7ecc49',
+      'green': '#299438',
+      'mint_green': '#6accbc',
+      'teal': '#158fad',
+      'sky_blue': '#14aaf5',
+      'light_blue': '#96c3eb',
+      'blue': '#4073ff',
+      'grape': '#884dff',
+      'violet': '#af38eb',
+      'lavender': '#eb96eb',
+      'magenta': '#e05194',
+      'salmon': '#ff8d85',
+      'charcoal': '#808080',
+      'grey': '#b8b8b8',
+      'taupe': '#ccac93',
+    };
+    return colors[project?.color] || '#808080';
+  };
 
   // Fetch contacts when selected thread changes
   useEffect(() => {
@@ -1423,6 +1695,211 @@ const CommandCenterPage = ({ theme }) => {
     fetchEmailCompanies();
   }, [selectedThread, emailContacts]);
 
+  // Fetch deals linked to contacts and companies
+  useEffect(() => {
+    const fetchDeals = async () => {
+      // Reset deals when no contacts
+      if (emailContacts.length === 0) {
+        setContactDeals([]);
+        setCompanyDeals([]);
+        return;
+      }
+
+      // Get contact IDs
+      const contactIds = emailContacts
+        .filter(p => p.contact?.contact_id)
+        .map(p => p.contact.contact_id);
+
+      if (contactIds.length === 0) {
+        setContactDeals([]);
+        setCompanyDeals([]);
+        return;
+      }
+
+      // Fetch deals linked to contacts via deals_contacts
+      const { data: dealsContactsData, error: dcError } = await supabase
+        .from('deals_contacts')
+        .select(`
+          deal_id,
+          contact_id,
+          relationship,
+          deals(deal_id, opportunity, stage, category, description, total_investment, created_at)
+        `)
+        .in('contact_id', contactIds);
+
+      if (dcError) {
+        console.error('Error fetching deals_contacts:', dcError);
+      }
+
+      // Build contact deals with contact info
+      const contactDealsMap = new Map();
+      if (dealsContactsData) {
+        dealsContactsData.forEach(dc => {
+          if (!dc.deals) return;
+          const dealId = dc.deals.deal_id;
+          if (!contactDealsMap.has(dealId)) {
+            contactDealsMap.set(dealId, {
+              ...dc.deals,
+              contacts: []
+            });
+          }
+          const contact = emailContacts.find(p => p.contact?.contact_id === dc.contact_id);
+          if (contact) {
+            contactDealsMap.get(dealId).contacts.push({
+              contact_id: dc.contact_id,
+              name: contact.contact ? `${contact.contact.first_name} ${contact.contact.last_name}` : contact.name,
+              relationship: dc.relationship
+            });
+          }
+        });
+      }
+      setContactDeals(Array.from(contactDealsMap.values()));
+
+      // For company deals, we need to:
+      // 1. Get companies linked to our contacts via contact_companies
+      // 2. Then get deals linked to those companies via deals_contacts (where contacts work at those companies)
+      // Since there's no direct deals_companies table, we'll derive from contact_companies
+      const companyIds = emailCompanies.map(c => c.company_id).filter(Boolean);
+
+      if (companyIds.length > 0) {
+        // Get all contacts working at these companies
+        const { data: companyContactsData } = await supabase
+          .from('contact_companies')
+          .select('contact_id, company_id')
+          .in('company_id', companyIds);
+
+        if (companyContactsData && companyContactsData.length > 0) {
+          const companyContactIds = companyContactsData.map(cc => cc.contact_id);
+
+          // Get deals for these contacts (but exclude deals we already have from direct contacts)
+          const { data: companyDealsData } = await supabase
+            .from('deals_contacts')
+            .select(`
+              deal_id,
+              contact_id,
+              relationship,
+              deals(deal_id, opportunity, stage, category, description, total_investment, created_at)
+            `)
+            .in('contact_id', companyContactIds);
+
+          const companyDealsMap = new Map();
+          if (companyDealsData) {
+            companyDealsData.forEach(dc => {
+              if (!dc.deals) return;
+              // Skip deals already in contactDeals
+              if (contactDealsMap.has(dc.deals.deal_id)) return;
+
+              const dealId = dc.deals.deal_id;
+              if (!companyDealsMap.has(dealId)) {
+                // Find which company this contact belongs to
+                const companyContact = companyContactsData.find(cc => cc.contact_id === dc.contact_id);
+                const company = emailCompanies.find(c => c.company_id === companyContact?.company_id);
+
+                companyDealsMap.set(dealId, {
+                  ...dc.deals,
+                  company: company ? { company_id: company.company_id, name: company.name } : null
+                });
+              }
+            });
+          }
+          setCompanyDeals(Array.from(companyDealsMap.values()));
+        } else {
+          setCompanyDeals([]);
+        }
+      } else {
+        setCompanyDeals([]);
+      }
+    };
+
+    fetchDeals();
+  }, [emailContacts, emailCompanies]);
+
+  // Fetch introductions linked to contacts
+  useEffect(() => {
+    const fetchIntroductions = async () => {
+      // Reset introductions when no contacts
+      if (emailContacts.length === 0) {
+        setContactIntroductions([]);
+        return;
+      }
+
+      // Get contact IDs
+      const contactIds = emailContacts
+        .filter(p => p.contact?.contact_id)
+        .map(p => p.contact.contact_id);
+
+      if (contactIds.length === 0) {
+        setContactIntroductions([]);
+        return;
+      }
+
+      // Fetch introductions linked to contacts via introduction_contacts
+      const { data: introContactsData, error: icError } = await supabase
+        .from('introduction_contacts')
+        .select(`
+          introduction_contact_id,
+          introduction_id,
+          contact_id,
+          role,
+          introductions(introduction_id, introduction_date, introduction_tool, category, text, status, created_at)
+        `)
+        .in('contact_id', contactIds);
+
+      if (icError) {
+        console.error('Error fetching introduction_contacts:', icError);
+      }
+
+      // Get all unique introduction IDs to fetch all contacts for each introduction
+      const introductionIds = [...new Set(introContactsData?.map(ic => ic.introduction_id) || [])];
+
+      // Fetch ALL contacts for these introductions (not just the ones in the email thread)
+      let allIntroContacts = [];
+      if (introductionIds.length > 0) {
+        const { data: allContactsData, error: allContactsError } = await supabase
+          .from('introduction_contacts')
+          .select(`
+            introduction_contact_id,
+            introduction_id,
+            contact_id,
+            role,
+            contacts(contact_id, first_name, last_name),
+            introductions(introduction_id, introduction_date, introduction_tool, category, text, status, created_at)
+          `)
+          .in('introduction_id', introductionIds);
+
+        if (allContactsError) {
+          console.error('Error fetching all introduction contacts:', allContactsError);
+        } else {
+          allIntroContacts = allContactsData || [];
+        }
+      }
+
+      // Build introductions with contact info grouped by introduction_id
+      const introductionsMap = new Map();
+      allIntroContacts.forEach(ic => {
+        if (!ic.introductions) return;
+        const introId = ic.introductions.introduction_id;
+        if (!introductionsMap.has(introId)) {
+          introductionsMap.set(introId, {
+            ...ic.introductions,
+            contacts: []
+          });
+        }
+        const contactName = ic.contacts
+          ? `${ic.contacts.first_name || ''} ${ic.contacts.last_name || ''}`.trim() || 'Unknown'
+          : 'Unknown';
+        introductionsMap.get(introId).contacts.push({
+          contact_id: ic.contact_id,
+          name: contactName,
+          role: ic.role
+        });
+      });
+      setContactIntroductions(Array.from(introductionsMap.values()));
+    };
+
+    fetchIntroductions();
+  }, [emailContacts]);
+
   // Scroll to bottom of chat when new messages arrive
   useEffect(() => {
     if (chatMessagesRef.current) {
@@ -1693,12 +2170,23 @@ internet businesses.`;
       toRecipients = [{ email: latestEmail.from_email, name: latestEmail.from_name || '' }];
     }
 
-    // Get CC from original email (excluding myself) as array
+    // Get CC recipients for Reply All (excluding myself)
     let ccRecipients = [];
-    if (replyAll && latestEmail.cc_recipients?.length > 0) {
-      ccRecipients = latestEmail.cc_recipients
-        .filter(r => r.email?.toLowerCase() !== myEmail.toLowerCase())
-        .map(r => ({ email: r.email, name: r.name || '' }));
+    if (replyAll) {
+      // Add other TO recipients (excluding myself and the sender who goes in TO)
+      if (!isSentByMe && latestEmail.to_recipients?.length > 0) {
+        const otherToRecipients = latestEmail.to_recipients
+          .filter(r => r.email?.toLowerCase() !== myEmail.toLowerCase())
+          .map(r => ({ email: r.email, name: r.name || '' }));
+        ccRecipients = [...ccRecipients, ...otherToRecipients];
+      }
+      // Add original CC recipients
+      if (latestEmail.cc_recipients?.length > 0) {
+        const originalCcRecipients = latestEmail.cc_recipients
+          .filter(r => r.email?.toLowerCase() !== myEmail.toLowerCase())
+          .map(r => ({ email: r.email, name: r.name || '' }));
+        ccRecipients = [...ccRecipients, ...originalCcRecipients];
+      }
     }
 
     const subject = latestEmail.subject?.startsWith('Re:')
@@ -1732,12 +2220,21 @@ internet businesses.`;
       toRecipients = [{ email: latestEmail.from_email, name: latestEmail.from_name || '' }];
     }
 
-    // Get CC from original email (excluding myself) as array
+    // Get CC recipients (including other TO recipients and original CC, excluding myself)
     let ccRecipients = [];
-    if (latestEmail.cc_recipients?.length > 0) {
-      ccRecipients = latestEmail.cc_recipients
+    // Add other TO recipients (excluding myself and the sender who goes in TO)
+    if (!isSentByMe && latestEmail.to_recipients?.length > 0) {
+      const otherToRecipients = latestEmail.to_recipients
         .filter(r => r.email?.toLowerCase() !== myEmail.toLowerCase())
         .map(r => ({ email: r.email, name: r.name || '' }));
+      ccRecipients = [...ccRecipients, ...otherToRecipients];
+    }
+    // Add original CC recipients
+    if (latestEmail.cc_recipients?.length > 0) {
+      const originalCcRecipients = latestEmail.cc_recipients
+        .filter(r => r.email?.toLowerCase() !== myEmail.toLowerCase())
+        .map(r => ({ email: r.email, name: r.name || '' }));
+      ccRecipients = [...ccRecipients, ...originalCcRecipients];
     }
 
     const subject = latestEmail.subject?.startsWith('Re:')
@@ -3173,14 +3670,23 @@ internet businesses.`;
                             return (
                             <ActionCard key={'from-' + participant.email + idx} theme={theme}>
                               <ActionCardHeader theme={theme} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                {participant.contact?.profile_image_url ? (
-                                  <img src={participant.contact.profile_image_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }} />
-                                ) : (
-                                  <div style={{ width: 40, height: 40, borderRadius: '50%', background: theme === 'light' ? '#E5E7EB' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
-                                    {participant.contact ? `${participant.contact.first_name?.[0] || ''}${participant.contact.last_name?.[0] || ''}` : participant.name?.[0]?.toUpperCase() || '?'}
-                                  </div>
-                                )}
-                                <div style={{ flex: 1 }}>
+                                <div
+                                  style={{ cursor: participant.contact ? 'pointer' : 'default' }}
+                                  onClick={() => participant.contact && profileImageModal.openModal(participant.contact)}
+                                  title={participant.contact ? 'Edit profile image' : ''}
+                                >
+                                  {participant.contact?.profile_image_url ? (
+                                    <img src={participant.contact.profile_image_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }} />
+                                  ) : (
+                                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: theme === 'light' ? '#E5E7EB' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                                      {participant.contact ? `${participant.contact.first_name?.[0] || ''}${participant.contact.last_name?.[0] || ''}` : participant.name?.[0]?.toUpperCase() || '?'}
+                                    </div>
+                                  )}
+                                </div>
+                                <div
+                                  style={{ flex: 1, cursor: participant.contact ? 'pointer' : 'default' }}
+                                  onClick={() => participant.contact && navigate(`/contact/${participant.contact.contact_id}`)}
+                                >
                                   <div style={{ fontWeight: 600, fontSize: '15px' }}>
                                     {participant.contact ? `${participant.contact.first_name} ${participant.contact.last_name}` : participant.name}
                                   </div>
@@ -3240,14 +3746,23 @@ internet businesses.`;
                             return (
                             <ActionCard key={'to-' + participant.email + idx} theme={theme}>
                               <ActionCardHeader theme={theme} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                {participant.contact?.profile_image_url ? (
-                                  <img src={participant.contact.profile_image_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }} />
-                                ) : (
-                                  <div style={{ width: 40, height: 40, borderRadius: '50%', background: theme === 'light' ? '#E5E7EB' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
-                                    {participant.contact ? `${participant.contact.first_name?.[0] || ''}${participant.contact.last_name?.[0] || ''}` : participant.name?.[0]?.toUpperCase() || '?'}
-                                  </div>
-                                )}
-                                <div style={{ flex: 1 }}>
+                                <div
+                                  style={{ cursor: participant.contact ? 'pointer' : 'default' }}
+                                  onClick={() => participant.contact && profileImageModal.openModal(participant.contact)}
+                                  title={participant.contact ? 'Edit profile image' : ''}
+                                >
+                                  {participant.contact?.profile_image_url ? (
+                                    <img src={participant.contact.profile_image_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }} />
+                                  ) : (
+                                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: theme === 'light' ? '#E5E7EB' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                                      {participant.contact ? `${participant.contact.first_name?.[0] || ''}${participant.contact.last_name?.[0] || ''}` : participant.name?.[0]?.toUpperCase() || '?'}
+                                    </div>
+                                  )}
+                                </div>
+                                <div
+                                  style={{ flex: 1, cursor: participant.contact ? 'pointer' : 'default' }}
+                                  onClick={() => participant.contact && navigate(`/contact/${participant.contact.contact_id}`)}
+                                >
                                   <div style={{ fontWeight: 600, fontSize: '15px' }}>
                                     {participant.contact ? `${participant.contact.first_name} ${participant.contact.last_name}` : participant.name}
                                   </div>
@@ -3307,14 +3822,23 @@ internet businesses.`;
                             return (
                             <ActionCard key={'cc-' + participant.email + idx} theme={theme}>
                               <ActionCardHeader theme={theme} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                {participant.contact?.profile_image_url ? (
-                                  <img src={participant.contact.profile_image_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }} />
-                                ) : (
-                                  <div style={{ width: 40, height: 40, borderRadius: '50%', background: theme === 'light' ? '#E5E7EB' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
-                                    {participant.contact ? `${participant.contact.first_name?.[0] || ''}${participant.contact.last_name?.[0] || ''}` : participant.name?.[0]?.toUpperCase() || '?'}
-                                  </div>
-                                )}
-                                <div style={{ flex: 1 }}>
+                                <div
+                                  style={{ cursor: participant.contact ? 'pointer' : 'default' }}
+                                  onClick={() => participant.contact && profileImageModal.openModal(participant.contact)}
+                                  title={participant.contact ? 'Edit profile image' : ''}
+                                >
+                                  {participant.contact?.profile_image_url ? (
+                                    <img src={participant.contact.profile_image_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }} />
+                                  ) : (
+                                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: theme === 'light' ? '#E5E7EB' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                                      {participant.contact ? `${participant.contact.first_name?.[0] || ''}${participant.contact.last_name?.[0] || ''}` : participant.name?.[0]?.toUpperCase() || '?'}
+                                    </div>
+                                  )}
+                                </div>
+                                <div
+                                  style={{ flex: 1, cursor: participant.contact ? 'pointer' : 'default' }}
+                                  onClick={() => participant.contact && navigate(`/contact/${participant.contact.contact_id}`)}
+                                >
                                   <div style={{ fontWeight: 600, fontSize: '15px' }}>
                                     {participant.contact ? `${participant.contact.first_name} ${participant.contact.last_name}` : participant.name}
                                   </div>
@@ -3425,51 +3949,535 @@ internet businesses.`;
               )}
 
               {activeActionTab === 'deals' && (
-                <ActionCard theme={theme}>
-                  <ActionCardHeader theme={theme}>
-                    <FaDollarSign /> Create Deal
-                  </ActionCardHeader>
-                  <ActionCardContent theme={theme}>
-                    New opportunity
-                  </ActionCardContent>
-                  <ActionCardButtons>
-                    <SmallBtn theme={theme}>Edit</SmallBtn>
-                    <SmallBtn theme={theme} $variant="success">✓</SmallBtn>
-                    <SmallBtn theme={theme} $variant="danger">✗</SmallBtn>
-                  </ActionCardButtons>
-                </ActionCard>
+                <>
+                  {/* Add New Deal Button - Always visible */}
+                  <ActionCard theme={theme} style={{ cursor: 'pointer' }} onClick={() => setDealModalOpen(true)}>
+                    <ActionCardContent theme={theme} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px' }}>
+                      <FaDollarSign style={{ color: '#10B981' }} />
+                      <span style={{ fontWeight: 600 }}>Add New Deal</span>
+                    </ActionCardContent>
+                  </ActionCard>
+
+                  {/* From Contacts Section */}
+                  {contactDeals.length > 0 && (
+                    <>
+                      <div style={{
+                        padding: '8px 16px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}>
+                        From Contacts
+                      </div>
+                      {contactDeals.map(deal => (
+                        <ActionCard key={deal.deal_id} theme={theme}>
+                          <ActionCardHeader theme={theme}>
+                            <FaDollarSign style={{ color: '#10B981' }} /> {deal.opportunity || 'Untitled Deal'}
+                          </ActionCardHeader>
+                          <ActionCardContent theme={theme}>
+                            <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '4px' }}>
+                              {deal.stage || 'No stage'} {deal.category ? `• ${deal.category}` : ''}
+                            </div>
+                            {deal.total_investment && (
+                              <div style={{ fontSize: '13px', fontWeight: 600, color: '#10B981' }}>
+                                ${deal.total_investment.toLocaleString()}
+                              </div>
+                            )}
+                            {deal.contacts && deal.contacts.length > 0 && (
+                              <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                {deal.contacts.map(c => (
+                                  <div key={c.contact_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '11px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                                    <span>{c.name} <span style={{ opacity: 0.7 }}>({c.relationship})</span></span>
+                                    <FaTrash
+                                      size={10}
+                                      style={{ cursor: 'pointer', color: theme === 'light' ? '#9CA3AF' : '#6B7280', marginLeft: '8px' }}
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        // Delete the association
+                                        const { error } = await supabase
+                                          .from('deals_contacts')
+                                          .delete()
+                                          .eq('deal_id', deal.deal_id)
+                                          .eq('contact_id', c.contact_id);
+                                        if (!error) {
+                                          // Refresh deals
+                                          const contactIds = emailContacts.filter(p => p.contact?.contact_id).map(p => p.contact.contact_id);
+                                          const { data: refreshed } = await supabase
+                                            .from('deals_contacts')
+                                            .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, description, total_investment, created_at)')
+                                            .in('contact_id', contactIds);
+                                          if (refreshed) {
+                                            const dealsMap = new Map();
+                                            refreshed.forEach(dc => {
+                                              if (!dc.deals) return;
+                                              const dealId = dc.deals.deal_id;
+                                              if (!dealsMap.has(dealId)) {
+                                                dealsMap.set(dealId, { ...dc.deals, contacts: [] });
+                                              }
+                                              const contact = emailContacts.find(p => p.contact?.contact_id === dc.contact_id);
+                                              if (contact) {
+                                                dealsMap.get(dealId).contacts.push({
+                                                  contact_id: dc.contact_id,
+                                                  name: contact.contact ? `${contact.contact.first_name} ${contact.contact.last_name}` : contact.name,
+                                                  relationship: dc.relationship
+                                                });
+                                              }
+                                            });
+                                            setContactDeals(Array.from(dealsMap.values()));
+                                          } else {
+                                            setContactDeals([]);
+                                          }
+                                        }
+                                      }}
+                                      onMouseEnter={e => e.currentTarget.style.color = '#EF4444'}
+                                      onMouseLeave={e => e.currentTarget.style.color = theme === 'light' ? '#9CA3AF' : '#6B7280'}
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </ActionCardContent>
+                        </ActionCard>
+                      ))}
+                    </>
+                  )}
+
+                  {/* From Companies Section */}
+                  {companyDeals.length > 0 && (
+                    <>
+                      <div style={{
+                        padding: '8px 16px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}>
+                        From Companies
+                      </div>
+                      {companyDeals.map(deal => (
+                        <ActionCard key={deal.deal_id} theme={theme}>
+                          <ActionCardHeader theme={theme}>
+                            <FaDollarSign style={{ color: '#8B5CF6' }} /> {deal.opportunity || 'Untitled Deal'}
+                          </ActionCardHeader>
+                          <ActionCardContent theme={theme}>
+                            <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '4px' }}>
+                              {deal.stage || 'No stage'} {deal.category ? `• ${deal.category}` : ''}
+                            </div>
+                            {deal.total_investment && (
+                              <div style={{ fontSize: '13px', fontWeight: 600, color: '#8B5CF6' }}>
+                                ${deal.total_investment.toLocaleString()}
+                              </div>
+                            )}
+                            {deal.companyName && (
+                              <div style={{ fontSize: '11px', color: theme === 'light' ? '#9CA3AF' : '#6B7280', marginTop: '4px' }}>
+                                via {deal.companyName}
+                              </div>
+                            )}
+                          </ActionCardContent>
+                        </ActionCard>
+                      ))}
+                    </>
+                  )}
+
+                  {/* Empty State - only show when no deals at all */}
+                  {contactDeals.length === 0 && companyDeals.length === 0 && selectedThread && (
+                    <ActionCard theme={theme}>
+                      <ActionCardContent theme={theme} style={{ textAlign: 'center', opacity: 0.6, fontSize: '13px' }}>
+                        No deals linked to these contacts
+                      </ActionCardContent>
+                    </ActionCard>
+                  )}
+                </>
               )}
 
               {activeActionTab === 'introductions' && (
-                <ActionCard theme={theme}>
-                  <ActionCardHeader theme={theme}>
-                    <FaHandshake /> Introduction
-                  </ActionCardHeader>
-                  <ActionCardContent theme={theme}>
-                    Connect contacts
-                  </ActionCardContent>
-                  <ActionCardButtons>
-                    <SmallBtn theme={theme}>Edit</SmallBtn>
-                    <SmallBtn theme={theme} $variant="success">✓</SmallBtn>
-                    <SmallBtn theme={theme} $variant="danger">✗</SmallBtn>
-                  </ActionCardButtons>
-                </ActionCard>
+                <>
+                  {/* Add New Introduction Button - Always visible */}
+                  <ActionCard theme={theme} style={{ cursor: 'pointer' }} onClick={() => setIntroductionModalOpen(true)}>
+                    <ActionCardContent theme={theme} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px' }}>
+                      <FaHandshake style={{ color: '#F59E0B' }} />
+                      <span style={{ fontWeight: 600 }}>Add New Introduction</span>
+                    </ActionCardContent>
+                  </ActionCard>
+
+                  {/* Related Introductions Section */}
+                  {contactIntroductions.length > 0 && (
+                    <>
+                      <div style={{
+                        padding: '8px 16px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}>
+                        Related
+                      </div>
+                      {contactIntroductions.map(intro => {
+                        const introducees = intro.contacts?.filter(c => c.role === 'introducee') || [];
+                        const person1 = introducees[0]?.name || 'Unknown';
+                        const person2 = introducees[1]?.name || 'Unknown';
+                        return (
+                        <ActionCard key={intro.introduction_id} theme={theme}>
+                          <ActionCardHeader theme={theme}>
+                            <FaHandshake style={{ color: '#F59E0B' }} />
+                            {person1} ↔ {person2}
+                          </ActionCardHeader>
+                          <ActionCardContent theme={theme}>
+                            <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '4px' }}>
+                              {intro.status || 'No status'} {intro.introduction_tool ? `• ${intro.introduction_tool}` : ''}
+                            </div>
+                            {intro.introduction_date && (
+                              <div style={{ fontSize: '12px', color: theme === 'light' ? '#9CA3AF' : '#6B7280' }}>
+                                {new Date(intro.introduction_date).toLocaleDateString()}
+                              </div>
+                            )}
+                            {intro.text && (
+                              <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginTop: '4px', fontStyle: 'italic' }}>
+                                "{intro.text.substring(0, 80)}{intro.text.length > 80 ? '...' : ''}"
+                              </div>
+                            )}
+                            <div style={{ marginTop: '12px', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                              <button
+                                onClick={() => {
+                                  setEditingIntroduction(intro);
+                                  setIntroductionStatus(intro.status || 'Requested');
+                                  setIntroductionTool(intro.introduction_tool || 'email');
+                                  setIntroductionCategory(intro.category || 'Karma Points');
+                                  setIntroductionText(intro.text || '');
+                                  const introducees = intro.contacts?.filter(c => c.role === 'introducee') || [];
+                                  setSelectedIntroducee(introducees[0] || null);
+                                  setSelectedIntroducee2(introducees[1] || null);
+                                  setIntroductionModalOpen(true);
+                                }}
+                                style={{
+                                  padding: '4px 8px',
+                                  fontSize: '11px',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  background: theme === 'light' ? '#E5E7EB' : '#374151',
+                                  color: theme === 'light' ? '#374151' : '#D1D5DB',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                              >
+                                <FaEdit size={10} /> Edit
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  if (!window.confirm('Delete this introduction?')) return;
+                                  const { error } = await supabase
+                                    .from('introductions')
+                                    .delete()
+                                    .eq('introduction_id', intro.introduction_id);
+                                  if (!error) {
+                                    setContactIntroductions(prev => prev.filter(i => i.introduction_id !== intro.introduction_id));
+                                  }
+                                }}
+                                style={{
+                                  padding: '4px 8px',
+                                  fontSize: '11px',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  background: theme === 'light' ? '#FEE2E2' : '#7F1D1D',
+                                  color: theme === 'light' ? '#DC2626' : '#FCA5A5',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                              >
+                                <FaTrash size={10} /> Delete
+                              </button>
+                            </div>
+                          </ActionCardContent>
+                        </ActionCard>
+                      );
+                      })}
+                    </>
+                  )}
+
+                  {/* Empty State - only show when no introductions at all */}
+                  {contactIntroductions.length === 0 && selectedThread && (
+                    <ActionCard theme={theme}>
+                      <ActionCardContent theme={theme} style={{ textAlign: 'center', opacity: 0.6, fontSize: '13px' }}>
+                        No introductions linked to these contacts
+                      </ActionCardContent>
+                    </ActionCard>
+                  )}
+                </>
               )}
 
               {activeActionTab === 'tasks' && (
-                <ActionCard theme={theme}>
-                  <ActionCardHeader theme={theme}>
-                    <FaTasks /> Create Task
-                  </ActionCardHeader>
-                  <ActionCardContent theme={theme}>
-                    Add a follow-up task
-                  </ActionCardContent>
-                  <ActionCardButtons>
-                    <SmallBtn theme={theme}>Edit</SmallBtn>
-                    <SmallBtn theme={theme} $variant="success">✓</SmallBtn>
-                    <SmallBtn theme={theme} $variant="danger">✗</SmallBtn>
-                  </ActionCardButtons>
-                </ActionCard>
+                <>
+                  {/* Add Task Button */}
+                  <div style={{
+                    padding: '12px 16px',
+                    borderBottom: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <span style={{ fontSize: '14px', fontWeight: 500, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
+                      Todoist Tasks ({todoistTasks.length})
+                    </span>
+                    <SmallBtn
+                      theme={theme}
+                      $variant="success"
+                      onClick={() => {
+                        resetTaskForm();
+                        setTaskModalOpen(true);
+                      }}
+                    >
+                      <FaPlus style={{ marginRight: '4px' }} /> Add Task
+                    </SmallBtn>
+                  </div>
+
+                  {/* Loading State */}
+                  {loadingTasks && (
+                    <ActionCard theme={theme}>
+                      <ActionCardContent theme={theme} style={{ textAlign: 'center', padding: '24px' }}>
+                        Loading tasks...
+                      </ActionCardContent>
+                    </ActionCard>
+                  )}
+
+                  {/* Tasks List */}
+                  {!loadingTasks && todoistTasks.length === 0 && (
+                    <ActionCard theme={theme}>
+                      <ActionCardContent theme={theme} style={{ textAlign: 'center', opacity: 0.6 }}>
+                        No tasks yet
+                      </ActionCardContent>
+                    </ActionCard>
+                  )}
+
+                  {/* Grouped Tasks by Project > Section */}
+                  {!loadingTasks && todoistProjects.map(project => {
+                    const projectTasks = todoistTasks.filter(t => t.project_id === project.id);
+                    if (projectTasks.length === 0) return null;
+
+                    const isProjectExpanded = expandedProjects[project.id] !== false; // default expanded
+                    const projectColor = getProjectColor(project.id);
+
+                    // Group tasks by section
+                    const tasksBySection = {};
+                    const noSectionTasks = [];
+                    projectTasks.forEach(task => {
+                      if (task.section_id) {
+                        if (!tasksBySection[task.section_id]) tasksBySection[task.section_id] = [];
+                        tasksBySection[task.section_id].push(task);
+                      } else {
+                        noSectionTasks.push(task);
+                      }
+                    });
+
+                    return (
+                      <div key={project.id} style={{ marginBottom: '8px' }}>
+                        {/* Project Header */}
+                        <div
+                          onClick={() => setExpandedProjects(prev => ({ ...prev, [project.id]: !isProjectExpanded }))}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '10px 16px',
+                            background: theme === 'light' ? '#F3F4F6' : '#374151',
+                            cursor: 'pointer',
+                            borderRadius: '6px',
+                            marginBottom: isProjectExpanded ? '4px' : '0',
+                          }}
+                        >
+                          <FaChevronDown
+                            style={{
+                              transform: isProjectExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+                              transition: 'transform 0.2s',
+                              fontSize: '10px',
+                              color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                            }}
+                          />
+                          <span style={{
+                            width: '10px',
+                            height: '10px',
+                            borderRadius: '50%',
+                            background: projectColor,
+                            flexShrink: 0
+                          }} />
+                          <span style={{
+                            fontWeight: 600,
+                            fontSize: '14px',
+                            color: theme === 'light' ? '#111827' : '#F9FAFB'
+                          }}>
+                            {project.name}
+                          </span>
+                          <span style={{
+                            fontSize: '12px',
+                            color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                            marginLeft: 'auto'
+                          }}>
+                            {projectTasks.length}
+                          </span>
+                        </div>
+
+                        {/* Project Content */}
+                        {isProjectExpanded && (
+                          <div style={{ paddingLeft: '8px' }}>
+                            {/* No-section tasks */}
+                            {noSectionTasks.map(task => (
+                              <ActionCard key={task.id} theme={theme} style={{ marginLeft: '8px' }}>
+                                <ActionCardHeader theme={theme} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                                  <div
+                                    style={{
+                                      width: '16px',
+                                      height: '16px',
+                                      borderRadius: '50%',
+                                      border: `2px solid ${task.priority === 4 ? '#dc3545' : task.priority === 3 ? '#fd7e14' : task.priority === 2 ? '#ffc107' : '#6c757d'}`,
+                                      flexShrink: 0,
+                                      marginTop: '2px',
+                                      cursor: 'pointer',
+                                    }}
+                                    onClick={() => handleCompleteTask(task.id)}
+                                    title="Complete task"
+                                  />
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ fontWeight: 500 }}>{task.content}</div>
+                                    {task.description && (
+                                      <div style={{ fontSize: '12px', opacity: 0.7, marginTop: '4px' }}>
+                                        {task.description.substring(0, 100)}{task.description.length > 100 ? '...' : ''}
+                                      </div>
+                                    )}
+                                  </div>
+                                </ActionCardHeader>
+                                <ActionCardContent theme={theme} style={{ padding: '8px 16px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                  {task.due && (
+                                    <span style={{
+                                      padding: '2px 8px',
+                                      borderRadius: '12px',
+                                      fontSize: '11px',
+                                      background: new Date(task.due.date) < new Date() ? '#dc354520' : '#6c757d20',
+                                      color: new Date(task.due.date) < new Date() ? '#dc3545' : (theme === 'light' ? '#6c757d' : '#9CA3AF'),
+                                    }}>
+                                      {task.due.string || task.due.date}
+                                    </span>
+                                  )}
+                                </ActionCardContent>
+                                <ActionCardButtons>
+                                  <SmallBtn theme={theme} onClick={() => openEditTask(task)}><FaEdit /></SmallBtn>
+                                  <SmallBtn theme={theme} onClick={() => window.open(task.url, '_blank')} title="Open in Todoist"><FaExternalLinkAlt /></SmallBtn>
+                                  <SmallBtn theme={theme} $variant="success" onClick={() => handleCompleteTask(task.id)} title="Complete"><FaCheck /></SmallBtn>
+                                  <SmallBtn theme={theme} $variant="danger" onClick={() => handleDeleteTask(task.id)} title="Delete"><FaTrash /></SmallBtn>
+                                </ActionCardButtons>
+                              </ActionCard>
+                            ))}
+
+                            {/* Sections */}
+                            {project.sections && project.sections.map(section => {
+                              const sectionTasks = tasksBySection[section.id] || [];
+                              if (sectionTasks.length === 0) return null;
+
+                              const isSectionExpanded = expandedSections[section.id] !== false; // default expanded
+
+                              return (
+                                <div key={section.id} style={{ marginTop: '4px' }}>
+                                  {/* Section Header */}
+                                  <div
+                                    onClick={() => setExpandedSections(prev => ({ ...prev, [section.id]: !isSectionExpanded }))}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '8px',
+                                      padding: '8px 16px',
+                                      marginLeft: '8px',
+                                      background: theme === 'light' ? '#F9FAFB' : '#1F2937',
+                                      cursor: 'pointer',
+                                      borderRadius: '4px',
+                                      borderLeft: `3px solid ${projectColor}40`,
+                                    }}
+                                  >
+                                    <FaChevronDown
+                                      style={{
+                                        transform: isSectionExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+                                        transition: 'transform 0.2s',
+                                        fontSize: '9px',
+                                        color: theme === 'light' ? '#9CA3AF' : '#6B7280'
+                                      }}
+                                    />
+                                    <span style={{
+                                      fontWeight: 500,
+                                      fontSize: '13px',
+                                      color: theme === 'light' ? '#374151' : '#D1D5DB'
+                                    }}>
+                                      {section.name}
+                                    </span>
+                                    <span style={{
+                                      fontSize: '11px',
+                                      color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                                      marginLeft: 'auto'
+                                    }}>
+                                      {sectionTasks.length}
+                                    </span>
+                                  </div>
+
+                                  {/* Section Tasks */}
+                                  {isSectionExpanded && sectionTasks.map(task => (
+                                    <ActionCard key={task.id} theme={theme} style={{ marginLeft: '16px' }}>
+                                      <ActionCardHeader theme={theme} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                                        <div
+                                          style={{
+                                            width: '16px',
+                                            height: '16px',
+                                            borderRadius: '50%',
+                                            border: `2px solid ${task.priority === 4 ? '#dc3545' : task.priority === 3 ? '#fd7e14' : task.priority === 2 ? '#ffc107' : '#6c757d'}`,
+                                            flexShrink: 0,
+                                            marginTop: '2px',
+                                            cursor: 'pointer',
+                                          }}
+                                          onClick={() => handleCompleteTask(task.id)}
+                                          title="Complete task"
+                                        />
+                                        <div style={{ flex: 1 }}>
+                                          <div style={{ fontWeight: 500 }}>{task.content}</div>
+                                          {task.description && (
+                                            <div style={{ fontSize: '12px', opacity: 0.7, marginTop: '4px' }}>
+                                              {task.description.substring(0, 100)}{task.description.length > 100 ? '...' : ''}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </ActionCardHeader>
+                                      <ActionCardContent theme={theme} style={{ padding: '8px 16px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                        {task.due && (
+                                          <span style={{
+                                            padding: '2px 8px',
+                                            borderRadius: '12px',
+                                            fontSize: '11px',
+                                            background: new Date(task.due.date) < new Date() ? '#dc354520' : '#6c757d20',
+                                            color: new Date(task.due.date) < new Date() ? '#dc3545' : (theme === 'light' ? '#6c757d' : '#9CA3AF'),
+                                          }}>
+                                            {task.due.string || task.due.date}
+                                          </span>
+                                        )}
+                                      </ActionCardContent>
+                                      <ActionCardButtons>
+                                        <SmallBtn theme={theme} onClick={() => openEditTask(task)}><FaEdit /></SmallBtn>
+                                        <SmallBtn theme={theme} onClick={() => window.open(task.url, '_blank')} title="Open in Todoist"><FaExternalLinkAlt /></SmallBtn>
+                                        <SmallBtn theme={theme} $variant="success" onClick={() => handleCompleteTask(task.id)} title="Complete"><FaCheck /></SmallBtn>
+                                        <SmallBtn theme={theme} $variant="danger" onClick={() => handleDeleteTask(task.id)} title="Delete"><FaTrash /></SmallBtn>
+                                      </ActionCardButtons>
+                                    </ActionCard>
+                                  ))}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </>
               )}
 
               {activeActionTab === 'notes' && (
@@ -3792,6 +4800,928 @@ internet businesses.`;
         handleMarkCompleteWithCategory={handleMarkCompleteWithCategory}
         getVisibleTabs={getVisibleTabs}
         shouldShowField={shouldShowField}
+      />
+
+      {/* Deal Modal */}
+      {dealModalOpen && (
+        <ModalOverlay onClick={() => { setDealModalOpen(false); setSelectedDealContact(null); setDealRelationship('introducer'); setDealSearchQuery(''); setDealSearchResults([]); setNewDealName(''); }}>
+          <ModalContent theme={theme} onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <ModalHeader theme={theme}>
+              <ModalTitle theme={theme}>
+                <FaDollarSign style={{ marginRight: '8px', color: '#10B981' }} />
+                Add Deal
+              </ModalTitle>
+              <CloseButton theme={theme} onClick={() => { setDealModalOpen(false); setSelectedDealContact(null); setDealRelationship('introducer'); setDealSearchQuery(''); setDealSearchResults([]); setNewDealName(''); }}>
+                <FaTimes size={18} />
+              </CloseButton>
+            </ModalHeader>
+
+            <ModalBody theme={theme}>
+              {/* Step 1: Select Contact */}
+              <FormField>
+                <FormLabel theme={theme}>Select Contact</FormLabel>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
+                  {emailContacts.filter(p => p.contact?.contact_id).map(p => {
+                    const contactName = p.contact ? `${p.contact.first_name || ''} ${p.contact.last_name || ''}`.trim() : p.name;
+                    const isSelected = selectedDealContact?.contact_id === p.contact.contact_id;
+                    return (
+                      <div
+                        key={p.contact.contact_id}
+                        onClick={() => setSelectedDealContact(p.contact)}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '16px',
+                          fontSize: '13px',
+                          cursor: 'pointer',
+                          border: `2px solid ${isSelected ? '#10B981' : (theme === 'light' ? '#E5E7EB' : '#374151')}`,
+                          background: isSelected ? (theme === 'light' ? '#D1FAE5' : '#065F46') : (theme === 'light' ? '#F9FAFB' : '#1F2937'),
+                          color: isSelected ? (theme === 'light' ? '#065F46' : '#D1FAE5') : (theme === 'light' ? '#374151' : '#D1D5DB'),
+                          fontWeight: isSelected ? 600 : 400,
+                        }}
+                      >
+                        {contactName || p.email}
+                      </div>
+                    );
+                  })}
+                  {emailContacts.filter(p => p.contact?.contact_id).length === 0 && (
+                    <div style={{ fontSize: '13px', color: theme === 'light' ? '#9CA3AF' : '#6B7280', fontStyle: 'italic' }}>
+                      No contacts found in this thread
+                    </div>
+                  )}
+                </div>
+              </FormField>
+
+              {/* Step 2: Select Relationship */}
+              {selectedDealContact && (
+                <FormField style={{ marginTop: '16px' }}>
+                  <FormLabel theme={theme}>Relationship</FormLabel>
+                  <select
+                    value={dealRelationship}
+                    onChange={(e) => setDealRelationship(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                      background: theme === 'light' ? '#fff' : '#1F2937',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB',
+                      fontSize: '14px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <option value="introducer">Introducer</option>
+                    <option value="co-investor">Co-investor</option>
+                    <option value="advisor">Advisor</option>
+                    <option value="other">Other</option>
+                  </select>
+                </FormField>
+              )}
+
+              {/* Step 3: Search or Create Deal */}
+              {selectedDealContact && (
+                <>
+                  <FormField style={{ marginTop: '16px' }}>
+                    <FormLabel theme={theme}>Search Existing Deals</FormLabel>
+                    <FormInput
+                      theme={theme}
+                      value={dealSearchQuery}
+                      onChange={async (e) => {
+                        const query = e.target.value;
+                        setDealSearchQuery(query);
+                        if (query.length >= 2) {
+                          setSearchingDeals(true);
+                          const { data } = await supabase
+                            .from('deals')
+                            .select('deal_id, opportunity, stage, category')
+                            .ilike('opportunity', `%${query}%`)
+                            .limit(10);
+                          setDealSearchResults(data || []);
+                          setSearchingDeals(false);
+                        } else {
+                          setDealSearchResults([]);
+                        }
+                      }}
+                      placeholder="Search by deal name..."
+                    />
+                    {searchingDeals && <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginTop: '4px' }}>Searching...</div>}
+                    {dealSearchResults.length > 0 && (
+                      <div style={{ marginTop: '8px', border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`, borderRadius: '8px', overflow: 'hidden' }}>
+                        {dealSearchResults.map(deal => (
+                          <div
+                            key={deal.deal_id}
+                            onClick={async () => {
+                              // Associate this deal with selected contact
+                              const { error } = await supabase
+                                .from('deals_contacts')
+                                .insert({
+                                  deal_id: deal.deal_id,
+                                  contact_id: selectedDealContact.contact_id,
+                                  relationship: dealRelationship
+                                });
+                              if (!error) {
+                                // Refresh deals
+                                const contactIds = emailContacts.filter(p => p.contact?.contact_id).map(p => p.contact.contact_id);
+                                const { data: refreshed } = await supabase
+                                  .from('deals_contacts')
+                                  .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, description, total_investment, created_at)')
+                                  .in('contact_id', contactIds);
+                                if (refreshed) {
+                                  const dealsMap = new Map();
+                                  refreshed.forEach(dc => {
+                                    if (!dc.deals) return;
+                                    const dealId = dc.deals.deal_id;
+                                    if (!dealsMap.has(dealId)) {
+                                      dealsMap.set(dealId, { ...dc.deals, contacts: [] });
+                                    }
+                                    const contact = emailContacts.find(p => p.contact?.contact_id === dc.contact_id);
+                                    if (contact) {
+                                      dealsMap.get(dealId).contacts.push({
+                                        contact_id: dc.contact_id,
+                                        name: contact.contact ? `${contact.contact.first_name} ${contact.contact.last_name}` : contact.name,
+                                        relationship: dc.relationship
+                                      });
+                                    }
+                                  });
+                                  setContactDeals(Array.from(dealsMap.values()));
+                                }
+                                // Close modal and reset
+                                setDealModalOpen(false);
+                                setSelectedDealContact(null);
+                                setDealRelationship('introducer');
+                                setDealSearchQuery('');
+                                setDealSearchResults([]);
+                              }
+                            }}
+                            style={{
+                              padding: '10px 12px',
+                              cursor: 'pointer',
+                              borderBottom: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                              background: theme === 'light' ? '#fff' : '#1F2937',
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = theme === 'light' ? '#F3F4F6' : '#374151'}
+                            onMouseLeave={e => e.currentTarget.style.background = theme === 'light' ? '#fff' : '#1F2937'}
+                          >
+                            <div style={{ fontWeight: 500 }}>{deal.opportunity}</div>
+                            <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                              {deal.stage} {deal.category ? `• ${deal.category}` : ''}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </FormField>
+
+                  <div style={{ display: 'flex', alignItems: 'center', margin: '16px 0', color: theme === 'light' ? '#9CA3AF' : '#6B7280' }}>
+                    <div style={{ flex: 1, height: '1px', background: theme === 'light' ? '#E5E7EB' : '#374151' }} />
+                    <span style={{ padding: '0 12px', fontSize: '12px' }}>OR</span>
+                    <div style={{ flex: 1, height: '1px', background: theme === 'light' ? '#E5E7EB' : '#374151' }} />
+                  </div>
+
+                  {/* Create new deal */}
+                  <FormField>
+                    <FormLabel theme={theme}>Create New Deal</FormLabel>
+                    <FormInput
+                      theme={theme}
+                      value={newDealName}
+                      onChange={(e) => setNewDealName(e.target.value)}
+                      placeholder="Enter deal name..."
+                    />
+                  </FormField>
+                </>
+              )}
+            </ModalBody>
+
+            <ModalFooter theme={theme}>
+              <SendButton
+                theme={theme}
+                disabled={!selectedDealContact || !newDealName.trim() || creatingDeal}
+                onClick={async () => {
+                  if (!selectedDealContact || !newDealName.trim()) return;
+                  setCreatingDeal(true);
+
+                  // Create the deal
+                  const { data: newDeal, error: createError } = await supabase
+                    .from('deals')
+                    .insert({ opportunity: newDealName.trim() })
+                    .select()
+                    .single();
+
+                  if (createError || !newDeal) {
+                    console.error('Failed to create deal:', createError);
+                    setCreatingDeal(false);
+                    return;
+                  }
+
+                  // Associate with selected contact
+                  await supabase
+                    .from('deals_contacts')
+                    .insert({
+                      deal_id: newDeal.deal_id,
+                      contact_id: selectedDealContact.contact_id,
+                      relationship: dealRelationship
+                    });
+
+                  // Refresh deals list
+                  const contactIds = emailContacts.filter(p => p.contact?.contact_id).map(p => p.contact.contact_id);
+                  const { data: refreshed } = await supabase
+                    .from('deals_contacts')
+                    .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, description, total_investment, created_at)')
+                    .in('contact_id', contactIds);
+
+                  if (refreshed) {
+                    const dealsMap = new Map();
+                    refreshed.forEach(dc => {
+                      if (!dc.deals) return;
+                      const dealId = dc.deals.deal_id;
+                      if (!dealsMap.has(dealId)) {
+                        dealsMap.set(dealId, { ...dc.deals, contacts: [] });
+                      }
+                      const contact = emailContacts.find(p => p.contact?.contact_id === dc.contact_id);
+                      if (contact) {
+                        dealsMap.get(dealId).contacts.push({
+                          contact_id: dc.contact_id,
+                          name: contact.contact ? `${contact.contact.first_name} ${contact.contact.last_name}` : contact.name,
+                          relationship: dc.relationship
+                        });
+                      }
+                    });
+                    setContactDeals(Array.from(dealsMap.values()));
+                  }
+
+                  setCreatingDeal(false);
+                  setDealModalOpen(false);
+                  setSelectedDealContact(null);
+                  setDealRelationship('introducer');
+                  setNewDealName('');
+                }}
+              >
+                {creatingDeal ? 'Creating...' : 'Create Deal'}
+              </SendButton>
+            </ModalFooter>
+          </ModalContent>
+        </ModalOverlay>
+      )}
+
+      {/* Introduction Modal */}
+      {introductionModalOpen && (
+        <ModalOverlay onClick={() => { setIntroductionModalOpen(false); setEditingIntroduction(null); setSelectedIntroducee(null); setSelectedIntroducee2(null); setIntroductionStatus('Requested'); setIntroductionTool('email'); setIntroductionCategory('Karma Points'); setIntroductionText(''); setIntroduceeSearchQuery(''); setIntroduceeSearchResults([]); setIntroducee2SearchQuery(''); setIntroducee2SearchResults([]); }}>
+          <ModalContent theme={theme} onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <ModalHeader theme={theme}>
+              <ModalTitle theme={theme}>
+                <FaHandshake style={{ marginRight: '8px', color: '#F59E0B' }} />
+                {editingIntroduction ? 'Edit Introduction' : 'Add Introduction'}
+              </ModalTitle>
+              <CloseButton theme={theme} onClick={() => { setIntroductionModalOpen(false); setEditingIntroduction(null); setSelectedIntroducee(null); setSelectedIntroducee2(null); setIntroductionStatus('Requested'); setIntroductionTool('email'); setIntroductionCategory('Karma Points'); setIntroductionText(''); setIntroduceeSearchQuery(''); setIntroduceeSearchResults([]); setIntroducee2SearchQuery(''); setIntroducee2SearchResults([]); }}>
+                <FaTimes size={18} />
+              </CloseButton>
+            </ModalHeader>
+
+            <ModalBody theme={theme}>
+              {/* Person 1 */}
+              <FormField>
+                <FormLabel theme={theme}>Person 1</FormLabel>
+                  {/* Selected introducee display */}
+                  {selectedIntroducee && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', marginBottom: '8px' }}>
+                      <div style={{
+                        padding: '8px 14px',
+                        borderRadius: '20px',
+                        fontSize: '14px',
+                        fontWeight: 600,
+                        background: theme === 'light' ? '#FEF3C7' : '#78350F',
+                        color: theme === 'light' ? '#92400E' : '#FDE68A',
+                        border: `2px solid #F59E0B`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}>
+                        {selectedIntroducee.name || `${selectedIntroducee.first_name} ${selectedIntroducee.last_name}`}
+                        <FaTimes
+                          size={12}
+                          style={{ cursor: 'pointer', opacity: 0.7 }}
+                          onClick={() => setSelectedIntroducee(null)}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {/* Thread contacts suggestions */}
+                  {!selectedIntroducee && emailContacts.filter(p => p.contact?.contact_id).length > 0 && (
+                    <>
+                      <div style={{ fontSize: '11px', color: theme === 'light' ? '#9CA3AF' : '#6B7280', marginTop: '8px', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        From this thread
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                        {emailContacts.filter(p => p.contact?.contact_id).map(p => {
+                          const contactName = p.contact ? `${p.contact.first_name || ''} ${p.contact.last_name || ''}`.trim() : p.name;
+                          const isDisabled = selectedIntroducee2?.contact_id === p.contact.contact_id;
+                          return (
+                            <div
+                              key={p.contact.contact_id}
+                              onClick={() => !isDisabled && setSelectedIntroducee(p.contact)}
+                              style={{
+                                padding: '6px 12px',
+                                borderRadius: '16px',
+                                fontSize: '13px',
+                                cursor: isDisabled ? 'not-allowed' : 'pointer',
+                                opacity: isDisabled ? 0.4 : 1,
+                                border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                                background: theme === 'light' ? '#F9FAFB' : '#1F2937',
+                                color: theme === 'light' ? '#374151' : '#D1D5DB',
+                              }}
+                            >
+                              {contactName || p.email}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                  {/* Search for other contacts */}
+                  {!selectedIntroducee && (
+                    <>
+                      <div style={{ fontSize: '11px', color: theme === 'light' ? '#9CA3AF' : '#6B7280', marginTop: '12px', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Or search all contacts
+                      </div>
+                      <FormInput
+                        theme={theme}
+                        value={introduceeSearchQuery}
+                        onChange={async (e) => {
+                          const query = e.target.value;
+                          setIntroduceeSearchQuery(query);
+                          if (query.length >= 2) {
+                            setSearchingIntroducee(true);
+                            const { data } = await supabase
+                              .from('contacts')
+                              .select('contact_id, first_name, last_name')
+                              .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%`)
+                              .limit(8);
+                            setIntroduceeSearchResults(data || []);
+                            setSearchingIntroducee(false);
+                          } else {
+                            setIntroduceeSearchResults([]);
+                          }
+                        }}
+                        placeholder="Search by name..."
+                        style={{ marginTop: '4px' }}
+                      />
+                      {searchingIntroducee && <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginTop: '4px' }}>Searching...</div>}
+                      {introduceeSearchResults.length > 0 && (
+                        <div style={{ marginTop: '8px', border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`, borderRadius: '8px', overflow: 'hidden', maxHeight: '150px', overflowY: 'auto' }}>
+                          {introduceeSearchResults.map(contact => {
+                            const isDisabled = selectedIntroducee2?.contact_id === contact.contact_id;
+                            return (
+                              <div
+                                key={contact.contact_id}
+                                onClick={() => {
+                                  if (!isDisabled) {
+                                    setSelectedIntroducee(contact);
+                                    setIntroduceeSearchQuery('');
+                                    setIntroduceeSearchResults([]);
+                                  }
+                                }}
+                                style={{
+                                  padding: '10px 12px',
+                                  cursor: isDisabled ? 'not-allowed' : 'pointer',
+                                  opacity: isDisabled ? 0.4 : 1,
+                                  borderBottom: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                                  background: theme === 'light' ? '#fff' : '#1F2937',
+                                }}
+                                onMouseEnter={e => !isDisabled && (e.currentTarget.style.background = theme === 'light' ? '#F3F4F6' : '#374151')}
+                                onMouseLeave={e => e.currentTarget.style.background = theme === 'light' ? '#fff' : '#1F2937'}
+                              >
+                                <div style={{ fontWeight: 500 }}>{contact.first_name} {contact.last_name}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </FormField>
+
+              {/* Person 2 */}
+              <FormField style={{ marginTop: '16px' }}>
+                <FormLabel theme={theme}>Person 2</FormLabel>
+                {/* Selected person 2 display */}
+                {selectedIntroducee2 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', marginBottom: '8px' }}>
+                    <div style={{
+                      padding: '8px 14px',
+                      borderRadius: '20px',
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      background: theme === 'light' ? '#FEF3C7' : '#78350F',
+                      color: theme === 'light' ? '#92400E' : '#FDE68A',
+                      border: `2px solid #F59E0B`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}>
+                      {selectedIntroducee2.name || `${selectedIntroducee2.first_name} ${selectedIntroducee2.last_name}`}
+                      <FaTimes
+                        size={12}
+                        style={{ cursor: 'pointer', opacity: 0.7 }}
+                        onClick={() => setSelectedIntroducee2(null)}
+                      />
+                    </div>
+                  </div>
+                )}
+                {/* Thread contacts suggestions */}
+                {!selectedIntroducee2 && emailContacts.filter(p => p.contact?.contact_id).length > 0 && (
+                  <>
+                    <div style={{ fontSize: '11px', color: theme === 'light' ? '#9CA3AF' : '#6B7280', marginTop: '8px', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      From this thread
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {emailContacts.filter(p => p.contact?.contact_id).map(p => {
+                        const contactName = p.contact ? `${p.contact.first_name || ''} ${p.contact.last_name || ''}`.trim() : p.name;
+                        const isDisabled = selectedIntroducee?.contact_id === p.contact.contact_id;
+                        return (
+                          <div
+                            key={p.contact.contact_id}
+                            onClick={() => !isDisabled && setSelectedIntroducee2(p.contact)}
+                            style={{
+                              padding: '6px 12px',
+                              borderRadius: '16px',
+                              fontSize: '13px',
+                              cursor: isDisabled ? 'not-allowed' : 'pointer',
+                              opacity: isDisabled ? 0.4 : 1,
+                              border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                              background: theme === 'light' ? '#F9FAFB' : '#1F2937',
+                              color: theme === 'light' ? '#374151' : '#D1D5DB',
+                            }}
+                          >
+                            {contactName || p.email}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+                {/* Search for other contacts */}
+                {!selectedIntroducee2 && (
+                  <>
+                    <div style={{ fontSize: '11px', color: theme === 'light' ? '#9CA3AF' : '#6B7280', marginTop: '12px', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Or search all contacts
+                    </div>
+                    <FormInput
+                      theme={theme}
+                      value={introducee2SearchQuery}
+                      onChange={async (e) => {
+                        const query = e.target.value;
+                        setIntroducee2SearchQuery(query);
+                        if (query.length >= 2) {
+                          setSearchingIntroducee2(true);
+                          const { data } = await supabase
+                            .from('contacts')
+                            .select('contact_id, first_name, last_name')
+                            .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%`)
+                            .limit(8);
+                          setIntroducee2SearchResults(data || []);
+                          setSearchingIntroducee2(false);
+                        } else {
+                          setIntroducee2SearchResults([]);
+                        }
+                      }}
+                      placeholder="Search by name..."
+                      style={{ marginTop: '4px' }}
+                    />
+                    {searchingIntroducee2 && <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginTop: '4px' }}>Searching...</div>}
+                    {introducee2SearchResults.length > 0 && (
+                      <div style={{ marginTop: '8px', border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`, borderRadius: '8px', overflow: 'hidden', maxHeight: '150px', overflowY: 'auto' }}>
+                        {introducee2SearchResults.map(contact => {
+                          const isDisabled = selectedIntroducee?.contact_id === contact.contact_id;
+                          return (
+                            <div
+                              key={contact.contact_id}
+                              onClick={() => {
+                                if (!isDisabled) {
+                                  setSelectedIntroducee2(contact);
+                                  setIntroducee2SearchQuery('');
+                                  setIntroducee2SearchResults([]);
+                                }
+                              }}
+                              style={{
+                                padding: '10px 12px',
+                                cursor: isDisabled ? 'not-allowed' : 'pointer',
+                                opacity: isDisabled ? 0.4 : 1,
+                                borderBottom: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                                background: theme === 'light' ? '#fff' : '#1F2937',
+                              }}
+                              onMouseEnter={e => !isDisabled && (e.currentTarget.style.background = theme === 'light' ? '#F3F4F6' : '#374151')}
+                              onMouseLeave={e => e.currentTarget.style.background = theme === 'light' ? '#fff' : '#1F2937'}
+                            >
+                              <div style={{ fontWeight: 500 }}>{contact.first_name} {contact.last_name}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                )}
+              </FormField>
+
+              {/* Status, Tool, Category */}
+              {selectedIntroducee && selectedIntroducee2 && (
+                <>
+                  <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+                    <FormField style={{ flex: 1 }}>
+                      <FormLabel theme={theme}>Status</FormLabel>
+                      <select
+                        value={introductionStatus}
+                        onChange={(e) => setIntroductionStatus(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                          background: theme === 'light' ? '#fff' : '#1F2937',
+                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                          fontSize: '14px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <option value="Requested">Requested</option>
+                        <option value="Promised">Promised</option>
+                        <option value="Done & Dust">Done & Dust</option>
+                        <option value="Done, but need to monitor">Done, but need to monitor</option>
+                        <option value="Aborted">Aborted</option>
+                      </select>
+                    </FormField>
+                    <FormField style={{ flex: 1 }}>
+                      <FormLabel theme={theme}>Tool</FormLabel>
+                      <select
+                        value={introductionTool}
+                        onChange={(e) => setIntroductionTool(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                          background: theme === 'light' ? '#fff' : '#1F2937',
+                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                          fontSize: '14px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <option value="email">Email</option>
+                        <option value="whatsapp">WhatsApp</option>
+                        <option value="in person">In Person</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </FormField>
+                  </div>
+
+                  <FormField style={{ marginTop: '12px' }}>
+                    <FormLabel theme={theme}>Category</FormLabel>
+                    <select
+                      value={introductionCategory}
+                      onChange={(e) => setIntroductionCategory(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        background: theme === 'light' ? '#fff' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <option value="Karma Points">Karma Points</option>
+                      <option value="Dealflow">Dealflow</option>
+                      <option value="Portfolio Company">Portfolio Company</option>
+                    </select>
+                  </FormField>
+
+                  <FormField style={{ marginTop: '12px' }}>
+                    <FormLabel theme={theme}>Notes (optional)</FormLabel>
+                    <textarea
+                      value={introductionText}
+                      onChange={(e) => setIntroductionText(e.target.value)}
+                      placeholder="Add any notes about this introduction..."
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        background: theme === 'light' ? '#fff' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px',
+                        minHeight: '80px',
+                        resize: 'vertical',
+                      }}
+                    />
+                  </FormField>
+                </>
+              )}
+            </ModalBody>
+
+            <ModalFooter theme={theme}>
+              <SendButton
+                theme={theme}
+                disabled={!selectedIntroducee || !selectedIntroducee2 || creatingIntroduction}
+                onClick={async () => {
+                  if (!selectedIntroducee || !selectedIntroducee2) return;
+                  setCreatingIntroduction(true);
+
+                  if (editingIntroduction) {
+                    // Update existing introduction
+                    const { error: updateError } = await supabase
+                      .from('introductions')
+                      .update({
+                        introduction_tool: introductionTool,
+                        status: introductionStatus,
+                        text: introductionText || null,
+                        category: introductionCategory
+                      })
+                      .eq('introduction_id', editingIntroduction.introduction_id);
+
+                    if (updateError) {
+                      console.error('Failed to update introduction:', updateError);
+                      setCreatingIntroduction(false);
+                      return;
+                    }
+
+                    // Update contacts if changed - delete old and insert new
+                    await supabase
+                      .from('introduction_contacts')
+                      .delete()
+                      .eq('introduction_id', editingIntroduction.introduction_id);
+
+                    await supabase
+                      .from('introduction_contacts')
+                      .insert([
+                        {
+                          introduction_id: editingIntroduction.introduction_id,
+                          contact_id: selectedIntroducee.contact_id,
+                          role: 'introducee'
+                        },
+                        {
+                          introduction_id: editingIntroduction.introduction_id,
+                          contact_id: selectedIntroducee2.contact_id,
+                          role: 'introducee'
+                        }
+                      ]);
+                  } else {
+                    // Create the introduction
+                    const { data: newIntro, error: createError } = await supabase
+                      .from('introductions')
+                      .insert({
+                        introduction_date: new Date().toISOString().split('T')[0],
+                        introduction_tool: introductionTool,
+                        status: introductionStatus,
+                        text: introductionText || null,
+                        category: introductionCategory
+                      })
+                      .select()
+                      .single();
+
+                    if (createError || !newIntro) {
+                      console.error('Failed to create introduction:', createError);
+                      setCreatingIntroduction(false);
+                      return;
+                    }
+
+                    // Associate both contacts as introducees
+                    await supabase
+                      .from('introduction_contacts')
+                      .insert([
+                        {
+                          introduction_id: newIntro.introduction_id,
+                          contact_id: selectedIntroducee.contact_id,
+                          role: 'introducee'
+                        },
+                        {
+                          introduction_id: newIntro.introduction_id,
+                          contact_id: selectedIntroducee2.contact_id,
+                          role: 'introducee'
+                        }
+                      ]);
+                  }
+
+                  // Refresh introductions list
+                  const contactIds = emailContacts.filter(p => p.contact?.contact_id).map(p => p.contact.contact_id);
+                  const { data: introContactsData } = await supabase
+                    .from('introduction_contacts')
+                    .select('introduction_id, contact_id, role, introductions(introduction_id, introduction_date, introduction_tool, category, text, status, created_at)')
+                    .in('contact_id', contactIds);
+
+                  const introductionIds = [...new Set(introContactsData?.map(ic => ic.introduction_id) || [])];
+                  let allIntroContacts = [];
+                  if (introductionIds.length > 0) {
+                    const { data: allContactsData } = await supabase
+                      .from('introduction_contacts')
+                      .select('introduction_id, contact_id, role, contacts(contact_id, first_name, last_name), introductions(introduction_id, introduction_date, introduction_tool, category, text, status, created_at)')
+                      .in('introduction_id', introductionIds);
+                    allIntroContacts = allContactsData || [];
+                  }
+
+                  const introMap = new Map();
+                  allIntroContacts.forEach(ic => {
+                    if (!ic.introductions) return;
+                    const introId = ic.introductions.introduction_id;
+                    if (!introMap.has(introId)) {
+                      introMap.set(introId, { ...ic.introductions, contacts: [] });
+                    }
+                    const contactName = ic.contacts
+                      ? `${ic.contacts.first_name || ''} ${ic.contacts.last_name || ''}`.trim() || 'Unknown'
+                      : 'Unknown';
+                    introMap.get(introId).contacts.push({
+                      contact_id: ic.contact_id,
+                      name: contactName,
+                      role: ic.role
+                    });
+                  });
+                  setContactIntroductions(Array.from(introMap.values()));
+
+                  setCreatingIntroduction(false);
+                  setIntroductionModalOpen(false);
+                  setEditingIntroduction(null);
+                  setSelectedIntroducee(null);
+                  setSelectedIntroducee2(null);
+                  setIntroductionStatus('Requested');
+                  setIntroductionTool('email');
+                  setIntroductionCategory('Karma Points');
+                  setIntroductionText('');
+                  setIntroduceeSearchQuery('');
+                  setIntroduceeSearchResults([]);
+                  setIntroducee2SearchQuery('');
+                  setIntroducee2SearchResults([]);
+                }}
+              >
+                {creatingIntroduction ? (editingIntroduction ? 'Saving...' : 'Creating...') : (editingIntroduction ? 'Save Changes' : 'Create Introduction')}
+              </SendButton>
+            </ModalFooter>
+          </ModalContent>
+        </ModalOverlay>
+      )}
+
+      {/* Task Modal */}
+      {taskModalOpen && (
+        <ModalOverlay onClick={() => { setTaskModalOpen(false); resetTaskForm(); }}>
+          <ModalContent theme={theme} onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <ModalHeader theme={theme}>
+              <ModalTitle theme={theme}>
+                <FaTasks style={{ marginRight: '8px', color: '#3B82F6' }} />
+                {editingTask ? 'Edit Task' : 'Add Task'}
+              </ModalTitle>
+              <CloseButton theme={theme} onClick={() => { setTaskModalOpen(false); resetTaskForm(); }}>
+                <FaTimes size={18} />
+              </CloseButton>
+            </ModalHeader>
+
+            <ModalBody theme={theme}>
+              {/* Task Content */}
+              <FormField>
+                <FormLabel theme={theme}>Task *</FormLabel>
+                <FormInput
+                  theme={theme}
+                  value={newTaskContent}
+                  onChange={(e) => setNewTaskContent(e.target.value)}
+                  placeholder="What needs to be done?"
+                  autoFocus
+                />
+              </FormField>
+
+              {/* Description */}
+              <FormField style={{ marginTop: '16px' }}>
+                <FormLabel theme={theme}>Description</FormLabel>
+                <FormTextarea
+                  theme={theme}
+                  value={newTaskDescription}
+                  onChange={(e) => setNewTaskDescription(e.target.value)}
+                  placeholder="Add more details..."
+                  rows={3}
+                />
+              </FormField>
+
+              {/* Project and Section */}
+              <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+                <FormField style={{ flex: 1 }}>
+                  <FormLabel theme={theme}>Project</FormLabel>
+                  <FormSelect
+                    theme={theme}
+                    value={newTaskProjectId}
+                    onChange={(e) => {
+                      setNewTaskProjectId(e.target.value);
+                      setNewTaskSectionId('');
+                    }}
+                  >
+                    {todoistProjects.map(project => (
+                      <option key={project.id} value={project.id}>{project.name}</option>
+                    ))}
+                  </FormSelect>
+                </FormField>
+
+                <FormField style={{ flex: 1 }}>
+                  <FormLabel theme={theme}>Section</FormLabel>
+                  <FormSelect
+                    theme={theme}
+                    value={newTaskSectionId}
+                    onChange={(e) => setNewTaskSectionId(e.target.value)}
+                  >
+                    <option value="">None</option>
+                    {todoistProjects
+                      .find(p => p.id === newTaskProjectId)
+                      ?.sections?.map(section => (
+                        <option key={section.id} value={section.id}>{section.name}</option>
+                      ))
+                    }
+                  </FormSelect>
+                </FormField>
+              </div>
+
+              {/* Due Date and Priority */}
+              <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+                <FormField style={{ flex: 1 }}>
+                  <FormLabel theme={theme}>Due Date</FormLabel>
+                  <FormInput
+                    theme={theme}
+                    value={newTaskDueString}
+                    onChange={(e) => setNewTaskDueString(e.target.value)}
+                    placeholder="tomorrow, next week, Dec 15..."
+                  />
+                </FormField>
+
+                <FormField style={{ flex: 1 }}>
+                  <FormLabel theme={theme}>Priority</FormLabel>
+                  <FormSelect
+                    theme={theme}
+                    value={newTaskPriority}
+                    onChange={(e) => setNewTaskPriority(Number(e.target.value))}
+                  >
+                    <option value={1}>Normal</option>
+                    <option value={2}>Medium</option>
+                    <option value={3}>High</option>
+                    <option value={4}>Urgent</option>
+                  </FormSelect>
+                </FormField>
+              </div>
+
+              {/* Link to email thread contacts - quick suggestions */}
+              {emailContacts.filter(p => p.contact?.contact_id).length > 0 && (
+                <FormField style={{ marginTop: '16px' }}>
+                  <FormLabel theme={theme}>Link to contact from this thread</FormLabel>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
+                    {emailContacts.filter(p => p.contact?.contact_id).slice(0, 5).map(p => (
+                      <div
+                        key={p.contact.contact_id}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '16px',
+                          fontSize: '13px',
+                          background: theme === 'light' ? '#EBF5FF' : '#1E3A5F',
+                          color: theme === 'light' ? '#2563EB' : '#93C5FD',
+                          cursor: 'pointer',
+                          border: `1px solid ${theme === 'light' ? '#BFDBFE' : '#3B82F6'}`,
+                        }}
+                        onClick={() => {
+                          const contactName = p.contact.first_name + (p.contact.last_name ? ` ${p.contact.last_name}` : '');
+                          const crmLink = `https://crm-editor-frontend.netlify.app/contacts/${p.contact.contact_id}`;
+                          setNewTaskDescription(prev =>
+                            prev ? `${prev}\n\nContact: ${contactName}\nCRM: ${crmLink}` : `Contact: ${contactName}\nCRM: ${crmLink}`
+                          );
+                          toast.success(`Linked to ${contactName}`);
+                        }}
+                      >
+                        {p.contact.first_name} {p.contact.last_name}
+                      </div>
+                    ))}
+                  </div>
+                </FormField>
+              )}
+            </ModalBody>
+
+            <ModalFooter theme={theme}>
+              <SendButton
+                theme={theme}
+                disabled={creatingTask || !newTaskContent.trim()}
+                onClick={handleSaveTask}
+              >
+                {creatingTask ? 'Saving...' : (editingTask ? 'Save Changes' : 'Create Task')}
+              </SendButton>
+            </ModalFooter>
+          </ModalContent>
+        </ModalOverlay>
+      )}
+
+      {/* Profile Image Modal */}
+      <ProfileImageModal
+        isOpen={profileImageModal.isOpen}
+        onClose={profileImageModal.closeModal}
+        contact={profileImageModal.contact}
+        uploading={profileImageModal.uploading}
+        fetchingFromLinkedIn={profileImageModal.fetchingFromLinkedIn}
+        fetchingFromWhatsApp={profileImageModal.fetchingFromWhatsApp}
+        imagePreview={profileImageModal.imagePreview}
+        selectedFile={profileImageModal.selectedFile}
+        onFileSelect={profileImageModal.handleFileSelect}
+        onSave={profileImageModal.saveProfileImage}
+        onFetchFromLinkedIn={profileImageModal.fetchFromLinkedIn}
+        onFetchFromWhatsApp={profileImageModal.fetchFromWhatsApp}
+        onRemoveImage={profileImageModal.removeProfileImage}
+        theme={theme}
       />
     </PageContainer>
   );

@@ -1,0 +1,31 @@
+{
+  "name": "command-center-backend",
+  "version": "1.0.0",
+  "description": "Backend for Command Center - Fastmail JMAP to Supabase sync",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "sync": "node src/sync.js"
+  },
+  "keywords": [
+    "fastmail",
+    "jmap",
+    "supabase",
+    "email"
+  ],
+  "author": "Simone Cimminelli",
+  "license": "ISC",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@modelcontextprotocol/sdk": "^1.24.3",
+    "@supabase/supabase-js": "^2.86.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1"
+  }
+}
