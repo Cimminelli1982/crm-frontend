@@ -1501,6 +1501,18 @@ ${emailContext}`;
     return selectedThread[selectedThread.length - 1];
   };
 
+  // Email signature
+  const EMAIL_SIGNATURE = `
+
+--
+SIMONE CIMMINELLI
+Newsletter: https://www.angelinvesting.it/
+Website: https://www.cimminelli.com/
+LinkedIn: https://www.linkedin.com/in/cimminelli/
+
+Build / Buy / Invest in
+internet businesses.`;
+
   // Open compose modal for reply
   const openReply = (replyAll = false) => {
     const latestEmail = getLatestEmail();
@@ -1536,7 +1548,7 @@ ${emailContext}`;
     setComposeToInput('');
     setComposeCcInput('');
     setComposeSubject(subject);
-    setComposeBody('\n\n' + '─'.repeat(40) + '\n' +
+    setComposeBody('\n\n' + EMAIL_SIGNATURE + '\n\n' + '─'.repeat(40) + '\n' +
       `On ${new Date(latestEmail.date).toLocaleString()}, ${latestEmail.from_name || latestEmail.from_email} wrote:\n\n` +
       (latestEmail.body_text || latestEmail.snippet || ''));
     setComposeModal({ open: true, mode });
@@ -1575,7 +1587,7 @@ ${emailContext}`;
     setComposeToInput('');
     setComposeCcInput('');
     setComposeSubject(subject);
-    setComposeBody(draftText + '\n\n' + '─'.repeat(40) + '\n' +
+    setComposeBody(draftText + '\n\n' + EMAIL_SIGNATURE + '\n\n' + '─'.repeat(40) + '\n' +
       `On ${new Date(latestEmail.date).toLocaleString()}, ${latestEmail.from_name || latestEmail.from_email} wrote:\n\n` +
       (latestEmail.body_text || latestEmail.snippet || ''));
     setComposeModal({ open: true, mode: 'reply' });
@@ -1617,9 +1629,12 @@ ${emailContext}`;
       ? latestEmail.subject
       : `Fwd: ${latestEmail.subject}`;
 
-    setComposeTo('');
+    setComposeTo([]);
+    setComposeCc([]);
+    setComposeToInput('');
+    setComposeCcInput('');
     setComposeSubject(subject);
-    setComposeBody('\n\n' + '─'.repeat(40) + '\n' +
+    setComposeBody('\n\n' + EMAIL_SIGNATURE + '\n\n' + '─'.repeat(40) + '\n' +
       `---------- Forwarded message ----------\n` +
       `From: ${latestEmail.from_name || ''} <${latestEmail.from_email}>\n` +
       `Date: ${new Date(latestEmail.date).toLocaleString()}\n` +
