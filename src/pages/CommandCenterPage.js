@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
-import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck } from 'react-icons/fa';
+import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaImage } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import QuickEditModal from '../components/QuickEditModalRefactored';
@@ -481,6 +481,82 @@ const TypingIndicator = styled.div`
   }
 `;
 
+const ChatImagePreviewContainer = styled.div`
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  flex-wrap: wrap;
+  background: ${props => props.theme === 'light' ? '#F9FAFB' : '#1F2937'};
+  border-top: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+`;
+
+const ChatImagePreview = styled.div`
+  position: relative;
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+`;
+
+const ChatImageRemoveButton = styled.button`
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #EF4444;
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+
+  &:hover {
+    background: #DC2626;
+  }
+`;
+
+const ChatAttachButton = styled.button`
+  padding: 10px;
+  background: transparent;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
+    color: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+  }
+`;
+
+const ChatMessageImages = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+
+  img {
+    max-width: 150px;
+    max-height: 100px;
+    border-radius: 6px;
+    object-fit: cover;
+  }
+`;
+
 const QuickActionChip = styled.button`
   padding: 6px 12px;
   background: ${props => props.theme === 'light' ? '#EBF5FF' : '#1E3A5F'};
@@ -846,7 +922,9 @@ const CommandCenterPage = ({ theme }) => {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  const [chatImages, setChatImages] = useState([]); // Array of { file, preview, base64 }
   const chatMessagesRef = React.useRef(null);
+  const chatFileInputRef = React.useRef(null);
 
   // Quick Edit Modal - use the custom hook
   const quickEditModal = useQuickEditModal(() => {});
@@ -1389,14 +1467,91 @@ ${emailsText}
 `;
   };
 
+  // Handle image file selection for chat
+  const handleChatImageSelect = async (e) => {
+    const files = Array.from(e.target.files);
+    const imageFiles = files.filter(f => f.type.startsWith('image/'));
+
+    if (imageFiles.length === 0) {
+      toast.error('Please select image files');
+      return;
+    }
+
+    // Convert to base64
+    const newImages = await Promise.all(imageFiles.map(async (file) => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const base64 = e.target.result.split(',')[1]; // Remove data:image/...;base64, prefix
+          resolve({
+            file,
+            preview: URL.createObjectURL(file),
+            base64,
+            mediaType: file.type
+          });
+        };
+        reader.readAsDataURL(file);
+      });
+    }));
+
+    setChatImages(prev => [...prev, ...newImages]);
+    e.target.value = ''; // Reset input
+  };
+
+  // Remove image from chat attachments
+  const removeChatImage = (index) => {
+    setChatImages(prev => {
+      const newImages = [...prev];
+      URL.revokeObjectURL(newImages[index].preview);
+      newImages.splice(index, 1);
+      return newImages;
+    });
+  };
+
   // Send message to Claude
   const sendMessageToClaude = async (message) => {
-    if (!message.trim()) return;
+    if (!message.trim() && chatImages.length === 0) return;
 
-    // Add user message to chat
-    const userMessage = { role: 'user', content: message };
-    setChatMessages(prev => [...prev, userMessage]);
+    // Build message content (text + images for Claude API)
+    let userContent;
+    const hasImages = chatImages.length > 0;
+
+    if (hasImages) {
+      // Multi-part content with images
+      userContent = [];
+
+      // Add images first
+      chatImages.forEach(img => {
+        userContent.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: img.mediaType,
+            data: img.base64
+          }
+        });
+      });
+
+      // Add text
+      if (message.trim()) {
+        userContent.push({
+          type: 'text',
+          text: message
+        });
+      }
+    } else {
+      userContent = message;
+    }
+
+    // Add user message to chat (for display)
+    const userMessageDisplay = {
+      role: 'user',
+      content: message,
+      images: chatImages.map(img => img.preview) // Store previews for display
+    };
+    setChatMessages(prev => [...prev, userMessageDisplay]);
     setChatInput('');
+    setChatImages([]); // Clear images
     setChatLoading(true);
 
     try {
@@ -1424,14 +1579,21 @@ CONTEXT - Simone runs a newsletter business and is an investor. He values:
 
 ${emailContext}`;
 
+      // Build messages for API
+      const apiMessages = [...chatMessages, { role: 'user', content: userContent }].map(m => {
+        // If message has images array (from previous messages), reconstruct content
+        if (m.images && m.images.length > 0) {
+          // Previous messages with images - just send text for now (images already processed)
+          return { role: m.role, content: m.content };
+        }
+        return { role: m.role, content: m.content };
+      });
+
       const response = await fetch(`${BACKEND_URL}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: [...chatMessages, userMessage].map(m => ({
-            role: m.role,
-            content: m.content
-          })),
+          messages: apiMessages,
           systemPrompt,
         }),
       });
@@ -2912,6 +3074,13 @@ internet businesses.`;
                       const draftText = msg.role === 'assistant' ? extractDraftFromMessage(msg.content) : null;
                       return (
                         <ChatMessage key={idx} theme={theme} $isUser={msg.role === 'user'}>
+                          {msg.images && msg.images.length > 0 && (
+                            <ChatMessageImages>
+                              {msg.images.map((imgSrc, imgIdx) => (
+                                <img key={imgIdx} src={imgSrc} alt={`Attached ${imgIdx + 1}`} />
+                              ))}
+                            </ChatMessageImages>
+                          )}
                           {msg.content}
                           {draftText && (
                             <AcceptDraftButton onClick={() => openReplyWithDraft(draftText)}>
@@ -2930,8 +3099,37 @@ internet businesses.`;
                     )}
                   </ChatMessages>
 
+                  {/* Image Preview Area */}
+                  {chatImages.length > 0 && (
+                    <ChatImagePreviewContainer theme={theme}>
+                      {chatImages.map((img, idx) => (
+                        <ChatImagePreview key={idx} theme={theme}>
+                          <img src={img.preview} alt={`Attachment ${idx + 1}`} />
+                          <ChatImageRemoveButton onClick={() => removeChatImage(idx)}>
+                            <FaTimes />
+                          </ChatImageRemoveButton>
+                        </ChatImagePreview>
+                      ))}
+                    </ChatImagePreviewContainer>
+                  )}
+
                   {/* Chat Input */}
                   <ChatInputContainer theme={theme}>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      ref={chatFileInputRef}
+                      onChange={handleChatImageSelect}
+                      style={{ display: 'none' }}
+                    />
+                    <ChatAttachButton
+                      theme={theme}
+                      onClick={() => chatFileInputRef.current?.click()}
+                      title="Attach images"
+                    >
+                      <FaImage size={16} />
+                    </ChatAttachButton>
                     <ChatInput
                       theme={theme}
                       value={chatInput}
@@ -2942,7 +3140,7 @@ internet businesses.`;
                     />
                     <ChatSendButton
                       onClick={() => sendMessageToClaude(chatInput)}
-                      disabled={chatLoading || !chatInput.trim()}
+                      disabled={chatLoading || (!chatInput.trim() && chatImages.length === 0)}
                     >
                       <FaPaperPlane size={14} />
                     </ChatSendButton>
