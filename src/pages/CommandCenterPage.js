@@ -4917,18 +4917,22 @@ internet businesses.`;
                       {contactNotes.map(note => (
                         <ActionCard key={note.note_id} theme={theme}>
                           <ActionCardHeader theme={theme}>
-                            <span>{getNoteTypeIcon(note.note_type)} {note.title}</span>
+                            <span style={{ fontWeight: '600' }}>{getNoteTypeIcon(note.note_type)} {note.title}</span>
                           </ActionCardHeader>
                           <ActionCardContent theme={theme}>
-                            {note.summary && <div style={{ marginBottom: '4px' }}>{note.summary}</div>}
-                            <div style={{ fontSize: '11px', color: theme === 'light' ? '#9CA3AF' : '#6B7280' }}>
-                              {note.note_type} • {new Date(note.created_at).toLocaleDateString()}
-                            </div>
-                            {note.obsidian_path && (
-                              <div style={{ fontSize: '11px', color: theme === 'light' ? '#9CA3AF' : '#6B7280', marginTop: '2px' }}>
-                                {note.obsidian_path}
+                            {note.summary && (
+                              <div style={{
+                                fontSize: '12px',
+                                color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                marginBottom: '4px',
+                                lineHeight: '1.4'
+                              }}>
+                                {note.summary}
                               </div>
                             )}
+                            <div style={{ fontSize: '10px', color: theme === 'light' ? '#9CA3AF' : '#6B7280' }}>
+                              {note.note_type} • {new Date(note.created_at).toLocaleDateString()}
+                            </div>
                           </ActionCardContent>
                           <ActionCardButtons>
                             <SmallBtn theme={theme} onClick={() => note.obsidian_path && openInObsidian(note.obsidian_path)} title="Open in Obsidian">
