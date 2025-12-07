@@ -29,17 +29,24 @@ const InfoTab = ({
   categoryOptions = [
     'Not Set',
     'Advisor',
+    'Client',
+    'Colleague',
     'Corporation',
     'Founder',
-    'Friend',
+    'Friend and Family',
     'Inbox',
     'Institution',
-    'Investor',
+    'Manager',
     'Media',
+    'Other',
     'Professional Investor',
     'Service Provider',
     'Skip',
-    'SME'
+    'SME',
+    'Student',
+    'Supplier',
+    'Team',
+    'WhatsApp Group Contact'
   ]
 }) => {
   const [fetchingAbout, setFetchingAbout] = useState(false);

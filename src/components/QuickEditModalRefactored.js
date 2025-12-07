@@ -120,17 +120,24 @@ const QuickEditModalRefactored = ({
   categoryOptions = [
     'Not Set',
     'Advisor',
+    'Client',
+    'Colleague',
     'Corporation',
     'Founder',
-    'Friend',
+    'Friend and Family',
     'Inbox',
     'Institution',
-    'Investor',
+    'Manager',
     'Media',
+    'Other',
     'Professional Investor',
     'Service Provider',
     'Skip',
-    'SME'
+    'SME',
+    'Student',
+    'Supplier',
+    'Team',
+    'WhatsApp Group Contact'
   ],
   frequencyOptions = ['Weekly', 'Monthly', 'Quarterly', 'Twice per Year', 'Once per Year', 'Do not keep in touch']
 }) => {

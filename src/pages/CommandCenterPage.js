@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive } from 'react-icons/fa';
+import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
+import QuickEditModal from '../components/QuickEditModalRefactored';
+import { useQuickEditModal } from '../hooks/useQuickEditModal';
+import { getVisibleTabs, shouldShowField } from '../helpers/contactListHelpers';
 
 const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
 
@@ -545,6 +548,90 @@ const CommandCenterPage = ({ theme }) => {
   // Companies from email domains (for Companies tab)
   const [emailCompanies, setEmailCompanies] = useState([]);
 
+  // Quick Edit Modal - use the custom hook
+  const quickEditModal = useQuickEditModal(() => {});
+  const {
+    quickEditContactModalOpen,
+    contactForQuickEdit,
+    showMissingFieldsOnly,
+    quickEditActiveTab,
+    setQuickEditActiveTab,
+    quickEditDescriptionText,
+    setQuickEditDescriptionText,
+    quickEditJobRoleText,
+    setQuickEditJobRoleText,
+    quickEditContactCategory,
+    setQuickEditContactCategory,
+    quickEditContactScore,
+    setQuickEditContactScore,
+    quickEditFirstName,
+    setQuickEditFirstName,
+    quickEditLastName,
+    setQuickEditLastName,
+    quickEditLinkedin,
+    setQuickEditLinkedin,
+    quickEditKeepInTouchFrequency,
+    setQuickEditKeepInTouchFrequency,
+    quickEditBirthdayDay,
+    setQuickEditBirthdayDay,
+    quickEditBirthdayMonth,
+    setQuickEditBirthdayMonth,
+    quickEditAgeEstimate,
+    setQuickEditAgeEstimate,
+    quickEditChristmasWishes,
+    setQuickEditChristmasWishes,
+    quickEditEasterWishes,
+    setQuickEditEasterWishes,
+    quickEditShowMissing,
+    setQuickEditShowMissing,
+    quickEditContactEmails,
+    setQuickEditContactEmails,
+    quickEditContactMobiles,
+    setQuickEditContactMobiles,
+    newEmailText,
+    setNewEmailText,
+    newEmailType,
+    setNewEmailType,
+    newMobileText,
+    setNewMobileText,
+    newMobileType,
+    setNewMobileType,
+    quickEditContactCities,
+    setQuickEditContactCities,
+    quickEditContactTags,
+    setQuickEditContactTags,
+    quickEditCityModalOpen,
+    setQuickEditCityModalOpen,
+    quickEditTagModalOpen,
+    setQuickEditTagModalOpen,
+    quickEditAssociateCompanyModalOpen,
+    setQuickEditAssociateCompanyModalOpen,
+    quickEditContactCompanies,
+    setQuickEditContactCompanies,
+    openModal: handleOpenQuickEditModal,
+    closeModal: handleCloseQuickEditModal,
+    handleSaveQuickEditContact,
+    handleSilentSave,
+    handleAddEmail,
+    handleRemoveEmail,
+    handleUpdateEmailType,
+    handleSetEmailPrimary,
+    handleAddMobile,
+    handleRemoveMobile,
+    handleUpdateMobileType,
+    handleSetMobilePrimary,
+    handleRemoveCity,
+    handleRemoveTag,
+    handleUpdateCompanyRelationship,
+    handleUpdateCompanyCategory,
+    handleSaveQuickEditFrequency,
+    handleSaveQuickEditBirthday,
+    handleSaveQuickEditChristmasWishes,
+    handleSaveQuickEditEasterWishes,
+    handleMarkCompleteWithCategory,
+    handleAutomation,
+  } = quickEditModal;
+
   // Group emails by thread_id
   const groupByThread = (emailList) => {
     const threadMap = new Map();
@@ -680,8 +767,21 @@ const CommandCenterPage = ({ theme }) => {
         const contactIds = [...new Set(emailMatches.map(e => e.contact_id))];
         const { data: contacts } = await supabase
           .from('contacts')
-          .select('contact_id, first_name, last_name, category, job_role, profile_image_url')
+          .select('contact_id, first_name, last_name, category, job_role, profile_image_url, description, linkedin, score, birthday, show_missing')
           .in('contact_id', contactIds);
+
+        // Fetch completeness scores for these contacts
+        const { data: completenessData } = await supabase
+          .from('contact_completeness')
+          .select('contact_id, completeness_score')
+          .in('contact_id', contactIds);
+
+        const completenessById = {};
+        if (completenessData) {
+          completenessData.forEach(c => {
+            completenessById[c.contact_id] = c.completeness_score;
+          });
+        }
 
         // Get companies for these contacts (with domains)
         const { data: contactCompanies } = await supabase
@@ -730,7 +830,8 @@ const CommandCenterPage = ({ theme }) => {
             contactsById[c.contact_id] = {
               ...c,
               company_name: companyData?.name || null,
-              company_domains: companyData?.domains || []
+              company_domains: companyData?.domains || [],
+              completeness_score: completenessById[c.contact_id] || 0
             };
           });
         }
@@ -2153,7 +2254,12 @@ const CommandCenterPage = ({ theme }) => {
                           }}>
                             From
                           </div>
-                          {emailContacts.filter(p => p.roles.includes('from')).map((participant, idx) => (
+                          {emailContacts.filter(p => p.roles.includes('from')).map((participant, idx) => {
+                            const score = participant.contact?.completeness_score || 0;
+                            const circumference = 2 * Math.PI * 16;
+                            const strokeDashoffset = circumference - (score / 100) * circumference;
+                            const scoreColor = score >= 70 ? '#10B981' : score >= 40 ? '#F59E0B' : '#EF4444';
+                            return (
                             <ActionCard key={'from-' + participant.email + idx} theme={theme}>
                               <ActionCardHeader theme={theme} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                 {participant.contact?.profile_image_url ? (
@@ -2173,6 +2279,17 @@ const CommandCenterPage = ({ theme }) => {
                                     </div>
                                   )}
                                 </div>
+                                {participant.contact && (
+                                  <div style={{ position: 'relative', width: 40, height: 40, cursor: 'pointer' }} title={`${score}% complete`} onClick={() => handleOpenQuickEditModal(participant.contact, true)}>
+                                    <svg width="40" height="40" style={{ transform: 'rotate(-90deg)' }}>
+                                      <circle cx="20" cy="20" r="16" fill="none" stroke={theme === 'light' ? '#E5E7EB' : '#374151'} strokeWidth="4" />
+                                      <circle cx="20" cy="20" r="16" fill="none" stroke={scoreColor} strokeWidth="4" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} />
+                                    </svg>
+                                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontSize: '10px', fontWeight: 600, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
+                                      {score === 100 ? <FaCrown size={14} color="#F59E0B" /> : `${score}%`}
+                                    </div>
+                                  </div>
+                                )}
                               </ActionCardHeader>
                               <ActionCardContent theme={theme}>
                                 <div style={{ fontSize: '13px', opacity: 0.7, marginBottom: '8px' }}>{participant.email}</div>
@@ -2186,7 +2303,7 @@ const CommandCenterPage = ({ theme }) => {
                                 </div>
                               </ActionCardContent>
                             </ActionCard>
-                          ))}
+                          )})}
                         </>
                       )}
 
@@ -2204,7 +2321,12 @@ const CommandCenterPage = ({ theme }) => {
                           }}>
                             To
                           </div>
-                          {emailContacts.filter(p => p.roles.includes('to')).map((participant, idx) => (
+                          {emailContacts.filter(p => p.roles.includes('to')).map((participant, idx) => {
+                            const score = participant.contact?.completeness_score || 0;
+                            const circumference = 2 * Math.PI * 16;
+                            const strokeDashoffset = circumference - (score / 100) * circumference;
+                            const scoreColor = score >= 70 ? '#10B981' : score >= 40 ? '#F59E0B' : '#EF4444';
+                            return (
                             <ActionCard key={'to-' + participant.email + idx} theme={theme}>
                               <ActionCardHeader theme={theme} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                 {participant.contact?.profile_image_url ? (
@@ -2224,6 +2346,17 @@ const CommandCenterPage = ({ theme }) => {
                                     </div>
                                   )}
                                 </div>
+                                {participant.contact && (
+                                  <div style={{ position: 'relative', width: 40, height: 40, cursor: 'pointer' }} title={`${score}% complete`} onClick={() => handleOpenQuickEditModal(participant.contact, true)}>
+                                    <svg width="40" height="40" style={{ transform: 'rotate(-90deg)' }}>
+                                      <circle cx="20" cy="20" r="16" fill="none" stroke={theme === 'light' ? '#E5E7EB' : '#374151'} strokeWidth="4" />
+                                      <circle cx="20" cy="20" r="16" fill="none" stroke={scoreColor} strokeWidth="4" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} />
+                                    </svg>
+                                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontSize: '10px', fontWeight: 600, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
+                                      {score === 100 ? <FaCrown size={14} color="#F59E0B" /> : `${score}%`}
+                                    </div>
+                                  </div>
+                                )}
                               </ActionCardHeader>
                               <ActionCardContent theme={theme}>
                                 <div style={{ fontSize: '13px', opacity: 0.7, marginBottom: '8px' }}>{participant.email}</div>
@@ -2237,7 +2370,7 @@ const CommandCenterPage = ({ theme }) => {
                                 </div>
                               </ActionCardContent>
                             </ActionCard>
-                          ))}
+                          )})}
                         </>
                       )}
 
@@ -2255,7 +2388,12 @@ const CommandCenterPage = ({ theme }) => {
                           }}>
                             CC
                           </div>
-                          {emailContacts.filter(p => p.roles.includes('cc')).map((participant, idx) => (
+                          {emailContacts.filter(p => p.roles.includes('cc')).map((participant, idx) => {
+                            const score = participant.contact?.completeness_score || 0;
+                            const circumference = 2 * Math.PI * 16;
+                            const strokeDashoffset = circumference - (score / 100) * circumference;
+                            const scoreColor = score >= 70 ? '#10B981' : score >= 40 ? '#F59E0B' : '#EF4444';
+                            return (
                             <ActionCard key={'cc-' + participant.email + idx} theme={theme}>
                               <ActionCardHeader theme={theme} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                 {participant.contact?.profile_image_url ? (
@@ -2275,6 +2413,17 @@ const CommandCenterPage = ({ theme }) => {
                                     </div>
                                   )}
                                 </div>
+                                {participant.contact && (
+                                  <div style={{ position: 'relative', width: 40, height: 40, cursor: 'pointer' }} title={`${score}% complete`} onClick={() => handleOpenQuickEditModal(participant.contact, true)}>
+                                    <svg width="40" height="40" style={{ transform: 'rotate(-90deg)' }}>
+                                      <circle cx="20" cy="20" r="16" fill="none" stroke={theme === 'light' ? '#E5E7EB' : '#374151'} strokeWidth="4" />
+                                      <circle cx="20" cy="20" r="16" fill="none" stroke={scoreColor} strokeWidth="4" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} />
+                                    </svg>
+                                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontSize: '10px', fontWeight: 600, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
+                                      {score === 100 ? <FaCrown size={14} color="#F59E0B" /> : `${score}%`}
+                                    </div>
+                                  </div>
+                                )}
                               </ActionCardHeader>
                               <ActionCardContent theme={theme}>
                                 <div style={{ fontSize: '13px', opacity: 0.7, marginBottom: '8px' }}>{participant.email}</div>
@@ -2288,7 +2437,7 @@ const CommandCenterPage = ({ theme }) => {
                                 </div>
                               </ActionCardContent>
                             </ActionCard>
-                          ))}
+                          )})}
                         </>
                       )}
                     </>
@@ -2487,6 +2636,93 @@ const CommandCenterPage = ({ theme }) => {
           </ModalContent>
         </ModalOverlay>
       )}
+
+      {/* Quick Edit Modal */}
+      <QuickEditModal
+        isOpen={quickEditContactModalOpen}
+        onClose={handleCloseQuickEditModal}
+        contact={contactForQuickEdit}
+        theme={theme}
+        showMissingFieldsOnly={showMissingFieldsOnly}
+        onRefresh={() => {}}
+        quickEditActiveTab={quickEditActiveTab}
+        setQuickEditActiveTab={setQuickEditActiveTab}
+        quickEditDescriptionText={quickEditDescriptionText}
+        setQuickEditDescriptionText={setQuickEditDescriptionText}
+        quickEditJobRoleText={quickEditJobRoleText}
+        setQuickEditJobRoleText={setQuickEditJobRoleText}
+        quickEditContactCategory={quickEditContactCategory}
+        setQuickEditContactCategory={setQuickEditContactCategory}
+        quickEditContactScore={quickEditContactScore}
+        setQuickEditContactScore={setQuickEditContactScore}
+        quickEditFirstName={quickEditFirstName}
+        setQuickEditFirstName={setQuickEditFirstName}
+        quickEditLastName={quickEditLastName}
+        setQuickEditLastName={setQuickEditLastName}
+        quickEditLinkedin={quickEditLinkedin}
+        setQuickEditLinkedin={setQuickEditLinkedin}
+        quickEditKeepInTouchFrequency={quickEditKeepInTouchFrequency}
+        setQuickEditKeepInTouchFrequency={setQuickEditKeepInTouchFrequency}
+        quickEditBirthdayDay={quickEditBirthdayDay}
+        setQuickEditBirthdayDay={setQuickEditBirthdayDay}
+        quickEditBirthdayMonth={quickEditBirthdayMonth}
+        setQuickEditBirthdayMonth={setQuickEditBirthdayMonth}
+        quickEditAgeEstimate={quickEditAgeEstimate}
+        setQuickEditAgeEstimate={setQuickEditAgeEstimate}
+        quickEditChristmasWishes={quickEditChristmasWishes}
+        setQuickEditChristmasWishes={setQuickEditChristmasWishes}
+        quickEditEasterWishes={quickEditEasterWishes}
+        setQuickEditEasterWishes={setQuickEditEasterWishes}
+        quickEditShowMissing={quickEditShowMissing}
+        setQuickEditShowMissing={setQuickEditShowMissing}
+        quickEditContactEmails={quickEditContactEmails}
+        setQuickEditContactEmails={setQuickEditContactEmails}
+        quickEditContactMobiles={quickEditContactMobiles}
+        setQuickEditContactMobiles={setQuickEditContactMobiles}
+        quickEditContactCities={quickEditContactCities}
+        setQuickEditContactCities={setQuickEditContactCities}
+        quickEditContactTags={quickEditContactTags}
+        setQuickEditContactTags={setQuickEditContactTags}
+        quickEditContactCompanies={quickEditContactCompanies}
+        setQuickEditContactCompanies={setQuickEditContactCompanies}
+        newEmailText={newEmailText}
+        setNewEmailText={setNewEmailText}
+        newEmailType={newEmailType}
+        setNewEmailType={setNewEmailType}
+        newMobileText={newMobileText}
+        setNewMobileText={setNewMobileText}
+        newMobileType={newMobileType}
+        setNewMobileType={setNewMobileType}
+        quickEditCityModalOpen={quickEditCityModalOpen}
+        setQuickEditCityModalOpen={setQuickEditCityModalOpen}
+        quickEditTagModalOpen={quickEditTagModalOpen}
+        setQuickEditTagModalOpen={setQuickEditTagModalOpen}
+        quickEditAssociateCompanyModalOpen={quickEditAssociateCompanyModalOpen}
+        setQuickEditAssociateCompanyModalOpen={setQuickEditAssociateCompanyModalOpen}
+        onSave={handleSaveQuickEditContact}
+        onDelete={() => {}}
+        handleSilentSave={handleSilentSave}
+        handleAddEmail={handleAddEmail}
+        handleRemoveEmail={handleRemoveEmail}
+        handleUpdateEmailType={handleUpdateEmailType}
+        handleSetEmailPrimary={handleSetEmailPrimary}
+        handleAddMobile={handleAddMobile}
+        handleRemoveMobile={handleRemoveMobile}
+        handleUpdateMobileType={handleUpdateMobileType}
+        handleSetMobilePrimary={handleSetMobilePrimary}
+        handleRemoveCity={handleRemoveCity}
+        handleRemoveTag={handleRemoveTag}
+        handleUpdateCompanyRelationship={handleUpdateCompanyRelationship}
+        handleUpdateCompanyCategory={handleUpdateCompanyCategory}
+        handleSaveQuickEditFrequency={handleSaveQuickEditFrequency}
+        handleSaveQuickEditBirthday={handleSaveQuickEditBirthday}
+        handleSaveQuickEditChristmasWishes={handleSaveQuickEditChristmasWishes}
+        handleSaveQuickEditEasterWishes={handleSaveQuickEditEasterWishes}
+        handleAutomation={handleAutomation}
+        handleMarkCompleteWithCategory={handleMarkCompleteWithCategory}
+        getVisibleTabs={getVisibleTabs}
+        shouldShowField={shouldShowField}
+      />
     </PageContainer>
   );
 };
