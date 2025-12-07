@@ -961,6 +961,16 @@ const CancelButton = styled.button`
   }
 `;
 
+// Helper to sanitize email HTML - removes cid: image references that can't be displayed
+const sanitizeEmailHtml = (html) => {
+  if (!html) return html;
+  // Remove img tags with cid: src (embedded images we can't display)
+  // Replace with a placeholder or remove entirely
+  return html
+    .replace(/<img[^>]*src=["']cid:[^"']*["'][^>]*>/gi, '')
+    .replace(/src=["']cid:[^"']*["']/gi, 'src=""');
+};
+
 // Main Component
 const CommandCenterPage = ({ theme }) => {
   const navigate = useNavigate();
@@ -1307,6 +1317,41 @@ const CommandCenterPage = ({ theme }) => {
       toast.dismiss();
       toast.error('Could not connect to agent service');
     }
+  };
+
+  // Run contact audit for a specific contact by ID
+  const runContactAuditById = async (contactId, contactName) => {
+    if (!contactId) {
+      toast.error('No contact to audit');
+      return;
+    }
+
+    setLoadingAudit(true);
+    setAuditResult(null);
+    setAuditActions([]);
+    setSelectedActions(new Set());
+    setActiveActionTab('ai'); // Switch to AI tab to show results
+
+    try {
+      const response = await fetch(`${AGENT_SERVICE_URL}/audit-contact/${contactId}`);
+
+      if (response.ok) {
+        const result = await response.json();
+        setAuditResult(result.audit);
+        setAuditActions(result.actions || []);
+        // Pre-select all recommended actions
+        const allIndices = new Set(result.actions?.map((_, i) => i) || []);
+        setSelectedActions(allIndices);
+        toast.success(`Audit complete for ${contactName}: ${result.action_count} actions found`);
+      } else {
+        const error = await response.json();
+        toast.error(error.detail || 'Audit failed');
+      }
+    } catch (error) {
+      console.error('Error running audit:', error);
+      toast.error('Could not connect to agent service');
+    }
+    setLoadingAudit(false);
   };
 
   // Run contact audit for selected email
@@ -4240,7 +4285,7 @@ internet businesses.`;
                           fontSize: '14px',
                           lineHeight: '1.6',
                         }}
-                        dangerouslySetInnerHTML={{ __html: email.body_html }}
+                        dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(email.body_html) }}
                       />
                     ) : (
                       <div style={{
@@ -5138,12 +5183,20 @@ internet businesses.`;
                               </ActionCardHeader>
                               <ActionCardContent theme={theme}>
                                 <div style={{ fontSize: '13px', opacity: 0.7, marginBottom: '8px' }}>{participant.email}</div>
-                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
                                   {participant.contact?.category && (
                                     <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#E5E7EB' : '#374151', color: theme === 'light' ? '#374151' : '#D1D5DB' }}>{participant.contact.category}</span>
                                   )}
                                   {!participant.hasContact && (
                                     <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#FEF3C7' : '#78350F', color: theme === 'light' ? '#92400E' : '#FDE68A', cursor: 'pointer' }}>+ Add</span>
+                                  )}
+                                  {participant.contact && (
+                                    <span
+                                      onClick={(e) => { e.stopPropagation(); runContactAuditById(participant.contact.contact_id, `${participant.contact.first_name} ${participant.contact.last_name}`); }}
+                                      style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#DBEAFE' : '#1E3A5F', color: theme === 'light' ? '#1D4ED8' : '#93C5FD', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    >
+                                      <FaRobot size={10} /> Audit
+                                    </span>
                                   )}
                                 </div>
                               </ActionCardContent>
@@ -5214,12 +5267,20 @@ internet businesses.`;
                               </ActionCardHeader>
                               <ActionCardContent theme={theme}>
                                 <div style={{ fontSize: '13px', opacity: 0.7, marginBottom: '8px' }}>{participant.email}</div>
-                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
                                   {participant.contact?.category && (
                                     <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#E5E7EB' : '#374151', color: theme === 'light' ? '#374151' : '#D1D5DB' }}>{participant.contact.category}</span>
                                   )}
                                   {!participant.hasContact && (
                                     <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#FEF3C7' : '#78350F', color: theme === 'light' ? '#92400E' : '#FDE68A', cursor: 'pointer' }}>+ Add</span>
+                                  )}
+                                  {participant.contact && (
+                                    <span
+                                      onClick={(e) => { e.stopPropagation(); runContactAuditById(participant.contact.contact_id, `${participant.contact.first_name} ${participant.contact.last_name}`); }}
+                                      style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#DBEAFE' : '#1E3A5F', color: theme === 'light' ? '#1D4ED8' : '#93C5FD', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    >
+                                      <FaRobot size={10} /> Audit
+                                    </span>
                                   )}
                                 </div>
                               </ActionCardContent>
@@ -5290,12 +5351,20 @@ internet businesses.`;
                               </ActionCardHeader>
                               <ActionCardContent theme={theme}>
                                 <div style={{ fontSize: '13px', opacity: 0.7, marginBottom: '8px' }}>{participant.email}</div>
-                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
                                   {participant.contact?.category && (
                                     <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#E5E7EB' : '#374151', color: theme === 'light' ? '#374151' : '#D1D5DB' }}>{participant.contact.category}</span>
                                   )}
                                   {!participant.hasContact && (
                                     <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#FEF3C7' : '#78350F', color: theme === 'light' ? '#92400E' : '#FDE68A', cursor: 'pointer' }}>+ Add</span>
+                                  )}
+                                  {participant.contact && (
+                                    <span
+                                      onClick={(e) => { e.stopPropagation(); runContactAuditById(participant.contact.contact_id, `${participant.contact.first_name} ${participant.contact.last_name}`); }}
+                                      style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#DBEAFE' : '#1E3A5F', color: theme === 'light' ? '#1D4ED8' : '#93C5FD', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    >
+                                      <FaRobot size={10} /> Audit
+                                    </span>
                                   )}
                                 </div>
                               </ActionCardContent>

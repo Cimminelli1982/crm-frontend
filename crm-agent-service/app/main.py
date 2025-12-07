@@ -378,14 +378,34 @@ async def execute_single_action(action_data: dict):
         # Execute
         result = await execute_action(action)
 
-        # Log the action
-        await db.log_action({
-            "action_type": action.type.value,
-            "entity_type": "contact" if action.contact_id else "company",
-            "entity_id": action.contact_id or action.company_id,
-            "after_data": action.dict(),
-            "triggered_by": "user",
-        })
+        # Log the action (in separate try-catch so logging failures don't break the action)
+        try:
+            # Determine entity_type and entity_id based on action type
+            if action.type.value in ['merge_contacts', 'delete_contact']:
+                entity_type = "contact"
+                entity_id = action.merge_into_id or action.delete_id or action.contact_id
+            elif action.type.value in ['merge_companies', 'fix_company_domain']:
+                entity_type = "company"
+                entity_id = action.company_id or action.merge_into_id
+            elif action.contact_id:
+                entity_type = "contact"
+                entity_id = action.contact_id
+            elif action.company_id:
+                entity_type = "company"
+                entity_id = action.company_id
+            else:
+                entity_type = "contact"
+                entity_id = None
+
+            await db.log_action({
+                "action_type": action.type.value,
+                "entity_type": entity_type,
+                "entity_id": entity_id,
+                "after_data": action.dict(),
+                "triggered_by": "user",
+            })
+        except Exception as log_error:
+            logger.warning("action_log_failed", error=str(log_error), action_type=action.type.value)
 
         return {
             "success": result.success,
@@ -413,14 +433,34 @@ async def execute_multiple_actions(actions_data: list[dict]):
             action = Action(**action_data)
             result = await execute_action(action)
 
-            # Log
-            await db.log_action({
-                "action_type": action.type.value,
-                "entity_type": "contact" if action.contact_id else "company",
-                "entity_id": action.contact_id or action.company_id,
-                "after_data": action.dict(),
-                "triggered_by": "user",
-            })
+            # Log (in separate try-catch so logging failures don't break the action)
+            try:
+                # Determine entity_type and entity_id based on action type
+                if action.type.value in ['merge_contacts', 'delete_contact']:
+                    entity_type = "contact"
+                    entity_id = action.merge_into_id or action.delete_id or action.contact_id
+                elif action.type.value in ['merge_companies', 'fix_company_domain']:
+                    entity_type = "company"
+                    entity_id = action.company_id or action.merge_into_id
+                elif action.contact_id:
+                    entity_type = "contact"
+                    entity_id = action.contact_id
+                elif action.company_id:
+                    entity_type = "company"
+                    entity_id = action.company_id
+                else:
+                    entity_type = "contact"
+                    entity_id = None
+
+                await db.log_action({
+                    "action_type": action.type.value,
+                    "entity_type": entity_type,
+                    "entity_id": entity_id,
+                    "after_data": action.dict(),
+                    "triggered_by": "user",
+                })
+            except Exception as log_error:
+                logger.warning("action_log_failed", error=str(log_error), action_type=action.type.value)
 
             results.append({
                 "action": action.description,

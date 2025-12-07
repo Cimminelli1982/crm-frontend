@@ -90,7 +90,8 @@ class AuditResult(BaseModel):
     email_action: EmailAction
     contact_duplicates: list[DuplicateContact]
     mobiles: MobilesAudit
-    company: CompanyAudit
+    company: CompanyAudit  # Primary company (first linked or suggested)
+    companies: list[CompanyAudit]  # ALL companies audit
     company_duplicates: list[CompanyDuplicate]
     deals: list[dict]
     introductions: list[dict]
@@ -204,8 +205,12 @@ class ContactAuditor:
         # Step 5: Audit mobiles
         mobiles_audit = await self._audit_mobiles(contact_id)
 
-        # Step 6: Audit company
-        company_audit, company_duplicates = await self._audit_company(contact_id, from_email)
+        # Step 6: Audit ALL companies
+        companies_audit, company_duplicates = await self._audit_companies(contact_id, from_email)
+        # Primary company is the first one (or a "none" placeholder)
+        company_audit = companies_audit[0] if companies_audit else CompanyAudit(
+            company_id=None, name=None, linked=False, action="none", issues=[]
+        )
 
         # Step 7: Get deals and introductions
         deals = await self.db.get_contact_deals(contact_id)
@@ -226,6 +231,7 @@ class ContactAuditor:
             contact_duplicates=duplicates,
             mobiles=mobiles_audit,
             company=company_audit,
+            companies=companies_audit,
             company_duplicates=company_duplicates,
             deals=[{"deal_id": d.get("deal_id"), "name": d.get("deals", {}).get("opportunity")} for d in deals],
             introductions=[{"id": i.get("introduction_id"), "text": i.get("introductions", {}).get("text")} for i in introductions],
@@ -273,6 +279,7 @@ class ContactAuditor:
                 action="none",
                 issues=[]
             ),
+            companies=[],
             company_duplicates=[],
             deals=[],
             introductions=[],
@@ -470,25 +477,32 @@ class ContactAuditor:
 
         return MobilesAudit(current=current, issues=issues)
 
-    async def _audit_company(self, contact_id: str, email: str) -> tuple[CompanyAudit, list[CompanyDuplicate]]:
-        """Audit company link and find company duplicates."""
+    async def _audit_companies(self, contact_id: str, email: str) -> tuple[list[CompanyAudit], list[CompanyDuplicate]]:
+        """Audit ALL companies linked to contact and find company duplicates."""
         domain = extract_domain(email)
         is_personal_domain = domain and await self.db.is_personal_email_domain(domain)
 
-        # Get contact's current companies FIRST (regardless of email domain)
+        # Get ALL contact's current companies
         contact_full = await self.db.get_contact_full_audit(contact_id)
         current_companies = contact_full.get("contact_companies", []) if contact_full else []
 
-        linked_company = None
-        if current_companies:
-            linked_company = current_companies[0].get("companies")
+        companies_audit = []
+        all_company_duplicates = []
+        seen_company_ids = set()
 
-        # If contact already has a company, report it (even with personal email)
-        if linked_company:
+        # Audit each linked company
+        for contact_company in current_companies:
+            linked_company = contact_company.get("companies")
+            if not linked_company:
+                continue
+
             company_id = linked_company.get("company_id")
+            if company_id in seen_company_ids:
+                continue
+            seen_company_ids.add(company_id)
+
             company_name = linked_company.get("name")
             issues = []
-            company_duplicates = []
 
             # Check for domain issues
             company_full = await self.db.get_company_full_audit(company_id)
@@ -510,6 +524,10 @@ class ContactAuditor:
                     dup_id = dup.get("company_id")
                     dup_name = dup.get("name")
 
+                    # Skip if already processed
+                    if dup_id in seen_company_ids:
+                        continue
+
                     # Check if it's a shell (no real data)
                     dup_full = await self.db.get_company_full_audit(dup_id)
                     has_data = bool(dup_full and (
@@ -519,32 +537,36 @@ class ContactAuditor:
                     ))
 
                     if not has_data:
-                        company_duplicates.append(CompanyDuplicate(
+                        all_company_duplicates.append(CompanyDuplicate(
                             company_id=dup_id,
                             name=dup_name,
                             action="merge_delete",
                             into=company_name
                         ))
 
-            return CompanyAudit(
+            companies_audit.append(CompanyAudit(
                 company_id=company_id,
                 name=company_name,
                 linked=True,
                 action="none",
                 issues=issues
-            ), company_duplicates
+            ))
 
-        # No existing company link - check if we should suggest one
+        # If contact has linked companies, return them
+        if companies_audit:
+            return companies_audit, all_company_duplicates
+
+        # No existing company links - check if we should suggest one from email domain
         # Skip domain-based suggestion for personal domains
         if is_personal_domain:
-            return CompanyAudit(
+            return [CompanyAudit(
                 company_id=None,
                 name=None,
                 linked=False,
                 action="skip",
                 reason=f"Personal email domain ({domain})",
                 issues=[]
-            ), []
+            )], []
 
         # Find company by domain
         company_from_domain = None
@@ -558,7 +580,6 @@ class ContactAuditor:
             company_id = company_from_domain.get("company_id")
             company_name = company_from_domain.get("name")
             issues = []
-            company_duplicates = []
 
             # Check for domain issues on this company too
             company_full = await self.db.get_company_full_audit(company_id)
@@ -586,29 +607,29 @@ class ContactAuditor:
                         dup_full.get("linkedin")
                     ))
                     if not has_data:
-                        company_duplicates.append(CompanyDuplicate(
+                        all_company_duplicates.append(CompanyDuplicate(
                             company_id=dup_id,
                             name=dup_name,
                             action="merge_delete",
                             into=company_name
                         ))
 
-            return CompanyAudit(
+            return [CompanyAudit(
                 company_id=company_id,
                 name=company_name,
                 linked=False,
                 action="link",
                 issues=issues
-            ), company_duplicates
+            )], all_company_duplicates
 
         # No company found
-        return CompanyAudit(
+        return [CompanyAudit(
             company_id=None,
             name=None,
             linked=False,
             action="none",
             issues=[]
-        ), []
+        )], []
 
     def _analyze_communication(self, subject: str, body: str) -> CommunicationAnalysis:
         """Analyze email content to determine type and potential actions."""

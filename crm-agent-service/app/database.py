@@ -336,41 +336,157 @@ class Database:
                 # Delete duplicate link
                 self.client.table("contact_companies").delete().eq("contact_companies_id", company_row["contact_companies_id"]).execute()
 
-        # Move tags (check for duplicates)
+        # Move tags (check for duplicates) - delete from source, insert to target if not duplicate
         existing_tags = self.client.table("contact_tags").select("tag_id").eq(
             "contact_id", keep_id
         ).execute()
         existing_tag_set = {t["tag_id"] for t in (existing_tags.data or [])}
 
-        delete_tags = self.client.table("contact_tags").select("contact_tags_id, tag_id").eq(
+        delete_tags = self.client.table("contact_tags").select("tag_id").eq(
             "contact_id", delete_id
         ).execute()
 
         for tag_row in (delete_tags.data or []):
-            if tag_row["tag_id"] not in existing_tag_set:
-                self.client.table("contact_tags").update({
-                    "contact_id": keep_id
-                }).eq("contact_tags_id", tag_row["contact_tags_id"]).execute()
-            else:
-                self.client.table("contact_tags").delete().eq("contact_tags_id", tag_row["contact_tags_id"]).execute()
+            tag_id = tag_row["tag_id"]
+            # Delete from source contact
+            self.client.table("contact_tags").delete().eq(
+                "contact_id", delete_id
+            ).eq("tag_id", tag_id).execute()
+            # Insert to target if not duplicate
+            if tag_id not in existing_tag_set:
+                self.client.table("contact_tags").insert({
+                    "contact_id": keep_id,
+                    "tag_id": tag_id
+                }).execute()
 
-        # Move cities (check for duplicates)
+        # Move cities (check for duplicates) - delete from source, insert to target if not duplicate
         existing_cities = self.client.table("contact_cities").select("city_id").eq(
             "contact_id", keep_id
         ).execute()
         existing_city_set = {c["city_id"] for c in (existing_cities.data or [])}
 
-        delete_cities = self.client.table("contact_cities").select("contact_cities_id, city_id").eq(
+        delete_cities = self.client.table("contact_cities").select("city_id").eq(
             "contact_id", delete_id
         ).execute()
 
         for city_row in (delete_cities.data or []):
-            if city_row["city_id"] not in existing_city_set:
-                self.client.table("contact_cities").update({
+            city_id = city_row["city_id"]
+            # Delete from source contact
+            self.client.table("contact_cities").delete().eq(
+                "contact_id", delete_id
+            ).eq("city_id", city_id).execute()
+            # Insert to target if not duplicate
+            if city_id not in existing_city_set:
+                self.client.table("contact_cities").insert({
+                    "contact_id": keep_id,
+                    "city_id": city_id
+                }).execute()
+
+        # Move/delete all other related records before deleting the contact
+        # These tables have FK constraints and need to be handled
+
+        # contact_chats - move to keep_id
+        self.client.table("contact_chats").update({
+            "contact_id": keep_id
+        }).eq("contact_id", delete_id).execute()
+
+        # keep_in_touch - delete (can recreate if needed)
+        self.client.table("keep_in_touch").delete().eq("contact_id", delete_id).execute()
+
+        # contact_email_threads - move to keep_id
+        self.client.table("contact_email_threads").update({
+            "contact_id": keep_id
+        }).eq("contact_id", delete_id).execute()
+
+        # deals_contacts - move to keep_id (skip duplicates)
+        existing_deal_links = self.client.table("deals_contacts").select("deal_id").eq(
+            "contact_id", keep_id
+        ).execute()
+        existing_deal_set = {d["deal_id"] for d in (existing_deal_links.data or [])}
+
+        delete_deal_links = self.client.table("deals_contacts").select("id, deal_id").eq(
+            "contact_id", delete_id
+        ).execute()
+
+        for deal_row in (delete_deal_links.data or []):
+            if deal_row["deal_id"] not in existing_deal_set:
+                self.client.table("deals_contacts").update({
                     "contact_id": keep_id
-                }).eq("contact_cities_id", city_row["contact_cities_id"]).execute()
+                }).eq("id", deal_row["id"]).execute()
             else:
-                self.client.table("contact_cities").delete().eq("contact_cities_id", city_row["contact_cities_id"]).execute()
+                self.client.table("deals_contacts").delete().eq("id", deal_row["id"]).execute()
+
+        # deals - update introducer if it points to delete_id
+        self.client.table("deals").update({
+            "introducer": keep_id
+        }).eq("introducer", delete_id).execute()
+
+        # email_receivers - move to keep_id
+        self.client.table("email_receivers").update({
+            "contact_id": keep_id
+        }).eq("contact_id", delete_id).execute()
+
+        # emails - update sender_contact_id
+        self.client.table("emails").update({
+            "sender_contact_id": keep_id
+        }).eq("sender_contact_id", delete_id).execute()
+
+        # email_participants - move to keep_id
+        self.client.table("email_participants").update({
+            "contact_id": keep_id
+        }).eq("contact_id", delete_id).execute()
+
+        # interactions - move to keep_id
+        self.client.table("interactions").update({
+            "contact_id": keep_id
+        }).eq("contact_id", delete_id).execute()
+
+        # investments_contacts - move to keep_id
+        self.client.table("investments_contacts").update({
+            "contact_id": keep_id
+        }).eq("contact_id", delete_id).execute()
+
+        # meeting_contacts - move to keep_id
+        self.client.table("meeting_contacts").update({
+            "contact_id": keep_id
+        }).eq("contact_id", delete_id).execute()
+
+        # notes_contacts - move to keep_id
+        self.client.table("notes_contacts").update({
+            "contact_id": keep_id
+        }).eq("contact_id", delete_id).execute()
+
+        # note_contacts - move to keep_id (different table)
+        self.client.table("note_contacts").update({
+            "contact_id": keep_id
+        }).eq("contact_id", delete_id).execute()
+
+        # attachments - move to keep_id
+        self.client.table("attachments").update({
+            "contact_id": keep_id
+        }).eq("contact_id", delete_id).execute()
+
+        # contact_duplicates - delete records referencing the deleted contact
+        self.client.table("contact_duplicates").delete().eq("primary_contact_id", delete_id).execute()
+        self.client.table("contact_duplicates").delete().eq("duplicate_contact_id", delete_id).execute()
+
+        # email_list_members - move to keep_id
+        self.client.table("email_list_members").update({
+            "contact_id": keep_id
+        }).eq("contact_id", delete_id).execute()
+
+        # email_campaign_logs - move to keep_id
+        self.client.table("email_campaign_logs").update({
+            "contact_id": keep_id
+        }).eq("contact_id", delete_id).execute()
+
+        # apollo_enrichment_inbox - delete (enrichment data for deleted contact)
+        self.client.table("apollo_enrichment_inbox").delete().eq("contact_id", delete_id).execute()
+
+        # introduction_contacts - move to keep_id
+        self.client.table("introduction_contacts").update({
+            "contact_id": keep_id
+        }).eq("contact_id", delete_id).execute()
 
         # Delete the duplicate contact
         self.client.table("contacts").delete().eq("contact_id", delete_id).execute()
@@ -379,12 +495,54 @@ class Database:
 
     async def delete_contact(self, contact_id: str) -> dict:
         """Delete a contact and all related data."""
-        # Delete related records first
+        # Delete all related records first (all tables with FK to contacts)
+
+        # Core contact data
         self.client.table("contact_emails").delete().eq("contact_id", contact_id).execute()
         self.client.table("contact_mobiles").delete().eq("contact_id", contact_id).execute()
         self.client.table("contact_companies").delete().eq("contact_id", contact_id).execute()
         self.client.table("contact_tags").delete().eq("contact_id", contact_id).execute()
         self.client.table("contact_cities").delete().eq("contact_id", contact_id).execute()
+
+        # Communication & threads
+        self.client.table("contact_chats").delete().eq("contact_id", contact_id).execute()
+        self.client.table("contact_email_threads").delete().eq("contact_id", contact_id).execute()
+        self.client.table("email_receivers").delete().eq("contact_id", contact_id).execute()
+        self.client.table("email_participants").delete().eq("contact_id", contact_id).execute()
+
+        # Set sender_contact_id to null on emails (don't delete emails)
+        self.client.table("emails").update({
+            "sender_contact_id": None
+        }).eq("sender_contact_id", contact_id).execute()
+
+        # Deals & introductions
+        self.client.table("deals_contacts").delete().eq("contact_id", contact_id).execute()
+        self.client.table("introduction_contacts").delete().eq("contact_id", contact_id).execute()
+
+        # Set introducer to null on deals (don't delete deals)
+        self.client.table("deals").update({
+            "introducer": None
+        }).eq("introducer", contact_id).execute()
+
+        # Other linked data
+        self.client.table("keep_in_touch").delete().eq("contact_id", contact_id).execute()
+        self.client.table("interactions").delete().eq("contact_id", contact_id).execute()
+        self.client.table("investments_contacts").delete().eq("contact_id", contact_id).execute()
+        self.client.table("meeting_contacts").delete().eq("contact_id", contact_id).execute()
+        self.client.table("notes_contacts").delete().eq("contact_id", contact_id).execute()
+        self.client.table("note_contacts").delete().eq("contact_id", contact_id).execute()
+        self.client.table("attachments").delete().eq("contact_id", contact_id).execute()
+
+        # Duplicate tracking
+        self.client.table("contact_duplicates").delete().eq("primary_contact_id", contact_id).execute()
+        self.client.table("contact_duplicates").delete().eq("duplicate_contact_id", contact_id).execute()
+
+        # Email campaigns
+        self.client.table("email_list_members").delete().eq("contact_id", contact_id).execute()
+        self.client.table("email_campaign_logs").delete().eq("contact_id", contact_id).execute()
+
+        # Enrichment data
+        self.client.table("apollo_enrichment_inbox").delete().eq("contact_id", contact_id).execute()
 
         # Delete contact
         self.client.table("contacts").delete().eq("contact_id", contact_id).execute()
@@ -570,23 +728,70 @@ class Database:
         return result.data[0] if result.data else None
 
     async def update_company_domain(self, company_id: str, old_domain: str, new_domain: str) -> dict:
-        """Fix a company domain."""
-        result = self.client.table("company_domains").update({
-            "domain": new_domain
-        }).eq("company_id", company_id).eq("domain", old_domain).execute()
-        return result.data[0] if result.data else None
+        """Fix a company domain - handles case where new_domain already exists."""
+        # Check if new_domain already exists on this company
+        existing = self.client.table("company_domains").select("id").eq(
+            "company_id", company_id
+        ).eq("domain", new_domain).execute()
+
+        if existing.data:
+            # New domain already exists - just delete the old malformed one
+            self.client.table("company_domains").delete().eq(
+                "company_id", company_id
+            ).eq("domain", old_domain).execute()
+            return {"fixed": True, "action": "deleted_old", "old": old_domain, "new": new_domain}
+        else:
+            # New domain doesn't exist - update the old one
+            result = self.client.table("company_domains").update({
+                "domain": new_domain
+            }).eq("company_id", company_id).eq("domain", old_domain).execute()
+            return result.data[0] if result.data else {"fixed": True, "action": "updated"}
 
     async def merge_companies(self, keep_id: str, delete_id: str) -> dict:
         """Merge two companies - move all data from delete_id to keep_id, then delete."""
-        # Move contact links
-        self.client.table("contact_companies").update({
-            "company_id": keep_id
-        }).eq("company_id", delete_id).execute()
+        # Get existing domains on keep_id
+        existing_domains = self.client.table("company_domains").select("domain").eq(
+            "company_id", keep_id
+        ).execute()
+        existing_domain_set = {d["domain"].lower() for d in (existing_domains.data or [])}
 
-        # Move domains (but not duplicates)
-        self.client.table("company_domains").update({
-            "company_id": keep_id
-        }).eq("company_id", delete_id).execute()
+        # Get domains from delete_id
+        delete_domains = self.client.table("company_domains").select("id, domain").eq(
+            "company_id", delete_id
+        ).execute()
+
+        # Move only non-duplicate domains, delete duplicates
+        for domain_row in (delete_domains.data or []):
+            if domain_row["domain"].lower() not in existing_domain_set:
+                self.client.table("company_domains").update({
+                    "company_id": keep_id
+                }).eq("id", domain_row["id"]).execute()
+            else:
+                # Delete duplicate domain
+                self.client.table("company_domains").delete().eq("id", domain_row["id"]).execute()
+
+        # Get existing contact links on keep_id
+        existing_contacts = self.client.table("contact_companies").select("contact_id").eq(
+            "company_id", keep_id
+        ).execute()
+        existing_contact_set = {c["contact_id"] for c in (existing_contacts.data or [])}
+
+        # Get contact links from delete_id
+        delete_contacts = self.client.table("contact_companies").select("contact_companies_id, contact_id").eq(
+            "company_id", delete_id
+        ).execute()
+
+        # Move only non-duplicate contact links
+        for contact_row in (delete_contacts.data or []):
+            if contact_row["contact_id"] not in existing_contact_set:
+                self.client.table("contact_companies").update({
+                    "company_id": keep_id
+                }).eq("contact_companies_id", contact_row["contact_companies_id"]).execute()
+            else:
+                # Delete duplicate link
+                self.client.table("contact_companies").delete().eq(
+                    "contact_companies_id", contact_row["contact_companies_id"]
+                ).execute()
 
         # Delete the duplicate company
         self.client.table("companies").delete().eq("company_id", delete_id).execute()

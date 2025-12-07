@@ -260,36 +260,52 @@ def audit_to_actions(audit_result: dict) -> list[Action]:
                 description=f"Change mobile type: {issue.get('number')} → {issue.get('suggested_type')}"
             ))
 
-    # Company link
-    company = audit_result.get("company", {})
-    if company.get("action") == "link" and company.get("company_id"):
-        actions.append(Action(
-            type=ActionType.LINK_COMPANY,
-            contact_id=audit_result.get("contact", {}).get("contact_id"),
-            company_id=company.get("company_id"),
-            company_name=company.get("name"),
-            description=f"Link to company: {company.get('name')}"
-        ))
+    # Process ALL companies (use 'companies' list, fall back to single 'company' for backward compatibility)
+    companies = audit_result.get("companies", [])
+    if not companies:
+        # Backward compatibility: use single company field
+        company = audit_result.get("company", {})
+        if company:
+            companies = [company]
 
-    # Company domain fixes
-    for issue in company.get("issues", []):
-        if issue.get("field") == "domain":
+    for company in companies:
+        # Company link action
+        if company.get("action") == "link" and company.get("company_id"):
             actions.append(Action(
-                type=ActionType.FIX_COMPANY_DOMAIN,
+                type=ActionType.LINK_COMPANY,
+                contact_id=audit_result.get("contact", {}).get("contact_id"),
                 company_id=company.get("company_id"),
-                old_domain=issue.get("current"),
-                new_domain=issue.get("fix"),
-                description=f"Fix domain: {issue.get('current')} -> {issue.get('fix')}"
+                company_name=company.get("name"),
+                description=f"Link to company: {company.get('name')}"
             ))
 
-    # Company duplicates
+        # Company domain fixes for THIS company
+        for issue in company.get("issues", []):
+            if issue.get("field") == "domain":
+                actions.append(Action(
+                    type=ActionType.FIX_COMPANY_DOMAIN,
+                    company_id=company.get("company_id"),
+                    old_domain=issue.get("current"),
+                    new_domain=issue.get("fix"),
+                    description=f"Fix domain ({company.get('name')}): {issue.get('current')} -> {issue.get('fix')}"
+                ))
+
+    # Company duplicates (these reference a specific merge target)
     for dup in audit_result.get("company_duplicates", []):
-        actions.append(Action(
-            type=ActionType.MERGE_COMPANIES,
-            merge_into_id=company.get("company_id"),
-            delete_id=dup.get("company_id"),
-            description=f"Merge company '{dup.get('name')}' into {dup.get('into')}"
-        ))
+        # Find the company to merge into
+        merge_into_company = next(
+            (c for c in companies if c.get("name") == dup.get("into")),
+            companies[0] if companies else None
+        )
+        merge_into_id = merge_into_company.get("company_id") if merge_into_company else None
+
+        if merge_into_id:
+            actions.append(Action(
+                type=ActionType.MERGE_COMPANIES,
+                merge_into_id=merge_into_id,
+                delete_id=dup.get("company_id"),
+                description=f"Merge company '{dup.get('name')}' into {dup.get('into')}"
+            ))
 
     return actions
 
