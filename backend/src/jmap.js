@@ -336,12 +336,16 @@ export class JMAPClient {
 
   // Download a blob (attachment) from Fastmail
   async downloadBlob(blobId, name, type) {
-    // JMAP blob download URL format: {downloadUrl}?blobId={blobId}&accountId={accountId}&type={type}&name={name}
-    const downloadUrl = this.session.downloadUrl
-      .replace('{accountId}', this.accountId)
-      .replace('{blobId}', blobId)
-      .replace('{type}', encodeURIComponent(type || 'application/octet-stream'))
-      .replace('{name}', encodeURIComponent(name || 'attachment'));
+    // JMAP download URL from session looks like:
+    // https://api.fastmail.com/jmap/download/{accountId}/{blobId}/{name}?accept={type}
+    // We need to replace the placeholders
+    let downloadUrl = this.session.downloadUrl
+      .replace('{accountId}', encodeURIComponent(this.accountId))
+      .replace('{blobId}', encodeURIComponent(blobId))
+      .replace('{name}', encodeURIComponent(name || 'attachment'))
+      .replace('{type}', encodeURIComponent(type || 'application/octet-stream'));
+
+    console.log(`[JMAP] Downloading blob from: ${downloadUrl}`);
 
     const response = await fetch(downloadUrl, {
       headers: {
@@ -350,6 +354,8 @@ export class JMAPClient {
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[JMAP] Download failed: ${response.status} - ${errorText}`);
       throw new Error(`Failed to download blob: ${response.status} ${response.statusText}`);
     }
 
