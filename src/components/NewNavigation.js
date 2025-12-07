@@ -8,7 +8,8 @@ import {
   FiMenu,
   FiX,
   FiChevronLeft,
-  FiChevronRight
+  FiChevronRight,
+  FiCommand
 } from 'react-icons/fi';
 import Logo from './Logo';
 
@@ -26,6 +27,13 @@ const NewNavigation = ({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const navigationItems = [
+    {
+      id: 'command-center',
+      label: 'Command Center',
+      icon: FiCommand,
+      path: '/command-center',
+      description: 'Email, WhatsApp & Calendar hub'
+    },
     {
       id: 'sort',
       label: 'Sort',

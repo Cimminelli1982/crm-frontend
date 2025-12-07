@@ -14,6 +14,7 @@ import ContactEditNew from './pages/ContactEditNew';
 import CityContactsPage from './pages/CityContactsPage';
 import TagContactsPage from './pages/TagContactsPage';
 import CompanyDetailPage from './pages/CompanyDetailPage';
+import CommandCenterPage from './pages/CommandCenterPage';
 import { supabase } from './lib/supabaseClient';
 
 const GlobalStyles = createGlobalStyle`
@@ -127,6 +128,7 @@ const CRMAppContent = () => {
 
   // Map paths to page IDs for navigation highlighting
   const getPageIdFromPath = (pathname) => {
+    if (pathname.includes('/command-center')) return 'command-center';
     if (pathname.includes('/sort')) return 'sort';
     if (pathname.includes('/interactions')) return 'interactions';
     if (pathname.includes('/search')) return 'search';
@@ -338,6 +340,7 @@ const CRMAppContent = () => {
             <Route path="/city/:cityId/contacts" element={<CityContactsPage theme={theme} />} />
             <Route path="/tag/:tagId/contacts" element={<TagContactsPage theme={theme} />} />
             <Route path="/company/:companyId" element={<CompanyDetailPage theme={theme} />} />
+            <Route path="/command-center" element={<CommandCenterPage theme={theme} />} />
             {/* Fallback route */}
             <Route path="*" element={<Navigate to="/sort" replace />} />
           </Routes>
