@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
-import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot } from 'react-icons/fa';
+import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import QuickEditModal from '../components/QuickEditModalRefactored';
@@ -504,6 +504,157 @@ const QuickActionsContainer = styled.div`
   border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
 `;
 
+const AcceptDraftButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #10B981, #059669);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: linear-gradient(135deg, #059669, #047857);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
+// Email Bubble Input Components
+const EmailBubbleContainer = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  min-height: 42px;
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#374151'};
+  border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  border-radius: 8px;
+  cursor: text;
+  position: relative;
+
+  &:focus-within {
+    border-color: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+    box-shadow: 0 0 0 2px ${props => props.theme === 'light' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(96, 165, 250, 0.2)'};
+  }
+`;
+
+const EmailBubble = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: ${props => props.theme === 'light' ? '#EBF5FF' : '#1E3A5F'};
+  color: ${props => props.theme === 'light' ? '#1E40AF' : '#93C5FD'};
+  border-radius: 16px;
+  font-size: 13px;
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+
+const EmailBubbleRemove = styled.button`
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+
+  &:hover {
+    color: ${props => props.theme === 'light' ? '#EF4444' : '#F87171'};
+  }
+`;
+
+const EmailBubbleInput = styled.input`
+  flex: 1;
+  min-width: 150px;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+
+  &::placeholder {
+    color: ${props => props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
+  }
+`;
+
+const AutocompleteDropdown = styled.div`
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  border-radius: 8px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1001;
+  margin-top: 4px;
+`;
+
+const AutocompleteItem = styled.div`
+  padding: 10px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
+  }
+`;
+
+const AutocompleteAvatar = styled.div`
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  flex-shrink: 0;
+`;
+
+const AutocompleteInfo = styled.div`
+  flex: 1;
+  min-width: 0;
+`;
+
+const AutocompleteName = styled.div`
+  font-size: 14px;
+  font-weight: 500;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const AutocompleteEmail = styled.div`
+  font-size: 12px;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
 // Compose Modal
 const ModalOverlay = styled.div`
   position: fixed;
@@ -670,9 +821,14 @@ const CommandCenterPage = ({ theme }) => {
 
   // Compose modal state
   const [composeModal, setComposeModal] = useState({ open: false, mode: null }); // mode: 'reply', 'replyAll', 'forward'
-  const [composeTo, setComposeTo] = useState('');
+  const [composeTo, setComposeTo] = useState([]); // Array of { email, name }
+  const [composeCc, setComposeCc] = useState([]); // Array of { email, name }
+  const [composeToInput, setComposeToInput] = useState('');
+  const [composeCcInput, setComposeCcInput] = useState('');
   const [composeSubject, setComposeSubject] = useState('');
   const [composeBody, setComposeBody] = useState('');
+  const [contactSuggestions, setContactSuggestions] = useState([]);
+  const [activeField, setActiveField] = useState(null); // 'to' or 'cc'
   const [sending, setSending] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -1351,17 +1507,105 @@ ${emailContext}`;
     if (!latestEmail) return;
 
     const mode = replyAll ? 'replyAll' : 'reply';
-    const to = latestEmail.from_email;
+    const myEmail = 'simone@cimminelli.com';
+    const isSentByMe = latestEmail.from_email?.toLowerCase() === myEmail.toLowerCase();
+
+    // Determine To recipients as array
+    let toRecipients = [];
+    if (isSentByMe && latestEmail.to_recipients?.length > 0) {
+      // If I sent it, reply to original recipients
+      toRecipients = latestEmail.to_recipients.map(r => ({ email: r.email, name: r.name || '' }));
+    } else {
+      toRecipients = [{ email: latestEmail.from_email, name: latestEmail.from_name || '' }];
+    }
+
+    // Get CC from original email (excluding myself) as array
+    let ccRecipients = [];
+    if (replyAll && latestEmail.cc_recipients?.length > 0) {
+      ccRecipients = latestEmail.cc_recipients
+        .filter(r => r.email?.toLowerCase() !== myEmail.toLowerCase())
+        .map(r => ({ email: r.email, name: r.name || '' }));
+    }
+
     const subject = latestEmail.subject?.startsWith('Re:')
       ? latestEmail.subject
       : `Re: ${latestEmail.subject}`;
 
-    setComposeTo(to);
+    setComposeTo(toRecipients);
+    setComposeCc(ccRecipients);
+    setComposeToInput('');
+    setComposeCcInput('');
     setComposeSubject(subject);
     setComposeBody('\n\n' + '─'.repeat(40) + '\n' +
       `On ${new Date(latestEmail.date).toLocaleString()}, ${latestEmail.from_name || latestEmail.from_email} wrote:\n\n` +
       (latestEmail.body_text || latestEmail.snippet || ''));
     setComposeModal({ open: true, mode });
+  };
+
+  // Open reply modal with AI-drafted text
+  const openReplyWithDraft = (draftText) => {
+    const latestEmail = getLatestEmail();
+    if (!latestEmail) return;
+
+    const myEmail = 'simone@cimminelli.com';
+    const isSentByMe = latestEmail.from_email?.toLowerCase() === myEmail.toLowerCase();
+
+    // Determine To recipients as array
+    let toRecipients = [];
+    if (isSentByMe && latestEmail.to_recipients?.length > 0) {
+      toRecipients = latestEmail.to_recipients.map(r => ({ email: r.email, name: r.name || '' }));
+    } else {
+      toRecipients = [{ email: latestEmail.from_email, name: latestEmail.from_name || '' }];
+    }
+
+    // Get CC from original email (excluding myself) as array
+    let ccRecipients = [];
+    if (latestEmail.cc_recipients?.length > 0) {
+      ccRecipients = latestEmail.cc_recipients
+        .filter(r => r.email?.toLowerCase() !== myEmail.toLowerCase())
+        .map(r => ({ email: r.email, name: r.name || '' }));
+    }
+
+    const subject = latestEmail.subject?.startsWith('Re:')
+      ? latestEmail.subject
+      : `Re: ${latestEmail.subject}`;
+
+    setComposeTo(toRecipients);
+    setComposeCc(ccRecipients);
+    setComposeToInput('');
+    setComposeCcInput('');
+    setComposeSubject(subject);
+    setComposeBody(draftText + '\n\n' + '─'.repeat(40) + '\n' +
+      `On ${new Date(latestEmail.date).toLocaleString()}, ${latestEmail.from_name || latestEmail.from_email} wrote:\n\n` +
+      (latestEmail.body_text || latestEmail.snippet || ''));
+    setComposeModal({ open: true, mode: 'reply' });
+  };
+
+  // Extract draft text from Claude's response
+  const extractDraftFromMessage = (content) => {
+    // Look for text between --- markers (common draft format)
+    const draftMatch = content.match(/---\n([\s\S]*?)\n---/);
+    if (draftMatch) {
+      return draftMatch[1].trim();
+    }
+
+    // Look for Subject: followed by content
+    const subjectMatch = content.match(/\*\*Subject:\*\*.*?\n\n---\n([\s\S]*?)\n---/);
+    if (subjectMatch) {
+      return subjectMatch[1].trim();
+    }
+
+    return null;
+  };
+
+  // Check if message contains a draft reply
+  const hasDraftReply = (content) => {
+    return content.includes('---\n') &&
+           (content.toLowerCase().includes('ciao') ||
+            content.toLowerCase().includes('simone') ||
+            content.toLowerCase().includes('thanks') ||
+            content.toLowerCase().includes('send it?') ||
+            content.toLowerCase().includes('draft'));
   };
 
   // Open compose modal for forward
@@ -1388,14 +1632,144 @@ ${emailContext}`;
   // Close compose modal
   const closeCompose = () => {
     setComposeModal({ open: false, mode: null });
-    setComposeTo('');
+    setComposeTo([]);
+    setComposeCc([]);
+    setComposeToInput('');
+    setComposeCcInput('');
     setComposeSubject('');
     setComposeBody('');
+    setContactSuggestions([]);
+    setActiveField(null);
+  };
+
+  // Search contacts in Supabase for autocomplete
+  const searchContacts = async (query) => {
+    if (!query || query.length < 2) {
+      setContactSuggestions([]);
+      return;
+    }
+
+    try {
+      // Search by email directly in contact_emails table
+      const { data: emailMatches, error: emailError } = await supabase
+        .from('contact_emails')
+        .select(`
+          email,
+          contacts (
+            contact_id,
+            first_name,
+            last_name,
+            profile_image_url
+          )
+        `)
+        .ilike('email', `%${query}%`)
+        .limit(8);
+
+      if (emailError) throw emailError;
+
+      // Also search by name in contacts and get their emails
+      const { data: nameMatches, error: nameError } = await supabase
+        .from('contacts')
+        .select(`
+          contact_id,
+          first_name,
+          last_name,
+          profile_image_url,
+          contact_emails (email)
+        `)
+        .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%`)
+        .limit(8);
+
+      if (nameError) throw nameError;
+
+      // Transform email matches to flat structure
+      const emailSuggestions = (emailMatches || [])
+        .filter(item => item.contacts)
+        .map(item => ({
+          id: item.contacts.contact_id,
+          first_name: item.contacts.first_name,
+          last_name: item.contacts.last_name,
+          email: item.email,
+          profile_image_url: item.contacts.profile_image_url
+        }));
+
+      // Transform name matches - expand to one entry per email
+      const nameSuggestions = (nameMatches || []).flatMap(contact => {
+        const emails = contact.contact_emails || [];
+        if (emails.length === 0) return [];
+        return emails.map(e => ({
+          id: contact.contact_id,
+          first_name: contact.first_name,
+          last_name: contact.last_name,
+          email: e.email,
+          profile_image_url: contact.profile_image_url
+        }));
+      });
+
+      // Combine and deduplicate by email
+      const allSuggestions = [...emailSuggestions, ...nameSuggestions];
+      const uniqueByEmail = allSuggestions.filter((item, index, self) =>
+        index === self.findIndex(t => t.email === item.email)
+      );
+
+      setContactSuggestions(uniqueByEmail.slice(0, 8));
+    } catch (error) {
+      console.error('Error searching contacts:', error);
+      setContactSuggestions([]);
+    }
+  };
+
+  // Add email to To or CC
+  const addEmailToField = (field, contact) => {
+    const email = typeof contact === 'string' ? contact : contact.email;
+    const name = typeof contact === 'string' ? '' : `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+
+    if (field === 'to') {
+      if (!composeTo.find(r => r.email.toLowerCase() === email.toLowerCase())) {
+        setComposeTo([...composeTo, { email, name }]);
+      }
+      setComposeToInput('');
+    } else {
+      if (!composeCc.find(r => r.email.toLowerCase() === email.toLowerCase())) {
+        setComposeCc([...composeCc, { email, name }]);
+      }
+      setComposeCcInput('');
+    }
+    setContactSuggestions([]);
+  };
+
+  // Remove email from To or CC
+  const removeEmailFromField = (field, email) => {
+    if (field === 'to') {
+      setComposeTo(composeTo.filter(r => r.email !== email));
+    } else {
+      setComposeCc(composeCc.filter(r => r.email !== email));
+    }
+  };
+
+  // Handle input keydown for adding emails
+  const handleEmailInputKeyDown = (e, field) => {
+    const input = field === 'to' ? composeToInput : composeCcInput;
+
+    if (e.key === 'Enter' || e.key === 'Tab' || e.key === ',') {
+      e.preventDefault();
+      const trimmed = input.trim().replace(/,$/, '');
+      if (trimmed && trimmed.includes('@')) {
+        addEmailToField(field, trimmed);
+      }
+    } else if (e.key === 'Backspace' && !input) {
+      // Remove last email if backspace on empty input
+      if (field === 'to' && composeTo.length > 0) {
+        setComposeTo(composeTo.slice(0, -1));
+      } else if (field === 'cc' && composeCc.length > 0) {
+        setComposeCc(composeCc.slice(0, -1));
+      }
+    }
   };
 
   // Send email
   const handleSend = async () => {
-    if (!composeTo || !composeBody.trim()) {
+    if (composeTo.length === 0 || !composeBody.trim()) {
       toast.error('Please fill in recipient and message');
       return;
     }
@@ -1409,35 +1783,25 @@ ${emailContext}`;
     setSending(true);
 
     try {
-      if (composeModal.mode === 'forward') {
-        // Forward
-        const response = await fetch(`${BACKEND_URL}/forward`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            emailId: latestEmail.id,
-            to: [{ email: composeTo }],
-            textBody: composeBody.split('─'.repeat(40))[0].trim(),
-          }),
-        });
+      // Get just the body text (before the quote separator)
+      const bodyText = composeBody.split('─'.repeat(40))[0].trim();
 
-        const result = await response.json();
-        if (!result.success) throw new Error(result.error);
-      } else {
-        // Reply
-        const response = await fetch(`${BACKEND_URL}/reply`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            emailId: latestEmail.id,
-            textBody: composeBody.split('─'.repeat(40))[0].trim(),
-            replyAll: composeModal.mode === 'replyAll',
-          }),
-        });
+      // Use /send endpoint directly for full control
+      const response = await fetch(`${BACKEND_URL}/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: composeTo,
+          cc: composeCc.length > 0 ? composeCc : undefined,
+          subject: composeSubject,
+          textBody: bodyText,
+          inReplyTo: composeModal.mode !== 'forward' ? latestEmail.fastmail_id : undefined,
+          references: composeModal.mode !== 'forward' ? latestEmail.fastmail_id : undefined,
+        }),
+      });
 
-        const result = await response.json();
-        if (!result.success) throw new Error(result.error);
-      }
+      const result = await response.json();
+      if (!result.success) throw new Error(result.error);
 
       toast.success('Email sent!');
       closeCompose();
@@ -2529,11 +2893,19 @@ ${emailContext}`;
                         </div>
                       </div>
                     )}
-                    {chatMessages.map((msg, idx) => (
-                      <ChatMessage key={idx} theme={theme} $isUser={msg.role === 'user'}>
-                        {msg.content}
-                      </ChatMessage>
-                    ))}
+                    {chatMessages.map((msg, idx) => {
+                      const draftText = msg.role === 'assistant' ? extractDraftFromMessage(msg.content) : null;
+                      return (
+                        <ChatMessage key={idx} theme={theme} $isUser={msg.role === 'user'}>
+                          {msg.content}
+                          {draftText && (
+                            <AcceptDraftButton onClick={() => openReplyWithDraft(draftText)}>
+                              <FaCheck size={12} /> Accept & Edit
+                            </AcceptDraftButton>
+                          )}
+                        </ChatMessage>
+                      );
+                    })}
                     {chatLoading && (
                       <TypingIndicator theme={theme}>
                         <span></span>
@@ -2988,14 +3360,104 @@ ${emailContext}`;
             <ModalBody theme={theme}>
               <FormField>
                 <FormLabel theme={theme}>To</FormLabel>
-                <FormInput
-                  theme={theme}
-                  type="email"
-                  value={composeTo}
-                  onChange={e => setComposeTo(e.target.value)}
-                  placeholder="recipient@email.com"
-                  disabled={composeModal.mode !== 'forward'}
-                />
+                <EmailBubbleContainer theme={theme} onClick={() => document.getElementById('to-input')?.focus()}>
+                  {composeTo.map((recipient, idx) => (
+                    <EmailBubble key={idx} theme={theme}>
+                      {recipient.name || recipient.email}
+                      <EmailBubbleRemove theme={theme} onClick={(e) => { e.stopPropagation(); removeEmailFromField('to', recipient.email); }}>
+                        <FaTimes size={10} />
+                      </EmailBubbleRemove>
+                    </EmailBubble>
+                  ))}
+                  <EmailBubbleInput
+                    id="to-input"
+                    theme={theme}
+                    value={composeToInput}
+                    onChange={(e) => {
+                      setComposeToInput(e.target.value);
+                      setActiveField('to');
+                      searchContacts(e.target.value);
+                    }}
+                    onKeyDown={(e) => handleEmailInputKeyDown(e, 'to')}
+                    onFocus={() => setActiveField('to')}
+                    onBlur={() => setTimeout(() => { setContactSuggestions([]); setActiveField(null); }, 200)}
+                    placeholder={composeTo.length === 0 ? "Type name or email..." : ""}
+                  />
+                  {activeField === 'to' && contactSuggestions.length > 0 && (
+                    <AutocompleteDropdown theme={theme}>
+                      {contactSuggestions.map((contact) => (
+                        <AutocompleteItem
+                          key={`${contact.id}-${contact.email}`}
+                          theme={theme}
+                          onMouseDown={() => addEmailToField('to', contact)}
+                        >
+                          <AutocompleteAvatar theme={theme}>
+                            {contact.profile_image_url ? (
+                              <img src={contact.profile_image_url} alt="" style={{ width: 32, height: 32, borderRadius: '50%' }} />
+                            ) : (
+                              `${contact.first_name?.[0] || ''}${contact.last_name?.[0] || ''}`
+                            )}
+                          </AutocompleteAvatar>
+                          <AutocompleteInfo>
+                            <AutocompleteName theme={theme}>{contact.first_name} {contact.last_name}</AutocompleteName>
+                            <AutocompleteEmail theme={theme}>{contact.email}</AutocompleteEmail>
+                          </AutocompleteInfo>
+                        </AutocompleteItem>
+                      ))}
+                    </AutocompleteDropdown>
+                  )}
+                </EmailBubbleContainer>
+              </FormField>
+
+              <FormField>
+                <FormLabel theme={theme}>CC</FormLabel>
+                <EmailBubbleContainer theme={theme} onClick={() => document.getElementById('cc-input')?.focus()}>
+                  {composeCc.map((recipient, idx) => (
+                    <EmailBubble key={idx} theme={theme}>
+                      {recipient.name || recipient.email}
+                      <EmailBubbleRemove theme={theme} onClick={(e) => { e.stopPropagation(); removeEmailFromField('cc', recipient.email); }}>
+                        <FaTimes size={10} />
+                      </EmailBubbleRemove>
+                    </EmailBubble>
+                  ))}
+                  <EmailBubbleInput
+                    id="cc-input"
+                    theme={theme}
+                    value={composeCcInput}
+                    onChange={(e) => {
+                      setComposeCcInput(e.target.value);
+                      setActiveField('cc');
+                      searchContacts(e.target.value);
+                    }}
+                    onKeyDown={(e) => handleEmailInputKeyDown(e, 'cc')}
+                    onFocus={() => setActiveField('cc')}
+                    onBlur={() => setTimeout(() => { setContactSuggestions([]); setActiveField(null); }, 200)}
+                    placeholder={composeCc.length === 0 ? "Add CC (optional)..." : ""}
+                  />
+                  {activeField === 'cc' && contactSuggestions.length > 0 && (
+                    <AutocompleteDropdown theme={theme}>
+                      {contactSuggestions.map((contact) => (
+                        <AutocompleteItem
+                          key={`${contact.id}-${contact.email}`}
+                          theme={theme}
+                          onMouseDown={() => addEmailToField('cc', contact)}
+                        >
+                          <AutocompleteAvatar theme={theme}>
+                            {contact.profile_image_url ? (
+                              <img src={contact.profile_image_url} alt="" style={{ width: 32, height: 32, borderRadius: '50%' }} />
+                            ) : (
+                              `${contact.first_name?.[0] || ''}${contact.last_name?.[0] || ''}`
+                            )}
+                          </AutocompleteAvatar>
+                          <AutocompleteInfo>
+                            <AutocompleteName theme={theme}>{contact.first_name} {contact.last_name}</AutocompleteName>
+                            <AutocompleteEmail theme={theme}>{contact.email}</AutocompleteEmail>
+                          </AutocompleteInfo>
+                        </AutocompleteItem>
+                      ))}
+                    </AutocompleteDropdown>
+                  )}
+                </EmailBubbleContainer>
               </FormField>
 
               <FormField>
@@ -3005,7 +3467,6 @@ ${emailContext}`;
                   type="text"
                   value={composeSubject}
                   onChange={e => setComposeSubject(e.target.value)}
-                  readOnly
                 />
               </FormField>
 
