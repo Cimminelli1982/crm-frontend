@@ -3721,19 +3721,120 @@ internet businesses.`;
                       ? (theme === 'light' ? '#F0F9FF' : '#1E3A5F')
                       : 'transparent'
                   }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                      {email.from_email?.toLowerCase() === MY_EMAIL ? (
-                        <span style={{ fontSize: '14px', fontWeight: 500, color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
-                          To: {formatRecipients(email.to_recipients) || 'Unknown'}
+                    {/* Email Header - proper client style */}
+                    <div style={{
+                      marginBottom: '16px',
+                      paddingBottom: '12px',
+                      borderBottom: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
+                    }}>
+                      {/* Date aligned right */}
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'flex-start',
+                        marginBottom: '8px'
+                      }}>
+                        <div style={{ flex: 1 }}>
+                          {/* From */}
+                          <div style={{ marginBottom: '4px' }}>
+                            <span style={{
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                              display: 'inline-block',
+                              width: '45px'
+                            }}>From:</span>
+                            <span style={{
+                              fontSize: '14px',
+                              color: theme === 'light' ? '#111827' : '#F9FAFB',
+                              fontWeight: 500
+                            }}>
+                              {email.from_name && email.from_name !== email.from_email
+                                ? `${email.from_name} `
+                                : ''}
+                              <span style={{
+                                color: theme === 'light' ? '#3B82F6' : '#60A5FA',
+                                fontWeight: 400
+                              }}>
+                                {email.from_name && email.from_name !== email.from_email
+                                  ? `<${email.from_email}>`
+                                  : email.from_email}
+                              </span>
+                            </span>
+                          </div>
+
+                          {/* To */}
+                          {email.to_recipients && email.to_recipients.length > 0 && (
+                            <div style={{ marginBottom: '4px' }}>
+                              <span style={{
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                display: 'inline-block',
+                                width: '45px'
+                              }}>To:</span>
+                              <span style={{ fontSize: '13px', color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
+                                {email.to_recipients.map((r, i) => (
+                                  <span key={i}>
+                                    {i > 0 && ', '}
+                                    {r.name && r.name !== r.email ? (
+                                      <>
+                                        {r.name} <span style={{ color: theme === 'light' ? '#3B82F6' : '#60A5FA' }}>&lt;{r.email}&gt;</span>
+                                      </>
+                                    ) : (
+                                      <span style={{ color: theme === 'light' ? '#3B82F6' : '#60A5FA' }}>{r.email}</span>
+                                    )}
+                                  </span>
+                                ))}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* CC */}
+                          {email.cc_recipients && email.cc_recipients.length > 0 && (
+                            <div style={{ marginBottom: '4px' }}>
+                              <span style={{
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                display: 'inline-block',
+                                width: '45px'
+                              }}>Cc:</span>
+                              <span style={{ fontSize: '13px', color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
+                                {email.cc_recipients.map((r, i) => (
+                                  <span key={i}>
+                                    {i > 0 && ', '}
+                                    {r.name && r.name !== r.email ? (
+                                      <>
+                                        {r.name} <span style={{ color: theme === 'light' ? '#3B82F6' : '#60A5FA' }}>&lt;{r.email}&gt;</span>
+                                      </>
+                                    ) : (
+                                      <span style={{ color: theme === 'light' ? '#3B82F6' : '#60A5FA' }}>{r.email}</span>
+                                    )}
+                                  </span>
+                                ))}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Date */}
+                        <span style={{
+                          fontSize: '12px',
+                          color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                          whiteSpace: 'nowrap',
+                          marginLeft: '16px'
+                        }}>
+                          {new Date(email.date).toLocaleString('en-GB', {
+                            weekday: 'short',
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
                         </span>
-                      ) : (
-                        <span style={{ fontSize: '14px', fontWeight: 500, color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
-                          From: {email.from_name || email.from_email}
-                        </span>
-                      )}
-                      <span style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
-                        {formatDate(email.date)}
-                      </span>
+                      </div>
                     </div>
                     {email.body_html ? (
                       <div
