@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
-import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaImage, FaEdit, FaPlus, FaExternalLinkAlt } from 'react-icons/fa';
+import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import QuickEditModal from '../components/QuickEditModalRefactored';
@@ -218,6 +218,62 @@ const EmailActions = styled.div`
   border-top: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
   display: flex;
   gap: 12px;
+`;
+
+// Attachments section above email actions
+const AttachmentsSection = styled.div`
+  padding: 12px 24px;
+  border-top: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  background: ${props => props.theme === 'light' ? '#F9FAFB' : '#111827'};
+`;
+
+const AttachmentsHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+`;
+
+const AttachmentsList = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+`;
+
+const AttachmentChip = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  border-radius: 6px;
+  font-size: 13px;
+  color: ${props => props.theme === 'light' ? '#374151' : '#D1D5DB'};
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#EBF5FF' : '#1E3A5F'};
+    border-color: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+    color: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+  }
+
+  svg {
+    color: ${props => props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
+  }
+
+  &:hover svg {
+    color: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+  }
+`;
+
+const AttachmentSize = styled.span`
+  font-size: 11px;
+  opacity: 0.7;
 `;
 
 const ActionBtn = styled.button`
@@ -990,6 +1046,18 @@ const CommandCenterPage = ({ theme }) => {
   const [expandedProjects, setExpandedProjects] = useState({ '2335921711': true }); // Only Inbox expanded by default
   const [expandedSections, setExpandedSections] = useState({}); // { sectionId: true/false }
 
+  // Notes state
+  const [contactNotes, setContactNotes] = useState([]);
+  const [loadingNotes, setLoadingNotes] = useState(false);
+  const [noteModalOpen, setNoteModalOpen] = useState(false);
+  const [newNoteTitle, setNewNoteTitle] = useState('');
+  const [newNoteType, setNewNoteType] = useState('meeting');
+  const [newNoteSummary, setNewNoteSummary] = useState('');
+  const [newNoteObsidianPath, setNewNoteObsidianPath] = useState('');
+  const [creatingNote, setCreatingNote] = useState(false);
+  const [editingNote, setEditingNote] = useState(null);
+  const OBSIDIAN_VAULT = 'Living with Intention';
+
   // AI Chat state
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
@@ -1337,6 +1405,262 @@ const CommandCenterPage = ({ theme }) => {
       'taupe': '#ccac93',
     };
     return colors[project?.color] || '#808080';
+  };
+
+  // ===== Notes Functions =====
+
+  // Fetch notes for the current thread's contacts
+  const fetchContactNotes = async () => {
+    if (!emailContacts || emailContacts.length === 0) {
+      setContactNotes([]);
+      return;
+    }
+
+    setLoadingNotes(true);
+    try {
+      // Get all contact IDs from the thread
+      const contactIds = emailContacts
+        .filter(p => p.contact?.contact_id)
+        .map(p => p.contact.contact_id);
+
+      if (contactIds.length === 0) {
+        setContactNotes([]);
+        setLoadingNotes(false);
+        return;
+      }
+
+      // Fetch notes linked to these contacts
+      const { data: noteContacts, error: ncError } = await supabase
+        .from('note_contacts')
+        .select('note_id, contact_id')
+        .in('contact_id', contactIds);
+
+      if (ncError) throw ncError;
+
+      if (!noteContacts || noteContacts.length === 0) {
+        setContactNotes([]);
+        setLoadingNotes(false);
+        return;
+      }
+
+      // Get unique note IDs
+      const noteIds = [...new Set(noteContacts.map(nc => nc.note_id))];
+
+      // Fetch the actual notes
+      const { data: notes, error: notesError } = await supabase
+        .from('notes')
+        .select('*')
+        .in('note_id', noteIds)
+        .order('created_at', { ascending: false });
+
+      if (notesError) throw notesError;
+
+      // Attach contact info to each note
+      const notesWithContacts = (notes || []).map(note => {
+        const linkedContactIds = noteContacts
+          .filter(nc => nc.note_id === note.note_id)
+          .map(nc => nc.contact_id);
+        const linkedContacts = emailContacts
+          .filter(p => linkedContactIds.includes(p.contact?.contact_id))
+          .map(p => p.contact);
+        return { ...note, linkedContacts };
+      });
+
+      setContactNotes(notesWithContacts);
+    } catch (error) {
+      console.error('Error fetching notes:', error);
+      toast.error('Failed to fetch notes');
+    }
+    setLoadingNotes(false);
+  };
+
+  // Load notes when notes tab is active and contacts are loaded
+  useEffect(() => {
+    if (activeActionTab === 'notes' && emailContacts.length > 0) {
+      fetchContactNotes();
+    }
+  }, [activeActionTab, emailContacts]);
+
+  // Generate default Obsidian path based on note type
+  const generateObsidianPath = (noteType, title) => {
+    const today = new Date().toISOString().split('T')[0];
+    const sanitizedTitle = title.replace(/[\\/:*?"<>|]/g, '-');
+    const typeFolder = {
+      'meeting': 'CRM/Meetings',
+      'call': 'CRM/Calls',
+      'research': 'CRM/Research',
+      'idea': 'CRM/Ideas',
+      'follow-up': 'CRM/Follow-ups',
+      'general': 'CRM/Notes'
+    }[noteType] || 'CRM/Notes';
+    return `${typeFolder}/${today} ${sanitizedTitle}`;
+  };
+
+  // Save a note (create or update)
+  const handleSaveNote = async () => {
+    if (!newNoteTitle.trim()) {
+      toast.error('Note title is required');
+      return;
+    }
+
+    setCreatingNote(true);
+    try {
+      const obsidianPath = newNoteObsidianPath || generateObsidianPath(newNoteType, newNoteTitle);
+
+      // Get linked contacts info
+      const linkedContacts = emailContacts
+        .filter(p => p.contact?.contact_id)
+        .map(p => ({
+          contact_id: p.contact.contact_id,
+          first_name: p.contact.first_name,
+          last_name: p.contact.last_name
+        }));
+
+      if (editingNote) {
+        // Update existing note in Supabase
+        const { error } = await supabase
+          .from('notes')
+          .update({
+            title: newNoteTitle,
+            note_type: newNoteType,
+            summary: newNoteSummary,
+            obsidian_path: obsidianPath,
+            updated_at: new Date().toISOString()
+          })
+          .eq('note_id', editingNote.note_id);
+
+        if (error) throw error;
+        toast.success('Note updated');
+      } else {
+        // Create note in Obsidian vault via backend (GitHub)
+        const obsidianResponse = await fetch(`${BACKEND_URL}/obsidian/notes`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: newNoteTitle,
+            noteType: newNoteType,
+            summary: newNoteSummary,
+            obsidianPath: obsidianPath,
+            linkedContacts: linkedContacts
+          })
+        });
+
+        const obsidianResult = await obsidianResponse.json();
+        if (!obsidianResult.success) {
+          throw new Error(obsidianResult.error || 'Failed to create note in Obsidian');
+        }
+
+        // Create note record in Supabase
+        const { data: newNote, error: noteError } = await supabase
+          .from('notes')
+          .insert({
+            title: newNoteTitle,
+            note_type: newNoteType,
+            summary: newNoteSummary,
+            obsidian_path: obsidianPath
+          })
+          .select()
+          .single();
+
+        if (noteError) throw noteError;
+
+        // Link to all contacts in the current thread
+        const contactIds = linkedContacts.map(c => c.contact_id);
+
+        if (contactIds.length > 0) {
+          const noteContacts = contactIds.map(contactId => ({
+            note_id: newNote.note_id,
+            contact_id: contactId
+          }));
+
+          const { error: linkError } = await supabase
+            .from('note_contacts')
+            .insert(noteContacts);
+
+          if (linkError) throw linkError;
+        }
+
+        toast.success('Note created in Obsidian vault!');
+      }
+
+      resetNoteForm();
+      setNoteModalOpen(false);
+      fetchContactNotes();
+    } catch (error) {
+      console.error('Error saving note:', error);
+      toast.error(error.message || 'Failed to save note');
+    }
+    setCreatingNote(false);
+  };
+
+  // Reset note form
+  const resetNoteForm = () => {
+    setNewNoteTitle('');
+    setNewNoteType('meeting');
+    setNewNoteSummary('');
+    setNewNoteObsidianPath('');
+    setEditingNote(null);
+  };
+
+  // Open a note in Obsidian
+  const openInObsidian = (obsidianPath) => {
+    // Use the obsidian:// URL scheme to open the note
+    // Format: obsidian://open?vault=VaultName&file=path/to/note
+    const encodedVault = encodeURIComponent(OBSIDIAN_VAULT);
+    const encodedPath = encodeURIComponent(obsidianPath);
+    const obsidianUrl = `obsidian://open?vault=${encodedVault}&file=${encodedPath}`;
+    window.open(obsidianUrl, '_blank');
+  };
+
+  // Create a new note in Obsidian (opens the new note dialog)
+  const createInObsidian = (obsidianPath) => {
+    // Use obsidian://new to create a new note
+    const encodedVault = encodeURIComponent(OBSIDIAN_VAULT);
+    const encodedPath = encodeURIComponent(obsidianPath);
+    const obsidianUrl = `obsidian://new?vault=${encodedVault}&file=${encodedPath}`;
+    window.open(obsidianUrl, '_blank');
+  };
+
+  // Open edit mode for a note
+  const openEditNote = (note) => {
+    setEditingNote(note);
+    setNewNoteTitle(note.title);
+    setNewNoteType(note.note_type || 'general');
+    setNewNoteSummary(note.summary || '');
+    setNewNoteObsidianPath(note.obsidian_path || '');
+    setNoteModalOpen(true);
+  };
+
+  // Delete a note
+  const handleDeleteNote = async (noteId) => {
+    if (!window.confirm('Delete this note? This only removes the CRM record, not the Obsidian file.')) return;
+
+    try {
+      const { error } = await supabase
+        .from('notes')
+        .delete()
+        .eq('note_id', noteId);
+
+      if (error) throw error;
+      toast.success('Note deleted');
+      fetchContactNotes();
+    } catch (error) {
+      console.error('Error deleting note:', error);
+      toast.error('Failed to delete note');
+    }
+  };
+
+  // Get note type icon
+  const getNoteTypeIcon = (noteType) => {
+    const icons = {
+      'meeting': '📅',
+      'call': '📞',
+      'research': '🔬',
+      'idea': '💡',
+      'follow-up': '📋',
+      'general': '📝'
+    };
+    return icons[noteType] || '📝';
   };
 
   // Fetch contacts when selected thread changes
@@ -3396,6 +3720,80 @@ internet businesses.`;
                 ))}
               </div>
 
+              {/* Attachments section - above reply actions */}
+              {(() => {
+                // Collect all attachments from all emails in thread
+                const allAttachments = selectedThread.flatMap(email =>
+                  (email.attachments || []).map(att => ({
+                    ...att,
+                    emailSubject: email.subject,
+                    emailDate: email.date,
+                    fastmailId: email.fastmail_id
+                  }))
+                );
+
+                if (allAttachments.length === 0) return null;
+
+                const handleDownload = async (att) => {
+                  try {
+                    toast.loading('Downloading...', { id: 'download' });
+                    const url = `${BACKEND_URL}/attachment/${encodeURIComponent(att.blobId)}?name=${encodeURIComponent(att.name || 'attachment')}&type=${encodeURIComponent(att.type || 'application/octet-stream')}`;
+
+                    // Fetch the file
+                    const response = await fetch(url);
+                    if (!response.ok) {
+                      throw new Error('Download failed');
+                    }
+
+                    // Create blob and download
+                    const blob = await response.blob();
+                    const downloadUrl = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = downloadUrl;
+                    a.download = att.name || 'attachment';
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(downloadUrl);
+                    document.body.removeChild(a);
+
+                    toast.success('Downloaded!', { id: 'download' });
+                  } catch (error) {
+                    console.error('Download error:', error);
+                    toast.error('Failed to download', { id: 'download' });
+                  }
+                };
+
+                const formatSize = (bytes) => {
+                  if (!bytes) return '';
+                  if (bytes < 1024) return `${bytes} B`;
+                  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+                  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+                };
+
+                return (
+                  <AttachmentsSection theme={theme}>
+                    <AttachmentsHeader theme={theme}>
+                      <FaPaperclip size={12} />
+                      {allAttachments.length} attachment{allAttachments.length !== 1 ? 's' : ''}
+                    </AttachmentsHeader>
+                    <AttachmentsList>
+                      {allAttachments.map((att, idx) => (
+                        <AttachmentChip
+                          key={idx}
+                          theme={theme}
+                          onClick={() => handleDownload(att)}
+                          title={`Download ${att.name || 'attachment'}`}
+                        >
+                          <FaDownload size={12} />
+                          <span>{att.name || 'Unnamed file'}</span>
+                          {att.size && <AttachmentSize>({formatSize(att.size)})</AttachmentSize>}
+                        </AttachmentChip>
+                      ))}
+                    </AttachmentsList>
+                  </AttachmentsSection>
+                );
+              })()}
+
               {/* Reply actions - based on latest email */}
               {(() => {
                 const latestEmail = selectedThread[selectedThread.length - 1];
@@ -3526,9 +3924,6 @@ internet businesses.`;
             </ActionTabIcon>
             <ActionTabIcon theme={theme} $active={activeActionTab === 'notes'} onClick={() => setActiveActionTab('notes')} title="Notes">
               <FaStickyNote />
-            </ActionTabIcon>
-            <ActionTabIcon theme={theme} $active={activeActionTab === 'attachments'} onClick={() => setActiveActionTab('attachments')} title="Attachments">
-              <FaPaperclip />
             </ActionTabIcon>
           </ActionsPanelTabs>
 
@@ -4474,85 +4869,81 @@ internet businesses.`;
               )}
 
               {activeActionTab === 'notes' && (
-                <ActionCard theme={theme}>
-                  <ActionCardHeader theme={theme}>
-                    <FaStickyNote /> Add Note
-                  </ActionCardHeader>
-                  <ActionCardContent theme={theme}>
-                    Create note in Obsidian
-                  </ActionCardContent>
-                  <ActionCardButtons>
-                    <SmallBtn theme={theme}>Edit</SmallBtn>
-                    <SmallBtn theme={theme} $variant="success">✓</SmallBtn>
-                    <SmallBtn theme={theme} $variant="danger">✗</SmallBtn>
-                  </ActionCardButtons>
-                </ActionCard>
-              )}
-
-              {activeActionTab === 'attachments' && (
                 <>
-                  {(() => {
-                    // Collect all attachments from all emails in thread
-                    const allAttachments = selectedThread.flatMap(email =>
-                      (email.attachments || []).map(att => ({
-                        ...att,
-                        emailSubject: email.subject,
-                        emailDate: email.date,
-                        fastmailId: email.fastmail_id
-                      }))
-                    );
+                  {/* Add New Note Button */}
+                  <ActionCard theme={theme} style={{ cursor: 'pointer' }} onClick={() => { resetNoteForm(); setNoteModalOpen(true); }}>
+                    <ActionCardContent theme={theme} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px' }}>
+                      <FaStickyNote style={{ color: '#8B5CF6' }} />
+                      <span style={{ fontWeight: 600 }}>Add New Note</span>
+                    </ActionCardContent>
+                  </ActionCard>
 
-                    if (allAttachments.length === 0) {
-                      return (
-                        <ActionCard theme={theme}>
+                  {/* Loading state */}
+                  {loadingNotes && (
+                    <div style={{ padding: '20px', textAlign: 'center', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                      Loading notes...
+                    </div>
+                  )}
+
+                  {/* Existing Notes Section */}
+                  {!loadingNotes && contactNotes.length > 0 && (
+                    <>
+                      <div style={{
+                        padding: '8px 16px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}>
+                        Related Notes ({contactNotes.length})
+                      </div>
+                      {contactNotes.map(note => (
+                        <ActionCard key={note.note_id} theme={theme}>
                           <ActionCardHeader theme={theme}>
-                            <FaPaperclip /> Attachments
+                            <span>{getNoteTypeIcon(note.note_type)} {note.title}</span>
                           </ActionCardHeader>
-                          <ActionCardContent theme={theme} style={{ opacity: 0.6 }}>
-                            No attachments in this thread
+                          <ActionCardContent theme={theme}>
+                            {note.summary && <div style={{ marginBottom: '4px' }}>{note.summary}</div>}
+                            <div style={{ fontSize: '11px', color: theme === 'light' ? '#9CA3AF' : '#6B7280' }}>
+                              {note.note_type} • {new Date(note.created_at).toLocaleDateString()}
+                            </div>
+                            {note.obsidian_path && (
+                              <div style={{ fontSize: '11px', color: theme === 'light' ? '#9CA3AF' : '#6B7280', marginTop: '2px' }}>
+                                {note.obsidian_path}
+                              </div>
+                            )}
                           </ActionCardContent>
+                          <ActionCardButtons>
+                            <SmallBtn theme={theme} onClick={() => note.obsidian_path && openInObsidian(note.obsidian_path)} title="Open in Obsidian">
+                              <FaExternalLinkAlt />
+                            </SmallBtn>
+                            <SmallBtn theme={theme} onClick={() => openEditNote(note)} title="Edit">
+                              <FaEdit />
+                            </SmallBtn>
+                            <SmallBtn theme={theme} $variant="danger" onClick={() => handleDeleteNote(note.note_id)} title="Delete">
+                              <FaTrash />
+                            </SmallBtn>
+                          </ActionCardButtons>
                         </ActionCard>
-                      );
-                    }
+                      ))}
+                    </>
+                  )}
 
-                    return (
-                      <>
-                        <div style={{
-                          padding: '8px 16px',
-                          fontSize: '12px',
-                          color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                          borderBottom: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
-                        }}>
-                          {allAttachments.length} attachment{allAttachments.length !== 1 ? 's' : ''} (stored in Fastmail)
-                        </div>
-                        {allAttachments.map((att, idx) => (
-                          <ActionCard key={idx} theme={theme}>
-                            <ActionCardHeader theme={theme}>
-                              <FaPaperclip /> {att.name || 'Unnamed file'}
-                            </ActionCardHeader>
-                            <ActionCardContent theme={theme}>
-                              <div style={{ fontSize: '13px', marginBottom: '4px' }}>
-                                {att.type || 'Unknown type'}
-                              </div>
-                              <div style={{ fontSize: '12px', opacity: 0.7 }}>
-                                {att.size ? `${(att.size / 1024).toFixed(1)} KB` : 'Size unknown'}
-                              </div>
-                            </ActionCardContent>
-                            <ActionCardButtons>
-                              <SmallBtn
-                                theme={theme}
-                                onClick={() => window.open(`https://app.fastmail.com/mail/${att.fastmailId}`, '_blank')}
-                              >
-                                Open in Fastmail
-                              </SmallBtn>
-                            </ActionCardButtons>
-                          </ActionCard>
-                        ))}
-                      </>
-                    );
-                  })()}
+                  {/* Empty state */}
+                  {!loadingNotes && contactNotes.length === 0 && (
+                    <div style={{
+                      padding: '20px',
+                      textAlign: 'center',
+                      color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                      fontSize: '13px'
+                    }}>
+                      No notes yet for contacts in this thread
+                    </div>
+                  )}
                 </>
               )}
+
             </>
           )}
         </ActionsPanel>
@@ -5693,6 +6084,114 @@ internet businesses.`;
                 onClick={handleSaveTask}
               >
                 {creatingTask ? 'Saving...' : (editingTask ? 'Save Changes' : 'Create Task')}
+              </SendButton>
+            </ModalFooter>
+          </ModalContent>
+        </ModalOverlay>
+      )}
+
+      {/* Note Modal */}
+      {noteModalOpen && (
+        <ModalOverlay onClick={() => { setNoteModalOpen(false); resetNoteForm(); }}>
+          <ModalContent theme={theme} onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <ModalHeader theme={theme}>
+              <ModalTitle theme={theme}>
+                <FaStickyNote style={{ marginRight: '8px', color: '#8B5CF6' }} />
+                {editingNote ? 'Edit Note' : 'Add Note'}
+              </ModalTitle>
+              <CloseButton theme={theme} onClick={() => { setNoteModalOpen(false); resetNoteForm(); }}>
+                <FaTimes size={18} />
+              </CloseButton>
+            </ModalHeader>
+
+            <ModalBody theme={theme}>
+              {/* Note Title */}
+              <FormField>
+                <FormLabel theme={theme}>Title *</FormLabel>
+                <FormInput
+                  theme={theme}
+                  value={newNoteTitle}
+                  onChange={(e) => setNewNoteTitle(e.target.value)}
+                  placeholder="Meeting with John about project..."
+                  autoFocus
+                />
+              </FormField>
+
+              {/* Note Type */}
+              <FormField style={{ marginTop: '16px' }}>
+                <FormLabel theme={theme}>Type</FormLabel>
+                <FormSelect
+                  theme={theme}
+                  value={newNoteType}
+                  onChange={(e) => setNewNoteType(e.target.value)}
+                >
+                  <option value="meeting">Meeting</option>
+                  <option value="call">Call</option>
+                  <option value="research">Research</option>
+                  <option value="idea">Idea</option>
+                  <option value="follow-up">Follow-up</option>
+                  <option value="general">General</option>
+                </FormSelect>
+              </FormField>
+
+              {/* Summary */}
+              <FormField style={{ marginTop: '16px' }}>
+                <FormLabel theme={theme}>Summary (optional)</FormLabel>
+                <FormTextarea
+                  theme={theme}
+                  value={newNoteSummary}
+                  onChange={(e) => setNewNoteSummary(e.target.value)}
+                  placeholder="Brief description of the note..."
+                  rows={3}
+                />
+              </FormField>
+
+              {/* Obsidian Path (auto-generated but editable) */}
+              <FormField style={{ marginTop: '16px' }}>
+                <FormLabel theme={theme}>Obsidian Path</FormLabel>
+                <FormInput
+                  theme={theme}
+                  value={newNoteObsidianPath || generateObsidianPath(newNoteType, newNoteTitle || 'Untitled')}
+                  onChange={(e) => setNewNoteObsidianPath(e.target.value)}
+                  placeholder="CRM/Meetings/2024-12-07 Meeting"
+                />
+                <div style={{ fontSize: '11px', color: theme === 'light' ? '#9CA3AF' : '#6B7280', marginTop: '4px' }}>
+                  Vault: {OBSIDIAN_VAULT}
+                </div>
+              </FormField>
+
+              {/* Linked Contacts Preview */}
+              {emailContacts.filter(p => p.contact?.contact_id).length > 0 && (
+                <FormField style={{ marginTop: '16px' }}>
+                  <FormLabel theme={theme}>Will be linked to contacts</FormLabel>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
+                    {emailContacts.filter(p => p.contact?.contact_id).slice(0, 5).map(p => (
+                      <div
+                        key={p.contact.contact_id}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '16px',
+                          fontSize: '13px',
+                          background: theme === 'light' ? '#F3E8FF' : '#4C1D95',
+                          color: theme === 'light' ? '#7C3AED' : '#C4B5FD',
+                          border: `1px solid ${theme === 'light' ? '#DDD6FE' : '#7C3AED'}`,
+                        }}
+                      >
+                        {p.contact.first_name} {p.contact.last_name}
+                      </div>
+                    ))}
+                  </div>
+                </FormField>
+              )}
+            </ModalBody>
+
+            <ModalFooter theme={theme}>
+              <SendButton
+                theme={theme}
+                disabled={creatingNote || !newNoteTitle.trim()}
+                onClick={handleSaveNote}
+              >
+                {creatingNote ? 'Saving...' : (editingNote ? 'Save Changes' : 'Create & Open in Obsidian')}
               </SendButton>
             </ModalFooter>
           </ModalContent>

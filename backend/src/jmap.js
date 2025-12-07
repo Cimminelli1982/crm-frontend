@@ -334,6 +334,32 @@ export class JMAPClient {
     return { archived: true, emailId };
   }
 
+  // Download a blob (attachment) from Fastmail
+  async downloadBlob(blobId, name, type) {
+    // JMAP blob download URL format: {downloadUrl}?blobId={blobId}&accountId={accountId}&type={type}&name={name}
+    const downloadUrl = this.session.downloadUrl
+      .replace('{accountId}', this.accountId)
+      .replace('{blobId}', blobId)
+      .replace('{type}', encodeURIComponent(type || 'application/octet-stream'))
+      .replace('{name}', encodeURIComponent(name || 'attachment'));
+
+    const response = await fetch(downloadUrl, {
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to download blob: ${response.status} ${response.statusText}`);
+    }
+
+    return {
+      buffer: await response.arrayBuffer(),
+      contentType: response.headers.get('content-type') || type || 'application/octet-stream',
+      filename: name || 'attachment',
+    };
+  }
+
   async sendEmail({ to, cc, subject, textBody, htmlBody, inReplyTo, references }) {
     // Get identity (sender)
     const identityResponse = await this.request([

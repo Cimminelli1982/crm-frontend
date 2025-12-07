@@ -456,6 +456,49 @@ app.post('/archive', async (req, res) => {
   }
 });
 
+// Download attachment from Fastmail
+app.get('/attachment/:blobId', async (req, res) => {
+  try {
+    const { blobId } = req.params;
+    const { name, type } = req.query;
+
+    if (!blobId) {
+      return res.status(400).json({ success: false, error: 'Missing blobId' });
+    }
+
+    console.log(`Downloading attachment: ${blobId} (${name || 'unknown'})`);
+
+    const jmap = new JMAPClient(
+      process.env.FASTMAIL_USERNAME,
+      process.env.FASTMAIL_API_TOKEN
+    );
+    await jmap.init();
+
+    const { buffer, contentType, filename } = await jmap.downloadBlob(
+      blobId,
+      name || 'attachment',
+      type || 'application/octet-stream'
+    );
+
+    // Set CORS headers explicitly for file downloads
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Length');
+
+    // Set headers for file download
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+    res.setHeader('Content-Length', buffer.byteLength);
+
+    // Send the file
+    res.send(Buffer.from(buffer));
+  } catch (error) {
+    console.error('Attachment download error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ============ TODOIST INTEGRATION ============
 
 const TODOIST_API_URL = 'https://api.todoist.com/rest/v2';
@@ -784,6 +827,187 @@ app.post('/chat', async (req, res) => {
   } catch (error) {
     console.error('[Chat] Error:', error);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ==================== OBSIDIAN (GitHub) ENDPOINTS ====================
+
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+const OBSIDIAN_REPO = process.env.OBSIDIAN_REPO || 'simonecimminelli/obsidian-vault'; // owner/repo format
+
+// Helper to create/update a file in GitHub repo
+async function createOrUpdateGitHubFile(filePath, content, commitMessage) {
+  const [owner, repo] = OBSIDIAN_REPO.split('/');
+  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`;
+
+  // Check if file exists (to get SHA for update)
+  let sha = null;
+  try {
+    const checkResponse = await fetch(apiUrl, {
+      headers: {
+        'Authorization': `token ${GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github.v3+json',
+      },
+    });
+    if (checkResponse.ok) {
+      const existingFile = await checkResponse.json();
+      sha = existingFile.sha;
+    }
+  } catch (e) {
+    // File doesn't exist, that's fine
+  }
+
+  // Create or update the file
+  const body = {
+    message: commitMessage,
+    content: Buffer.from(content).toString('base64'),
+  };
+  if (sha) {
+    body.sha = sha;
+  }
+
+  const response = await fetch(apiUrl, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `token ${GITHUB_TOKEN}`,
+      'Accept': 'application/vnd.github.v3+json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || 'Failed to create file in GitHub');
+  }
+
+  return await response.json();
+}
+
+// Create a new note in Obsidian vault
+app.post('/obsidian/notes', async (req, res) => {
+  try {
+    const { title, noteType, summary, obsidianPath, linkedContacts } = req.body;
+
+    if (!GITHUB_TOKEN) {
+      return res.status(500).json({ success: false, error: 'GitHub token not configured' });
+    }
+
+    if (!title || !obsidianPath) {
+      return res.status(400).json({ success: false, error: 'Title and obsidianPath are required' });
+    }
+
+    // Generate note content with frontmatter
+    const now = new Date();
+    const frontmatter = [
+      '---',
+      `title: "${title}"`,
+      `type: ${noteType || 'general'}`,
+      `created: ${now.toISOString()}`,
+      linkedContacts?.length ? `contacts: [${linkedContacts.map(c => `"${c.first_name} ${c.last_name || ''}".trim()`).join(', ')}]` : null,
+      summary ? `summary: "${summary}"` : null,
+      'tags: [crm]',
+      '---',
+      '',
+    ].filter(Boolean).join('\n');
+
+    const content = frontmatter + `# ${title}\n\n${summary || ''}\n\n## Notes\n\n`;
+
+    // Create the file in GitHub
+    const filePath = obsidianPath.endsWith('.md') ? obsidianPath : `${obsidianPath}.md`;
+    await createOrUpdateGitHubFile(
+      filePath,
+      content,
+      `Create note: ${title}`
+    );
+
+    console.log(`[Obsidian] Created note: ${filePath}`);
+    res.json({ success: true, path: filePath });
+  } catch (error) {
+    console.error('[Obsidian] Error creating note:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Update an existing note
+app.put('/obsidian/notes', async (req, res) => {
+  try {
+    const { obsidianPath, content } = req.body;
+
+    if (!GITHUB_TOKEN) {
+      return res.status(500).json({ success: false, error: 'GitHub token not configured' });
+    }
+
+    const filePath = obsidianPath.endsWith('.md') ? obsidianPath : `${obsidianPath}.md`;
+    await createOrUpdateGitHubFile(
+      filePath,
+      content,
+      `Update note: ${obsidianPath}`
+    );
+
+    console.log(`[Obsidian] Updated note: ${filePath}`);
+    res.json({ success: true, path: filePath });
+  } catch (error) {
+    console.error('[Obsidian] Error updating note:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get note content from GitHub
+app.get('/obsidian/notes/*', async (req, res) => {
+  try {
+    if (!GITHUB_TOKEN) {
+      return res.status(500).json({ success: false, error: 'GitHub token not configured' });
+    }
+
+    const filePath = req.params[0];
+    const [owner, repo] = OBSIDIAN_REPO.split('/');
+    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`;
+
+    const response = await fetch(apiUrl, {
+      headers: {
+        'Authorization': `token ${GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github.v3+json',
+      },
+    });
+
+    if (!response.ok) {
+      return res.status(404).json({ success: false, error: 'Note not found' });
+    }
+
+    const file = await response.json();
+    const content = Buffer.from(file.content, 'base64').toString('utf-8');
+
+    res.json({ success: true, content, sha: file.sha });
+  } catch (error) {
+    console.error('[Obsidian] Error fetching note:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Check Obsidian/GitHub connection status
+app.get('/obsidian/status', async (req, res) => {
+  try {
+    if (!GITHUB_TOKEN) {
+      return res.json({ connected: false, error: 'GitHub token not configured' });
+    }
+
+    const [owner, repo] = OBSIDIAN_REPO.split('/');
+    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+      headers: {
+        'Authorization': `token ${GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github.v3+json',
+      },
+    });
+
+    if (response.ok) {
+      const repoInfo = await response.json();
+      res.json({ connected: true, repo: repoInfo.full_name, private: repoInfo.private });
+    } else {
+      res.json({ connected: false, error: 'Cannot access repository' });
+    }
+  } catch (error) {
+    res.json({ connected: false, error: error.message });
   }
 });
 
