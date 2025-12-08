@@ -319,6 +319,84 @@ async def get_stats():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ==================== AI SUGGESTION ENDPOINTS ====================
+
+@app.post("/suggest-contact-profile")
+async def suggest_contact_profile(request: dict):
+    """
+    Generate AI suggestions for contact profile based on email content.
+    Returns suggested description and category.
+    """
+    logger.info("suggest_contact_profile_request", from_email=request.get("from_email"))
+
+    try:
+        from_name = request.get("from_name", "")
+        from_email = request.get("from_email", "")
+        subject = request.get("subject", "")
+        body_text = request.get("body_text", "")[:3000]  # Limit body length
+
+        # Category options from the CRM
+        category_options = [
+            "Professional Investor", "Founder", "Manager", "Advisor",
+            "Friend and Family", "Team", "Supplier", "Media",
+            "Student", "Institution", "Other"
+        ]
+
+        prompt = f"""Based on this email, provide two things:
+
+1. A brief professional description of the sender (2-3 sentences in English). Focus on:
+   - Why they contacted Simone
+   - What they do/their role
+   - How they likely found Simone (cold outreach, referral, etc.)
+
+2. The most appropriate category from this list: {', '.join(category_options)}
+
+Email from: {from_name} <{from_email}>
+Subject: {subject}
+Body:
+{body_text}
+
+Respond ONLY with valid JSON in this exact format:
+{{"suggested_description": "Your description here", "suggested_category": "CategoryName"}}"""
+
+        # Use the agent's Claude client
+        import anthropic
+        import json as json_lib
+        client = anthropic.Anthropic()
+
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=500,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        # Parse JSON response
+        response_text = response.content[0].text.strip()
+
+        # Handle potential markdown code blocks
+        if response_text.startswith("```"):
+            response_text = response_text.split("```")[1]
+            if response_text.startswith("json"):
+                response_text = response_text[4:]
+
+        result = json_lib.loads(response_text)
+
+        return {
+            "success": True,
+            "suggested_description": result.get("suggested_description", ""),
+            "suggested_category": result.get("suggested_category", ""),
+        }
+
+    except Exception as e:
+        logger.error("suggest_contact_profile_error", error=str(e))
+        return {
+            "success": False,
+            "suggested_description": "",
+            "suggested_category": "",
+            "error": str(e)
+        }
+
+
 # ==================== NEW AUDIT ENDPOINTS ====================
 
 @app.post("/audit-email")

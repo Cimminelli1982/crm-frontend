@@ -1394,8 +1394,30 @@ const CommandCenterPage = ({ theme }) => {
 
   // Handle adding contact from hold to CRM
   const handleAddFromHold = async (contact) => {
-    // Open the create contact modal with contact data from hold
-    setCreateContactEmail({ email: contact.email, name: contact.full_name || contact.first_name });
+    // Find an email from this sender to get subject/body for AI suggestions
+    let emailContent = null;
+    for (const thread of threads) {
+      const found = thread.emails.find(e =>
+        e.from_email?.toLowerCase() === contact.email.toLowerCase()
+      );
+      if (found) {
+        emailContent = found;
+        break;
+      }
+    }
+
+    // Open the create contact modal with complete contact data from hold
+    setCreateContactEmail({
+      email: contact.email,
+      name: contact.full_name || contact.first_name,
+      hold_id: contact.hold_id,
+      first_name: contact.first_name,
+      last_name: contact.last_name,
+      company_name: contact.company_name,
+      job_role: contact.job_role,
+      subject: emailContent?.subject || '',
+      body_text: emailContent?.body_text || emailContent?.snippet || ''
+    });
     setCreateContactModalOpen(true);
   };
 
@@ -1494,7 +1516,23 @@ const CommandCenterPage = ({ theme }) => {
 
   // Handle opening create contact modal
   const handleOpenCreateContact = (item) => {
-    setCreateContactEmail(item);
+    // Find an email from this sender to get subject/body for AI suggestions
+    let emailContent = null;
+    for (const thread of threads) {
+      const found = thread.emails.find(e =>
+        e.from_email?.toLowerCase() === item.email.toLowerCase()
+      );
+      if (found) {
+        emailContent = found;
+        break;
+      }
+    }
+
+    setCreateContactEmail({
+      ...item,
+      subject: emailContent?.subject || '',
+      body_text: emailContent?.body_text || emailContent?.snippet || ''
+    });
     setCreateContactModalOpen(true);
   };
 
