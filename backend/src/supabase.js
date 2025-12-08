@@ -180,30 +180,36 @@ export async function upsertEmails(emails) {
   return upsertEmailsWithSpamFilter(emails);
 }
 
-export async function getLatestEmailDate() {
+export async function getLatestEmailDate(mailboxType = 'inbox') {
   // Get last sync date from sync_state table (not affected by deletions)
+  // Use separate sync dates for inbox and sent to avoid missing sent emails
+  const syncId = mailboxType === 'sent' ? 'email_sync_sent' : 'email_sync';
+
   const { data, error } = await supabase
     .from('sync_state')
     .select('last_sync_date')
-    .eq('id', 'email_sync')
+    .eq('id', syncId)
     .single();
 
   if (error && error.code !== 'PGRST116') { // PGRST116 = no rows
-    console.error('Error fetching sync state:', error);
+    console.error(`Error fetching sync state for ${mailboxType}:`, error);
   }
 
   return data?.last_sync_date || null;
 }
 
-export async function updateSyncDate(date) {
+export async function updateSyncDate(date, mailboxType = 'inbox') {
+  // Use separate sync dates for inbox and sent
+  const syncId = mailboxType === 'sent' ? 'email_sync_sent' : 'email_sync';
+
   const { error } = await supabase
     .from('sync_state')
     .upsert({
-      id: 'email_sync',
+      id: syncId,
       last_sync_date: date
     });
 
   if (error) {
-    console.error('Error updating sync state:', error);
+    console.error(`Error updating sync state for ${mailboxType}:`, error);
   }
 }

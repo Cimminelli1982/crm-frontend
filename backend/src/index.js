@@ -78,27 +78,38 @@ async function autoSync() {
   try {
     console.log(`[${new Date().toISOString()}] Starting auto-sync...`);
 
-    // Get the latest email date from DB to only sync newer emails
-    const latestDate = await getLatestEmailDate();
-    console.log(`  Latest email in DB: ${latestDate || 'none'}`);
-
     jmap = new JMAPClient(
       process.env.FASTMAIL_USERNAME,
       process.env.FASTMAIL_API_TOKEN
     );
     await jmap.init();
 
-    // Sync both Inbox and Sent
+    // Sync both Inbox and Sent with SEPARATE sync dates
     const mailboxes = await jmap.getMailboxIds(['inbox', 'sent']);
     let allEmails = [];
+    const newestDates = {}; // Track newest date per mailbox type
 
     for (const { role, id } of mailboxes) {
+      // Get separate sync date for each mailbox type
+      const latestDate = await getLatestEmailDate(role);
+      console.log(`  ${role}: syncing since ${latestDate || 'beginning'}`);
+
       const emails = await jmap.getEmails({
         mailboxId: id,
         limit: 50,
         sinceDate: latestDate,
       });
       console.log(`  - ${role}: ${emails.length} new emails`);
+
+      // Track newest date for this mailbox type
+      if (emails.length > 0) {
+        const newestInBatch = emails.reduce((max, e) => {
+          const d = new Date(e.receivedAt);
+          return d > max ? d : max;
+        }, new Date(0));
+        newestDates[role] = newestInBatch;
+      }
+
       allEmails = allEmails.concat(emails);
     }
 
@@ -127,14 +138,11 @@ async function autoSync() {
       }
     }
 
-    // Update sync state with the newest email date
-    const newestEmailDate = uniqueEmails.reduce((max, e) => {
-      const d = new Date(e.receivedAt);
-      return d > max ? d : max;
-    }, new Date(0));
-
-    if (newestEmailDate > new Date(0)) {
-      await updateSyncDate(newestEmailDate.toISOString());
+    // Update sync state separately for each mailbox type
+    for (const [role, newestDate] of Object.entries(newestDates)) {
+      if (newestDate > new Date(0)) {
+        await updateSyncDate(newestDate.toISOString(), role);
+      }
     }
 
     lastSyncTime = new Date().toISOString();
