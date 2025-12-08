@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
-import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck } from 'react-icons/fa';
+import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import QuickEditModal from '../components/QuickEditModalRefactored';
@@ -12,6 +12,8 @@ import { useProfileImageModal } from '../hooks/useProfileImageModal';
 import CreateContactModal from '../components/modals/CreateContactModal';
 import DomainLinkModal from '../components/modals/DomainLinkModal';
 import CreateCompanyModal from '../components/modals/CreateCompanyModal';
+import DeleteSkipSpamModal from '../components/DeleteSkipSpamModal';
+import EditCompanyModal from '../components/modals/EditCompanyModal';
 
 const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
 const AGENT_SERVICE_URL = 'https://crm-agent-api-production.up.railway.app'; // CRM Agent Service
@@ -1024,7 +1026,7 @@ const CommandCenterPage = ({ theme }) => {
 
   // Spam menu state
   const [spamMenuOpen, setSpamMenuOpen] = useState(false);
-  const [activeActionTab, setActiveActionTab] = useState('dataIntegrity');
+  const [activeActionTab, setActiveActionTab] = useState('contacts');
 
   // Contacts from email (for Contacts tab)
   const [emailContacts, setEmailContacts] = useState([]);
@@ -1118,10 +1120,29 @@ const CommandCenterPage = ({ theme }) => {
   const [duplicateContacts, setDuplicateContacts] = useState([]);
   const [duplicateCompanies, setDuplicateCompanies] = useState([]);
   const [duplicatesTab, setDuplicatesTab] = useState('contacts'); // 'contacts' or 'companies'
-  const [incompleteContacts, setIncompleteContacts] = useState([]);
+  const [categoryMissingContacts, setCategoryMissingContacts] = useState([]);
+  const [categoryMissingCompanies, setCategoryMissingCompanies] = useState([]);
+  const [categoryMissingTab, setCategoryMissingTab] = useState('contacts'); // 'contacts' or 'companies'
+  const [keepInTouchMissingContacts, setKeepInTouchMissingContacts] = useState([]);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteModalContact, setDeleteModalContact] = useState(null);
+  const [editCompanyModalOpen, setEditCompanyModalOpen] = useState(false);
+  const [editCompanyModalCompany, setEditCompanyModalCompany] = useState(null);
   const [loadingDataIntegrity, setLoadingDataIntegrity] = useState(false);
-  const [dataIntegritySection, setDataIntegritySection] = useState('notInCrm'); // notInCrm, hold, duplicates, incomplete
+  const [dataIntegritySection, setDataIntegritySection] = useState('notInCrm'); // notInCrm, hold, duplicates, incomplete, categoryMissing
   const [expandedDataIntegrity, setExpandedDataIntegrity] = useState({ notInCrm: true }); // Collapsible sections
+
+  // Compute if Data Integrity tab has any items to show
+  const hasDataIntegrityItems = (
+    notInCrmEmails.length > 0 ||
+    notInCrmDomains.length > 0 ||
+    holdContacts.length > 0 ||
+    duplicateContacts.length > 0 ||
+    duplicateCompanies.length > 0 ||
+    categoryMissingContacts.length > 0 ||
+    categoryMissingCompanies.length > 0 ||
+    keepInTouchMissingContacts.length > 0
+  );
 
   // Domain Link Modal state
   const [domainLinkModalOpen, setDomainLinkModalOpen] = useState(false);
@@ -1404,6 +1425,198 @@ const CommandCenterPage = ({ theme }) => {
     } catch (error) {
       console.error('Error putting on hold:', error);
       toast.error('Failed to put on hold');
+    }
+  };
+
+  // Handle editing a category missing contact - fetch full data and open QuickEditModal
+  const handleEditCategoryMissingContact = async (contact) => {
+    try {
+      // Fetch full contact data
+      const { data: fullContact, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('contact_id', contact.contact_id)
+        .single();
+
+      if (error) throw error;
+
+      handleOpenQuickEditModal(fullContact, true);
+    } catch (error) {
+      console.error('Error fetching contact for edit:', error);
+      toast.error('Failed to load contact');
+    }
+  };
+
+  // Handle putting a category missing contact on hold - sets category to 'Hold'
+  const handleHoldCategoryMissingContact = async (contact) => {
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .update({ category: 'Hold' })
+        .eq('contact_id', contact.contact_id);
+
+      if (error) throw error;
+
+      // Remove from list
+      setCategoryMissingContacts(prev => prev.filter(c => c.contact_id !== contact.contact_id));
+      toast.success(`${contact.first_name} ${contact.last_name} moved to Hold`);
+    } catch (error) {
+      console.error('Error setting hold category:', error);
+      toast.error('Failed to set Hold category');
+    }
+  };
+
+  // Handle opening delete modal for a category missing contact
+  const handleDeleteCategoryMissingContact = async (contact) => {
+    // Fetch full contact data for the modal
+    try {
+      const { data: fullContact, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('contact_id', contact.contact_id)
+        .single();
+
+      if (error) throw error;
+
+      setDeleteModalContact(fullContact);
+      setDeleteModalOpen(true);
+    } catch (error) {
+      console.error('Error fetching contact for delete:', error);
+      toast.error('Failed to load contact');
+    }
+  };
+
+  // Handle opening keep in touch modal for a kit missing contact - opens to Keep in touch tab
+  const handleOpenKeepInTouchModal = async (contact) => {
+    try {
+      const { data: fullContact, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('contact_id', contact.contact_id)
+        .single();
+
+      if (error) throw error;
+
+      handleOpenQuickEditModal(fullContact, true);
+      // Set tab to Keep in touch after modal opens
+      setTimeout(() => setQuickEditActiveTab('Keep in touch'), 100);
+    } catch (error) {
+      console.error('Error fetching contact for edit:', error);
+      toast.error('Failed to load contact');
+    }
+  };
+
+  // Handle setting "Do not keep in touch" for a contact
+  const handleDoNotKeepInTouch = async (contact) => {
+    try {
+      // Update contacts table keep_in_touch_frequency
+      const { error: contactError } = await supabase
+        .from('contacts')
+        .update({ keep_in_touch_frequency: 'Do not keep in touch' })
+        .eq('contact_id', contact.contact_id);
+
+      if (contactError) throw contactError;
+
+      // Also update/insert keep_in_touch table
+      const { data: existing } = await supabase
+        .from('keep_in_touch')
+        .select('id')
+        .eq('contact_id', contact.contact_id);
+
+      if (existing && existing.length > 0) {
+        await supabase
+          .from('keep_in_touch')
+          .update({ frequency: 'Do not keep in touch' })
+          .eq('contact_id', contact.contact_id);
+      } else {
+        await supabase
+          .from('keep_in_touch')
+          .insert({ contact_id: contact.contact_id, frequency: 'Do not keep in touch' });
+      }
+
+      setKeepInTouchMissingContacts(prev => prev.filter(c => c.contact_id !== contact.contact_id));
+      toast.success(`${contact.first_name} ${contact.last_name} set to "Do not keep in touch"`);
+    } catch (error) {
+      console.error('Error setting do not keep in touch:', error);
+      toast.error('Failed to update contact');
+    }
+  };
+
+  // Handle closing delete modal and refreshing list
+  const handleCloseDeleteModal = () => {
+    setDeleteModalOpen(false);
+    setDeleteModalContact(null);
+    // Refresh the category missing list in case contact was deleted
+    fetchDataIntegrity();
+  };
+
+  // Handle editing a category missing company - open edit modal
+  const handleEditCategoryMissingCompany = async (company) => {
+    try {
+      // Fetch full company data for the modal
+      const { data: fullCompany, error } = await supabase
+        .from('companies')
+        .select('*')
+        .eq('company_id', company.company_id)
+        .single();
+
+      if (error) throw error;
+
+      setEditCompanyModalCompany(fullCompany);
+      setEditCompanyModalOpen(true);
+    } catch (error) {
+      console.error('Error fetching company for edit:', error);
+      toast.error('Failed to load company');
+    }
+  };
+
+  // Handle closing edit company modal
+  const handleCloseEditCompanyModal = () => {
+    setEditCompanyModalOpen(false);
+    setEditCompanyModalCompany(null);
+    // Refresh the category missing list in case company was updated
+    fetchDataIntegrity();
+  };
+
+  // Handle putting a category missing company on hold - sets category to 'Hold'
+  const handleHoldCategoryMissingCompany = async (company) => {
+    try {
+      const { error } = await supabase
+        .from('companies')
+        .update({ category: 'Hold' })
+        .eq('company_id', company.company_id);
+
+      if (error) throw error;
+
+      // Remove from list
+      setCategoryMissingCompanies(prev => prev.filter(c => c.company_id !== company.company_id));
+      toast.success(`${company.name} moved to Hold`);
+    } catch (error) {
+      console.error('Error setting hold category:', error);
+      toast.error('Failed to set Hold category');
+    }
+  };
+
+  // Handle deleting a category missing company
+  const handleDeleteCategoryMissingCompany = async (company) => {
+    if (!window.confirm(`Delete ${company.name}? This cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('companies')
+        .delete()
+        .eq('company_id', company.company_id);
+
+      if (error) throw error;
+
+      // Remove from list
+      setCategoryMissingCompanies(prev => prev.filter(c => c.company_id !== company.company_id));
+      toast.success(`${company.name} deleted`);
+    } catch (error) {
+      console.error('Error deleting company:', error);
+      toast.error('Failed to delete company');
     }
   };
 
@@ -1771,31 +1984,7 @@ const CommandCenterPage = ({ theme }) => {
         setHoldContacts(holdData || []);
       }
 
-      // 3. Get incomplete contacts - contacts where key fields are missing
-      const { data: incompleteData, error: incompleteError } = await supabase
-        .from('contacts')
-        .select('contact_id, first_name, last_name, category, score, job_role, linkedin')
-        .or('job_role.is.null,linkedin.is.null')
-        .limit(100);
-
-      if (incompleteError) {
-        console.error('Error fetching incomplete contacts:', incompleteError);
-      } else {
-        // Calculate completeness score
-        const withScores = (incompleteData || []).map(c => {
-          let score = 0;
-          if (c.first_name) score += 20;
-          if (c.last_name) score += 20;
-          if (c.job_role) score += 20;
-          if (c.linkedin) score += 20;
-          if (c.category && c.category !== 'Inbox') score += 20;
-          return { ...c, completeness_score: score };
-        }).filter(c => c.completeness_score < 100)
-          .sort((a, b) => a.completeness_score - b.completeness_score);
-        setIncompleteContacts(withScores);
-      }
-
-      // 4. Duplicates - read from duplicates_inbox table (populated by backend trigger)
+      // 3. Duplicates - read from duplicates_inbox table (populated by backend trigger)
       // Fetch contact duplicates from duplicates_inbox
       const { data: contactDupsRaw } = await supabase
         .from('duplicates_inbox')
@@ -1856,18 +2045,87 @@ const CommandCenterPage = ({ theme }) => {
         setDuplicateCompanies([]);
       }
 
+      // 5. Fetch Category Missing - contacts with category 'Inbox' and last_interaction_at after Dec 5
+      const { data: catMissingContacts, error: catMissingContactsError } = await supabase
+        .from('contacts')
+        .select('contact_id, first_name, last_name, category, last_interaction_at')
+        .eq('category', 'Inbox')
+        .gt('last_interaction_at', '2025-12-05')
+        .order('last_interaction_at', { ascending: false });
+
+      if (catMissingContactsError) {
+        console.error('Error fetching category missing contacts:', catMissingContactsError);
+        setCategoryMissingContacts([]);
+      } else {
+        setCategoryMissingContacts(catMissingContacts || []);
+      }
+
+      // 6. Fetch Category Missing - companies with category 'Inbox' or 'Not Set' AND connected contacts with last_interaction_at after Dec 5
+      const { data: catMissingCompaniesRaw, error: catMissingCompaniesError } = await supabase
+        .from('companies')
+        .select(`
+          company_id,
+          name,
+          category,
+          contact_companies!inner(
+            contacts!inner(last_interaction_at)
+          )
+        `)
+        .in('category', ['Inbox', 'Not Set'])
+        .gt('contact_companies.contacts.last_interaction_at', '2025-12-05');
+
+      if (catMissingCompaniesError) {
+        console.error('Error fetching category missing companies:', catMissingCompaniesError);
+        setCategoryMissingCompanies([]);
+      } else {
+        // Deduplicate companies (may appear multiple times if multiple qualifying contacts)
+        const catMissingCompanies = catMissingCompaniesRaw
+          ? [...new Map(catMissingCompaniesRaw.map(c => [c.company_id, { company_id: c.company_id, name: c.name, category: c.category }])).values()]
+              .sort((a, b) => a.name.localeCompare(b.name))
+          : [];
+        setCategoryMissingCompanies(catMissingCompanies);
+      }
+
+      // 7. Fetch Keep in Touch Missing - contacts NOT in Hold/Not Set/WhatsApp Group Chat, with keep_in_touch_frequency null or 'Not Set', recent interaction
+      const { data: kitMissingContacts, error: kitMissingContactsError } = await supabase
+        .from('contacts')
+        .select('contact_id, first_name, last_name, category, last_interaction_at, keep_in_touch_frequency')
+        .not('category', 'in', '("Inbox","Hold","Skip","Not Set","WhatsApp Group Contact")')
+        .or('keep_in_touch_frequency.is.null,keep_in_touch_frequency.eq.Not Set')
+        .gt('last_interaction_at', '2025-12-05')
+        .order('last_interaction_at', { ascending: false });
+
+      if (kitMissingContactsError) {
+        console.error('Error fetching keep in touch missing contacts:', kitMissingContactsError);
+        setKeepInTouchMissingContacts([]);
+      } else {
+        setKeepInTouchMissingContacts(kitMissingContacts || []);
+      }
+
     } catch (error) {
       console.error('Error fetching data integrity:', error);
     }
     setLoadingDataIntegrity(false);
   };
 
-  // Load data integrity when tab is active
+  // Load data integrity on mount (to know if tab should be shown)
+  useEffect(() => {
+    fetchDataIntegrity();
+  }, []);
+
+  // Reload data integrity when tab becomes active
   useEffect(() => {
     if (activeActionTab === 'dataIntegrity') {
       fetchDataIntegrity();
     }
   }, [activeActionTab]);
+
+  // Switch away from Data Integrity tab if it becomes empty
+  useEffect(() => {
+    if (activeActionTab === 'dataIntegrity' && !hasDataIntegrityItems && !loadingDataIntegrity) {
+      setActiveActionTab('contacts');
+    }
+  }, [hasDataIntegrityItems, activeActionTab, loadingDataIntegrity]);
 
   // Fetch AI suggestions from Supabase
   const fetchAiSuggestions = async () => {
@@ -5270,9 +5528,11 @@ internet businesses.`;
         {/* Right: Actions Panel */}
         <ActionsPanel theme={theme}>
           <ActionsPanelTabs theme={theme}>
-            <ActionTabIcon theme={theme} $active={activeActionTab === 'dataIntegrity'} onClick={() => setActiveActionTab('dataIntegrity')} title="Data Integrity">
-              <FaDatabase />
-            </ActionTabIcon>
+            {hasDataIntegrityItems && (
+              <ActionTabIcon theme={theme} $active={activeActionTab === 'dataIntegrity'} onClick={() => setActiveActionTab('dataIntegrity')} title="Data Integrity">
+                <FaDatabase />
+              </ActionTabIcon>
+            )}
             <ActionTabIcon theme={theme} $active={activeActionTab === 'contacts'} onClick={() => setActiveActionTab('contacts')} title="Contacts">
               <FaUser />
             </ActionTabIcon>
@@ -5921,6 +6181,7 @@ internet businesses.`;
                   ) : (
                     <>
                       {/* Not in CRM Section */}
+                      {(notInCrmEmails.length > 0 || notInCrmDomains.length > 0) && (
                       <div style={{ marginBottom: '8px' }}>
                         <div
                           onClick={() => setExpandedDataIntegrity(prev => ({ ...prev, notInCrm: !prev.notInCrm }))}
@@ -6189,8 +6450,10 @@ internet businesses.`;
                           </div>
                         )}
                       </div>
+                      )}
 
                       {/* Hold Contacts Section */}
+                      {holdContacts.length > 0 && (
                       <div style={{ marginBottom: '8px' }}>
                         <div
                           onClick={() => setExpandedDataIntegrity(prev => ({ ...prev, hold: !prev.hold }))}
@@ -6318,8 +6581,10 @@ internet businesses.`;
                           </div>
                         )}
                       </div>
+                      )}
 
                       {/* Duplicates Section */}
+                      {(duplicateContacts.length > 0 || duplicateCompanies.length > 0) && (
                       <div style={{ marginTop: '8px' }}>
                         <div
                           onClick={() => setExpandedDataIntegrity(prev => ({ ...prev, duplicates: !prev.duplicates }))}
@@ -6751,6 +7016,429 @@ internet businesses.`;
                           </div>
                         )}
                       </div>
+                      )}
+
+                      {/* Category Missing Section */}
+                      {(categoryMissingContacts.length > 0 || categoryMissingCompanies.length > 0) && (
+                      <div style={{ marginBottom: '8px' }}>
+                        <div
+                          onClick={() => setExpandedDataIntegrity(prev => ({ ...prev, categoryMissing: !prev.categoryMissing }))}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '10px 12px',
+                            background: theme === 'light' ? '#F3F4F6' : '#374151',
+                            cursor: 'pointer',
+                            borderRadius: '6px',
+                            marginBottom: expandedDataIntegrity.categoryMissing ? '4px' : '0',
+                          }}
+                        >
+                          <FaChevronDown
+                            style={{
+                              transform: expandedDataIntegrity.categoryMissing ? 'rotate(0deg)' : 'rotate(-90deg)',
+                              transition: 'transform 0.2s',
+                              fontSize: '10px',
+                              color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                            }}
+                          />
+                          <FaTag style={{ color: '#F59E0B', fontSize: '12px' }} />
+                          <span style={{
+                            fontWeight: 600,
+                            fontSize: '13px',
+                            color: theme === 'light' ? '#111827' : '#F9FAFB'
+                          }}>
+                            Category Missing
+                          </span>
+                          <span style={{
+                            fontSize: '12px',
+                            color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                            marginLeft: 'auto'
+                          }}>
+                            {categoryMissingContacts.length + categoryMissingCompanies.length}
+                          </span>
+                        </div>
+                        {expandedDataIntegrity.categoryMissing && (
+                          <div style={{ paddingLeft: '8px' }}>
+                            {/* Tabs for Contacts / Companies */}
+                            <div style={{
+                              display: 'flex',
+                              gap: '4px',
+                              marginBottom: '8px',
+                              background: theme === 'light' ? '#E5E7EB' : '#1F2937',
+                              borderRadius: '6px',
+                              padding: '2px'
+                            }}>
+                              <button
+                                onClick={() => setCategoryMissingTab('contacts')}
+                                style={{
+                                  flex: 1,
+                                  padding: '6px 8px',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  fontSize: '12px',
+                                  fontWeight: 500,
+                                  cursor: 'pointer',
+                                  background: categoryMissingTab === 'contacts'
+                                    ? (theme === 'light' ? '#FFFFFF' : '#374151')
+                                    : 'transparent',
+                                  color: categoryMissingTab === 'contacts'
+                                    ? (theme === 'light' ? '#111827' : '#F9FAFB')
+                                    : (theme === 'light' ? '#6B7280' : '#9CA3AF'),
+                                  boxShadow: categoryMissingTab === 'contacts' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
+                                }}
+                              >
+                                Contacts ({categoryMissingContacts.length})
+                              </button>
+                              <button
+                                onClick={() => setCategoryMissingTab('companies')}
+                                style={{
+                                  flex: 1,
+                                  padding: '6px 8px',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  fontSize: '12px',
+                                  fontWeight: 500,
+                                  cursor: 'pointer',
+                                  background: categoryMissingTab === 'companies'
+                                    ? (theme === 'light' ? '#FFFFFF' : '#374151')
+                                    : 'transparent',
+                                  color: categoryMissingTab === 'companies'
+                                    ? (theme === 'light' ? '#111827' : '#F9FAFB')
+                                    : (theme === 'light' ? '#6B7280' : '#9CA3AF'),
+                                  boxShadow: categoryMissingTab === 'companies' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
+                                }}
+                              >
+                                Companies ({categoryMissingCompanies.length})
+                              </button>
+                            </div>
+
+                            {/* Contacts Tab Content */}
+                            {categoryMissingTab === 'contacts' && (
+                              <>
+                                {categoryMissingContacts.length === 0 ? (
+                                  <div style={{
+                                    textAlign: 'center',
+                                    padding: '16px',
+                                    color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                                    fontSize: '12px'
+                                  }}>
+                                    No contacts need categorization
+                                  </div>
+                                ) : (
+                                  categoryMissingContacts.map((contact, idx) => (
+                                    <div key={contact.contact_id} style={{
+                                      padding: '8px 12px',
+                                      background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                                      borderRadius: '6px',
+                                      marginBottom: '4px',
+                                      border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center'
+                                    }}>
+                                      <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => navigate(`/contact/${contact.contact_id}`)}>
+                                        <div style={{
+                                          fontSize: '13px',
+                                          fontWeight: 500,
+                                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                          whiteSpace: 'nowrap',
+                                          overflow: 'hidden',
+                                          textOverflow: 'ellipsis'
+                                        }}>
+                                          {contact.first_name} {contact.last_name}
+                                        </div>
+                                        <div style={{
+                                          fontSize: '11px',
+                                          color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                          marginTop: '2px'
+                                        }}>
+                                          Last: {contact.last_interaction_at ? new Date(contact.last_interaction_at).toLocaleDateString() : 'N/A'}
+                                        </div>
+                                      </div>
+                                      <div style={{ display: 'flex', gap: '4px', marginLeft: '8px', flexShrink: 0 }}>
+                                        <button
+                                          onClick={() => handleEditCategoryMissingContact(contact)}
+                                          title="Edit Contact"
+                                          style={{
+                                            padding: '4px 8px',
+                                            fontSize: '11px',
+                                            fontWeight: 500,
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            background: '#10B981',
+                                            color: 'white'
+                                          }}
+                                        >
+                                          Edit
+                                        </button>
+                                        <button
+                                          onClick={() => handleHoldCategoryMissingContact(contact)}
+                                          title="Put on Hold"
+                                          style={{
+                                            padding: '4px 8px',
+                                            fontSize: '11px',
+                                            fontWeight: 500,
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            background: '#F59E0B',
+                                            color: 'white'
+                                          }}
+                                        >
+                                          Hold
+                                        </button>
+                                        <button
+                                          onClick={() => handleDeleteCategoryMissingContact(contact)}
+                                          title="Delete Contact"
+                                          style={{
+                                            padding: '4px 8px',
+                                            fontSize: '11px',
+                                            fontWeight: 500,
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            background: '#EF4444',
+                                            color: 'white'
+                                          }}
+                                        >
+                                          Delete
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))
+                                )}
+                              </>
+                            )}
+
+                            {/* Companies Tab Content */}
+                            {categoryMissingTab === 'companies' && (
+                              <>
+                                {categoryMissingCompanies.length === 0 ? (
+                                  <div style={{
+                                    textAlign: 'center',
+                                    padding: '16px',
+                                    color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                                    fontSize: '12px'
+                                  }}>
+                                    No companies need categorization
+                                  </div>
+                                ) : (
+                                  categoryMissingCompanies.map((company, idx) => (
+                                    <div key={company.company_id} style={{
+                                      padding: '8px 12px',
+                                      background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                                      borderRadius: '6px',
+                                      marginBottom: '4px',
+                                      border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center'
+                                    }}>
+                                      <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => navigate(`/company/${company.company_id}`)}>
+                                        <div style={{
+                                          fontSize: '13px',
+                                          fontWeight: 500,
+                                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                          whiteSpace: 'nowrap',
+                                          overflow: 'hidden',
+                                          textOverflow: 'ellipsis'
+                                        }}>
+                                          {company.name}
+                                        </div>
+                                        <div style={{
+                                          fontSize: '11px',
+                                          color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                          marginTop: '2px'
+                                        }}>
+                                          {company.category}
+                                        </div>
+                                      </div>
+                                      <div style={{ display: 'flex', gap: '4px', marginLeft: '8px', flexShrink: 0 }}>
+                                        <button
+                                          onClick={() => handleEditCategoryMissingCompany(company)}
+                                          title="Edit Company"
+                                          style={{
+                                            padding: '4px 8px',
+                                            fontSize: '11px',
+                                            fontWeight: 500,
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            background: '#10B981',
+                                            color: 'white'
+                                          }}
+                                        >
+                                          Edit
+                                        </button>
+                                        <button
+                                          onClick={() => handleHoldCategoryMissingCompany(company)}
+                                          title="Put on Hold"
+                                          style={{
+                                            padding: '4px 8px',
+                                            fontSize: '11px',
+                                            fontWeight: 500,
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            background: '#F59E0B',
+                                            color: 'white'
+                                          }}
+                                        >
+                                          Hold
+                                        </button>
+                                        <button
+                                          onClick={() => handleDeleteCategoryMissingCompany(company)}
+                                          title="Delete Company"
+                                          style={{
+                                            padding: '4px 8px',
+                                            fontSize: '11px',
+                                            fontWeight: 500,
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            background: '#EF4444',
+                                            color: 'white'
+                                          }}
+                                        >
+                                          Delete
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      )}
+
+                      {/* Keep in Touch Missing Section */}
+                      {keepInTouchMissingContacts.length > 0 && (
+                        <div style={{ marginBottom: '8px' }}>
+                          <div
+                            onClick={() => setExpandedDataIntegrity(prev => ({ ...prev, keepInTouchMissing: !prev.keepInTouchMissing }))}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: '10px 12px',
+                              background: theme === 'light' ? '#F3F4F6' : '#374151',
+                              cursor: 'pointer',
+                              borderRadius: '6px',
+                              marginBottom: expandedDataIntegrity.keepInTouchMissing ? '4px' : '0',
+                            }}
+                          >
+                            <FaChevronDown
+                              style={{
+                                transform: expandedDataIntegrity.keepInTouchMissing ? 'rotate(0deg)' : 'rotate(-90deg)',
+                                transition: 'transform 0.2s',
+                                fontSize: '10px',
+                                color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                              }}
+                            />
+                            <FaCalendar style={{ color: '#8B5CF6', fontSize: '12px' }} />
+                            <span style={{
+                              fontWeight: 600,
+                              fontSize: '13px',
+                              color: theme === 'light' ? '#111827' : '#F9FAFB'
+                            }}>
+                              Keep in Touch Missing
+                            </span>
+                            <span style={{
+                              fontSize: '12px',
+                              color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                              marginLeft: 'auto'
+                            }}>
+                              {keepInTouchMissingContacts.length}
+                            </span>
+                          </div>
+                          {expandedDataIntegrity.keepInTouchMissing && (
+                            <div style={{ paddingLeft: '8px' }}>
+                              {keepInTouchMissingContacts.length === 0 ? (
+                                <div style={{
+                                  textAlign: 'center',
+                                  padding: '16px',
+                                  color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                                  fontSize: '12px'
+                                }}>
+                                  No contacts need keep in touch frequency
+                                </div>
+                              ) : (
+                                keepInTouchMissingContacts.map((contact, idx) => (
+                                  <div key={contact.contact_id} style={{
+                                    padding: '8px 12px',
+                                    background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                                    borderRadius: '6px',
+                                    marginBottom: '4px',
+                                    border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center'
+                                  }}>
+                                    <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => navigate(`/contact/${contact.contact_id}`)}>
+                                      <div style={{
+                                        fontSize: '13px',
+                                        fontWeight: 500,
+                                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                        whiteSpace: 'nowrap',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis'
+                                      }}>
+                                        {contact.first_name} {contact.last_name}
+                                      </div>
+                                      <div style={{
+                                        fontSize: '11px',
+                                        color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                        marginTop: '2px'
+                                      }}>
+                                        {contact.category} • Last: {contact.last_interaction_at ? new Date(contact.last_interaction_at).toLocaleDateString() : 'N/A'}
+                                      </div>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '4px', marginLeft: '8px', flexShrink: 0 }}>
+                                      <button
+                                        onClick={() => handleOpenKeepInTouchModal(contact)}
+                                        title="Set Keep in Touch Frequency"
+                                        style={{
+                                          padding: '4px 12px',
+                                          fontSize: '11px',
+                                          fontWeight: 500,
+                                          border: 'none',
+                                          borderRadius: '4px',
+                                          cursor: 'pointer',
+                                          background: '#10B981',
+                                          color: 'white',
+                                          minWidth: '90px'
+                                        }}
+                                      >
+                                        Keep in Touch
+                                      </button>
+                                      <button
+                                        onClick={() => handleDoNotKeepInTouch(contact)}
+                                        title="Set to Do Not Keep in Touch"
+                                        style={{
+                                          padding: '4px 8px',
+                                          fontSize: '11px',
+                                          fontWeight: 500,
+                                          border: 'none',
+                                          borderRadius: '4px',
+                                          cursor: 'pointer',
+                                          background: '#EF4444',
+                                          color: 'white'
+                                        }}
+                                      >
+                                        Don't
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                     </>
                   )}
@@ -6761,256 +7449,78 @@ internet businesses.`;
                 <>
                   {emailContacts.length > 0 ? (
                     <>
-                      {/* FROM section */}
-                      {emailContacts.filter(p => p.roles.includes('from')).length > 0 && (
-                        <>
-                          <div style={{
-                            padding: '8px 16px',
-                            fontSize: '12px',
-                            fontWeight: 600,
-                            color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.5px'
-                          }}>
-                            From
-                          </div>
-                          {emailContacts.filter(p => p.roles.includes('from')).map((participant, idx) => {
-                            const score = participant.contact?.completeness_score || 0;
-                            const circumference = 2 * Math.PI * 16;
-                            const strokeDashoffset = circumference - (score / 100) * circumference;
-                            const scoreColor = score >= 70 ? '#10B981' : score >= 40 ? '#F59E0B' : '#EF4444';
-                            return (
-                            <ActionCard key={'from-' + participant.email + idx} theme={theme}>
-                              <ActionCardHeader theme={theme} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <div
-                                  style={{ cursor: participant.contact ? 'pointer' : 'default' }}
-                                  onClick={() => participant.contact && profileImageModal.openModal(participant.contact)}
-                                  title={participant.contact ? 'Edit profile image' : ''}
+                      {/* All contacts in single list with role inline */}
+                      {emailContacts.map((participant, idx) => {
+                        const score = participant.contact?.completeness_score || 0;
+                        const circumference = 2 * Math.PI * 16;
+                        const strokeDashoffset = circumference - (score / 100) * circumference;
+                        const scoreColor = score >= 70 ? '#10B981' : score >= 40 ? '#F59E0B' : '#EF4444';
+                        // Get the primary role to display (from > to > cc)
+                        const primaryRole = participant.roles?.includes('from') ? 'From' : participant.roles?.includes('to') ? 'To' : participant.roles?.includes('cc') ? 'CC' : '';
+                        return (
+                        <ActionCard key={participant.email + idx} theme={theme}>
+                          <ActionCardHeader theme={theme} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div
+                              style={{ cursor: participant.contact ? 'pointer' : 'default' }}
+                              onClick={() => participant.contact && profileImageModal.openModal(participant.contact)}
+                              title={participant.contact ? 'Edit profile image' : ''}
+                            >
+                              {participant.contact?.profile_image_url ? (
+                                <img src={participant.contact.profile_image_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }} />
+                              ) : (
+                                <div style={{ width: 40, height: 40, borderRadius: '50%', background: theme === 'light' ? '#E5E7EB' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                                  {participant.contact ? `${participant.contact.first_name?.[0] || ''}${participant.contact.last_name?.[0] || ''}` : participant.name?.[0]?.toUpperCase() || '?'}
+                                </div>
+                              )}
+                            </div>
+                            <div
+                              style={{ flex: 1, cursor: participant.contact ? 'pointer' : 'default' }}
+                              onClick={() => participant.contact && navigate(`/contact/${participant.contact.contact_id}`)}
+                            >
+                              <div style={{ fontWeight: 600, fontSize: '15px' }}>
+                                {participant.contact ? `${participant.contact.first_name} ${participant.contact.last_name}` : participant.name}
+                              </div>
+                              {(participant.contact?.job_role || participant.contact?.company_name) && (
+                                <div style={{ fontSize: '13px', opacity: 0.7, marginTop: '2px' }}>
+                                  {participant.contact.job_role}{participant.contact.job_role && participant.contact.company_name && ' @ '}{participant.contact.company_name}
+                                </div>
+                              )}
+                            </div>
+                            {participant.contact && (
+                              <div style={{ position: 'relative', width: 40, height: 40, cursor: 'pointer' }} title={`${score}% complete`} onClick={() => handleOpenQuickEditModal(participant.contact, true)}>
+                                <svg width="40" height="40" style={{ transform: 'rotate(-90deg)' }}>
+                                  <circle cx="20" cy="20" r="16" fill="none" stroke={theme === 'light' ? '#E5E7EB' : '#374151'} strokeWidth="4" />
+                                  <circle cx="20" cy="20" r="16" fill="none" stroke={scoreColor} strokeWidth="4" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} />
+                                </svg>
+                                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontSize: '10px', fontWeight: 600, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
+                                  {score === 100 ? <FaCrown size={14} color="#F59E0B" /> : `${score}%`}
+                                </div>
+                              </div>
+                            )}
+                          </ActionCardHeader>
+                          <ActionCardContent theme={theme}>
+                            <div style={{ fontSize: '13px', opacity: 0.7, marginBottom: '8px' }}>
+                              <span style={{ fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>{primaryRole}:</span> {participant.email}
+                            </div>
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                              {participant.contact?.category && (
+                                <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#E5E7EB' : '#374151', color: theme === 'light' ? '#374151' : '#D1D5DB' }}>{participant.contact.category}</span>
+                              )}
+                              {!participant.hasContact && (
+                                <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#FEF3C7' : '#78350F', color: theme === 'light' ? '#92400E' : '#FDE68A', cursor: 'pointer' }}>+ Add</span>
+                              )}
+                              {participant.contact && (
+                                <span
+                                  onClick={(e) => { e.stopPropagation(); runContactAuditById(participant.contact.contact_id, `${participant.contact.first_name} ${participant.contact.last_name}`); }}
+                                  style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#DBEAFE' : '#1E3A5F', color: theme === 'light' ? '#1D4ED8' : '#93C5FD', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                                 >
-                                  {participant.contact?.profile_image_url ? (
-                                    <img src={participant.contact.profile_image_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }} />
-                                  ) : (
-                                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: theme === 'light' ? '#E5E7EB' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
-                                      {participant.contact ? `${participant.contact.first_name?.[0] || ''}${participant.contact.last_name?.[0] || ''}` : participant.name?.[0]?.toUpperCase() || '?'}
-                                    </div>
-                                  )}
-                                </div>
-                                <div
-                                  style={{ flex: 1, cursor: participant.contact ? 'pointer' : 'default' }}
-                                  onClick={() => participant.contact && navigate(`/contact/${participant.contact.contact_id}`)}
-                                >
-                                  <div style={{ fontWeight: 600, fontSize: '15px' }}>
-                                    {participant.contact ? `${participant.contact.first_name} ${participant.contact.last_name}` : participant.name}
-                                  </div>
-                                  {(participant.contact?.job_role || participant.contact?.company_name) && (
-                                    <div style={{ fontSize: '13px', opacity: 0.7, marginTop: '2px' }}>
-                                      {participant.contact.job_role}{participant.contact.job_role && participant.contact.company_name && ' @ '}{participant.contact.company_name}
-                                    </div>
-                                  )}
-                                </div>
-                                {participant.contact && (
-                                  <div style={{ position: 'relative', width: 40, height: 40, cursor: 'pointer' }} title={`${score}% complete`} onClick={() => handleOpenQuickEditModal(participant.contact, true)}>
-                                    <svg width="40" height="40" style={{ transform: 'rotate(-90deg)' }}>
-                                      <circle cx="20" cy="20" r="16" fill="none" stroke={theme === 'light' ? '#E5E7EB' : '#374151'} strokeWidth="4" />
-                                      <circle cx="20" cy="20" r="16" fill="none" stroke={scoreColor} strokeWidth="4" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} />
-                                    </svg>
-                                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontSize: '10px', fontWeight: 600, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
-                                      {score === 100 ? <FaCrown size={14} color="#F59E0B" /> : `${score}%`}
-                                    </div>
-                                  </div>
-                                )}
-                              </ActionCardHeader>
-                              <ActionCardContent theme={theme}>
-                                <div style={{ fontSize: '13px', opacity: 0.7, marginBottom: '8px' }}>{participant.email}</div>
-                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-                                  {participant.contact?.category && (
-                                    <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#E5E7EB' : '#374151', color: theme === 'light' ? '#374151' : '#D1D5DB' }}>{participant.contact.category}</span>
-                                  )}
-                                  {!participant.hasContact && (
-                                    <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#FEF3C7' : '#78350F', color: theme === 'light' ? '#92400E' : '#FDE68A', cursor: 'pointer' }}>+ Add</span>
-                                  )}
-                                  {participant.contact && (
-                                    <span
-                                      onClick={(e) => { e.stopPropagation(); runContactAuditById(participant.contact.contact_id, `${participant.contact.first_name} ${participant.contact.last_name}`); }}
-                                      style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#DBEAFE' : '#1E3A5F', color: theme === 'light' ? '#1D4ED8' : '#93C5FD', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                    >
-                                      <FaRobot size={10} /> Audit
-                                    </span>
-                                  )}
-                                </div>
-                              </ActionCardContent>
-                            </ActionCard>
-                          )})}
-                        </>
-                      )}
-
-                      {/* TO section */}
-                      {emailContacts.filter(p => p.roles.includes('to')).length > 0 && (
-                        <>
-                          <div style={{
-                            padding: '8px 16px',
-                            fontSize: '12px',
-                            fontWeight: 600,
-                            color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.5px',
-                            marginTop: '8px'
-                          }}>
-                            To
-                          </div>
-                          {emailContacts.filter(p => p.roles.includes('to')).map((participant, idx) => {
-                            const score = participant.contact?.completeness_score || 0;
-                            const circumference = 2 * Math.PI * 16;
-                            const strokeDashoffset = circumference - (score / 100) * circumference;
-                            const scoreColor = score >= 70 ? '#10B981' : score >= 40 ? '#F59E0B' : '#EF4444';
-                            return (
-                            <ActionCard key={'to-' + participant.email + idx} theme={theme}>
-                              <ActionCardHeader theme={theme} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <div
-                                  style={{ cursor: participant.contact ? 'pointer' : 'default' }}
-                                  onClick={() => participant.contact && profileImageModal.openModal(participant.contact)}
-                                  title={participant.contact ? 'Edit profile image' : ''}
-                                >
-                                  {participant.contact?.profile_image_url ? (
-                                    <img src={participant.contact.profile_image_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }} />
-                                  ) : (
-                                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: theme === 'light' ? '#E5E7EB' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
-                                      {participant.contact ? `${participant.contact.first_name?.[0] || ''}${participant.contact.last_name?.[0] || ''}` : participant.name?.[0]?.toUpperCase() || '?'}
-                                    </div>
-                                  )}
-                                </div>
-                                <div
-                                  style={{ flex: 1, cursor: participant.contact ? 'pointer' : 'default' }}
-                                  onClick={() => participant.contact && navigate(`/contact/${participant.contact.contact_id}`)}
-                                >
-                                  <div style={{ fontWeight: 600, fontSize: '15px' }}>
-                                    {participant.contact ? `${participant.contact.first_name} ${participant.contact.last_name}` : participant.name}
-                                  </div>
-                                  {(participant.contact?.job_role || participant.contact?.company_name) && (
-                                    <div style={{ fontSize: '13px', opacity: 0.7, marginTop: '2px' }}>
-                                      {participant.contact.job_role}{participant.contact.job_role && participant.contact.company_name && ' @ '}{participant.contact.company_name}
-                                    </div>
-                                  )}
-                                </div>
-                                {participant.contact && (
-                                  <div style={{ position: 'relative', width: 40, height: 40, cursor: 'pointer' }} title={`${score}% complete`} onClick={() => handleOpenQuickEditModal(participant.contact, true)}>
-                                    <svg width="40" height="40" style={{ transform: 'rotate(-90deg)' }}>
-                                      <circle cx="20" cy="20" r="16" fill="none" stroke={theme === 'light' ? '#E5E7EB' : '#374151'} strokeWidth="4" />
-                                      <circle cx="20" cy="20" r="16" fill="none" stroke={scoreColor} strokeWidth="4" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} />
-                                    </svg>
-                                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontSize: '10px', fontWeight: 600, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
-                                      {score === 100 ? <FaCrown size={14} color="#F59E0B" /> : `${score}%`}
-                                    </div>
-                                  </div>
-                                )}
-                              </ActionCardHeader>
-                              <ActionCardContent theme={theme}>
-                                <div style={{ fontSize: '13px', opacity: 0.7, marginBottom: '8px' }}>{participant.email}</div>
-                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-                                  {participant.contact?.category && (
-                                    <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#E5E7EB' : '#374151', color: theme === 'light' ? '#374151' : '#D1D5DB' }}>{participant.contact.category}</span>
-                                  )}
-                                  {!participant.hasContact && (
-                                    <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#FEF3C7' : '#78350F', color: theme === 'light' ? '#92400E' : '#FDE68A', cursor: 'pointer' }}>+ Add</span>
-                                  )}
-                                  {participant.contact && (
-                                    <span
-                                      onClick={(e) => { e.stopPropagation(); runContactAuditById(participant.contact.contact_id, `${participant.contact.first_name} ${participant.contact.last_name}`); }}
-                                      style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#DBEAFE' : '#1E3A5F', color: theme === 'light' ? '#1D4ED8' : '#93C5FD', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                    >
-                                      <FaRobot size={10} /> Audit
-                                    </span>
-                                  )}
-                                </div>
-                              </ActionCardContent>
-                            </ActionCard>
-                          )})}
-                        </>
-                      )}
-
-                      {/* CC section */}
-                      {emailContacts.filter(p => p.roles.includes('cc')).length > 0 && (
-                        <>
-                          <div style={{
-                            padding: '8px 16px',
-                            fontSize: '12px',
-                            fontWeight: 600,
-                            color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.5px',
-                            marginTop: '8px'
-                          }}>
-                            CC
-                          </div>
-                          {emailContacts.filter(p => p.roles.includes('cc')).map((participant, idx) => {
-                            const score = participant.contact?.completeness_score || 0;
-                            const circumference = 2 * Math.PI * 16;
-                            const strokeDashoffset = circumference - (score / 100) * circumference;
-                            const scoreColor = score >= 70 ? '#10B981' : score >= 40 ? '#F59E0B' : '#EF4444';
-                            return (
-                            <ActionCard key={'cc-' + participant.email + idx} theme={theme}>
-                              <ActionCardHeader theme={theme} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <div
-                                  style={{ cursor: participant.contact ? 'pointer' : 'default' }}
-                                  onClick={() => participant.contact && profileImageModal.openModal(participant.contact)}
-                                  title={participant.contact ? 'Edit profile image' : ''}
-                                >
-                                  {participant.contact?.profile_image_url ? (
-                                    <img src={participant.contact.profile_image_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }} />
-                                  ) : (
-                                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: theme === 'light' ? '#E5E7EB' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
-                                      {participant.contact ? `${participant.contact.first_name?.[0] || ''}${participant.contact.last_name?.[0] || ''}` : participant.name?.[0]?.toUpperCase() || '?'}
-                                    </div>
-                                  )}
-                                </div>
-                                <div
-                                  style={{ flex: 1, cursor: participant.contact ? 'pointer' : 'default' }}
-                                  onClick={() => participant.contact && navigate(`/contact/${participant.contact.contact_id}`)}
-                                >
-                                  <div style={{ fontWeight: 600, fontSize: '15px' }}>
-                                    {participant.contact ? `${participant.contact.first_name} ${participant.contact.last_name}` : participant.name}
-                                  </div>
-                                  {(participant.contact?.job_role || participant.contact?.company_name) && (
-                                    <div style={{ fontSize: '13px', opacity: 0.7, marginTop: '2px' }}>
-                                      {participant.contact.job_role}{participant.contact.job_role && participant.contact.company_name && ' @ '}{participant.contact.company_name}
-                                    </div>
-                                  )}
-                                </div>
-                                {participant.contact && (
-                                  <div style={{ position: 'relative', width: 40, height: 40, cursor: 'pointer' }} title={`${score}% complete`} onClick={() => handleOpenQuickEditModal(participant.contact, true)}>
-                                    <svg width="40" height="40" style={{ transform: 'rotate(-90deg)' }}>
-                                      <circle cx="20" cy="20" r="16" fill="none" stroke={theme === 'light' ? '#E5E7EB' : '#374151'} strokeWidth="4" />
-                                      <circle cx="20" cy="20" r="16" fill="none" stroke={scoreColor} strokeWidth="4" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} />
-                                    </svg>
-                                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontSize: '10px', fontWeight: 600, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
-                                      {score === 100 ? <FaCrown size={14} color="#F59E0B" /> : `${score}%`}
-                                    </div>
-                                  </div>
-                                )}
-                              </ActionCardHeader>
-                              <ActionCardContent theme={theme}>
-                                <div style={{ fontSize: '13px', opacity: 0.7, marginBottom: '8px' }}>{participant.email}</div>
-                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-                                  {participant.contact?.category && (
-                                    <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#E5E7EB' : '#374151', color: theme === 'light' ? '#374151' : '#D1D5DB' }}>{participant.contact.category}</span>
-                                  )}
-                                  {!participant.hasContact && (
-                                    <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#FEF3C7' : '#78350F', color: theme === 'light' ? '#92400E' : '#FDE68A', cursor: 'pointer' }}>+ Add</span>
-                                  )}
-                                  {participant.contact && (
-                                    <span
-                                      onClick={(e) => { e.stopPropagation(); runContactAuditById(participant.contact.contact_id, `${participant.contact.first_name} ${participant.contact.last_name}`); }}
-                                      style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#DBEAFE' : '#1E3A5F', color: theme === 'light' ? '#1D4ED8' : '#93C5FD', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                    >
-                                      <FaRobot size={10} /> Audit
-                                    </span>
-                                  )}
-                                </div>
-                              </ActionCardContent>
-                            </ActionCard>
-                          )})}
-                        </>
-                      )}
+                                  <FaRobot size={10} /> Audit
+                                </span>
+                              )}
+                            </div>
+                          </ActionCardContent>
+                        </ActionCard>
+                      )})}
                     </>
                   ) : (
                     <ActionCard theme={theme}>
@@ -7020,106 +7530,6 @@ internet businesses.`;
                     </ActionCard>
                   )}
 
-                  {/* Incomplete Contacts Section */}
-                  <div style={{ marginTop: '8px', padding: '0 8px' }}>
-                    <div
-                      onClick={() => setExpandedDataIntegrity(prev => ({ ...prev, incomplete: !prev.incomplete }))}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '10px 12px',
-                        background: theme === 'light' ? '#F3F4F6' : '#374151',
-                        cursor: 'pointer',
-                        borderRadius: '6px',
-                        marginBottom: expandedDataIntegrity.incomplete ? '4px' : '0',
-                      }}
-                    >
-                      <FaChevronDown
-                        style={{
-                          transform: expandedDataIntegrity.incomplete ? 'rotate(0deg)' : 'rotate(-90deg)',
-                          transition: 'transform 0.2s',
-                          fontSize: '10px',
-                          color: theme === 'light' ? '#6B7280' : '#9CA3AF'
-                        }}
-                      />
-                      <FaUserCheck style={{ color: '#10B981', fontSize: '12px' }} />
-                      <span style={{
-                        fontWeight: 600,
-                        fontSize: '13px',
-                        color: theme === 'light' ? '#111827' : '#F9FAFB'
-                      }}>
-                        Incomplete
-                      </span>
-                      <span style={{
-                        fontSize: '12px',
-                        color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                        marginLeft: 'auto'
-                      }}>
-                        {incompleteContacts.length}
-                      </span>
-                    </div>
-                    {expandedDataIntegrity.incomplete && (
-                      <div style={{ paddingLeft: '8px' }}>
-                        {incompleteContacts.length === 0 ? (
-                          <div style={{
-                            textAlign: 'center',
-                            padding: '16px',
-                            color: theme === 'light' ? '#9CA3AF' : '#6B7280',
-                            fontSize: '12px'
-                          }}>
-                            All contacts are complete
-                          </div>
-                        ) : (
-                          incompleteContacts.map((contact, idx) => (
-                            <div key={idx} style={{
-                              padding: '8px 12px',
-                              background: theme === 'light' ? '#FFFFFF' : '#1F2937',
-                              borderRadius: '6px',
-                              marginBottom: '4px',
-                              border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              cursor: 'pointer'
-                            }}
-                            onClick={() => navigate(`/contact/${contact.contact_id}`)}
-                            >
-                              <div>
-                                <div style={{
-                                  fontSize: '13px',
-                                  fontWeight: 500,
-                                  color: theme === 'light' ? '#111827' : '#F9FAFB'
-                                }}>{contact.first_name} {contact.last_name}</div>
-                                <div style={{
-                                  fontSize: '11px',
-                                  color: theme === 'light' ? '#6B7280' : '#9CA3AF'
-                                }}>{contact.category || 'No category'}</div>
-                              </div>
-                              <div style={{
-                                fontSize: '11px',
-                                fontWeight: 600,
-                                padding: '2px 8px',
-                                borderRadius: '4px',
-                                background: contact.completeness_score >= 80
-                                  ? (theme === 'light' ? '#D1FAE5' : '#064E3B')
-                                  : contact.completeness_score >= 50
-                                    ? (theme === 'light' ? '#FEF3C7' : '#78350F')
-                                    : (theme === 'light' ? '#FEE2E2' : '#7F1D1D'),
-                                color: contact.completeness_score >= 80
-                                  ? '#059669'
-                                  : contact.completeness_score >= 50
-                                    ? '#D97706'
-                                    : '#DC2626'
-                              }}>
-                                {contact.completeness_score || 0}%
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    )}
-                  </div>
                 </>
               )}
 
@@ -9148,6 +9558,21 @@ internet businesses.`;
           // Refresh data
           fetchDataIntegrity();
         }}
+      />
+
+      {/* Delete/Skip/Spam Modal for Category Missing contacts */}
+      <DeleteSkipSpamModal
+        isOpen={deleteModalOpen}
+        onClose={handleCloseDeleteModal}
+        contact={deleteModalContact}
+        theme={theme}
+      />
+
+      {/* Edit Company Modal for Category Missing companies */}
+      <EditCompanyModal
+        isOpen={editCompanyModalOpen}
+        onRequestClose={handleCloseEditCompanyModal}
+        company={editCompanyModalCompany}
       />
     </PageContainer>
   );

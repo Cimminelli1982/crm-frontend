@@ -379,6 +379,15 @@ export const useQuickEditModal = (onContactUpdate) => {
     if (!contactForQuickEdit) return;
 
     try {
+      // Update contacts table keep_in_touch_frequency
+      const { error: contactError } = await supabase
+        .from('contacts')
+        .update({ keep_in_touch_frequency: frequency || null })
+        .eq('contact_id', contactForQuickEdit.contact_id);
+
+      if (contactError) throw contactError;
+
+      // Also update keep_in_touch table
       const { data: existingRecord, error: checkError } = await supabase
         .from('keep_in_touch')
         .select('id')
@@ -863,7 +872,8 @@ export const useQuickEditModal = (onContactUpdate) => {
         job_role: quickEditJobRoleText.trim() || null,
         category: quickEditContactCategory || 'Not Set',
         score: quickEditContactScore > 0 ? quickEditContactScore : null,
-        linkedin: quickEditLinkedin.trim() || null
+        linkedin: quickEditLinkedin.trim() || null,
+        keep_in_touch_frequency: quickEditKeepInTouchFrequency || null
       };
 
       // If marking complete, set show_missing to false

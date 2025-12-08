@@ -297,6 +297,35 @@ const DeleteTab = ({ contactId, theme, onClose }) => {
           toast.success(`Added ${uniqueDomains.length} domain(s) to spam list`);
         }
       }
+      // Get selected interaction IDs (need to delete their attachments first)
+      const selectedInteractionIds = Object.entries(selectedItems.interactions || {})
+        .filter(([_, selected]) => selected)
+        .map(([id, _]) => id);
+
+      // Delete attachments for selected interactions FIRST (FK constraint)
+      if (selectedInteractionIds.length > 0) {
+        const { error: interactionAttachError } = await supabase
+          .from('attachments')
+          .delete()
+          .in('interaction_id', selectedInteractionIds);
+
+        if (interactionAttachError) {
+          console.log('Error deleting interaction attachments:', interactionAttachError);
+        }
+      }
+
+      // If deleting contact, delete ALL contact attachments first (FK constraint)
+      if (deleteContact) {
+        const { error: contactAttachError } = await supabase
+          .from('attachments')
+          .delete()
+          .eq('contact_id', contactId);
+
+        if (contactAttachError) {
+          console.log('Error deleting contact attachments:', contactAttachError);
+        }
+      }
+
       // Delete selected items from each table
       for (const [section, items] of Object.entries(selectedItems)) {
         const selectedIds = Object.entries(items)

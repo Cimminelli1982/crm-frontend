@@ -256,7 +256,7 @@ const Spinner = styled.div`
 `;
 
 // Main component
-const MergeCompanyModal = ({ isOpen, onRequestClose, company }) => {
+const MergeCompanyModal = ({ isOpen, onRequestClose, company, preSelectedCompany = null }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
@@ -268,8 +268,13 @@ const MergeCompanyModal = ({ isOpen, onRequestClose, company }) => {
   useEffect(() => {
     if (isOpen && company) {
       fetchSimilarCompanies();
+
+      // Pre-select the company if provided
+      if (preSelectedCompany?.company_id) {
+        setSelectedMergeId(preSelectedCompany.company_id);
+      }
     }
-  }, [isOpen, company]);
+  }, [isOpen, company, preSelectedCompany]);
 
   // Reset state when modal closes
   useEffect(() => {
@@ -405,8 +410,13 @@ const MergeCompanyModal = ({ isOpen, onRequestClose, company }) => {
       });
       
       // Convert back to array and include contact data
-      const uniqueCompaniesArray = Object.values(uniqueCompanies);
-      
+      let uniqueCompaniesArray = Object.values(uniqueCompanies);
+
+      // If we have a pre-selected company, ensure it's in the list
+      if (preSelectedCompany && !uniqueCompanies[preSelectedCompany.company_id]) {
+        uniqueCompaniesArray.unshift(preSelectedCompany);
+      }
+
       // For each company, fetch associated contacts
       for (const comp of uniqueCompaniesArray) {
         try {
@@ -782,8 +792,28 @@ const MergeCompanyModal = ({ isOpen, onRequestClose, company }) => {
               </CompanyTableHeader>
               
               {filteredCompanies.map(similarCompany => (
-                <CompanyTableRow key={similarCompany.company_id}>
-                  <CompanyName>{similarCompany.name}</CompanyName>
+                <CompanyTableRow
+                  key={similarCompany.company_id}
+                  style={{
+                    backgroundColor: preSelectedCompany?.company_id === similarCompany.company_id ? '#eff6ff' : undefined,
+                    borderLeft: preSelectedCompany?.company_id === similarCompany.company_id ? '3px solid #3b82f6' : undefined
+                  }}
+                >
+                  <CompanyName>
+                    {similarCompany.name}
+                    {preSelectedCompany?.company_id === similarCompany.company_id && (
+                      <span style={{
+                        marginLeft: '8px',
+                        fontSize: '0.7rem',
+                        background: '#3b82f6',
+                        color: 'white',
+                        padding: '2px 6px',
+                        borderRadius: '4px'
+                      }}>
+                        Matched
+                      </span>
+                    )}
+                  </CompanyName>
                   <CompanyContacts>
                     {formatContactList(similarCompany.contacts)}
                   </CompanyContacts>

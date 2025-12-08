@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import Modal from 'react-modal';
-import { FiX, FiPlus, FiSearch, FiEdit } from 'react-icons/fi';
+import { FiX, FiPlus, FiSearch, FiEdit, FiZap } from 'react-icons/fi';
 import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
+import CompanyEnrichmentModal from './CompanyEnrichmentModal';
 
 // Styled components
 const ModalHeader = styled.div`
@@ -289,6 +290,7 @@ const Tab = styled.button`
 const TabContent = styled.div`
   display: ${props => props.$active ? 'block' : 'none'};
   animation: ${props => props.$active ? 'fadeIn 0.2s ease-in' : 'none'};
+  min-height: 400px;
 
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(5px); }
@@ -357,6 +359,7 @@ const COMPANY_CATEGORIES = [
   'Advisory',
   'Corporate',
   'Corporation',
+  'Hold',
   'Inbox',
   'Institution',
   'Media',
@@ -390,6 +393,50 @@ const getTagColor = (tagName) => {
   const index = sum % colors.length;
 
   return colors[index];
+};
+
+// Levenshtein distance for fuzzy matching
+const levenshteinDistance = (str1, str2) => {
+  const m = str1.length;
+  const n = str2.length;
+  const dp = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (str1[i - 1] === str2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+      }
+    }
+  }
+  return dp[m][n];
+};
+
+// Calculate similarity score (0-1, where 1 is identical)
+const stringSimilarity = (str1, str2) => {
+  if (!str1 || !str2) return 0;
+  const s1 = str1.toLowerCase().trim();
+  const s2 = str2.toLowerCase().trim();
+  if (s1 === s2) return 1;
+  const maxLen = Math.max(s1.length, s2.length);
+  if (maxLen === 0) return 1;
+  const distance = levenshteinDistance(s1, s2);
+  return 1 - distance / maxLen;
+};
+
+// Extract base domain (remove www, protocol, path)
+const extractBaseDomain = (domain) => {
+  if (!domain) return '';
+  return domain
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/\/$/, '')
+    .split('/')[0];
 };
 
 // Helper function to get city flag emoji
@@ -468,10 +515,19 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
 
   // Tab definitions
   const tabs = [
-    { id: 'basic', label: 'Basic Info', icon: '📝' },
-    { id: 'links', label: 'Links', icon: '🔗' },
-    { id: 'related', label: 'Related', icon: '🏷️' }
+    { id: 'duplicates', label: 'Duplicates', icon: '🔍' },
+    { id: 'infos', label: 'Infos', icon: '📝' },
+    { id: 'related', label: 'Related', icon: '🏷️' },
+    { id: 'recap', label: 'Recap', icon: '✅' }
   ];
+
+  // Duplicates state
+  const [potentialDuplicates, setPotentialDuplicates] = useState([]);
+  const [loadingDuplicates, setLoadingDuplicates] = useState(false);
+  const [duplicateSearchTerm, setDuplicateSearchTerm] = useState('');
+
+  // Enrichment modal state
+  const [enrichmentModalOpen, setEnrichmentModalOpen] = useState(false);
 
   // Tab navigation helpers
   const handleTabChange = (tabId) => {
@@ -492,30 +548,269 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
     }
   };
 
+  // Manual search for duplicates
+  const handleManualDuplicateSearch = async () => {
+    if (!duplicateSearchTerm.trim()) return;
+
+    setLoadingDuplicates(true);
+    try {
+      const { data, error } = await supabase
+        .from('companies')
+        .select('company_id, name, category, website')
+        .neq('company_id', company?.company_id || '')
+        .ilike('name', `%${duplicateSearchTerm.trim()}%`)
+        .limit(20);
+
+      if (error) throw error;
+
+      // Add match type for manual search results
+      const results = (data || []).map(comp => ({
+        ...comp,
+        matchTypes: [{ type: 'manual-search', label: 'Manual search' }],
+        nameScore: stringSimilarity(companyName, comp.name),
+        domainScore: 0
+      }));
+
+      setPotentialDuplicates(results);
+    } catch (error) {
+      console.error('Error searching companies:', error);
+      setError('Search failed: ' + error.message);
+    } finally {
+      setLoadingDuplicates(false);
+    }
+  };
+
+  // Handle merge - insert into company_duplicates table
+  const handleMergeCompany = async (duplicateCompany) => {
+    try {
+      const { error } = await supabase
+        .from('company_duplicates')
+        .insert({
+          primary_company_id: company.company_id,
+          duplicate_company_id: duplicateCompany.company_id,
+          start_trigger: true,
+          merge_selections: {
+            contacts: 'combine',
+            domains: 'combine',
+            tags: 'combine',
+            cities: 'combine'
+          },
+          notes: `Duplicate match from EditCompanyModal: ${duplicateCompany.matchTypes?.map(m => m.label).join(', ') || 'manual'}`
+        });
+
+      if (error) throw error;
+
+      // Remove from list and show success
+      setPotentialDuplicates(prev => prev.filter(d => d.company_id !== duplicateCompany.company_id));
+      setMessage({ type: 'success', text: `Merge queued for "${duplicateCompany.name}"` });
+
+    } catch (error) {
+      console.error('Error creating merge record:', error);
+      setError('Failed to queue merge: ' + error.message);
+    }
+  };
+
+  // Search for potential duplicates - matches by domain (exact/fuzzy) and name (exact/fuzzy)
+  const searchDuplicates = async (name, currentDomainsList = []) => {
+    if ((!name || name.length < 2) && currentDomainsList.length === 0) {
+      setPotentialDuplicates([]);
+      return;
+    }
+
+    setLoadingDuplicates(true);
+    try {
+      const scoredResults = new Map();
+      const currentCompanyId = company?.company_id || '';
+
+      // Get base domains for comparison
+      const currentBaseDomains = currentDomainsList.map(d => extractBaseDomain(d.domain || d));
+
+      // 1. Search by name (substring match to get candidates)
+      if (name && name.length >= 2) {
+        const searchTerms = name.split(/\s+/).filter(t => t.length >= 2);
+        const firstWord = searchTerms[0] || name;
+
+        const { data: nameMatches, error: nameError } = await supabase
+          .from('companies')
+          .select('company_id, name, category, website')
+          .neq('company_id', currentCompanyId)
+          .or(`name.ilike.%${name}%,name.ilike.%${firstWord}%`)
+          .limit(50);
+
+        if (nameError) throw nameError;
+
+        // Score name matches
+        for (const match of (nameMatches || [])) {
+          const nameSim = stringSimilarity(name, match.name);
+          const matchTypes = [];
+
+          if (nameSim === 1) {
+            matchTypes.push({ type: 'name-exact', label: 'Exact name' });
+          } else if (nameSim >= 0.8) {
+            matchTypes.push({ type: 'name-fuzzy', label: 'Similar name', score: Math.round(nameSim * 100) });
+          } else if (nameSim >= 0.5) {
+            matchTypes.push({ type: 'name-fuzzy', label: 'Partial name', score: Math.round(nameSim * 100) });
+          }
+
+          if (matchTypes.length > 0) {
+            scoredResults.set(match.company_id, {
+              company: match,
+              nameScore: nameSim,
+              domainScore: 0,
+              matchTypes
+            });
+          }
+        }
+      }
+
+      // 2. Search by domain if we have domains
+      if (currentBaseDomains.length > 0) {
+        // Get all company domains to compare
+        const { data: allDomains, error: domainError } = await supabase
+          .from('company_domains')
+          .select('company_id, domain, companies(company_id, name, category, website)')
+          .neq('company_id', currentCompanyId)
+          .limit(500);
+
+        if (!domainError && allDomains) {
+          for (const domainRecord of allDomains) {
+            const matchDomain = extractBaseDomain(domainRecord.domain);
+            const companyData = domainRecord.companies;
+            if (!companyData) continue;
+
+            for (const currentDomain of currentBaseDomains) {
+              if (!currentDomain) continue;
+
+              const domainSim = stringSimilarity(currentDomain, matchDomain);
+
+              if (domainSim >= 0.6) {
+                const existing = scoredResults.get(companyData.company_id);
+                const matchType = domainSim === 1
+                  ? { type: 'domain-exact', label: 'Exact domain', domain: matchDomain }
+                  : { type: 'domain-fuzzy', label: 'Similar domain', domain: matchDomain, score: Math.round(domainSim * 100) };
+
+                if (existing) {
+                  existing.domainScore = Math.max(existing.domainScore, domainSim);
+                  // Avoid duplicate match types
+                  if (!existing.matchTypes.some(m => m.type === matchType.type && m.domain === matchType.domain)) {
+                    existing.matchTypes.push(matchType);
+                  }
+                } else {
+                  const nameSim = name ? stringSimilarity(name, companyData.name) : 0;
+                  scoredResults.set(companyData.company_id, {
+                    company: companyData,
+                    nameScore: nameSim,
+                    domainScore: domainSim,
+                    matchTypes: [matchType]
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Convert to array and sort by priority: exact domain > exact name > fuzzy scores
+      const results = Array.from(scoredResults.values())
+        .sort((a, b) => {
+          // Priority 1: Exact domain matches
+          const aExactDomain = a.matchTypes.some(m => m.type === 'domain-exact') ? 1 : 0;
+          const bExactDomain = b.matchTypes.some(m => m.type === 'domain-exact') ? 1 : 0;
+          if (aExactDomain !== bExactDomain) return bExactDomain - aExactDomain;
+
+          // Priority 2: Exact name matches
+          const aExactName = a.matchTypes.some(m => m.type === 'name-exact') ? 1 : 0;
+          const bExactName = b.matchTypes.some(m => m.type === 'name-exact') ? 1 : 0;
+          if (aExactName !== bExactName) return bExactName - aExactName;
+
+          // Priority 3: Combined score (domain weighted higher)
+          const aScore = a.nameScore * 0.4 + a.domainScore * 0.6;
+          const bScore = b.nameScore * 0.4 + b.domainScore * 0.6;
+          return bScore - aScore;
+        })
+        .slice(0, 15)
+        .map(r => ({
+          ...r.company,
+          matchTypes: r.matchTypes,
+          nameScore: r.nameScore,
+          domainScore: r.domainScore
+        }));
+
+      setPotentialDuplicates(results);
+    } catch (error) {
+      console.error('Error searching duplicates:', error);
+      setPotentialDuplicates([]);
+    } finally {
+      setLoadingDuplicates(false);
+    }
+  };
+
   // Load company data when modal opens
   useEffect(() => {
-    if (isOpen && company) {
-      // Reset to first tab
-      setActiveTab('basic');
+    const loadData = async () => {
+      if (isOpen && company) {
+        // Reset to first tab
+        setActiveTab('duplicates');
 
-      // Set basic company info
-      setCompanyName(company.name || '');
-      setCompanyLinkedin(company.linkedin || '');
-      setCompanyCategory(company.category || '');
-      setCompanyDescription(company.description || '');
+        // Set basic company info
+        setCompanyName(company.name || '');
+        setCompanyLinkedin(company.linkedin || '');
+        setCompanyCategory(company.category || '');
+        setCompanyDescription(company.description || '');
 
-      // Load domains from company_domains table
-      loadCompanyDomains();
+        // Load domains from company_domains table
+        const loadedDomains = await loadCompanyDomainsAsync();
 
-      // Load related data
-      setTags(company.tags || []);
-      setCities(company.cities || []);
+        // Load related data
+        setTags(company.tags || []);
+        setCities(company.cities || []);
 
-      // Reset UI states
-      setError('');
-      setMessage({ type: '', text: '' });
-    }
+        // Reset UI states
+        setError('');
+        setMessage({ type: '', text: '' });
+
+        // Search for duplicates with both name and domains
+        searchDuplicates(company.name, loadedDomains);
+      }
+    };
+    loadData();
   }, [isOpen, company]);
+
+  // Async version of loadCompanyDomains that returns the domains
+  const loadCompanyDomainsAsync = async () => {
+    if (!company?.company_id) return [];
+
+    try {
+      const { data: domainsData, error: domainsError } = await supabase
+        .from('company_domains')
+        .select('id, domain, is_primary, created_at')
+        .eq('company_id', company.company_id)
+        .order('is_primary', { ascending: false })
+        .order('created_at', { ascending: true });
+
+      if (domainsError) throw domainsError;
+
+      const processedDomains = (domainsData || []).map(d => ({
+        ...d,
+        isExisting: true
+      }));
+
+      setDomains(processedDomains);
+      return processedDomains;
+    } catch (error) {
+      console.error('Error loading company domains:', error);
+      if (company.website) {
+        const legacyDomains = [{
+          domain: company.website.replace(/^https?:\/\//, ''),
+          is_primary: true,
+          isLegacy: true
+        }];
+        setDomains(legacyDomains);
+        return legacyDomains;
+      }
+      return [];
+    }
+  };
 
   // Load company domains
   const loadCompanyDomains = async () => {
@@ -715,25 +1010,26 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
   };
   
 
-  // Save the company
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  // Save the company (can optionally close modal or move to next tab)
+  const handleSave = async (options = { closeAfter: false, nextTab: false }) => {
     setError('');
-    
+
     // Validate required fields
     if (!companyName.trim()) {
       setError('Company name is required');
-      return;
+      setActiveTab('infos');
+      return false;
     }
-    
+
     if (!companyCategory) {
       setError('Company category is required');
-      return;
+      setActiveTab('infos');
+      return false;
     }
-    
+
     try {
       setLoading(true);
-      
+
       let formattedLinkedin = companyLinkedin.trim();
 
       // Update company (remove website field since we now use company_domains)
@@ -761,12 +1057,21 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
       if (existingDomainsError) throw existingDomainsError;
 
       // Determine which domains to add, update, and remove
-      const existingDomainsList = existingDomains.map(d => d.domain);
+      const existingDomainsList = (existingDomains || []).map(d => d.domain);
       const newDomainsList = domains.map(d => d.domain);
 
-      const domainsToAdd = domains.filter(d => d.isNew && !existingDomainsList.includes(d.domain));
-      const domainsToRemove = existingDomains.filter(d => !newDomainsList.includes(d.domain));
+      // Debug logging
+      console.log('Domains state:', domains);
+      console.log('Existing domains in DB:', existingDomainsList);
+      console.log('New domains list:', newDomainsList);
+
+      // Find domains to add - either marked as new OR not in existing list (but not already in DB)
+      const domainsToAdd = domains.filter(d => (d.isNew || !d.isExisting) && !existingDomainsList.includes(d.domain));
+      const domainsToRemove = (existingDomains || []).filter(d => !newDomainsList.includes(d.domain));
       const domainsToUpdate = domains.filter(d => d.isExisting && existingDomainsList.includes(d.domain));
+
+      console.log('Domains to add:', domainsToAdd);
+      console.log('Domains to remove:', domainsToRemove);
 
       // Remove domains that are no longer associated
       if (domainsToRemove.length > 0) {
@@ -890,18 +1195,36 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
       }
       
       setMessage({ type: 'success', text: 'Company updated successfully' });
-      
-      // Wait a moment to show the success message before closing
-      setTimeout(() => {
-        onRequestClose();
-      }, 1500);
-      
+
+      // Handle next actions based on options
+      if (options.closeAfter) {
+        setTimeout(() => {
+          onRequestClose();
+        }, 500);
+      } else if (options.nextTab) {
+        handleNextTab();
+      }
+
+      return true;
+
     } catch (error) {
       console.error('Error updating company:', error);
       setError('Failed to update company: ' + error.message);
+      return false;
     } finally {
       setLoading(false);
     }
+  };
+
+  // Form submit handler (for final save)
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    await handleSave({ closeAfter: true });
+  };
+
+  // Save and move to next tab
+  const handleSaveAndNext = async () => {
+    await handleSave({ nextTab: true });
   };
 
   return (
@@ -933,7 +1256,30 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
     >
       <div style={{ padding: '1rem' }}>
         <ModalHeader>
-          <h2>Edit Company: {company?.name}</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+            <span style={{ color: '#6b7280', fontSize: '1rem' }}>Edit:</span>
+            <input
+              type="text"
+              value={companyName}
+              onChange={(e) => setCompanyName(e.target.value)}
+              style={{
+                border: 'none',
+                borderBottom: '2px solid transparent',
+                fontSize: '1.25rem',
+                fontWeight: 600,
+                color: '#111827',
+                background: 'transparent',
+                padding: '4px 8px',
+                margin: 0,
+                flex: 1,
+                minWidth: 0,
+                transition: 'border-color 0.2s'
+              }}
+              onFocus={(e) => e.target.style.borderBottomColor = '#3b82f6'}
+              onBlur={(e) => e.target.style.borderBottomColor = 'transparent'}
+              placeholder="Company name"
+            />
+          </div>
           <button onClick={onRequestClose} aria-label="Close modal">
             <FiX size={20} />
           </button>
@@ -958,20 +1304,135 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
         </TabContainer>
 
         <form onSubmit={handleSubmit}>
-          {/* Basic Info Tab */}
-          <TabContent $active={activeTab === 'basic'}>
+          {/* Duplicates Tab */}
+          <TabContent $active={activeTab === 'duplicates'}>
             <Section>
-              <FormGroup>
-                <Label htmlFor="companyName">Company Name *</Label>
-                <Input
-                  id="companyName"
-                  type="text"
-                  value={companyName}
-                  onChange={(e) => setCompanyName(e.target.value)}
-                  required
-                />
-              </FormGroup>
+              <SectionTitle>Potential Duplicates</SectionTitle>
+              <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '16px' }}>
+                Companies matched by name and domain (exact and fuzzy matching).
+              </p>
 
+              {/* Manual search */}
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                <Input
+                  type="text"
+                  value={duplicateSearchTerm}
+                  onChange={(e) => setDuplicateSearchTerm(e.target.value)}
+                  placeholder="Search for a company..."
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleManualDuplicateSearch();
+                    }
+                  }}
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  type="button"
+                  className="secondary"
+                  onClick={handleManualDuplicateSearch}
+                  disabled={loadingDuplicates || !duplicateSearchTerm.trim()}
+                >
+                  <FiSearch size={14} style={{ marginRight: '4px' }} />
+                  Search
+                </Button>
+              </div>
+
+              {loadingDuplicates ? (
+                <div style={{ textAlign: 'center', padding: '20px', color: '#6b7280' }}>
+                  Searching for duplicates...
+                </div>
+              ) : potentialDuplicates.length === 0 ? (
+                <div style={{
+                  textAlign: 'center',
+                  padding: '30px',
+                  background: '#d1fae5',
+                  borderRadius: '8px',
+                  color: '#065f46'
+                }}>
+                  <div style={{ fontSize: '24px', marginBottom: '8px' }}>✓</div>
+                  <div style={{ fontWeight: 500 }}>No duplicates found</div>
+                  <div style={{ fontSize: '0.875rem', marginTop: '4px' }}>This company appears to be unique.</div>
+                </div>
+              ) : (
+                <ListContainer style={{ maxHeight: '350px' }}>
+                  {potentialDuplicates.map((dup) => (
+                    <ListItem key={dup.company_id} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '8px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%' }}>
+                        <ListItemText>
+                          <div style={{ fontWeight: 500 }}>{dup.name}</div>
+                          <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                            {dup.category || 'No category'} {dup.website && `• ${dup.website}`}
+                          </div>
+                        </ListItemText>
+                        <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                          <Button
+                            type="button"
+                            className="secondary"
+                            style={{ fontSize: '0.75rem', padding: '4px 8px' }}
+                            onClick={() => window.open(`/company/${dup.company_id}`, '_blank')}
+                          >
+                            View
+                          </Button>
+                          <Button
+                            type="button"
+                            style={{
+                              fontSize: '0.75rem',
+                              padding: '4px 8px',
+                              backgroundColor: '#3b82f6',
+                              color: 'white',
+                              border: 'none'
+                            }}
+                            onClick={() => handleMergeCompany(dup)}
+                            disabled={loadingDuplicates}
+                          >
+                            Merge
+                          </Button>
+                        </div>
+                      </div>
+                      {/* Match type badges */}
+                      {dup.matchTypes && dup.matchTypes.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                          {dup.matchTypes.map((match, idx) => {
+                            const isExact = match.type.includes('exact');
+                            const isDomain = match.type.includes('domain');
+                            const bgColor = isExact
+                              ? (isDomain ? '#fee2e2' : '#fef3c7')
+                              : (isDomain ? '#fce7f3' : '#e0f2fe');
+                            const textColor = isExact
+                              ? (isDomain ? '#b91c1c' : '#92400e')
+                              : (isDomain ? '#9d174d' : '#0369a1');
+
+                            return (
+                              <span
+                                key={idx}
+                                style={{
+                                  fontSize: '0.7rem',
+                                  padding: '2px 6px',
+                                  borderRadius: '4px',
+                                  background: bgColor,
+                                  color: textColor,
+                                  fontWeight: 500
+                                }}
+                              >
+                                {match.label}
+                                {match.score && ` (${match.score}%)`}
+                                {match.domain && `: ${match.domain}`}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </ListItem>
+                  ))}
+                </ListContainer>
+              )}
+            </Section>
+          </TabContent>
+
+          {/* Infos Tab (merged Basic Info + Links) */}
+          <TabContent $active={activeTab === 'infos'}>
+            <Section>
               <FormGroup>
                 <Label htmlFor="companyCategory">Category *</Label>
                 <Select
@@ -994,26 +1455,11 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
                   value={companyDescription}
                   onChange={(e) => setCompanyDescription(e.target.value)}
                   placeholder="Enter company description"
-                  rows="4"
+                  rows="3"
                 />
               </FormGroup>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
-                <NextButton
-                  type="button"
-                  className="next-button"
-                  onClick={handleNextTab}
-                >
-                  Next: Links →
-                </NextButton>
-              </div>
-            </Section>
-          </TabContent>
-
-          {/* Links Tab */}
-          <TabContent $active={activeTab === 'links'}>
-            <Section>
-              <SectionTitle>Domains</SectionTitle>
+              <SectionTitle style={{ marginTop: '24px' }}>Domains</SectionTitle>
 
               {domains.length > 0 && (
                 <ListContainer>
@@ -1103,22 +1549,26 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
                 />
               </FormGroup>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px' }}>
-                <Button
-                  type="button"
-                  className="secondary"
-                  onClick={handlePrevTab}
-                >
-                  ← Back
-                </Button>
-                <NextButton
-                  type="button"
-                  className="next-button"
-                  onClick={handleNextTab}
-                >
-                  Next: Related →
-                </NextButton>
-              </div>
+              {/* Enrich with Apollo button */}
+              <Button
+                type="button"
+                style={{
+                  marginTop: '20px',
+                  width: '100%',
+                  backgroundColor: '#8b5cf6',
+                  color: 'white',
+                  border: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+                onClick={() => setEnrichmentModalOpen(true)}
+              >
+                <FiZap size={16} />
+                Enrich with Apollo (LinkedIn, Logo, Description)
+              </Button>
+
             </Section>
           </TabContent>
 
@@ -1254,15 +1704,46 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
               </TagInput>
             </Section>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '30px' }}>
-              <Button
-                type="button"
-                className="secondary"
-                onClick={handlePrevTab}
-              >
-                ← Back
-              </Button>
-            </div>
+          </TabContent>
+
+          {/* Recap Tab */}
+          <TabContent $active={activeTab === 'recap'}>
+            <Section>
+              <SectionTitle>Summary</SectionTitle>
+              <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '16px' }}>
+                Review your changes before saving.
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {/* Infos Summary */}
+                <div style={{ padding: '16px', background: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                  <div style={{ fontWeight: 600, marginBottom: '12px', color: '#374151' }}>📝 Infos</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '8px', fontSize: '0.875rem' }}>
+                    <span style={{ color: '#6b7280' }}>Name:</span>
+                    <span style={{ fontWeight: 500 }}>{companyName || '-'}</span>
+                    <span style={{ color: '#6b7280' }}>Category:</span>
+                    <span style={{ fontWeight: 500 }}>{companyCategory || '-'}</span>
+                    <span style={{ color: '#6b7280' }}>Description:</span>
+                    <span style={{ fontWeight: 500 }}>{companyDescription ? (companyDescription.length > 50 ? companyDescription.substring(0, 50) + '...' : companyDescription) : '-'}</span>
+                    <span style={{ color: '#6b7280' }}>Domains:</span>
+                    <span style={{ fontWeight: 500 }}>{domains.length > 0 ? domains.map(d => d.domain).join(', ') : '-'}</span>
+                    <span style={{ color: '#6b7280' }}>LinkedIn:</span>
+                    <span style={{ fontWeight: 500 }}>{companyLinkedin || '-'}</span>
+                  </div>
+                </div>
+
+                {/* Related Summary */}
+                <div style={{ padding: '16px', background: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                  <div style={{ fontWeight: 600, marginBottom: '12px', color: '#374151' }}>🏷️ Related</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '8px', fontSize: '0.875rem' }}>
+                    <span style={{ color: '#6b7280' }}>Tags:</span>
+                    <span style={{ fontWeight: 500 }}>{tags.length > 0 ? tags.map(t => t.name).join(', ') : '-'}</span>
+                    <span style={{ color: '#6b7280' }}>Cities:</span>
+                    <span style={{ fontWeight: 500 }}>{cities.length > 0 ? cities.map(c => c.name).join(', ') : '-'}</span>
+                  </div>
+                </div>
+              </div>
+            </Section>
           </TabContent>
 
           <ButtonGroup style={{ marginTop: '30px', paddingTop: '20px', borderTop: '1px solid #e5e7eb' }}>
@@ -1284,6 +1765,25 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
           </ButtonGroup>
         </form>
       </div>
+
+      {/* Enrichment Modal */}
+      <CompanyEnrichmentModal
+        isOpen={enrichmentModalOpen}
+        onClose={() => setEnrichmentModalOpen(false)}
+        company={company}
+        companyDomains={domains.map(d => d.domain)}
+        onEnrichComplete={(enrichedData) => {
+          // Update local state with enriched data
+          if (enrichedData.linkedin) {
+            setCompanyLinkedin(enrichedData.linkedin);
+          }
+          if (enrichedData.description) {
+            setCompanyDescription(enrichedData.description);
+          }
+          setEnrichmentModalOpen(false);
+          setMessage({ type: 'success', text: 'Company enriched with Apollo data' });
+        }}
+      />
     </Modal>
   );
 };
