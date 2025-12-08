@@ -1299,7 +1299,30 @@ const CommandCenterPage = ({ theme }) => {
 
       if (error) throw error;
 
-      // 2. Delete all emails from this sender from command_center_inbox
+      // 2. Get all emails from this sender (need fastmail_id for archiving)
+      const { data: emailsToArchive, error: fetchError } = await supabase
+        .from('command_center_inbox')
+        .select('id, fastmail_id')
+        .ilike('from_email', emailLower);
+
+      if (fetchError) {
+        console.error('Error fetching emails to archive:', fetchError);
+      }
+
+      // 3. Archive each email in Fastmail
+      let archivedCount = 0;
+      for (const emailRecord of emailsToArchive || []) {
+        if (emailRecord.fastmail_id) {
+          try {
+            await archiveInFastmail(emailRecord.fastmail_id);
+            archivedCount++;
+          } catch (archiveErr) {
+            console.error('Failed to archive email:', emailRecord.fastmail_id, archiveErr);
+          }
+        }
+      }
+
+      // 4. Delete all emails from this sender from command_center_inbox
       const { data: deletedEmails, error: deleteError } = await supabase
         .from('command_center_inbox')
         .delete()
@@ -1403,7 +1426,30 @@ const CommandCenterPage = ({ theme }) => {
 
       if (deleteError) throw deleteError;
 
-      // 3. Delete all emails from this sender from command_center_inbox
+      // 3. Get all emails from this sender (need fastmail_id for archiving)
+      const { data: emailsToArchive, error: fetchError } = await supabase
+        .from('command_center_inbox')
+        .select('id, fastmail_id')
+        .ilike('from_email', emailLower);
+
+      if (fetchError) {
+        console.error('Error fetching emails to archive:', fetchError);
+      }
+
+      // 4. Archive each email in Fastmail
+      let archivedCount = 0;
+      for (const emailRecord of emailsToArchive || []) {
+        if (emailRecord.fastmail_id) {
+          try {
+            await archiveInFastmail(emailRecord.fastmail_id);
+            archivedCount++;
+          } catch (archiveErr) {
+            console.error('Failed to archive email:', emailRecord.fastmail_id, archiveErr);
+          }
+        }
+      }
+
+      // 5. Delete all emails from this sender from command_center_inbox
       const { data: deletedEmails, error: inboxDeleteError } = await supabase
         .from('command_center_inbox')
         .delete()
