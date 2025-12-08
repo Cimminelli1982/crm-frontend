@@ -1771,7 +1771,7 @@ const EditCompanyModal = ({ isOpen, onRequestClose, company }) => {
         isOpen={enrichmentModalOpen}
         onClose={() => setEnrichmentModalOpen(false)}
         company={company}
-        companyDomains={domains.map(d => d.domain)}
+        companyDomains={domains}
         onEnrichComplete={(enrichedData) => {
           // Update local state with enriched data
           if (enrichedData.linkedin) {
