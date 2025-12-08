@@ -10,6 +10,8 @@ import { getVisibleTabs, shouldShowField } from '../helpers/contactListHelpers';
 import ProfileImageModal from '../components/modals/ProfileImageModal';
 import { useProfileImageModal } from '../hooks/useProfileImageModal';
 import CreateContactModal from '../components/modals/CreateContactModal';
+import DomainLinkModal from '../components/modals/DomainLinkModal';
+import CreateCompanyModal from '../components/modals/CreateCompanyModal';
 
 const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
 const AGENT_SERVICE_URL = 'https://crm-agent-api-production.up.railway.app'; // CRM Agent Service
@@ -104,7 +106,9 @@ const EmailListPanel = styled.div`
 `;
 
 const ListHeader = styled.div`
-  padding: 16px;
+  padding: 0 16px;
+  height: 56px;
+  min-height: 56px;
   border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
   display: flex;
   align-items: center;
@@ -330,9 +334,12 @@ const ActionsPanelTabs = styled.div`
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  padding: 12px;
+  padding: 0 12px;
+  height: 56px;
+  min-height: 56px;
   border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
   justify-content: center;
+  align-items: center;
 `;
 
 const ActionTabIcon = styled.button`
@@ -1114,6 +1121,12 @@ const CommandCenterPage = ({ theme }) => {
   const [dataIntegritySection, setDataIntegritySection] = useState('notInCrm'); // notInCrm, hold, duplicates, incomplete
   const [expandedDataIntegrity, setExpandedDataIntegrity] = useState({ notInCrm: true }); // Collapsible sections
 
+  // Domain Link Modal state
+  const [domainLinkModalOpen, setDomainLinkModalOpen] = useState(false);
+  const [selectedDomainForLink, setSelectedDomainForLink] = useState(null);
+  const [createCompanyModalOpen, setCreateCompanyModalOpen] = useState(false);
+  const [createCompanyInitialDomain, setCreateCompanyInitialDomain] = useState('');
+
   // AI Chat state
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
@@ -1780,8 +1793,127 @@ const CommandCenterPage = ({ theme }) => {
         setIncompleteContacts(withScores);
       }
 
-      // 4. Duplicates - for now just placeholder, we'll implement proper duplicate detection later
-      setDuplicateContacts([]);
+      // 4. Duplicates - find contacts from inbox with duplicate names in CRM
+      // Get all inbox emails
+      const { data: inboxData } = await supabase
+        .from('command_center_inbox')
+        .select('from_email, from_name, to_recipients, cc_recipients');
+
+      if (inboxData) {
+        // Extract unique emails from inbox
+        const inboxEmails = new Set();
+        inboxData.forEach(row => {
+          if (row.from_email) {
+            inboxEmails.add(row.from_email.toLowerCase());
+          }
+          (row.to_recipients || []).forEach(r => {
+            if (r.email) {
+              inboxEmails.add(r.email.toLowerCase());
+            }
+          });
+          (row.cc_recipients || []).forEach(r => {
+            if (r.email) {
+              inboxEmails.add(r.email.toLowerCase());
+            }
+          });
+        });
+
+        // Get contacts that have these emails
+        const { data: contactEmails } = await supabase
+          .from('contact_emails')
+          .select('contact_id, email, contacts(contact_id, first_name, last_name)')
+          .in('email', Array.from(inboxEmails).map(e => e.toLowerCase()));
+
+        // Also check for same email assigned to multiple contacts
+        const { data: emailDupes } = await supabase
+          .from('contact_emails')
+          .select('email, contact_id, contacts(contact_id, first_name, last_name)')
+          .in('email', Array.from(inboxEmails).map(e => e.toLowerCase()));
+
+        const duplicates = [];
+        const processedPairs = new Set();
+
+        // 1. Find email duplicates (same email -> multiple contacts)
+        if (emailDupes && emailDupes.length > 0) {
+          const emailGroups = {};
+          emailDupes.forEach(ed => {
+            if (!ed.contacts) return;
+            const email = ed.email.toLowerCase();
+            if (!emailGroups[email]) emailGroups[email] = [];
+            emailGroups[email].push(ed.contacts);
+          });
+
+          Object.entries(emailGroups).forEach(([email, contacts]) => {
+            if (contacts.length > 1) {
+              const pairKey = contacts.map(c => c.contact_id).sort().join('|');
+              if (!processedPairs.has(pairKey)) {
+                processedPairs.add(pairKey);
+                duplicates.push({
+                  contact_id: contacts[0].contact_id,
+                  first_name: contacts[0].first_name,
+                  last_name: contacts[0].last_name,
+                  email: email,
+                  match_type: 'EMAIL',
+                  duplicate_count: contacts.length - 1,
+                  duplicate_ids: contacts.slice(1).map(c => c.contact_id),
+                  duplicates: contacts.slice(1)
+                });
+              }
+            }
+          });
+        }
+
+        // 2. Find name duplicates (fuzzy match)
+        if (contactEmails && contactEmails.length > 0) {
+          const { data: allContacts } = await supabase
+            .from('contacts')
+            .select('contact_id, first_name, last_name');
+
+          contactEmails.forEach(ce => {
+            if (!ce.contacts) return;
+            const inboxContact = ce.contacts;
+            const inboxFirst = (inboxContact.first_name || '').toLowerCase();
+            const inboxLast = (inboxContact.last_name || '').toLowerCase();
+
+            const matches = (allContacts || []).filter(c => {
+              if (c.contact_id === inboxContact.contact_id) return false;
+              const matchFirst = (c.first_name || '').toLowerCase();
+              const matchLast = (c.last_name || '').toLowerCase();
+
+              // First name must match exactly
+              if (matchFirst !== inboxFirst) return false;
+
+              // Last name: exact or fuzzy (one starts with the other, min 3 chars)
+              if (matchLast === inboxLast) return true;
+              if (inboxLast.length >= 3 && matchLast.startsWith(inboxLast)) return true;
+              if (matchLast.length >= 3 && inboxLast.startsWith(matchLast)) return true;
+
+              return false;
+            });
+
+            if (matches.length > 0) {
+              const pairKey = [inboxContact.contact_id, ...matches.map(m => m.contact_id)].sort().join('|');
+              if (!processedPairs.has(pairKey)) {
+                processedPairs.add(pairKey);
+                duplicates.push({
+                  contact_id: inboxContact.contact_id,
+                  first_name: inboxContact.first_name,
+                  last_name: inboxContact.last_name,
+                  email: ce.email,
+                  match_type: 'NAME',
+                  duplicate_count: matches.length,
+                  duplicate_ids: matches.map(m => m.contact_id),
+                  duplicates: matches
+                });
+              }
+            }
+          });
+        }
+
+        setDuplicateContacts(duplicates);
+      } else {
+        setDuplicateContacts([]);
+      }
 
     } catch (error) {
       console.error('Error fetching data integrity:', error);
@@ -4638,7 +4770,9 @@ internet businesses.`;
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                padding: '16px 24px',
+                padding: '0 24px',
+                height: '56px',
+                minHeight: '56px',
                 borderBottom: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
               }}>
                 <EmailSubjectFull theme={theme} style={{ margin: 0 }}>
@@ -4690,9 +4824,8 @@ internet businesses.`;
                     </>
                   ) : (
                     <>
-                      <FaSave size={14} />
                       <FaArchive size={14} />
-                      Save & Archive
+                      Done
                     </>
                   )}
                 </button>
@@ -5944,13 +6077,30 @@ internet businesses.`;
                                   </div>
                                 ) : (
                                   notInCrmDomains.map((item, idx) => (
-                                    <div key={idx} style={{
-                                      padding: '8px 12px',
-                                      background: theme === 'light' ? '#FFFFFF' : '#1F2937',
-                                      borderRadius: '6px',
-                                      marginBottom: '4px',
-                                      border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
-                                    }}>
+                                    <div
+                                      key={idx}
+                                      onClick={() => {
+                                        setSelectedDomainForLink(item);
+                                        setDomainLinkModalOpen(true);
+                                      }}
+                                      style={{
+                                        padding: '8px 12px',
+                                        background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                                        borderRadius: '6px',
+                                        marginBottom: '4px',
+                                        border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s ease'
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.background = theme === 'light' ? '#F3F4F6' : '#374151';
+                                        e.currentTarget.style.borderColor = '#3B82F6';
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.background = theme === 'light' ? '#FFFFFF' : '#1F2937';
+                                        e.currentTarget.style.borderColor = theme === 'light' ? '#E5E7EB' : '#374151';
+                                      }}
+                                    >
                                       <div style={{
                                         display: 'flex',
                                         justifyContent: 'space-between',
@@ -6111,6 +6261,124 @@ internet businesses.`;
                                     >
                                       Spam
                                     </button>
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Duplicates Section */}
+                      <div style={{ marginTop: '8px' }}>
+                        <div
+                          onClick={() => setExpandedDataIntegrity(prev => ({ ...prev, duplicates: !prev.duplicates }))}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '10px 12px',
+                            background: theme === 'light' ? '#F3F4F6' : '#374151',
+                            cursor: 'pointer',
+                            borderRadius: '6px',
+                            marginBottom: expandedDataIntegrity.duplicates ? '4px' : '0',
+                          }}
+                        >
+                          <FaChevronDown
+                            style={{
+                              transform: expandedDataIntegrity.duplicates ? 'rotate(0deg)' : 'rotate(-90deg)',
+                              transition: 'transform 0.2s',
+                              fontSize: '10px',
+                              color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                            }}
+                          />
+                          <FaClone style={{ color: '#8B5CF6', fontSize: '12px' }} />
+                          <span style={{
+                            fontWeight: 600,
+                            fontSize: '13px',
+                            color: theme === 'light' ? '#111827' : '#F9FAFB'
+                          }}>
+                            Duplicates
+                          </span>
+                          <span style={{
+                            fontSize: '12px',
+                            color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                            marginLeft: 'auto'
+                          }}>
+                            {duplicateContacts.length}
+                          </span>
+                        </div>
+                        {expandedDataIntegrity.duplicates && (
+                          <div style={{ paddingLeft: '8px' }}>
+                            {duplicateContacts.length === 0 ? (
+                              <div style={{
+                                textAlign: 'center',
+                                padding: '16px',
+                                color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                                fontSize: '12px'
+                              }}>
+                                No suspected duplicates
+                              </div>
+                            ) : (
+                              duplicateContacts.map((item, idx) => (
+                                <div key={idx} style={{
+                                  padding: '10px 12px',
+                                  background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                                  borderRadius: '6px',
+                                  marginBottom: '6px',
+                                  border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
+                                }}>
+                                  <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    marginBottom: '6px'
+                                  }}>
+                                    <div style={{
+                                      fontSize: '13px',
+                                      fontWeight: 600,
+                                      color: theme === 'light' ? '#111827' : '#F9FAFB'
+                                    }}>
+                                      {item.first_name} {item.last_name}
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                      <div style={{
+                                        fontSize: '10px',
+                                        padding: '2px 6px',
+                                        background: item.match_type === 'EMAIL' ? '#EF4444' : '#8B5CF6',
+                                        color: 'white',
+                                        borderRadius: '4px',
+                                        fontWeight: 500
+                                      }}>
+                                        {item.match_type}
+                                      </div>
+                                      <div style={{
+                                        fontSize: '11px',
+                                        padding: '2px 8px',
+                                        background: theme === 'light' ? '#F3F4F6' : '#374151',
+                                        color: theme === 'light' ? '#374151' : '#D1D5DB',
+                                        borderRadius: '10px',
+                                        fontWeight: 600
+                                      }}>
+                                        {item.duplicate_count}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div style={{
+                                    fontSize: '11px',
+                                    color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                    marginBottom: '6px'
+                                  }}>
+                                    {item.email}
+                                  </div>
+                                  <div style={{
+                                    fontSize: '11px',
+                                    color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                                    background: theme === 'light' ? '#F3F4F6' : '#111827',
+                                    padding: '6px 8px',
+                                    borderRadius: '4px'
+                                  }}>
+                                    Matches: {item.duplicates?.map(d => `${d.first_name} ${d.last_name}`).join(', ')}
                                   </div>
                                 </div>
                               ))
@@ -6386,81 +6654,6 @@ internet businesses.`;
                       </ActionCardContent>
                     </ActionCard>
                   )}
-
-                  {/* Duplicates Section */}
-                  <div style={{ marginTop: '16px', padding: '0 8px' }}>
-                    <div
-                      onClick={() => setExpandedDataIntegrity(prev => ({ ...prev, duplicates: !prev.duplicates }))}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '10px 12px',
-                        background: theme === 'light' ? '#F3F4F6' : '#374151',
-                        cursor: 'pointer',
-                        borderRadius: '6px',
-                        marginBottom: expandedDataIntegrity.duplicates ? '4px' : '0',
-                      }}
-                    >
-                      <FaChevronDown
-                        style={{
-                          transform: expandedDataIntegrity.duplicates ? 'rotate(0deg)' : 'rotate(-90deg)',
-                          transition: 'transform 0.2s',
-                          fontSize: '10px',
-                          color: theme === 'light' ? '#6B7280' : '#9CA3AF'
-                        }}
-                      />
-                      <FaClone style={{ color: '#8B5CF6', fontSize: '12px' }} />
-                      <span style={{
-                        fontWeight: 600,
-                        fontSize: '13px',
-                        color: theme === 'light' ? '#111827' : '#F9FAFB'
-                      }}>
-                        Duplicates
-                      </span>
-                      <span style={{
-                        fontSize: '12px',
-                        color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                        marginLeft: 'auto'
-                      }}>
-                        {duplicateContacts.length}
-                      </span>
-                    </div>
-                    {expandedDataIntegrity.duplicates && (
-                      <div style={{ paddingLeft: '8px' }}>
-                        {duplicateContacts.length === 0 ? (
-                          <div style={{
-                            textAlign: 'center',
-                            padding: '16px',
-                            color: theme === 'light' ? '#9CA3AF' : '#6B7280',
-                            fontSize: '12px'
-                          }}>
-                            No suspected duplicates
-                          </div>
-                        ) : (
-                          duplicateContacts.map((item, idx) => (
-                            <div key={idx} style={{
-                              padding: '8px 12px',
-                              background: theme === 'light' ? '#FFFFFF' : '#1F2937',
-                              borderRadius: '6px',
-                              marginBottom: '4px',
-                              border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
-                            }}>
-                              <div style={{
-                                fontSize: '13px',
-                                fontWeight: 500,
-                                color: theme === 'light' ? '#111827' : '#F9FAFB'
-                              }}>{item.name}</div>
-                              <div style={{
-                                fontSize: '11px',
-                                color: theme === 'light' ? '#6B7280' : '#9CA3AF'
-                              }}>{item.count} potential duplicates</div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    )}
-                  </div>
 
                   {/* Incomplete Contacts Section */}
                   <div style={{ marginTop: '8px', padding: '0 8px' }}>
@@ -8531,6 +8724,64 @@ internet businesses.`;
           // Refresh data integrity stats
           fetchDataIntegrity();
           toast.success(`Contact ${newContact.first_name} ${newContact.last_name} created successfully!`);
+        }}
+      />
+
+      {/* Domain Link Modal */}
+      <DomainLinkModal
+        isOpen={domainLinkModalOpen}
+        onRequestClose={() => {
+          setDomainLinkModalOpen(false);
+          setSelectedDomainForLink(null);
+        }}
+        domain={selectedDomainForLink?.domain || ''}
+        sampleEmails={selectedDomainForLink?.sampleEmails || []}
+        theme={theme}
+        onDomainLinked={({ company, domain }) => {
+          // Remove from not in CRM list
+          setNotInCrmDomains(prev => prev.filter(item => item.domain !== domain));
+          toast.success(`Domain ${domain} linked to ${company.name}`);
+          // Refresh data
+          fetchDataIntegrity();
+        }}
+        onCreateCompany={({ domain, sampleEmails }) => {
+          setCreateCompanyInitialDomain(domain);
+          setCreateCompanyModalOpen(true);
+        }}
+      />
+
+      {/* Create Company Modal (for new companies from domain link) */}
+      <CreateCompanyModal
+        isOpen={createCompanyModalOpen}
+        onRequestClose={() => {
+          setCreateCompanyModalOpen(false);
+          setCreateCompanyInitialDomain('');
+        }}
+        initialName=""
+        contactEmail={`@${createCompanyInitialDomain}`}
+        theme={theme}
+        isNewCrm={true}
+        onCompanyCreated={async ({ company }) => {
+          // Add domain to company_domains
+          if (createCompanyInitialDomain) {
+            try {
+              await supabase
+                .from('company_domains')
+                .insert({
+                  company_id: company.company_id,
+                  domain: createCompanyInitialDomain.toLowerCase(),
+                  is_primary: true
+                });
+
+              // Remove from not in CRM list
+              setNotInCrmDomains(prev => prev.filter(item => item.domain !== createCompanyInitialDomain));
+              toast.success(`Company ${company.name} created with domain ${createCompanyInitialDomain}`);
+            } catch (error) {
+              console.error('Error adding domain to company:', error);
+            }
+          }
+          // Refresh data
+          fetchDataIntegrity();
         }}
       />
     </PageContainer>
