@@ -26,7 +26,7 @@
 # Handle new CRM single-page application routing
 [[redirects]]
   from = "/new-crm/*"
-  to = "/new-crm.html"
+  to = "/new-crm/index.html"
   status = 200
 
 # This handles the main CRM single-page application routing
