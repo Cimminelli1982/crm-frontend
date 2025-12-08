@@ -238,6 +238,20 @@ const CreateContactModal = ({
   const [aiSuggestion, setAiSuggestion] = useState(null); // { description, category }
   const [suggestedMobiles, setSuggestedMobiles] = useState([]); // Phone numbers extracted from email body
 
+  // Extract phone numbers from text using regex
+  const extractPhoneNumbers = (text) => {
+    if (!text) return [];
+    // Match various phone formats: +39 123 456 7890, (123) 456-7890, 123.456.7890, etc.
+    const phoneRegex = /(?:\+?\d{1,3}[-.\s]?)?(?:\(?\d{2,4}\)?[-.\s]?)?\d{3,4}[-.\s]?\d{3,4}[-.\s]?\d{0,4}/g;
+    const matches = text.match(phoneRegex) || [];
+    // Filter to only keep valid-looking phone numbers (at least 8 digits)
+    const validPhones = matches
+      .map(p => p.trim())
+      .filter(p => p.replace(/\D/g, '').length >= 8 && p.replace(/\D/g, '').length <= 15)
+      .filter((p, i, arr) => arr.indexOf(p) === i); // Remove duplicates
+    return validPhones;
+  };
+
   // Fetch AI suggestion for contact profile
   const fetchAiSuggestion = async (data) => {
     if (!data.body_text && !data.subject) return;
@@ -330,6 +344,14 @@ const CreateContactModal = ({
       // Fetch AI suggestion if we have email content
       if (emailData.body_text || emailData.subject) {
         fetchAiSuggestion(emailData);
+      }
+
+      // Extract phone numbers from email body
+      if (emailData.body_text) {
+        const phones = extractPhoneNumbers(emailData.body_text);
+        setSuggestedMobiles(phones);
+      } else {
+        setSuggestedMobiles([]);
       }
     }
   }, [isOpen, emailData]);
@@ -517,7 +539,7 @@ const CreateContactModal = ({
     try {
       const { data: city, error } = await supabase
         .from('cities')
-        .insert({ name: cityName })
+        .insert({ name: cityName, country: 'Unknown' })
         .select()
         .single();
       if (error) throw error;
@@ -1416,6 +1438,60 @@ const CreateContactModal = ({
                     </div>
                   )}
                 </div>
+
+                {/* Suggested Mobiles from Email */}
+                {suggestedMobiles.length > 0 && (
+                  <div style={{ marginTop: '12px' }}>
+                    <label style={{
+                      fontSize: '12px',
+                      color: mutedColor,
+                      marginBottom: '6px',
+                      display: 'block'
+                    }}>
+                      📱 Suggested from email:
+                    </label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {suggestedMobiles
+                        .filter(phone => !mobiles.some(m => m.number === phone))
+                        .map((phone, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => {
+                              const newMobile = {
+                                id: `new-${Date.now()}-${idx}`,
+                                number: phone,
+                                is_primary: mobiles.length === 0
+                              };
+                              setMobiles([...mobiles, newMobile]);
+                              toast.success(`Added ${phone}`);
+                            }}
+                            style={{
+                              padding: '4px 10px',
+                              fontSize: '12px',
+                              background: theme === 'light' ? '#EEF2FF' : '#312E81',
+                              color: theme === 'light' ? '#4338CA' : '#A5B4FC',
+                              border: `1px solid ${theme === 'light' ? '#C7D2FE' : '#4338CA'}`,
+                              borderRadius: '16px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.target.style.background = theme === 'light' ? '#C7D2FE' : '#4338CA';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.target.style.background = theme === 'light' ? '#EEF2FF' : '#312E81';
+                            }}
+                          >
+                            <FaPlus size={10} /> {phone}
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Cities Section */}
@@ -1676,7 +1752,7 @@ const CreateContactModal = ({
                 const missingFields = [];
                 if (!firstName.trim()) missingFields.push('First Name');
                 if (!lastName.trim()) missingFields.push('Last Name');
-                if (emails.length === 0) missingFields.push('Email');
+                if (!email.trim()) missingFields.push('Email');
                 if (companies.length === 0) missingFields.push('Company');
                 if (!category || category === 'Inbox') missingFields.push('Category');
                 if (mobiles.length === 0) missingFields.push('Mobile');
@@ -1766,15 +1842,11 @@ const CreateContactModal = ({
                   </div>
                 </div>
 
-                {/* Emails */}
-                {emails.length > 0 && (
+                {/* Email */}
+                {email && (
                   <div style={{ marginBottom: '12px' }}>
-                    <div style={{ fontSize: '11px', color: mutedColor, marginBottom: '4px', textTransform: 'uppercase' }}>Emails ({emails.length})</div>
-                    <div style={{ fontSize: '13px', color: textColor }}>
-                      {emails.map((e, i) => (
-                        <div key={i}>{e.email} {e.is_primary && <span style={{ color: '#10B981', fontSize: '10px' }}>PRIMARY</span>}</div>
-                      ))}
-                    </div>
+                    <div style={{ fontSize: '11px', color: mutedColor, marginBottom: '4px', textTransform: 'uppercase' }}>Email</div>
+                    <div style={{ fontSize: '13px', color: textColor }}>{email}</div>
                   </div>
                 )}
 
