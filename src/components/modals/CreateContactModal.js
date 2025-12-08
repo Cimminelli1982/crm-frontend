@@ -17,7 +17,7 @@ const WISHES_OPTIONS = [
   'whatsapp custom', 'call', 'present', 'no wishes'
 ];
 
-const AGENT_SERVICE_URL = 'http://localhost:8000';
+const AGENT_SERVICE_URL = 'https://crm-agent-api-production.up.railway.app';
 
 // Parse name from email address
 const parseNameFromEmail = (email, existingName, existingFirst, existingLast) => {

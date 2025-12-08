@@ -12,7 +12,7 @@ import { useProfileImageModal } from '../hooks/useProfileImageModal';
 import CreateContactModal from '../components/modals/CreateContactModal';
 
 const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
-const AGENT_SERVICE_URL = 'http://localhost:8000'; // CRM Agent Service
+const AGENT_SERVICE_URL = 'https://crm-agent-api-production.up.railway.app'; // CRM Agent Service
 
 // Main container
 const PageContainer = styled.div`
