@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
-import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy } from 'react-icons/fa';
+import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import QuickEditModal from '../components/QuickEditModalRefactored';
@@ -9,6 +9,7 @@ import { useQuickEditModal } from '../hooks/useQuickEditModal';
 import { getVisibleTabs, shouldShowField } from '../helpers/contactListHelpers';
 import ProfileImageModal from '../components/modals/ProfileImageModal';
 import { useProfileImageModal } from '../hooks/useProfileImageModal';
+import CreateContactModal from '../components/modals/CreateContactModal';
 
 const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
 const AGENT_SERVICE_URL = 'http://localhost:8000'; // CRM Agent Service
@@ -1016,7 +1017,7 @@ const CommandCenterPage = ({ theme }) => {
 
   // Spam menu state
   const [spamMenuOpen, setSpamMenuOpen] = useState(false);
-  const [activeActionTab, setActiveActionTab] = useState('chat');
+  const [activeActionTab, setActiveActionTab] = useState('dataIntegrity');
 
   // Contacts from email (for Contacts tab)
   const [emailContacts, setEmailContacts] = useState([]);
@@ -1101,6 +1102,17 @@ const CommandCenterPage = ({ theme }) => {
   const [creatingNote, setCreatingNote] = useState(false);
   const [editingNote, setEditingNote] = useState(null);
   const OBSIDIAN_VAULT = 'Living with Intention';
+
+  // Data Integrity state
+  const [notInCrmEmails, setNotInCrmEmails] = useState([]);
+  const [notInCrmDomains, setNotInCrmDomains] = useState([]); // Domains not in company_domains
+  const [notInCrmTab, setNotInCrmTab] = useState('contacts'); // 'contacts' or 'companies'
+  const [holdContacts, setHoldContacts] = useState([]);
+  const [duplicateContacts, setDuplicateContacts] = useState([]);
+  const [incompleteContacts, setIncompleteContacts] = useState([]);
+  const [loadingDataIntegrity, setLoadingDataIntegrity] = useState(false);
+  const [dataIntegritySection, setDataIntegritySection] = useState('notInCrm'); // notInCrm, hold, duplicates, incomplete
+  const [expandedDataIntegrity, setExpandedDataIntegrity] = useState({ notInCrm: true }); // Collapsible sections
 
   // AI Chat state
   const [chatMessages, setChatMessages] = useState([]);
@@ -1263,6 +1275,442 @@ const CommandCenterPage = ({ theme }) => {
       fetchEmails();
     }
   }, [activeTab]);
+
+  // State for Create Contact Modal
+  const [createContactModalOpen, setCreateContactModalOpen] = useState(false);
+  const [createContactEmail, setCreateContactEmail] = useState(null);
+
+  // Handle adding email to spam list
+  const handleAddToSpam = async (email) => {
+    try {
+      const emailLower = email.toLowerCase();
+
+      // 1. Add to emails_spam
+      const { error } = await supabase
+        .from('emails_spam')
+        .upsert({
+          email: emailLower,
+          counter: 1,
+          created_at: new Date().toISOString(),
+          last_modified_at: new Date().toISOString(),
+        }, {
+          onConflict: 'email',
+        });
+
+      if (error) throw error;
+
+      // 2. Delete all emails from this sender from command_center_inbox
+      const { data: deletedEmails, error: deleteError } = await supabase
+        .from('command_center_inbox')
+        .delete()
+        .ilike('from_email', emailLower)
+        .select('id');
+
+      if (deleteError) {
+        console.error('Error deleting from inbox:', deleteError);
+      }
+
+      const deletedCount = deletedEmails?.length || 0;
+
+      // 3. Update threads state - remove emails from this sender
+      setThreads(prev => {
+        const updated = prev.map(thread => ({
+          ...thread,
+          emails: thread.emails.filter(e => e.from_email?.toLowerCase() !== emailLower)
+        })).filter(thread => thread.emails.length > 0);
+
+        return updated.map(t => ({
+          ...t,
+          latestEmail: t.emails[t.emails.length - 1]
+        }));
+      });
+
+      // 4. Clear selected thread if it was from this sender
+      setSelectedThread(prev => {
+        if (!prev) return null;
+        const remaining = prev.filter(e => e.from_email?.toLowerCase() !== emailLower);
+        return remaining.length > 0 ? remaining : null;
+      });
+
+      // 5. Remove from notInCrmEmails list
+      setNotInCrmEmails(prev => prev.filter(item => item.email.toLowerCase() !== emailLower));
+
+      toast.success(`${email} added to spam list${deletedCount > 0 ? ` - deleted ${deletedCount} emails` : ''}`);
+    } catch (error) {
+      console.error('Error adding to spam:', error);
+      toast.error('Failed to add to spam list');
+    }
+  };
+
+  // Handle putting contact on hold
+  const handlePutOnHold = async (item) => {
+    try {
+      const { error } = await supabase
+        .from('contacts_hold')
+        .upsert({
+          email: item.email.toLowerCase(),
+          full_name: item.name || null,
+          status: 'pending',
+          email_count: 1,
+          created_at: new Date().toISOString(),
+        }, {
+          onConflict: 'email',
+        });
+
+      if (error) throw error;
+
+      // Remove from list and add to hold list
+      setNotInCrmEmails(prev => prev.filter(i => i.email.toLowerCase() !== item.email.toLowerCase()));
+      setHoldContacts(prev => [...prev, { email: item.email, full_name: item.name, status: 'pending', email_count: 1 }]);
+      toast.success(`${item.name || item.email} put on hold`);
+    } catch (error) {
+      console.error('Error putting on hold:', error);
+      toast.error('Failed to put on hold');
+    }
+  };
+
+  // Handle adding contact from hold to CRM
+  const handleAddFromHold = async (contact) => {
+    // Open the create contact modal with contact data from hold
+    setCreateContactEmail({ email: contact.email, name: contact.full_name || contact.first_name });
+    setCreateContactModalOpen(true);
+  };
+
+  // Handle marking contact from hold as spam
+  const handleSpamFromHold = async (email) => {
+    try {
+      const emailLower = email.toLowerCase();
+
+      // 1. Add to spam list
+      const { error: spamError } = await supabase
+        .from('emails_spam')
+        .upsert({
+          email: emailLower,
+          counter: 1,
+          created_at: new Date().toISOString(),
+          last_modified_at: new Date().toISOString(),
+        }, {
+          onConflict: 'email',
+        });
+
+      if (spamError) throw spamError;
+
+      // 2. Remove from contacts_hold
+      const { error: deleteError } = await supabase
+        .from('contacts_hold')
+        .delete()
+        .eq('email', emailLower);
+
+      if (deleteError) throw deleteError;
+
+      // 3. Delete all emails from this sender from command_center_inbox
+      const { data: deletedEmails, error: inboxDeleteError } = await supabase
+        .from('command_center_inbox')
+        .delete()
+        .ilike('from_email', emailLower)
+        .select('id');
+
+      if (inboxDeleteError) {
+        console.error('Error deleting from inbox:', inboxDeleteError);
+      }
+
+      const deletedCount = deletedEmails?.length || 0;
+
+      // 4. Update threads state - remove emails from this sender
+      setThreads(prev => {
+        const updated = prev.map(thread => ({
+          ...thread,
+          emails: thread.emails.filter(e => e.from_email?.toLowerCase() !== emailLower)
+        })).filter(thread => thread.emails.length > 0);
+
+        return updated.map(t => ({
+          ...t,
+          latestEmail: t.emails[t.emails.length - 1]
+        }));
+      });
+
+      // 5. Clear selected thread if it was from this sender
+      setSelectedThread(prev => {
+        if (!prev) return null;
+        const remaining = prev.filter(e => e.from_email?.toLowerCase() !== emailLower);
+        return remaining.length > 0 ? remaining : null;
+      });
+
+      // 6. Update local hold contacts state
+      setHoldContacts(prev => prev.filter(c => c.email.toLowerCase() !== emailLower));
+
+      toast.success(`${email} marked as spam${deletedCount > 0 ? ` - deleted ${deletedCount} emails` : ''}`);
+    } catch (error) {
+      console.error('Error marking as spam from hold:', error);
+      toast.error('Failed to mark as spam');
+    }
+  };
+
+  // Handle opening create contact modal
+  const handleOpenCreateContact = (item) => {
+    setCreateContactEmail(item);
+    setCreateContactModalOpen(true);
+  };
+
+  // Fetch Data Integrity data
+  const fetchDataIntegrity = async () => {
+    setLoadingDataIntegrity(true);
+    try {
+      // 1. Get emails not in CRM (from command_center_inbox, check against contact_emails)
+      // First get all unique emails from command_center_inbox (excluding simone@cimminelli.com)
+      const { data: inboxEmails, error: inboxError } = await supabase
+        .from('command_center_inbox')
+        .select('from_email, from_name, to_recipients, cc_recipients')
+        .order('date', { ascending: false });
+
+      if (inboxError) {
+        console.error('Error fetching inbox emails:', inboxError);
+      } else {
+        // Collect all unique email addresses from from, to, cc
+        const allEmails = new Map(); // email -> { email, name }
+        const myEmail = 'simone@cimminelli.com'.toLowerCase();
+
+        (inboxEmails || []).forEach(row => {
+          // From
+          if (row.from_email && row.from_email.toLowerCase() !== myEmail) {
+            const key = row.from_email.toLowerCase();
+            if (!allEmails.has(key)) {
+              allEmails.set(key, { email: row.from_email, name: row.from_name });
+            }
+          }
+          // To recipients
+          (row.to_recipients || []).forEach(r => {
+            const email = typeof r === 'string' ? r : r.email;
+            if (email && email.toLowerCase() !== myEmail) {
+              const key = email.toLowerCase();
+              if (!allEmails.has(key)) {
+                allEmails.set(key, { email, name: typeof r === 'object' ? r.name : null });
+              }
+            }
+          });
+          // CC recipients
+          (row.cc_recipients || []).forEach(r => {
+            const email = typeof r === 'string' ? r : r.email;
+            if (email && email.toLowerCase() !== myEmail) {
+              const key = email.toLowerCase();
+              if (!allEmails.has(key)) {
+                allEmails.set(key, { email, name: typeof r === 'object' ? r.name : null });
+              }
+            }
+          });
+        });
+
+        // Get ALL emails from contact_emails table (Supabase default limit is 1000)
+        // We need to paginate to get all ~3000+ emails
+        let allCrmEmails = [];
+        let from = 0;
+        const pageSize = 1000;
+        let hasMore = true;
+
+        while (hasMore) {
+          const { data: crmEmailsBatch, error: crmError } = await supabase
+            .from('contact_emails')
+            .select('email')
+            .range(from, from + pageSize - 1);
+
+          if (crmError) {
+            console.error('Error fetching CRM emails:', crmError);
+            break;
+          }
+
+          if (crmEmailsBatch && crmEmailsBatch.length > 0) {
+            allCrmEmails = allCrmEmails.concat(crmEmailsBatch);
+            from += pageSize;
+            hasMore = crmEmailsBatch.length === pageSize;
+          } else {
+            hasMore = false;
+          }
+        }
+
+        // Create a set of normalized emails (lowercase, trimmed)
+        const crmEmailSet = new Set(
+          allCrmEmails
+            .map(e => e.email?.toLowerCase().trim())
+            .filter(Boolean)
+        );
+
+        // Get emails on hold to exclude from "not in CRM" list
+        const { data: holdData } = await supabase
+          .from('contacts_hold')
+          .select('email')
+          .eq('status', 'pending');
+
+        const holdEmailSet = new Set(
+          (holdData || [])
+            .map(h => h.email?.toLowerCase().trim())
+            .filter(Boolean)
+        );
+
+        // Find emails not in CRM (and not on hold)
+        const notInCrm = [];
+        allEmails.forEach((value, key) => {
+          const normalizedKey = key.toLowerCase().trim();
+          if (!crmEmailSet.has(normalizedKey) && !holdEmailSet.has(normalizedKey)) {
+            notInCrm.push(value);
+          }
+        });
+
+        setNotInCrmEmails(notInCrm);
+
+        // Extract domains from all emails for company check
+        // Helper function to normalize domain (remove www., http://, https://, trailing paths)
+        const normalizeDomain = (domain) => {
+          if (!domain) return null;
+          let normalized = domain.toLowerCase().trim();
+          // Remove protocol if present
+          normalized = normalized.replace(/^https?:\/\//, '');
+          // Remove www. prefix
+          normalized = normalized.replace(/^www\./, '');
+          // Remove trailing slashes and paths
+          normalized = normalized.split('/')[0];
+          // Remove port if present
+          normalized = normalized.split(':')[0];
+          return normalized || null;
+        };
+
+        // Extract domain from email address
+        const extractDomain = (email) => {
+          if (!email) return null;
+          const parts = email.split('@');
+          if (parts.length !== 2) return null;
+          return normalizeDomain(parts[1]);
+        };
+
+        // Collect all unique domains from emails (with count)
+        const allDomains = new Map(); // domain -> { domain, count, sampleEmails }
+        const myDomain = 'cimminelli.com';
+
+        // Common email providers to exclude
+        const excludeDomains = new Set([
+          'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com',
+          'me.com', 'mac.com', 'aol.com', 'live.com', 'msn.com', 'protonmail.com',
+          'proton.me', 'fastmail.com', 'fastmail.fm', 'zoho.com', 'ymail.com',
+          'googlemail.com', 'mail.com', 'email.com', 'gmx.com', 'gmx.net',
+          myDomain
+        ]);
+
+        allEmails.forEach((value, key) => {
+          const domain = extractDomain(key);
+          if (domain && !excludeDomains.has(domain)) {
+            if (allDomains.has(domain)) {
+              const existing = allDomains.get(domain);
+              existing.count++;
+              if (existing.sampleEmails.length < 3) {
+                existing.sampleEmails.push(value.email);
+              }
+            } else {
+              allDomains.set(domain, {
+                domain,
+                count: 1,
+                sampleEmails: [value.email]
+              });
+            }
+          }
+        });
+
+        // Get ALL domains from company_domains table (paginated like contact_emails)
+        let allCrmDomains = [];
+        let domainFrom = 0;
+        let domainHasMore = true;
+
+        while (domainHasMore) {
+          const { data: crmDomainsBatch, error: crmDomainError } = await supabase
+            .from('company_domains')
+            .select('domain')
+            .range(domainFrom, domainFrom + pageSize - 1);
+
+          if (crmDomainError) {
+            console.error('Error fetching CRM domains:', crmDomainError);
+            break;
+          }
+
+          if (crmDomainsBatch && crmDomainsBatch.length > 0) {
+            allCrmDomains = allCrmDomains.concat(crmDomainsBatch);
+            domainFrom += pageSize;
+            domainHasMore = crmDomainsBatch.length === pageSize;
+          } else {
+            domainHasMore = false;
+          }
+        }
+
+        // Create a set of normalized CRM domains
+        const crmDomainSet = new Set(
+          allCrmDomains
+            .map(d => normalizeDomain(d.domain))
+            .filter(Boolean)
+        );
+
+        // Find domains not in CRM
+        const domainsNotInCrm = [];
+        allDomains.forEach((value, key) => {
+          if (!crmDomainSet.has(key)) {
+            domainsNotInCrm.push(value);
+          }
+        });
+
+        // Sort by count (most frequent first)
+        domainsNotInCrm.sort((a, b) => b.count - a.count);
+
+        setNotInCrmDomains(domainsNotInCrm);
+      }
+
+      // 2. Get contacts on hold
+      const { data: holdData, error: holdError } = await supabase
+        .from('contacts_hold')
+        .select('*')
+        .eq('status', 'pending')
+        .order('email_count', { ascending: false });
+
+      if (holdError) {
+        console.error('Error fetching hold contacts:', holdError);
+      } else {
+        setHoldContacts(holdData || []);
+      }
+
+      // 3. Get incomplete contacts - contacts where key fields are missing
+      const { data: incompleteData, error: incompleteError } = await supabase
+        .from('contacts')
+        .select('contact_id, first_name, last_name, category, score, job_role, linkedin')
+        .or('job_role.is.null,linkedin.is.null')
+        .limit(100);
+
+      if (incompleteError) {
+        console.error('Error fetching incomplete contacts:', incompleteError);
+      } else {
+        // Calculate completeness score
+        const withScores = (incompleteData || []).map(c => {
+          let score = 0;
+          if (c.first_name) score += 20;
+          if (c.last_name) score += 20;
+          if (c.job_role) score += 20;
+          if (c.linkedin) score += 20;
+          if (c.category && c.category !== 'Inbox') score += 20;
+          return { ...c, completeness_score: score };
+        }).filter(c => c.completeness_score < 100)
+          .sort((a, b) => a.completeness_score - b.completeness_score);
+        setIncompleteContacts(withScores);
+      }
+
+      // 4. Duplicates - for now just placeholder, we'll implement proper duplicate detection later
+      setDuplicateContacts([]);
+
+    } catch (error) {
+      console.error('Error fetching data integrity:', error);
+    }
+    setLoadingDataIntegrity(false);
+  };
+
+  // Load data integrity when tab is active
+  useEffect(() => {
+    if (activeActionTab === 'dataIntegrity') {
+      fetchDataIntegrity();
+    }
+  }, [activeActionTab]);
 
   // Fetch AI suggestions from Supabase
   const fetchAiSuggestions = async () => {
@@ -4555,11 +5003,8 @@ internet businesses.`;
         {/* Right: Actions Panel */}
         <ActionsPanel theme={theme}>
           <ActionsPanelTabs theme={theme}>
-            <ActionTabIcon theme={theme} $active={activeActionTab === 'chat'} onClick={() => setActiveActionTab('chat')} title="Chat & Reply Help">
-              <FaLightbulb />
-            </ActionTabIcon>
-            <ActionTabIcon theme={theme} $active={activeActionTab === 'ai'} onClick={() => setActiveActionTab('ai')} title="Contact Audit">
-              <FaRobot />
+            <ActionTabIcon theme={theme} $active={activeActionTab === 'dataIntegrity'} onClick={() => setActiveActionTab('dataIntegrity')} title="Data Integrity">
+              <FaDatabase />
             </ActionTabIcon>
             <ActionTabIcon theme={theme} $active={activeActionTab === 'contacts'} onClick={() => setActiveActionTab('contacts')} title="Contacts">
               <FaUser />
@@ -5188,6 +5633,413 @@ internet businesses.`;
                 </div>
               )}
 
+              {activeActionTab === 'dataIntegrity' && (
+                <div style={{ flex: 1, overflow: 'auto', padding: '8px' }}>
+                  {loadingDataIntegrity ? (
+                    <div style={{
+                      textAlign: 'center',
+                      padding: '40px 20px',
+                      color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                    }}>
+                      <div className="animate-spin" style={{
+                        width: '24px',
+                        height: '24px',
+                        border: '2px solid currentColor',
+                        borderTopColor: 'transparent',
+                        borderRadius: '50%',
+                        margin: '0 auto 12px'
+                      }} />
+                      <div style={{ fontSize: '12px' }}>Loading...</div>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Not in CRM Section */}
+                      <div style={{ marginBottom: '8px' }}>
+                        <div
+                          onClick={() => setExpandedDataIntegrity(prev => ({ ...prev, notInCrm: !prev.notInCrm }))}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '10px 12px',
+                            background: theme === 'light' ? '#F3F4F6' : '#374151',
+                            cursor: 'pointer',
+                            borderRadius: '6px',
+                            marginBottom: expandedDataIntegrity.notInCrm ? '4px' : '0',
+                          }}
+                        >
+                          <FaChevronDown
+                            style={{
+                              transform: expandedDataIntegrity.notInCrm ? 'rotate(0deg)' : 'rotate(-90deg)',
+                              transition: 'transform 0.2s',
+                              fontSize: '10px',
+                              color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                            }}
+                          />
+                          <FaUserSlash style={{ color: '#EF4444', fontSize: '12px' }} />
+                          <span style={{
+                            fontWeight: 600,
+                            fontSize: '13px',
+                            color: theme === 'light' ? '#111827' : '#F9FAFB'
+                          }}>
+                            Not in CRM
+                          </span>
+                          <span style={{
+                            fontSize: '12px',
+                            color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                            marginLeft: 'auto'
+                          }}>
+                            {notInCrmEmails.length + notInCrmDomains.length}
+                          </span>
+                        </div>
+                        {expandedDataIntegrity.notInCrm && (
+                          <div style={{ paddingLeft: '8px' }}>
+                            {/* Tabs for Contacts / Companies */}
+                            <div style={{
+                              display: 'flex',
+                              gap: '4px',
+                              marginBottom: '8px',
+                              background: theme === 'light' ? '#E5E7EB' : '#1F2937',
+                              borderRadius: '6px',
+                              padding: '2px'
+                            }}>
+                              <button
+                                onClick={() => setNotInCrmTab('contacts')}
+                                style={{
+                                  flex: 1,
+                                  padding: '6px 8px',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  fontSize: '12px',
+                                  fontWeight: 500,
+                                  cursor: 'pointer',
+                                  background: notInCrmTab === 'contacts'
+                                    ? (theme === 'light' ? '#FFFFFF' : '#374151')
+                                    : 'transparent',
+                                  color: notInCrmTab === 'contacts'
+                                    ? (theme === 'light' ? '#111827' : '#F9FAFB')
+                                    : (theme === 'light' ? '#6B7280' : '#9CA3AF'),
+                                  boxShadow: notInCrmTab === 'contacts' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
+                                }}
+                              >
+                                Contacts ({notInCrmEmails.length})
+                              </button>
+                              <button
+                                onClick={() => setNotInCrmTab('companies')}
+                                style={{
+                                  flex: 1,
+                                  padding: '6px 8px',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  fontSize: '12px',
+                                  fontWeight: 500,
+                                  cursor: 'pointer',
+                                  background: notInCrmTab === 'companies'
+                                    ? (theme === 'light' ? '#FFFFFF' : '#374151')
+                                    : 'transparent',
+                                  color: notInCrmTab === 'companies'
+                                    ? (theme === 'light' ? '#111827' : '#F9FAFB')
+                                    : (theme === 'light' ? '#6B7280' : '#9CA3AF'),
+                                  boxShadow: notInCrmTab === 'companies' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
+                                }}
+                              >
+                                Companies ({notInCrmDomains.length})
+                              </button>
+                            </div>
+
+                            {/* Contacts Tab Content */}
+                            {notInCrmTab === 'contacts' && (
+                              <>
+                                {notInCrmEmails.length === 0 ? (
+                                  <div style={{
+                                    textAlign: 'center',
+                                    padding: '16px',
+                                    color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                                    fontSize: '12px'
+                                  }}>
+                                    All email contacts are in CRM
+                                  </div>
+                                ) : (
+                                  notInCrmEmails.map((item, idx) => (
+                                    <div key={idx} style={{
+                                      padding: '8px 12px',
+                                      background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                                      borderRadius: '6px',
+                                      marginBottom: '4px',
+                                      border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center'
+                                    }}>
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{
+                                          fontSize: '13px',
+                                          fontWeight: 500,
+                                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                          whiteSpace: 'nowrap',
+                                          overflow: 'hidden',
+                                          textOverflow: 'ellipsis'
+                                        }}>{item.name || item.email}</div>
+                                        {item.name && (
+                                          <div style={{
+                                            fontSize: '11px',
+                                            color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                            whiteSpace: 'nowrap',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis'
+                                          }}>{item.email}</div>
+                                        )}
+                                      </div>
+                                      <div style={{ display: 'flex', gap: '4px', marginLeft: '8px', flexShrink: 0 }}>
+                                        <button
+                                          onClick={() => handleOpenCreateContact(item)}
+                                          title="Add to CRM"
+                                          style={{
+                                            padding: '4px 8px',
+                                            fontSize: '11px',
+                                            fontWeight: 500,
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            background: '#10B981',
+                                            color: 'white'
+                                          }}
+                                        >
+                                          Add
+                                        </button>
+                                        <button
+                                          onClick={() => handlePutOnHold(item)}
+                                          title="Put on Hold"
+                                          style={{
+                                            padding: '4px 8px',
+                                            fontSize: '11px',
+                                            fontWeight: 500,
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            background: '#F59E0B',
+                                            color: 'white'
+                                          }}
+                                        >
+                                          Hold
+                                        </button>
+                                        <button
+                                          onClick={() => handleAddToSpam(item.email)}
+                                          title="Mark as Spam"
+                                          style={{
+                                            padding: '4px 8px',
+                                            fontSize: '11px',
+                                            fontWeight: 500,
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            background: '#EF4444',
+                                            color: 'white'
+                                          }}
+                                        >
+                                          Spam
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))
+                                )}
+                              </>
+                            )}
+
+                            {/* Companies Tab Content */}
+                            {notInCrmTab === 'companies' && (
+                              <>
+                                {notInCrmDomains.length === 0 ? (
+                                  <div style={{
+                                    textAlign: 'center',
+                                    padding: '16px',
+                                    color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                                    fontSize: '12px'
+                                  }}>
+                                    All domains are in CRM
+                                  </div>
+                                ) : (
+                                  notInCrmDomains.map((item, idx) => (
+                                    <div key={idx} style={{
+                                      padding: '8px 12px',
+                                      background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                                      borderRadius: '6px',
+                                      marginBottom: '4px',
+                                      border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
+                                    }}>
+                                      <div style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center'
+                                      }}>
+                                        <div style={{
+                                          fontSize: '13px',
+                                          fontWeight: 500,
+                                          color: theme === 'light' ? '#111827' : '#F9FAFB'
+                                        }}>{item.domain}</div>
+                                        <div style={{
+                                          fontSize: '11px',
+                                          color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                          background: theme === 'light' ? '#F3F4F6' : '#374151',
+                                          padding: '2px 6px',
+                                          borderRadius: '4px'
+                                        }}>
+                                          {item.count} email{item.count !== 1 ? 's' : ''}
+                                        </div>
+                                      </div>
+                                      {item.sampleEmails && item.sampleEmails.length > 0 && (
+                                        <div style={{
+                                          fontSize: '11px',
+                                          color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                          marginTop: '4px'
+                                        }}>
+                                          {item.sampleEmails.slice(0, 2).join(', ')}
+                                          {item.sampleEmails.length > 2 && '...'}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Hold Contacts Section */}
+                      <div style={{ marginBottom: '8px' }}>
+                        <div
+                          onClick={() => setExpandedDataIntegrity(prev => ({ ...prev, hold: !prev.hold }))}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '10px 12px',
+                            background: theme === 'light' ? '#F3F4F6' : '#374151',
+                            cursor: 'pointer',
+                            borderRadius: '6px',
+                            marginBottom: expandedDataIntegrity.hold ? '4px' : '0',
+                          }}
+                        >
+                          <FaChevronDown
+                            style={{
+                              transform: expandedDataIntegrity.hold ? 'rotate(0deg)' : 'rotate(-90deg)',
+                              transition: 'transform 0.2s',
+                              fontSize: '10px',
+                              color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                            }}
+                          />
+                          <FaExclamationTriangle style={{ color: '#F59E0B', fontSize: '12px' }} />
+                          <span style={{
+                            fontWeight: 600,
+                            fontSize: '13px',
+                            color: theme === 'light' ? '#111827' : '#F9FAFB'
+                          }}>
+                            Hold
+                          </span>
+                          <span style={{
+                            fontSize: '12px',
+                            color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                            marginLeft: 'auto'
+                          }}>
+                            {holdContacts.length}
+                          </span>
+                        </div>
+                        {expandedDataIntegrity.hold && (
+                          <div style={{ paddingLeft: '8px' }}>
+                            {holdContacts.length === 0 ? (
+                              <div style={{
+                                textAlign: 'center',
+                                padding: '16px',
+                                color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                                fontSize: '12px'
+                              }}>
+                                No contacts on hold
+                              </div>
+                            ) : (
+                              holdContacts.map((contact, idx) => (
+                                <div key={idx} style={{
+                                  padding: '8px 12px',
+                                  background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                                  borderRadius: '6px',
+                                  marginBottom: '4px',
+                                  border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center'
+                                }}>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{
+                                      fontSize: '13px',
+                                      fontWeight: 500,
+                                      color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis'
+                                    }}>{contact.full_name || contact.first_name || contact.email}</div>
+                                    <div style={{
+                                      fontSize: '11px',
+                                      color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis'
+                                    }}>{contact.email}</div>
+                                  </div>
+                                  <div style={{ display: 'flex', gap: '4px', marginLeft: '8px', flexShrink: 0, alignItems: 'center' }}>
+                                    <div style={{
+                                      fontSize: '10px',
+                                      padding: '2px 6px',
+                                      background: theme === 'light' ? '#FEF3C7' : '#78350F',
+                                      color: theme === 'light' ? '#92400E' : '#FCD34D',
+                                      borderRadius: '4px'
+                                    }}>
+                                      {contact.email_count || 1}x
+                                    </div>
+                                    <button
+                                      onClick={() => handleAddFromHold(contact)}
+                                      title="Add to CRM"
+                                      style={{
+                                        padding: '4px 8px',
+                                        fontSize: '11px',
+                                        fontWeight: 500,
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        background: '#10B981',
+                                        color: 'white'
+                                      }}
+                                    >
+                                      Add
+                                    </button>
+                                    <button
+                                      onClick={() => handleSpamFromHold(contact.email)}
+                                      title="Mark as Spam"
+                                      style={{
+                                        padding: '4px 8px',
+                                        fontSize: '11px',
+                                        fontWeight: 500,
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        background: '#EF4444',
+                                        color: 'white'
+                                      }}
+                                    >
+                                      Spam
+                                    </button>
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                    </>
+                  )}
+                </div>
+              )}
+
               {activeActionTab === 'contacts' && (
                 <>
                   {emailContacts.length > 0 ? (
@@ -5450,6 +6302,182 @@ internet businesses.`;
                       </ActionCardContent>
                     </ActionCard>
                   )}
+
+                  {/* Duplicates Section */}
+                  <div style={{ marginTop: '16px', padding: '0 8px' }}>
+                    <div
+                      onClick={() => setExpandedDataIntegrity(prev => ({ ...prev, duplicates: !prev.duplicates }))}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '10px 12px',
+                        background: theme === 'light' ? '#F3F4F6' : '#374151',
+                        cursor: 'pointer',
+                        borderRadius: '6px',
+                        marginBottom: expandedDataIntegrity.duplicates ? '4px' : '0',
+                      }}
+                    >
+                      <FaChevronDown
+                        style={{
+                          transform: expandedDataIntegrity.duplicates ? 'rotate(0deg)' : 'rotate(-90deg)',
+                          transition: 'transform 0.2s',
+                          fontSize: '10px',
+                          color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                        }}
+                      />
+                      <FaClone style={{ color: '#8B5CF6', fontSize: '12px' }} />
+                      <span style={{
+                        fontWeight: 600,
+                        fontSize: '13px',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB'
+                      }}>
+                        Duplicates
+                      </span>
+                      <span style={{
+                        fontSize: '12px',
+                        color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                        marginLeft: 'auto'
+                      }}>
+                        {duplicateContacts.length}
+                      </span>
+                    </div>
+                    {expandedDataIntegrity.duplicates && (
+                      <div style={{ paddingLeft: '8px' }}>
+                        {duplicateContacts.length === 0 ? (
+                          <div style={{
+                            textAlign: 'center',
+                            padding: '16px',
+                            color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                            fontSize: '12px'
+                          }}>
+                            No suspected duplicates
+                          </div>
+                        ) : (
+                          duplicateContacts.map((item, idx) => (
+                            <div key={idx} style={{
+                              padding: '8px 12px',
+                              background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                              borderRadius: '6px',
+                              marginBottom: '4px',
+                              border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
+                            }}>
+                              <div style={{
+                                fontSize: '13px',
+                                fontWeight: 500,
+                                color: theme === 'light' ? '#111827' : '#F9FAFB'
+                              }}>{item.name}</div>
+                              <div style={{
+                                fontSize: '11px',
+                                color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                              }}>{item.count} potential duplicates</div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Incomplete Contacts Section */}
+                  <div style={{ marginTop: '8px', padding: '0 8px' }}>
+                    <div
+                      onClick={() => setExpandedDataIntegrity(prev => ({ ...prev, incomplete: !prev.incomplete }))}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '10px 12px',
+                        background: theme === 'light' ? '#F3F4F6' : '#374151',
+                        cursor: 'pointer',
+                        borderRadius: '6px',
+                        marginBottom: expandedDataIntegrity.incomplete ? '4px' : '0',
+                      }}
+                    >
+                      <FaChevronDown
+                        style={{
+                          transform: expandedDataIntegrity.incomplete ? 'rotate(0deg)' : 'rotate(-90deg)',
+                          transition: 'transform 0.2s',
+                          fontSize: '10px',
+                          color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                        }}
+                      />
+                      <FaUserCheck style={{ color: '#10B981', fontSize: '12px' }} />
+                      <span style={{
+                        fontWeight: 600,
+                        fontSize: '13px',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB'
+                      }}>
+                        Incomplete
+                      </span>
+                      <span style={{
+                        fontSize: '12px',
+                        color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                        marginLeft: 'auto'
+                      }}>
+                        {incompleteContacts.length}
+                      </span>
+                    </div>
+                    {expandedDataIntegrity.incomplete && (
+                      <div style={{ paddingLeft: '8px' }}>
+                        {incompleteContacts.length === 0 ? (
+                          <div style={{
+                            textAlign: 'center',
+                            padding: '16px',
+                            color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                            fontSize: '12px'
+                          }}>
+                            All contacts are complete
+                          </div>
+                        ) : (
+                          incompleteContacts.map((contact, idx) => (
+                            <div key={idx} style={{
+                              padding: '8px 12px',
+                              background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                              borderRadius: '6px',
+                              marginBottom: '4px',
+                              border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              cursor: 'pointer'
+                            }}
+                            onClick={() => navigate(`/contact/${contact.contact_id}`)}
+                            >
+                              <div>
+                                <div style={{
+                                  fontSize: '13px',
+                                  fontWeight: 500,
+                                  color: theme === 'light' ? '#111827' : '#F9FAFB'
+                                }}>{contact.first_name} {contact.last_name}</div>
+                                <div style={{
+                                  fontSize: '11px',
+                                  color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                                }}>{contact.category || 'No category'}</div>
+                              </div>
+                              <div style={{
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                background: contact.completeness_score >= 80
+                                  ? (theme === 'light' ? '#D1FAE5' : '#064E3B')
+                                  : contact.completeness_score >= 50
+                                    ? (theme === 'light' ? '#FEF3C7' : '#78350F')
+                                    : (theme === 'light' ? '#FEE2E2' : '#7F1D1D'),
+                                color: contact.completeness_score >= 80
+                                  ? '#059669'
+                                  : contact.completeness_score >= 50
+                                    ? '#D97706'
+                                    : '#DC2626'
+                              }}>
+                                {contact.completeness_score || 0}%
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
 
@@ -7389,6 +8417,37 @@ internet businesses.`;
         onFetchFromWhatsApp={profileImageModal.fetchFromWhatsApp}
         onRemoveImage={profileImageModal.removeProfileImage}
         theme={theme}
+      />
+
+      {/* Create Contact Modal */}
+      <CreateContactModal
+        isOpen={createContactModalOpen}
+        onClose={() => {
+          setCreateContactModalOpen(false);
+          setCreateContactEmail(null);
+        }}
+        emailData={createContactEmail}
+        theme={theme}
+        onSuccess={async (newContact) => {
+          // Remove from not in CRM list
+          if (createContactEmail?.email) {
+            setNotInCrmEmails(prev => prev.filter(item =>
+              item.email.toLowerCase() !== createContactEmail.email.toLowerCase()
+            ));
+            // Also remove from hold list if present
+            setHoldContacts(prev => prev.filter(c =>
+              c.email.toLowerCase() !== createContactEmail.email.toLowerCase()
+            ));
+            // Remove from contacts_hold table if it was there
+            await supabase
+              .from('contacts_hold')
+              .delete()
+              .eq('email', createContactEmail.email.toLowerCase());
+          }
+          // Refresh data integrity stats
+          fetchDataIntegrity();
+          toast.success(`Contact ${newContact.first_name} ${newContact.last_name} created successfully!`);
+        }}
       />
     </PageContainer>
   );
