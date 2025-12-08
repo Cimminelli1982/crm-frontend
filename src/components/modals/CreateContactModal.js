@@ -1,6 +1,97 @@
 import React, { useState, useEffect } from 'react';
+import styled from 'styled-components';
+import { FaBuilding, FaTimes, FaSearch, FaPlus, FaTrash, FaStar } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
+
+// Styled Components for Company Associations
+const ManageButton = styled.button`
+  background: #3B82F6;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  font-weight: 500;
+
+  &:hover {
+    background: #2563EB;
+  }
+`;
+
+const CompaniesContainer = styled.div`
+  padding: 16px;
+  border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  border-radius: 6px;
+  background-color: ${props => props.theme === 'light' ? '#F9FAFB' : '#111827'};
+  font-size: 14px;
+  min-height: 150px;
+  max-height: 300px;
+  overflow-y: auto;
+`;
+
+const CompanyItem = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px;
+  background-color: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+  border-radius: 4px;
+  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+`;
+
+const CompanyName = styled.div`
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const PrimaryBadge = styled.span`
+  font-size: 10px;
+  padding: 2px 6px;
+  background-color: #10B981;
+  color: white;
+  border-radius: 10px;
+  font-weight: 600;
+`;
+
+const CompanyFieldGroup = styled.div`
+  margin-top: 8px;
+  margin-bottom: 4px;
+`;
+
+const CompanyFieldLabel = styled.label`
+  font-size: 10px;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  margin-bottom: 2px;
+  display: block;
+`;
+
+const CompanySelect = styled.select`
+  width: 100%;
+  padding: 4px 8px;
+  font-size: 12px;
+  border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  border-radius: 4px;
+  background-color: ${props => props.theme === 'light' ? '#FFFFFF' : '#374151'};
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  font-family: inherit;
+  cursor: pointer;
+`;
+
+const EmptyState = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 80px;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  text-align: center;
+  gap: 8px;
+`;
 
 // Enum values from database (excluding Inbox - that's for unclassified contacts)
 const CATEGORY_OPTIONS = [
@@ -92,12 +183,15 @@ const CreateContactModal = ({
   const [category, setCategory] = useState('');
   const [markComplete, setMarkComplete] = useState(false);
 
-  // Tab 2 - Professional
-  const [companySearch, setCompanySearch] = useState('');
-  const [companyResults, setCompanyResults] = useState([]);
-  const [selectedCompany, setSelectedCompany] = useState(null);
-  const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
-  const [suggestedCompany, setSuggestedCompany] = useState(null);
+  // Tab 2 - Professional (Company Associations)
+  const [companies, setCompanies] = useState([]); // Array of company associations
+  const [companyModalOpen, setCompanyModalOpen] = useState(false);
+  const [modalCompanySearch, setModalCompanySearch] = useState('');
+  const [modalCompanyResults, setModalCompanyResults] = useState([]);
+  const [pendingNameUpdate, setPendingNameUpdate] = useState(null); // For debounced company name save
+  const [newCompanyDomain, setNewCompanyDomain] = useState('');
+  const [existingDomainCompany, setExistingDomainCompany] = useState(null); // {company_id, name}
+  const [checkingDomain, setCheckingDomain] = useState(false);
   const [jobRole, setJobRole] = useState('');
   const [linkedin, setLinkedin] = useState('');
   const [description, setDescription] = useState('');
@@ -122,7 +216,6 @@ const CreateContactModal = ({
 
   // Loading states
   const [saving, setSaving] = useState(false);
-  const [searchingCompany, setSearchingCompany] = useState(false);
   const [searchingCity, setSearchingCity] = useState(false);
   const [searchingTags, setSearchingTags] = useState(false);
 
@@ -191,9 +284,7 @@ const CreateContactModal = ({
       setJobRole(emailData.job_role || '');
       setLinkedin('');
       setDescription('');
-      setSelectedCompany(null);
-      setCompanySearch(emailData.company_name || '');
-      setSuggestedCompany(null);
+      setCompanies([]); // Reset companies array
 
       // Tab 3
       setMobile('');
@@ -231,58 +322,206 @@ const CreateContactModal = ({
     }
   }, [isOpen, emailData]);
 
-  // Company domain matching
+  // Company domain matching - adds company to the companies array
   const findCompanyByDomain = async (domain) => {
     try {
       const { data, error } = await supabase
         .from('company_domains')
         .select('company_id, domain, companies(company_id, name, category)')
-        .eq('domain', domain)
+        .ilike('domain', domain)
         .limit(1)
         .single();
 
       if (!error && data?.companies) {
-        setSuggestedCompany(data.companies);
-        setSelectedCompany(data.companies);
-        setCompanySearch('');
+        // Add to companies array as primary with correct nested structure
+        const newCompanyAssoc = {
+          contact_companies_id: `temp_${Date.now()}`,
+          company_id: data.companies.company_id,
+          companies: data.companies,  // Nested structure matching render expectations
+          is_primary: true,
+          relationship: 'not_set'
+        };
+        setCompanies([newCompanyAssoc]);
       }
     } catch (e) {
       // No company found
     }
   };
 
-  // Search companies
-  const searchCompanies = async (query) => {
+  // Search companies for modal
+  const searchModalCompanies = async (query) => {
     if (!query || query.length < 2) {
-      setCompanyResults([]);
+      setModalCompanyResults([]);
       return;
     }
-
-    setSearchingCompany(true);
     try {
       const { data, error } = await supabase
         .from('companies')
         .select('company_id, name, category')
         .ilike('name', `%${query}%`)
         .limit(10);
-
       if (!error) {
-        setCompanyResults(data || []);
+        setModalCompanyResults(data || []);
       }
     } catch (e) {
       console.error('Error searching companies:', e);
     }
-    setSearchingCompany(false);
   };
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (companySearch && !selectedCompany) {
-        searchCompanies(companySearch);
+      if (modalCompanySearch) {
+        searchModalCompanies(modalCompanySearch);
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [companySearch, selectedCompany]);
+  }, [modalCompanySearch]);
+
+  // Pre-populate domain when showing create option
+  useEffect(() => {
+    const isShowingCreateOption = modalCompanySearch.trim() &&
+      !modalCompanyResults.some(c => c.name.toLowerCase() === modalCompanySearch.toLowerCase());
+
+    if (isShowingCreateOption && companyModalOpen) {
+      const domain = extractDomain(email);
+      if (domain && !newCompanyDomain) {
+        setNewCompanyDomain(domain);
+        checkDomainExists(domain);
+      }
+    }
+  }, [modalCompanySearch, modalCompanyResults, companyModalOpen, email, newCompanyDomain]);
+
+  // Check domain when user edits it
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (newCompanyDomain) {
+        checkDomainExists(newCompanyDomain);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [newCompanyDomain]);
+
+  // Reset when modal closes
+  useEffect(() => {
+    if (!companyModalOpen) {
+      setNewCompanyDomain('');
+      setExistingDomainCompany(null);
+    }
+  }, [companyModalOpen]);
+
+  // Add company to associations
+  const handleAddCompany = (company) => {
+    // Check if already added
+    if (companies.find(c => c.companies?.company_id === company.company_id)) {
+      toast.error('Company already added');
+      return;
+    }
+    const newAssociation = {
+      contact_companies_id: `temp_${Date.now()}`, // Temporary ID for new contact
+      company_id: company.company_id,
+      companies: company,
+      relationship: 'not_set',
+      is_primary: companies.length === 0 // First company is primary
+    };
+    setCompanies([...companies, newAssociation]);
+    setModalCompanySearch('');
+    setModalCompanyResults([]);
+    toast.success(`Added ${company.name}`);
+  };
+
+  // Remove company from associations
+  const handleRemoveCompany = (companyAssociationId) => {
+    const toRemove = companies.find(c => c.contact_companies_id === companyAssociationId);
+    const updated = companies.filter(c => c.contact_companies_id !== companyAssociationId);
+    // If we removed the primary, make the first remaining one primary
+    if (toRemove?.is_primary && updated.length > 0) {
+      updated[0].is_primary = true;
+    }
+    setCompanies(updated);
+    toast.success('Company removed');
+  };
+
+  // Set company as primary
+  const handleSetPrimary = (companyAssociationId) => {
+    setCompanies(companies.map(c => ({
+      ...c,
+      is_primary: c.contact_companies_id === companyAssociationId
+    })));
+  };
+
+  // Update company relationship
+  const handleUpdateCompanyRelationship = (companyAssociationId, relationship) => {
+    setCompanies(companies.map(c =>
+      c.contact_companies_id === companyAssociationId
+        ? { ...c, relationship }
+        : c
+    ));
+  };
+
+  // Update company category - SAVE IMMEDIATELY TO DB
+  const handleUpdateCompanyCategory = async (companyId, newCategory) => {
+    // Update local state
+    setCompanies(companies.map(c =>
+      c.companies?.company_id === companyId
+        ? { ...c, companies: { ...c.companies, category: newCategory } }
+        : c
+    ));
+
+    // Save to DB immediately
+    if (companyId) {
+      try {
+        const { error } = await supabase
+          .from('companies')
+          .update({ category: newCategory })
+          .eq('company_id', companyId);
+
+        if (error) throw error;
+        toast.success('Company category updated');
+      } catch (err) {
+        console.error('Error updating company category:', err);
+        toast.error('Failed to update category');
+      }
+    }
+  };
+
+  // Update company name - updates local state, queues debounced DB save
+  const handleUpdateCompanyName = (companyId, associationId, newName) => {
+    // Update local state immediately
+    setCompanies(companies.map(c =>
+      c.contact_companies_id === associationId
+        ? { ...c, companies: { ...c.companies, name: newName } }
+        : c
+    ));
+
+    // Queue debounced DB update
+    setPendingNameUpdate({ companyId, name: newName });
+  };
+
+  // Debounced save for company name updates
+  useEffect(() => {
+    if (!pendingNameUpdate) return;
+
+    const timer = setTimeout(async () => {
+      const { companyId, name } = pendingNameUpdate;
+      if (companyId && name.trim()) {
+        try {
+          const { error } = await supabase
+            .from('companies')
+            .update({ name: name.trim() })
+            .eq('company_id', companyId);
+
+          if (!error) {
+            toast.success('Company name updated');
+          }
+        } catch (err) {
+          console.error('Error updating company name:', err);
+        }
+      }
+      setPendingNameUpdate(null);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [pendingNameUpdate]);
 
   // Search cities
   const searchCities = async (query) => {
@@ -352,11 +591,36 @@ const CreateContactModal = ({
     return () => clearTimeout(timer);
   }, [tagSearch]);
 
-  // Create new company if needed
-  const createNewCompany = async (name) => {
-    try {
-      const domain = extractDomain(email);
+  // Check if domain already exists and get associated company
+  const checkDomainExists = async (domain) => {
+    if (!domain || !domain.trim()) {
+      setExistingDomainCompany(null);
+      return;
+    }
 
+    setCheckingDomain(true);
+    try {
+      const { data, error } = await supabase
+        .from('company_domains')
+        .select('domain, company_id, companies(company_id, name, category)')
+        .ilike('domain', domain.trim())
+        .limit(1)
+        .single();
+
+      if (!error && data?.companies) {
+        setExistingDomainCompany(data.companies);
+      } else {
+        setExistingDomainCompany(null);
+      }
+    } catch (e) {
+      setExistingDomainCompany(null);
+    }
+    setCheckingDomain(false);
+  };
+
+  // Create new company with explicit domain (or no domain)
+  const createNewCompanyWithDomain = async (name, domain) => {
+    try {
       const { data: company, error: companyError } = await supabase
         .from('companies')
         .insert({ name, category: 'Inbox' })
@@ -365,12 +629,12 @@ const CreateContactModal = ({
 
       if (companyError) throw companyError;
 
-      if (domain && company) {
+      if (domain && domain.trim() && company) {
         await supabase
           .from('company_domains')
           .insert({
             company_id: company.company_id,
-            domain: domain,
+            domain: domain.toLowerCase().trim(),
             is_primary: true
           });
       }
@@ -428,13 +692,7 @@ const CreateContactModal = ({
 
     setSaving(true);
     try {
-      // Step 1: Handle company creation if needed
-      let companyToLink = selectedCompany;
-      if (!selectedCompany && companySearch.trim()) {
-        companyToLink = await createNewCompany(companySearch.trim());
-      }
-
-      // Step 2: Handle city creation if needed
+      // Step 1: Handle city creation if needed
       let cityToLink = selectedCity;
       if (!selectedCity && citySearch.trim()) {
         cityToLink = await createNewCity(citySearch.trim());
@@ -480,15 +738,27 @@ const CreateContactModal = ({
           });
       }
 
-      // Step 6: Create contact_companies if company selected
-      if (companyToLink) {
+      // Step 6: Create contact_companies for each company in the array
+      for (const companyAssoc of companies) {
         await supabase
           .from('contact_companies')
           .insert({
             contact_id: contact.contact_id,
-            company_id: companyToLink.company_id,
-            is_primary: true
+            company_id: companyAssoc.company_id,
+            is_primary: companyAssoc.is_primary || false,
+            relationship: companyAssoc.relationship || null
           });
+
+        // Update company name and category if changed
+        if (companyAssoc.companies?.company_id) {
+          await supabase
+            .from('companies')
+            .update({
+              name: companyAssoc.companies.name,
+              category: companyAssoc.companies.category
+            })
+            .eq('company_id', companyAssoc.companies.company_id);
+        }
       }
 
       // Step 7: Create contact_cities if city selected
@@ -773,118 +1043,100 @@ const CreateContactModal = ({
           {/* Tab 1 - Professional */}
           {activeTab === 1 && (
             <>
-              {/* Company */}
-              <div style={{ marginBottom: '16px', position: 'relative' }}>
-                <label style={labelStyle}>
-                  Company
-                  {suggestedCompany && selectedCompany?.company_id === suggestedCompany.company_id && (
-                    <span style={{ marginLeft: '8px', color: '#10B981', fontSize: '11px' }}>
-                      (matched from email domain)
-                    </span>
+              {/* Company Associations */}
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <label style={{ ...labelStyle, margin: 0 }}>Company Associations</label>
+                  <ManageButton onClick={() => setCompanyModalOpen(true)}>
+                    + Manage Companies
+                  </ManageButton>
+                </div>
+
+                <CompaniesContainer theme={theme}>
+                  {companies?.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {companies.map((companyRelation) => (
+                        <CompanyItem key={companyRelation.contact_companies_id} theme={theme}>
+                          <FaBuilding style={{ fontSize: '14px', color: '#3B82F6' }} />
+                          <div style={{ flex: 1 }}>
+                            <CompanyName theme={theme}>
+                              <input
+                                type="text"
+                                value={companyRelation.companies?.name || ''}
+                                onChange={(e) => handleUpdateCompanyName(
+                                  companyRelation.companies?.company_id,
+                                  companyRelation.contact_companies_id,
+                                  e.target.value
+                                )}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  borderBottom: `1px solid ${borderColor}`,
+                                  color: textColor,
+                                  fontWeight: 500,
+                                  fontSize: '14px',
+                                  padding: '2px 0',
+                                  width: '200px',
+                                  outline: 'none'
+                                }}
+                                placeholder="Company name"
+                              />
+                              {companyRelation.is_primary && (
+                                <PrimaryBadge>PRIMARY</PrimaryBadge>
+                              )}
+                            </CompanyName>
+
+                            {/* Relationship Type */}
+                            <CompanyFieldGroup>
+                              <CompanyFieldLabel theme={theme}>Relationship</CompanyFieldLabel>
+                              <CompanySelect
+                                value={companyRelation.relationship || 'not_set'}
+                                onChange={(e) => handleUpdateCompanyRelationship(companyRelation.contact_companies_id, e.target.value)}
+                                theme={theme}
+                              >
+                                <option value="not_set">Not Set</option>
+                                <option value="employee">Employee</option>
+                                <option value="founder">Founder</option>
+                                <option value="advisor">Advisor</option>
+                                <option value="manager">Manager</option>
+                                <option value="investor">Investor</option>
+                                <option value="other">Other</option>
+                              </CompanySelect>
+                            </CompanyFieldGroup>
+
+                            {/* Company Category */}
+                            <CompanyFieldGroup>
+                              <CompanyFieldLabel theme={theme}>Company Category</CompanyFieldLabel>
+                              <CompanySelect
+                                value={companyRelation.companies?.category || 'Not Set'}
+                                onChange={(e) => handleUpdateCompanyCategory(
+                                  companyRelation.companies?.company_id,
+                                  e.target.value
+                                )}
+                                theme={theme}
+                              >
+                                <option value="Not Set">Not Set</option>
+                                <option value="Advisory">Advisory</option>
+                                <option value="Corporate">Corporate</option>
+                                <option value="Corporation">Corporation</option>
+                                <option value="Institution">Institution</option>
+                                <option value="Media">Media</option>
+                                <option value="Professional Investor">Professional Investor</option>
+                                <option value="SME">SME</option>
+                                <option value="Startup">Startup</option>
+                              </CompanySelect>
+                            </CompanyFieldGroup>
+                          </div>
+                        </CompanyItem>
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyState theme={theme}>
+                      <FaBuilding style={{ fontSize: '24px', marginBottom: '8px', opacity: 0.5 }} />
+                      <span>No companies associated</span>
+                    </EmptyState>
                   )}
-                </label>
-
-                {selectedCompany ? (
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '10px 12px',
-                    background: selectedBg,
-                    borderRadius: '6px'
-                  }}>
-                    <span style={{ color: textColor, fontWeight: 500 }}>
-                      {selectedCompany.name}
-                    </span>
-                    <button
-                      onClick={() => {
-                        setSelectedCompany(null);
-                        setCompanySearch('');
-                      }}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        color: mutedColor,
-                        padding: '2px',
-                        fontSize: '16px'
-                      }}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <input
-                      type="text"
-                      value={companySearch}
-                      onChange={(e) => {
-                        setCompanySearch(e.target.value);
-                        setShowCompanyDropdown(true);
-                      }}
-                      onFocus={() => setShowCompanyDropdown(true)}
-                      placeholder="Search or create company..."
-                      style={inputStyle}
-                    />
-
-                    {showCompanyDropdown && (companyResults.length > 0 || companySearch.trim()) && (
-                      <div style={{
-                        position: 'absolute',
-                        top: '100%',
-                        left: 0,
-                        right: 0,
-                        background: bgColor,
-                        border: `1px solid ${borderColor}`,
-                        borderRadius: '6px',
-                        marginTop: '4px',
-                        maxHeight: '200px',
-                        overflow: 'auto',
-                        zIndex: 10,
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
-                      }}>
-                        {companyResults.map(company => (
-                          <div
-                            key={company.company_id}
-                            onClick={() => {
-                              setSelectedCompany(company);
-                              setCompanySearch('');
-                              setShowCompanyDropdown(false);
-                            }}
-                            style={{
-                              padding: '10px 12px',
-                              cursor: 'pointer',
-                              borderBottom: `1px solid ${borderColor}`,
-                              color: textColor
-                            }}
-                          >
-                            <div style={{ fontWeight: 500 }}>{company.name}</div>
-                            <div style={{ fontSize: '11px', color: mutedColor }}>{company.category}</div>
-                          </div>
-                        ))}
-
-                        {companySearch.trim() && !companyResults.some(c =>
-                          c.name.toLowerCase() === companySearch.toLowerCase()
-                        ) && (
-                          <div
-                            onClick={() => {
-                              setShowCompanyDropdown(false);
-                            }}
-                            style={{
-                              padding: '10px 12px',
-                              cursor: 'pointer',
-                              color: '#10B981',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '6px'
-                            }}
-                          >
-                            + Create "{companySearch}"
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </>
-                )}
+                </CompaniesContainer>
               </div>
 
               {/* Job Role */}
@@ -1297,7 +1549,14 @@ const CreateContactModal = ({
             </button>
             {activeTab < 3 ? (
               <button
-                onClick={() => setActiveTab(prev => prev + 1)}
+                onClick={() => {
+                  // Validate category on Tab 0 (Basic Info)
+                  if (activeTab === 0 && !category) {
+                    toast.error('Please select a category before proceeding');
+                    return;
+                  }
+                  setActiveTab(prev => prev + 1);
+                }}
                 style={{
                   padding: '10px 20px',
                   border: 'none',
@@ -1333,6 +1592,410 @@ const CreateContactModal = ({
           </div>
         </div>
       </div>
+
+      {/* Manage Company Associations Modal */}
+      {companyModalOpen && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000
+          }}
+        >
+          <div style={{
+            background: bgColor,
+            borderRadius: '12px',
+            width: '500px',
+            maxHeight: '80vh',
+            overflow: 'hidden',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '16px 20px',
+              borderBottom: `1px solid ${borderColor}`,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <h3 style={{ margin: 0, color: textColor, fontSize: '16px', fontWeight: 600 }}>
+                Manage Company Associations
+              </h3>
+              <button
+                onClick={() => {
+                  setCompanyModalOpen(false);
+                  setModalCompanySearch('');
+                  setModalCompanyResults([]);
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: mutedColor,
+                  fontSize: '20px',
+                  padding: '4px'
+                }}
+              >
+                <FaTimes />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '20px', maxHeight: '60vh', overflowY: 'auto' }}>
+              {/* Search Input */}
+              <div style={{ position: 'relative', marginBottom: '16px' }}>
+                <div style={{ position: 'relative' }}>
+                  <FaSearch style={{
+                    position: 'absolute',
+                    left: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: mutedColor,
+                    fontSize: '14px'
+                  }} />
+                  <input
+                    type="text"
+                    value={modalCompanySearch}
+                    onChange={(e) => setModalCompanySearch(e.target.value)}
+                    placeholder="Search companies to add..."
+                    style={{
+                      ...inputStyle,
+                      paddingLeft: '36px'
+                    }}
+                  />
+                </div>
+
+                {/* Search Results */}
+                {modalCompanyResults.length > 0 && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    background: bgColor,
+                    border: `1px solid ${borderColor}`,
+                    borderRadius: '6px',
+                    marginTop: '4px',
+                    maxHeight: '200px',
+                    overflow: 'auto',
+                    zIndex: 10,
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                  }}>
+                    {modalCompanyResults.map(company => (
+                      <div
+                        key={company.company_id}
+                        onClick={() => handleAddCompany(company)}
+                        style={{
+                          padding: '10px 12px',
+                          cursor: 'pointer',
+                          borderBottom: `1px solid ${borderColor}`,
+                          color: textColor,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
+                        }}
+                      >
+                        <FaPlus style={{ color: '#10B981', fontSize: '12px' }} />
+                        <div>
+                          <div style={{ fontWeight: 500 }}>{company.name}</div>
+                          <div style={{ fontSize: '11px', color: mutedColor }}>{company.category}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Create New Company Section */}
+                {modalCompanySearch.trim() && !modalCompanyResults.some(c =>
+                  c.name.toLowerCase() === modalCompanySearch.toLowerCase()
+                ) && (
+                  <div style={{ marginTop: '12px' }}>
+
+                    {/* Suggestion based on email domain */}
+                    {existingDomainCompany && (
+                      <>
+                        <div style={{
+                          padding: '12px 16px',
+                          background: theme === 'light' ? '#EEF2FF' : '#1e1b4b',
+                          borderRadius: '8px',
+                          border: `1px solid ${theme === 'light' ? '#C7D2FE' : '#3730a3'}`,
+                          marginBottom: '12px'
+                        }}>
+                          <div style={{
+                            fontSize: '12px',
+                            color: theme === 'light' ? '#6366F1' : '#A5B4FC',
+                            marginBottom: '8px',
+                            fontWeight: 500
+                          }}>
+                            Suggested (based on email domain):
+                          </div>
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <FaBuilding style={{ color: '#6366F1', fontSize: '14px' }} />
+                              <span style={{ color: textColor, fontWeight: 500 }}>
+                                {existingDomainCompany.name}
+                              </span>
+                              <span style={{
+                                fontSize: '11px',
+                                color: mutedColor,
+                                background: theme === 'light' ? '#E5E7EB' : '#374151',
+                                padding: '2px 6px',
+                                borderRadius: '4px'
+                              }}>
+                                {newCompanyDomain}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => {
+                                handleAddCompany(existingDomainCompany);
+                                setNewCompanyDomain('');
+                                setExistingDomainCompany(null);
+                                setModalCompanySearch('');
+                              }}
+                              style={{
+                                padding: '6px 12px',
+                                background: '#6366F1',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                fontSize: '13px',
+                                fontWeight: 500,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                            >
+                              <FaPlus size={10} /> Add
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* OR separator */}
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px',
+                          margin: '16px 0',
+                          color: mutedColor,
+                          fontSize: '12px'
+                        }}>
+                          <div style={{ flex: 1, height: '1px', background: borderColor }} />
+                          <span>OR</span>
+                          <div style={{ flex: 1, height: '1px', background: borderColor }} />
+                        </div>
+                      </>
+                    )}
+
+                    {/* Create new company */}
+                    <div style={{
+                      padding: '16px',
+                      background: theme === 'light' ? '#F0FDF4' : '#052e16',
+                      borderRadius: '8px',
+                      border: `1px solid ${theme === 'light' ? '#86EFAC' : '#166534'}`
+                    }}>
+                      <div style={{
+                        fontSize: '14px',
+                        fontWeight: 500,
+                        color: '#10B981',
+                        marginBottom: '12px'
+                      }}>
+                        Create new company: "{modalCompanySearch}"
+                      </div>
+
+                      {/* Domain field - optional */}
+                      <div style={{ marginBottom: '12px' }}>
+                        <label style={{
+                          fontSize: '12px',
+                          color: mutedColor,
+                          display: 'block',
+                          marginBottom: '4px'
+                        }}>
+                          Company Domain <span style={{ color: mutedColor }}>(optional)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={newCompanyDomain}
+                          onChange={(e) => setNewCompanyDomain(e.target.value)}
+                          placeholder="e.g. acme.com"
+                          style={{
+                            ...inputStyle,
+                            borderColor: existingDomainCompany ? '#F59E0B' : borderColor
+                          }}
+                        />
+                        {existingDomainCompany && (
+                          <div style={{
+                            fontSize: '11px',
+                            color: '#F59E0B',
+                            marginTop: '4px'
+                          }}>
+                            Domain "{newCompanyDomain}" is already used by "{existingDomainCompany.name}". Clear and enter a different domain, or leave empty.
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={async () => {
+                          try {
+                            // If domain exists for another company, create without domain
+                            const domainToUse = existingDomainCompany ? null : (newCompanyDomain.trim() || null);
+
+                            const newCompany = await createNewCompanyWithDomain(
+                              modalCompanySearch.trim(),
+                              domainToUse
+                            );
+                            handleAddCompany(newCompany);
+                            setNewCompanyDomain('');
+                            setExistingDomainCompany(null);
+                            toast.success(`Created "${modalCompanySearch}"${domainToUse ? ` with domain ${domainToUse}` : ''}`);
+                          } catch (error) {
+                            toast.error('Failed to create company: ' + error.message);
+                          }
+                        }}
+                        disabled={checkingDomain}
+                        style={{
+                          padding: '8px 16px',
+                          background: checkingDomain ? '#9CA3AF' : '#10B981',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: checkingDomain ? 'wait' : 'pointer',
+                          fontWeight: 500,
+                          fontSize: '14px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}
+                      >
+                        <FaPlus size={12} />
+                        {checkingDomain ? 'Checking...' : 'Create Company'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Current Companies List */}
+              <div style={{ marginTop: '20px' }}>
+                <h4 style={{ margin: '0 0 12px 0', color: textColor, fontSize: '14px', fontWeight: 500 }}>
+                  Associated Companies ({companies.length})
+                </h4>
+
+                {companies.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {companies.map((comp) => (
+                      <div
+                        key={comp.contact_companies_id}
+                        style={{
+                          padding: '12px',
+                          background: theme === 'light' ? '#F9FAFB' : '#1F2937',
+                          borderRadius: '8px',
+                          border: `1px solid ${borderColor}`
+                        }}
+                      >
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <FaBuilding style={{ color: '#3B82F6', fontSize: '14px' }} />
+                            <span style={{ color: textColor, fontWeight: 500 }}>
+                              {comp.companies?.name || 'Unknown'}
+                            </span>
+                            {comp.is_primary && (
+                              <PrimaryBadge>PRIMARY</PrimaryBadge>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {!comp.is_primary && (
+                              <button
+                                onClick={() => handleSetPrimary(comp.contact_companies_id)}
+                                style={{
+                                  padding: '4px 8px',
+                                  background: 'transparent',
+                                  border: `1px solid #10B981`,
+                                  borderRadius: '4px',
+                                  color: '#10B981',
+                                  fontSize: '11px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                <FaStar style={{ marginRight: '4px' }} />
+                                Set Primary
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleRemoveCompany(comp.contact_companies_id)}
+                              style={{
+                                padding: '4px 8px',
+                                background: 'transparent',
+                                border: 'none',
+                                color: '#EF4444',
+                                cursor: 'pointer',
+                                fontSize: '14px'
+                              }}
+                            >
+                              <FaTrash />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{
+                    padding: '24px',
+                    textAlign: 'center',
+                    color: mutedColor
+                  }}>
+                    No companies associated yet. Search above to add.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{
+              padding: '16px 20px',
+              borderTop: `1px solid ${borderColor}`,
+              display: 'flex',
+              justifyContent: 'flex-end'
+            }}>
+              <button
+                onClick={() => {
+                  setCompanyModalOpen(false);
+                  setModalCompanySearch('');
+                  setModalCompanyResults([]);
+                }}
+                style={{
+                  padding: '10px 20px',
+                  background: '#3B82F6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 500
+                }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
