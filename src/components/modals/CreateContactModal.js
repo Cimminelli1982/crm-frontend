@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { FaBuilding, FaTimes, FaSearch, FaPlus, FaTrash, FaStar } from 'react-icons/fa';
+import { FaBuilding, FaTimes, FaSearch, FaPlus, FaTrash, FaStar, FaMapMarkerAlt, FaTag, FaPhone } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
 
@@ -108,6 +108,15 @@ const WISHES_OPTIONS = [
   'whatsapp custom', 'call', 'present', 'no wishes'
 ];
 
+const FREQUENT_JOB_TITLES = [
+  'CEO & Co-Founder',
+  'VC',
+  'Family Office',
+  'Founder',
+  'Investor',
+  'Partner'
+];
+
 const AGENT_SERVICE_URL = 'https://crm-agent-api-production.up.railway.app';
 
 // Parse name from email address
@@ -197,27 +206,29 @@ const CreateContactModal = ({
   const [description, setDescription] = useState('');
 
   // Tab 3 - Contact Details
-  const [mobile, setMobile] = useState('');
+  const [mobiles, setMobiles] = useState([]); // Changed from single mobile
+  const [cities, setCities] = useState([]); // Changed from selectedCity
+  const [cityModalOpen, setCityModalOpen] = useState(false);
   const [citySearch, setCitySearch] = useState('');
   const [cityResults, setCityResults] = useState([]);
-  const [selectedCity, setSelectedCity] = useState(null);
-  const [showCityDropdown, setShowCityDropdown] = useState(false);
   const [birthday, setBirthday] = useState('');
 
   // Tab 4 - Preferences
   const [keepInTouchFrequency, setKeepInTouchFrequency] = useState('Not Set');
   const [score, setScore] = useState(3);
-  const [selectedTags, setSelectedTags] = useState([]);
+  const [tags, setTags] = useState([]); // Changed from selectedTags
+  const [tagModalOpen, setTagModalOpen] = useState(false);
   const [tagSearch, setTagSearch] = useState('');
   const [tagResults, setTagResults] = useState([]);
-  const [showTagDropdown, setShowTagDropdown] = useState(false);
   const [christmas, setChristmas] = useState('no wishes set');
   const [easter, setEaster] = useState('no wishes set');
 
+  // Mobile modal
+  const [mobileModalOpen, setMobileModalOpen] = useState(false);
+  const [newMobile, setNewMobile] = useState('');
+
   // Loading states
   const [saving, setSaving] = useState(false);
-  const [searchingCity, setSearchingCity] = useState(false);
-  const [searchingTags, setSearchingTags] = useState(false);
 
   // Store hold_id for deletion after save
   const [holdId, setHoldId] = useState(null);
@@ -287,15 +298,15 @@ const CreateContactModal = ({
       setCompanies([]); // Reset companies array
 
       // Tab 3
-      setMobile('');
-      setSelectedCity(null);
+      setMobiles([]);
+      setCities([]);
       setCitySearch('');
       setBirthday('');
 
       // Tab 4
       setKeepInTouchFrequency('Not Set');
       setScore(3);
-      setSelectedTags([]);
+      setTags([]);
       setTagSearch('');
       setChristmas('no wishes set');
       setEaster('no wishes set');
@@ -484,6 +495,106 @@ const CreateContactModal = ({
     }
   };
 
+  // === CITIES HANDLERS ===
+  const handleAddCity = (city) => {
+    if (cities.find(c => c.city_id === city.city_id)) {
+      toast.error('City already added');
+      return;
+    }
+    setCities([...cities, city]);
+    setCitySearch('');
+    setCityResults([]);
+    toast.success(`Added ${city.name}`);
+  };
+
+  const handleRemoveCity = (cityId) => {
+    setCities(cities.filter(c => c.city_id !== cityId));
+    toast.success('City removed');
+  };
+
+  const handleCreateCity = async (cityName) => {
+    try {
+      const { data: city, error } = await supabase
+        .from('cities')
+        .insert({ name: cityName })
+        .select()
+        .single();
+      if (error) throw error;
+      handleAddCity(city);
+      return city;
+    } catch (e) {
+      console.error('Error creating city:', e);
+      toast.error('Failed to create city');
+    }
+  };
+
+  // === MOBILES HANDLERS ===
+  const handleAddMobile = (mobileNumber) => {
+    if (!mobileNumber.trim()) return;
+    if (mobiles.find(m => m.number === mobileNumber)) {
+      toast.error('Mobile already added');
+      return;
+    }
+    const newMobileObj = {
+      id: `temp_${Date.now()}`,
+      number: mobileNumber.trim(),
+      is_primary: mobiles.length === 0
+    };
+    setMobiles([...mobiles, newMobileObj]);
+    setNewMobile('');
+    toast.success('Mobile added');
+  };
+
+  const handleRemoveMobile = (mobileId) => {
+    const updated = mobiles.filter(m => m.id !== mobileId);
+    // Make first one primary if we removed the primary
+    if (updated.length > 0 && !updated.some(m => m.is_primary)) {
+      updated[0].is_primary = true;
+    }
+    setMobiles(updated);
+    toast.success('Mobile removed');
+  };
+
+  const handleSetMobilePrimary = (mobileId) => {
+    setMobiles(mobiles.map(m => ({
+      ...m,
+      is_primary: m.id === mobileId
+    })));
+  };
+
+  // === TAGS HANDLERS ===
+  const handleAddTag = (tag) => {
+    if (tags.find(t => t.tag_id === tag.tag_id)) {
+      toast.error('Tag already added');
+      return;
+    }
+    setTags([...tags, tag]);
+    setTagSearch('');
+    setTagResults([]);
+    toast.success(`Added ${tag.name}`);
+  };
+
+  const handleRemoveTag = (tagId) => {
+    setTags(tags.filter(t => t.tag_id !== tagId));
+    toast.success('Tag removed');
+  };
+
+  const handleCreateTag = async (tagName) => {
+    try {
+      const { data: tag, error } = await supabase
+        .from('tags')
+        .insert({ name: tagName })
+        .select()
+        .single();
+      if (error) throw error;
+      handleAddTag(tag);
+      return tag;
+    } catch (e) {
+      console.error('Error creating tag:', e);
+      toast.error('Failed to create tag');
+    }
+  };
+
   // Update company name - updates local state, queues debounced DB save
   const handleUpdateCompanyName = (companyId, associationId, newName) => {
     // Update local state immediately
@@ -530,7 +641,6 @@ const CreateContactModal = ({
       return;
     }
 
-    setSearchingCity(true);
     try {
       const { data, error } = await supabase
         .from('cities')
@@ -544,17 +654,16 @@ const CreateContactModal = ({
     } catch (e) {
       console.error('Error searching cities:', e);
     }
-    setSearchingCity(false);
   };
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (citySearch && !selectedCity) {
+      if (citySearch && cityModalOpen) {
         searchCities(citySearch);
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [citySearch, selectedCity]);
+  }, [citySearch, cityModalOpen]);
 
   // Search tags
   const searchTags = async (query) => {
@@ -563,7 +672,6 @@ const CreateContactModal = ({
       return;
     }
 
-    setSearchingTags(true);
     try {
       const { data, error } = await supabase
         .from('tags')
@@ -573,23 +681,22 @@ const CreateContactModal = ({
 
       if (!error) {
         // Filter out already selected tags
-        const selectedIds = selectedTags.map(t => t.tag_id);
+        const selectedIds = tags.map(t => t.tag_id);
         setTagResults((data || []).filter(t => !selectedIds.includes(t.tag_id)));
       }
     } catch (e) {
       console.error('Error searching tags:', e);
     }
-    setSearchingTags(false);
   };
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (tagSearch) {
+      if (tagSearch && tagModalOpen) {
         searchTags(tagSearch);
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [tagSearch]);
+  }, [tagSearch, tagModalOpen]);
 
   // Check if domain already exists and get associated company
   const checkDomainExists = async (domain) => {
@@ -646,23 +753,6 @@ const CreateContactModal = ({
     }
   };
 
-  // Create new city if needed
-  const createNewCity = async (cityName) => {
-    try {
-      const { data: city, error: cityError } = await supabase
-        .from('cities')
-        .insert({ name: cityName })
-        .select()
-        .single();
-
-      if (cityError) throw cityError;
-      return city;
-    } catch (e) {
-      console.error('Error creating city:', e);
-      throw e;
-    }
-  };
-
   // Save handler
   const handleSave = async () => {
     // Validation
@@ -692,12 +782,6 @@ const CreateContactModal = ({
 
     setSaving(true);
     try {
-      // Step 1: Handle city creation if needed
-      let cityToLink = selectedCity;
-      if (!selectedCity && citySearch.trim()) {
-        cityToLink = await createNewCity(citySearch.trim());
-      }
-
       // Step 3: Create contact
       const { data: contact, error: contactError } = await supabase
         .from('contacts')
@@ -727,14 +811,14 @@ const CreateContactModal = ({
           is_primary: true
         });
 
-      // Step 5: Create contact_mobiles if mobile provided
-      if (mobile.trim()) {
+      // Step 5: Create contact_mobiles for each mobile
+      for (const mobileItem of mobiles) {
         await supabase
           .from('contact_mobiles')
           .insert({
             contact_id: contact.contact_id,
-            mobile: mobile.trim(),
-            is_primary: true
+            mobile: mobileItem.number,
+            is_primary: mobileItem.is_primary || false
           });
       }
 
@@ -761,18 +845,18 @@ const CreateContactModal = ({
         }
       }
 
-      // Step 7: Create contact_cities if city selected
-      if (cityToLink) {
+      // Step 7: Create contact_cities for each city
+      for (const city of cities) {
         await supabase
           .from('contact_cities')
           .insert({
             contact_id: contact.contact_id,
-            city_id: cityToLink.city_id
+            city_id: city.city_id
           });
       }
 
-      // Step 8: Create contact_tags for each selected tag
-      for (const tag of selectedTags) {
+      // Step 8: Create contact_tags for each tag
+      for (const tag of tags) {
         await supabase
           .from('contact_tags')
           .insert({
@@ -875,8 +959,10 @@ const CreateContactModal = ({
       <div style={{
         width: '100%',
         maxWidth: '650px',
-        maxHeight: '90vh',
-        overflow: 'auto',
+        height: '85vh',
+        maxHeight: '750px',
+        display: 'flex',
+        flexDirection: 'column',
         backgroundColor: bgColor,
         border: `1px solid ${borderColor}`,
         borderRadius: '12px',
@@ -888,7 +974,8 @@ const CreateContactModal = ({
           justifyContent: 'space-between',
           alignItems: 'center',
           padding: '16px 20px',
-          borderBottom: `1px solid ${borderColor}`
+          borderBottom: `1px solid ${borderColor}`,
+          flexShrink: 0
         }}>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: textColor }}>
             Add New Contact
@@ -914,7 +1001,8 @@ const CreateContactModal = ({
           gap: '4px',
           padding: '12px 20px',
           borderBottom: `1px solid ${borderColor}`,
-          background: isDark ? '#111827' : '#F3F4F6'
+          background: isDark ? '#111827' : '#F3F4F6',
+          flexShrink: 0
         }}>
           {tabs.map((tab, idx) => (
             <button
@@ -928,7 +1016,7 @@ const CreateContactModal = ({
         </div>
 
         {/* Tab Content */}
-        <div style={{ padding: '20px', minHeight: '320px' }}>
+        <div style={{ padding: '20px', flex: 1, overflowY: 'auto' }}>
           {/* Tab 0 - Basic Info */}
           {activeTab === 0 && (
             <>
@@ -1031,8 +1119,8 @@ const CreateContactModal = ({
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder={loadingAiSuggestion ? "Generating AI suggestion..." : "Brief description of this contact..."}
-                  rows={3}
-                  style={{ ...inputStyle, resize: 'vertical' }}
+                  rows={6}
+                  style={{ ...inputStyle, resize: 'vertical', minHeight: '120px' }}
                   disabled={loadingAiSuggestion}
                 />
               </div>
@@ -1139,21 +1227,80 @@ const CreateContactModal = ({
                 </CompaniesContainer>
               </div>
 
-              {/* Job Role */}
+              {/* Job Title */}
               <div style={{ marginBottom: '16px' }}>
-                <label style={labelStyle}>Job Role</label>
+                <label style={labelStyle}>Job Title</label>
                 <input
                   type="text"
                   value={jobRole}
                   onChange={(e) => setJobRole(e.target.value)}
-                  placeholder="CEO, Developer, etc."
+                  placeholder="Enter job title..."
                   style={inputStyle}
                 />
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginTop: '8px',
+                  flexWrap: 'wrap'
+                }}>
+                  <span style={{ fontSize: '12px', color: mutedColor }}>Frequently used:</span>
+                  {FREQUENT_JOB_TITLES.map(title => (
+                    <button
+                      key={title}
+                      type="button"
+                      onClick={() => setJobRole(title)}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '12px',
+                        border: `1px solid ${borderColor}`,
+                        borderRadius: '4px',
+                        backgroundColor: jobRole === title ? '#3B82F6' : inputBg,
+                        color: jobRole === title ? 'white' : textColor,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {title}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* LinkedIn */}
               <div style={{ marginBottom: '16px' }}>
-                <label style={labelStyle}>LinkedIn URL</label>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '4px'
+                }}>
+                  <label style={{ ...labelStyle, margin: 0 }}>LinkedIn Profile</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const searchQuery = `${firstName} ${lastName}`.trim();
+                      if (!searchQuery) {
+                        toast.error('Enter first and last name first');
+                        return;
+                      }
+                      window.open(`https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(searchQuery)}`, '_blank');
+                    }}
+                    style={{
+                      padding: '4px 10px',
+                      fontSize: '12px',
+                      background: '#3B82F6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    Search on LinkedIn
+                  </button>
+                </div>
                 <input
                   type="url"
                   value={linkedin}
@@ -1168,125 +1315,189 @@ const CreateContactModal = ({
           {/* Tab 2 - Contact Details */}
           {activeTab === 2 && (
             <>
-              {/* Mobile */}
-              <div style={{ marginBottom: '16px' }}>
-                <label style={labelStyle}>Mobile Phone</label>
-                <input
-                  type="tel"
-                  value={mobile}
-                  onChange={(e) => setMobile(e.target.value)}
-                  placeholder="+1 234 567 8900"
-                  style={inputStyle}
-                />
+              {/* Mobiles Section */}
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <label style={{ ...labelStyle, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <FaPhone style={{ color: '#3B82F6' }} /> Mobile Numbers
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setMobileModalOpen(true)}
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: '12px',
+                      background: '#3B82F6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontWeight: 500
+                    }}
+                  >
+                    + Add Mobile
+                  </button>
+                </div>
+
+                <div style={{
+                  padding: '16px',
+                  border: `1px solid ${borderColor}`,
+                  borderRadius: '6px',
+                  backgroundColor: inputBg,
+                  minHeight: '80px'
+                }}>
+                  {mobiles.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {mobiles.map((mobile) => (
+                        <div
+                          key={mobile.id}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '8px 12px',
+                            background: bgColor,
+                            borderRadius: '6px',
+                            border: `1px solid ${borderColor}`
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <FaPhone style={{ color: '#3B82F6', fontSize: '12px' }} />
+                            <span style={{ color: textColor }}>{mobile.number}</span>
+                            {mobile.is_primary && <PrimaryBadge>PRIMARY</PrimaryBadge>}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {!mobile.is_primary && mobiles.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleSetMobilePrimary(mobile.id)}
+                                style={{
+                                  padding: '2px 6px',
+                                  fontSize: '10px',
+                                  background: 'transparent',
+                                  color: '#10B981',
+                                  border: '1px solid #10B981',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                Set Primary
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveMobile(mobile.id)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#EF4444',
+                                cursor: 'pointer',
+                                padding: '4px'
+                              }}
+                            >
+                              <FaTrash size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      height: '60px',
+                      color: mutedColor
+                    }}>
+                      <FaPhone style={{ fontSize: '20px', marginBottom: '8px', opacity: 0.5 }} />
+                      <span>No mobile numbers added</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* City */}
-              <div style={{ marginBottom: '16px', position: 'relative' }}>
-                <label style={labelStyle}>City</label>
+              {/* Cities Section */}
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <label style={{ ...labelStyle, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <FaMapMarkerAlt style={{ color: '#3B82F6' }} /> Cities
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setCityModalOpen(true)}
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: '12px',
+                      background: '#3B82F6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontWeight: 500
+                    }}
+                  >
+                    + Add Cities
+                  </button>
+                </div>
 
-                {selectedCity ? (
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '10px 12px',
-                    background: selectedBg,
-                    borderRadius: '6px'
-                  }}>
-                    <span style={{ color: textColor, fontWeight: 500 }}>
-                      {selectedCity.name}{selectedCity.country ? `, ${selectedCity.country}` : ''}
-                    </span>
-                    <button
-                      onClick={() => {
-                        setSelectedCity(null);
-                        setCitySearch('');
-                      }}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        color: mutedColor,
-                        padding: '2px',
-                        fontSize: '16px'
-                      }}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <input
-                      type="text"
-                      value={citySearch}
-                      onChange={(e) => {
-                        setCitySearch(e.target.value);
-                        setShowCityDropdown(true);
-                      }}
-                      onFocus={() => setShowCityDropdown(true)}
-                      placeholder="Search or create city..."
-                      style={inputStyle}
-                    />
-
-                    {showCityDropdown && (cityResults.length > 0 || citySearch.trim()) && (
-                      <div style={{
-                        position: 'absolute',
-                        top: '100%',
-                        left: 0,
-                        right: 0,
-                        background: bgColor,
-                        border: `1px solid ${borderColor}`,
-                        borderRadius: '6px',
-                        marginTop: '4px',
-                        maxHeight: '200px',
-                        overflow: 'auto',
-                        zIndex: 10,
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
-                      }}>
-                        {cityResults.map(city => (
-                          <div
-                            key={city.city_id}
-                            onClick={() => {
-                              setSelectedCity(city);
-                              setCitySearch('');
-                              setShowCityDropdown(false);
-                            }}
+                <div style={{
+                  padding: '16px',
+                  border: `1px solid ${borderColor}`,
+                  borderRadius: '6px',
+                  backgroundColor: inputBg,
+                  minHeight: '80px'
+                }}>
+                  {cities.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {cities.map((city) => (
+                        <div
+                          key={city.city_id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '6px 12px',
+                            background: bgColor,
+                            borderRadius: '16px',
+                            border: `1px solid ${borderColor}`
+                          }}
+                        >
+                          <FaMapMarkerAlt style={{ color: '#3B82F6', fontSize: '12px' }} />
+                          <span style={{ color: textColor, fontSize: '13px' }}>
+                            {city.name}{city.country ? `, ${city.country}` : ''}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveCity(city.city_id)}
                             style={{
-                              padding: '10px 12px',
+                              background: 'none',
+                              border: 'none',
+                              color: '#EF4444',
                               cursor: 'pointer',
-                              borderBottom: `1px solid ${borderColor}`,
-                              color: textColor
+                              padding: '2px',
+                              display: 'flex'
                             }}
                           >
-                            <div style={{ fontWeight: 500 }}>{city.name}</div>
-                            {city.country && (
-                              <div style={{ fontSize: '11px', color: mutedColor }}>{city.country}</div>
-                            )}
-                          </div>
-                        ))}
-
-                        {citySearch.trim() && !cityResults.some(c =>
-                          c.name.toLowerCase() === citySearch.toLowerCase()
-                        ) && (
-                          <div
-                            onClick={() => {
-                              setShowCityDropdown(false);
-                            }}
-                            style={{
-                              padding: '10px 12px',
-                              cursor: 'pointer',
-                              color: '#10B981',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '6px'
-                            }}
-                          >
-                            + Create "{citySearch}"
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </>
-                )}
+                            <FaTimes size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      height: '60px',
+                      color: mutedColor
+                    }}>
+                      <FaMapMarkerAlt style={{ fontSize: '20px', marginBottom: '8px', opacity: 0.5 }} />
+                      <span>No cities associated</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Birthday */}
@@ -1346,99 +1557,84 @@ const CreateContactModal = ({
                 </div>
               </div>
 
-              {/* Tags */}
-              <div style={{ marginBottom: '16px', position: 'relative' }}>
-                <label style={labelStyle}>Tags</label>
+              {/* Tags Section */}
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <label style={{ ...labelStyle, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <FaTag style={{ color: '#3B82F6' }} /> Tags
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setTagModalOpen(true)}
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: '12px',
+                      background: '#3B82F6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontWeight: 500
+                    }}
+                  >
+                    + Add Tags
+                  </button>
+                </div>
 
-                {/* Selected tags */}
-                {selectedTags.length > 0 && (
-                  <div style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: '6px',
-                    marginBottom: '8px'
-                  }}>
-                    {selectedTags.map(tag => (
-                      <span
-                        key={tag.tag_id}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '4px 10px',
-                          background: '#10B981',
-                          color: 'white',
-                          borderRadius: '16px',
-                          fontSize: '12px'
-                        }}
-                      >
-                        {tag.name}
-                        <button
-                          onClick={() => setSelectedTags(prev => prev.filter(t => t.tag_id !== tag.tag_id))}
+                <div style={{
+                  padding: '16px',
+                  border: `1px solid ${borderColor}`,
+                  borderRadius: '6px',
+                  backgroundColor: inputBg,
+                  minHeight: '80px'
+                }}>
+                  {tags.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {tags.map((tag) => (
+                        <div
+                          key={tag.tag_id}
                           style={{
-                            background: 'none',
-                            border: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '6px 12px',
+                            background: '#10B981',
                             color: 'white',
-                            cursor: 'pointer',
-                            padding: 0,
-                            fontSize: '14px',
-                            lineHeight: 1
+                            borderRadius: '16px'
                           }}
                         >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                <input
-                  type="text"
-                  value={tagSearch}
-                  onChange={(e) => {
-                    setTagSearch(e.target.value);
-                    setShowTagDropdown(true);
-                  }}
-                  onFocus={() => setShowTagDropdown(true)}
-                  placeholder="Search tags..."
-                  style={inputStyle}
-                />
-
-                {showTagDropdown && tagResults.length > 0 && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '100%',
-                    left: 0,
-                    right: 0,
-                    background: bgColor,
-                    border: `1px solid ${borderColor}`,
-                    borderRadius: '6px',
-                    marginTop: '4px',
-                    maxHeight: '150px',
-                    overflow: 'auto',
-                    zIndex: 10,
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
-                  }}>
-                    {tagResults.map(tag => (
-                      <div
-                        key={tag.tag_id}
-                        onClick={() => {
-                          setSelectedTags(prev => [...prev, tag]);
-                          setTagSearch('');
-                          setShowTagDropdown(false);
-                        }}
-                        style={{
-                          padding: '10px 12px',
-                          cursor: 'pointer',
-                          borderBottom: `1px solid ${borderColor}`,
-                          color: textColor
-                        }}
-                      >
-                        {tag.name}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                          <span style={{ fontSize: '13px' }}>{tag.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveTag(tag.tag_id)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: 'white',
+                              cursor: 'pointer',
+                              padding: '2px',
+                              display: 'flex'
+                            }}
+                          >
+                            <FaTimes size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      height: '60px',
+                      color: mutedColor
+                    }}>
+                      <FaTag style={{ fontSize: '20px', marginBottom: '8px', opacity: 0.5 }} />
+                      <span>No tags associated</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Christmas & Easter row */}
@@ -1511,7 +1707,8 @@ const CreateContactModal = ({
           alignItems: 'center',
           padding: '16px 20px',
           borderTop: `1px solid ${borderColor}`,
-          background: isDark ? '#111827' : '#F3F4F6'
+          background: isDark ? '#111827' : '#F3F4F6',
+          flexShrink: 0
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             {activeTab > 0 && (
@@ -1992,6 +2189,250 @@ const CreateContactModal = ({
               >
                 Done
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Modal */}
+      {mobileModalOpen && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000
+          }}
+        >
+          <div style={{
+            background: bgColor,
+            borderRadius: '12px',
+            width: '400px',
+            padding: '20px',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, color: textColor, fontSize: '16px' }}>Add Mobile Number</h3>
+              <button onClick={() => setMobileModalOpen(false)} style={{ background: 'none', border: 'none', color: mutedColor, cursor: 'pointer', fontSize: '20px' }}>
+                <FaTimes />
+              </button>
+            </div>
+            <input
+              type="tel"
+              value={newMobile}
+              onChange={(e) => setNewMobile(e.target.value)}
+              placeholder="+1 234 567 8900"
+              style={{ ...inputStyle, marginBottom: '16px' }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setMobileModalOpen(false)}
+                style={{ padding: '8px 16px', background: 'transparent', border: `1px solid ${borderColor}`, borderRadius: '6px', color: textColor, cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  handleAddMobile(newMobile);
+                  setMobileModalOpen(false);
+                }}
+                disabled={!newMobile.trim()}
+                style={{ padding: '8px 16px', background: '#10B981', border: 'none', borderRadius: '6px', color: 'white', cursor: 'pointer', opacity: newMobile.trim() ? 1 : 0.5 }}
+              >
+                Add Mobile
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* City Modal */}
+      {cityModalOpen && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000
+          }}
+        >
+          <div style={{
+            background: bgColor,
+            borderRadius: '12px',
+            width: '450px',
+            maxHeight: '80vh',
+            overflow: 'hidden',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+          }}>
+            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${borderColor}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, color: textColor, fontSize: '16px' }}>Add City</h3>
+              <button onClick={() => { setCityModalOpen(false); setCitySearch(''); setCityResults([]); }} style={{ background: 'none', border: 'none', color: mutedColor, cursor: 'pointer', fontSize: '20px' }}>
+                <FaTimes />
+              </button>
+            </div>
+            <div style={{ padding: '20px' }}>
+              <div style={{ position: 'relative', marginBottom: '16px' }}>
+                <FaSearch style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: mutedColor }} />
+                <input
+                  type="text"
+                  value={citySearch}
+                  onChange={(e) => setCitySearch(e.target.value)}
+                  placeholder="Search cities..."
+                  style={{ ...inputStyle, paddingLeft: '36px' }}
+                  autoFocus
+                />
+              </div>
+
+              {cityResults.length > 0 && (
+                <div style={{ maxHeight: '200px', overflow: 'auto', marginBottom: '12px' }}>
+                  {cityResults.map(city => (
+                    <div
+                      key={city.city_id}
+                      onClick={() => { handleAddCity(city); setCityModalOpen(false); }}
+                      style={{
+                        padding: '10px 12px',
+                        cursor: 'pointer',
+                        borderBottom: `1px solid ${borderColor}`,
+                        color: textColor,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}
+                    >
+                      <FaPlus style={{ color: '#10B981', fontSize: '12px' }} />
+                      <div>
+                        <div style={{ fontWeight: 500 }}>{city.name}</div>
+                        {city.country && <div style={{ fontSize: '11px', color: mutedColor }}>{city.country}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {citySearch.trim() && !cityResults.some(c => c.name.toLowerCase() === citySearch.toLowerCase()) && (
+                <button
+                  onClick={async () => {
+                    await handleCreateCity(citySearch.trim());
+                    setCityModalOpen(false);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    background: '#10B981',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <FaPlus size={12} /> Create "{citySearch}"
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tag Modal */}
+      {tagModalOpen && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000
+          }}
+        >
+          <div style={{
+            background: bgColor,
+            borderRadius: '12px',
+            width: '450px',
+            maxHeight: '80vh',
+            overflow: 'hidden',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+          }}>
+            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${borderColor}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, color: textColor, fontSize: '16px' }}>Add Tag</h3>
+              <button onClick={() => { setTagModalOpen(false); setTagSearch(''); setTagResults([]); }} style={{ background: 'none', border: 'none', color: mutedColor, cursor: 'pointer', fontSize: '20px' }}>
+                <FaTimes />
+              </button>
+            </div>
+            <div style={{ padding: '20px' }}>
+              <div style={{ position: 'relative', marginBottom: '16px' }}>
+                <FaSearch style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: mutedColor }} />
+                <input
+                  type="text"
+                  value={tagSearch}
+                  onChange={(e) => setTagSearch(e.target.value)}
+                  placeholder="Search tags..."
+                  style={{ ...inputStyle, paddingLeft: '36px' }}
+                  autoFocus
+                />
+              </div>
+
+              {tagResults.length > 0 && (
+                <div style={{ maxHeight: '200px', overflow: 'auto', marginBottom: '12px' }}>
+                  {tagResults.map(tag => (
+                    <div
+                      key={tag.tag_id}
+                      onClick={() => { handleAddTag(tag); setTagModalOpen(false); }}
+                      style={{
+                        padding: '10px 12px',
+                        cursor: 'pointer',
+                        borderBottom: `1px solid ${borderColor}`,
+                        color: textColor,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}
+                    >
+                      <FaPlus style={{ color: '#10B981', fontSize: '12px' }} />
+                      <span>{tag.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {tagSearch.trim() && !tagResults.some(t => t.name.toLowerCase() === tagSearch.toLowerCase()) && (
+                <button
+                  onClick={async () => {
+                    await handleCreateTag(tagSearch.trim());
+                    setTagModalOpen(false);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    background: '#10B981',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <FaPlus size={12} /> Create "{tagSearch}"
+                </button>
+              )}
             </div>
           </div>
         </div>
