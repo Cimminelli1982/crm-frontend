@@ -190,7 +190,7 @@ const CreateContactModal = ({
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [category, setCategory] = useState('');
-  const [markComplete, setMarkComplete] = useState(false);
+  const [markComplete, setMarkComplete] = useState(true); // Default ON in Review tab
 
   // Tab 2 - Professional (Company Associations)
   const [companies, setCompanies] = useState([]); // Array of company associations
@@ -215,7 +215,7 @@ const CreateContactModal = ({
 
   // Tab 4 - Preferences
   const [keepInTouchFrequency, setKeepInTouchFrequency] = useState('Not Set');
-  const [score, setScore] = useState(3);
+  const [score, setScore] = useState(null); // Optional - can be null
   const [tags, setTags] = useState([]); // Changed from selectedTags
   const [tagModalOpen, setTagModalOpen] = useState(false);
   const [tagSearch, setTagSearch] = useState('');
@@ -236,6 +236,7 @@ const CreateContactModal = ({
   // AI Suggestion states
   const [loadingAiSuggestion, setLoadingAiSuggestion] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState(null); // { description, category }
+  const [suggestedMobiles, setSuggestedMobiles] = useState([]); // Phone numbers extracted from email body
 
   // Fetch AI suggestion for contact profile
   const fetchAiSuggestion = async (data) => {
@@ -941,7 +942,7 @@ const CreateContactModal = ({
     transition: 'all 0.2s'
   });
 
-  const tabs = ['Basic Info', 'Professional', 'Contact Details', 'Preferences'];
+  const tabs = ['Basic Info', 'Professional', 'Contact Details', 'Preferences', 'Review'];
 
   return (
     <div style={{
@@ -1532,12 +1533,12 @@ const CreateContactModal = ({
 
               {/* Score */}
               <div style={{ marginBottom: '16px' }}>
-                <label style={labelStyle}>Score (1-5)</label>
+                <label style={labelStyle}>Score (1-5) <span style={{ fontWeight: 400, color: mutedColor }}>(optional - click again to deselect)</span></label>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   {[1, 2, 3, 4, 5].map(num => (
                     <button
                       key={num}
-                      onClick={() => setScore(num)}
+                      onClick={() => setScore(score === num ? null : num)}
                       style={{
                         width: '44px',
                         height: '44px',
@@ -1664,35 +1665,227 @@ const CreateContactModal = ({
                   </select>
                 </div>
               </div>
+            </>
+          )}
 
-              {/* Mark as complete - in fondo al Tab 4 */}
+          {/* Tab 4 - Review */}
+          {activeTab === 4 && (
+            <>
+              {/* Missing Fields Warning */}
+              {(() => {
+                const missingFields = [];
+                if (!firstName.trim()) missingFields.push('First Name');
+                if (!lastName.trim()) missingFields.push('Last Name');
+                if (emails.length === 0) missingFields.push('Email');
+                if (companies.length === 0) missingFields.push('Company');
+                if (!category || category === 'Inbox') missingFields.push('Category');
+                if (mobiles.length === 0) missingFields.push('Mobile');
+                if (cities.length === 0) missingFields.push('City');
+                if (tags.length === 0) missingFields.push('Tags');
+                if (!jobRole.trim()) missingFields.push('Job Title');
+                if (!linkedin.trim()) missingFields.push('LinkedIn');
+
+                return missingFields.length > 0 ? (
+                  <div style={{
+                    marginBottom: '16px',
+                    padding: '12px 16px',
+                    background: isDark ? '#7F1D1D' : '#FEF2F2',
+                    border: `1px solid ${isDark ? '#DC2626' : '#FECACA'}`,
+                    borderRadius: '8px'
+                  }}>
+                    <div style={{
+                      fontWeight: 600,
+                      color: isDark ? '#FCA5A5' : '#DC2626',
+                      marginBottom: '8px',
+                      fontSize: '14px'
+                    }}>
+                      Missing Fields ({missingFields.length})
+                    </div>
+                    <div style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: '6px'
+                    }}>
+                      {missingFields.map(field => (
+                        <span key={field} style={{
+                          padding: '4px 10px',
+                          background: isDark ? '#991B1B' : '#FEE2E2',
+                          color: isDark ? '#FCA5A5' : '#B91C1C',
+                          borderRadius: '12px',
+                          fontSize: '12px'
+                        }}>
+                          {field}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{
+                    marginBottom: '16px',
+                    padding: '12px 16px',
+                    background: isDark ? '#064E3B' : '#F0FDF4',
+                    border: `1px solid ${isDark ? '#10B981' : '#BBF7D0'}`,
+                    borderRadius: '8px'
+                  }}>
+                    <div style={{
+                      fontWeight: 600,
+                      color: isDark ? '#6EE7B7' : '#16A34A',
+                      fontSize: '14px'
+                    }}>
+                      All fields complete!
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Recap Section */}
               <div style={{
-                marginTop: '24px',
-                paddingTop: '16px',
-                borderTop: `1px solid ${borderColor}`
+                marginBottom: '16px',
+                padding: '16px',
+                background: isDark ? '#111827' : '#F9FAFB',
+                border: `1px solid ${borderColor}`,
+                borderRadius: '8px'
+              }}>
+                <div style={{
+                  fontWeight: 600,
+                  color: textColor,
+                  marginBottom: '12px',
+                  fontSize: '14px',
+                  borderBottom: `1px solid ${borderColor}`,
+                  paddingBottom: '8px'
+                }}>
+                  Contact Summary
+                </div>
+
+                {/* Basic Info */}
+                <div style={{ marginBottom: '12px' }}>
+                  <div style={{ fontSize: '11px', color: mutedColor, marginBottom: '4px', textTransform: 'uppercase' }}>Basic Info</div>
+                  <div style={{ fontSize: '14px', color: textColor }}>
+                    <strong>{firstName} {lastName}</strong>
+                    {category && category !== 'Inbox' && <span style={{ marginLeft: '8px', padding: '2px 8px', background: '#3B82F6', color: 'white', borderRadius: '10px', fontSize: '11px' }}>{category}</span>}
+                  </div>
+                </div>
+
+                {/* Emails */}
+                {emails.length > 0 && (
+                  <div style={{ marginBottom: '12px' }}>
+                    <div style={{ fontSize: '11px', color: mutedColor, marginBottom: '4px', textTransform: 'uppercase' }}>Emails ({emails.length})</div>
+                    <div style={{ fontSize: '13px', color: textColor }}>
+                      {emails.map((e, i) => (
+                        <div key={i}>{e.email} {e.is_primary && <span style={{ color: '#10B981', fontSize: '10px' }}>PRIMARY</span>}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Companies */}
+                {companies.length > 0 && (
+                  <div style={{ marginBottom: '12px' }}>
+                    <div style={{ fontSize: '11px', color: mutedColor, marginBottom: '4px', textTransform: 'uppercase' }}>Companies ({companies.length})</div>
+                    <div style={{ fontSize: '13px', color: textColor }}>
+                      {companies.map((c, i) => (
+                        <div key={i}>
+                          {c.company?.name || c.companies?.name || c.name || 'Unknown'}
+                          {c.is_primary && <span style={{ color: '#10B981', fontSize: '10px', marginLeft: '6px' }}>PRIMARY</span>}
+                          {c.relationship && c.relationship !== 'not_set' && <span style={{ color: mutedColor, fontSize: '11px', marginLeft: '6px' }}>({c.relationship})</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Job & LinkedIn */}
+                {(jobRole || linkedin) && (
+                  <div style={{ marginBottom: '12px' }}>
+                    <div style={{ fontSize: '11px', color: mutedColor, marginBottom: '4px', textTransform: 'uppercase' }}>Professional</div>
+                    <div style={{ fontSize: '13px', color: textColor }}>
+                      {jobRole && <div>Job: {jobRole}</div>}
+                      {linkedin && <div>LinkedIn: {linkedin.length > 40 ? linkedin.substring(0, 40) + '...' : linkedin}</div>}
+                    </div>
+                  </div>
+                )}
+
+                {/* Mobiles */}
+                {mobiles.length > 0 && (
+                  <div style={{ marginBottom: '12px' }}>
+                    <div style={{ fontSize: '11px', color: mutedColor, marginBottom: '4px', textTransform: 'uppercase' }}>Mobiles ({mobiles.length})</div>
+                    <div style={{ fontSize: '13px', color: textColor }}>
+                      {mobiles.map((m, i) => (
+                        <div key={i}>{m.number} {m.is_primary && <span style={{ color: '#10B981', fontSize: '10px' }}>PRIMARY</span>}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Cities */}
+                {cities.length > 0 && (
+                  <div style={{ marginBottom: '12px' }}>
+                    <div style={{ fontSize: '11px', color: mutedColor, marginBottom: '4px', textTransform: 'uppercase' }}>Cities ({cities.length})</div>
+                    <div style={{ fontSize: '13px', color: textColor }}>
+                      {cities.map((c, i) => (
+                        <span key={i}>{c.name}{i < cities.length - 1 ? ', ' : ''}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Tags */}
+                {tags.length > 0 && (
+                  <div style={{ marginBottom: '12px' }}>
+                    <div style={{ fontSize: '11px', color: mutedColor, marginBottom: '4px', textTransform: 'uppercase' }}>Tags ({tags.length})</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                      {tags.map((t, i) => (
+                        <span key={i} style={{ padding: '2px 8px', background: '#10B981', color: 'white', borderRadius: '10px', fontSize: '11px' }}>{t.name}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Preferences */}
+                <div style={{ marginBottom: '0' }}>
+                  <div style={{ fontSize: '11px', color: mutedColor, marginBottom: '4px', textTransform: 'uppercase' }}>Preferences</div>
+                  <div style={{ fontSize: '13px', color: textColor }}>
+                    Score: {score !== null ? `${score}/5` : 'Not set'} | Keep in Touch: {keepInTouchFrequency}
+                    {birthday && <span> | Birthday: {birthday}</span>}
+                  </div>
+                </div>
+              </div>
+
+              {/* Mark as complete */}
+              <div style={{
+                padding: '16px',
+                background: isDark ? '#1E3A8A' : '#EFF6FF',
+                border: `1px solid ${isDark ? '#3B82F6' : '#BFDBFE'}`,
+                borderRadius: '8px'
               }}>
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '10px',
-                  padding: '12px',
-                  background: isDark ? '#111827' : '#F3F4F6',
-                  borderRadius: '8px'
+                  gap: '12px'
                 }}>
                   <input
                     type="checkbox"
                     id="markComplete"
                     checked={markComplete}
                     onChange={(e) => setMarkComplete(e.target.checked)}
-                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                    style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: '#3B82F6' }}
                   />
                   <label htmlFor="markComplete" style={{
                     color: textColor,
                     fontSize: '14px',
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    fontWeight: 500
                   }}>
-                    Mark as complete (won't appear in "missing info" list)
+                    Mark as complete
                   </label>
+                </div>
+                <div style={{
+                  marginTop: '8px',
+                  marginLeft: '32px',
+                  fontSize: '12px',
+                  color: mutedColor
+                }}>
+                  Contact won't appear in "missing info" list
                 </div>
               </div>
             </>
@@ -1744,12 +1937,17 @@ const CreateContactModal = ({
             >
               Cancel
             </button>
-            {activeTab < 3 ? (
+            {activeTab < 4 ? (
               <button
                 onClick={() => {
                   // Validate category on Tab 0 (Basic Info)
                   if (activeTab === 0 && !category) {
                     toast.error('Please select a category before proceeding');
+                    return;
+                  }
+                  // Validate Keep in Touch on Tab 3 (Preferences)
+                  if (activeTab === 3 && keepInTouchFrequency === 'Not Set') {
+                    toast.error('Please set Keep in Touch frequency before proceeding');
                     return;
                   }
                   setActiveTab(prev => prev + 1);
