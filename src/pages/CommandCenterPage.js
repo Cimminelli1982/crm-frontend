@@ -75,6 +75,15 @@ const Badge = styled.span`
   font-size: 12px;
 `;
 
+const UnreadDot = styled.span`
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: ${props => props.$active ? '#FFFFFF' : '#3B82F6'};
+  margin-left: 6px;
+  flex-shrink: 0;
+`;
+
 // Main content area with 3 panels
 const MainContent = styled.div`
   flex: 1;
@@ -136,12 +145,23 @@ const EmailItem = styled.div`
 `;
 
 const EmailSender = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 600;
   color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
   margin-bottom: 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+`;
+
+const EmailUnreadDot = styled.span`
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  border-radius: 50%;
+  background: #3B82F6;
 `;
 
 const EmailSubject = styled.div`
@@ -3913,6 +3933,49 @@ internet businesses.`;
     }
   };
 
+  // Handle selecting a thread - marks unread emails as read
+  const handleSelectThread = async (threadEmails) => {
+    setSelectedThread(threadEmails);
+
+    // Find unread emails in the thread
+    const unreadEmails = threadEmails.filter(e => e.is_read === false);
+    if (unreadEmails.length === 0) return;
+
+    // Get Fastmail IDs and Supabase IDs
+    const fastmailIds = unreadEmails.map(e => e.fastmail_id).filter(Boolean);
+    const supabaseIds = unreadEmails.map(e => e.id).filter(Boolean);
+
+    if (fastmailIds.length === 0) return;
+
+    try {
+      // Call backend to mark as read in Fastmail and Supabase
+      const response = await fetch(`${BACKEND_URL}/mark-as-read`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fastmailIds, supabaseIds }),
+      });
+
+      if (response.ok) {
+        // Update local state to reflect read status
+        setEmails(prev => prev.map(e =>
+          supabaseIds.includes(e.id) ? { ...e, is_read: true } : e
+        ));
+        setThreads(prev => prev.map(t => ({
+          ...t,
+          emails: t.emails.map(e =>
+            supabaseIds.includes(e.id) ? { ...e, is_read: true } : e
+          )
+        })));
+        // Also update selectedThread
+        setSelectedThread(prev => prev?.map(e =>
+          supabaseIds.includes(e.id) ? { ...e, is_read: true } : e
+        ));
+      }
+    } catch (error) {
+      console.error('Error marking emails as read:', error);
+    }
+  };
+
   // Delete single email (without blocking)
   const deleteEmail = async () => {
     const latestEmail = getLatestEmail();
@@ -3952,10 +4015,13 @@ internet businesses.`;
     }
   };
 
+  // Check for unread emails
+  const hasUnreadEmails = emails.some(email => email.is_read === false);
+
   const tabs = [
-    { id: 'email', label: 'Email', icon: FaEnvelope, count: emails.length },
-    { id: 'whatsapp', label: 'WhatsApp', icon: FaWhatsapp, count: 0 },
-    { id: 'calendar', label: 'Calendar', icon: FaCalendar, count: 0 },
+    { id: 'email', label: 'Email', icon: FaEnvelope, count: emails.length, hasUnread: hasUnreadEmails },
+    { id: 'whatsapp', label: 'WhatsApp', icon: FaWhatsapp, count: 0, hasUnread: false },
+    { id: 'calendar', label: 'Calendar', icon: FaCalendar, count: 0, hasUnread: false },
   ];
 
   return (
@@ -3978,6 +4044,7 @@ internet businesses.`;
                   {tab.count}
                 </Badge>
               )}
+              {tab.hasUnread && <UnreadDot $active={activeTab === tab.id} />}
             </Tab>
           ))}
         </TabsContainer>
@@ -4006,11 +4073,14 @@ internet businesses.`;
                     key={thread.threadId}
                     theme={theme}
                     $selected={selectedThread?.[0]?.thread_id === thread.threadId || selectedThread?.[0]?.id === thread.threadId}
-                    onClick={() => setSelectedThread(thread.emails)}
+                    onClick={() => handleSelectThread(thread.emails)}
                   >
                     <EmailSender theme={theme}>
-                      {getRelevantPerson(thread.latestEmail)}
-                      {thread.count > 1 && <span style={{ marginLeft: '6px', opacity: 0.6 }}>({thread.count})</span>}
+                      {thread.emails.some(e => e.is_read === false) && <EmailUnreadDot />}
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {getRelevantPerson(thread.latestEmail)}
+                      </span>
+                      {thread.count > 1 && <span style={{ opacity: 0.6, flexShrink: 0 }}>({thread.count})</span>}
                     </EmailSender>
                     <EmailSubject theme={theme}>{thread.latestEmail.subject}</EmailSubject>
                     <EmailSnippet theme={theme}>{thread.latestEmail.snippet}</EmailSnippet>

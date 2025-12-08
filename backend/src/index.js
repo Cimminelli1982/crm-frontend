@@ -504,6 +504,51 @@ app.post('/archive', async (req, res) => {
   }
 });
 
+// Mark emails as read in Fastmail and Supabase
+app.post('/mark-as-read', async (req, res) => {
+  try {
+    const { fastmailIds, supabaseIds } = req.body;
+
+    if (!fastmailIds || !Array.isArray(fastmailIds) || fastmailIds.length === 0) {
+      return res.status(400).json({ success: false, error: 'Missing fastmailIds array' });
+    }
+
+    console.log(`Marking ${fastmailIds.length} emails as read...`);
+
+    // Mark as read in Fastmail
+    const jmap = new JMAPClient(
+      process.env.FASTMAIL_USERNAME,
+      process.env.FASTMAIL_API_TOKEN
+    );
+    await jmap.init();
+
+    const result = await jmap.markAsRead(fastmailIds);
+    console.log(`Fastmail: marked ${result.updated} emails as read`);
+
+    // Also update in Supabase if IDs provided
+    if (supabaseIds && supabaseIds.length > 0) {
+      const { error: updateError } = await supabase
+        .from('command_center_inbox')
+        .update({ is_read: true })
+        .in('id', supabaseIds);
+
+      if (updateError) {
+        console.error('Supabase update error:', updateError);
+      } else {
+        console.log(`Supabase: marked ${supabaseIds.length} emails as read`);
+      }
+    }
+
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (error) {
+    console.error('Mark as read error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Download attachment from Fastmail
 app.get('/attachment/:blobId', async (req, res) => {
   try {

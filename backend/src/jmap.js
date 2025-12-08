@@ -334,6 +334,29 @@ export class JMAPClient {
     return { archived: true, emailId };
   }
 
+  async markAsRead(emailIds) {
+    if (!emailIds || emailIds.length === 0) return { updated: 0 };
+
+    // Build update object for all emails
+    const update = {};
+    emailIds.forEach(id => {
+      update[id] = { 'keywords/$seen': true };
+    });
+
+    const responses = await this.request([
+      ['Email/set', {
+        accountId: this.accountId,
+        update
+      }, 'markAsRead']
+    ]);
+
+    const result = responses[0][1];
+    const updatedCount = Object.keys(result.updated || {}).length;
+    const failedCount = Object.keys(result.notUpdated || {}).length;
+
+    return { updated: updatedCount, failed: failedCount };
+  }
+
   // Download a blob (attachment) from Fastmail
   async downloadBlob(blobId, name, type) {
     // JMAP download URL from session looks like:
