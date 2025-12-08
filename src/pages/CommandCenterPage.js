@@ -1116,6 +1116,8 @@ const CommandCenterPage = ({ theme }) => {
   const [notInCrmTab, setNotInCrmTab] = useState('contacts'); // 'contacts' or 'companies'
   const [holdContacts, setHoldContacts] = useState([]);
   const [duplicateContacts, setDuplicateContacts] = useState([]);
+  const [duplicateCompanies, setDuplicateCompanies] = useState([]);
+  const [duplicatesTab, setDuplicatesTab] = useState('contacts'); // 'contacts' or 'companies'
   const [incompleteContacts, setIncompleteContacts] = useState([]);
   const [loadingDataIntegrity, setLoadingDataIntegrity] = useState(false);
   const [dataIntegritySection, setDataIntegritySection] = useState('notInCrm'); // notInCrm, hold, duplicates, incomplete
@@ -1911,8 +1913,99 @@ const CommandCenterPage = ({ theme }) => {
         }
 
         setDuplicateContacts(duplicates);
+
+        // 3. Find company duplicates based on domains from inbox
+        const inboxDomains = new Set();
+        inboxEmails.forEach(email => {
+          const domain = email.split('@')[1];
+          if (domain) inboxDomains.add(domain.toLowerCase());
+        });
+
+        // Get companies linked to these domains
+        const { data: domainCompanies } = await supabase
+          .from('company_domains')
+          .select('domain, company_id, companies(company_id, name, category)')
+          .in('domain', Array.from(inboxDomains));
+
+        if (domainCompanies && domainCompanies.length > 0) {
+          // Get all companies for name matching
+          const { data: allCompanies } = await supabase
+            .from('companies')
+            .select('company_id, name, category');
+
+          const companyDuplicates = [];
+          const processedCompanyPairs = new Set();
+
+          // Check for domain duplicates (same domain -> multiple companies)
+          const domainGroups = {};
+          domainCompanies.forEach(dc => {
+            if (!dc.companies) return;
+            const domain = dc.domain.toLowerCase();
+            if (!domainGroups[domain]) domainGroups[domain] = [];
+            domainGroups[domain].push(dc.companies);
+          });
+
+          Object.entries(domainGroups).forEach(([domain, companies]) => {
+            if (companies.length > 1) {
+              const pairKey = companies.map(c => c.company_id).sort().join('|');
+              if (!processedCompanyPairs.has(pairKey)) {
+                processedCompanyPairs.add(pairKey);
+                companyDuplicates.push({
+                  company_id: companies[0].company_id,
+                  name: companies[0].name,
+                  category: companies[0].category,
+                  domain: domain,
+                  match_type: 'DOMAIN',
+                  duplicate_count: companies.length - 1,
+                  duplicates: companies.slice(1)
+                });
+              }
+            }
+          });
+
+          // Check for name duplicates (fuzzy match)
+          domainCompanies.forEach(dc => {
+            if (!dc.companies) return;
+            const inboxCompany = dc.companies;
+            const inboxName = (inboxCompany.name || '').toLowerCase();
+
+            const matches = (allCompanies || []).filter(c => {
+              if (c.company_id === inboxCompany.company_id) return false;
+              const matchName = (c.name || '').toLowerCase();
+
+              // Exact match
+              if (matchName === inboxName) return true;
+              // One starts with the other (min 4 chars)
+              if (inboxName.length >= 4 && matchName.startsWith(inboxName)) return true;
+              if (matchName.length >= 4 && inboxName.startsWith(matchName)) return true;
+
+              return false;
+            });
+
+            if (matches.length > 0) {
+              const pairKey = [inboxCompany.company_id, ...matches.map(m => m.company_id)].sort().join('|');
+              if (!processedCompanyPairs.has(pairKey)) {
+                processedCompanyPairs.add(pairKey);
+                companyDuplicates.push({
+                  company_id: inboxCompany.company_id,
+                  name: inboxCompany.name,
+                  category: inboxCompany.category,
+                  domain: dc.domain,
+                  match_type: 'NAME',
+                  duplicate_count: matches.length,
+                  duplicates: matches
+                });
+              }
+            }
+          });
+
+          setDuplicateCompanies(companyDuplicates);
+        } else {
+          setDuplicateCompanies([]);
+        }
       } else {
         setDuplicateContacts([]);
+        setDuplicateCompanies([]);
       }
 
     } catch (error) {
@@ -6305,83 +6398,220 @@ internet businesses.`;
                             color: theme === 'light' ? '#6B7280' : '#9CA3AF',
                             marginLeft: 'auto'
                           }}>
-                            {duplicateContacts.length}
+                            {duplicateContacts.length + duplicateCompanies.length}
                           </span>
                         </div>
                         {expandedDataIntegrity.duplicates && (
                           <div style={{ paddingLeft: '8px' }}>
-                            {duplicateContacts.length === 0 ? (
-                              <div style={{
-                                textAlign: 'center',
-                                padding: '16px',
-                                color: theme === 'light' ? '#9CA3AF' : '#6B7280',
-                                fontSize: '12px'
-                              }}>
-                                No suspected duplicates
-                              </div>
-                            ) : (
-                              duplicateContacts.map((item, idx) => (
-                                <div key={idx} style={{
-                                  padding: '10px 12px',
-                                  background: theme === 'light' ? '#FFFFFF' : '#1F2937',
-                                  borderRadius: '6px',
-                                  marginBottom: '6px',
-                                  border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
-                                }}>
+                            {/* Tabs for Contacts / Companies */}
+                            <div style={{
+                              display: 'flex',
+                              gap: '4px',
+                              marginBottom: '8px',
+                              background: theme === 'light' ? '#E5E7EB' : '#1F2937',
+                              borderRadius: '6px',
+                              padding: '2px'
+                            }}>
+                              <button
+                                onClick={() => setDuplicatesTab('contacts')}
+                                style={{
+                                  flex: 1,
+                                  padding: '6px 8px',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  fontSize: '12px',
+                                  fontWeight: 500,
+                                  cursor: 'pointer',
+                                  background: duplicatesTab === 'contacts'
+                                    ? (theme === 'light' ? '#FFFFFF' : '#374151')
+                                    : 'transparent',
+                                  color: duplicatesTab === 'contacts'
+                                    ? (theme === 'light' ? '#111827' : '#F9FAFB')
+                                    : (theme === 'light' ? '#6B7280' : '#9CA3AF'),
+                                  boxShadow: duplicatesTab === 'contacts' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
+                                }}
+                              >
+                                Contacts ({duplicateContacts.length})
+                              </button>
+                              <button
+                                onClick={() => setDuplicatesTab('companies')}
+                                style={{
+                                  flex: 1,
+                                  padding: '6px 8px',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  fontSize: '12px',
+                                  fontWeight: 500,
+                                  cursor: 'pointer',
+                                  background: duplicatesTab === 'companies'
+                                    ? (theme === 'light' ? '#FFFFFF' : '#374151')
+                                    : 'transparent',
+                                  color: duplicatesTab === 'companies'
+                                    ? (theme === 'light' ? '#111827' : '#F9FAFB')
+                                    : (theme === 'light' ? '#6B7280' : '#9CA3AF'),
+                                  boxShadow: duplicatesTab === 'companies' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
+                                }}
+                              >
+                                Companies ({duplicateCompanies.length})
+                              </button>
+                            </div>
+
+                            {/* Contacts Tab Content */}
+                            {duplicatesTab === 'contacts' && (
+                              <>
+                                {duplicateContacts.length === 0 ? (
                                   <div style={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center',
-                                    marginBottom: '6px'
+                                    textAlign: 'center',
+                                    padding: '16px',
+                                    color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                                    fontSize: '12px'
                                   }}>
-                                    <div style={{
-                                      fontSize: '13px',
-                                      fontWeight: 600,
-                                      color: theme === 'light' ? '#111827' : '#F9FAFB'
+                                    No duplicate contacts
+                                  </div>
+                                ) : (
+                                  duplicateContacts.map((item, idx) => (
+                                    <div key={idx} style={{
+                                      padding: '10px 12px',
+                                      background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                                      borderRadius: '6px',
+                                      marginBottom: '6px',
+                                      border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
                                     }}>
-                                      {item.first_name} {item.last_name}
-                                    </div>
-                                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                                       <div style={{
-                                        fontSize: '10px',
-                                        padding: '2px 6px',
-                                        background: item.match_type === 'EMAIL' ? '#EF4444' : '#8B5CF6',
-                                        color: 'white',
-                                        borderRadius: '4px',
-                                        fontWeight: 500
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        marginBottom: '6px'
                                       }}>
-                                        {item.match_type}
+                                        <div style={{
+                                          fontSize: '13px',
+                                          fontWeight: 600,
+                                          color: theme === 'light' ? '#111827' : '#F9FAFB'
+                                        }}>
+                                          {item.first_name} {item.last_name}
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                          <div style={{
+                                            fontSize: '10px',
+                                            padding: '2px 6px',
+                                            background: item.match_type === 'EMAIL' ? '#EF4444' : '#8B5CF6',
+                                            color: 'white',
+                                            borderRadius: '4px',
+                                            fontWeight: 500
+                                          }}>
+                                            {item.match_type}
+                                          </div>
+                                          <div style={{
+                                            fontSize: '11px',
+                                            padding: '2px 8px',
+                                            background: theme === 'light' ? '#F3F4F6' : '#374151',
+                                            color: theme === 'light' ? '#374151' : '#D1D5DB',
+                                            borderRadius: '10px',
+                                            fontWeight: 600
+                                          }}>
+                                            {item.duplicate_count}
+                                          </div>
+                                        </div>
                                       </div>
                                       <div style={{
                                         fontSize: '11px',
-                                        padding: '2px 8px',
-                                        background: theme === 'light' ? '#F3F4F6' : '#374151',
-                                        color: theme === 'light' ? '#374151' : '#D1D5DB',
-                                        borderRadius: '10px',
-                                        fontWeight: 600
+                                        color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                        marginBottom: '6px'
                                       }}>
-                                        {item.duplicate_count}
+                                        {item.email}
+                                      </div>
+                                      <div style={{
+                                        fontSize: '11px',
+                                        color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                                        background: theme === 'light' ? '#F3F4F6' : '#111827',
+                                        padding: '6px 8px',
+                                        borderRadius: '4px'
+                                      }}>
+                                        Matches: {item.duplicates?.map(d => `${d.first_name} ${d.last_name}`).join(', ')}
                                       </div>
                                     </div>
-                                  </div>
+                                  ))
+                                )}
+                              </>
+                            )}
+
+                            {/* Companies Tab Content */}
+                            {duplicatesTab === 'companies' && (
+                              <>
+                                {duplicateCompanies.length === 0 ? (
                                   <div style={{
-                                    fontSize: '11px',
-                                    color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                                    marginBottom: '6px'
-                                  }}>
-                                    {item.email}
-                                  </div>
-                                  <div style={{
-                                    fontSize: '11px',
+                                    textAlign: 'center',
+                                    padding: '16px',
                                     color: theme === 'light' ? '#9CA3AF' : '#6B7280',
-                                    background: theme === 'light' ? '#F3F4F6' : '#111827',
-                                    padding: '6px 8px',
-                                    borderRadius: '4px'
+                                    fontSize: '12px'
                                   }}>
-                                    Matches: {item.duplicates?.map(d => `${d.first_name} ${d.last_name}`).join(', ')}
+                                    No duplicate companies
                                   </div>
-                                </div>
-                              ))
+                                ) : (
+                                  duplicateCompanies.map((item, idx) => (
+                                    <div key={idx} style={{
+                                      padding: '10px 12px',
+                                      background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                                      borderRadius: '6px',
+                                      marginBottom: '6px',
+                                      border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
+                                    }}>
+                                      <div style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        marginBottom: '6px'
+                                      }}>
+                                        <div style={{
+                                          fontSize: '13px',
+                                          fontWeight: 600,
+                                          color: theme === 'light' ? '#111827' : '#F9FAFB'
+                                        }}>
+                                          {item.name}
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                          <div style={{
+                                            fontSize: '10px',
+                                            padding: '2px 6px',
+                                            background: item.match_type === 'DOMAIN' ? '#EF4444' : '#8B5CF6',
+                                            color: 'white',
+                                            borderRadius: '4px',
+                                            fontWeight: 500
+                                          }}>
+                                            {item.match_type}
+                                          </div>
+                                          <div style={{
+                                            fontSize: '11px',
+                                            padding: '2px 8px',
+                                            background: theme === 'light' ? '#F3F4F6' : '#374151',
+                                            color: theme === 'light' ? '#374151' : '#D1D5DB',
+                                            borderRadius: '10px',
+                                            fontWeight: 600
+                                          }}>
+                                            {item.duplicate_count}
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div style={{
+                                        fontSize: '11px',
+                                        color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                        marginBottom: '6px'
+                                      }}>
+                                        {item.domain} • {item.category || 'No category'}
+                                      </div>
+                                      <div style={{
+                                        fontSize: '11px',
+                                        color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                                        background: theme === 'light' ? '#F3F4F6' : '#111827',
+                                        padding: '6px 8px',
+                                        borderRadius: '4px'
+                                      }}>
+                                        Matches: {item.duplicates?.map(d => d.name).join(', ')}
+                                      </div>
+                                    </div>
+                                  ))
+                                )}
+                              </>
                             )}
                           </div>
                         )}
