@@ -1026,7 +1026,8 @@ const CommandCenterPage = ({ theme }) => {
 
   // Spam menu state
   const [spamMenuOpen, setSpamMenuOpen] = useState(false);
-  const [activeActionTab, setActiveActionTab] = useState('contacts');
+  const [activeActionTab, setActiveActionTab] = useState('crm');
+  const [crmSubTab, setCrmSubTab] = useState('contacts'); // 'contacts' or 'companies' - sub-menu inside CRM tab
 
   // Contacts from email (for Contacts tab)
   const [emailContacts, setEmailContacts] = useState([]);
@@ -2123,7 +2124,7 @@ const CommandCenterPage = ({ theme }) => {
   // Switch away from Data Integrity tab if it becomes empty
   useEffect(() => {
     if (activeActionTab === 'dataIntegrity' && !hasDataIntegrityItems && !loadingDataIntegrity) {
-      setActiveActionTab('contacts');
+      setActiveActionTab('crm');
     }
   }, [hasDataIntegrityItems, activeActionTab, loadingDataIntegrity]);
 
@@ -5533,11 +5534,8 @@ internet businesses.`;
                 <FaDatabase />
               </ActionTabIcon>
             )}
-            <ActionTabIcon theme={theme} $active={activeActionTab === 'contacts'} onClick={() => setActiveActionTab('contacts')} title="Contacts">
+            <ActionTabIcon theme={theme} $active={activeActionTab === 'crm'} onClick={() => setActiveActionTab('crm')} title="CRM">
               <FaUser />
-            </ActionTabIcon>
-            <ActionTabIcon theme={theme} $active={activeActionTab === 'companies'} onClick={() => setActiveActionTab('companies')} title="Companies">
-              <FaBuilding />
             </ActionTabIcon>
             <ActionTabIcon theme={theme} $active={activeActionTab === 'deals'} onClick={() => setActiveActionTab('deals')} title="Deals">
               <FaDollarSign />
@@ -7445,152 +7443,208 @@ internet businesses.`;
                 </div>
               )}
 
-              {activeActionTab === 'contacts' && (
+              {activeActionTab === 'crm' && (
                 <>
-                  {emailContacts.length > 0 ? (
+                  {/* Sub-menu tabs for Contacts / Companies */}
+                  <div style={{
+                    display: 'flex',
+                    gap: '4px',
+                    margin: '8px',
+                    background: theme === 'light' ? '#E5E7EB' : '#1F2937',
+                    borderRadius: '6px',
+                    padding: '2px'
+                  }}>
+                    <button
+                      onClick={() => setCrmSubTab('contacts')}
+                      style={{
+                        flex: 1,
+                        padding: '8px 12px',
+                        border: 'none',
+                        borderRadius: '4px',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        background: crmSubTab === 'contacts'
+                          ? (theme === 'light' ? '#FFFFFF' : '#374151')
+                          : 'transparent',
+                        color: crmSubTab === 'contacts'
+                          ? (theme === 'light' ? '#111827' : '#F9FAFB')
+                          : (theme === 'light' ? '#6B7280' : '#9CA3AF'),
+                        boxShadow: crmSubTab === 'contacts' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
+                      }}
+                    >
+                      <FaUser size={12} /> Contacts ({emailContacts.length})
+                    </button>
+                    <button
+                      onClick={() => setCrmSubTab('companies')}
+                      style={{
+                        flex: 1,
+                        padding: '8px 12px',
+                        border: 'none',
+                        borderRadius: '4px',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        background: crmSubTab === 'companies'
+                          ? (theme === 'light' ? '#FFFFFF' : '#374151')
+                          : 'transparent',
+                        color: crmSubTab === 'companies'
+                          ? (theme === 'light' ? '#111827' : '#F9FAFB')
+                          : (theme === 'light' ? '#6B7280' : '#9CA3AF'),
+                        boxShadow: crmSubTab === 'companies' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
+                      }}
+                    >
+                      <FaBuilding size={12} /> Companies ({emailCompanies.length})
+                    </button>
+                  </div>
+
+                  {/* Contacts Sub-Tab Content */}
+                  {crmSubTab === 'contacts' && (
                     <>
-                      {/* All contacts in single list with role inline */}
-                      {emailContacts.map((participant, idx) => {
-                        const score = participant.contact?.completeness_score || 0;
-                        const circumference = 2 * Math.PI * 16;
-                        const strokeDashoffset = circumference - (score / 100) * circumference;
-                        const scoreColor = score >= 70 ? '#10B981' : score >= 40 ? '#F59E0B' : '#EF4444';
-                        // Get the primary role to display (from > to > cc)
-                        const primaryRole = participant.roles?.includes('from') ? 'From' : participant.roles?.includes('to') ? 'To' : participant.roles?.includes('cc') ? 'CC' : '';
-                        return (
-                        <ActionCard key={participant.email + idx} theme={theme}>
-                          <ActionCardHeader theme={theme} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <div
-                              style={{ cursor: participant.contact ? 'pointer' : 'default' }}
-                              onClick={() => participant.contact && profileImageModal.openModal(participant.contact)}
-                              title={participant.contact ? 'Edit profile image' : ''}
-                            >
-                              {participant.contact?.profile_image_url ? (
-                                <img src={participant.contact.profile_image_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }} />
-                              ) : (
-                                <div style={{ width: 40, height: 40, borderRadius: '50%', background: theme === 'light' ? '#E5E7EB' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
-                                  {participant.contact ? `${participant.contact.first_name?.[0] || ''}${participant.contact.last_name?.[0] || ''}` : participant.name?.[0]?.toUpperCase() || '?'}
-                                </div>
-                              )}
-                            </div>
-                            <div
-                              style={{ flex: 1, cursor: participant.contact ? 'pointer' : 'default' }}
-                              onClick={() => participant.contact && navigate(`/contact/${participant.contact.contact_id}`)}
-                            >
-                              <div style={{ fontWeight: 600, fontSize: '15px' }}>
-                                {participant.contact ? `${participant.contact.first_name} ${participant.contact.last_name}` : participant.name}
-                              </div>
-                              {(participant.contact?.job_role || participant.contact?.company_name) && (
-                                <div style={{ fontSize: '13px', opacity: 0.7, marginTop: '2px' }}>
-                                  {participant.contact.job_role}{participant.contact.job_role && participant.contact.company_name && ' @ '}{participant.contact.company_name}
-                                </div>
-                              )}
-                            </div>
-                            {participant.contact && (
-                              <div style={{ position: 'relative', width: 40, height: 40, cursor: 'pointer' }} title={`${score}% complete`} onClick={() => handleOpenQuickEditModal(participant.contact, true)}>
-                                <svg width="40" height="40" style={{ transform: 'rotate(-90deg)' }}>
-                                  <circle cx="20" cy="20" r="16" fill="none" stroke={theme === 'light' ? '#E5E7EB' : '#374151'} strokeWidth="4" />
-                                  <circle cx="20" cy="20" r="16" fill="none" stroke={scoreColor} strokeWidth="4" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} />
-                                </svg>
-                                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontSize: '10px', fontWeight: 600, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
-                                  {score === 100 ? <FaCrown size={14} color="#F59E0B" /> : `${score}%`}
-                                </div>
-                              </div>
-                            )}
-                          </ActionCardHeader>
-                          <ActionCardContent theme={theme}>
-                            <div style={{ fontSize: '13px', opacity: 0.7, marginBottom: '8px' }}>
-                              <span style={{ fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>{primaryRole}:</span> {participant.email}
-                            </div>
-                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-                              {participant.contact?.category && (
-                                <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#E5E7EB' : '#374151', color: theme === 'light' ? '#374151' : '#D1D5DB' }}>{participant.contact.category}</span>
-                              )}
-                              {!participant.hasContact && (
-                                <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#FEF3C7' : '#78350F', color: theme === 'light' ? '#92400E' : '#FDE68A', cursor: 'pointer' }}>+ Add</span>
-                              )}
-                              {participant.contact && (
-                                <span
-                                  onClick={(e) => { e.stopPropagation(); runContactAuditById(participant.contact.contact_id, `${participant.contact.first_name} ${participant.contact.last_name}`); }}
-                                  style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#DBEAFE' : '#1E3A5F', color: theme === 'light' ? '#1D4ED8' : '#93C5FD', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                      {emailContacts.length > 0 ? (
+                        <>
+                          {/* All contacts in single list with role inline */}
+                          {emailContacts.map((participant, idx) => {
+                            const score = participant.contact?.completeness_score || 0;
+                            const circumference = 2 * Math.PI * 16;
+                            const strokeDashoffset = circumference - (score / 100) * circumference;
+                            const scoreColor = score >= 70 ? '#10B981' : score >= 40 ? '#F59E0B' : '#EF4444';
+                            // Get the primary role to display (from > to > cc)
+                            const primaryRole = participant.roles?.includes('from') ? 'From' : participant.roles?.includes('to') ? 'To' : participant.roles?.includes('cc') ? 'CC' : '';
+                            return (
+                            <ActionCard key={participant.email + idx} theme={theme}>
+                              <ActionCardHeader theme={theme} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <div
+                                  style={{ cursor: participant.contact ? 'pointer' : 'default' }}
+                                  onClick={() => participant.contact && profileImageModal.openModal(participant.contact)}
+                                  title={participant.contact ? 'Edit profile image' : ''}
                                 >
-                                  <FaRobot size={10} /> Audit
-                                </span>
-                              )}
-                            </div>
+                                  {participant.contact?.profile_image_url ? (
+                                    <img src={participant.contact.profile_image_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }} />
+                                  ) : (
+                                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: theme === 'light' ? '#E5E7EB' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                                      {participant.contact ? `${participant.contact.first_name?.[0] || ''}${participant.contact.last_name?.[0] || ''}` : participant.name?.[0]?.toUpperCase() || '?'}
+                                    </div>
+                                  )}
+                                </div>
+                                <div
+                                  style={{ flex: 1, cursor: participant.contact ? 'pointer' : 'default' }}
+                                  onClick={() => participant.contact && navigate(`/contact/${participant.contact.contact_id}`)}
+                                >
+                                  <div style={{ fontWeight: 600, fontSize: '15px' }}>
+                                    {participant.contact ? `${participant.contact.first_name} ${participant.contact.last_name}` : participant.name}
+                                  </div>
+                                  {(participant.contact?.job_role || participant.contact?.company_name) && (
+                                    <div style={{ fontSize: '13px', opacity: 0.7, marginTop: '2px' }}>
+                                      {participant.contact.job_role}{participant.contact.job_role && participant.contact.company_name && ' @ '}{participant.contact.company_name}
+                                    </div>
+                                  )}
+                                </div>
+                                {participant.contact && (
+                                  <div style={{ position: 'relative', width: 40, height: 40, cursor: 'pointer' }} title={`${score}% complete`} onClick={() => handleOpenQuickEditModal(participant.contact, true)}>
+                                    <svg width="40" height="40" style={{ transform: 'rotate(-90deg)' }}>
+                                      <circle cx="20" cy="20" r="16" fill="none" stroke={theme === 'light' ? '#E5E7EB' : '#374151'} strokeWidth="4" />
+                                      <circle cx="20" cy="20" r="16" fill="none" stroke={scoreColor} strokeWidth="4" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} />
+                                    </svg>
+                                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontSize: '10px', fontWeight: 600, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
+                                      {score === 100 ? <FaCrown size={14} color="#F59E0B" /> : `${score}%`}
+                                    </div>
+                                  </div>
+                                )}
+                              </ActionCardHeader>
+                              <ActionCardContent theme={theme}>
+                                <div style={{ fontSize: '13px', opacity: 0.7, marginBottom: '8px' }}>
+                                  <span style={{ fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>{primaryRole}:</span> {participant.email}
+                                </div>
+                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                  {participant.contact?.category && (
+                                    <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#E5E7EB' : '#374151', color: theme === 'light' ? '#374151' : '#D1D5DB' }}>{participant.contact.category}</span>
+                                  )}
+                                  {!participant.hasContact && (
+                                    <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#FEF3C7' : '#78350F', color: theme === 'light' ? '#92400E' : '#FDE68A', cursor: 'pointer' }}>+ Add</span>
+                                  )}
+                                  {participant.contact && (
+                                    <span
+                                      onClick={(e) => { e.stopPropagation(); runContactAuditById(participant.contact.contact_id, `${participant.contact.first_name} ${participant.contact.last_name}`); }}
+                                      style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#DBEAFE' : '#1E3A5F', color: theme === 'light' ? '#1D4ED8' : '#93C5FD', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                    >
+                                      <FaRobot size={10} /> Audit
+                                    </span>
+                                  )}
+                                </div>
+                              </ActionCardContent>
+                            </ActionCard>
+                          )})}
+                        </>
+                      ) : (
+                        <ActionCard theme={theme}>
+                          <ActionCardContent theme={theme} style={{ textAlign: 'center', opacity: 0.6 }}>
+                            Select a thread to see participants
                           </ActionCardContent>
                         </ActionCard>
-                      )})}
+                      )}
                     </>
-                  ) : (
-                    <ActionCard theme={theme}>
-                      <ActionCardContent theme={theme} style={{ textAlign: 'center', opacity: 0.6 }}>
-                        Select a thread to see participants
-                      </ActionCardContent>
-                    </ActionCard>
                   )}
 
-                </>
-              )}
-
-              {activeActionTab === 'companies' && (
-                <>
-                  {emailCompanies.length > 0 ? (
+                  {/* Companies Sub-Tab Content */}
+                  {crmSubTab === 'companies' && (
                     <>
-                      <div style={{
-                        padding: '8px 16px',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
-                      }}>
-                        Related
-                      </div>
-                      {emailCompanies.map((item, idx) => (
-                      <ActionCard
-                        key={item.domain + idx}
-                        theme={theme}
-                        style={{ cursor: item.company?.company_id ? 'pointer' : 'default' }}
-                        onClick={() => item.company?.company_id && navigate(`/company/${item.company.company_id}`)}
-                      >
-                        <ActionCardHeader theme={theme} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <div style={{ width: 40, height: 40, borderRadius: '50%', background: theme === 'light' ? '#E5E7EB' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
-                            {item.company?.name ? item.company.name.substring(0, 2).toUpperCase() : item.domain?.substring(0, 2).toUpperCase() || '?'}
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 600, fontSize: '15px' }}>
-                              {item.company?.name || item.domain}
-                            </div>
-                            {item.contacts?.length > 0 && (
-                              <div style={{ fontSize: '13px', opacity: 0.7, marginTop: '2px' }}>
-                                {item.contacts.map(c => c.name).join(', ')}
+                      {emailCompanies.length > 0 ? (
+                        <>
+                          {emailCompanies.map((item, idx) => (
+                          <ActionCard
+                            key={item.domain + idx}
+                            theme={theme}
+                            style={{ cursor: item.company?.company_id ? 'pointer' : 'default' }}
+                            onClick={() => item.company?.company_id && navigate(`/company/${item.company.company_id}`)}
+                          >
+                            <ActionCardHeader theme={theme} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                              <div style={{ width: 40, height: 40, borderRadius: '50%', background: theme === 'light' ? '#E5E7EB' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                                {item.company?.name ? item.company.name.substring(0, 2).toUpperCase() : item.domain?.substring(0, 2).toUpperCase() || '?'}
                               </div>
-                            )}
-                          </div>
-                        </ActionCardHeader>
-                        <ActionCardContent theme={theme}>
-                          <div style={{ fontSize: '13px', opacity: 0.7, marginBottom: '8px' }}>
-                            {item.domains?.length > 0 ? item.domains.join(', ') : item.domain || 'No domain'}
-                          </div>
-                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                            {item.company?.category && (
-                              <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#E5E7EB' : '#374151', color: theme === 'light' ? '#374151' : '#D1D5DB' }}>{item.company.category}</span>
-                            )}
-                            {!item.hasCompany && (
-                              <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#FEF3C7' : '#78350F', color: theme === 'light' ? '#92400E' : '#FDE68A', cursor: 'pointer' }}>+ Add</span>
-                            )}
-                          </div>
-                        </ActionCardContent>
-                      </ActionCard>
-                      ))}
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: 600, fontSize: '15px' }}>
+                                  {item.company?.name || item.domain}
+                                </div>
+                                {item.contacts?.length > 0 && (
+                                  <div style={{ fontSize: '13px', opacity: 0.7, marginTop: '2px' }}>
+                                    {item.contacts.map(c => c.name).join(', ')}
+                                  </div>
+                                )}
+                              </div>
+                            </ActionCardHeader>
+                            <ActionCardContent theme={theme}>
+                              <div style={{ fontSize: '13px', opacity: 0.7, marginBottom: '8px' }}>
+                                {item.domains?.length > 0 ? item.domains.join(', ') : item.domain || 'No domain'}
+                              </div>
+                              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                {item.company?.category && (
+                                  <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#E5E7EB' : '#374151', color: theme === 'light' ? '#374151' : '#D1D5DB' }}>{item.company.category}</span>
+                                )}
+                                {!item.hasCompany && (
+                                  <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#FEF3C7' : '#78350F', color: theme === 'light' ? '#92400E' : '#FDE68A', cursor: 'pointer' }}>+ Add</span>
+                                )}
+                              </div>
+                            </ActionCardContent>
+                          </ActionCard>
+                          ))}
+                        </>
+                      ) : (
+                        <ActionCard theme={theme}>
+                          <ActionCardContent theme={theme} style={{ textAlign: 'center', opacity: 0.6 }}>
+                            Select a thread to see companies
+                          </ActionCardContent>
+                        </ActionCard>
+                      )}
                     </>
-                  ) : (
-                    <ActionCard theme={theme}>
-                      <ActionCardContent theme={theme} style={{ textAlign: 'center', opacity: 0.6 }}>
-                        Select a thread to see companies
-                      </ActionCardContent>
-                    </ActionCard>
                   )}
                 </>
               )}
