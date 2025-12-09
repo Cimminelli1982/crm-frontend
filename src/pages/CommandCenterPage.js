@@ -1277,14 +1277,14 @@ const CommandCenterPage = ({ theme }) => {
       threadMap.get(threadId).push(email);
     }
 
-    // Sort each thread by date ascending (oldest first)
+    // Sort each thread by date descending (newest first)
     const result = [];
     for (const [threadId, threadEmails] of threadMap) {
-      threadEmails.sort((a, b) => new Date(a.date) - new Date(b.date));
+      threadEmails.sort((a, b) => new Date(b.date) - new Date(a.date));
       result.push({
         threadId,
         emails: threadEmails,
-        latestEmail: threadEmails[threadEmails.length - 1],
+        latestEmail: threadEmails[0],
         count: threadEmails.length
       });
     }
@@ -1389,7 +1389,7 @@ const CommandCenterPage = ({ theme }) => {
 
         return updated.map(t => ({
           ...t,
-          latestEmail: t.emails[t.emails.length - 1]
+          latestEmail: t.emails[0]
         }));
       });
 
@@ -1730,7 +1730,7 @@ const CommandCenterPage = ({ theme }) => {
 
         return updated.map(t => ({
           ...t,
-          latestEmail: t.emails[t.emails.length - 1]
+          latestEmail: t.emails[0]
         }));
       });
 
@@ -3619,7 +3619,7 @@ Let's start - show me the pending duplicates queue.`;
   };
 
   // Send message to Claude
-  const sendMessageToClaude = async (message) => {
+  const sendMessageToClaude = async (message, { hideUserMessage = false } = {}) => {
     if (!message.trim() && chatImages.length === 0) return;
 
     // Build message content (text + images for Claude API)
@@ -3653,13 +3653,15 @@ Let's start - show me the pending duplicates queue.`;
       userContent = message;
     }
 
-    // Add user message to chat (for display)
-    const userMessageDisplay = {
-      role: 'user',
-      content: message,
-      images: chatImages.map(img => img.preview) // Store previews for display
-    };
-    setChatMessages(prev => [...prev, userMessageDisplay]);
+    // Add user message to chat (for display) - skip if hideUserMessage is true
+    if (!hideUserMessage) {
+      const userMessageDisplay = {
+        role: 'user',
+        content: message,
+        images: chatImages.map(img => img.preview) // Store previews for display
+      };
+      setChatMessages(prev => [...prev, userMessageDisplay]);
+    }
     setChatInput('');
     setChatImages([]); // Clear images
     setChatLoading(true);
@@ -3732,9 +3734,9 @@ ${emailContext}`;
     }
   };
 
-  // Handle quick action clicks
+  // Handle quick action clicks - hide the prompt, show only the response
   const handleQuickAction = (action) => {
-    sendMessageToClaude(action);
+    sendMessageToClaude(action, { hideUserMessage: true });
   };
 
   const formatDate = (dateStr) => {
@@ -3906,7 +3908,7 @@ ${emailContext}`;
   // Get the latest email in selected thread
   const getLatestEmail = () => {
     if (!selectedThread || selectedThread.length === 0) return null;
-    return selectedThread[selectedThread.length - 1];
+    return selectedThread[0];
   };
 
   // Email signature
@@ -4773,7 +4775,7 @@ internet businesses.`;
           })).filter(t => t.emails.length > 0);
           return updated.map(t => ({
             ...t,
-            latestEmail: t.emails[t.emails.length - 1]
+            latestEmail: t.emails[0]
           }));
         });
         setSelectedThread(null);
@@ -4901,7 +4903,7 @@ internet businesses.`;
           // Update latestEmail for remaining threads
           return updated.map(t => ({
             ...t,
-            latestEmail: t.emails[t.emails.length - 1]
+            latestEmail: t.emails[0]
           }));
         });
 
@@ -4988,7 +4990,7 @@ internet businesses.`;
 
           return updated.map(t => ({
             ...t,
-            latestEmail: t.emails[t.emails.length - 1]
+            latestEmail: t.emails[0]
           }));
         });
 
@@ -5082,7 +5084,7 @@ internet businesses.`;
         setSelectedThread(newThread);
         setThreads(prev => prev.map(t =>
           t.threadId === (latestEmail.thread_id || latestEmail.id)
-            ? { ...t, emails: newThread, latestEmail: newThread[newThread.length - 1], count: newThread.length }
+            ? { ...t, emails: newThread, latestEmail: newThread[0], count: newThread.length }
             : t
         ));
       }
@@ -5528,7 +5530,7 @@ internet businesses.`;
 
               {/* Reply actions - based on latest email */}
               {(() => {
-                const latestEmail = selectedThread[selectedThread.length - 1];
+                const latestEmail = selectedThread[0];
                 const isSentByMe = latestEmail.from_email?.toLowerCase() === MY_EMAIL;
                 const toCount = latestEmail.to_recipients?.length || 0;
                 const ccCount = latestEmail.cc_recipients?.length || 0;
@@ -7668,8 +7670,10 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                             const scoreColor = isMarkedComplete ? '#F59E0B' : (score >= 70 ? '#10B981' : score >= 40 ? '#F59E0B' : '#EF4444');
                             // Get the primary role to display (from > to > cc)
                             const primaryRole = participant.roles?.includes('from') ? 'From' : participant.roles?.includes('to') ? 'To' : participant.roles?.includes('cc') ? 'CC' : '';
+                            // Check if contact is on hold
+                            const isOnHold = holdContacts.some(h => h.email?.toLowerCase() === participant.email?.toLowerCase());
                             return (
-                            <ActionCard key={participant.email + idx} theme={theme}>
+                            <ActionCard key={participant.email + idx} theme={theme} style={isOnHold ? { borderLeft: '3px solid #F59E0B' } : {}}>
                               <ActionCardHeader theme={theme} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                 <div
                                   style={{ cursor: participant.contact ? 'pointer' : 'default' }}
@@ -7688,8 +7692,11 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                                   style={{ flex: 1, cursor: participant.contact ? 'pointer' : 'default' }}
                                   onClick={() => participant.contact && navigate(`/contact/${participant.contact.contact_id}`)}
                                 >
-                                  <div style={{ fontWeight: 600, fontSize: '15px' }}>
+                                  <div style={{ fontWeight: 600, fontSize: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     {participant.contact ? `${participant.contact.first_name} ${participant.contact.last_name}` : participant.name}
+                                    {isOnHold && (
+                                      <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: '#FEF3C7', color: '#92400E', fontWeight: 600, textTransform: 'uppercase' }}>Hold</span>
+                                    )}
                                   </div>
                                   {(participant.contact?.job_role || participant.contact?.company_name) && (
                                     <div style={{ fontSize: '13px', opacity: 0.7, marginTop: '2px' }}>
@@ -7735,22 +7742,24 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                                       >
                                         Add
                                       </button>
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); handlePutOnHold({ email: participant.email, name: participant.name }); }}
-                                        title="Put on Hold"
-                                        style={{
-                                          padding: '4px 8px',
-                                          fontSize: '11px',
-                                          fontWeight: 500,
-                                          border: 'none',
-                                          borderRadius: '4px',
-                                          cursor: 'pointer',
-                                          background: '#F59E0B',
-                                          color: 'white'
-                                        }}
-                                      >
-                                        Hold
-                                      </button>
+                                      {!isOnHold && (
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); handlePutOnHold({ email: participant.email, name: participant.name }); }}
+                                          title="Put on Hold"
+                                          style={{
+                                            padding: '4px 8px',
+                                            fontSize: '11px',
+                                            fontWeight: 500,
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            background: '#F59E0B',
+                                            color: 'white'
+                                          }}
+                                        >
+                                          Hold
+                                        </button>
+                                      )}
                                       <button
                                         onClick={(e) => { e.stopPropagation(); handleAddToSpam(participant.email); }}
                                         title="Mark as Spam"
