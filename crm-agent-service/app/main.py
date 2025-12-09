@@ -5,6 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from datetime import datetime
 import structlog
+import httpx
+import os
 
 from app.config import get_settings
 from app.models import (
@@ -321,11 +323,202 @@ async def get_stats():
 
 # ==================== AI SUGGESTION ENDPOINTS ====================
 
+# -------------------- Apollo Integration --------------------
+
+async def search_apollo_person(first_name: str, last_name: str, email: str = None, company: str = None):
+    """
+    Search for a person on Apollo to get LinkedIn URL and photo.
+    Returns dict with linkedin_url, photo_url, or None if not found.
+    """
+    api_key = os.getenv("APOLLO_API_KEY")
+    print(f"[APOLLO] Search starting: {first_name} {last_name}, email={email}, api_key_present={bool(api_key)}", flush=True)
+
+    if not api_key:
+        logger.warning("APOLLO_API_KEY not configured")
+        return None
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            # Try People Match first if we have email (more accurate)
+            if email:
+                print(f"[APOLLO] People Match: searching for {email}", flush=True)
+                response = await client.post(
+                    "https://api.apollo.io/api/v1/people/match",
+                    json={
+                        "api_key": api_key,
+                        "email": email,
+                        "first_name": first_name,
+                        "last_name": last_name,
+                        "organization_name": company
+                    }
+                )
+                print(f"[APOLLO] People Match response: status={response.status_code}", flush=True)
+                if response.status_code == 200:
+                    data = response.json()
+                    person = data.get("person")
+                    print(f"[APOLLO] People Match person found: {bool(person)}", flush=True)
+                    if person:
+                        linkedin = person.get("linkedin_url")
+                        photo = person.get("photo_url")
+                        print(f"[APOLLO] Data: linkedin={linkedin}, photo={bool(photo)}", flush=True)
+                        # Get organization data
+                        org = person.get("organization", {}) or {}
+                        org_name = org.get("name")
+                        org_website = org.get("website_url")
+                        # Extract domain from website
+                        org_domain = None
+                        if org_website:
+                            try:
+                                from urllib.parse import urlparse
+                                parsed = urlparse(org_website)
+                                org_domain = parsed.netloc.replace("www.", "")
+                            except:
+                                pass
+
+                        if linkedin or photo or org_name:
+                            return {
+                                "linkedin_url": linkedin,
+                                "photo_url": photo,
+                                "title": person.get("title"),
+                                "organization_name": org_name,
+                                "organization_domain": org_domain,
+                                "organization_website": org_website,
+                                "confidence": "high"
+                            }
+                else:
+                    logger.warning(f"Apollo People Match failed: {response.status_code} - {response.text[:200]}")
+
+            # Fallback to People Search
+            logger.info(f"Apollo People Search: searching for {first_name} {last_name}")
+            search_payload = {
+                "api_key": api_key,
+                "q_person_name": f"{first_name} {last_name}",
+                "page": 1,
+                "per_page": 1
+            }
+            if company:
+                search_payload["q_organization_name"] = company
+
+            response = await client.post(
+                "https://api.apollo.io/api/v1/mixed_people/search",
+                json=search_payload
+            )
+            logger.info(f"Apollo People Search response: status={response.status_code}")
+
+            if response.status_code == 200:
+                data = response.json()
+                people = data.get("people", [])
+                logger.info(f"Apollo People Search results: {len(people)} people found")
+                if people:
+                    person = people[0]
+                    # Get organization data
+                    org = person.get("organization", {}) or {}
+                    org_name = org.get("name")
+                    org_website = org.get("website_url")
+                    org_domain = None
+                    if org_website:
+                        try:
+                            from urllib.parse import urlparse
+                            parsed = urlparse(org_website)
+                            org_domain = parsed.netloc.replace("www.", "")
+                        except:
+                            pass
+                    return {
+                        "linkedin_url": person.get("linkedin_url"),
+                        "photo_url": person.get("photo_url"),
+                        "title": person.get("title"),
+                        "organization_name": org_name,
+                        "organization_domain": org_domain,
+                        "organization_website": org_website,
+                        "confidence": "medium"
+                    }
+
+    except Exception as e:
+        logger.error(f"Apollo search error: {e}", exc_info=True)
+
+    logger.info("Apollo search: no results found")
+    return None
+
+
+async def get_all_tags():
+    """Get all tags from database for Claude to suggest from."""
+    try:
+        result = db.client.table("tags").select("tag_id, name").execute()
+        return result.data or []
+    except Exception as e:
+        logger.error(f"Error fetching tags: {e}")
+        return []
+
+
+async def search_company_in_db(name: str = None, domain: str = None):
+    """
+    Search for a company in the database by domain or name.
+    Returns matched company or None.
+    """
+    try:
+        # First try by domain (most accurate)
+        if domain:
+            domain_result = db.client.table("company_domains").select(
+                "company_id, domain, companies(company_id, name, category, website)"
+            ).ilike("domain", domain).limit(1).execute()
+
+            if domain_result.data and len(domain_result.data) > 0:
+                match = domain_result.data[0]
+                company = match.get("companies", {})
+                if company:
+                    logger.info(f"Company found by domain: {company.get('name')}")
+                    return {
+                        "company_id": company.get("company_id"),
+                        "name": company.get("name"),
+                        "category": company.get("category"),
+                        "website": company.get("website"),
+                        "matched_by": "domain",
+                        "matched_domain": domain
+                    }
+
+        # Fallback: search by name
+        if name:
+            name_result = db.client.table("companies").select(
+                "company_id, name, category, website"
+            ).ilike("name", f"%{name}%").limit(5).execute()
+
+            if name_result.data and len(name_result.data) > 0:
+                # Try exact match first
+                for company in name_result.data:
+                    if company.get("name", "").lower() == name.lower():
+                        logger.info(f"Company found by exact name: {company.get('name')}")
+                        return {
+                            "company_id": company.get("company_id"),
+                            "name": company.get("name"),
+                            "category": company.get("category"),
+                            "website": company.get("website"),
+                            "matched_by": "exact_name"
+                        }
+
+                # Return first partial match
+                company = name_result.data[0]
+                logger.info(f"Company found by partial name: {company.get('name')}")
+                return {
+                    "company_id": company.get("company_id"),
+                    "name": company.get("name"),
+                    "category": company.get("category"),
+                    "website": company.get("website"),
+                    "matched_by": "partial_name"
+                }
+
+        logger.info(f"No company found for name={name}, domain={domain}")
+        return None
+
+    except Exception as e:
+        logger.error(f"Error searching company: {e}")
+        return None
+
+
 @app.post("/suggest-contact-profile")
 async def suggest_contact_profile(request: dict):
     """
     Generate AI suggestions for contact profile based on email content.
-    Returns suggested description and category.
+    Returns ALL suggested fields: name, job title, company, phones, city, category, description.
     """
     logger.info("suggest_contact_profile_request", from_email=request.get("from_email"))
 
@@ -333,7 +526,7 @@ async def suggest_contact_profile(request: dict):
         from_name = request.get("from_name", "")
         from_email = request.get("from_email", "")
         subject = request.get("subject", "")
-        body_text = request.get("body_text", "")[:3000]  # Limit body length
+        body_text = request.get("body_text", "")[:5000]  # Increased limit for signature extraction
 
         # Category options from the CRM
         category_options = [
@@ -342,22 +535,55 @@ async def suggest_contact_profile(request: dict):
             "Student", "Institution", "Other"
         ]
 
-        prompt = f"""Based on this email, provide two things:
+        prompt = f"""You are analyzing an email thread to extract contact information for a CRM.
 
-1. A brief professional description of the sender (2-3 sentences in English). Focus on:
-   - Why they contacted Simone
-   - What they do/their role
-   - How they likely found Simone (cold outreach, referral, etc.)
+The email address being added is: {from_email}
+The name from email header is: {from_name}
 
-2. The most appropriate category from this list: {', '.join(category_options)}
+Your task:
+1. Find the email signature block belonging to THIS SPECIFIC person ({from_email}), not other people in the thread
+2. Extract ALL available information from their signature
+3. Suggest appropriate category and description
 
-Email from: {from_name} <{from_email}>
-Subject: {subject}
-Body:
+IMPORTANT:
+- The email thread may contain multiple signatures from different people - ONLY extract data for {from_email}
+- Phone numbers often appear as "M." (mobile), "T." (telephone), "Cell", "Tel", etc.
+- Company name is usually in the signature block, often with address
+- City can be extracted from address in signature (look for city names before country/postal codes)
+- LinkedIn URLs sometimes appear in signatures
+
+Email Subject: {subject}
+
+Email Body:
 {body_text}
 
-Respond ONLY with valid JSON in this exact format:
-{{"suggested_description": "Your description here", "suggested_category": "CategoryName"}}"""
+Respond ONLY with valid JSON in this exact format (use null for fields you cannot find):
+{{
+  "first_name": {{"value": "FirstName", "confidence": "high|medium|low"}},
+  "last_name": {{"value": "LastName", "confidence": "high|medium|low"}},
+  "job_title": {{"value": "Job Title", "confidence": "high|medium|low"}},
+  "company": {{
+    "name": "Company Name",
+    "domain": "company.com",
+    "confidence": "high|medium|low"
+  }},
+  "phones": [
+    {{"value": "+1234567890", "type": "mobile|office|fax", "confidence": "high|medium|low"}}
+  ],
+  "city": {{"value": "City Name", "confidence": "high|medium|low"}},
+  "category": {{"value": "CategoryFromList", "confidence": "high|medium|low", "alternatives": ["OtherPossible"]}},
+  "description": {{"value": "2-3 sentence professional description", "confidence": "medium"}},
+  "linkedin": {{"value": "linkedin.com/in/username", "confidence": "high|medium|low"}},
+  "signature_found": true,
+  "signature_text": "Raw signature text extracted"
+}}
+
+Category must be one of: {', '.join(category_options)}
+
+For confidence:
+- "high": clearly visible in signature or email header
+- "medium": inferred from context or partial match
+- "low": guessed or uncertain"""
 
         # Use the agent's Claude client
         import anthropic
@@ -366,7 +592,7 @@ Respond ONLY with valid JSON in this exact format:
 
         response = client.messages.create(
             model="claude-sonnet-4-20250514",
-            max_tokens=500,
+            max_tokens=1000,
             messages=[{"role": "user", "content": prompt}]
         )
 
@@ -375,22 +601,177 @@ Respond ONLY with valid JSON in this exact format:
 
         # Handle potential markdown code blocks
         if response_text.startswith("```"):
-            response_text = response_text.split("```")[1]
-            if response_text.startswith("json"):
-                response_text = response_text[4:]
+            lines = response_text.split("\n")
+            # Remove first and last lines (```json and ```)
+            json_lines = []
+            in_json = False
+            for line in lines:
+                if line.startswith("```") and not in_json:
+                    in_json = True
+                    continue
+                elif line.startswith("```") and in_json:
+                    break
+                elif in_json:
+                    json_lines.append(line)
+            response_text = "\n".join(json_lines)
 
         result = json_lib.loads(response_text)
 
+        # -------------------- Apollo Enrichment --------------------
+        # Call Apollo to get LinkedIn URL and photo
+        first_name_val = result.get("first_name", {}).get("value", "") if isinstance(result.get("first_name"), dict) else ""
+        last_name_val = result.get("last_name", {}).get("value", "") if isinstance(result.get("last_name"), dict) else ""
+        company_name = result.get("company", {}).get("name", "") if isinstance(result.get("company"), dict) else ""
+
+        apollo_data = None
+        if first_name_val and last_name_val:
+            apollo_data = await search_apollo_person(
+                first_name=first_name_val,
+                last_name=last_name_val,
+                email=from_email,
+                company=company_name
+            )
+            logger.info("apollo_search_result", found=apollo_data is not None)
+
+        # Add Apollo data to result
+        if apollo_data:
+            if apollo_data.get("linkedin_url"):
+                result["linkedin_url"] = {
+                    "value": apollo_data["linkedin_url"],
+                    "confidence": apollo_data["confidence"],
+                    "source": "apollo"
+                }
+            if apollo_data.get("photo_url"):
+                result["photo_url"] = {
+                    "value": apollo_data["photo_url"],
+                    "confidence": apollo_data["confidence"],
+                    "source": "apollo"
+                }
+            if apollo_data.get("title"):
+                result["apollo_job_title"] = {
+                    "value": apollo_data["title"],
+                    "confidence": apollo_data["confidence"],
+                    "source": "apollo"
+                }
+
+            # Search for Apollo company in our database
+            apollo_org_name = apollo_data.get("organization_name")
+            apollo_org_domain = apollo_data.get("organization_domain")
+
+            if apollo_org_name or apollo_org_domain:
+                db_company = await search_company_in_db(
+                    name=apollo_org_name,
+                    domain=apollo_org_domain
+                )
+
+                if db_company:
+                    # Found matching company in DB
+                    result["apollo_company"] = {
+                        "company_id": db_company["company_id"],
+                        "name": db_company["name"],
+                        "category": db_company.get("category"),
+                        "matched_by": db_company["matched_by"],
+                        "apollo_name": apollo_org_name,
+                        "apollo_domain": apollo_org_domain,
+                        "confidence": apollo_data["confidence"],
+                        "source": "apollo",
+                        "exists_in_db": True
+                    }
+                else:
+                    # Company not found - suggest creating new
+                    result["apollo_company"] = {
+                        "name": apollo_org_name,
+                        "domain": apollo_org_domain,
+                        "website": apollo_data.get("organization_website"),
+                        "confidence": apollo_data["confidence"],
+                        "source": "apollo",
+                        "exists_in_db": False
+                    }
+
+        # -------------------- Tags Suggestion --------------------
+        # Get all tags and ask Claude to suggest relevant ones
+        all_tags = await get_all_tags()
+        suggested_tags = []
+
+        if all_tags:
+            tag_names = [t["name"] for t in all_tags]
+            job_title_val = result.get("job_title", {}).get("value", "") if isinstance(result.get("job_title"), dict) else ""
+            category_val = result.get("category", {}).get("value", "") if isinstance(result.get("category"), dict) else ""
+
+            tags_prompt = f"""Given this contact information, suggest the most relevant tags from the available list.
+
+Contact: {first_name_val} {last_name_val}
+Job Title: {job_title_val}
+Company: {company_name}
+Category: {category_val}
+
+Email subject: {subject}
+
+Available tags: {', '.join(tag_names)}
+
+Return ONLY a JSON array of tag names that apply to this contact (maximum 5 tags).
+Example: ["Tag1", "Tag2"]
+
+Rules:
+- Only include tags from the available list above
+- Return empty array [] if no tags clearly apply
+- Be selective - only suggest tags that clearly match
+- Do not make up new tags"""
+
+            try:
+                tags_response = client.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=200,
+                    messages=[{"role": "user", "content": tags_prompt}]
+                )
+                tags_text = tags_response.content[0].text.strip()
+
+                # Handle markdown code blocks
+                if tags_text.startswith("```"):
+                    lines = tags_text.split("\n")
+                    json_lines = []
+                    in_json = False
+                    for line in lines:
+                        if line.startswith("```") and not in_json:
+                            in_json = True
+                            continue
+                        elif line.startswith("```") and in_json:
+                            break
+                        elif in_json:
+                            json_lines.append(line)
+                    tags_text = "\n".join(json_lines)
+
+                suggested_tag_names = json_lib.loads(tags_text)
+
+                # Match tag names to tag objects with IDs
+                for tag_name in suggested_tag_names:
+                    for tag in all_tags:
+                        if tag["name"].lower() == tag_name.lower():
+                            suggested_tags.append({
+                                "tag_id": tag["tag_id"],
+                                "name": tag["name"]
+                            })
+                            break
+
+                logger.info("tags_suggestion_result", count=len(suggested_tags))
+            except Exception as tags_error:
+                logger.error(f"Tags suggestion error: {tags_error}")
+
+        result["suggested_tags"] = suggested_tags
+
         return {
             "success": True,
-            "suggested_description": result.get("suggested_description", ""),
-            "suggested_category": result.get("suggested_category", ""),
+            "suggestions": result,
+            # Keep backwards compatibility
+            "suggested_description": result.get("description", {}).get("value", "") if isinstance(result.get("description"), dict) else "",
+            "suggested_category": result.get("category", {}).get("value", "") if isinstance(result.get("category"), dict) else "",
         }
 
     except Exception as e:
         logger.error("suggest_contact_profile_error", error=str(e))
         return {
             "success": False,
+            "suggestions": None,
             "suggested_description": "",
             "suggested_category": "",
             "error": str(e)

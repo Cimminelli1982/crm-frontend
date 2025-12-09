@@ -9,7 +9,7 @@ import { useQuickEditModal } from '../hooks/useQuickEditModal';
 import { getVisibleTabs, shouldShowField } from '../helpers/contactListHelpers';
 import ProfileImageModal from '../components/modals/ProfileImageModal';
 import { useProfileImageModal } from '../hooks/useProfileImageModal';
-import CreateContactModal from '../components/modals/CreateContactModal';
+import CreateContactModalAI from '../components/modals/CreateContactModalAI';
 import DomainLinkModal from '../components/modals/DomainLinkModal';
 import CreateCompanyModal from '../components/modals/CreateCompanyModal';
 import DeleteSkipSpamModal from '../components/DeleteSkipSpamModal';
@@ -9815,8 +9815,8 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
         theme={theme}
       />
 
-      {/* Create Contact Modal */}
-      <CreateContactModal
+      {/* Create Contact Modal (AI-First) */}
+      <CreateContactModalAI
         isOpen={createContactModalOpen}
         onClose={() => {
           setCreateContactModalOpen(false);
