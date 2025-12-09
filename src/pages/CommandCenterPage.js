@@ -5549,6 +5549,9 @@ internet businesses.`;
             <ActionTabIcon theme={theme} $active={activeActionTab === 'notes'} onClick={() => setActiveActionTab('notes')} title="Notes">
               <FaStickyNote />
             </ActionTabIcon>
+            <ActionTabIcon theme={theme} $active={activeActionTab === 'chat'} onClick={() => setActiveActionTab('chat')} title="Chat with Claude">
+              <FaRobot />
+            </ActionTabIcon>
           </ActionsPanelTabs>
 
           {selectedThread && selectedThread.length > 0 && (
@@ -7514,9 +7517,10 @@ internet businesses.`;
                           {/* All contacts in single list with role inline */}
                           {emailContacts.map((participant, idx) => {
                             const score = participant.contact?.completeness_score || 0;
+                            const isMarkedComplete = participant.contact?.show_missing === false;
                             const circumference = 2 * Math.PI * 16;
-                            const strokeDashoffset = circumference - (score / 100) * circumference;
-                            const scoreColor = score >= 70 ? '#10B981' : score >= 40 ? '#F59E0B' : '#EF4444';
+                            const strokeDashoffset = isMarkedComplete ? 0 : circumference - (score / 100) * circumference;
+                            const scoreColor = isMarkedComplete ? '#F59E0B' : (score >= 70 ? '#10B981' : score >= 40 ? '#F59E0B' : '#EF4444');
                             // Get the primary role to display (from > to > cc)
                             const primaryRole = participant.roles?.includes('from') ? 'From' : participant.roles?.includes('to') ? 'To' : participant.roles?.includes('cc') ? 'CC' : '';
                             return (
@@ -7549,13 +7553,13 @@ internet businesses.`;
                                   )}
                                 </div>
                                 {participant.contact && (
-                                  <div style={{ position: 'relative', width: 40, height: 40, cursor: 'pointer' }} title={`${score}% complete`} onClick={() => handleOpenQuickEditModal(participant.contact, true)}>
+                                  <div style={{ position: 'relative', width: 40, height: 40, cursor: 'pointer' }} title={isMarkedComplete ? 'Marked complete' : `${score}% complete`} onClick={() => handleOpenQuickEditModal(participant.contact, true)}>
                                     <svg width="40" height="40" style={{ transform: 'rotate(-90deg)' }}>
                                       <circle cx="20" cy="20" r="16" fill="none" stroke={theme === 'light' ? '#E5E7EB' : '#374151'} strokeWidth="4" />
                                       <circle cx="20" cy="20" r="16" fill="none" stroke={scoreColor} strokeWidth="4" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} />
                                     </svg>
                                     <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontSize: '10px', fontWeight: 600, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
-                                      {score === 100 ? <FaCrown size={14} color="#F59E0B" /> : `${score}%`}
+                                      {(isMarkedComplete || score === 100) ? <FaCrown size={14} color="#F59E0B" /> : `${score}%`}
                                     </div>
                                   </div>
                                 )}
