@@ -1569,24 +1569,10 @@ const CommandCenterPage = ({ theme }) => {
     fetchDataIntegrity();
   };
 
-  // Handle editing a category missing company - open edit modal
+  // Handle editing a category missing company - open CompanyDataIntegrityModal
   const handleEditCategoryMissingCompany = async (company) => {
-    try {
-      // Fetch full company data for the modal
-      const { data: fullCompany, error } = await supabase
-        .from('companies')
-        .select('*')
-        .eq('company_id', company.company_id)
-        .single();
-
-      if (error) throw error;
-
-      setEditCompanyModalCompany(fullCompany);
-      setEditCompanyModalOpen(true);
-    } catch (error) {
-      console.error('Error fetching company for edit:', error);
-      toast.error('Failed to load company');
-    }
+    setCompanyDataIntegrityCompanyId(company.company_id);
+    setCompanyDataIntegrityModalOpen(true);
   };
 
   // Handle closing edit company modal
@@ -10043,7 +10029,7 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
       {/* Company Data Integrity Modal */}
       <CompanyDataIntegrityModal
         isOpen={companyDataIntegrityModalOpen}
-        onClose={() => { setCompanyDataIntegrityModalOpen(false); setCompanyDataIntegrityCompanyId(null); }}
+        onClose={() => { setCompanyDataIntegrityModalOpen(false); setCompanyDataIntegrityCompanyId(null); fetchDataIntegrity(); }}
         companyId={companyDataIntegrityCompanyId}
         theme={theme}
         onRefresh={() => {
@@ -10051,6 +10037,8 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
           if (selectedThread && selectedThread.length > 0) {
             setSelectedThread([...selectedThread]);
           }
+          // Also refresh data integrity lists
+          fetchDataIntegrity();
         }}
       />
     </PageContainer>
