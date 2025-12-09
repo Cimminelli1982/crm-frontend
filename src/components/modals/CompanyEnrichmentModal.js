@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import Modal from 'react-modal';
 import styled from 'styled-components';
-import { FiX, FiLink, FiCheck, FiEdit2, FiLoader, FiSave, FiExternalLink, FiSearch, FiRefreshCw, FiDatabase, FiUsers, FiCalendar, FiImage } from 'react-icons/fi';
-import { FaBuilding, FaGlobe, FaLinkedin, FaTags, FaMapMarkerAlt, FaFileAlt, FaServer } from 'react-icons/fa';
+import { FiX, FiCheck, FiLoader, FiSave, FiExternalLink, FiSearch } from 'react-icons/fi';
+import { FaBuilding, FaLinkedin, FaTags, FaFileAlt } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import { toast } from 'react-hot-toast';
 
@@ -168,26 +168,6 @@ const Input = styled.input`
   }
 `;
 
-const TextArea = styled.textarea`
-  width: 100%;
-  min-height: 80px;
-  padding: 10px 12px;
-  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
-  border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
-  border-radius: 6px;
-  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
-  font-size: 13px;
-  font-family: inherit;
-  resize: vertical;
-  box-sizing: border-box;
-
-  &:focus {
-    outline: none;
-    border-color: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
-    box-shadow: 0 0 0 1px ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
-  }
-`;
-
 const SuggestionBox = styled.div`
   background: ${props => props.theme === 'light' ? '#EFF6FF' : '#1E3A8A'};
   border: 1px solid ${props => props.theme === 'light' ? '#BFDBFE' : '#3B82F6'};
@@ -288,24 +268,6 @@ const ActionButton = styled.button`
   }
 `;
 
-const EnrichmentResult = styled.div`
-  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
-  border-radius: 6px;
-  padding: 12px;
-  margin-bottom: 12px;
-  border: 1px solid ${props => props.$accepted
-    ? (props.theme === 'light' ? '#10B981' : '#059669')
-    : (props.theme === 'light' ? '#E5E7EB' : '#4B5563')
-  };
-`;
-
-const ResultHeader = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-`;
-
 const ResultLabel = styled.div`
   font-size: 12px;
   font-weight: 600;
@@ -321,11 +283,6 @@ const ResultValue = styled.div`
   margin-bottom: 4px;
 `;
 
-const AcceptRejectButtons = styled.div`
-  display: flex;
-  gap: 6px;
-`;
-
 const LogoPreview = styled.img`
   width: 60px;
   height: 60px;
@@ -334,29 +291,6 @@ const LogoPreview = styled.img`
   background: ${props => props.theme === 'light' ? '#F9FAFB' : '#111827'};
   padding: 8px;
   border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
-`;
-
-const SmallButton = styled.button`
-  background: ${props => props.$accept
-    ? (props.theme === 'light' ? '#10B981' : '#059669')
-    : 'transparent'
-  };
-  color: ${props => props.$accept
-    ? '#FFFFFF'
-    : (props.theme === 'light' ? '#EF4444' : '#F87171')
-  };
-  border: 1px solid ${props => props.$accept
-    ? 'transparent'
-    : (props.theme === 'light' ? '#EF4444' : '#F87171')
-  };
-  border-radius: 4px;
-  padding: 4px 8px;
-  font-size: 12px;
-  cursor: pointer;
-
-  &:hover {
-    opacity: 0.8;
-  }
 `;
 
 const FooterButtons = styled.div`
@@ -422,23 +356,225 @@ const CompanyEnrichmentModal = ({
     technologies: [],
     confidence: null
   });
-  const [acceptedFields, setAcceptedFields] = useState({
-    description: false,
-    tags: false,
-    cities: false,
-    domains: false,
-    website: false,
-    linkedin: false,
-    logo_url: false
-  });
+  const [selectedTags, setSelectedTags] = useState([]); // Tags user selected from suggestions
+  const [matchedTags, setMatchedTags] = useState([]); // Tags from Supabase that match Apollo data
   const [saving, setSaving] = useState(false);
+  const [tagSearchQuery, setTagSearchQuery] = useState('');
+  const [tagSearchResults, setTagSearchResults] = useState([]);
+  const [searchingTags, setSearchingTags] = useState(false);
+
+  // Helper function for auto LinkedIn search
+  const doAutoLinkedInSearch = async (companyData, domains) => {
+    setSearchingLinkedIn(true);
+    try {
+      const primaryDomain = domains?.find(d => d.is_primary)?.domain ||
+                           domains?.[0]?.domain ||
+                           companyData.website;
+
+      const response = await supabase.functions.invoke('company-linkedin-finder', {
+        body: {
+          companyId: companyData.company_id,
+          website: primaryDomain,
+          companyName: companyData.name
+        }
+      });
+
+      if (response.error) {
+        const suggestedUrl = `https://linkedin.com/company/${companyData.name.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '')}`;
+        setLinkedInSuggestion(suggestedUrl);
+        setSuggestionConfidence(30);
+      } else {
+        const data = response.data;
+        if (data?.linkedin) {
+          setLinkedInSuggestion(data.linkedin);
+          setSuggestionConfidence(data.confidence || 95);
+        } else if (data?.data?.linkedin) {
+          setLinkedInSuggestion(data.data.linkedin);
+          setSuggestionConfidence(data.data.confidence || 95);
+        } else if (data?.suggestion) {
+          setLinkedInSuggestion(data.suggestion);
+          setSuggestionConfidence(data.confidence || 70);
+        } else {
+          const suggestedUrl = `https://linkedin.com/company/${companyData.name.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '')}`;
+          setLinkedInSuggestion(suggestedUrl);
+          setSuggestionConfidence(30);
+        }
+      }
+    } catch (error) {
+      console.error('Error in auto-search:', error);
+      const suggestedUrl = `https://linkedin.com/company/${companyData.name.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '')}`;
+      setLinkedInSuggestion(suggestedUrl);
+      setSuggestionConfidence(30);
+    } finally {
+      setSearchingLinkedIn(false);
+    }
+  };
+
+  // Helper function for auto enrichment
+  const doAutoEnrichment = async (companyData, domains, linkedIn) => {
+    setEnriching(true);
+    try {
+      const primaryDomain = domains?.find(d => d.is_primary)?.domain ||
+                           domains?.[0]?.domain ||
+                           companyData?.website;
+
+      if (!primaryDomain && !companyData?.name) {
+        toast.error('No website or company name available for enrichment');
+        setEnriching(false);
+        return;
+      }
+
+      const response = await supabase.functions.invoke('company-enrichment', {
+        body: {
+          companyId: companyData.company_id,
+          website: primaryDomain || undefined,
+          companyName: companyData.name,
+          linkedinUrl: linkedIn || companyData?.linkedin || undefined
+        }
+      });
+
+      if (response.error) throw response.error;
+
+      const data = response.data;
+      if (data.success && data.data) {
+        const apolloData = data.data;
+        const enrichedData = {
+          description: apolloData.description || null,
+          tags: apolloData.tags || [],
+          cities: apolloData.locations ? apolloData.locations.map(loc => ({
+            name: loc.city,
+            state: loc.state,
+            country: loc.country
+          })) : [],
+          domains: apolloData.domains || [],
+          website: apolloData.domains?.find(d => d.is_primary)?.domain || primaryDomain,
+          linkedin: apolloData.linkedin || linkedIn || null,
+          logo_url: apolloData.logo_url || null,
+          company_size: apolloData.company_size || null,
+          founded_year: apolloData.founded_year || null,
+          technologies: apolloData.technologies || [],
+          confidence: apolloData.confidence || null
+        };
+        setEnrichmentData(enrichedData);
+
+        // Fetch matching tags from Supabase based on Apollo tags/industries
+        if (apolloData.tags && apolloData.tags.length > 0) {
+          await fetchMatchingTags(apolloData.tags);
+        }
+
+        if (apolloData.confidence >= 80) {
+          toast.success(`Company data enriched! (${apolloData.confidence}% confidence)`);
+        } else if (apolloData.confidence >= 50) {
+          toast(`Enriched with moderate confidence (${apolloData.confidence}%)`, { icon: '⚠️' });
+        } else {
+          toast.success('Company data enriched!');
+        }
+      } else {
+        toast(data.message || 'Limited enrichment data available', { icon: '⚠️' });
+      }
+    } catch (error) {
+      console.error('Error enriching company:', error);
+      toast.error('Failed to enrich company data');
+    } finally {
+      setEnriching(false);
+    }
+  };
+
+  // Fetch matching tags from Supabase based on Apollo tags
+  const fetchMatchingTags = async (apolloTags) => {
+    try {
+      // Get all tags from Supabase
+      const { data: allTags, error } = await supabase
+        .from('tags')
+        .select('tag_id, name')
+        .order('name');
+
+      if (error) throw error;
+
+      // Score and match tags
+      const apolloTagsLower = apolloTags.map(t => t.toLowerCase());
+      const scoredTags = allTags.map(tag => {
+        const tagNameLower = tag.name.toLowerCase();
+        let score = 0;
+
+        // Exact match
+        if (apolloTagsLower.includes(tagNameLower)) {
+          score += 100;
+        }
+
+        // Partial match - Apollo tag contains Supabase tag or vice versa
+        for (const apolloTag of apolloTagsLower) {
+          if (apolloTag.includes(tagNameLower) || tagNameLower.includes(apolloTag)) {
+            score += 50;
+          }
+          // Word-level matching
+          const apolloWords = apolloTag.split(/[\s,&-]+/).filter(w => w.length > 2);
+          const tagWords = tagNameLower.split(/[\s,&-]+/).filter(w => w.length > 2);
+          for (const word of tagWords) {
+            if (apolloWords.some(aw => aw.includes(word) || word.includes(aw))) {
+              score += 20;
+            }
+          }
+        }
+
+        return { ...tag, score };
+      })
+        .filter(tag => tag.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 15); // Top 15 matches
+
+      setMatchedTags(scoredTags);
+    } catch (error) {
+      console.error('Error fetching matching tags:', error);
+    }
+  };
+
+  // Search tags by query
+  const searchTags = async (query) => {
+    if (!query || query.length < 2) {
+      setTagSearchResults([]);
+      return;
+    }
+
+    setSearchingTags(true);
+    try {
+      const { data: tags, error } = await supabase
+        .from('tags')
+        .select('tag_id, name')
+        .ilike('name', `%${query}%`)
+        .order('name')
+        .limit(10);
+
+      if (error) throw error;
+
+      // Filter out already selected tags
+      const filteredTags = tags.filter(
+        tag => !selectedTags.some(t => t.tag_id === tag.tag_id)
+      );
+      setTagSearchResults(filteredTags);
+    } catch (error) {
+      console.error('Error searching tags:', error);
+    } finally {
+      setSearchingTags(false);
+    }
+  };
+
+  // Debounced tag search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      searchTags(tagSearchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [tagSearchQuery, selectedTags]);
 
   useEffect(() => {
     if (isOpen && company) {
+      // Reset all state
       setLinkedinUrl(company.linkedin || '');
       setLinkedInSuggestion(null);
       setSuggestionConfidence(null);
-      setCurrentStep(1);
+      setSearchingLinkedIn(false);
+      setEnriching(false);
       setEnrichmentData({
         description: null,
         tags: [],
@@ -452,17 +588,27 @@ const CompanyEnrichmentModal = ({
         technologies: [],
         confidence: null
       });
-      setAcceptedFields({
-        description: false,
-        tags: false,
-        cities: false,
-        domains: false,
-        website: false,
-        linkedin: false,
-        logo_url: false
-      });
+      setSelectedTags([]);
+      setMatchedTags([]);
+      setTagSearchQuery('');
+      setTagSearchResults([]);
+
+      // If company already has LinkedIn URL, skip to step 2 and auto-enrich
+      if (company.linkedin) {
+        setCurrentStep(2);
+        // Auto-start enrichment after a small delay
+        setTimeout(() => {
+          doAutoEnrichment(company, companyDomains, company.linkedin);
+        }, 500);
+      } else {
+        setCurrentStep(1);
+        // Auto-start LinkedIn search after a small delay
+        setTimeout(() => {
+          doAutoLinkedInSearch(company, companyDomains);
+        }, 500);
+      }
     }
-  }, [isOpen, company]);
+  }, [isOpen, company, companyDomains]);
 
   const searchLinkedInUrl = async () => {
     if (!company) return;
@@ -537,10 +683,30 @@ const CompanyEnrichmentModal = ({
     window.open(searchUrl, '_blank');
   };
 
-  const acceptLinkedInSuggestion = () => {
-    if (linkedInSuggestion) {
+  const acceptLinkedInSuggestion = async () => {
+    if (linkedInSuggestion && company) {
       setLinkedinUrl(linkedInSuggestion);
-      toast.success('LinkedIn URL accepted');
+
+      // Auto-save and continue to step 2
+      try {
+        const { error } = await supabase
+          .from('companies')
+          .update({ linkedin: linkedInSuggestion })
+          .eq('company_id', company.company_id);
+
+        if (error) throw error;
+
+        toast.success('LinkedIn URL saved');
+        setCurrentStep(2);
+
+        // Auto-start enrichment after moving to step 2
+        setTimeout(() => {
+          doAutoEnrichment(company, companyDomains, linkedInSuggestion);
+        }, 300);
+      } catch (error) {
+        console.error('Error saving LinkedIn URL:', error);
+        toast.error('Failed to save LinkedIn URL');
+      }
     }
   };
 
@@ -557,6 +723,11 @@ const CompanyEnrichmentModal = ({
 
       toast.success('LinkedIn URL saved');
       setCurrentStep(2);
+
+      // Auto-start enrichment after moving to step 2
+      setTimeout(() => {
+        doAutoEnrichment(company, companyDomains, linkedinUrl);
+      }, 300);
     } catch (error) {
       console.error('Error saving LinkedIn URL:', error);
       toast.error('Failed to save LinkedIn URL');
@@ -651,31 +822,28 @@ const CompanyEnrichmentModal = ({
     }
   };
 
-  const toggleFieldAcceptance = (field) => {
-    setAcceptedFields(prev => ({
-      ...prev,
-      [field]: !prev[field]
-    }));
-  };
-
   const saveEnrichmentData = async () => {
     if (!company) return;
 
     setSaving(true);
     try {
-      // Update company basic data
+      // Update company description
       const updateData = {};
-
-      if (acceptedFields.description && enrichmentData.description) {
+      if (enrichmentData.description) {
         updateData.description = enrichmentData.description;
       }
 
-      if (acceptedFields.linkedin && enrichmentData.linkedin) {
-        updateData.linkedin = enrichmentData.linkedin;
+      if (Object.keys(updateData).length > 0) {
+        const { error } = await supabase
+          .from('companies')
+          .update(updateData)
+          .eq('company_id', company.company_id);
+
+        if (error) throw error;
       }
 
       // Handle logo URL by creating an attachment and linking it
-      if (acceptedFields.logo_url && enrichmentData.logo_url) {
+      if (enrichmentData.logo_url) {
         try {
           // First, remove any existing logo attachments
           const { data: existingLogos } = await supabase
@@ -685,17 +853,9 @@ const CompanyEnrichmentModal = ({
             .eq('is_logo', true);
 
           if (existingLogos && existingLogos.length > 0) {
-            // Delete existing logo attachments
             for (const logo of existingLogos) {
-              await supabase
-                .from('attachments')
-                .delete()
-                .eq('attachment_id', logo.attachment_id);
-
-              await supabase
-                .from('company_attachments')
-                .delete()
-                .eq('attachment_id', logo.attachment_id);
+              await supabase.from('attachments').delete().eq('attachment_id', logo.attachment_id);
+              await supabase.from('company_attachments').delete().eq('attachment_id', logo.attachment_id);
             }
           }
 
@@ -714,125 +874,66 @@ const CompanyEnrichmentModal = ({
             .select()
             .single();
 
-          if (attachmentError) {
-            console.error('Error creating logo attachment:', attachmentError);
-          } else if (newAttachment) {
-            // Link the attachment to the company as a logo
-            const { error: linkError } = await supabase
+          if (!attachmentError && newAttachment) {
+            await supabase
               .from('company_attachments')
               .insert({
                 company_id: company.company_id,
                 attachment_id: newAttachment.attachment_id,
                 is_logo: true
               });
-
-            if (linkError) {
-              console.error('Error linking logo to company:', linkError);
-            }
           }
         } catch (error) {
           console.error('Error handling logo:', error);
         }
       }
 
-      if (Object.keys(updateData).length > 0) {
-        const { error } = await supabase
-          .from('companies')
-          .update(updateData)
-          .eq('company_id', company.company_id);
-
-        if (error) throw error;
-      }
-
-      // Handle domains
-      if (acceptedFields.domains && enrichmentData.domains.length > 0) {
-        // First, remove existing non-primary domains if we're updating
-        await supabase
-          .from('company_domains')
-          .delete()
-          .eq('company_id', company.company_id)
-          .eq('is_primary', false);
-
-        // Add new domains
+      // Handle domains (save silently)
+      if (enrichmentData.domains && enrichmentData.domains.length > 0) {
         for (const domainData of enrichmentData.domains) {
-          await supabase
+          // Check if domain already exists
+          const { data: existing } = await supabase
             .from('company_domains')
-            .upsert({
-              company_id: company.company_id,
-              domain: domainData.domain,
-              is_primary: domainData.is_primary
-            });
-        }
-      }
-
-      // Handle tags
-      if (acceptedFields.tags && enrichmentData.tags.length > 0) {
-        for (const tagName of enrichmentData.tags) {
-          // Check if tag exists
-          let { data: tag, error: tagError } = await supabase
-            .from('tags')
-            .select('tag_id')
-            .eq('name', tagName)
+            .select('id')
+            .eq('company_id', company.company_id)
+            .eq('domain', domainData.domain)
             .single();
 
-          if (!tag) {
-            // Create tag
-            const { data: newTag, error: createError } = await supabase
-              .from('tags')
-              .insert({ name: tagName })
-              .select('tag_id')
-              .single();
-
-            if (createError) continue;
-            tag = newTag;
-          }
-
-          // Link to company
-          await supabase
-            .from('company_tags')
-            .upsert({
-              company_id: company.company_id,
-              tag_id: tag.tag_id
-            });
-        }
-      }
-
-      // Handle cities
-      if (acceptedFields.cities && enrichmentData.cities.length > 0) {
-        for (const cityData of enrichmentData.cities) {
-          // Check if city exists
-          let { data: city, error: cityError } = await supabase
-            .from('cities')
-            .select('city_id')
-            .eq('name', cityData.name)
-            .single();
-
-          if (!city) {
-            // Create city
-            const { data: newCity, error: createError } = await supabase
-              .from('cities')
+          if (!existing) {
+            await supabase
+              .from('company_domains')
               .insert({
-                name: cityData.name,
-                country: cityData.country || 'Unknown'
-              })
-              .select('city_id')
-              .single();
-
-            if (createError) continue;
-            city = newCity;
+                company_id: company.company_id,
+                domain: domainData.domain,
+                is_primary: domainData.is_primary
+              });
           }
-
-          // Link to company
-          await supabase
-            .from('company_cities')
-            .upsert({
-              company_id: company.company_id,
-              city_id: city.city_id
-            });
         }
       }
 
-      toast.success('Enrichment data saved successfully!');
+      // Handle selected tags
+      if (selectedTags.length > 0) {
+        for (const tag of selectedTags) {
+          // Check if already linked
+          const { data: existing } = await supabase
+            .from('company_tags')
+            .select('entry_id')
+            .eq('company_id', company.company_id)
+            .eq('tag_id', tag.tag_id)
+            .single();
+
+          if (!existing) {
+            await supabase
+              .from('company_tags')
+              .insert({
+                company_id: company.company_id,
+                tag_id: tag.tag_id
+              });
+          }
+        }
+      }
+
+      toast.success('Enrichment data saved!');
 
       if (onEnrichComplete) {
         onEnrichComplete();
@@ -982,186 +1083,196 @@ const CompanyEnrichmentModal = ({
         {currentStep === 2 && (
           <>
             <SectionCard theme={theme}>
-              <SectionTitle theme={theme}>
-                <FiDatabase /> Fetch Company Data
-              </SectionTitle>
-
-              {!enrichmentData.description && !enriching && (
-                <ActionButton
-                  theme={theme}
-                  $primary
-                  $fullWidth
-                  onClick={enrichCompanyData}
-                  disabled={enriching}
-                >
-                  {enriching ? (
-                    <>
-                      <FiLoader className="animate-spin" /> Enriching...
-                    </>
-                  ) : (
-                    <>
-                      <FiRefreshCw /> Fetch Data from Apollo
-                    </>
-                  )}
-                </ActionButton>
+              {/* Loading state */}
+              {enriching && (
+                <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                  <FiLoader className="animate-spin" style={{ fontSize: 32, marginBottom: 12 }} />
+                  <div style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                    Fetching company data from Apollo...
+                  </div>
+                </div>
               )}
 
-              {enrichmentData.confidence && (
-                <SectionCard theme={theme} style={{ marginBottom: '16px' }}>
-                  <SectionTitle theme={theme}>
-                    Data Quality Score:
-                    <ConfidenceBadge theme={theme} $confidence={enrichmentData.confidence}>
-                      {enrichmentData.confidence}% Confidence
-                    </ConfidenceBadge>
-                  </SectionTitle>
-                </SectionCard>
-              )}
-
-              {enrichmentData.description && (
+              {/* Results */}
+              {enrichmentData.description && !enriching && (
                 <>
-                  {enrichmentData.logo_url && (
-                    <EnrichmentResult theme={theme} $accepted={acceptedFields.logo_url}>
-                      <ResultHeader>
-                        <ResultLabel theme={theme}>
-                          <FiImage /> Company Logo
-                        </ResultLabel>
-                        <AcceptRejectButtons>
-                          <SmallButton
-                            theme={theme}
-                            $accept
-                            onClick={() => toggleFieldAcceptance('logo_url')}
-                          >
-                            {acceptedFields.logo_url ? '✓ Accepted' : 'Accept'}
-                          </SmallButton>
-                        </AcceptRejectButtons>
-                      </ResultHeader>
+                  {/* Logo and Description side by side */}
+                  <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
+                    {enrichmentData.logo_url && (
                       <LogoPreview theme={theme} src={enrichmentData.logo_url} alt="Company logo" />
-                    </EnrichmentResult>
-                  )}
-
-                  <EnrichmentResult theme={theme} $accepted={acceptedFields.description}>
-                    <ResultHeader>
-                      <ResultLabel theme={theme}>
+                    )}
+                    <div style={{ flex: 1 }}>
+                      <ResultLabel theme={theme} style={{ marginBottom: 8 }}>
                         <FaFileAlt /> Description
                       </ResultLabel>
-                      <AcceptRejectButtons>
-                        <SmallButton
-                          theme={theme}
-                          $accept
-                          onClick={() => toggleFieldAcceptance('description')}
-                        >
-                          {acceptedFields.description ? '✓ Accepted' : 'Accept'}
-                        </SmallButton>
-                      </AcceptRejectButtons>
-                    </ResultHeader>
-                    <ResultValue theme={theme}>
-                      {enrichmentData.description}
-                    </ResultValue>
-                  </EnrichmentResult>
-
-                  {enrichmentData.tags.length > 0 && (
-                    <EnrichmentResult theme={theme} $accepted={acceptedFields.tags}>
-                      <ResultHeader>
-                        <ResultLabel theme={theme}>
-                          <FaTags /> Tags/Industries
-                        </ResultLabel>
-                        <AcceptRejectButtons>
-                          <SmallButton
-                            theme={theme}
-                            $accept
-                            onClick={() => toggleFieldAcceptance('tags')}
-                          >
-                            {acceptedFields.tags ? '✓ Accepted' : 'Accept'}
-                          </SmallButton>
-                        </AcceptRejectButtons>
-                      </ResultHeader>
-                      <ResultValue theme={theme}>
-                        {enrichmentData.tags.join(', ')}
+                      <ResultValue theme={theme} style={{
+                        fontSize: 13,
+                        lineHeight: 1.5,
+                        maxHeight: 100,
+                        overflow: 'auto'
+                      }}>
+                        {enrichmentData.description}
                       </ResultValue>
-                    </EnrichmentResult>
+                    </div>
+                  </div>
+
+                  {/* Selectable Tags */}
+                  {matchedTags.length > 0 && (
+                    <div style={{ marginBottom: 16 }}>
+                      <ResultLabel theme={theme} style={{ marginBottom: 10 }}>
+                        <FaTags /> Select Tags (click to select)
+                      </ResultLabel>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                        {matchedTags.map(tag => {
+                          const isSelected = selectedTags.some(t => t.tag_id === tag.tag_id);
+                          return (
+                            <button
+                              key={tag.tag_id}
+                              onClick={() => {
+                                if (isSelected) {
+                                  setSelectedTags(prev => prev.filter(t => t.tag_id !== tag.tag_id));
+                                } else {
+                                  setSelectedTags(prev => [...prev, tag]);
+                                }
+                              }}
+                              style={{
+                                padding: '6px 12px',
+                                borderRadius: 16,
+                                border: isSelected
+                                  ? `2px solid ${theme === 'light' ? '#10B981' : '#059669'}`
+                                  : `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                                background: isSelected
+                                  ? (theme === 'light' ? '#D1FAE5' : '#064E3B')
+                                  : (theme === 'light' ? '#F9FAFB' : '#374151'),
+                                color: isSelected
+                                  ? (theme === 'light' ? '#065F46' : '#6EE7B7')
+                                  : (theme === 'light' ? '#374151' : '#D1D5DB'),
+                                fontSize: 13,
+                                cursor: 'pointer',
+                                transition: 'all 0.15s',
+                                fontWeight: isSelected ? 600 : 400
+                              }}
+                            >
+                              {isSelected && '✓ '}{tag.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {selectedTags.length > 0 && (
+                        <div style={{
+                          marginTop: 8,
+                          fontSize: 12,
+                          color: theme === 'light' ? '#059669' : '#6EE7B7'
+                        }}>
+                          {selectedTags.length} tag{selectedTags.length !== 1 ? 's' : ''} selected
+                        </div>
+                      )}
+                    </div>
                   )}
 
-                  {enrichmentData.cities.length > 0 && (
-                    <EnrichmentResult theme={theme} $accepted={acceptedFields.cities}>
-                      <ResultHeader>
-                        <ResultLabel theme={theme}>
-                          <FaMapMarkerAlt /> Locations
-                        </ResultLabel>
-                        <AcceptRejectButtons>
-                          <SmallButton
-                            theme={theme}
-                            $accept
-                            onClick={() => toggleFieldAcceptance('cities')}
+                  {/* Inline Tag Search */}
+                  <div style={{ marginBottom: 16, position: 'relative' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <FiSearch style={{ color: theme === 'light' ? '#9CA3AF' : '#6B7280' }} />
+                      <input
+                        type="text"
+                        value={tagSearchQuery}
+                        onChange={(e) => setTagSearchQuery(e.target.value)}
+                        placeholder="Search and add more tags..."
+                        style={{
+                          flex: 1,
+                          padding: '8px 12px',
+                          border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                          borderRadius: 6,
+                          background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                          fontSize: 13,
+                          outline: 'none'
+                        }}
+                      />
+                    </div>
+                    {/* Search Results Dropdown */}
+                    {tagSearchResults.length > 0 && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 24,
+                        right: 0,
+                        marginTop: 4,
+                        background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        borderRadius: 6,
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                        zIndex: 10,
+                        maxHeight: 200,
+                        overflow: 'auto'
+                      }}>
+                        {tagSearchResults.map(tag => (
+                          <button
+                            key={tag.tag_id}
+                            onClick={() => {
+                              setSelectedTags(prev => [...prev, tag]);
+                              setTagSearchQuery('');
+                              setTagSearchResults([]);
+                            }}
+                            style={{
+                              width: '100%',
+                              padding: '10px 12px',
+                              border: 'none',
+                              background: 'transparent',
+                              color: theme === 'light' ? '#374151' : '#D1D5DB',
+                              fontSize: 13,
+                              textAlign: 'left',
+                              cursor: 'pointer',
+                              borderBottom: `1px solid ${theme === 'light' ? '#F3F4F6' : '#374151'}`
+                            }}
+                            onMouseEnter={(e) => e.target.style.background = theme === 'light' ? '#F3F4F6' : '#374151'}
+                            onMouseLeave={(e) => e.target.style.background = 'transparent'}
                           >
-                            {acceptedFields.cities ? '✓ Accepted' : 'Accept'}
-                          </SmallButton>
-                        </AcceptRejectButtons>
-                      </ResultHeader>
-                      <ResultValue theme={theme}>
-                        {enrichmentData.cities.map(c =>
-                          `${c.name}${c.country ? `, ${c.country}` : ''}`
-                        ).join('; ')}
-                      </ResultValue>
-                    </EnrichmentResult>
-                  )}
-
-                  {enrichmentData.domains && enrichmentData.domains.length > 0 && (
-                    <EnrichmentResult theme={theme} $accepted={acceptedFields.domains}>
-                      <ResultHeader>
-                        <ResultLabel theme={theme}>
-                          <FaServer /> Domains
-                        </ResultLabel>
-                        <AcceptRejectButtons>
-                          <SmallButton
-                            theme={theme}
-                            $accept
-                            onClick={() => toggleFieldAcceptance('domains')}
-                          >
-                            {acceptedFields.domains ? '✓ Accepted' : 'Accept'}
-                          </SmallButton>
-                        </AcceptRejectButtons>
-                      </ResultHeader>
-                      <ResultValue theme={theme}>
-                        {enrichmentData.domains.map((d, idx) => (
-                          <div key={idx}>
-                            {d.domain} {d.is_primary && <strong>(Primary)</strong>}
-                          </div>
+                            + {tag.name}
+                          </button>
                         ))}
-                      </ResultValue>
-                    </EnrichmentResult>
-                  )}
+                      </div>
+                    )}
+                    {searchingTags && tagSearchQuery.length >= 2 && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 24,
+                        right: 0,
+                        marginTop: 4,
+                        padding: '10px 12px',
+                        background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        borderRadius: 6,
+                        fontSize: 13,
+                        color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                      }}>
+                        Searching...
+                      </div>
+                    )}
+                  </div>
 
-                  {(enrichmentData.company_size || enrichmentData.founded_year) && (
-                    <EnrichmentResult theme={theme} $accepted={false}>
-                      <ResultHeader>
-                        <ResultLabel theme={theme}>
-                          <FiUsers /> Company Info
-                        </ResultLabel>
-                      </ResultHeader>
-                      <ResultValue theme={theme}>
-                        {enrichmentData.company_size && (
-                          <div>Employees: {enrichmentData.company_size.toLocaleString()}</div>
-                        )}
-                        {enrichmentData.founded_year && (
-                          <div>Founded: {enrichmentData.founded_year}</div>
-                        )}
-                      </ResultValue>
-                    </EnrichmentResult>
-                  )}
-
-                  {enrichmentData.technologies && enrichmentData.technologies.length > 0 && (
-                    <EnrichmentResult theme={theme} $accepted={false}>
-                      <ResultHeader>
-                        <ResultLabel theme={theme}>
-                          <FaServer /> Technologies
-                        </ResultLabel>
-                      </ResultHeader>
-                      <ResultValue theme={theme}>
-                        {enrichmentData.technologies.join(', ')}
-                      </ResultValue>
-                    </EnrichmentResult>
-                  )}
+                  {/* Info about what will be saved */}
+                  <div style={{
+                    padding: 12,
+                    background: theme === 'light' ? '#F0FDF4' : '#064E3B',
+                    borderRadius: 8,
+                    fontSize: 12,
+                    color: theme === 'light' ? '#166534' : '#86EFAC'
+                  }}>
+                    <strong>Will save:</strong> Logo, Description
+                    {selectedTags.length > 0 && `, ${selectedTags.length} tag${selectedTags.length !== 1 ? 's' : ''}`}
+                    {enrichmentData.domains?.length > 0 && `, ${enrichmentData.domains.length} domain${enrichmentData.domains.length !== 1 ? 's' : ''}`}
+                  </div>
                 </>
+              )}
+
+              {/* No data state */}
+              {!enrichmentData.description && !enriching && (
+                <div style={{ textAlign: 'center', padding: '40px 20px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                  No enrichment data available
+                </div>
               )}
             </SectionCard>
           </>
@@ -1177,7 +1288,7 @@ const CompanyEnrichmentModal = ({
             theme={theme}
             $success
             onClick={saveEnrichmentData}
-            disabled={saving || !Object.values(acceptedFields).some(v => v)}
+            disabled={saving}
           >
             {saving ? (
               <>
@@ -1185,7 +1296,7 @@ const CompanyEnrichmentModal = ({
               </>
             ) : (
               <>
-                <FiSave /> Save Accepted Data
+                <FiSave /> Save
               </>
             )}
           </ActionButton>
