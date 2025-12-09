@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag } from 'react-icons/fa';
@@ -14,6 +14,7 @@ import DomainLinkModal from '../components/modals/DomainLinkModal';
 import CreateCompanyModal from '../components/modals/CreateCompanyModal';
 import DeleteSkipSpamModal from '../components/DeleteSkipSpamModal';
 import EditCompanyModal from '../components/modals/EditCompanyModal';
+import AttachmentSaveModal from '../components/modals/AttachmentSaveModal';
 
 const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
 const AGENT_SERVICE_URL = 'https://crm-agent-api-production.up.railway.app'; // CRM Agent Service
@@ -1023,6 +1024,13 @@ const CommandCenterPage = ({ theme }) => {
   const [activeField, setActiveField] = useState(null); // 'to' or 'cc'
   const [sending, setSending] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [composeAttachments, setComposeAttachments] = useState([]); // Array of { name, type, size, data (base64), preview }
+  const composeFileInputRef = useRef(null);
+
+  // Attachment save modal state
+  const [attachmentModalOpen, setAttachmentModalOpen] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState([]);
+  const [saveAndArchiveCallback, setSaveAndArchiveCallback] = useState(null);
 
   // Spam menu state
   const [spamMenuOpen, setSpamMenuOpen] = useState(false);
@@ -4075,6 +4083,45 @@ internet businesses.`;
     setComposeBody('');
     setContactSuggestions([]);
     setActiveField(null);
+    setComposeAttachments([]);
+  };
+
+  // Handle file selection for attachments
+  const handleComposeFileSelect = async (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+
+    const newAttachments = await Promise.all(files.map(async (file) => {
+      const base64 = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result.split(',')[1]); // Remove data:xxx;base64, prefix
+        reader.readAsDataURL(file);
+      });
+      return {
+        name: file.name,
+        type: file.type || 'application/octet-stream',
+        size: file.size,
+        data: base64,
+      };
+    }));
+
+    setComposeAttachments(prev => [...prev, ...newAttachments]);
+    // Reset input so same file can be selected again
+    if (composeFileInputRef.current) {
+      composeFileInputRef.current.value = '';
+    }
+  };
+
+  // Remove attachment
+  const removeComposeAttachment = (index) => {
+    setComposeAttachments(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Format file size
+  const formatFileSize = (bytes) => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
   // Search contacts in Supabase for autocomplete
@@ -4232,6 +4279,11 @@ internet businesses.`;
           textBody: bodyText,
           inReplyTo: composeModal.mode !== 'forward' ? latestEmail.fastmail_id : undefined,
           references: composeModal.mode !== 'forward' ? latestEmail.fastmail_id : undefined,
+          attachments: composeAttachments.length > 0 ? composeAttachments.map(a => ({
+            name: a.name,
+            type: a.type,
+            data: a.data,
+          })) : undefined,
         }),
       });
 
@@ -4268,6 +4320,38 @@ internet businesses.`;
       console.error('Archive error:', error);
       return false;
     }
+  };
+
+  // Check for attachments and show modal before saving
+  const handleDoneClick = () => {
+    if (!selectedThread || selectedThread.length === 0) return;
+
+    // Collect all attachments from all emails in thread
+    const allAttachments = selectedThread.flatMap(email =>
+      (email.attachments || []).map(att => ({
+        ...att,
+        emailSubject: email.subject,
+        emailDate: email.date,
+        fastmailId: email.fastmail_id
+      }))
+    );
+
+    if (allAttachments.length > 0) {
+      // Show attachment modal
+      setPendingAttachments(allAttachments);
+      setAttachmentModalOpen(true);
+    } else {
+      // No attachments, proceed directly
+      saveAndArchive();
+    }
+  };
+
+  // Called when attachment modal is closed (save or skip)
+  const handleAttachmentModalClose = () => {
+    setAttachmentModalOpen(false);
+    setPendingAttachments([]);
+    // Continue with save and archive
+    saveAndArchive();
   };
 
   // Save & Archive - save email to CRM tables and archive in Fastmail
@@ -5112,7 +5196,7 @@ internet businesses.`;
                   {selectedThread.length > 1 && <span style={{ opacity: 0.6, marginLeft: '8px' }}>({selectedThread.length} messages)</span>}
                 </EmailSubjectFull>
                 <button
-                  onClick={saveAndArchive}
+                  onClick={handleDoneClick}
                   disabled={saving}
                   style={{
                     display: 'flex',
@@ -5583,16 +5667,43 @@ internet businesses.`;
                 <ChatContainer>
                   {/* Quick Actions */}
                   <QuickActionsContainer theme={theme}>
-                    <QuickActionChip theme={theme} onClick={() => handleQuickAction('TL;DR - max 2-3 bullet points')}>
+                    <QuickActionChip theme={theme} onClick={() => handleQuickAction('TL;DR. 2-3 bullet points. Zero filler.')}>
                       TL;DR
                     </QuickActionChip>
-                    <QuickActionChip theme={theme} onClick={() => handleQuickAction('Draft a short, warm reply saying yes or accepting what they asked, in my style. Keep it brief and friendly.')}>
+                    <QuickActionChip theme={theme} onClick={() => handleQuickAction('Sì breve. Diretto, caldo ma non sdolcinato. Mai "Certamente!" o "Con piacere!". Se scrivono in italiano, rispondi italiano. Se inglese, inglese. Tono informale sempre.')}>
                       👍 Yes
                     </QuickActionChip>
-                    <QuickActionChip theme={theme} onClick={() => handleQuickAction('Draft a polite but firm reply declining or saying no to what they asked, in my style. Be respectful but clear.')}>
+                    <QuickActionChip theme={theme} onClick={() => handleQuickAction(`SAYING NO - Use this exact structure:
+Ciao <nome>,
+
+<NO FIRST - pick one>
+<Soft compliment 1>
+<Soft compliment 2>
+
+Simone
+
+NO PHRASES (5-6 words max) - pick one:
+- "Purtroppo non fa per me"
+- "Not my cup of tea"
+- "Not for me right now"
+- "Not looking in this vertical"
+- "Non è per me"
+- "Doesn't fit my focus"
+- "Not interested right now"
+- "Non sono interessato"
+- "Not a good fit"
+- "Passo, grazie"
+
+SOFT COMPLIMENTS - pick 2, rotate them:
+English: "Thanks for sharing", "Appreciated you shared", "Best of luck", "Hope it goes well", "You seem to know what you do", "Thanks for thinking of me", "Good luck with it"
+Italian: "Grazie di aver condiviso", "Apprezzo la condivisione", "In bocca al lupo", "Buona fortuna", "Spero vada bene", "Sembrate sapere il fatto vostro", "Grazie di aver pensato a me"
+
+LANGUAGE RULE: Use same language as original message
+
+NEVER: Add explanations, say "maybe later", leave doors open, use corporate speak, apologize with "sorry" or "mi dispiace"`)}>
                       👎 No
                     </QuickActionChip>
-                    <QuickActionChip theme={theme} onClick={() => handleQuickAction('Draft a very brief acknowledgment reply confirming I received this, like "Got it, thanks!" or "Received, thank you!" in my style.')}>
+                    <QuickActionChip theme={theme} onClick={() => handleQuickAction('Una riga. "Ricevuto, grazie" o "Got it, thanks". Basta.')}>
                       ✓ Ricevuto
                     </QuickActionChip>
                   </QuickActionsContainer>
@@ -6737,16 +6848,21 @@ internet businesses.`;
                                         </div>
                                       </div>
                                       {/* Source contact - will be KEPT */}
-                                      <div style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        marginBottom: '6px',
-                                        padding: '6px 8px',
-                                        background: theme === 'light' ? '#ECFDF5' : '#064E3B',
-                                        borderRadius: '4px',
-                                        border: `1px solid ${theme === 'light' ? '#10B981' : '#059669'}`
-                                      }}>
+                                      <div
+                                        onClick={() => window.open(`/new-crm/contact/${item.source_id}`, '_blank')}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '8px',
+                                          marginBottom: '6px',
+                                          padding: '6px 8px',
+                                          background: theme === 'light' ? '#ECFDF5' : '#064E3B',
+                                          borderRadius: '4px',
+                                          border: `1px solid ${theme === 'light' ? '#10B981' : '#059669'}`,
+                                          cursor: 'pointer'
+                                        }}
+                                        title="Click to view contact"
+                                      >
                                         <span style={{
                                           fontSize: '10px',
                                           fontWeight: 700,
@@ -6766,18 +6882,24 @@ internet businesses.`;
                                         }}>
                                           ID: {item.source_id?.slice(0, 8)}...
                                         </span>
+                                        <FaExternalLinkAlt size={10} style={{ marginLeft: 'auto', opacity: 0.5 }} />
                                       </div>
                                       {/* Duplicate contact - will be REMOVED */}
-                                      <div style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        marginBottom: '8px',
-                                        padding: '6px 8px',
-                                        background: theme === 'light' ? '#FEF2F2' : '#7F1D1D',
-                                        borderRadius: '4px',
-                                        border: `1px solid ${theme === 'light' ? '#EF4444' : '#DC2626'}`
-                                      }}>
+                                      <div
+                                        onClick={() => window.open(`/new-crm/contact/${item.duplicate_id}`, '_blank')}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '8px',
+                                          marginBottom: '8px',
+                                          padding: '6px 8px',
+                                          background: theme === 'light' ? '#FEF2F2' : '#7F1D1D',
+                                          borderRadius: '4px',
+                                          border: `1px solid ${theme === 'light' ? '#EF4444' : '#DC2626'}`,
+                                          cursor: 'pointer'
+                                        }}
+                                        title="Click to view contact"
+                                      >
                                         <span style={{
                                           fontSize: '10px',
                                           fontWeight: 700,
@@ -6797,6 +6919,7 @@ internet businesses.`;
                                         }}>
                                           ID: {item.duplicate_id?.slice(0, 8)}...
                                         </span>
+                                        <FaExternalLinkAlt size={10} style={{ marginLeft: 'auto', opacity: 0.5 }} />
                                       </div>
                                       {/* Match details if available */}
                                       {item.match_details && (
@@ -6905,16 +7028,21 @@ internet businesses.`;
                                         </div>
                                       </div>
                                       {/* Source company - will be KEPT */}
-                                      <div style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        marginBottom: '6px',
-                                        padding: '6px 8px',
-                                        background: theme === 'light' ? '#ECFDF5' : '#064E3B',
-                                        borderRadius: '4px',
-                                        border: `1px solid ${theme === 'light' ? '#10B981' : '#059669'}`
-                                      }}>
+                                      <div
+                                        onClick={() => window.open(`/new-crm/company/${item.source_id}`, '_blank')}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '8px',
+                                          marginBottom: '6px',
+                                          padding: '6px 8px',
+                                          background: theme === 'light' ? '#ECFDF5' : '#064E3B',
+                                          borderRadius: '4px',
+                                          border: `1px solid ${theme === 'light' ? '#10B981' : '#059669'}`,
+                                          cursor: 'pointer'
+                                        }}
+                                        title="Click to view company"
+                                      >
                                         <span style={{
                                           fontSize: '10px',
                                           fontWeight: 700,
@@ -6934,18 +7062,24 @@ internet businesses.`;
                                         }}>
                                           {item.source?.category || 'No category'} • ID: {item.source_id?.slice(0, 8)}...
                                         </span>
+                                        <FaExternalLinkAlt size={10} style={{ marginLeft: 'auto', opacity: 0.5 }} />
                                       </div>
                                       {/* Duplicate company - will be REMOVED */}
-                                      <div style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        marginBottom: '8px',
-                                        padding: '6px 8px',
-                                        background: theme === 'light' ? '#FEF2F2' : '#7F1D1D',
-                                        borderRadius: '4px',
-                                        border: `1px solid ${theme === 'light' ? '#EF4444' : '#DC2626'}`
-                                      }}>
+                                      <div
+                                        onClick={() => window.open(`/new-crm/company/${item.duplicate_id}`, '_blank')}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '8px',
+                                          marginBottom: '8px',
+                                          padding: '6px 8px',
+                                          background: theme === 'light' ? '#FEF2F2' : '#7F1D1D',
+                                          borderRadius: '4px',
+                                          border: `1px solid ${theme === 'light' ? '#EF4444' : '#DC2626'}`,
+                                          cursor: 'pointer'
+                                        }}
+                                        title="Click to view company"
+                                      >
                                         <span style={{
                                           fontSize: '10px',
                                           fontWeight: 700,
@@ -6965,6 +7099,7 @@ internet businesses.`;
                                         }}>
                                           {item.duplicate?.category || 'No category'} • ID: {item.duplicate_id?.slice(0, 8)}...
                                         </span>
+                                        <FaExternalLinkAlt size={10} style={{ marginLeft: 'auto', opacity: 0.5 }} />
                                       </div>
                                       {/* Match details if available */}
                                       {item.match_details && (
@@ -7583,7 +7718,56 @@ internet businesses.`;
                                     <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#E5E7EB' : '#374151', color: theme === 'light' ? '#374151' : '#D1D5DB' }}>{participant.contact.category}</span>
                                   )}
                                   {!participant.hasContact && (
-                                    <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#FEF3C7' : '#78350F', color: theme === 'light' ? '#92400E' : '#FDE68A', cursor: 'pointer' }}>+ Add</span>
+                                    <>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleOpenCreateContact({ email: participant.email, name: participant.name }); }}
+                                        title="Add to CRM"
+                                        style={{
+                                          padding: '4px 8px',
+                                          fontSize: '11px',
+                                          fontWeight: 500,
+                                          border: 'none',
+                                          borderRadius: '4px',
+                                          cursor: 'pointer',
+                                          background: '#10B981',
+                                          color: 'white'
+                                        }}
+                                      >
+                                        Add
+                                      </button>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handlePutOnHold({ email: participant.email, name: participant.name }); }}
+                                        title="Put on Hold"
+                                        style={{
+                                          padding: '4px 8px',
+                                          fontSize: '11px',
+                                          fontWeight: 500,
+                                          border: 'none',
+                                          borderRadius: '4px',
+                                          cursor: 'pointer',
+                                          background: '#F59E0B',
+                                          color: 'white'
+                                        }}
+                                      >
+                                        Hold
+                                      </button>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleAddToSpam(participant.email); }}
+                                        title="Mark as Spam"
+                                        style={{
+                                          padding: '4px 8px',
+                                          fontSize: '11px',
+                                          fontWeight: 500,
+                                          border: 'none',
+                                          borderRadius: '4px',
+                                          cursor: 'pointer',
+                                          background: '#EF4444',
+                                          color: 'white'
+                                        }}
+                                      >
+                                        Spam
+                                      </button>
+                                    </>
                                   )}
                                   {participant.contact && (
                                     <span
@@ -8422,6 +8606,82 @@ internet businesses.`;
                   onChange={e => setComposeBody(e.target.value)}
                   placeholder="Write your message..."
                 />
+              </FormField>
+
+              {/* Attachments Section */}
+              <FormField>
+                <input
+                  type="file"
+                  multiple
+                  ref={composeFileInputRef}
+                  onChange={handleComposeFileSelect}
+                  style={{ display: 'none' }}
+                />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: composeAttachments.length > 0 ? '8px' : 0 }}>
+                  <button
+                    type="button"
+                    onClick={() => composeFileInputRef.current?.click()}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '6px 12px',
+                      background: theme === 'light' ? '#F3F4F6' : '#374151',
+                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                      borderRadius: '6px',
+                      color: theme === 'light' ? '#374151' : '#D1D5DB',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                    }}
+                  >
+                    <FaPaperclip size={12} />
+                    Attach Files
+                  </button>
+                  {composeAttachments.length > 0 && (
+                    <span style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                      {composeAttachments.length} file{composeAttachments.length > 1 ? 's' : ''} attached
+                    </span>
+                  )}
+                </div>
+                {composeAttachments.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {composeAttachments.map((att, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '6px 10px',
+                          background: theme === 'light' ? '#EFF6FF' : '#1E3A5F',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                        }}
+                      >
+                        <FaPaperclip size={10} style={{ color: theme === 'light' ? '#3B82F6' : '#60A5FA' }} />
+                        <span style={{ maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {att.name}
+                        </span>
+                        <span style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                          ({formatFileSize(att.size)})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeComposeAttachment(idx)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            padding: '2px',
+                            color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                          }}
+                        >
+                          <FaTimes size={10} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </FormField>
             </ModalBody>
 
@@ -9657,6 +9917,18 @@ internet businesses.`;
         isOpen={editCompanyModalOpen}
         onRequestClose={handleCloseEditCompanyModal}
         company={editCompanyModalCompany}
+      />
+
+      {/* Attachment Save Modal */}
+      <AttachmentSaveModal
+        isOpen={attachmentModalOpen}
+        onRequestClose={() => setAttachmentModalOpen(false)}
+        attachments={pendingAttachments}
+        emailParticipants={emailContacts}
+        theme={theme}
+        onSave={handleAttachmentModalClose}
+        onSkip={handleAttachmentModalClose}
+        backendUrl={BACKEND_URL}
       />
     </PageContainer>
   );

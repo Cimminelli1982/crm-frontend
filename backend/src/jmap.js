@@ -445,7 +445,36 @@ export class JMAPClient {
     };
   }
 
-  async sendEmail({ to, cc, subject, textBody, htmlBody, inReplyTo, references }) {
+  // Upload a blob (attachment) to Fastmail
+  async uploadBlob(buffer, type = 'application/octet-stream') {
+    // JMAP upload URL from session looks like:
+    // https://api.fastmail.com/jmap/upload/{accountId}/
+    let uploadUrl = this.session.uploadUrl
+      .replace('{accountId}', encodeURIComponent(this.accountId));
+
+    console.log(`[JMAP] Uploading blob to: ${uploadUrl}`);
+
+    const response = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': type,
+      },
+      body: buffer,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[JMAP] Upload failed: ${response.status} - ${errorText}`);
+      throw new Error(`Failed to upload blob: ${response.status} ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    console.log(`[JMAP] Uploaded blob: ${result.blobId}, size: ${result.size}`);
+    return result; // { accountId, blobId, type, size }
+  }
+
+  async sendEmail({ to, cc, subject, textBody, htmlBody, inReplyTo, references, attachments }) {
     // Get identity (sender)
     const identityResponse = await this.request([
       ['Identity/get', { accountId: this.accountId }, 'identity'],
@@ -498,6 +527,18 @@ export class JMAPClient {
 
     if (references) {
       email.references = Array.isArray(references) ? references : [references];
+    }
+
+    // Add attachments if provided
+    if (attachments && attachments.length > 0) {
+      email.attachments = attachments.map(att => ({
+        blobId: att.blobId,
+        type: att.type || 'application/octet-stream',
+        name: att.name,
+        size: att.size,
+        disposition: 'attachment',
+      }));
+      console.log(`[JMAP] Adding ${attachments.length} attachments to email`);
     }
 
     // Get Sent mailbox ID

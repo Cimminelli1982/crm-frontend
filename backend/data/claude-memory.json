@@ -1,1 +1,26 @@
-{}
+{
+  "workflow_rules": {
+    "frontend": "NON fare push senza chiedere - permettere test locali prima!",
+    "backend": "Chiedere prima di deployare su Railway"
+  },
+  "project_notes": {
+    "deploy": {
+      "railway_backend": {
+        "command": "railway up --service command-center-backend",
+        "note": "Railway NON è collegato a GitHub. Devi usare railway CLI per deployare.",
+        "production_url": "https://command-center-backend-production.up.railway.app"
+      },
+      "frontend": {
+        "note": "Frontend su Netlify, deploya automaticamente da GitHub"
+      }
+    },
+    "supabase": {
+      "project_id": "efazuvegwxouysfcgwja",
+      "note": "NON usare jvqnlokqpmdzkyimqcti - quello è sbagliato!"
+    },
+    "database": {
+      "emails_table": "command_center_inbox",
+      "note": "Non modificare struttura DB senza coordinare frontend/backend"
+    }
+  }
+}

@@ -275,7 +275,7 @@ app.get('/emails/:id', async (req, res) => {
 // Send email
 app.post('/send', async (req, res) => {
   try {
-    const { to, cc, subject, textBody, htmlBody, inReplyTo, references } = req.body;
+    const { to, cc, subject, textBody, htmlBody, inReplyTo, references, attachments } = req.body;
 
     if (!to || !Array.isArray(to) || to.length === 0) {
       return res.status(400).json({ success: false, error: 'Missing "to" recipients' });
@@ -291,12 +291,33 @@ app.post('/send', async (req, res) => {
 
     console.log(`Sending email to: ${to.map(r => r.email || r).join(', ')}`);
     console.log(`Subject: ${subject}`);
+    if (attachments?.length) {
+      console.log(`Attachments: ${attachments.length} files`);
+    }
 
     const jmap = new JMAPClient(
       process.env.FASTMAIL_USERNAME,
       process.env.FASTMAIL_API_TOKEN
     );
     await jmap.init();
+
+    // Upload attachments if provided
+    let uploadedAttachments = [];
+    if (attachments && attachments.length > 0) {
+      console.log(`Uploading ${attachments.length} attachments...`);
+      for (const att of attachments) {
+        // att = { name, type, data (base64) }
+        const buffer = Buffer.from(att.data, 'base64');
+        const uploaded = await jmap.uploadBlob(buffer, att.type);
+        uploadedAttachments.push({
+          blobId: uploaded.blobId,
+          type: att.type,
+          name: att.name,
+          size: uploaded.size,
+        });
+        console.log(`  Uploaded: ${att.name} (${uploaded.size} bytes)`);
+      }
+    }
 
     // If replying, resolve the real Message-ID from the fastmail_id
     let realMessageId = null;
@@ -322,6 +343,7 @@ app.post('/send', async (req, res) => {
       htmlBody,
       inReplyTo: realMessageId,
       references: realReferences,
+      attachments: uploadedAttachments.length > 0 ? uploadedAttachments : undefined,
     });
 
     console.log('Email sent successfully:', result);
