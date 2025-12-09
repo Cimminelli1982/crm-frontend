@@ -299,10 +299,10 @@ const CompanyCityModal = ({ isOpen, onRequestClose, company }) => {
       console.log('Fetching related cities for company ID:', company.id);
       
       const { data, error } = await supabase
-        .from('companies_cities')
+        .from('company_cities')
         .select(`
           city_id,
-          cities:city_id(id, name)
+          cities:city_id(city_id, name)
         `)
         .eq('company_id', company.id);
 
@@ -310,7 +310,7 @@ const CompanyCityModal = ({ isOpen, onRequestClose, company }) => {
 
       const cities = data.map(item => ({
         id: item.city_id,
-        name: item.cities.name
+        name: item.cities?.name || 'Unknown'
       }));
 
       console.log('Fetched cities:', cities);
@@ -338,8 +338,8 @@ const CompanyCityModal = ({ isOpen, onRequestClose, company }) => {
       if (error) throw error;
 
       // Filter out cities that are already connected
-      const filteredSuggestions = data.filter(city => 
-        !relatedCities.some(related => related.id === city.id)
+      const filteredSuggestions = data.filter(city =>
+        !relatedCities.some(related => related.id === city.city_id)
       );
 
       setSuggestions(filteredSuggestions);
@@ -369,14 +369,15 @@ const CompanyCityModal = ({ isOpen, onRequestClose, company }) => {
       setLoading(true);
       
       const { error } = await supabase
-        .from('companies_cities')
+        .from('company_cities')
         .delete()
         .eq('company_id', company.id)
         .eq('city_id', cityToRemove.id);
 
       if (error) throw error;
-      
+
       setRelatedCities(relatedCities.filter(city => city.id !== cityToRemove.id));
+      // Note: cityToRemove.id comes from our internal state which uses 'id'
       setMessage({ type: 'success', text: 'City unlinked successfully' });
     } catch (error) {
       console.error('Error unlinking city:', error);
@@ -400,38 +401,39 @@ const CompanyCityModal = ({ isOpen, onRequestClose, company }) => {
       
       console.log('Using company ID:', companyId, 'Type:', typeof companyId);
       
-      // Check if already associated
+      // Check if already associated - cityToAdd has city_id from cities table
+      const cityId = cityToAdd.city_id || cityToAdd.id;
       const { data: existingCheck, error: checkError } = await supabase
-        .from('companies_cities')
+        .from('company_cities')
         .select('company_id, city_id')
         .eq('company_id', companyId)
-        .eq('city_id', cityToAdd.id);
-        
+        .eq('city_id', cityId);
+
       if (checkError) {
         console.error('Error checking existing city:', checkError);
         throw checkError;
       }
-      
+
       console.log('Existing check result:', existingCheck);
-      
+
       if (existingCheck && existingCheck.length > 0) {
         console.log('City already linked:', existingCheck);
         setMessage({ type: 'info', text: 'This city is already linked to the company' });
         return;
       }
-      
+
       const newAssociation = {
-        company_id: companyId, // Use the UUID string directly, no parsing
-        city_id: cityToAdd.id,
+        company_id: companyId,
+        city_id: cityId,
         created_at: new Date().toISOString()
       };
       console.log('Creating new association:', newAssociation, 'Types:', {
         company_id_type: typeof companyId,
-        city_id_type: typeof cityToAdd.id
+        city_id_type: typeof cityId
       });
       
       const { data, error } = await supabase
-        .from('companies_cities')
+        .from('company_cities')
         .insert(newAssociation)
         .select();
 
@@ -576,7 +578,7 @@ const CompanyCityModal = ({ isOpen, onRequestClose, company }) => {
             <SuggestionsContainer>
               {suggestions.map(suggestion => (
                 <SuggestionItem
-                  key={suggestion.id}
+                  key={suggestion.city_id}
                   onClick={() => handleAddCity(suggestion)}
                   disabled={loading}
                 >

@@ -15,6 +15,8 @@ import CreateCompanyModal from '../components/modals/CreateCompanyModal';
 import DeleteSkipSpamModal from '../components/DeleteSkipSpamModal';
 import EditCompanyModal from '../components/modals/EditCompanyModal';
 import AttachmentSaveModal from '../components/modals/AttachmentSaveModal';
+import DataIntegrityModal from '../components/modals/DataIntegrityModal';
+import CompanyDataIntegrityModal from '../components/modals/CompanyDataIntegrityModal';
 
 const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
 const AGENT_SERVICE_URL = 'https://crm-agent-api-production.up.railway.app'; // CRM Agent Service
@@ -1325,6 +1327,14 @@ const CommandCenterPage = ({ theme }) => {
   const [createContactModalOpen, setCreateContactModalOpen] = useState(false);
   const [createContactEmail, setCreateContactEmail] = useState(null);
 
+  // State for Data Integrity Modal (contacts)
+  const [dataIntegrityModalOpen, setDataIntegrityModalOpen] = useState(false);
+  const [dataIntegrityContactId, setDataIntegrityContactId] = useState(null);
+
+  // State for Company Data Integrity Modal
+  const [companyDataIntegrityModalOpen, setCompanyDataIntegrityModalOpen] = useState(false);
+  const [companyDataIntegrityCompanyId, setCompanyDataIntegrityCompanyId] = useState(null);
+
   // Handle adding email to spam list
   const handleAddToSpam = async (email) => {
     try {
@@ -1631,12 +1641,19 @@ const CommandCenterPage = ({ theme }) => {
 
   // Handle adding contact from hold to CRM
   const handleAddFromHold = async (contact) => {
-    // Find an email from this sender to get subject/body for AI suggestions
+    // Find an email involving this contact (from, to, or cc) to get subject/body for AI suggestions
     let emailContent = null;
     for (const thread of threads) {
-      const found = thread.emails.find(e =>
-        e.from_email?.toLowerCase() === contact.email.toLowerCase()
-      );
+      const found = thread.emails.find(e => {
+        const emailLower = contact.email.toLowerCase();
+        // Check if contact is sender
+        if (e.from_email?.toLowerCase() === emailLower) return true;
+        // Check if contact is in TO recipients
+        if (e.to_recipients?.some(r => r.email?.toLowerCase() === emailLower)) return true;
+        // Check if contact is in CC recipients
+        if (e.cc_recipients?.some(r => r.email?.toLowerCase() === emailLower)) return true;
+        return false;
+      });
       if (found) {
         emailContent = found;
         break;
@@ -1753,12 +1770,19 @@ const CommandCenterPage = ({ theme }) => {
 
   // Handle opening create contact modal
   const handleOpenCreateContact = (item) => {
-    // Find an email from this sender to get subject/body for AI suggestions
+    // Find an email involving this contact (from, to, or cc) to get subject/body for AI suggestions
     let emailContent = null;
     for (const thread of threads) {
-      const found = thread.emails.find(e =>
-        e.from_email?.toLowerCase() === item.email.toLowerCase()
-      );
+      const found = thread.emails.find(e => {
+        const emailLower = item.email.toLowerCase();
+        // Check if contact is sender
+        if (e.from_email?.toLowerCase() === emailLower) return true;
+        // Check if contact is in TO recipients
+        if (e.to_recipients?.some(r => r.email?.toLowerCase() === emailLower)) return true;
+        // Check if contact is in CC recipients
+        if (e.cc_recipients?.some(r => r.email?.toLowerCase() === emailLower)) return true;
+        return false;
+      });
       if (found) {
         emailContent = found;
         break;
@@ -3094,7 +3118,7 @@ const CommandCenterPage = ({ theme }) => {
       // Build final list of all participants with contact data if available
       // Exclude my own email
       const myEmail = 'simone@cimminelli.com';
-      const allParticipants = Array.from(participantsMap.values())
+      const allParticipantsRaw = Array.from(participantsMap.values())
         .filter(p => p.email.toLowerCase() !== myEmail.toLowerCase())
         .map(p => {
           const contact = emailToContact[p.email.toLowerCase()];
@@ -3107,6 +3131,31 @@ const CommandCenterPage = ({ theme }) => {
             hasContact: !!contact
           };
         });
+
+      // Deduplicate by contact_id - merge emails and roles for same contact
+      const contactIdMap = new Map(); // contact_id -> merged participant
+      const noContactList = []; // participants without a linked contact
+
+      allParticipantsRaw.forEach(p => {
+        if (p.contact?.contact_id) {
+          const cid = p.contact.contact_id;
+          if (contactIdMap.has(cid)) {
+            // Merge: add email and roles to existing entry
+            const existing = contactIdMap.get(cid);
+            existing.allEmails.push(p.email);
+            p.roles.forEach(r => {
+              if (!existing.roles.includes(r)) existing.roles.push(r);
+            });
+          } else {
+            // First occurrence of this contact
+            contactIdMap.set(cid, { ...p, allEmails: [p.email] });
+          }
+        } else {
+          noContactList.push(p);
+        }
+      });
+
+      const allParticipants = [...contactIdMap.values(), ...noContactList];
 
       setEmailContacts(allParticipants);
     };
@@ -3221,6 +3270,7 @@ const CommandCenterPage = ({ theme }) => {
       // Get domains for all companies
       let companyDomainsMap = {};
       let companyCompletenessMap = {};
+      let companyLogosMap = {};
       if (allCompanyIds.length > 0) {
         const { data: domainsData } = await supabase
           .from('company_domains')
@@ -3245,6 +3295,27 @@ const CommandCenterPage = ({ theme }) => {
         if (completenessData) {
           completenessData.forEach(c => {
             companyCompletenessMap[c.company_id] = c.completeness_score;
+          });
+        }
+
+        // Fetch company logos
+        const { data: logosData } = await supabase
+          .from('company_attachments')
+          .select(`
+            company_id,
+            attachments (
+              file_url,
+              permanent_url
+            )
+          `)
+          .in('company_id', allCompanyIds)
+          .eq('is_logo', true);
+
+        if (logosData) {
+          logosData.forEach(logo => {
+            if (logo.attachments) {
+              companyLogosMap[logo.company_id] = logo.attachments.permanent_url || logo.attachments.file_url;
+            }
           });
         }
       }
@@ -3276,7 +3347,8 @@ const CommandCenterPage = ({ theme }) => {
             company,
             hasCompany: true,
             contacts: companyToContacts[company.company_id] || [],
-            completeness_score: companyCompletenessMap[company.company_id] || 0
+            completeness_score: companyCompletenessMap[company.company_id] || 0,
+            logo_url: companyLogosMap[company.company_id] || null
           });
         } else if (!company && !domainsWithCompanies.has(domain)) {
           // Domain not in CRM and not belonging to any known company - skip showing "+ Add"
@@ -3295,7 +3367,8 @@ const CommandCenterPage = ({ theme }) => {
             company: cc.companies,
             hasCompany: true,
             contacts: companyToContacts[cc.company_id] || [],
-            completeness_score: companyCompletenessMap[cc.company_id] || 0
+            completeness_score: companyCompletenessMap[cc.company_id] || 0,
+            logo_url: companyLogosMap[cc.company_id] || null
           });
         }
       });
@@ -7705,7 +7778,7 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                                   )}
                                 </div>
                                 {participant.contact && (
-                                  <div style={{ position: 'relative', width: 40, height: 40, cursor: 'pointer' }} title={isMarkedComplete ? 'Marked complete' : `${score}% complete`} onClick={() => handleOpenQuickEditModal(participant.contact, true)}>
+                                  <div style={{ position: 'relative', width: 40, height: 40, cursor: 'pointer' }} title={isMarkedComplete ? 'Marked complete' : `${score}% complete`} onClick={() => { setDataIntegrityContactId(participant.contact.contact_id); setDataIntegrityModalOpen(true); }}>
                                     <svg width="40" height="40" style={{ transform: 'rotate(-90deg)' }}>
                                       <circle cx="20" cy="20" r="16" fill="none" stroke={theme === 'light' ? '#E5E7EB' : '#374151'} strokeWidth="4" />
                                       <circle cx="20" cy="20" r="16" fill="none" stroke={scoreColor} strokeWidth="4" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} />
@@ -7717,8 +7790,8 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                                 )}
                               </ActionCardHeader>
                               <ActionCardContent theme={theme}>
-                                <div style={{ fontSize: '13px', opacity: 0.7, marginBottom: '8px' }}>
-                                  <span style={{ fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>{primaryRole}:</span> {participant.email}
+                                <div style={{ fontSize: '13px', marginBottom: '8px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                                  <span style={{ fontWeight: 700 }}>{primaryRole}:</span> <span style={{ fontWeight: 400 }}>{participant.email}</span>
                                 </div>
                                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
                                   {participant.contact?.category && (
@@ -7819,8 +7892,12 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                             onClick={() => item.company?.company_id && navigate(`/company/${item.company.company_id}`)}
                           >
                             <ActionCardHeader theme={theme} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                              <div style={{ width: 40, height: 40, borderRadius: '50%', background: theme === 'light' ? '#E5E7EB' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
-                                {item.company?.name ? item.company.name.substring(0, 2).toUpperCase() : item.domain?.substring(0, 2).toUpperCase() || '?'}
+                              <div style={{ width: 40, height: 40, borderRadius: '50%', background: theme === 'light' ? '#E5E7EB' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 600, color: theme === 'light' ? '#6B7280' : '#9CA3AF', overflow: 'hidden' }}>
+                                {item.logo_url ? (
+                                  <img src={item.logo_url} alt={item.company?.name || 'Company'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                ) : (
+                                  item.company?.name ? item.company.name.substring(0, 2).toUpperCase() : item.domain?.substring(0, 2).toUpperCase() || '?'
+                                )}
                               </div>
                               <div style={{ flex: 1 }}>
                                 <div style={{ fontWeight: 600, fontSize: '15px' }}>
@@ -7833,7 +7910,15 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                                 )}
                               </div>
                               {item.hasCompany && (
-                                <div style={{ position: 'relative', width: 40, height: 40 }} title={`${companyScore}% complete`}>
+                                <div
+                                  style={{ position: 'relative', width: 40, height: 40, cursor: 'pointer' }}
+                                  title={`${companyScore}% complete - Click to edit`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCompanyDataIntegrityCompanyId(item.company.company_id);
+                                    setCompanyDataIntegrityModalOpen(true);
+                                  }}
+                                >
                                   <svg width="40" height="40" style={{ transform: 'rotate(-90deg)' }}>
                                     <circle cx="20" cy="20" r="16" fill="none" stroke={theme === 'light' ? '#E5E7EB' : '#374151'} strokeWidth="4" />
                                     <circle cx="20" cy="20" r="16" fill="none" stroke={companyScoreColor} strokeWidth="4" strokeLinecap="round" strokeDasharray={companyCircumference} strokeDashoffset={companyStrokeDashoffset} />
@@ -9938,6 +10023,35 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
         onSave={handleAttachmentModalClose}
         onSkip={handleAttachmentModalClose}
         backendUrl={BACKEND_URL}
+      />
+
+      {/* Data Integrity Modal (Contacts) */}
+      <DataIntegrityModal
+        isOpen={dataIntegrityModalOpen}
+        onClose={() => { setDataIntegrityModalOpen(false); setDataIntegrityContactId(null); }}
+        contactId={dataIntegrityContactId}
+        theme={theme}
+        onRefresh={() => {
+          // Refresh emailContacts to update completeness scores
+          if (selectedThread && selectedThread.length > 0) {
+            // Trigger re-fetch by updating a dependency
+            setSelectedThread([...selectedThread]);
+          }
+        }}
+      />
+
+      {/* Company Data Integrity Modal */}
+      <CompanyDataIntegrityModal
+        isOpen={companyDataIntegrityModalOpen}
+        onClose={() => { setCompanyDataIntegrityModalOpen(false); setCompanyDataIntegrityCompanyId(null); }}
+        companyId={companyDataIntegrityCompanyId}
+        theme={theme}
+        onRefresh={() => {
+          // Refresh email companies to update completeness scores
+          if (selectedThread && selectedThread.length > 0) {
+            setSelectedThread([...selectedThread]);
+          }
+        }}
       />
     </PageContainer>
   );
