@@ -126,6 +126,17 @@ async function autoSync() {
     const transformed = uniqueEmails.map(transformEmail);
     const { validEmails, spamByEmail, spamByDomain } = await upsertEmails(transformed);
 
+    // Stamp all synced emails with $crm_done keyword to prevent re-sync
+    const allFastmailIds = uniqueEmails.map(e => e.id).filter(Boolean);
+    if (allFastmailIds.length > 0) {
+      try {
+        const stampResult = await jmap.addKeywordToMultiple(allFastmailIds, '$crm_done');
+        console.log(`  Stamped ${stampResult.updated} emails with $crm_done keyword`);
+      } catch (stampError) {
+        console.error(`  Error stamping emails:`, stampError.message);
+      }
+    }
+
     // Move spam emails to Skip_Email and Skip_Domain folders in Fastmail
     const totalSpam = (spamByEmail?.length || 0) + (spamByDomain?.length || 0);
     if (totalSpam > 0) {
@@ -287,14 +298,30 @@ app.post('/send', async (req, res) => {
     );
     await jmap.init();
 
+    // If replying, resolve the real Message-ID from the fastmail_id
+    let realMessageId = null;
+    let realReferences = null;
+    if (inReplyTo) {
+      console.log(`Resolving Message-ID for fastmail_id: ${inReplyTo}`);
+      const originalEmail = await jmap.getEmailById(inReplyTo);
+      if (originalEmail && originalEmail.messageId) {
+        realMessageId = originalEmail.messageId[0]; // messageId is an array
+        console.log(`Resolved Message-ID: ${realMessageId}`);
+        // Build references chain: original references + original messageId
+        realReferences = originalEmail.references
+          ? [...originalEmail.references, realMessageId]
+          : [realMessageId];
+      }
+    }
+
     const result = await jmap.sendEmail({
       to,
       cc,
       subject,
       textBody,
       htmlBody,
-      inReplyTo,
-      references,
+      inReplyTo: realMessageId,
+      references: realReferences,
     });
 
     console.log('Email sent successfully:', result);
@@ -499,6 +526,26 @@ app.post('/archive', async (req, res) => {
     await jmap.init();
 
     const result = await jmap.archiveEmail(fastmailId);
+
+    // Stamp with $crm_done to prevent re-sync (in case it gets moved back to inbox)
+    try {
+      await jmap.addKeyword(fastmailId, '$crm_done');
+      console.log(`Stamped archived email ${fastmailId} with $crm_done`);
+    } catch (stampError) {
+      console.error('Error stamping archived email:', stampError.message);
+    }
+
+    // Delete from command_center_inbox
+    const { error: deleteError } = await supabase
+      .from('command_center_inbox')
+      .delete()
+      .eq('fastmail_id', fastmailId);
+
+    if (deleteError) {
+      console.error('Error deleting from command_center_inbox:', deleteError);
+    } else {
+      console.log(`Deleted ${fastmailId} from command_center_inbox`);
+    }
 
     console.log('Email archived successfully:', result);
 

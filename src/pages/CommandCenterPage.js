@@ -3657,6 +3657,11 @@ RESPONSE FORMAT:
 - Actions: One clear recommendation. Maybe a second option.
 - Drafts: Keep them short. Real humans don't write essays in emails.
 - Key points: List format, 3-5 items max.
+- IMPORTANT: When writing draft emails, ALWAYS wrap the draft text between --- markers like this:
+---
+Your draft email text here
+---
+This format is required so the user can click "Accept & Edit" to use the draft.
 
 CONTEXT - Simone runs a newsletter business and is an investor. He values:
 - Building genuine relationships
@@ -5529,6 +5534,9 @@ internet businesses.`;
         {/* Right: Actions Panel */}
         <ActionsPanel theme={theme}>
           <ActionsPanelTabs theme={theme}>
+            <ActionTabIcon theme={theme} $active={activeActionTab === 'chat'} onClick={() => setActiveActionTab('chat')} title="Chat with Claude">
+              <FaRobot />
+            </ActionTabIcon>
             {hasDataIntegrityItems && (
               <ActionTabIcon theme={theme} $active={activeActionTab === 'dataIntegrity'} onClick={() => setActiveActionTab('dataIntegrity')} title="Data Integrity">
                 <FaDatabase />
@@ -5549,9 +5557,6 @@ internet businesses.`;
             <ActionTabIcon theme={theme} $active={activeActionTab === 'notes'} onClick={() => setActiveActionTab('notes')} title="Notes">
               <FaStickyNote />
             </ActionTabIcon>
-            <ActionTabIcon theme={theme} $active={activeActionTab === 'chat'} onClick={() => setActiveActionTab('chat')} title="Chat with Claude">
-              <FaRobot />
-            </ActionTabIcon>
           </ActionsPanelTabs>
 
           {selectedThread && selectedThread.length > 0 && (
@@ -5563,27 +5568,14 @@ internet businesses.`;
                     <QuickActionChip theme={theme} onClick={() => handleQuickAction('TL;DR - max 2-3 bullet points')}>
                       TL;DR
                     </QuickActionChip>
-                    <QuickActionChip theme={theme} onClick={() => handleQuickAction('What should I do? One clear action.')}>
-                      Next step
+                    <QuickActionChip theme={theme} onClick={() => handleQuickAction('Draft a short, warm reply saying yes or accepting what they asked, in my style. Keep it brief and friendly.')}>
+                      👍 Yes
                     </QuickActionChip>
-                    <QuickActionChip theme={theme} onClick={() => handleQuickAction('Draft a short, warm reply in my style')}>
-                      Draft reply
+                    <QuickActionChip theme={theme} onClick={() => handleQuickAction('Draft a polite but firm reply declining or saying no to what they asked, in my style. Be respectful but clear.')}>
+                      👎 No
                     </QuickActionChip>
-                    <QuickActionChip theme={theme} onClick={() => handleQuickAction('Any deadlines or asks I need to note?')}>
-                      Deadlines
-                    </QuickActionChip>
-                    <QuickActionChip
-                      theme={theme}
-                      onClick={sendDuplicateMCPInstruction}
-                      style={{
-                        background: theme === 'light' ? '#8B5CF6' : '#7C3AED',
-                        color: '#FFFFFF',
-                        border: 'none'
-                      }}
-                      title="Process duplicate contacts with MCP"
-                    >
-                      <FaUser size={12} style={{ marginRight: '4px' }} />
-                      Duplicates
+                    <QuickActionChip theme={theme} onClick={() => handleQuickAction('Draft a very brief acknowledgment reply confirming I received this, like "Got it, thanks!" or "Received, thank you!" in my style.')}>
+                      ✓ Ricevuto
                     </QuickActionChip>
                   </QuickActionsContainer>
 

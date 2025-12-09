@@ -99,6 +99,8 @@ export class JMAPClient {
       filter.after = utcDate;
       console.log(`    Using filter after: ${utcDate}`);
     }
+    // Exclude emails already processed by CRM
+    filter.notKeyword = '$crm_done';
 
     // First query for email IDs
     const queryResponses = await this.request([
@@ -125,6 +127,7 @@ export class JMAPClient {
         properties: [
           'id',
           'threadId',
+          'messageId',
           'subject',
           'from',
           'to',
@@ -155,6 +158,9 @@ export class JMAPClient {
         properties: [
           'id',
           'threadId',
+          'messageId',
+          'inReplyTo',
+          'references',
           'subject',
           'from',
           'to',
@@ -357,6 +363,56 @@ export class JMAPClient {
     return { updated: updatedCount, failed: failedCount };
   }
 
+  // Add a keyword to a single email
+  async addKeyword(emailId, keyword) {
+    if (!emailId) return { updated: 0 };
+
+    const responses = await this.request([
+      ['Email/set', {
+        accountId: this.accountId,
+        update: {
+          [emailId]: { [`keywords/${keyword}`]: true }
+        }
+      }, 'addKeyword']
+    ]);
+
+    const result = responses[0][1];
+    if (result.notUpdated?.[emailId]) {
+      console.error(`Failed to add keyword to ${emailId}:`, result.notUpdated[emailId]);
+      return { updated: 0, failed: 1 };
+    }
+
+    return { updated: 1, failed: 0 };
+  }
+
+  // Add a keyword to multiple emails (batch operation)
+  async addKeywordToMultiple(emailIds, keyword) {
+    if (!emailIds || emailIds.length === 0) return { updated: 0, failed: 0 };
+
+    // Build update object for all emails
+    const update = {};
+    emailIds.forEach(id => {
+      update[id] = { [`keywords/${keyword}`]: true };
+    });
+
+    const responses = await this.request([
+      ['Email/set', {
+        accountId: this.accountId,
+        update
+      }, 'addKeywordToMultiple']
+    ]);
+
+    const result = responses[0][1];
+    const updatedCount = Object.keys(result.updated || {}).length;
+    const failedCount = Object.keys(result.notUpdated || {}).length;
+
+    if (failedCount > 0) {
+      console.error(`Failed to add keyword to ${failedCount} emails:`, result.notUpdated);
+    }
+
+    return { updated: updatedCount, failed: failedCount };
+  }
+
   // Download a blob (attachment) from Fastmail
   async downloadBlob(blobId, name, type) {
     // JMAP download URL from session looks like:
@@ -488,8 +544,19 @@ export class JMAPClient {
       throw new Error(`Failed to send email: ${JSON.stringify(submitResult.notCreated.send)}`);
     }
 
+    // Stamp the sent email with $crm_done to prevent re-sync
+    const sentEmailId = emailResult.created?.draft?.id;
+    if (sentEmailId) {
+      try {
+        await this.addKeyword(sentEmailId, '$crm_done');
+        console.log(`Stamped sent email ${sentEmailId} with $crm_done`);
+      } catch (stampError) {
+        console.error(`Failed to stamp sent email:`, stampError.message);
+      }
+    }
+
     return {
-      emailId: emailResult.created?.draft?.id,
+      emailId: sentEmailId,
       submitted: !!submitResult.created?.send
     };
   }
