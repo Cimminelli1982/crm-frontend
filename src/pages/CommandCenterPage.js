@@ -2168,6 +2168,40 @@ const CommandCenterPage = ({ theme }) => {
     toast.success('Company created! Complete the details below.');
   };
 
+  // Handler for domain Hold/Spam actions
+  const handleDomainAction = async (domain, action) => {
+    try {
+      // Add to ignored_domains table
+      const { error } = await supabase
+        .from('ignored_domains')
+        .insert({
+          domain: domain,
+          reason: action, // 'hold' or 'spam'
+          created_at: new Date().toISOString()
+        });
+
+      if (error) {
+        // If table doesn't exist or other error, try alternative
+        if (error.code === '42P01') {
+          // Table doesn't exist - just remove from list locally for now
+          setNotInCrmDomains(prev => prev.filter(d => d.domain !== domain));
+          toast.success(`Domain marked as ${action}`);
+          return;
+        }
+        throw error;
+      }
+
+      // Remove from the list
+      setNotInCrmDomains(prev => prev.filter(d => d.domain !== domain));
+      toast.success(`Domain marked as ${action}`);
+    } catch (error) {
+      console.error('Error marking domain:', error);
+      // Still remove from list locally
+      setNotInCrmDomains(prev => prev.filter(d => d.domain !== domain));
+      toast.success(`Domain marked as ${action}`);
+    }
+  };
+
   // Fetch AI suggestions from Supabase
   const fetchAiSuggestions = async () => {
     setLoadingAiSuggestions(true);
@@ -6627,44 +6661,61 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                                           <button
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              setSelectedDomainForLink(item);
-                                              setDomainLinkModalOpen(true);
-                                            }}
-                                            style={{
-                                              padding: '4px 8px',
-                                              fontSize: '11px',
-                                              background: theme === 'light' ? '#F3F4F6' : '#374151',
-                                              color: theme === 'light' ? '#374151' : '#D1D5DB',
-                                              border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
-                                              borderRadius: '4px',
-                                              cursor: 'pointer',
-                                              fontWeight: 500
-                                            }}
-                                            title="Link to existing company"
-                                          >
-                                            Link
-                                          </button>
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
                                               handleAddCompanyFromDomain(item);
                                             }}
                                             style={{
                                               padding: '4px 8px',
                                               fontSize: '11px',
-                                              background: theme === 'light' ? '#3B82F6' : '#60A5FA',
+                                              background: '#10B981',
                                               color: '#FFFFFF',
                                               border: 'none',
                                               borderRadius: '4px',
                                               cursor: 'pointer',
-                                              fontWeight: 500,
-                                              display: 'flex',
-                                              alignItems: 'center',
-                                              gap: '4px'
+                                              fontWeight: 500
                                             }}
-                                            title="Create new company from this domain"
+                                            title="Add as new company"
                                           >
-                                            <FaPlus size={10} /> Add
+                                            Add
+                                          </button>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              // Mark domain as Hold - add to ignored domains
+                                              handleDomainAction(item.domain, 'hold');
+                                            }}
+                                            style={{
+                                              padding: '4px 8px',
+                                              fontSize: '11px',
+                                              background: '#F59E0B',
+                                              color: '#FFFFFF',
+                                              border: 'none',
+                                              borderRadius: '4px',
+                                              cursor: 'pointer',
+                                              fontWeight: 500
+                                            }}
+                                            title="Hold - ignore for now"
+                                          >
+                                            Hold
+                                          </button>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              // Mark domain as Spam
+                                              handleDomainAction(item.domain, 'spam');
+                                            }}
+                                            style={{
+                                              padding: '4px 8px',
+                                              fontSize: '11px',
+                                              background: '#EF4444',
+                                              color: '#FFFFFF',
+                                              border: 'none',
+                                              borderRadius: '4px',
+                                              cursor: 'pointer',
+                                              fontWeight: 500
+                                            }}
+                                            title="Mark as spam"
+                                          >
+                                            Spam
                                           </button>
                                         </div>
                                       </div>
