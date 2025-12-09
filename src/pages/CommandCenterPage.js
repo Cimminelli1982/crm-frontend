@@ -3212,6 +3212,7 @@ const CommandCenterPage = ({ theme }) => {
 
       // Get domains for all companies
       let companyDomainsMap = {};
+      let companyCompletenessMap = {};
       if (allCompanyIds.length > 0) {
         const { data: domainsData } = await supabase
           .from('company_domains')
@@ -3224,6 +3225,18 @@ const CommandCenterPage = ({ theme }) => {
               companyDomainsMap[d.company_id] = [];
             }
             companyDomainsMap[d.company_id].push(d.domain);
+          });
+        }
+
+        // Fetch completeness scores for companies
+        const { data: completenessData } = await supabase
+          .from('company_completeness')
+          .select('company_id, completeness_score')
+          .in('company_id', allCompanyIds);
+
+        if (completenessData) {
+          completenessData.forEach(c => {
+            companyCompletenessMap[c.company_id] = c.completeness_score;
           });
         }
       }
@@ -3254,7 +3267,8 @@ const CommandCenterPage = ({ theme }) => {
             domains: companyDomainsMap[company.company_id] || [domain],
             company,
             hasCompany: true,
-            contacts: companyToContacts[company.company_id] || []
+            contacts: companyToContacts[company.company_id] || [],
+            completeness_score: companyCompletenessMap[company.company_id] || 0
           });
         } else if (!company && !domainsWithCompanies.has(domain)) {
           // Domain not in CRM and not belonging to any known company - skip showing "+ Add"
@@ -3272,7 +3286,8 @@ const CommandCenterPage = ({ theme }) => {
             domains: companyDomainsMap[cc.company_id] || [],
             company: cc.companies,
             hasCompany: true,
-            contacts: companyToContacts[cc.company_id] || []
+            contacts: companyToContacts[cc.company_id] || [],
+            completeness_score: companyCompletenessMap[cc.company_id] || 0
           });
         }
       });
@@ -4223,8 +4238,11 @@ internet businesses.`;
       const result = await response.json();
       if (!result.success) throw new Error(result.error);
 
-      toast.success('Email sent!');
+      toast.success('Email sent! Saving to CRM and archiving...');
       closeCompose();
+
+      // Auto-save to CRM and archive after sending reply
+      await saveAndArchive();
     } catch (error) {
       console.error('Send error:', error);
       toast.error(`Failed to send: ${error.message}`);
@@ -7595,7 +7613,12 @@ internet businesses.`;
                     <>
                       {emailCompanies.length > 0 ? (
                         <>
-                          {emailCompanies.map((item, idx) => (
+                          {emailCompanies.map((item, idx) => {
+                            const companyScore = item.completeness_score || 0;
+                            const companyCircumference = 2 * Math.PI * 16;
+                            const companyStrokeDashoffset = companyCircumference - (companyScore / 100) * companyCircumference;
+                            const companyScoreColor = companyScore >= 70 ? '#10B981' : companyScore >= 40 ? '#F59E0B' : '#EF4444';
+                            return (
                           <ActionCard
                             key={item.domain + idx}
                             theme={theme}
@@ -7616,6 +7639,17 @@ internet businesses.`;
                                   </div>
                                 )}
                               </div>
+                              {item.hasCompany && (
+                                <div style={{ position: 'relative', width: 40, height: 40 }} title={`${companyScore}% complete`}>
+                                  <svg width="40" height="40" style={{ transform: 'rotate(-90deg)' }}>
+                                    <circle cx="20" cy="20" r="16" fill="none" stroke={theme === 'light' ? '#E5E7EB' : '#374151'} strokeWidth="4" />
+                                    <circle cx="20" cy="20" r="16" fill="none" stroke={companyScoreColor} strokeWidth="4" strokeLinecap="round" strokeDasharray={companyCircumference} strokeDashoffset={companyStrokeDashoffset} />
+                                  </svg>
+                                  <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontSize: '10px', fontWeight: 600, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
+                                    {companyScore === 100 ? <FaCrown size={14} color="#F59E0B" /> : `${companyScore}%`}
+                                  </div>
+                                </div>
+                              )}
                             </ActionCardHeader>
                             <ActionCardContent theme={theme}>
                               <div style={{ fontSize: '13px', opacity: 0.7, marginBottom: '8px' }}>
@@ -7631,7 +7665,7 @@ internet businesses.`;
                               </div>
                             </ActionCardContent>
                           </ActionCard>
-                          ))}
+                          )})}
                         </>
                       ) : (
                         <ActionCard theme={theme}>
