@@ -17,6 +17,7 @@ import EditCompanyModal from '../components/modals/EditCompanyModal';
 import AttachmentSaveModal from '../components/modals/AttachmentSaveModal';
 import DataIntegrityModal from '../components/modals/DataIntegrityModal';
 import CompanyDataIntegrityModal from '../components/modals/CompanyDataIntegrityModal';
+import CreateCompanyFromDomainModal from '../components/modals/CreateCompanyFromDomainModal';
 
 const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
 const AGENT_SERVICE_URL = 'https://crm-agent-api-production.up.railway.app'; // CRM Agent Service
@@ -1161,6 +1162,10 @@ const CommandCenterPage = ({ theme }) => {
   const [createCompanyModalOpen, setCreateCompanyModalOpen] = useState(false);
   const [createCompanyInitialDomain, setCreateCompanyInitialDomain] = useState('');
 
+  // Create Company from Domain Modal state
+  const [createCompanyFromDomainModalOpen, setCreateCompanyFromDomainModalOpen] = useState(false);
+  const [createCompanyFromDomainData, setCreateCompanyFromDomainData] = useState(null);
+
   // AI Chat state
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
@@ -2145,6 +2150,23 @@ const CommandCenterPage = ({ theme }) => {
       setActiveActionTab('crm');
     }
   }, [hasDataIntegrityItems, activeActionTab, loadingDataIntegrity]);
+
+  // Handler for creating company from domain
+  const handleAddCompanyFromDomain = (domainData) => {
+    setCreateCompanyFromDomainData(domainData);
+    setCreateCompanyFromDomainModalOpen(true);
+  };
+
+  const handleCreateCompanyFromDomainSuccess = (newCompanyId) => {
+    // Refresh data integrity list
+    fetchDataIntegrity();
+
+    // Open CompanyDataIntegrityModal for further enrichment
+    setCompanyDataIntegrityCompanyId(newCompanyId);
+    setCompanyDataIntegrityModalOpen(true);
+
+    toast.success('Company created! Complete the details below.');
+  };
 
   // Fetch AI suggestions from Supabase
   const fetchAiSuggestions = async () => {
@@ -6367,7 +6389,7 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                       {(notInCrmEmails.length > 0 || notInCrmDomains.length > 0) && (
                       <div style={{ marginBottom: '8px' }}>
                         <div
-                          onClick={() => setExpandedDataIntegrity(prev => ({ ...prev, notInCrm: !prev.notInCrm }))}
+                          onClick={() => setExpandedDataIntegrity(prev => prev.notInCrm ? {} : { notInCrm: true })}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -6573,26 +6595,13 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                                   notInCrmDomains.map((item, idx) => (
                                     <div
                                       key={idx}
-                                      onClick={() => {
-                                        setSelectedDomainForLink(item);
-                                        setDomainLinkModalOpen(true);
-                                      }}
                                       style={{
                                         padding: '8px 12px',
                                         background: theme === 'light' ? '#FFFFFF' : '#1F2937',
                                         borderRadius: '6px',
                                         marginBottom: '4px',
                                         border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
-                                        cursor: 'pointer',
                                         transition: 'all 0.2s ease'
-                                      }}
-                                      onMouseEnter={(e) => {
-                                        e.currentTarget.style.background = theme === 'light' ? '#F3F4F6' : '#374151';
-                                        e.currentTarget.style.borderColor = '#3B82F6';
-                                      }}
-                                      onMouseLeave={(e) => {
-                                        e.currentTarget.style.background = theme === 'light' ? '#FFFFFF' : '#1F2937';
-                                        e.currentTarget.style.borderColor = theme === 'light' ? '#E5E7EB' : '#374151';
                                       }}
                                     >
                                       <div style={{
@@ -6605,14 +6614,58 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                                           fontWeight: 500,
                                           color: theme === 'light' ? '#111827' : '#F9FAFB'
                                         }}>{item.domain}</div>
-                                        <div style={{
-                                          fontSize: '11px',
-                                          color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                                          background: theme === 'light' ? '#F3F4F6' : '#374151',
-                                          padding: '2px 6px',
-                                          borderRadius: '4px'
-                                        }}>
-                                          {item.count} email{item.count !== 1 ? 's' : ''}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                          <div style={{
+                                            fontSize: '11px',
+                                            color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                            background: theme === 'light' ? '#F3F4F6' : '#374151',
+                                            padding: '2px 6px',
+                                            borderRadius: '4px'
+                                          }}>
+                                            {item.count} email{item.count !== 1 ? 's' : ''}
+                                          </div>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setSelectedDomainForLink(item);
+                                              setDomainLinkModalOpen(true);
+                                            }}
+                                            style={{
+                                              padding: '4px 8px',
+                                              fontSize: '11px',
+                                              background: theme === 'light' ? '#F3F4F6' : '#374151',
+                                              color: theme === 'light' ? '#374151' : '#D1D5DB',
+                                              border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                                              borderRadius: '4px',
+                                              cursor: 'pointer',
+                                              fontWeight: 500
+                                            }}
+                                            title="Link to existing company"
+                                          >
+                                            Link
+                                          </button>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleAddCompanyFromDomain(item);
+                                            }}
+                                            style={{
+                                              padding: '4px 8px',
+                                              fontSize: '11px',
+                                              background: theme === 'light' ? '#3B82F6' : '#60A5FA',
+                                              color: '#FFFFFF',
+                                              border: 'none',
+                                              borderRadius: '4px',
+                                              cursor: 'pointer',
+                                              fontWeight: 500,
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '4px'
+                                            }}
+                                            title="Create new company from this domain"
+                                          >
+                                            <FaPlus size={10} /> Add
+                                          </button>
                                         </div>
                                       </div>
                                       {item.sampleEmails && item.sampleEmails.length > 0 && (
@@ -6639,7 +6692,7 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                       {holdContacts.length > 0 && (
                       <div style={{ marginBottom: '8px' }}>
                         <div
-                          onClick={() => setExpandedDataIntegrity(prev => ({ ...prev, hold: !prev.hold }))}
+                          onClick={() => setExpandedDataIntegrity(prev => prev.hold ? {} : { hold: true })}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -6770,7 +6823,7 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                       {(duplicateContacts.length > 0 || duplicateCompanies.length > 0) && (
                       <div style={{ marginTop: '8px' }}>
                         <div
-                          onClick={() => setExpandedDataIntegrity(prev => ({ ...prev, duplicates: !prev.duplicates }))}
+                          onClick={() => setExpandedDataIntegrity(prev => prev.duplicates ? {} : { duplicates: true })}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -7229,7 +7282,7 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                       {(categoryMissingContacts.length > 0 || categoryMissingCompanies.length > 0) && (
                       <div style={{ marginBottom: '8px' }}>
                         <div
-                          onClick={() => setExpandedDataIntegrity(prev => ({ ...prev, categoryMissing: !prev.categoryMissing }))}
+                          onClick={() => setExpandedDataIntegrity(prev => prev.categoryMissing ? {} : { categoryMissing: true })}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -7526,7 +7579,7 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                       {keepInTouchMissingContacts.length > 0 && (
                         <div style={{ marginBottom: '8px' }}>
                           <div
-                            onClick={() => setExpandedDataIntegrity(prev => ({ ...prev, keepInTouchMissing: !prev.keepInTouchMissing }))}
+                            onClick={() => setExpandedDataIntegrity(prev => prev.keepInTouchMissing ? {} : { keepInTouchMissing: true })}
                             style={{
                               display: 'flex',
                               alignItems: 'center',
@@ -10040,6 +10093,18 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
           // Also refresh data integrity lists
           fetchDataIntegrity();
         }}
+      />
+
+      {/* Create Company from Domain Modal */}
+      <CreateCompanyFromDomainModal
+        isOpen={createCompanyFromDomainModalOpen}
+        onClose={() => {
+          setCreateCompanyFromDomainModalOpen(false);
+          setCreateCompanyFromDomainData(null);
+        }}
+        domainData={createCompanyFromDomainData}
+        theme={theme}
+        onSuccess={handleCreateCompanyFromDomainSuccess}
       />
     </PageContainer>
   );
