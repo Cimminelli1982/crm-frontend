@@ -6014,7 +6014,7 @@ internet businesses.`;
               {loading ? (
                 <EmptyState theme={theme}>Loading...</EmptyState>
               ) : threads.length === 0 ? (
-                <EmptyState theme={theme}>No emails</EmptyState>
+                <EmptyState theme={theme}></EmptyState>
               ) : (
                 threads.map(thread => (
                   <EmailItem
@@ -6496,6 +6496,15 @@ internet businesses.`;
                 );
               })()}
             </>
+          ) : threads.length === 0 ? (
+            <EmptyState theme={theme} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '20px' }}>
+              <img
+                src={`${process.env.PUBLIC_URL}/inbox-zero.png`}
+                alt="Inbox Zero!"
+                style={{ maxWidth: '200px', maxHeight: '200px' }}
+              />
+              <div style={{ fontSize: '18px', fontWeight: 600, color: '#10B981' }}>Inbox Zero!</div>
+            </EmptyState>
           ) : (
             <EmptyState theme={theme}>Select a thread to view</EmptyState>
           )}
