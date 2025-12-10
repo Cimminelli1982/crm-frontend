@@ -108,6 +108,8 @@ import DataIntegrityTab from '../components/command-center/DataIntegrityTab';
 import ChatTab from '../components/command-center/ChatTab';
 import AITab from '../components/command-center/AITab';
 import CRMTab from '../components/command-center/CRMTab';
+import DealsTab from '../components/command-center/DealsTab';
+import IntroductionsTab from '../components/command-center/IntroductionsTab';
 
 const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
 const AGENT_SERVICE_URL = 'https://crm-agent-api-production.up.railway.app'; // CRM Agent Service
@@ -2708,6 +2710,73 @@ const CommandCenterPage = ({ theme }) => {
       'general': '📝'
     };
     return icons[noteType] || '📝';
+  };
+
+  // Handler for deleting deal-contact association (used by DealsTab)
+  const handleDeleteDealContact = async (dealId, contactId) => {
+    const { error } = await supabase
+      .from('deals_contacts')
+      .delete()
+      .eq('deal_id', dealId)
+      .eq('contact_id', contactId);
+    if (!error) {
+      // Refresh deals
+      const contactIds = emailContacts.filter(p => p.contact?.contact_id).map(p => p.contact.contact_id);
+      if (contactIds.length === 0) {
+        setContactDeals([]);
+        return;
+      }
+      const { data: refreshed } = await supabase
+        .from('deals_contacts')
+        .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at)')
+        .in('contact_id', contactIds);
+      if (refreshed) {
+        const dealsMap = new Map();
+        refreshed.forEach(dc => {
+          if (!dc.deals) return;
+          const dealId = dc.deals.deal_id;
+          if (!dealsMap.has(dealId)) {
+            dealsMap.set(dealId, { ...dc.deals, contacts: [] });
+          }
+          const contact = emailContacts.find(p => p.contact?.contact_id === dc.contact_id);
+          if (contact) {
+            dealsMap.get(dealId).contacts.push({
+              contact_id: dc.contact_id,
+              name: contact.contact ? `${contact.contact.first_name} ${contact.contact.last_name}` : contact.name,
+              relationship: dc.relationship
+            });
+          }
+        });
+        setContactDeals(Array.from(dealsMap.values()));
+      } else {
+        setContactDeals([]);
+      }
+    }
+  };
+
+  // Handler for editing introduction (used by IntroductionsTab)
+  const handleEditIntroduction = (intro) => {
+    setEditingIntroduction(intro);
+    setIntroductionStatus(intro.status || 'Requested');
+    setIntroductionTool(intro.introduction_tool || 'email');
+    setIntroductionCategory(intro.category || 'Karma Points');
+    setIntroductionText(intro.text || '');
+    const introducees = intro.contacts?.filter(c => c.role === 'introducee') || [];
+    setSelectedIntroducee(introducees[0] || null);
+    setSelectedIntroducee2(introducees[1] || null);
+    setIntroductionModalOpen(true);
+  };
+
+  // Handler for deleting introduction (used by IntroductionsTab)
+  const handleDeleteIntroduction = async (introductionId) => {
+    if (!window.confirm('Delete this introduction?')) return;
+    const { error } = await supabase
+      .from('introductions')
+      .delete()
+      .eq('introduction_id', introductionId);
+    if (!error) {
+      setContactIntroductions(prev => prev.filter(i => i.introduction_id !== introductionId));
+    }
   };
 
   // Fetch contacts when selected thread changes
@@ -5776,336 +5845,25 @@ internet businesses.`;
                 />
               )}
               {activeActionTab === 'deals' && (
-                <>
-                  {/* Add New Deal Button - AI Assisted */}
-                  <ActionCard theme={theme} style={{ cursor: 'pointer' }} onClick={() => setCreateDealAIOpen(true)}>
-                    <ActionCardContent theme={theme} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px' }}>
-                      <FaRobot style={{ color: '#8B5CF6' }} />
-                      <span style={{ fontWeight: 600 }}>New Deal from Email</span>
-                    </ActionCardContent>
-                  </ActionCard>
-
-                  {/* From Contacts Section */}
-                  {contactDeals.length > 0 && (
-                    <>
-                      <div style={{
-                        padding: '8px 16px',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
-                      }}>
-                        From Contacts
-                      </div>
-                      {contactDeals.map(deal => (
-                        <ActionCard key={deal.deal_id} theme={theme}>
-                          <ActionCardHeader theme={theme} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <FaDollarSign style={{ color: '#10B981' }} /> {deal.opportunity || 'Untitled Deal'}
-                            </span>
-                            <span style={{ display: 'flex', gap: '4px' }}>
-                              {deal.category && (
-                                <span style={{
-                                  fontSize: '10px',
-                                  padding: '2px 8px',
-                                  borderRadius: '10px',
-                                  background: theme === 'light' ? '#F3F4F6' : '#374151',
-                                  color: theme === 'light' ? '#374151' : '#D1D5DB',
-                                  fontWeight: 500
-                                }}>
-                                  {deal.category}
-                                </span>
-                              )}
-                              {deal.source_category && (
-                                <span style={{
-                                  fontSize: '10px',
-                                  padding: '2px 8px',
-                                  borderRadius: '10px',
-                                  background: deal.source_category === 'Introduction' ? '#FEE2E2' : '#DBEAFE',
-                                  color: deal.source_category === 'Introduction' ? '#DC2626' : '#1D4ED8',
-                                  fontWeight: 500
-                                }}>
-                                  {deal.source_category === 'Introduction' ? 'Intro' : 'Cold'}
-                                </span>
-                              )}
-                            </span>
-                          </ActionCardHeader>
-                          <ActionCardContent theme={theme}>
-                            <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '4px' }}>
-                              {deal.stage || 'No stage'} {(deal.proposed_at || deal.created_at) && `• ${new Date(deal.proposed_at || deal.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}`}
-                            </div>
-                            {deal.total_investment && (
-                              <div style={{ fontSize: '13px', fontWeight: 600, color: '#10B981' }}>
-                                {deal.deal_currency === 'EUR' ? '€' : deal.deal_currency === 'GBP' ? '£' : deal.deal_currency === 'PLN' ? 'zł' : '$'}{deal.total_investment.toLocaleString()}
-                              </div>
-                            )}
-                            {deal.description && (
-                              <div style={{ fontSize: '12px', color: theme === 'light' ? '#4B5563' : '#D1D5DB', marginTop: '6px', lineHeight: '1.4' }}>
-                                {deal.description.length > 360 ? deal.description.substring(0, 360) + '...' : deal.description}
-                              </div>
-                            )}
-                            {deal.contacts && deal.contacts.length > 0 && (
-                              <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                {deal.contacts.map(c => (
-                                  <div key={c.contact_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '11px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
-                                    <span>{c.name} <span style={{ opacity: 0.7 }}>({c.relationship})</span></span>
-                                    <FaTrash
-                                      size={10}
-                                      style={{ cursor: 'pointer', color: theme === 'light' ? '#9CA3AF' : '#6B7280', marginLeft: '8px' }}
-                                      onClick={async (e) => {
-                                        e.stopPropagation();
-                                        // Delete the association
-                                        const { error } = await supabase
-                                          .from('deals_contacts')
-                                          .delete()
-                                          .eq('deal_id', deal.deal_id)
-                                          .eq('contact_id', c.contact_id);
-                                        if (!error) {
-                                          // Refresh deals
-                                          const contactIds = emailContacts.filter(p => p.contact?.contact_id).map(p => p.contact.contact_id);
-                                          const { data: refreshed } = await supabase
-                                            .from('deals_contacts')
-                                            .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at)')
-                                            .in('contact_id', contactIds);
-                                          if (refreshed) {
-                                            const dealsMap = new Map();
-                                            refreshed.forEach(dc => {
-                                              if (!dc.deals) return;
-                                              const dealId = dc.deals.deal_id;
-                                              if (!dealsMap.has(dealId)) {
-                                                dealsMap.set(dealId, { ...dc.deals, contacts: [] });
-                                              }
-                                              const contact = emailContacts.find(p => p.contact?.contact_id === dc.contact_id);
-                                              if (contact) {
-                                                dealsMap.get(dealId).contacts.push({
-                                                  contact_id: dc.contact_id,
-                                                  name: contact.contact ? `${contact.contact.first_name} ${contact.contact.last_name}` : contact.name,
-                                                  relationship: dc.relationship
-                                                });
-                                              }
-                                            });
-                                            setContactDeals(Array.from(dealsMap.values()));
-                                          } else {
-                                            setContactDeals([]);
-                                          }
-                                        }
-                                      }}
-                                      onMouseEnter={e => e.currentTarget.style.color = '#EF4444'}
-                                      onMouseLeave={e => e.currentTarget.style.color = theme === 'light' ? '#9CA3AF' : '#6B7280'}
-                                    />
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </ActionCardContent>
-                        </ActionCard>
-                      ))}
-                    </>
-                  )}
-
-                  {/* From Companies Section */}
-                  {companyDeals.length > 0 && (
-                    <>
-                      <div style={{
-                        padding: '8px 16px',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
-                      }}>
-                        From Companies
-                      </div>
-                      {companyDeals.map(deal => (
-                        <ActionCard key={deal.deal_id} theme={theme}>
-                          <ActionCardHeader theme={theme} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <FaDollarSign style={{ color: '#8B5CF6' }} /> {deal.opportunity || 'Untitled Deal'}
-                            </span>
-                            <span style={{ display: 'flex', gap: '4px' }}>
-                              {deal.category && (
-                                <span style={{
-                                  fontSize: '10px',
-                                  padding: '2px 8px',
-                                  borderRadius: '10px',
-                                  background: theme === 'light' ? '#F3F4F6' : '#374151',
-                                  color: theme === 'light' ? '#374151' : '#D1D5DB',
-                                  fontWeight: 500
-                                }}>
-                                  {deal.category}
-                                </span>
-                              )}
-                              {deal.source_category && (
-                                <span style={{
-                                  fontSize: '10px',
-                                  padding: '2px 8px',
-                                  borderRadius: '10px',
-                                  background: deal.source_category === 'Introduction' ? '#FEE2E2' : '#DBEAFE',
-                                  color: deal.source_category === 'Introduction' ? '#DC2626' : '#1D4ED8',
-                                  fontWeight: 500
-                                }}>
-                                  {deal.source_category === 'Introduction' ? 'Intro' : 'Cold'}
-                                </span>
-                              )}
-                            </span>
-                          </ActionCardHeader>
-                          <ActionCardContent theme={theme}>
-                            <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '4px' }}>
-                              {deal.stage || 'No stage'} {(deal.proposed_at || deal.created_at) && `• ${new Date(deal.proposed_at || deal.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}`}
-                            </div>
-                            {deal.total_investment && (
-                              <div style={{ fontSize: '13px', fontWeight: 600, color: '#8B5CF6' }}>
-                                {deal.deal_currency === 'EUR' ? '€' : deal.deal_currency === 'GBP' ? '£' : deal.deal_currency === 'PLN' ? 'zł' : '$'}{deal.total_investment.toLocaleString()}
-                              </div>
-                            )}
-                            {deal.description && (
-                              <div style={{ fontSize: '12px', color: theme === 'light' ? '#4B5563' : '#D1D5DB', marginTop: '6px', lineHeight: '1.4' }}>
-                                {deal.description.length > 360 ? deal.description.substring(0, 360) + '...' : deal.description}
-                              </div>
-                            )}
-                            {deal.companyName && (
-                              <div style={{ fontSize: '11px', color: theme === 'light' ? '#9CA3AF' : '#6B7280', marginTop: '4px' }}>
-                                via {deal.companyName}
-                              </div>
-                            )}
-                          </ActionCardContent>
-                        </ActionCard>
-                      ))}
-                    </>
-                  )}
-
-                  {/* Empty State - only show when no deals at all */}
-                  {contactDeals.length === 0 && companyDeals.length === 0 && selectedThread && (
-                    <ActionCard theme={theme}>
-                      <ActionCardContent theme={theme} style={{ textAlign: 'center', opacity: 0.6, fontSize: '13px' }}>
-                        No deals linked to these contacts
-                      </ActionCardContent>
-                    </ActionCard>
-                  )}
-                </>
+                <DealsTab
+                  theme={theme}
+                  selectedThread={selectedThread}
+                  contactDeals={contactDeals}
+                  companyDeals={companyDeals}
+                  setCreateDealAIOpen={setCreateDealAIOpen}
+                  onDeleteDealContact={handleDeleteDealContact}
+                />
               )}
-
               {activeActionTab === 'introductions' && (
-                <>
-                  {/* Add New Introduction Button - Always visible */}
-                  <ActionCard theme={theme} style={{ cursor: 'pointer' }} onClick={() => setIntroductionModalOpen(true)}>
-                    <ActionCardContent theme={theme} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px' }}>
-                      <FaHandshake style={{ color: '#F59E0B' }} />
-                      <span style={{ fontWeight: 600 }}>Add New Introduction</span>
-                    </ActionCardContent>
-                  </ActionCard>
-
-                  {/* Related Introductions Section */}
-                  {contactIntroductions.length > 0 && (
-                    <>
-                      <div style={{
-                        padding: '8px 16px',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
-                      }}>
-                        Related
-                      </div>
-                      {contactIntroductions.map(intro => {
-                        const introducees = intro.contacts?.filter(c => c.role === 'introducee') || [];
-                        const person1 = introducees[0]?.name || 'Unknown';
-                        const person2 = introducees[1]?.name || 'Unknown';
-                        return (
-                        <ActionCard key={intro.introduction_id} theme={theme}>
-                          <ActionCardHeader theme={theme}>
-                            <FaHandshake style={{ color: '#F59E0B' }} />
-                            {person1} ↔ {person2}
-                          </ActionCardHeader>
-                          <ActionCardContent theme={theme}>
-                            <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '4px' }}>
-                              {intro.status || 'No status'} {intro.introduction_tool ? `• ${intro.introduction_tool}` : ''}
-                            </div>
-                            {intro.introduction_date && (
-                              <div style={{ fontSize: '12px', color: theme === 'light' ? '#9CA3AF' : '#6B7280' }}>
-                                {new Date(intro.introduction_date).toLocaleDateString()}
-                              </div>
-                            )}
-                            {intro.text && (
-                              <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginTop: '4px', fontStyle: 'italic' }}>
-                                "{intro.text.substring(0, 80)}{intro.text.length > 80 ? '...' : ''}"
-                              </div>
-                            )}
-                            <div style={{ marginTop: '12px', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                              <button
-                                onClick={() => {
-                                  setEditingIntroduction(intro);
-                                  setIntroductionStatus(intro.status || 'Requested');
-                                  setIntroductionTool(intro.introduction_tool || 'email');
-                                  setIntroductionCategory(intro.category || 'Karma Points');
-                                  setIntroductionText(intro.text || '');
-                                  const introducees = intro.contacts?.filter(c => c.role === 'introducee') || [];
-                                  setSelectedIntroducee(introducees[0] || null);
-                                  setSelectedIntroducee2(introducees[1] || null);
-                                  setIntroductionModalOpen(true);
-                                }}
-                                style={{
-                                  padding: '4px 8px',
-                                  fontSize: '11px',
-                                  border: 'none',
-                                  borderRadius: '4px',
-                                  cursor: 'pointer',
-                                  background: theme === 'light' ? '#E5E7EB' : '#374151',
-                                  color: theme === 'light' ? '#374151' : '#D1D5DB',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '4px'
-                                }}
-                              >
-                                <FaEdit size={10} /> Edit
-                              </button>
-                              <button
-                                onClick={async () => {
-                                  if (!window.confirm('Delete this introduction?')) return;
-                                  const { error } = await supabase
-                                    .from('introductions')
-                                    .delete()
-                                    .eq('introduction_id', intro.introduction_id);
-                                  if (!error) {
-                                    setContactIntroductions(prev => prev.filter(i => i.introduction_id !== intro.introduction_id));
-                                  }
-                                }}
-                                style={{
-                                  padding: '4px 8px',
-                                  fontSize: '11px',
-                                  border: 'none',
-                                  borderRadius: '4px',
-                                  cursor: 'pointer',
-                                  background: theme === 'light' ? '#FEE2E2' : '#7F1D1D',
-                                  color: theme === 'light' ? '#DC2626' : '#FCA5A5',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '4px'
-                                }}
-                              >
-                                <FaTrash size={10} /> Delete
-                              </button>
-                            </div>
-                          </ActionCardContent>
-                        </ActionCard>
-                      );
-                      })}
-                    </>
-                  )}
-
-                  {/* Empty State - only show when no introductions at all */}
-                  {contactIntroductions.length === 0 && selectedThread && (
-                    <ActionCard theme={theme}>
-                      <ActionCardContent theme={theme} style={{ textAlign: 'center', opacity: 0.6, fontSize: '13px' }}>
-                        No introductions linked to these contacts
-                      </ActionCardContent>
-                    </ActionCard>
-                  )}
-                </>
+                <IntroductionsTab
+                  theme={theme}
+                  selectedThread={selectedThread}
+                  contactIntroductions={contactIntroductions}
+                  setIntroductionModalOpen={setIntroductionModalOpen}
+                  onEditIntroduction={handleEditIntroduction}
+                  onDeleteIntroduction={handleDeleteIntroduction}
+                />
               )}
-
               {activeActionTab === 'tasks' && (
                 <>
                   {/* Add New Task Button - matches Introduction style */}
