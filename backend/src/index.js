@@ -1280,14 +1280,27 @@ app.post('/calendar/extract-event', async (req, res) => {
 
     console.log('[Calendar] Extracting event from email:', email.subject);
 
+    // Get current date in UK timezone
+    const ukDate = new Date().toLocaleDateString('en-GB', {
+      timeZone: 'Europe/London',
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+    const ukDateISO = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' }); // YYYY-MM-DD format
+
     // Build context for Claude
     const prompt = `Analyze this email and extract any meeting/event information.
+
+IMPORTANT - TODAY'S DATE: ${ukDate} (${ukDateISO})
+This is crucial for interpreting relative dates like "tomorrow", "next week", etc.
 
 From: ${email.from_name || ''} <${email.from_email || ''}>
 To: ${JSON.stringify(email.to_recipients || [])}
 CC: ${JSON.stringify(email.cc_recipients || [])}
 Subject: ${email.subject || ''}
-Date: ${email.date || ''}
+Email Date: ${email.date || ''}
 
 Email Body:
 ${email.body_text || email.snippet || ''}
@@ -1295,8 +1308,8 @@ ${email.body_text || email.snippet || ''}
 Extract meeting details and respond with ONLY valid JSON in this exact format:
 {
   "found_event": true/false,
-  "title": "Meeting title (e.g., 'Coffee with [Name]' or from subject)",
-  "datetime": "ISO 8601 format if specific date/time found, null otherwise",
+  "title": "[Other Person Name] <> Simone Cimminelli",
+  "datetime": "ISO 8601 format in UK time (Europe/London), null if not found",
   "date_text": "Original text that mentions the date/time (e.g., '10:30 ad High Street Ken')",
   "duration_minutes": 60,
   "location": "Location if mentioned, null otherwise",
@@ -1309,11 +1322,15 @@ Extract meeting details and respond with ONLY valid JSON in this exact format:
 }
 
 Rules:
-- If there's a specific date/time mentioned, parse it to ISO 8601 format
-- If date is relative (e.g., "tomorrow", "next week"), calculate from today's date: ${new Date().toISOString().split('T')[0]}
+- TITLE FORMAT: Always use "[Other Person's Full Name] <> Simone Cimminelli" (e.g., "Lorenzo De Angeli <> Simone Cimminelli")
+- TIMEZONE: All times must be in UK time (Europe/London). If the email mentions a time, assume it's UK time.
+- RELATIVE DATES: Today is ${ukDateISO}. "Tomorrow" means the day after today. "Next week" means the following week. Always calculate from TODAY'S DATE shown above, NOT from the email date.
+- DATE INFERENCE: If only a TIME is mentioned without an explicit date (e.g., "10:30 at High Street Ken"), assume the meeting is for TOMORROW (the next day), NOT today. People don't typically schedule meetings for the same day via email unless they explicitly say "today" or "oggi".
 - Attendees should include the email sender and any CC recipients
-- Location needs clarification if it's abbreviated or unclear (e.g., "High Street Ken" could mean multiple places)
-- Title should be descriptive (not just "Meeting")
+- LOCATION SHORTCUTS - expand these to full addresses:
+  * "notting hill", "in ufficio", "in my office", "my office", "office" → "Fora - United House, 9 Pembridge Rd, London W11 3JY"
+  * "club", "high street kensington", "high street ken", "roof gardens", "kensington" → "The Roof Gardens, 99 Kensington High St, London W8 5SA"
+- If location doesn't match shortcuts and is still unclear, set location_needs_clarification to true
 - Set found_event to false if this doesn't appear to be about a meeting/event`;
 
     const response = await anthropic.messages.create({
@@ -1374,17 +1391,17 @@ app.post('/calendar/create-event', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Title and startDate are required' });
     }
 
-    // Check for Fastmail credentials
+    // Check for Fastmail CalDAV credentials (requires separate app password)
     const username = process.env.FASTMAIL_USERNAME;
-    const token = process.env.FASTMAIL_API_TOKEN;
+    const caldavPassword = process.env.FASTMAIL_CALDAV_PASSWORD || process.env.FASTMAIL_API_TOKEN;
 
-    if (!username || !token) {
-      return res.status(500).json({ success: false, error: 'Fastmail credentials not configured' });
+    if (!username || !caldavPassword) {
+      return res.status(500).json({ success: false, error: 'Fastmail CalDAV credentials not configured' });
     }
 
     console.log('[Calendar] Creating event:', title, 'at', startDate);
 
-    const caldav = new CalDAVClient(username, token);
+    const caldav = new CalDAVClient(username, caldavPassword);
 
     const result = await caldav.createEvent({
       title,
@@ -1413,13 +1430,13 @@ app.post('/calendar/create-event', async (req, res) => {
 app.get('/calendar/calendars', async (req, res) => {
   try {
     const username = process.env.FASTMAIL_USERNAME;
-    const token = process.env.FASTMAIL_API_TOKEN;
+    const caldavPassword = process.env.FASTMAIL_CALDAV_PASSWORD || process.env.FASTMAIL_API_TOKEN;
 
-    if (!username || !token) {
-      return res.status(500).json({ success: false, error: 'Fastmail credentials not configured' });
+    if (!username || !caldavPassword) {
+      return res.status(500).json({ success: false, error: 'Fastmail CalDAV credentials not configured' });
     }
 
-    const caldav = new CalDAVClient(username, token);
+    const caldav = new CalDAVClient(username, caldavPassword);
     const calendars = await caldav.getCalendars();
 
     res.json({ success: true, calendars });
@@ -1439,13 +1456,13 @@ app.get('/calendar/events', async (req, res) => {
     }
 
     const username = process.env.FASTMAIL_USERNAME;
-    const token = process.env.FASTMAIL_API_TOKEN;
+    const caldavPassword = process.env.FASTMAIL_CALDAV_PASSWORD || process.env.FASTMAIL_API_TOKEN;
 
-    if (!username || !token) {
-      return res.status(500).json({ success: false, error: 'Fastmail credentials not configured' });
+    if (!username || !caldavPassword) {
+      return res.status(500).json({ success: false, error: 'Fastmail CalDAV credentials not configured' });
     }
 
-    const caldav = new CalDAVClient(username, token);
+    const caldav = new CalDAVClient(username, caldavPassword);
     const events = await caldav.getEvents(new Date(start), new Date(end));
 
     res.json({ success: true, events });
@@ -1459,13 +1476,13 @@ app.get('/calendar/events', async (req, res) => {
 app.get('/calendar/status', async (req, res) => {
   try {
     const username = process.env.FASTMAIL_USERNAME;
-    const token = process.env.FASTMAIL_API_TOKEN;
+    const caldavPassword = process.env.FASTMAIL_CALDAV_PASSWORD || process.env.FASTMAIL_API_TOKEN;
 
-    if (!username || !token) {
-      return res.json({ connected: false, error: 'Fastmail credentials not configured' });
+    if (!username || !caldavPassword) {
+      return res.json({ connected: false, error: 'Fastmail CalDAV credentials not configured' });
     }
 
-    const caldav = new CalDAVClient(username, token);
+    const caldav = new CalDAVClient(username, caldavPassword);
     const calendars = await caldav.getCalendars();
 
     res.json({

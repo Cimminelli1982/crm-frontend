@@ -5,6 +5,8 @@ export const ModalContent = styled.div`
   background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
   border-radius: 12px;
   overflow: hidden;
+  max-width: 100%;
+  box-sizing: border-box;
 `;
 
 export const ModalHeader = styled.div`
@@ -14,6 +16,11 @@ export const ModalHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
+
+  @media (max-width: 480px) {
+    padding: 12px;
+    gap: 8px;
+  }
 `;
 
 export const CloseButton = styled.button`
@@ -97,6 +104,7 @@ export const TabContent = styled.div`
   height: 460px;
   overflow-y: auto;
   padding: 20px 20px 0 20px;
+  box-sizing: border-box;
   &::-webkit-scrollbar {
     width: 6px;
   }
@@ -107,11 +115,18 @@ export const TabContent = styled.div`
     background: ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
     border-radius: 3px;
   }
+
+  @media (max-width: 480px) {
+    height: 380px;
+    padding: 16px 12px 0 12px;
+  }
 `;
 
 // Form Components
 export const FormGroup = styled.div`
   margin-bottom: 20px;
+  box-sizing: border-box;
+  width: 100%;
 `;
 
 export const Label = styled.label`
@@ -131,10 +146,16 @@ export const Input = styled.input`
   color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
   font-size: 14px;
   font-family: inherit;
+  box-sizing: border-box;
 
   &:focus {
     outline: none;
     border-color: #3B82F6;
+  }
+
+  @media (max-width: 480px) {
+    padding: 10px;
+    font-size: 16px; /* Prevents zoom on iOS */
   }
 `;
 
@@ -148,10 +169,16 @@ export const Select = styled.select`
   font-size: 14px;
   font-family: inherit;
   cursor: pointer;
+  box-sizing: border-box;
 
   &:focus {
     outline: none;
     border-color: #3B82F6;
+  }
+
+  @media (max-width: 480px) {
+    padding: 10px;
+    font-size: 16px;
   }
 `;
 
@@ -166,10 +193,17 @@ export const Textarea = styled.textarea`
   font-family: inherit;
   resize: vertical;
   min-height: 80px;
+  box-sizing: border-box;
 
   &:focus {
     outline: none;
     border-color: #3B82F6;
+  }
+
+  @media (max-width: 480px) {
+    padding: 10px;
+    font-size: 16px;
+    min-height: 60px;
   }
 `;
 
@@ -181,6 +215,8 @@ export const ScoreContainer = styled.div`
   border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
   border-radius: 6px;
   background-color: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+  box-sizing: border-box;
+  flex-wrap: wrap;
 `;
 
 // Section Components
@@ -471,6 +507,11 @@ export const ActionButtons = styled.div`
   background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
   border-radius: 0 0 12px 12px;
   margin: 0;
+  box-sizing: border-box;
+
+  @media (max-width: 480px) {
+    padding: 12px;
+  }
 `;
 
 // Toggle Switch

@@ -288,22 +288,22 @@ const ManageContactMobilesModal = ({
   };
 
   const handleRemoveMobile = async (mobileId) => {
-    const mobileToRemove = mobiles.find(m => m.contact_mobile_id === mobileId);
+    const mobileToRemove = mobiles.find(m => m.mobile_id === mobileId);
 
     setLoading(true);
     try {
       const { error } = await supabase
         .from('contact_mobiles')
         .delete()
-        .eq('contact_mobile_id', mobileId);
+        .eq('mobile_id', mobileId);
 
       if (error) throw error;
 
-      const updatedMobiles = mobiles.filter(m => m.contact_mobile_id !== mobileId);
+      const updatedMobiles = mobiles.filter(m => m.mobile_id !== mobileId);
 
       // If we removed the primary mobile, set the first remaining one as primary
       if (mobileToRemove?.is_primary && updatedMobiles.length > 0) {
-        await handleSetPrimary(updatedMobiles[0].contact_mobile_id);
+        await handleSetPrimary(updatedMobiles[0].mobile_id);
       } else {
         setMobiles(updatedMobiles);
       }
@@ -331,13 +331,13 @@ const ManageContactMobilesModal = ({
       const { error } = await supabase
         .from('contact_mobiles')
         .update({ is_primary: true })
-        .eq('contact_mobile_id', mobileId);
+        .eq('mobile_id', mobileId);
 
       if (error) throw error;
 
       setMobiles(mobiles.map(m => ({
         ...m,
-        is_primary: m.contact_mobile_id === mobileId
+        is_primary: m.mobile_id === mobileId
       })));
 
       toast.success('Primary mobile updated');
@@ -356,12 +356,12 @@ const ManageContactMobilesModal = ({
       const { error } = await supabase
         .from('contact_mobiles')
         .update({ type: newType })
-        .eq('contact_mobile_id', mobileId);
+        .eq('mobile_id', mobileId);
 
       if (error) throw error;
 
       setMobiles(mobiles.map(m =>
-        m.contact_mobile_id === mobileId ? { ...m, type: newType } : m
+        m.mobile_id === mobileId ? { ...m, type: newType } : m
       ));
       onMobilesUpdated?.();
     } catch (error) {
@@ -447,7 +447,7 @@ const ManageContactMobilesModal = ({
         <MobileList>
           {mobiles.length > 0 ? (
             mobiles.map((mobileData) => (
-              <MobileItem key={mobileData.contact_mobile_id} theme={theme}>
+              <MobileItem key={mobileData.mobile_id} theme={theme}>
                 <MobileIcon>
                   <FaPhone size={14} />
                 </MobileIcon>
@@ -457,7 +457,7 @@ const ManageContactMobilesModal = ({
                 </MobileContent>
                 <Select
                   value={mobileData.type || 'personal'}
-                  onChange={(e) => handleUpdateType(mobileData.contact_mobile_id, e.target.value)}
+                  onChange={(e) => handleUpdateType(mobileData.mobile_id, e.target.value)}
                   theme={theme}
                   style={{ padding: '6px 10px', fontSize: '12px', width: 'auto' }}
                   disabled={loading}
@@ -471,13 +471,13 @@ const ManageContactMobilesModal = ({
                   type="radio"
                   name="primaryMobile"
                   checked={mobileData.is_primary}
-                  onChange={() => handleSetPrimary(mobileData.contact_mobile_id)}
+                  onChange={() => handleSetPrimary(mobileData.mobile_id)}
                   title="Set as primary"
                   disabled={loading}
                 />
                 <DeleteButton
                   theme={theme}
-                  onClick={() => handleRemoveMobile(mobileData.contact_mobile_id)}
+                  onClick={() => handleRemoveMobile(mobileData.mobile_id)}
                   disabled={loading}
                   title="Remove mobile"
                 >

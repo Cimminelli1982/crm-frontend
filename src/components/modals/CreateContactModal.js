@@ -237,6 +237,7 @@ const CreateContactModal = ({
   const [loadingAiSuggestion, setLoadingAiSuggestion] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState(null); // { description, category }
   const [suggestedMobiles, setSuggestedMobiles] = useState([]); // Phone numbers extracted from email body
+  const [extractedJobTitles, setExtractedJobTitles] = useState([]); // Job titles from email signature
 
   // Extract phone numbers from text using regex
   const extractPhoneNumbers = (text) => {
@@ -250,6 +251,92 @@ const CreateContactModal = ({
       .filter(p => p.replace(/\D/g, '').length >= 8 && p.replace(/\D/g, '').length <= 15)
       .filter((p, i, arr) => arr.indexOf(p) === i); // Remove duplicates
     return validPhones;
+  };
+
+  // Extract job titles from email signature - looks for titles near the contact's name
+  const extractJobTitles = (text, senderName) => {
+    if (!text || !senderName) return [];
+    const titles = [];
+
+    // Get first name and last name separately
+    const nameParts = senderName.trim().split(/\s+/);
+    const firstName = nameParts[0];
+    const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
+
+    // Common job title keywords
+    const titleKeywords = [
+      'CEO', 'CTO', 'CFO', 'COO', 'CMO', 'CIO', 'CPO',
+      'Chief Executive Officer', 'Chief Technology Officer', 'Chief Financial Officer',
+      'Chief Operating Officer', 'Chief Marketing Officer',
+      'President', 'Vice President', 'VP',
+      'Director', 'Managing Director', 'Executive Director',
+      'Partner', 'Managing Partner', 'General Partner',
+      'Founder', 'Co-Founder', 'Co-founder',
+      'Manager', 'General Manager', 'Senior Manager',
+      'Head', 'Head of',
+      'Analyst', 'Investment Analyst', 'Senior Analyst',
+      'Associate', 'Senior Associate',
+      'Advisor', 'Senior Advisor',
+      'Principal', 'Consultant',
+      'VC', 'Venture Capital', 'Angel Investor', 'Family Office'
+    ];
+
+    // Look for the sender's name in the text and extract nearby job title
+    // Pattern: Name followed by title on next line or same line
+    const patterns = [
+      // Name on one line, title on next: "Giacomo Mergoni\nChief Executive Officer"
+      new RegExp(`${firstName}[\\s]+(?:${lastName})?[\\s]*[\\n\\r]+([A-Z][a-zA-Z\\s&]+(?:Officer|Director|Partner|Manager|Founder|President|Analyst|Associate|Advisor|Principal|Head|VP|CEO|CTO|CFO|COO))`, 'gi'),
+      // Name with title after pipe/dash: "Giacomo Mergoni | CEO"
+      new RegExp(`${firstName}[\\s]+(?:${lastName})?[\\s]*[|\\-–—][\\s]*([A-Z][a-zA-Z\\s&]+(?:Officer|Director|Partner|Manager|Founder|President|Analyst|Associate|Advisor|Principal|Head|VP|CEO|CTO|CFO|COO))`, 'gi'),
+      // Standard signature block with name then title
+      new RegExp(`${firstName}[\\s]+${lastName}[\\s]*[\\u200B\\u00A0\\s]*[\\n\\r]+([A-Z][a-zA-Z\\s&]{3,40})(?:[\\n\\r]|M\\.|T\\.|Cell|Tel|Email|Phone)`, 'gi'),
+    ];
+
+    for (const pattern of patterns) {
+      const matches = text.matchAll(pattern);
+      for (const match of matches) {
+        let title = match[1]?.trim();
+        if (title) {
+          // Clean up
+          title = title.replace(/^\s*[-–—|]\s*/, '').replace(/\s*[-–—|]\s*$/, '').trim();
+          title = title.replace(/\s+/g, ' '); // Normalize spaces
+
+          // Validate it looks like a real title
+          const looksLikeTitle = titleKeywords.some(kw =>
+            title.toLowerCase().includes(kw.toLowerCase())
+          );
+
+          if (looksLikeTitle && title.length >= 2 && title.length <= 50 && !titles.includes(title)) {
+            titles.push(title);
+          }
+        }
+      }
+    }
+
+    // If no titles found with name patterns, try to find any title block near the name
+    if (titles.length === 0) {
+      // Find all occurrences of the name and look for titles within 100 chars after
+      const nameRegex = new RegExp(`${firstName}[\\s]+(?:${lastName})?`, 'gi');
+      let nameMatch;
+      while ((nameMatch = nameRegex.exec(text)) !== null) {
+        const afterName = text.slice(nameMatch.index, nameMatch.index + 200);
+        for (const keyword of titleKeywords) {
+          if (afterName.includes(keyword) && !titles.includes(keyword)) {
+            // Extract the full title line
+            const keywordIndex = afterName.indexOf(keyword);
+            const lineStart = afterName.lastIndexOf('\n', keywordIndex) + 1;
+            const lineEnd = afterName.indexOf('\n', keywordIndex);
+            const titleLine = afterName.slice(lineStart, lineEnd > 0 ? lineEnd : undefined).trim();
+            if (titleLine.length >= 2 && titleLine.length <= 50 && !titles.includes(titleLine)) {
+              titles.push(titleLine);
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    return titles.slice(0, 3); // Max 3 titles
   };
 
   // Fetch AI suggestion for contact profile
@@ -341,17 +428,20 @@ const CreateContactModal = ({
         findCompanyByDomain(domain);
       }
 
-      // Fetch AI suggestion if we have email content
-      if (emailData.body_text || emailData.subject) {
-        fetchAiSuggestion(emailData);
-      }
+      // AI suggestion is now triggered manually via button
+      // (removed automatic trigger)
 
       // Extract phone numbers from email body
       if (emailData.body_text) {
         const phones = extractPhoneNumbers(emailData.body_text);
         setSuggestedMobiles(phones);
+        // Extract job titles from email signature - use parsed name
+        const parsedName = `${parsed.firstName} ${parsed.lastName}`.trim();
+        const titles = extractJobTitles(emailData.body_text, parsedName || emailData.name);
+        setExtractedJobTitles(titles);
       } else {
         setSuggestedMobiles([]);
+        setExtractedJobTitles([]);
       }
     }
   }, [isOpen, emailData]);
@@ -1043,6 +1133,74 @@ const CreateContactModal = ({
           {/* Tab 0 - Basic Info */}
           {activeTab === 0 && (
             <>
+              {/* Action buttons row */}
+              <div style={{ marginBottom: '12px', display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (email) {
+                      const localPart = email.split('@')[0];
+                      if (localPart) {
+                        const cleaned = localPart
+                          .replace(/[0-9]/g, '')
+                          .replace(/[._-]/g, ' ')
+                          .trim();
+                        const parts = cleaned.split(/\s+/).filter(p => p.length > 0);
+                        if (parts.length >= 2) {
+                          setFirstName(parts[0].charAt(0).toUpperCase() + parts[0].slice(1).toLowerCase());
+                          setLastName(parts.slice(1).map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' '));
+                        } else if (parts.length === 1) {
+                          setFirstName(parts[0].charAt(0).toUpperCase() + parts[0].slice(1).toLowerCase());
+                          setLastName('');
+                        }
+                        toast.success('Name parsed from email');
+                      }
+                    }
+                  }}
+                  style={{
+                    padding: '6px 12px',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    background: '#3B82F6',
+                    color: 'white',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  ✨ Parse Name
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (emailData) {
+                      fetchAiSuggestion(emailData);
+                      toast('Asking Claude for suggestions...', { icon: '🤖' });
+                    }
+                  }}
+                  disabled={loadingAiSuggestion}
+                  style={{
+                    padding: '6px 12px',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: loadingAiSuggestion ? 'wait' : 'pointer',
+                    background: loadingAiSuggestion ? '#6B7280' : '#8B5CF6',
+                    color: 'white',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    opacity: loadingAiSuggestion ? 0.7 : 1
+                  }}
+                >
+                  {loadingAiSuggestion ? '⏳ Loading...' : '🤖 Ask Claude'}
+                </button>
+              </div>
+
               {/* Name Row */}
               <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
                 <div style={{ flex: 1 }}>
@@ -1287,6 +1445,35 @@ const CreateContactModal = ({
                     </button>
                   ))}
                 </div>
+                {extractedJobTitles.length > 0 && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    marginTop: '8px',
+                    flexWrap: 'wrap'
+                  }}>
+                    <span style={{ fontSize: '12px', color: '#8B5CF6' }}>📧 From email signature:</span>
+                    {extractedJobTitles.map(title => (
+                      <button
+                        key={title}
+                        type="button"
+                        onClick={() => setJobRole(title)}
+                        style={{
+                          padding: '4px 10px',
+                          fontSize: '12px',
+                          border: `1px solid #8B5CF6`,
+                          borderRadius: '4px',
+                          backgroundColor: jobRole === title ? '#8B5CF6' : inputBg,
+                          color: jobRole === title ? 'white' : '#8B5CF6',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {title}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* LinkedIn */}

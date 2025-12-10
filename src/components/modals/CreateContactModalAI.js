@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { FaBuilding, FaTimes, FaSearch, FaPlus, FaTrash, FaStar, FaMapMarkerAlt, FaTag, FaPhone, FaCheck, FaRobot } from 'react-icons/fa';
+import { FaBuilding, FaTimes, FaSearch, FaPlus, FaTrash, FaStar, FaMapMarkerAlt, FaTag, FaPhone, FaCheck, FaRobot, FaUser, FaEnvelope, FaExclamationTriangle } from 'react-icons/fa';
+import { FiGitMerge } from 'react-icons/fi';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
 
@@ -103,6 +104,208 @@ const CompaniesContainer = styled.div`
   overflow-y: auto;
 `;
 
+// Duplicate Check Styled Components
+const DuplicateWarningContainer = styled.div`
+  padding: 16px 20px;
+  background: ${props => props.theme === 'light' ? '#FEF3C7' : '#78350F'};
+  border-bottom: 1px solid ${props => props.theme === 'light' ? '#FCD34D' : '#B45309'};
+`;
+
+const DuplicateWarningHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  color: ${props => props.theme === 'light' ? '#92400E' : '#FCD34D'};
+  font-weight: 600;
+  font-size: 14px;
+`;
+
+const DuplicateCard = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  border-radius: 8px;
+  margin-bottom: 8px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
+const DuplicateInfo = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+`;
+
+const DuplicateAvatar = styled.div`
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  flex-shrink: 0;
+  overflow: hidden;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+`;
+
+const DuplicateDetails = styled.div`
+  flex: 1;
+  min-width: 0;
+`;
+
+const DuplicateName = styled.div`
+  font-weight: 600;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  font-size: 14px;
+`;
+
+const DuplicateMatchReason = styled.div`
+  font-size: 11px;
+  color: #10B981;
+  font-weight: 500;
+  margin-top: 2px;
+`;
+
+const ConfidenceIndicator = styled.span`
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  margin-left: 8px;
+  background: ${props => {
+    if (props.level === 'exact') return '#10B981';
+    if (props.level === 'high') return '#22C55E';
+    if (props.level === 'medium') return '#F59E0B';
+    return '#9CA3AF';
+  }};
+  color: white;
+`;
+
+const ManualSearchContainer = styled.div`
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 12px;
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+  border-radius: 8px;
+  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+`;
+
+const SearchInput = styled.input`
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  border-radius: 6px;
+  background: ${props => props.theme === 'light' ? '#F9FAFB' : '#111827'};
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  font-size: 13px;
+
+  &::placeholder {
+    color: ${props => props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
+  }
+
+  &:focus {
+    outline: none;
+    border-color: #F59E0B;
+  }
+`;
+
+const SearchButton = styled.button`
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  background: #F59E0B;
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  &:hover { background: #D97706; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+`;
+
+const DuplicateMeta = styled.div`
+  font-size: 12px;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+`;
+
+const DuplicateActions = styled.div`
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+`;
+
+const MergeButton = styled.button`
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  background: #10B981;
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+
+  &:hover { background: #059669; }
+`;
+
+const DismissButton = styled.button`
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  border-radius: 6px;
+  cursor: pointer;
+  background: transparent;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
+  }
+`;
+
+const ProceedAnywayButton = styled.button`
+  margin-top: 12px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px dashed ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  border-radius: 6px;
+  cursor: pointer;
+  background: transparent;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  width: 100%;
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
+  }
+`;
+
 // Enum values
 const CATEGORY_OPTIONS = [
   'Professional Investor', 'Founder', 'Manager', 'Advisor', 'Friend and Family',
@@ -187,24 +390,45 @@ const CreateContactModalAI = ({
   const [saving, setSaving] = useState(false);
   const [holdId, setHoldId] = useState(null);
 
+  // Duplicate checking state
+  const [duplicatesLoading, setDuplicatesLoading] = useState(false);
+  const [duplicatesChecked, setDuplicatesChecked] = useState(false);
+  const [potentialDuplicates, setPotentialDuplicates] = useState([]);
+  const [duplicatesHidden, setDuplicatesHidden] = useState(false);
+  const [dismissedDuplicates, setDismissedDuplicates] = useState([]);
+  const [manualSearchQuery, setManualSearchQuery] = useState('');
+  const [manualSearchLoading, setManualSearchLoading] = useState(false);
+
   // Fetch AI suggestions - now returns all fields
-  const fetchAiSuggestions = async (data) => {
-    if (!data.body_text && !data.subject) {
-      toast.error('No email content to analyze');
+  // manualNames: optional { firstName, lastName } from form for re-analyze with manual input
+  const fetchAiSuggestions = async (data, manualNames = null) => {
+    // Only require email address - Apollo can enrich even without email body
+    if (!data.email) {
+      toast.error('No email address to analyze');
       return;
     }
 
     setLoadingAiSuggestion(true);
     try {
+      const requestBody = {
+        from_email: data.email,
+        from_name: data.name || '',
+        subject: data.subject || '',
+        body_text: data.body_text || ''
+      };
+
+      // Add manual names if provided (for re-analyze with user input)
+      if (manualNames?.firstName) {
+        requestBody.manual_first_name = manualNames.firstName;
+      }
+      if (manualNames?.lastName) {
+        requestBody.manual_last_name = manualNames.lastName;
+      }
+
       const response = await fetch(`${AGENT_SERVICE_URL}/suggest-contact-profile`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from_email: data.email,
-          from_name: data.name || '',
-          subject: data.subject || '',
-          body_text: data.body_text || ''
-        })
+        body: JSON.stringify(requestBody)
       });
 
       if (response.ok) {
@@ -212,9 +436,16 @@ const CreateContactModalAI = ({
         if (result.success && result.suggestions) {
           setAiSuggestions(result.suggestions);
           setAcceptedFields({});
-          toast.success('AI analysis complete!');
+          // Show appropriate message based on data available
+          if (manualNames?.firstName || manualNames?.lastName) {
+            toast.success('Apollo enrichment with your input complete!');
+          } else if (data.body_text || data.subject) {
+            toast.success('AI analysis complete!');
+          } else {
+            toast.success('Apollo enrichment complete!');
+          }
         } else {
-          toast.error('AI could not analyze the email');
+          toast.error('Could not analyze contact');
         }
       } else {
         toast.error('Failed to contact AI service');
@@ -547,6 +778,376 @@ const CreateContactModalAI = ({
     toast.success('All suggestions accepted!');
   };
 
+  // Common email providers to exclude from domain matching
+  const COMMON_EMAIL_PROVIDERS = [
+    'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com',
+    'me.com', 'live.com', 'msn.com', 'aol.com', 'mail.com', 'protonmail.com',
+    'libero.it', 'virgilio.it', 'alice.it', 'tin.it', 'fastwebnet.it'
+  ];
+
+  // Helper to capitalize name
+  const capitalizeName = (name) => {
+    if (!name) return '';
+    return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+  };
+
+  // Helper to get confidence label
+  const getConfidenceLabel = (score) => {
+    if (score >= 95) return 'exact';
+    if (score >= 75) return 'high';
+    if (score >= 50) return 'medium';
+    return 'low';
+  };
+
+  // Search for potential duplicates with confidence scoring
+  const searchForDuplicates = async (emailAddress, fromName) => {
+    if (!emailAddress) return [];
+
+    setDuplicatesLoading(true);
+    const matchesMap = new Map(); // Use Map to deduplicate and track best scores
+
+    try {
+      // === PARSE NAMES ===
+      // Strategy: Try multiple name parsing approaches
+
+      const nameCandidates = []; // Array of { firstName, lastName, source }
+
+      // 1. Parse from display name (if real name, not email)
+      const isFromNameAnEmail = fromName && fromName.includes('@');
+      if (fromName && !isFromNameAnEmail) {
+        const nameParts = fromName.trim().split(/\s+/);
+        if (nameParts.length >= 2) {
+          nameCandidates.push({
+            firstName: capitalizeName(nameParts[0]),
+            lastName: capitalizeName(nameParts[nameParts.length - 1]),
+            source: 'displayName'
+          });
+        } else if (nameParts.length === 1) {
+          nameCandidates.push({
+            firstName: '',
+            lastName: capitalizeName(nameParts[0]),
+            source: 'displayName'
+          });
+        }
+      }
+
+      // 2. Parse from email local part - TRY BOTH ORDERINGS
+      const localPart = emailAddress.split('@')[0]?.toLowerCase();
+      if (localPart) {
+        const dotParts = localPart.split('.');
+        if (dotParts.length >= 2) {
+          // Ordering 1: firstname.lastname (common in US/UK)
+          nameCandidates.push({
+            firstName: capitalizeName(dotParts[0]),
+            lastName: capitalizeName(dotParts[dotParts.length - 1]),
+            source: 'emailFirstLast'
+          });
+          // Ordering 2: lastname.firstname (common in Italy/Europe)
+          nameCandidates.push({
+            firstName: capitalizeName(dotParts[dotParts.length - 1]),
+            lastName: capitalizeName(dotParts[0]),
+            source: 'emailLastFirst'
+          });
+        }
+      }
+
+      // === 1. EXACT EMAIL MATCH (100% confidence) ===
+      const { data: emailMatches, error: emailError } = await supabase
+        .from('contacts')
+        .select(`
+          contact_id, first_name, last_name, category, profile_image_url, created_at,
+          contact_emails!inner (email, is_primary),
+          contact_mobiles (mobile, is_primary)
+        `)
+        .ilike('contact_emails.email', emailAddress.toLowerCase());
+
+      if (!emailError && emailMatches) {
+        emailMatches.forEach(contact => {
+          matchesMap.set(contact.contact_id, {
+            ...contact,
+            matchReasons: [`Exact email: ${emailAddress}`],
+            matchType: 'email',
+            confidenceScore: 100,
+            confidenceLabel: 'exact'
+          });
+        });
+      }
+
+      // === 2. FULL NAME MATCHES (90% confidence) ===
+      for (const candidate of nameCandidates) {
+        if (candidate.firstName && candidate.lastName && candidate.firstName.length >= 2 && candidate.lastName.length >= 2) {
+          const { data: fullNameMatches } = await supabase
+            .from('contacts')
+            .select(`
+              contact_id, first_name, last_name, category, profile_image_url, created_at,
+              contact_emails (email, is_primary),
+              contact_mobiles (mobile, is_primary)
+            `)
+            .ilike('first_name', candidate.firstName)
+            .ilike('last_name', candidate.lastName);
+
+          fullNameMatches?.forEach(contact => {
+            if (!matchesMap.has(contact.contact_id)) {
+              matchesMap.set(contact.contact_id, {
+                ...contact,
+                matchReasons: [`Full name: ${candidate.firstName} ${candidate.lastName}`],
+                matchType: 'fullName',
+                confidenceScore: 90,
+                confidenceLabel: 'high'
+              });
+            }
+          });
+        }
+      }
+
+      // === 3. SURNAME + FIRST INITIAL (85% confidence) ===
+      for (const candidate of nameCandidates) {
+        if (candidate.lastName && candidate.lastName.length >= 2 && candidate.firstName) {
+          const firstInitial = candidate.firstName.charAt(0);
+          const { data: initialMatches } = await supabase
+            .from('contacts')
+            .select(`
+              contact_id, first_name, last_name, category, profile_image_url, created_at,
+              contact_emails (email, is_primary),
+              contact_mobiles (mobile, is_primary)
+            `)
+            .ilike('last_name', candidate.lastName)
+            .ilike('first_name', `${firstInitial}%`);
+
+          initialMatches?.forEach(contact => {
+            if (!matchesMap.has(contact.contact_id)) {
+              matchesMap.set(contact.contact_id, {
+                ...contact,
+                matchReasons: [`${firstInitial}. ${candidate.lastName}`],
+                matchType: 'surnameInitial',
+                confidenceScore: 85,
+                confidenceLabel: 'high'
+              });
+            }
+          });
+        }
+      }
+
+      // === 4. SURNAME ONLY (60% confidence) ===
+      for (const candidate of nameCandidates) {
+        if (candidate.lastName && candidate.lastName.length >= 3) {
+          const { data: surnameMatches } = await supabase
+            .from('contacts')
+            .select(`
+              contact_id, first_name, last_name, category, profile_image_url, created_at,
+              contact_emails (email, is_primary),
+              contact_mobiles (mobile, is_primary)
+            `)
+            .ilike('last_name', candidate.lastName);
+
+          surnameMatches?.forEach(contact => {
+            if (!matchesMap.has(contact.contact_id)) {
+              matchesMap.set(contact.contact_id, {
+                ...contact,
+                matchReasons: [`Same surname: ${candidate.lastName}`],
+                matchType: 'surname',
+                confidenceScore: 60,
+                confidenceLabel: 'medium'
+              });
+            }
+          });
+        }
+      }
+
+      // === 5. FIRST NAME + COMPANY DOMAIN (50% confidence) ===
+      const emailDomain = emailAddress.split('@')[1]?.toLowerCase();
+      if (emailDomain && !COMMON_EMAIL_PROVIDERS.includes(emailDomain)) {
+        for (const candidate of nameCandidates) {
+          if (candidate.firstName && candidate.firstName.length >= 3) {
+            const { data: firstNameDomainMatches } = await supabase
+              .from('contacts')
+              .select(`
+                contact_id, first_name, last_name, category, profile_image_url, created_at,
+                contact_emails!inner (email, is_primary),
+                contact_mobiles (mobile, is_primary)
+              `)
+              .ilike('first_name', candidate.firstName)
+              .ilike('contact_emails.email', `%@${emailDomain}`);
+
+            firstNameDomainMatches?.forEach(contact => {
+              if (!matchesMap.has(contact.contact_id)) {
+                matchesMap.set(contact.contact_id, {
+                  ...contact,
+                  matchReasons: [`${candidate.firstName} at @${emailDomain}`],
+                  matchType: 'firstNameDomain',
+                  confidenceScore: 50,
+                  confidenceLabel: 'medium'
+                });
+              }
+            });
+          }
+        }
+      }
+
+      // === 6. COMPANY DOMAIN ONLY (30% confidence) ===
+      if (emailDomain && !COMMON_EMAIL_PROVIDERS.includes(emailDomain)) {
+        const { data: domainMatches } = await supabase
+          .from('contacts')
+          .select(`
+            contact_id, first_name, last_name, category, profile_image_url, created_at,
+            contact_emails!inner (email, is_primary),
+            contact_mobiles (mobile, is_primary)
+          `)
+          .ilike('contact_emails.email', `%@${emailDomain}`)
+          .limit(10);
+
+        domainMatches?.forEach(contact => {
+          if (!matchesMap.has(contact.contact_id)) {
+            matchesMap.set(contact.contact_id, {
+              ...contact,
+              matchReasons: [`Same domain: @${emailDomain}`],
+              matchType: 'domain',
+              confidenceScore: 30,
+              confidenceLabel: 'low'
+            });
+          }
+        });
+      }
+
+      // Convert Map to array, sort by confidence, take top 3
+      const sortedMatches = Array.from(matchesMap.values())
+        .sort((a, b) => b.confidenceScore - a.confidenceScore)
+        .slice(0, 3);
+
+      setPotentialDuplicates(sortedMatches);
+      setDuplicatesChecked(true);
+      return sortedMatches;
+
+    } catch (error) {
+      console.error('Error searching for duplicates:', error);
+      setDuplicatesChecked(true);
+      return [];
+    } finally {
+      setDuplicatesLoading(false);
+    }
+  };
+
+  // Manual search for duplicates
+  const handleManualSearch = async () => {
+    if (!manualSearchQuery.trim()) return;
+
+    setManualSearchLoading(true);
+    try {
+      const searchTerm = manualSearchQuery.trim();
+      const nameWords = searchTerm.split(/\s+/);
+      let nameQuery = '';
+
+      if (nameWords.length === 1) {
+        nameQuery = `first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%`;
+      } else if (nameWords.length === 2) {
+        const [word1, word2] = nameWords;
+        nameQuery = `and(first_name.ilike.%${word1}%,last_name.ilike.%${word2}%),and(first_name.ilike.%${word2}%,last_name.ilike.%${word1}%),first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%`;
+      } else {
+        const wordQueries = nameWords.map(word => `first_name.ilike.%${word}%,last_name.ilike.%${word}%`).join(',');
+        nameQuery = `first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%,${wordQueries}`;
+      }
+
+      const { data: contacts, error } = await supabase
+        .from('contacts')
+        .select(`
+          contact_id, first_name, last_name, category, profile_image_url, created_at,
+          contact_emails (email, is_primary),
+          contact_mobiles (mobile, is_primary)
+        `)
+        .or(nameQuery)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (error) throw error;
+
+      // Add search results with "manual" confidence
+      const manualResults = (contacts || []).map(contact => ({
+        ...contact,
+        matchReasons: [`Search: "${searchTerm}"`],
+        matchType: 'manual',
+        confidenceScore: 70,
+        confidenceLabel: 'medium'
+      }));
+
+      // Merge with existing, avoiding duplicates
+      const existingIds = new Set(potentialDuplicates.map(d => d.contact_id));
+      const newResults = manualResults.filter(r => !existingIds.has(r.contact_id));
+
+      setPotentialDuplicates(prev => [...newResults, ...prev].slice(0, 5));
+
+    } catch (error) {
+      console.error('Error in manual search:', error);
+      toast.error('Search failed');
+    } finally {
+      setManualSearchLoading(false);
+    }
+  };
+
+  // Handle merge with duplicate - adds the new email to existing contact
+  const handleMergeWithDuplicate = async (duplicate) => {
+    // Quick merge: add the new email to the existing contact
+    try {
+      // Check if email already exists on this contact
+      const existingEmail = duplicate.contact_emails?.find(
+        e => e.email?.toLowerCase() === email?.toLowerCase()
+      );
+
+      if (existingEmail) {
+        toast.success(`${duplicate.first_name} ${duplicate.last_name} already has this email`);
+      } else if (email) {
+        // Add the new email to the existing contact
+        const { error } = await supabase
+          .from('contact_emails')
+          .insert({
+            contact_id: duplicate.contact_id,
+            email: email.toLowerCase().trim(),
+            is_primary: duplicate.contact_emails?.length === 0 // Primary if no other emails
+          });
+
+        if (error) {
+          console.error('Error adding email:', error);
+          toast.error('Failed to add email to contact');
+          return;
+        }
+
+        toast.success(`Added email to ${duplicate.first_name} ${duplicate.last_name}`);
+      }
+
+      // Delete from contacts_hold if holdId exists
+      if (holdId) {
+        await supabase
+          .from('contacts_hold')
+          .delete()
+          .eq('hold_id', holdId);
+      }
+
+      // Return the merged contact
+      if (onSuccess) onSuccess(duplicate);
+      onClose();
+
+    } catch (error) {
+      console.error('Error merging:', error);
+      toast.error('Failed to merge contacts');
+    }
+  };
+
+  // Dismiss a single duplicate
+  const handleDismissDuplicate = (contactId) => {
+    setDismissedDuplicates(prev => [...prev, contactId]);
+  };
+
+  // Get visible duplicates (excluding dismissed ones)
+  const visibleDuplicates = potentialDuplicates.filter(
+    d => !dismissedDuplicates.includes(d.contact_id)
+  );
+
+  // Format contact email for display
+  const formatDuplicateEmail = (emails) => {
+    if (!emails || emails.length === 0) return null;
+    const primary = emails.find(e => e.is_primary);
+    return primary?.email || emails[0]?.email;
+  };
+
   // Initialize form when modal opens
   useEffect(() => {
     if (isOpen && emailData) {
@@ -554,6 +1155,13 @@ const CreateContactModalAI = ({
       setActiveTab(0);
       setAiSuggestions(null);
       setAcceptedFields({});
+
+      // Reset duplicate checking state
+      setDuplicatesLoading(false);
+      setDuplicatesChecked(false);
+      setPotentialDuplicates([]);
+      setDuplicatesHidden(false);
+      setDismissedDuplicates([]);
 
       // Set email
       setEmail(emailData.email || '');
@@ -575,6 +1183,11 @@ const CreateContactModalAI = ({
       setChristmas('no wishes set');
       setEaster('no wishes set');
       setHoldId(emailData.hold_id || null);
+
+      // Auto-trigger duplicate check (runs in parallel with AI analysis)
+      if (emailData.email) {
+        searchForDuplicates(emailData.email, emailData.name);
+      }
 
       // Auto-trigger AI analysis
       if (emailData.body_text || emailData.subject) {
@@ -1072,6 +1685,141 @@ const CreateContactModalAI = ({
           </div>
         </div>
 
+        {/* Duplicate Warning Section */}
+        {!duplicatesHidden && (duplicatesLoading || visibleDuplicates.length > 0 || duplicatesChecked) && (
+          <DuplicateWarningContainer theme={theme}>
+            <DuplicateWarningHeader theme={theme}>
+              <FaExclamationTriangle />
+              {duplicatesLoading ? (
+                'Checking for duplicates...'
+              ) : visibleDuplicates.length > 0 ? (
+                `Potential Duplicates Found (${visibleDuplicates.length})`
+              ) : (
+                'No duplicates found'
+              )}
+            </DuplicateWarningHeader>
+
+            {/* Manual Search Input */}
+            <ManualSearchContainer theme={theme}>
+              <SearchInput
+                theme={theme}
+                type="text"
+                value={manualSearchQuery}
+                onChange={(e) => setManualSearchQuery(e.target.value)}
+                placeholder="Search by name..."
+                onKeyPress={(e) => e.key === 'Enter' && handleManualSearch()}
+              />
+              <SearchButton
+                onClick={handleManualSearch}
+                disabled={manualSearchLoading || !manualSearchQuery.trim()}
+              >
+                {manualSearchLoading ? '...' : <><FaSearch size={12} /> Search</>}
+              </SearchButton>
+            </ManualSearchContainer>
+
+            {duplicatesLoading ? (
+              <div style={{
+                textAlign: 'center',
+                padding: '12px',
+                color: isDark ? '#FCD34D' : '#92400E',
+                fontSize: '13px'
+              }}>
+                Searching your contacts...
+              </div>
+            ) : visibleDuplicates.length === 0 ? (
+              <div style={{
+                textAlign: 'center',
+                padding: '12px',
+                color: isDark ? '#FCD34D' : '#92400E',
+                fontSize: '13px'
+              }}>
+                Use search above to find contacts manually
+              </div>
+            ) : (
+              <>
+                {/* Sort by confidence score - highest first */}
+                {visibleDuplicates
+                  .sort((a, b) => (b.confidenceScore || 0) - (a.confidenceScore || 0))
+                  .slice(0, 3) // Show max 3 duplicates
+                  .map((duplicate) => (
+                    <DuplicateCard key={duplicate.contact_id} theme={theme}>
+                      <DuplicateInfo>
+                        <DuplicateAvatar theme={theme}>
+                          {duplicate.profile_image_url ? (
+                            <img src={duplicate.profile_image_url} alt="Profile" />
+                          ) : (
+                            <FaUser size={16} />
+                          )}
+                        </DuplicateAvatar>
+                        <DuplicateDetails>
+                          <DuplicateName theme={theme}>
+                            {duplicate.first_name} {duplicate.last_name}
+                            <ConfidenceIndicator level={duplicate.confidenceLabel || 'low'}>
+                              {duplicate.confidenceLabel === 'exact' ? 'EXACT' :
+                               duplicate.confidenceLabel === 'high' ? 'HIGH' :
+                               duplicate.confidenceLabel === 'medium' ? 'MEDIUM' : 'LOW'}
+                              {duplicate.confidenceScore ? ` ${duplicate.confidenceScore}%` : ''}
+                            </ConfidenceIndicator>
+                          </DuplicateName>
+                          <DuplicateMatchReason>
+                            {duplicate.matchReasons?.join(' • ')}
+                          </DuplicateMatchReason>
+                          <DuplicateMeta theme={theme}>
+                            {formatDuplicateEmail(duplicate.contact_emails) && (
+                              <span>
+                                <FaEnvelope size={10} style={{ marginRight: '4px' }} />
+                                {formatDuplicateEmail(duplicate.contact_emails)}
+                              </span>
+                            )}
+                            {duplicate.category && (
+                              <span style={{
+                                padding: '1px 6px',
+                                background: isDark ? '#374151' : '#E5E7EB',
+                                borderRadius: '4px',
+                                fontSize: '10px'
+                              }}>
+                                {duplicate.category}
+                              </span>
+                            )}
+                          </DuplicateMeta>
+                        </DuplicateDetails>
+                      </DuplicateInfo>
+                      <DuplicateActions>
+                        <MergeButton onClick={() => handleMergeWithDuplicate(duplicate)}>
+                          <FiGitMerge size={12} /> Merge
+                        </MergeButton>
+                        <DismissButton
+                          theme={theme}
+                          onClick={() => handleDismissDuplicate(duplicate.contact_id)}
+                        >
+                          Not this
+                        </DismissButton>
+                      </DuplicateActions>
+                    </DuplicateCard>
+                  ))}
+
+                {visibleDuplicates.length > 3 && (
+                  <div style={{
+                    textAlign: 'center',
+                    fontSize: '12px',
+                    color: isDark ? '#FCD34D' : '#92400E',
+                    marginTop: '8px'
+                  }}>
+                    + {visibleDuplicates.length - 3} more potential duplicates
+                  </div>
+                )}
+
+                <ProceedAnywayButton
+                  theme={theme}
+                  onClick={() => setDuplicatesHidden(true)}
+                >
+                  This is a new person - Create anyway →
+                </ProceedAnywayButton>
+              </>
+            )}
+          </DuplicateWarningContainer>
+        )}
+
         {/* Tabs */}
         <div style={{
           display: 'flex',
@@ -1108,8 +1856,9 @@ const CreateContactModalAI = ({
                     </p>
                   </div>
                   <button
-                    onClick={() => fetchAiSuggestions(emailData)}
+                    onClick={() => fetchAiSuggestions(emailData, { firstName, lastName })}
                     disabled={loadingAiSuggestion}
+                    title={firstName || lastName ? `Will search Apollo for: ${firstName} ${lastName}` : 'Re-analyze email'}
                     style={{
                       padding: '8px 16px',
                       fontSize: '12px',
@@ -2524,6 +3273,7 @@ const CreateContactModalAI = ({
           </div>
         </div>
       )}
+
     </div>
   );
 };

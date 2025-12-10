@@ -295,22 +295,22 @@ const ManageContactEmailsModal = ({
   };
 
   const handleRemoveEmail = async (emailId) => {
-    const emailToRemove = emails.find(e => e.contact_email_id === emailId);
+    const emailToRemove = emails.find(e => e.email_id === emailId);
 
     setLoading(true);
     try {
       const { error } = await supabase
         .from('contact_emails')
         .delete()
-        .eq('contact_email_id', emailId);
+        .eq('email_id', emailId);
 
       if (error) throw error;
 
-      const updatedEmails = emails.filter(e => e.contact_email_id !== emailId);
+      const updatedEmails = emails.filter(e => e.email_id !== emailId);
 
       // If we removed the primary email, set the first remaining one as primary
       if (emailToRemove?.is_primary && updatedEmails.length > 0) {
-        await handleSetPrimary(updatedEmails[0].contact_email_id);
+        await handleSetPrimary(updatedEmails[0].email_id);
       } else {
         setEmails(updatedEmails);
       }
@@ -338,13 +338,13 @@ const ManageContactEmailsModal = ({
       const { error } = await supabase
         .from('contact_emails')
         .update({ is_primary: true })
-        .eq('contact_email_id', emailId);
+        .eq('email_id', emailId);
 
       if (error) throw error;
 
       setEmails(emails.map(e => ({
         ...e,
-        is_primary: e.contact_email_id === emailId
+        is_primary: e.email_id === emailId
       })));
 
       toast.success('Primary email updated');
@@ -363,12 +363,12 @@ const ManageContactEmailsModal = ({
       const { error } = await supabase
         .from('contact_emails')
         .update({ type: newType })
-        .eq('contact_email_id', emailId);
+        .eq('email_id', emailId);
 
       if (error) throw error;
 
       setEmails(emails.map(e =>
-        e.contact_email_id === emailId ? { ...e, type: newType } : e
+        e.email_id === emailId ? { ...e, type: newType } : e
       ));
       onEmailsUpdated?.();
     } catch (error) {
@@ -453,7 +453,7 @@ const ManageContactEmailsModal = ({
         <EmailList>
           {emails.length > 0 ? (
             emails.map((emailData) => (
-              <EmailItem key={emailData.contact_email_id} theme={theme}>
+              <EmailItem key={emailData.email_id} theme={theme}>
                 <EmailIcon>
                   <FaEnvelope size={14} />
                 </EmailIcon>
@@ -463,7 +463,7 @@ const ManageContactEmailsModal = ({
                 </EmailContent>
                 <Select
                   value={emailData.type || 'personal'}
-                  onChange={(e) => handleUpdateType(emailData.contact_email_id, e.target.value)}
+                  onChange={(e) => handleUpdateType(emailData.email_id, e.target.value)}
                   theme={theme}
                   style={{ padding: '6px 10px', fontSize: '12px', width: 'auto' }}
                   disabled={loading}
@@ -476,13 +476,13 @@ const ManageContactEmailsModal = ({
                   type="radio"
                   name="primaryEmail"
                   checked={emailData.is_primary}
-                  onChange={() => handleSetPrimary(emailData.contact_email_id)}
+                  onChange={() => handleSetPrimary(emailData.email_id)}
                   title="Set as primary"
                   disabled={loading}
                 />
                 <DeleteButton
                   theme={theme}
-                  onClick={() => handleRemoveEmail(emailData.contact_email_id)}
+                  onClick={() => handleRemoveEmail(emailData.email_id)}
                   disabled={loading}
                   title="Remove email"
                 >

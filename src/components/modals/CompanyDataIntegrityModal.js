@@ -507,6 +507,7 @@ const CompanyDataIntegrityModal = ({
   // Inline domain editing
   const [newDomain, setNewDomain] = useState('');
   const [addingDomain, setAddingDomain] = useState(false);
+  const [suggestedDomains, setSuggestedDomains] = useState([]);
 
   // Inline tag editing
   const [newTag, setNewTag] = useState('');
@@ -533,6 +534,83 @@ const CompanyDataIntegrityModal = ({
 
   // Saving state
   const [saving, setSaving] = useState(false);
+
+  // Helper to extract domain from URL
+  const extractDomainFromUrl = (url) => {
+    if (!url) return null;
+    try {
+      // Add protocol if missing
+      let cleanUrl = url.trim();
+      if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+        cleanUrl = 'https://' + cleanUrl;
+      }
+      const urlObj = new URL(cleanUrl);
+      // Remove www. prefix
+      return urlObj.hostname.replace(/^www\./, '').toLowerCase();
+    } catch {
+      // If URL parsing fails, try simple extraction
+      const match = url.match(/(?:https?:\/\/)?(?:www\.)?([^\/\s]+)/i);
+      return match ? match[1].toLowerCase() : null;
+    }
+  };
+
+  // Helper to extract domain from email
+  const extractDomainFromEmail = (email) => {
+    if (!email) return null;
+    const parts = email.split('@');
+    if (parts.length === 2) {
+      return parts[1].toLowerCase();
+    }
+    return null;
+  };
+
+  // Load suggested domains from website and contact emails
+  const loadSuggestedDomains = async (companyWebsite, companyDomains, companyId) => {
+    const suggestions = new Set();
+    const existingDomains = new Set(companyDomains.map(d => d.domain.toLowerCase()));
+
+    // 1. Extract domain from website
+    if (companyWebsite) {
+      const websiteDomain = extractDomainFromUrl(companyWebsite);
+      if (websiteDomain && !existingDomains.has(websiteDomain)) {
+        suggestions.add(websiteDomain);
+      }
+    }
+
+    // 2. Get emails from contacts associated with this company
+    try {
+      const { data: contactCompanies } = await supabase
+        .from('contact_companies')
+        .select('contact_id')
+        .eq('company_id', companyId);
+
+      if (contactCompanies?.length > 0) {
+        const contactIds = contactCompanies.map(cc => cc.contact_id);
+
+        const { data: contactEmails } = await supabase
+          .from('contact_emails')
+          .select('email')
+          .in('contact_id', contactIds);
+
+        if (contactEmails?.length > 0) {
+          contactEmails.forEach(ce => {
+            const emailDomain = extractDomainFromEmail(ce.email);
+            if (emailDomain && !existingDomains.has(emailDomain)) {
+              // Filter out common personal email domains
+              const personalDomains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'me.com', 'aol.com', 'live.com', 'msn.com', 'protonmail.com', 'mail.com'];
+              if (!personalDomains.includes(emailDomain)) {
+                suggestions.add(emailDomain);
+              }
+            }
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error loading contact emails for domain suggestions:', error);
+    }
+
+    setSuggestedDomains(Array.from(suggestions));
+  };
 
   // Load company data
   const loadCompanyData = useCallback(async () => {
@@ -579,7 +657,8 @@ const CompanyDataIntegrityModal = ({
           .maybeSingle()
       ]);
 
-      setDomains(domainsRes.data || []);
+      const loadedDomains = domainsRes.data || [];
+      setDomains(loadedDomains);
       setTags(tagsRes.data || []);
       setCities(citiesRes.data || []);
 
@@ -588,6 +667,9 @@ const CompanyDataIntegrityModal = ({
       } else {
         setLogoUrl(null);
       }
+
+      // Load suggested domains from website and contact emails
+      await loadSuggestedDomains(companyData.website, loadedDomains, companyId);
 
       // Find duplicates
       await findDuplicates(companyData, companyId);
@@ -741,9 +823,10 @@ const CompanyDataIntegrityModal = ({
     if (isOpen && companyId) {
       loadCompanyData();
     }
-    // Reset initial missing fields when modal closes
+    // Reset state when modal closes
     if (!isOpen) {
       setInitialMissingFieldKeys(new Set());
+      setSuggestedDomains([]);
     }
   }, [isOpen, companyId, loadCompanyData]);
 
@@ -890,11 +973,17 @@ const CompanyDataIntegrityModal = ({
 
   // Save changes
   const handleSave = async (markComplete = false) => {
+    // Validate category is selected
+    if (!category || category === 'Inbox' || category === 'Not Set') {
+      toast.error('Please select a valid category before saving');
+      return;
+    }
+
     setSaving(true);
     try {
       const updates = {
         name: name.trim(),
-        category: category || null,
+        category: category,
         website: website.trim() || null,
         linkedin: linkedin.trim() || null,
         description: description.trim() || null,
@@ -931,34 +1020,70 @@ const CompanyDataIntegrityModal = ({
 
     setAddingDomain(true);
     try {
-      // Check if domain already exists for this company
-      const { data: existing } = await supabase
-        .from('company_domains')
-        .select('id')
-        .eq('company_id', companyId)
-        .eq('domain', newDomain.toLowerCase().trim())
-        .maybeSingle();
+      const domainValue = newDomain.toLowerCase().trim();
 
-      if (existing) {
+      // Check if domain already exists locally
+      if (domains.some(d => d.domain === domainValue)) {
         toast.error('This domain is already linked');
         return;
       }
 
-      const { error } = await supabase
+      const { data: newDomainData, error } = await supabase
         .from('company_domains')
         .insert({
           company_id: companyId,
-          domain: newDomain.toLowerCase().trim(),
+          domain: domainValue,
           is_primary: domains.length === 0  // First domain is primary
-        });
+        })
+        .select()
+        .single();
 
       if (error) throw error;
 
+      // Update local state instead of reloading
+      setDomains(prev => [...prev, newDomainData]);
+      // Remove from suggestions if it was there
+      setSuggestedDomains(prev => prev.filter(d => d !== domainValue));
       toast.success('Domain added');
       setNewDomain('');
-      loadCompanyData();
     } catch (error) {
       console.error('Error adding domain:', error);
+      toast.error('Failed to add domain');
+    } finally {
+      setAddingDomain(false);
+    }
+  };
+
+  // Add suggested domain with one click
+  const handleAddSuggestedDomain = async (domainToAdd) => {
+    setAddingDomain(true);
+    try {
+      const domainValue = domainToAdd.toLowerCase().trim();
+
+      // Check if domain already exists locally
+      if (domains.some(d => d.domain === domainValue)) {
+        toast.error('This domain is already linked');
+        setSuggestedDomains(prev => prev.filter(d => d !== domainToAdd));
+        return;
+      }
+
+      const { data: newDomainData, error } = await supabase
+        .from('company_domains')
+        .insert({
+          company_id: companyId,
+          domain: domainValue,
+          is_primary: domains.length === 0
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setDomains(prev => [...prev, newDomainData]);
+      setSuggestedDomains(prev => prev.filter(d => d !== domainToAdd));
+      toast.success(`Domain "${domainValue}" added`);
+    } catch (error) {
+      console.error('Error adding suggested domain:', error);
       toast.error('Failed to add domain');
     } finally {
       setAddingDomain(false);
@@ -974,8 +1099,9 @@ const CompanyDataIntegrityModal = ({
 
       if (error) throw error;
 
+      // Update local state instead of reloading
+      setDomains(prev => prev.filter(d => d.id !== domainId));
       toast.success('Domain removed');
-      loadCompanyData();
     } catch (error) {
       console.error('Error removing domain:', error);
       toast.error('Failed to remove domain');
@@ -1014,15 +1140,9 @@ const CompanyDataIntegrityModal = ({
     try {
       const tagId = tagToAdd.tag_id;
 
-      // Check if already linked
-      const { data: existing } = await supabase
-        .from('company_tags')
-        .select('company_id')
-        .eq('company_id', companyId)
-        .eq('tag_id', tagId)
-        .maybeSingle();
-
-      if (existing) {
+      // Check if already linked locally
+      const linkedTagIds = tags.map(t => t.tags?.tag_id || t.tag_id);
+      if (linkedTagIds.includes(tagId)) {
         toast.error('Tag already linked');
         return;
       }
@@ -1033,10 +1153,11 @@ const CompanyDataIntegrityModal = ({
 
       if (error) throw error;
 
+      // Update local state instead of reloading
+      setTags(prev => [...prev, { tag_id: tagId, tags: { tag_id: tagId, name: tagToAdd.name } }]);
       toast.success('Tag added');
       setNewTag('');
       setShowTagSuggestions(false);
-      loadCompanyData();
     } catch (error) {
       console.error('Error adding tag:', error);
       toast.error('Failed to add tag');
@@ -1066,10 +1187,11 @@ const CompanyDataIntegrityModal = ({
 
       if (linkError) throw linkError;
 
+      // Update local state instead of reloading
+      setTags(prev => [...prev, { tag_id: newTagData.tag_id, tags: { tag_id: newTagData.tag_id, name: newTagData.name } }]);
       toast.success('Tag created and added');
       setNewTag('');
       setShowTagSuggestions(false);
-      loadCompanyData();
     } catch (error) {
       console.error('Error creating tag:', error);
       toast.error('Failed to create tag');
@@ -1088,8 +1210,9 @@ const CompanyDataIntegrityModal = ({
 
       if (error) throw error;
 
+      // Update local state instead of reloading
+      setTags(prev => prev.filter(t => (t.tags?.tag_id || t.tag_id) !== tagId));
       toast.success('Tag removed');
-      loadCompanyData();
     } catch (error) {
       console.error('Error removing tag:', error);
       toast.error('Failed to remove tag');
@@ -1228,15 +1351,9 @@ const CompanyDataIntegrityModal = ({
     try {
       const cityId = cityToAdd.city_id;
 
-      // Check if already linked
-      const { data: existing } = await supabase
-        .from('company_cities')
-        .select('company_id')
-        .eq('company_id', companyId)
-        .eq('city_id', cityId)
-        .maybeSingle();
-
-      if (existing) {
+      // Check if already linked locally
+      const linkedCityIds = cities.map(c => c.cities?.city_id || c.city_id);
+      if (linkedCityIds.includes(cityId)) {
         toast.error('City already linked');
         return;
       }
@@ -1247,10 +1364,11 @@ const CompanyDataIntegrityModal = ({
 
       if (error) throw error;
 
+      // Update local state instead of reloading
+      setCities(prev => [...prev, { city_id: cityId, cities: { city_id: cityId, name: cityToAdd.name, country: cityToAdd.country } }]);
       toast.success('City added');
       setNewCity('');
       setShowCitySuggestions(false);
-      loadCompanyData();
     } catch (error) {
       console.error('Error adding city:', error);
       toast.error('Failed to add city');
@@ -1280,10 +1398,11 @@ const CompanyDataIntegrityModal = ({
 
       if (linkError) throw linkError;
 
+      // Update local state instead of reloading
+      setCities(prev => [...prev, { city_id: newCityData.city_id, cities: { city_id: newCityData.city_id, name: newCityData.name } }]);
       toast.success('City created and added');
       setNewCity('');
       setShowCitySuggestions(false);
-      loadCompanyData();
     } catch (error) {
       console.error('Error creating city:', error);
       toast.error('Failed to create city');
@@ -1302,8 +1421,9 @@ const CompanyDataIntegrityModal = ({
 
       if (error) throw error;
 
+      // Update local state instead of reloading
+      setCities(prev => prev.filter(c => (c.cities?.city_id || c.city_id) !== cityId));
       toast.success('City removed');
-      loadCompanyData();
     } catch (error) {
       console.error('Error removing city:', error);
       toast.error('Failed to remove city');
@@ -1531,6 +1651,50 @@ const CompanyDataIntegrityModal = ({
                               </button>
                             </div>
                           ))}
+                        </div>
+                      )}
+                      {/* Suggested domains from website and contact emails */}
+                      {suggestedDomains.length > 0 && (
+                        <div style={{ marginBottom: 10 }}>
+                          <div style={{ fontSize: 11, color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: 6 }}>
+                            Suggested domains (click to add):
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {suggestedDomains.map(domain => (
+                              <button
+                                key={domain}
+                                onClick={() => handleAddSuggestedDomain(domain)}
+                                disabled={addingDomain}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  padding: '4px 10px',
+                                  background: theme === 'light' ? '#DBEAFE' : '#1E3A8A',
+                                  border: `1px dashed ${theme === 'light' ? '#60A5FA' : '#3B82F6'}`,
+                                  borderRadius: 16,
+                                  fontSize: 12,
+                                  color: theme === 'light' ? '#1D4ED8' : '#93C5FD',
+                                  cursor: addingDomain ? 'wait' : 'pointer',
+                                  transition: 'all 0.15s',
+                                  opacity: addingDomain ? 0.7 : 1
+                                }}
+                                onMouseEnter={e => {
+                                  if (!addingDomain) {
+                                    e.target.style.background = theme === 'light' ? '#BFDBFE' : '#1E40AF';
+                                    e.target.style.borderStyle = 'solid';
+                                  }
+                                }}
+                                onMouseLeave={e => {
+                                  e.target.style.background = theme === 'light' ? '#DBEAFE' : '#1E3A8A';
+                                  e.target.style.borderStyle = 'dashed';
+                                }}
+                              >
+                                <FaGlobe size={10} />
+                                {domain}
+                              </button>
+                            ))}
+                          </div>
                         </div>
                       )}
                       <InputWithButton>

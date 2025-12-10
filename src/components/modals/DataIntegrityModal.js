@@ -746,6 +746,7 @@ const DataIntegrityModal = ({
   const [companies, setCompanies] = useState([]);
   const [cities, setCities] = useState([]);
   const [tags, setTags] = useState([]);
+  const [contactScore, setContactScore] = useState(null);
 
   // New item inputs
   const [newEmail, setNewEmail] = useState('');
@@ -829,6 +830,7 @@ const DataIntegrityModal = ({
       setLinkedin(contactData.linkedin || '');
       setDescription(contactData.description || '');
       setKeepInTouchFrequency(contactData.keep_in_touch_frequency || 'Not Set');
+      setContactScore(contactData.score || null);
 
       // Load related data in parallel
       const [emailsRes, mobilesRes, companiesRes, citiesRes, tagsRes, duplicatesRes, kitRes] = await Promise.all([
@@ -1116,22 +1118,18 @@ const DataIntegrityModal = ({
     if (!jobRole?.trim()) missing.push({ key: 'jobRole', label: 'Job Title', icon: FaBriefcase });
     if (!linkedin?.trim()) missing.push({ key: 'linkedin', label: 'LinkedIn', icon: FaLinkedin });
 
-    // Score (1 pt)
-    if (!completenessData.score || completenessData.score === 0) missing.push({ key: 'score', label: 'Score (1-5)', icon: FaCrown });
+    // Score (1 pt) - use local state for real-time updates
+    if (!contactScore || contactScore === 0) missing.push({ key: 'score', label: 'Score (1-5)', icon: FaCrown });
 
-    // Keep in touch (3 pts)
-    // Check contacts.keep_in_touch_frequency AND keep_in_touch.frequency (exposed as kit_frequency)
+    // Keep in touch (3 pts) - use local state for real-time updates
     // "Not Set" is the default enum value, treat as missing. "Do not keep in touch" is a valid choice.
-    const kitFreqFromContacts = completenessData.keep_in_touch_frequency;
-    const kitFreqFromTable = completenessData.kit_frequency;
-    const contactsKitEmpty = !kitFreqFromContacts || kitFreqFromContacts === 'Not Set';
-    const tableKitEmpty = !kitFreqFromTable || kitFreqFromTable === 'Not Set';
-    if (contactsKitEmpty && tableKitEmpty) {
+    const kitEmpty = !keepInTouchFrequency || keepInTouchFrequency === 'Not Set';
+    if (kitEmpty) {
       missing.push({ key: 'kit_frequency', label: 'Keep in Touch', icon: FaUsers });
     }
-    // "no wishes set" is the default enum value, treat as missing
-    const christmasEmpty = !completenessData.christmas || completenessData.christmas === 'no wishes set';
-    const easterEmpty = !completenessData.easter || completenessData.easter === 'no wishes set';
+    // "no wishes set" is the default enum value, treat as missing - use local state
+    const christmasEmpty = !christmas || christmas === 'no wishes set';
+    const easterEmpty = !easter || easter === 'no wishes set';
     if (christmasEmpty) missing.push({ key: 'christmas', label: 'Christmas', icon: FaTag });
     if (easterEmpty) missing.push({ key: 'easter', label: 'Easter', icon: FaTag });
 
@@ -1260,7 +1258,6 @@ const DataIntegrityModal = ({
       if (error) throw error;
       setKeepInTouchFrequency(value);
       toast.success('Keep in Touch updated');
-      loadContactData();
     } catch (error) {
       console.error('Error updating keep in touch:', error);
       toast.error('Failed to update');
@@ -1393,7 +1390,6 @@ const DataIntegrityModal = ({
         setEaster(value);
       }
       toast.success(`${field === 'christmas' ? 'Christmas' : 'Easter'} preference updated`);
-      loadContactData();
     } catch (error) {
       console.error(`Error updating ${field}:`, error);
       toast.error('Failed to update');
@@ -1873,24 +1869,26 @@ const DataIntegrityModal = ({
                     <FormGroup>
                       <Label theme={theme}>
                         Score (1-5) {missingFields.some(f => f.key === 'score') && <span style={{ color: '#EF4444', fontWeight: 400 }}>(missing)</span>}
-                        {completenessData?.score > 0 && <span style={{ color: '#10B981', fontWeight: 400, marginLeft: 4 }}>Current: {completenessData.score}</span>}
+                        {contactScore > 0 && <span style={{ color: '#10B981', fontWeight: 400, marginLeft: 4 }}>Current: {contactScore}</span>}
                       </Label>
                       <div style={{ display: 'flex', gap: 8 }}>
                         {[1, 2, 3, 4, 5].map(s => (
                           <button
                             key={s}
                             onClick={async () => {
-                              await supabase.from('contacts').update({ score: s }).eq('contact_id', contactId);
-                              loadContactData();
-                              toast.success(`Score set to ${s}`);
+                              // Toggle: if already selected, remove score; otherwise set it
+                              const newScore = contactScore === s ? null : s;
+                              await supabase.from('contacts').update({ score: newScore }).eq('contact_id', contactId);
+                              setContactScore(newScore);
+                              toast.success(newScore ? `Score set to ${newScore}` : 'Score removed');
                             }}
                             style={{
                               width: 36,
                               height: 36,
                               borderRadius: 6,
-                              border: `1px solid ${completenessData?.score === s ? '#3B82F6' : (theme === 'light' ? '#D1D5DB' : '#4B5563')}`,
-                              background: completenessData?.score === s ? '#3B82F6' : (theme === 'light' ? '#F9FAFB' : '#374151'),
-                              color: completenessData?.score === s ? 'white' : (theme === 'light' ? '#374151' : '#D1D5DB'),
+                              border: `1px solid ${contactScore === s ? '#3B82F6' : (theme === 'light' ? '#D1D5DB' : '#4B5563')}`,
+                              background: contactScore === s ? '#3B82F6' : (theme === 'light' ? '#F9FAFB' : '#374151'),
+                              color: contactScore === s ? 'white' : (theme === 'light' ? '#374151' : '#D1D5DB'),
                               cursor: 'pointer',
                               fontWeight: 600
                             }}

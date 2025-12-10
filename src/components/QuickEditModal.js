@@ -141,22 +141,16 @@ const QuickEditModal = ({
     >
       <ModalContent theme={theme}>
         <ModalHeader theme={theme}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1 }}>
+          <HeaderLeft>
             <h3 style={{ margin: 0, fontSize: '18px' }}>
               Editing: {contact?.first_name} {contact?.last_name}
             </h3>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              marginLeft: 'auto',
-              marginRight: '16px'
-            }}>
+            <ToggleContainer>
               <span style={{
                 fontSize: '13px',
                 color: theme === 'light' ? '#6B7280' : '#9CA3AF'
               }}>
-                Track Missing Info
+                Track Missing
               </span>
               <ToggleSwitch
                 theme={theme}
@@ -165,9 +159,9 @@ const QuickEditModal = ({
               >
                 <ToggleSlider $checked={quickEditShowMissing} />
               </ToggleSwitch>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            </ToggleContainer>
+          </HeaderLeft>
+          <HeaderRight>
             <CloseButton
               onClick={() => {
                 handleClose();
@@ -189,7 +183,7 @@ const QuickEditModal = ({
             >
               <FiX />
             </CloseButton>
-          </div>
+          </HeaderRight>
         </ModalHeader>
         <ModalBody>
           {/* Tab Navigation */}
@@ -988,6 +982,58 @@ const ModalHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
+  position: relative;
+
+  @media (max-width: 500px) {
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    padding-top: 48px;
+  }
+`;
+
+const HeaderLeft = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+
+  @media (max-width: 500px) {
+    flex-direction: column;
+    width: 100%;
+    gap: 10px;
+    align-items: stretch;
+
+    h3 {
+      text-align: center;
+      font-size: 16px !important;
+    }
+  }
+`;
+
+const HeaderRight = styled.div`
+  display: flex;
+  gap: 8px;
+  align-items: center;
+
+  @media (max-width: 500px) {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+  }
+`;
+
+const ToggleContainer = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  margin-right: 16px;
+
+  @media (max-width: 500px) {
+    margin: 0;
+    justify-content: center;
+  }
 `;
 
 const CloseButton = styled.button`
@@ -1023,6 +1069,18 @@ const TabsContainer = styled.div`
   border-radius: 8px;
   padding: 4px;
   width: fit-content;
+
+  @media (max-width: 500px) {
+    width: calc(100% - 24px);
+    margin: 12px 12px 0 12px;
+    overflow-x: auto;
+    justify-content: flex-start;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
 `;
 
 const TabButton = styled.button`
@@ -1068,6 +1126,12 @@ const TabButton = styled.button`
   svg {
     flex-shrink: 0;
     display: none;
+  }
+
+  @media (max-width: 500px) {
+    padding: 8px 12px;
+    font-size: 13px;
+    flex-shrink: 0;
   }
 `;
 
@@ -1185,6 +1249,23 @@ const AddItemRow = styled.div`
   display: flex;
   gap: 8px;
   align-items: center;
+
+  @media (max-width: 500px) {
+    flex-wrap: wrap;
+
+    > input {
+      flex: 1 1 100%;
+      min-width: 0;
+    }
+
+    > select {
+      flex: 1;
+    }
+
+    > button {
+      flex-shrink: 0;
+    }
+  }
 `;
 
 const AddButton = styled.button`
@@ -1233,6 +1314,22 @@ const ListItem = styled.div`
     props.$first ? '6px 6px 0 0' :
     props.$last ? '0 0 6px 6px' : '0'
   };
+
+  @media (max-width: 500px) {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px;
+
+    > div:first-of-type {
+      flex: 1 1 calc(100% - 30px);
+      min-width: 0;
+    }
+
+    > select {
+      flex: 1;
+      min-width: 80px;
+    }
+  }
 `;
 
 const ItemText = styled.div`
@@ -1443,6 +1540,26 @@ const ActionButtons = styled.div`
   background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
   border-radius: 0 0 12px 12px;
   margin: 0;
+
+  @media (max-width: 500px) {
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 16px;
+
+    > button:first-child {
+      display: none;
+    }
+
+    > div {
+      width: 100%;
+      flex-direction: column;
+      gap: 10px;
+
+      > select, > button {
+        width: 100%;
+      }
+    }
+  }
 `;
 
 const ToggleSwitch = styled.button`

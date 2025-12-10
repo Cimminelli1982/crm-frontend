@@ -1176,6 +1176,11 @@ const CommandCenterPage = ({ theme }) => {
   const chatMessagesRef = React.useRef(null);
   const chatFileInputRef = React.useRef(null);
 
+  // Calendar state
+  const [pendingCalendarEvent, setPendingCalendarEvent] = useState(null);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [calendarEventEdits, setCalendarEventEdits] = useState({});
+
   // Quick Edit Modal - use the custom hook
   const quickEditModal = useQuickEditModal(() => {});
   const {
@@ -1821,19 +1826,21 @@ const CommandCenterPage = ({ theme }) => {
         .select('from_email, from_name, to_recipients, cc_recipients')
         .order('date', { ascending: false });
 
+      // Collect all unique email addresses from from, to, cc
+      // (Defined outside else block so it's accessible later for Missing Company Links filter)
+      const allInboxEmails = new Map(); // email -> { email, name }
+      const myEmail = 'simone@cimminelli.com'.toLowerCase();
+
       if (inboxError) {
         console.error('Error fetching inbox emails:', inboxError);
       } else {
-        // Collect all unique email addresses from from, to, cc
-        const allEmails = new Map(); // email -> { email, name }
-        const myEmail = 'simone@cimminelli.com'.toLowerCase();
 
         (inboxEmails || []).forEach(row => {
           // From
           if (row.from_email && row.from_email.toLowerCase() !== myEmail) {
             const key = row.from_email.toLowerCase();
-            if (!allEmails.has(key)) {
-              allEmails.set(key, { email: row.from_email, name: row.from_name });
+            if (!allInboxEmails.has(key)) {
+              allInboxEmails.set(key, { email: row.from_email, name: row.from_name });
             }
           }
           // To recipients
@@ -1841,8 +1848,8 @@ const CommandCenterPage = ({ theme }) => {
             const email = typeof r === 'string' ? r : r.email;
             if (email && email.toLowerCase() !== myEmail) {
               const key = email.toLowerCase();
-              if (!allEmails.has(key)) {
-                allEmails.set(key, { email, name: typeof r === 'object' ? r.name : null });
+              if (!allInboxEmails.has(key)) {
+                allInboxEmails.set(key, { email, name: typeof r === 'object' ? r.name : null });
               }
             }
           });
@@ -1851,8 +1858,8 @@ const CommandCenterPage = ({ theme }) => {
             const email = typeof r === 'string' ? r : r.email;
             if (email && email.toLowerCase() !== myEmail) {
               const key = email.toLowerCase();
-              if (!allEmails.has(key)) {
-                allEmails.set(key, { email, name: typeof r === 'object' ? r.name : null });
+              if (!allInboxEmails.has(key)) {
+                allInboxEmails.set(key, { email, name: typeof r === 'object' ? r.name : null });
               }
             }
           });
@@ -1906,7 +1913,7 @@ const CommandCenterPage = ({ theme }) => {
 
         // Find emails not in CRM (and not on hold)
         const notInCrm = [];
-        allEmails.forEach((value, key) => {
+        allInboxEmails.forEach((value, key) => {
           const normalizedKey = key.toLowerCase().trim();
           if (!crmEmailSet.has(normalizedKey) && !holdEmailSet.has(normalizedKey)) {
             notInCrm.push(value);
@@ -1929,7 +1936,7 @@ const CommandCenterPage = ({ theme }) => {
           myDomain
         ]);
 
-        allEmails.forEach((value, key) => {
+        allInboxEmails.forEach((value, key) => {
           const domain = extractDomain(key);
           if (domain && !excludeDomains.has(domain)) {
             if (allDomains.has(domain)) {
@@ -1994,7 +2001,7 @@ const CommandCenterPage = ({ theme }) => {
         setNotInCrmDomains(domainsNotInCrm);
       }
 
-      // 2. Get contacts on hold
+      // 2. Get contacts on hold - only those that are in the inbox emails
       const { data: holdData, error: holdError } = await supabase
         .from('contacts_hold')
         .select('*')
@@ -2004,7 +2011,11 @@ const CommandCenterPage = ({ theme }) => {
       if (holdError) {
         console.error('Error fetching hold contacts:', holdError);
       } else {
-        setHoldContacts(holdData || []);
+        // Filter to only show hold contacts that exist in inbox emails (from, to, cc)
+        const filteredHoldContacts = (holdData || []).filter(contact =>
+          contact.email && allInboxEmails.has(contact.email.toLowerCase().trim())
+        );
+        setHoldContacts(filteredHoldContacts);
       }
 
       // 3. Duplicates - read from duplicates_inbox table (populated by backend trigger)
@@ -2068,11 +2079,11 @@ const CommandCenterPage = ({ theme }) => {
         setDuplicateCompanies([]);
       }
 
-      // 5. Fetch Category Missing - contacts with category 'Inbox' and last_interaction_at after Dec 5
+      // 5. Fetch Category Missing - contacts with category 'Inbox' or 'Not Set' and last_interaction_at after Dec 5
       const { data: catMissingContacts, error: catMissingContactsError } = await supabase
         .from('contacts')
-        .select('contact_id, first_name, last_name, category, last_interaction_at')
-        .eq('category', 'Inbox')
+        .select('contact_id, first_name, last_name, category, last_interaction_at, contact_emails(email)')
+        .in('category', ['Inbox', 'Not Set'])
         .gt('last_interaction_at', '2025-12-05')
         .order('last_interaction_at', { ascending: false });
 
@@ -2080,7 +2091,11 @@ const CommandCenterPage = ({ theme }) => {
         console.error('Error fetching category missing contacts:', catMissingContactsError);
         setCategoryMissingContacts([]);
       } else {
-        setCategoryMissingContacts(catMissingContacts || []);
+        // Filter to only show contacts that have an email in the inbox
+        const filteredCatMissing = (catMissingContacts || []).filter(contact =>
+          contact.contact_emails?.some(e => e.email && allInboxEmails.has(e.email.toLowerCase().trim()))
+        );
+        setCategoryMissingContacts(filteredCatMissing);
       }
 
       // 6. Fetch Category Missing - companies with category 'Inbox' or 'Not Set' AND connected contacts with last_interaction_at after Dec 5
@@ -2091,7 +2106,10 @@ const CommandCenterPage = ({ theme }) => {
           name,
           category,
           contact_companies!inner(
-            contacts!inner(last_interaction_at)
+            contacts!inner(
+              last_interaction_at,
+              contact_emails(email)
+            )
           )
         `)
         .in('category', ['Inbox', 'Not Set'])
@@ -2101,9 +2119,18 @@ const CommandCenterPage = ({ theme }) => {
         console.error('Error fetching category missing companies:', catMissingCompaniesError);
         setCategoryMissingCompanies([]);
       } else {
+        // Filter to only show companies that have at least one contact with an email in the inbox
+        const filteredCatMissingCompanies = (catMissingCompaniesRaw || []).filter(company => {
+          // Check if any connected contact has an email in the inbox
+          return company.contact_companies?.some(cc =>
+            cc.contacts?.contact_emails?.some(e =>
+              e.email && allInboxEmails.has(e.email.toLowerCase().trim())
+            )
+          );
+        });
         // Deduplicate companies (may appear multiple times if multiple qualifying contacts)
-        const catMissingCompanies = catMissingCompaniesRaw
-          ? [...new Map(catMissingCompaniesRaw.map(c => [c.company_id, { company_id: c.company_id, name: c.name, category: c.category }])).values()]
+        const catMissingCompanies = filteredCatMissingCompanies.length > 0
+          ? [...new Map(filteredCatMissingCompanies.map(c => [c.company_id, { company_id: c.company_id, name: c.name, category: c.category }])).values()]
               .sort((a, b) => a.name.localeCompare(b.name))
           : [];
         setCategoryMissingCompanies(catMissingCompanies);
@@ -2112,7 +2139,7 @@ const CommandCenterPage = ({ theme }) => {
       // 7. Fetch Keep in Touch Missing - contacts NOT in Hold/Not Set/WhatsApp Group Chat, with keep_in_touch_frequency null or 'Not Set', recent interaction
       const { data: kitMissingContacts, error: kitMissingContactsError } = await supabase
         .from('contacts')
-        .select('contact_id, first_name, last_name, category, last_interaction_at, keep_in_touch_frequency')
+        .select('contact_id, first_name, last_name, category, last_interaction_at, keep_in_touch_frequency, contact_emails(email)')
         .not('category', 'in', '("Inbox","Hold","Skip","Not Set","WhatsApp Group Contact")')
         .or('keep_in_touch_frequency.is.null,keep_in_touch_frequency.eq.Not Set')
         .gt('last_interaction_at', '2025-12-05')
@@ -2122,7 +2149,11 @@ const CommandCenterPage = ({ theme }) => {
         console.error('Error fetching keep in touch missing contacts:', kitMissingContactsError);
         setKeepInTouchMissingContacts([]);
       } else {
-        setKeepInTouchMissingContacts(kitMissingContacts || []);
+        // Filter to only show contacts that have an email in the inbox
+        const filteredKitMissing = (kitMissingContacts || []).filter(contact =>
+          contact.contact_emails?.some(e => e.email && allInboxEmails.has(e.email.toLowerCase().trim()))
+        );
+        setKeepInTouchMissingContacts(filteredKitMissing);
       }
 
       // 8. Find contacts with email domains matching company_domains but not linked via contact_companies
@@ -2192,7 +2223,12 @@ const CommandCenterPage = ({ theme }) => {
             }
           });
 
-          setMissingCompanyLinks(missingLinks);
+          // Filter to only include contacts whose email appears in inbox
+          const filteredMissingLinks = missingLinks.filter(item =>
+            allInboxEmails.has(item.email.toLowerCase())
+          );
+
+          setMissingCompanyLinks(filteredMissingLinks);
         }
       } catch (linkError) {
         console.error('Error finding missing company links:', linkError);
@@ -2281,7 +2317,7 @@ const CommandCenterPage = ({ theme }) => {
       // Check if contact already has a primary company
       const { data: existingPrimary } = await supabase
         .from('contact_companies')
-        .select('entry_id')
+        .select('contact_companies_id')
         .eq('contact_id', item.contact_id)
         .eq('is_primary', true)
         .single();
@@ -3962,6 +3998,163 @@ ${emailContext}`;
   // Handle quick action clicks - hide the prompt, show only the response
   const handleQuickAction = (action) => {
     sendMessageToClaude(action, { hideUserMessage: true });
+  };
+
+  // Handle calendar extraction from email
+  const handleCalendarExtract = async () => {
+    if (!selectedThread || selectedThread.length === 0) {
+      toast.error('No email selected');
+      return;
+    }
+
+    const email = selectedThread[0];
+    setCalendarLoading(true);
+    setPendingCalendarEvent(null);
+    setCalendarEventEdits({});
+
+    // Add a user message to chat
+    setChatMessages(prev => [...prev, {
+      role: 'user',
+      content: '📅 Extract meeting from this email'
+    }]);
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/calendar/extract-event`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: {
+            from_email: email.from_email,
+            from_name: email.from_name,
+            to_recipients: email.to_recipients || [],
+            cc_recipients: email.cc_recipients || [],
+            subject: email.subject,
+            body_text: email.body_text,
+            snippet: email.snippet,
+            date: email.date,
+          }
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to extract event');
+      }
+
+      const data = await response.json();
+
+      if (data.success && data.event?.found_event) {
+        const event = data.event;
+        setPendingCalendarEvent(event);
+
+        // Build response message
+        let responseMsg = `📅 **Found a meeting!**\n\n`;
+        responseMsg += `**${event.title}**\n`;
+        if (event.datetime) {
+          const dt = new Date(event.datetime);
+          responseMsg += `📆 ${dt.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })} at ${dt.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}\n`;
+        } else if (event.date_text) {
+          responseMsg += `📆 "${event.date_text}" (needs confirmation)\n`;
+        }
+        if (event.location) {
+          responseMsg += `📍 ${event.location}`;
+          if (event.location_needs_clarification) {
+            responseMsg += ` ⚠️ *needs clarification*`;
+          }
+          responseMsg += `\n`;
+        }
+        if (event.attendees?.length > 0) {
+          responseMsg += `👥 ${event.attendees.map(a => a.name || a.email).join(', ')}\n`;
+        }
+        if (event.clarification_needed?.length > 0) {
+          responseMsg += `\n⚠️ **Please clarify:** ${event.clarification_needed.join(', ')}`;
+        }
+
+        setChatMessages(prev => [...prev, {
+          role: 'assistant',
+          content: responseMsg,
+          calendarEvent: event
+        }]);
+      } else {
+        setChatMessages(prev => [...prev, {
+          role: 'assistant',
+          content: '🤔 No meeting found in this email. Is there something specific you\'d like to schedule?'
+        }]);
+      }
+    } catch (error) {
+      console.error('Calendar extract error:', error);
+      setChatMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `❌ Error extracting event: ${error.message}`
+      }]);
+      toast.error('Failed to extract calendar event');
+    } finally {
+      setCalendarLoading(false);
+    }
+  };
+
+  // Create calendar event
+  const handleCreateCalendarEvent = async () => {
+    if (!pendingCalendarEvent) {
+      toast.error('No event to create');
+      return;
+    }
+
+    setCalendarLoading(true);
+
+    try {
+      // Merge any user edits with the extracted event
+      const eventData = {
+        title: calendarEventEdits.title || pendingCalendarEvent.title,
+        description: calendarEventEdits.description || pendingCalendarEvent.description || '',
+        location: calendarEventEdits.location || pendingCalendarEvent.location || '',
+        startDate: calendarEventEdits.datetime || pendingCalendarEvent.datetime,
+        attendees: pendingCalendarEvent.attendees || [],
+        reminders: [15], // 15 min before
+      };
+
+      if (!eventData.startDate) {
+        toast.error('Please specify a date and time');
+        setCalendarLoading(false);
+        return;
+      }
+
+      const response = await fetch(`${BACKEND_URL}/calendar/create-event`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(eventData),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to create event');
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success('📅 Event created and invites sent!');
+        setChatMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `✅ **Event created!**\n\n**${eventData.title}**\n📆 ${new Date(eventData.startDate).toLocaleString('it-IT')}\n${eventData.location ? `📍 ${eventData.location}\n` : ''}${eventData.attendees?.length > 0 ? `\n📧 Invites sent to: ${eventData.attendees.map(a => a.email).join(', ')}` : ''}`
+        }]);
+        setPendingCalendarEvent(null);
+        setCalendarEventEdits({});
+      }
+    } catch (error) {
+      console.error('Create event error:', error);
+      toast.error(`Failed to create event: ${error.message}`);
+      setChatMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `❌ Failed to create event: ${error.message}`
+      }]);
+    } finally {
+      setCalendarLoading(false);
+    }
+  };
+
+  // Update pending calendar event field
+  const updateCalendarEventField = (field, value) => {
+    setCalendarEventEdits(prev => ({ ...prev, [field]: value }));
   };
 
   const formatDate = (dateStr) => {
@@ -5933,7 +6126,124 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                     <QuickActionChip theme={theme} onClick={() => handleQuickAction('Una riga. "Ricevuto, grazie" o "Got it, thanks". Basta.')}>
                       ✓ Ricevuto
                     </QuickActionChip>
+                    <QuickActionChip
+                      theme={theme}
+                      onClick={handleCalendarExtract}
+                      disabled={calendarLoading}
+                      style={{ background: theme === 'light' ? '#EBF5FF' : '#1E3A5F', color: theme === 'light' ? '#3B82F6' : '#60A5FA' }}
+                    >
+                      {calendarLoading ? '...' : '📅 Calendar'}
+                    </QuickActionChip>
                   </QuickActionsContainer>
+
+                  {/* Pending Calendar Event UI */}
+                  {pendingCalendarEvent && (
+                    <div style={{
+                      margin: '12px',
+                      padding: '12px',
+                      borderRadius: '8px',
+                      background: theme === 'light' ? '#F0F9FF' : '#1E3A5F',
+                      border: `1px solid ${theme === 'light' ? '#BFDBFE' : '#3B82F6'}`,
+                    }}>
+                      <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '8px', color: theme === 'light' ? '#1E40AF' : '#93C5FD' }}>
+                        📅 Create Event
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Title"
+                        value={calendarEventEdits.title ?? pendingCalendarEvent.title ?? ''}
+                        onChange={(e) => updateCalendarEventField('title', e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px',
+                          marginBottom: '8px',
+                          borderRadius: '4px',
+                          border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                          background: theme === 'light' ? '#FFFFFF' : '#374151',
+                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                          fontSize: '13px',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                      <input
+                        type="datetime-local"
+                        value={(() => {
+                          const dt = calendarEventEdits.datetime || pendingCalendarEvent.datetime;
+                          if (!dt) return '';
+                          try { return new Date(dt).toISOString().slice(0, 16); } catch { return ''; }
+                        })()}
+                        onChange={(e) => updateCalendarEventField('datetime', e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px',
+                          marginBottom: '8px',
+                          borderRadius: '4px',
+                          border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                          background: theme === 'light' ? '#FFFFFF' : '#374151',
+                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                          fontSize: '13px',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                      <input
+                        type="text"
+                        placeholder="Location"
+                        value={calendarEventEdits.location ?? pendingCalendarEvent.location ?? ''}
+                        onChange={(e) => updateCalendarEventField('location', e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px',
+                          marginBottom: '8px',
+                          borderRadius: '4px',
+                          border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                          background: theme === 'light' ? '#FFFFFF' : '#374151',
+                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                          fontSize: '13px',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                      {pendingCalendarEvent.attendees?.length > 0 && (
+                        <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '8px' }}>
+                          👥 {pendingCalendarEvent.attendees.map(a => a.name || a.email).join(', ')}
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          onClick={handleCreateCalendarEvent}
+                          disabled={calendarLoading}
+                          style={{
+                            flex: 1,
+                            padding: '8px 12px',
+                            borderRadius: '6px',
+                            border: 'none',
+                            background: '#3B82F6',
+                            color: 'white',
+                            fontWeight: 500,
+                            fontSize: '13px',
+                            cursor: calendarLoading ? 'not-allowed' : 'pointer',
+                            opacity: calendarLoading ? 0.7 : 1,
+                          }}
+                        >
+                          {calendarLoading ? 'Creating...' : '✓ Create & Send Invites'}
+                        </button>
+                        <button
+                          onClick={() => { setPendingCalendarEvent(null); setCalendarEventEdits({}); }}
+                          style={{
+                            padding: '8px 12px',
+                            borderRadius: '6px',
+                            border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                            background: 'transparent',
+                            color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                            fontWeight: 500,
+                            fontSize: '13px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Chat Messages */}
                   <ChatMessages ref={chatMessagesRef} theme={theme}>

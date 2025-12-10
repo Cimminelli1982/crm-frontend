@@ -514,11 +514,29 @@ async def search_company_in_db(name: str = None, domain: str = None):
         return None
 
 
+def parse_name_from_email(email: str) -> tuple:
+    """Parse first/last name from email address like john.smith@company.com -> (John, Smith)"""
+    if not email or '@' not in email:
+        return None, None
+    local_part = email.split('@')[0]
+    # Try common separators: . _ -
+    for sep in ['.', '_', '-']:
+        if sep in local_part:
+            parts = local_part.split(sep)
+            if len(parts) >= 2:
+                first = parts[0].capitalize()
+                last = parts[-1].capitalize()
+                return first, last
+    # Single word - could be first name
+    return local_part.capitalize(), None
+
+
 @app.post("/suggest-contact-profile")
 async def suggest_contact_profile(request: dict):
     """
     Generate AI suggestions for contact profile based on email content.
     Returns ALL suggested fields: name, job title, company, phones, city, category, description.
+    Works with or without email body - Apollo enrichment always runs.
     """
     logger.info("suggest_contact_profile_request", from_email=request.get("from_email"))
 
@@ -528,6 +546,13 @@ async def suggest_contact_profile(request: dict):
         subject = request.get("subject", "")
         body_text = request.get("body_text", "")[:5000]  # Increased limit for signature extraction
 
+        # Manual names provided by user (for re-analyze with user input)
+        manual_first_name = request.get("manual_first_name", "").strip()
+        manual_last_name = request.get("manual_last_name", "").strip()
+
+        if manual_first_name or manual_last_name:
+            logger.info(f"Manual names provided: {manual_first_name} {manual_last_name}")
+
         # Category options from the CRM
         category_options = [
             "Professional Investor", "Founder", "Manager", "Advisor",
@@ -535,7 +560,17 @@ async def suggest_contact_profile(request: dict):
             "Student", "Institution", "Other"
         ]
 
-        prompt = f"""You are analyzing an email thread to extract contact information for a CRM.
+        # Initialize result - will be populated by Claude or fallback
+        result = {}
+
+        # If we have email body, use Claude for full analysis
+        has_content = bool(body_text.strip() or subject.strip())
+
+        import anthropic
+        import json as json_lib
+
+        if has_content:
+            prompt = f"""You are analyzing an email thread to extract contact information for a CRM.
 
 The email address being added is: {from_email}
 The name from email header is: {from_name}
@@ -585,46 +620,87 @@ For confidence:
 - "medium": inferred from context or partial match
 - "low": guessed or uncertain"""
 
-        # Use the agent's Claude client
-        import anthropic
-        import json as json_lib
-        client = anthropic.Anthropic()
+            # Use the agent's Claude client
+            client = anthropic.Anthropic()
 
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1000,
-            messages=[{"role": "user", "content": prompt}]
-        )
+            response = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=1000,
+                messages=[{"role": "user", "content": prompt}]
+            )
 
-        # Parse JSON response
-        response_text = response.content[0].text.strip()
+            # Parse JSON response
+            response_text = response.content[0].text.strip()
 
-        # Handle potential markdown code blocks
-        if response_text.startswith("```"):
-            lines = response_text.split("\n")
-            # Remove first and last lines (```json and ```)
-            json_lines = []
-            in_json = False
-            for line in lines:
-                if line.startswith("```") and not in_json:
-                    in_json = True
-                    continue
-                elif line.startswith("```") and in_json:
-                    break
-                elif in_json:
-                    json_lines.append(line)
-            response_text = "\n".join(json_lines)
+            # Handle potential markdown code blocks
+            if response_text.startswith("```"):
+                lines = response_text.split("\n")
+                json_lines = []
+                in_json = False
+                for line in lines:
+                    if line.startswith("```") and not in_json:
+                        in_json = True
+                        continue
+                    elif line.startswith("```") and in_json:
+                        break
+                    elif in_json:
+                        json_lines.append(line)
+                response_text = "\n".join(json_lines)
 
-        result = json_lib.loads(response_text)
+            result = json_lib.loads(response_text)
+        else:
+            # No email content - create basic result from name parsing
+            logger.info("No email content, using name parsing and Apollo enrichment only")
+
+            # Try to parse name from from_name header or email address
+            first_name = None
+            last_name = None
+
+            if from_name:
+                # Split the name
+                parts = from_name.strip().split()
+                if len(parts) >= 2:
+                    first_name = parts[0]
+                    last_name = ' '.join(parts[1:])
+                elif len(parts) == 1:
+                    first_name = parts[0]
+
+            # Fallback: parse from email address
+            if not first_name:
+                first_name, last_name = parse_name_from_email(from_email)
+
+            # Extract domain from email for company hint
+            email_domain = from_email.split('@')[1] if '@' in from_email else None
+
+            result = {
+                "first_name": {"value": first_name, "confidence": "medium"} if first_name else None,
+                "last_name": {"value": last_name, "confidence": "medium"} if last_name else None,
+                "signature_found": False
+            }
+
+            # Add company domain hint
+            if email_domain and email_domain not in ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com']:
+                result["company"] = {
+                    "domain": email_domain,
+                    "confidence": "low"
+                }
 
         # -------------------- Apollo Enrichment --------------------
         # Call Apollo to get LinkedIn URL and photo
-        first_name_val = result.get("first_name", {}).get("value", "") if isinstance(result.get("first_name"), dict) else ""
-        last_name_val = result.get("last_name", {}).get("value", "") if isinstance(result.get("last_name"), dict) else ""
+        # Prefer manual names (from user input) over parsed names
+        first_name_val = manual_first_name or (result.get("first_name", {}).get("value", "") if isinstance(result.get("first_name"), dict) else "")
+        last_name_val = manual_last_name or (result.get("last_name", {}).get("value", "") if isinstance(result.get("last_name"), dict) else "")
         company_name = result.get("company", {}).get("name", "") if isinstance(result.get("company"), dict) else ""
+
+        # If manual names were provided, also update the result
+        if manual_first_name:
+            result["first_name"] = {"value": manual_first_name, "confidence": "high", "source": "user_input"}
+        if manual_last_name:
+            result["last_name"] = {"value": manual_last_name, "confidence": "high", "source": "user_input"}
 
         apollo_data = None
         if first_name_val and last_name_val:
+            logger.info(f"Apollo search with: {first_name_val} {last_name_val}")
             apollo_data = await search_apollo_person(
                 first_name=first_name_val,
                 last_name=last_name_val,
@@ -632,6 +708,16 @@ For confidence:
                 company=company_name
             )
             logger.info("apollo_search_result", found=apollo_data is not None)
+        elif first_name_val or last_name_val:
+            # Try with partial name (first name only or last name only)
+            logger.info(f"Apollo search with partial name: {first_name_val or last_name_val}")
+            apollo_data = await search_apollo_person(
+                first_name=first_name_val or "",
+                last_name=last_name_val or "",
+                email=from_email,
+                company=company_name
+            )
+            logger.info("apollo_search_result (partial)", found=apollo_data is not None)
 
         # Add Apollo data to result
         if apollo_data:

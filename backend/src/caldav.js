@@ -2,6 +2,7 @@
 // Docs: https://www.fastmail.com/dev/
 
 const CALDAV_BASE_URL = 'https://caldav.fastmail.com/dav/calendars/user';
+const DEFAULT_CALENDAR_PATH = '8c9da7c3-501d-4a38-a784-e515b201f9f3';
 
 // Generate a UUID v4
 function generateUUID() {
@@ -47,9 +48,11 @@ export class CalDAVClient {
   }
 
   // Make authenticated request to CalDAV server
+  // Fastmail CalDAV uses Basic auth with username and API token as password
   async request(url, method = 'GET', body = null, contentType = 'application/xml') {
+    const basicAuth = Buffer.from(`${this.username}:${this.token}`).toString('base64');
     const headers = {
-      'Authorization': `Bearer ${this.token}`,
+      'Authorization': `Basic ${basicAuth}`,
     };
 
     if (body) {
@@ -110,29 +113,12 @@ export class CalDAVClient {
     return calendars;
   }
 
-  // Get the default calendar URL
+  // Get the default calendar URL - use pre-configured calendar
   async getDefaultCalendarUrl() {
-    // Fastmail's default calendar is usually "Default" or the first one
-    const calendars = await this.getCalendars();
-    console.log('[CalDAV] Found calendars:', calendars);
-
-    // Look for "Default" calendar first
-    const defaultCal = calendars.find(c =>
-      c.name?.toLowerCase() === 'default' ||
-      c.href?.includes('/Default/')
-    );
-
-    if (defaultCal) {
-      return defaultCal.href;
-    }
-
-    // Otherwise return the first calendar that's not a special folder
-    const regularCal = calendars.find(c =>
-      !c.href?.includes('/outbox/') &&
-      !c.href?.includes('/inbox/')
-    );
-
-    return regularCal?.href || `${this.baseUrl}/Default/`;
+    // Use the specific calendar URL directly (no discovery needed)
+    const calendarUrl = `${this.baseUrl}/${DEFAULT_CALENDAR_PATH}/`;
+    console.log('[CalDAV] Using calendar URL:', calendarUrl);
+    return calendarUrl;
   }
 
   // Create a calendar event
