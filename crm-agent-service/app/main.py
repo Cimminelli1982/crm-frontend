@@ -1,6 +1,6 @@
 """FastAPI application for CRM Agent Service."""
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -1255,3 +1255,106 @@ RULES:
     except Exception as e:
         logger.error("extract_deal_from_email_error", error=str(e), exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== WHATSAPP WEBHOOK ENDPOINT ====================
+
+@app.post("/whatsapp-webhook")
+async def whatsapp_webhook(request: Request):
+    """
+    Receive webhook from TimelinesAI and save to command_center_inbox for staging.
+
+    This endpoint receives WhatsApp messages from TimelinesAI and stores them
+    in the unified staging table (command_center_inbox) with type='whatsapp'.
+    """
+    try:
+        payload = await request.json()
+
+        logger.info("whatsapp_webhook_received", event_type=payload.get('event_type'))
+
+        # Only process message events, not chat events
+        event_type = payload.get('event_type', '')
+        if not event_type.startswith('message:'):
+            return {"success": True, "skipped": "not a message event"}
+
+        message = payload.get('message', {})
+        chat = payload.get('chat', {})
+        whatsapp_account = payload.get('whatsapp_account', {})
+
+        if not message:
+            return {"success": True, "skipped": "no message data"}
+
+        # Extract contact data based on direction
+        direction = message.get('direction', 'received')
+        if direction == 'sent':
+            contact_phone = message.get('recipient', {}).get('phone') or chat.get('phone')
+            contact_name = message.get('recipient', {}).get('full_name') or chat.get('full_name')
+        else:
+            contact_phone = message.get('sender', {}).get('phone') or chat.get('phone')
+            contact_name = message.get('sender', {}).get('full_name') or chat.get('full_name')
+
+        # Split name into first/last
+        name_parts = (contact_name or '').strip().split(' ', 1)
+        first_name = name_parts[0] if name_parts else None
+        last_name = name_parts[1] if len(name_parts) > 1 else None
+
+        # Check spam
+        if contact_phone:
+            spam_record = await db.is_whatsapp_spam(contact_phone)
+            if spam_record:
+                # Increment spam counter
+                await db.increment_whatsapp_spam_counter(contact_phone)
+                logger.info("whatsapp_spam_blocked", phone=contact_phone)
+                return {"success": True, "skipped": "spam number"}
+
+        # Prepare attachment data
+        attachment = message.get('attachment')
+        attachments_json = None
+        has_attachments = False
+        if attachment:
+            has_attachments = True
+            attachments_json = [{
+                "url": attachment.get('temporary_download_url'),
+                "name": attachment.get('filename'),
+                "type": attachment.get('mimetype'),
+                "size": attachment.get('size')
+            }]
+
+        # Insert into command_center_inbox
+        import json as json_lib
+
+        record = {
+            "type": "whatsapp",
+            "from_name": contact_name,
+            "contact_number": contact_phone,
+            "first_name": first_name,
+            "last_name": last_name,
+            "subject": chat.get('full_name'),  # Use chat name as "subject"
+            "body_text": message.get('text'),
+            "snippet": (message.get('text') or '')[:100],
+            "date": message.get('timestamp'),
+            "direction": direction,
+            "chat_id": str(chat.get('chat_id')) if chat.get('chat_id') else None,
+            "chat_jid": str(chat.get('chat_id')) if chat.get('chat_id') else None,
+            "chat_name": chat.get('full_name'),
+            "is_group_chat": chat.get('is_group', False),
+            "message_uid": message.get('message_id'),
+            "receiver": whatsapp_account.get('phone'),
+            "has_attachments": has_attachments,
+            "attachments": json_lib.dumps(attachments_json) if attachments_json else None,
+            "is_read": False
+        }
+
+        # Remove None values
+        record = {k: v for k, v in record.items() if v is not None}
+
+        result = db.client.table('command_center_inbox').insert(record).execute()
+
+        inserted_id = result.data[0]['id'] if result.data else None
+        logger.info("whatsapp_message_staged", id=inserted_id, phone=contact_phone)
+
+        return {"success": True, "id": inserted_id}
+
+    except Exception as e:
+        logger.error("whatsapp_webhook_error", error=str(e), exc_info=True)
+        return {"success": False, "error": str(e)}

@@ -224,6 +224,23 @@ class Database:
         ).execute()
         return len(result.data or []) > 0
 
+    async def is_whatsapp_spam(self, phone_number: str) -> dict | None:
+        """Check if phone number is in WhatsApp spam list. Returns the record if found."""
+        result = self.client.table("whatsapp_spam").select("*").eq(
+            "mobile_number", phone_number
+        ).execute()
+        return result.data[0] if result.data else None
+
+    async def increment_whatsapp_spam_counter(self, phone_number: str) -> None:
+        """Increment the counter for a WhatsApp spam number."""
+        from datetime import datetime
+        current = await self.is_whatsapp_spam(phone_number)
+        if current:
+            self.client.table("whatsapp_spam").update({
+                "counter": current.get("counter", 0) + 1,
+                "last_modified_at": datetime.utcnow().isoformat()
+            }).eq("mobile_number", phone_number).execute()
+
 
     # ==================== ACTION EXECUTION ====================
 
