@@ -1136,6 +1136,7 @@ const CommandCenterPage = ({ theme }) => {
   const [categoryMissingCompanies, setCategoryMissingCompanies] = useState([]);
   const [categoryMissingTab, setCategoryMissingTab] = useState('contacts'); // 'contacts' or 'companies'
   const [keepInTouchMissingContacts, setKeepInTouchMissingContacts] = useState([]);
+  const [missingCompanyLinks, setMissingCompanyLinks] = useState([]); // Contacts with email domain matching company but not linked
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteModalContact, setDeleteModalContact] = useState(null);
   const [editCompanyModalOpen, setEditCompanyModalOpen] = useState(false);
@@ -1153,7 +1154,8 @@ const CommandCenterPage = ({ theme }) => {
     duplicateCompanies.length > 0 ||
     categoryMissingContacts.length > 0 ||
     categoryMissingCompanies.length > 0 ||
-    keepInTouchMissingContacts.length > 0
+    keepInTouchMissingContacts.length > 0 ||
+    missingCompanyLinks.length > 0
   );
 
   // Domain Link Modal state
@@ -1791,6 +1793,26 @@ const CommandCenterPage = ({ theme }) => {
   // Fetch Data Integrity data
   const fetchDataIntegrity = async () => {
     setLoadingDataIntegrity(true);
+
+    // Helper function to normalize domain (remove www., http://, https://, trailing paths)
+    const normalizeDomain = (domain) => {
+      if (!domain) return null;
+      let normalized = domain.toLowerCase().trim();
+      normalized = normalized.replace(/^https?:\/\//, '');
+      normalized = normalized.replace(/^www\./, '');
+      normalized = normalized.split('/')[0];
+      normalized = normalized.split(':')[0];
+      return normalized || null;
+    };
+
+    // Extract domain from email address
+    const extractDomain = (email) => {
+      if (!email) return null;
+      const parts = email.split('@');
+      if (parts.length !== 2) return null;
+      return normalizeDomain(parts[1]);
+    };
+
     try {
       // 1. Get emails not in CRM (from command_center_inbox, check against contact_emails)
       // First get all unique emails from command_center_inbox (excluding simone@cimminelli.com)
@@ -1894,29 +1916,6 @@ const CommandCenterPage = ({ theme }) => {
         setNotInCrmEmails(notInCrm);
 
         // Extract domains from all emails for company check
-        // Helper function to normalize domain (remove www., http://, https://, trailing paths)
-        const normalizeDomain = (domain) => {
-          if (!domain) return null;
-          let normalized = domain.toLowerCase().trim();
-          // Remove protocol if present
-          normalized = normalized.replace(/^https?:\/\//, '');
-          // Remove www. prefix
-          normalized = normalized.replace(/^www\./, '');
-          // Remove trailing slashes and paths
-          normalized = normalized.split('/')[0];
-          // Remove port if present
-          normalized = normalized.split(':')[0];
-          return normalized || null;
-        };
-
-        // Extract domain from email address
-        const extractDomain = (email) => {
-          if (!email) return null;
-          const parts = email.split('@');
-          if (parts.length !== 2) return null;
-          return normalizeDomain(parts[1]);
-        };
-
         // Collect all unique domains from emails (with count)
         const allDomains = new Map(); // domain -> { domain, count, sampleEmails }
         const myDomain = 'cimminelli.com';
@@ -2126,6 +2125,80 @@ const CommandCenterPage = ({ theme }) => {
         setKeepInTouchMissingContacts(kitMissingContacts || []);
       }
 
+      // 8. Find contacts with email domains matching company_domains but not linked via contact_companies
+      try {
+        // Get all contact emails with contact info
+        const { data: contactEmailsData, error: ceError } = await supabase
+          .from('contact_emails')
+          .select('email, contact_id, contacts(contact_id, first_name, last_name, category)');
+
+        // Get all company domains with company info
+        const { data: companyDomainsData, error: cdError } = await supabase
+          .from('company_domains')
+          .select('domain, company_id, companies(company_id, name)');
+
+        // Get all existing contact_companies links
+        const { data: existingLinks, error: elError } = await supabase
+          .from('contact_companies')
+          .select('contact_id, company_id');
+
+        if (!ceError && !cdError && !elError && contactEmailsData && companyDomainsData) {
+          // Create a map of normalized domain -> company info
+          const domainToCompany = new Map();
+          (companyDomainsData || []).forEach(cd => {
+            if (cd.domain && cd.companies) {
+              const normalized = normalizeDomain(cd.domain);
+              if (normalized) {
+                domainToCompany.set(normalized, {
+                  company_id: cd.company_id,
+                  company_name: cd.companies.name
+                });
+              }
+            }
+          });
+
+          // Create a set of existing links for quick lookup
+          const existingLinkSet = new Set(
+            (existingLinks || []).map(el => `${el.contact_id}:${el.company_id}`)
+          );
+
+          // Find contacts whose email domain matches a company but not linked
+          const missingLinks = [];
+          const seenPairs = new Set(); // Avoid duplicates
+
+          (contactEmailsData || []).forEach(ce => {
+            if (!ce.email || !ce.contacts) return;
+
+            const emailDomain = extractDomain(ce.email);
+            if (!emailDomain) return;
+
+            const matchingCompany = domainToCompany.get(emailDomain);
+            if (!matchingCompany) return;
+
+            const pairKey = `${ce.contact_id}:${matchingCompany.company_id}`;
+
+            // Check if this link already exists
+            if (!existingLinkSet.has(pairKey) && !seenPairs.has(pairKey)) {
+              seenPairs.add(pairKey);
+              missingLinks.push({
+                contact_id: ce.contact_id,
+                contact_name: `${ce.contacts.first_name || ''} ${ce.contacts.last_name || ''}`.trim(),
+                contact_category: ce.contacts.category,
+                email: ce.email,
+                company_id: matchingCompany.company_id,
+                company_name: matchingCompany.company_name,
+                domain: emailDomain
+              });
+            }
+          });
+
+          setMissingCompanyLinks(missingLinks);
+        }
+      } catch (linkError) {
+        console.error('Error finding missing company links:', linkError);
+        setMissingCompanyLinks([]);
+      }
+
     } catch (error) {
       console.error('Error fetching data integrity:', error);
     }
@@ -2199,6 +2272,43 @@ const CommandCenterPage = ({ theme }) => {
       // Still remove from list locally
       setNotInCrmDomains(prev => prev.filter(d => d.domain !== domain));
       toast.success(`Domain marked as ${action}`);
+    }
+  };
+
+  // Handler to link contact to company (for missing company links)
+  const handleLinkContactToCompany = async (item) => {
+    try {
+      // Check if contact already has a primary company
+      const { data: existingPrimary } = await supabase
+        .from('contact_companies')
+        .select('entry_id')
+        .eq('contact_id', item.contact_id)
+        .eq('is_primary', true)
+        .single();
+
+      // Insert the link
+      const { error } = await supabase
+        .from('contact_companies')
+        .insert({
+          contact_id: item.contact_id,
+          company_id: item.company_id,
+          is_primary: !existingPrimary, // Primary if no existing primary
+          relationship: 'not_set'
+        });
+
+      if (error) throw error;
+
+      // Remove from the list
+      setMissingCompanyLinks(prev =>
+        prev.filter(link =>
+          !(link.contact_id === item.contact_id && link.company_id === item.company_id)
+        )
+      );
+
+      toast.success(`${item.contact_name} linked to ${item.company_name}`);
+    } catch (error) {
+      console.error('Error linking contact to company:', error);
+      toast.error('Failed to link contact to company');
     }
   };
 
@@ -7746,6 +7856,119 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                                   </div>
                                 ))
                               )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Missing Company Links Section */}
+                      {missingCompanyLinks.length > 0 && (
+                        <div style={{ marginBottom: '8px' }}>
+                          <div
+                            onClick={() => setExpandedDataIntegrity(prev => prev.missingCompanyLinks ? {} : { missingCompanyLinks: true })}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: '10px 12px',
+                              background: theme === 'light' ? '#F3F4F6' : '#374151',
+                              cursor: 'pointer',
+                              borderRadius: '6px',
+                              marginBottom: expandedDataIntegrity.missingCompanyLinks ? '4px' : '0',
+                            }}
+                          >
+                            <FaChevronDown
+                              style={{
+                                transform: expandedDataIntegrity.missingCompanyLinks ? 'rotate(0deg)' : 'rotate(-90deg)',
+                                transition: 'transform 0.2s',
+                                fontSize: '10px',
+                                color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                              }}
+                            />
+                            <FaHandshake style={{ color: '#F59E0B', fontSize: '12px' }} />
+                            <span style={{
+                              fontWeight: 600,
+                              fontSize: '13px',
+                              color: theme === 'light' ? '#111827' : '#F9FAFB'
+                            }}>
+                              Missing Company Links
+                            </span>
+                            <span style={{
+                              fontSize: '12px',
+                              color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                              marginLeft: 'auto'
+                            }}>
+                              {missingCompanyLinks.length}
+                            </span>
+                          </div>
+                          {expandedDataIntegrity.missingCompanyLinks && (
+                            <div style={{ paddingLeft: '8px' }}>
+                              {missingCompanyLinks.map((item, idx) => (
+                                <div key={`${item.contact_id}-${item.company_id}`} style={{
+                                  padding: '8px 12px',
+                                  background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                                  borderRadius: '6px',
+                                  marginBottom: '4px',
+                                  border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                                }}>
+                                  <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'flex-start'
+                                  }}>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{
+                                        fontSize: '13px',
+                                        fontWeight: 500,
+                                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                        cursor: 'pointer'
+                                      }} onClick={() => navigate(`/contact/${item.contact_id}`)}>
+                                        {item.contact_name}
+                                      </div>
+                                      <div style={{
+                                        fontSize: '11px',
+                                        color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                        marginTop: '2px'
+                                      }}>
+                                        {item.email}
+                                      </div>
+                                      <div style={{
+                                        fontSize: '11px',
+                                        color: '#3B82F6',
+                                        marginTop: '4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                      }}>
+                                        <FaBuilding size={10} />
+                                        <span style={{ cursor: 'pointer' }} onClick={() => navigate(`/company/${item.company_id}`)}>
+                                          {item.company_name}
+                                        </span>
+                                        <span style={{ color: theme === 'light' ? '#9CA3AF' : '#6B7280' }}>
+                                          ({item.domain})
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <button
+                                      onClick={() => handleLinkContactToCompany(item)}
+                                      style={{
+                                        padding: '6px 12px',
+                                        fontSize: '11px',
+                                        fontWeight: 500,
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        background: '#10B981',
+                                        color: 'white',
+                                        marginLeft: '8px',
+                                        flexShrink: 0
+                                      }}
+                                    >
+                                      Link
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           )}
                         </div>
