@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
-import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag } from 'react-icons/fa';
+import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import QuickEditModal from '../components/QuickEditModalRefactored';
@@ -18,6 +18,8 @@ import AttachmentSaveModal from '../components/modals/AttachmentSaveModal';
 import DataIntegrityModal from '../components/modals/DataIntegrityModal';
 import CompanyDataIntegrityModal from '../components/modals/CompanyDataIntegrityModal';
 import CreateCompanyFromDomainModal from '../components/modals/CreateCompanyFromDomainModal';
+import CreateDealAI from '../components/modals/CreateDealAI';
+import { findContactDuplicatesForThread, findCompanyDuplicatesForThread } from '../utils/duplicateDetection';
 
 const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
 const AGENT_SERVICE_URL = 'https://crm-agent-api-production.up.railway.app'; // CRM Agent Service
@@ -1050,6 +1052,7 @@ const CommandCenterPage = ({ theme }) => {
   const [contactDeals, setContactDeals] = useState([]); // Deals linked to email contacts
   const [companyDeals, setCompanyDeals] = useState([]); // Deals linked to companies of email contacts
   const [dealModalOpen, setDealModalOpen] = useState(false);
+  const [createDealAIOpen, setCreateDealAIOpen] = useState(false); // AI Deal creation modal
   const [dealSearchQuery, setDealSearchQuery] = useState('');
   const [dealSearchResults, setDealSearchResults] = useState([]);
   const [searchingDeals, setSearchingDeals] = useState(false);
@@ -1083,13 +1086,7 @@ const CommandCenterPage = ({ theme }) => {
   const [searchingIntroducee2, setSearchingIntroducee2] = useState(false);
   const [editingIntroduction, setEditingIntroduction] = useState(null); // intro being edited
 
-  // AI Suggestions state (legacy)
-  const [aiSuggestions, setAiSuggestions] = useState([]);
-  const [loadingAiSuggestions, setLoadingAiSuggestions] = useState(false);
-  const [selectedSuggestion, setSelectedSuggestion] = useState(null);
-  const [processingAction, setProcessingAction] = useState(false);
-
-  // Contact Audit state (new)
+  // Contact Audit state
   const [auditResult, setAuditResult] = useState(null);
   const [auditActions, setAuditActions] = useState([]); // Actions from audit
   const [selectedActions, setSelectedActions] = useState(new Set()); // Selected action indices
@@ -1129,6 +1126,11 @@ const CommandCenterPage = ({ theme }) => {
   const [notInCrmDomains, setNotInCrmDomains] = useState([]); // Domains not in company_domains
   const [notInCrmTab, setNotInCrmTab] = useState('contacts'); // 'contacts' or 'companies'
   const [holdContacts, setHoldContacts] = useState([]);
+  const [holdCompanies, setHoldCompanies] = useState([]);
+  const [holdTab, setHoldTab] = useState('contacts'); // 'contacts' or 'companies'
+  const [incompleteContacts, setIncompleteContacts] = useState([]);
+  const [incompleteCompanies, setIncompleteCompanies] = useState([]);
+  const [completenessTab, setCompletenessTab] = useState('contacts'); // 'contacts' or 'companies'
   const [duplicateContacts, setDuplicateContacts] = useState([]);
   const [duplicateCompanies, setDuplicateCompanies] = useState([]);
   const [duplicatesTab, setDuplicatesTab] = useState('contacts'); // 'contacts' or 'companies'
@@ -1137,26 +1139,13 @@ const CommandCenterPage = ({ theme }) => {
   const [categoryMissingTab, setCategoryMissingTab] = useState('contacts'); // 'contacts' or 'companies'
   const [keepInTouchMissingContacts, setKeepInTouchMissingContacts] = useState([]);
   const [missingCompanyLinks, setMissingCompanyLinks] = useState([]); // Contacts with email domain matching company but not linked
+  const [contactsMissingCompany, setContactsMissingCompany] = useState([]); // Contacts with no company linked at all
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteModalContact, setDeleteModalContact] = useState(null);
   const [editCompanyModalOpen, setEditCompanyModalOpen] = useState(false);
   const [editCompanyModalCompany, setEditCompanyModalCompany] = useState(null);
   const [loadingDataIntegrity, setLoadingDataIntegrity] = useState(false);
-  const [dataIntegritySection, setDataIntegritySection] = useState('notInCrm'); // notInCrm, hold, duplicates, incomplete, categoryMissing
   const [expandedDataIntegrity, setExpandedDataIntegrity] = useState({ notInCrm: true }); // Collapsible sections
-
-  // Compute if Data Integrity tab has any items to show
-  const hasDataIntegrityItems = (
-    notInCrmEmails.length > 0 ||
-    notInCrmDomains.length > 0 ||
-    holdContacts.length > 0 ||
-    duplicateContacts.length > 0 ||
-    duplicateCompanies.length > 0 ||
-    categoryMissingContacts.length > 0 ||
-    categoryMissingCompanies.length > 0 ||
-    keepInTouchMissingContacts.length > 0 ||
-    missingCompanyLinks.length > 0
-  );
 
   // Domain Link Modal state
   const [domainLinkModalOpen, setDomainLinkModalOpen] = useState(false);
@@ -1795,77 +1784,101 @@ const CommandCenterPage = ({ theme }) => {
     setCreateContactModalOpen(true);
   };
 
+  // Extract unique participants from a thread (from/to/cc)
+  const getThreadParticipants = (thread) => {
+    const participants = new Map(); // email -> { email, name }
+    const myEmail = 'simone@cimminelli.com'.toLowerCase();
+
+    (thread || []).forEach(email => {
+      // From
+      if (email.from_email && email.from_email.toLowerCase() !== myEmail) {
+        const key = email.from_email.toLowerCase();
+        if (!participants.has(key)) {
+          participants.set(key, { email: email.from_email, name: email.from_name });
+        }
+      }
+      // To
+      (email.to_recipients || []).forEach(r => {
+        const addr = typeof r === 'string' ? r : r.email;
+        if (addr && addr.toLowerCase() !== myEmail) {
+          const key = addr.toLowerCase();
+          if (!participants.has(key)) {
+            participants.set(key, { email: addr, name: typeof r === 'object' ? r.name : null });
+          }
+        }
+      });
+      // CC
+      (email.cc_recipients || []).forEach(r => {
+        const addr = typeof r === 'string' ? r : r.email;
+        if (addr && addr.toLowerCase() !== myEmail) {
+          const key = addr.toLowerCase();
+          if (!participants.has(key)) {
+            participants.set(key, { email: addr, name: typeof r === 'object' ? r.name : null });
+          }
+        }
+      });
+    });
+
+    return participants;
+  };
+
+  // Helper: normalize domain (remove www., http://, https://, trailing paths)
+  const normalizeDomain = (domain) => {
+    if (!domain) return null;
+    let normalized = domain.toLowerCase().trim();
+    normalized = normalized.replace(/^https?:\/\//, '');
+    normalized = normalized.replace(/^www\./, '');
+    normalized = normalized.split('/')[0];
+    normalized = normalized.split(':')[0];
+    return normalized || null;
+  };
+
+  // Helper: extract domain from email address
+  const extractDomainFromEmail = (email) => {
+    if (!email) return null;
+    const parts = email.split('@');
+    if (parts.length !== 2) return null;
+    return normalizeDomain(parts[1]);
+  };
+
+  // Extract unique domains from thread participants
+  const getThreadDomains = (thread) => {
+    const participants = getThreadParticipants(thread);
+    const domains = new Set();
+    participants.forEach((value, email) => {
+      const domain = extractDomainFromEmail(email);
+      if (domain) domains.add(domain);
+    });
+    return domains;
+  };
+
   // Fetch Data Integrity data
   const fetchDataIntegrity = async () => {
     setLoadingDataIntegrity(true);
 
-    // Helper function to normalize domain (remove www., http://, https://, trailing paths)
-    const normalizeDomain = (domain) => {
-      if (!domain) return null;
-      let normalized = domain.toLowerCase().trim();
-      normalized = normalized.replace(/^https?:\/\//, '');
-      normalized = normalized.replace(/^www\./, '');
-      normalized = normalized.split('/')[0];
-      normalized = normalized.split(':')[0];
-      return normalized || null;
-    };
-
-    // Extract domain from email address
-    const extractDomain = (email) => {
-      if (!email) return null;
-      const parts = email.split('@');
-      if (parts.length !== 2) return null;
-      return normalizeDomain(parts[1]);
-    };
-
     try {
-      // 1. Get emails not in CRM (from command_center_inbox, check against contact_emails)
-      // First get all unique emails from command_center_inbox (excluding simone@cimminelli.com)
-      const { data: inboxEmails, error: inboxError } = await supabase
-        .from('command_center_inbox')
-        .select('from_email, from_name, to_recipients, cc_recipients')
-        .order('date', { ascending: false });
+      // 1. Get participants from selected thread (thread-aware)
+      const allInboxEmails = getThreadParticipants(selectedThread);
 
-      // Collect all unique email addresses from from, to, cc
-      // (Defined outside else block so it's accessible later for Missing Company Links filter)
-      const allInboxEmails = new Map(); // email -> { email, name }
-      const myEmail = 'simone@cimminelli.com'.toLowerCase();
+      // Skip if no thread selected
+      if (allInboxEmails.size === 0) {
+        setNotInCrmEmails([]);
+        setNotInCrmDomains([]);
+        setHoldContacts([]);
+        setHoldCompanies([]);
+        setIncompleteContacts([]);
+        setIncompleteCompanies([]);
+        setDuplicateContacts([]);
+        setDuplicateCompanies([]);
+        setCategoryMissingContacts([]);
+        setCategoryMissingCompanies([]);
+        setKeepInTouchMissingContacts([]);
+        setMissingCompanyLinks([]);
+        setLoadingDataIntegrity(false);
+        return;
+      }
 
-      if (inboxError) {
-        console.error('Error fetching inbox emails:', inboxError);
-      } else {
-
-        (inboxEmails || []).forEach(row => {
-          // From
-          if (row.from_email && row.from_email.toLowerCase() !== myEmail) {
-            const key = row.from_email.toLowerCase();
-            if (!allInboxEmails.has(key)) {
-              allInboxEmails.set(key, { email: row.from_email, name: row.from_name });
-            }
-          }
-          // To recipients
-          (row.to_recipients || []).forEach(r => {
-            const email = typeof r === 'string' ? r : r.email;
-            if (email && email.toLowerCase() !== myEmail) {
-              const key = email.toLowerCase();
-              if (!allInboxEmails.has(key)) {
-                allInboxEmails.set(key, { email, name: typeof r === 'object' ? r.name : null });
-              }
-            }
-          });
-          // CC recipients
-          (row.cc_recipients || []).forEach(r => {
-            const email = typeof r === 'string' ? r : r.email;
-            if (email && email.toLowerCase() !== myEmail) {
-              const key = email.toLowerCase();
-              if (!allInboxEmails.has(key)) {
-                allInboxEmails.set(key, { email, name: typeof r === 'object' ? r.name : null });
-              }
-            }
-          });
-        });
-
-        // Get ALL emails from contact_emails table (Supabase default limit is 1000)
+      // Get ALL emails from contact_emails table (Supabase default limit is 1000)
         // We need to paginate to get all ~3000+ emails
         let allCrmEmails = [];
         let from = 0;
@@ -1900,13 +1913,13 @@ const CommandCenterPage = ({ theme }) => {
         );
 
         // Get emails on hold to exclude from "not in CRM" list
-        const { data: holdData } = await supabase
+        const { data: holdEmailData } = await supabase
           .from('contacts_hold')
           .select('email')
           .eq('status', 'pending');
 
         const holdEmailSet = new Set(
-          (holdData || [])
+          (holdEmailData || [])
             .map(h => h.email?.toLowerCase().trim())
             .filter(Boolean)
         );
@@ -1937,7 +1950,7 @@ const CommandCenterPage = ({ theme }) => {
         ]);
 
         allInboxEmails.forEach((value, key) => {
-          const domain = extractDomain(key);
+          const domain = extractDomainFromEmail(key);
           if (domain && !excludeDomains.has(domain)) {
             if (allDomains.has(domain)) {
               const existing = allDomains.get(domain);
@@ -1987,10 +2000,22 @@ const CommandCenterPage = ({ theme }) => {
             .filter(Boolean)
         );
 
-        // Find domains not in CRM
+        // Get domains on hold to exclude from "not in CRM" list
+        const { data: holdDomainsData } = await supabase
+          .from('companies_hold')
+          .select('domain')
+          .eq('status', 'pending');
+
+        const holdDomainSet = new Set(
+          (holdDomainsData || [])
+            .map(h => normalizeDomain(h.domain))
+            .filter(Boolean)
+        );
+
+        // Find domains not in CRM (and not on hold)
         const domainsNotInCrm = [];
         allDomains.forEach((value, key) => {
-          if (!crmDomainSet.has(key)) {
+          if (!crmDomainSet.has(key) && !holdDomainSet.has(key)) {
             domainsNotInCrm.push(value);
           }
         });
@@ -1999,7 +2024,6 @@ const CommandCenterPage = ({ theme }) => {
         domainsNotInCrm.sort((a, b) => b.count - a.count);
 
         setNotInCrmDomains(domainsNotInCrm);
-      }
 
       // 2. Get contacts on hold - only those that are in the inbox emails
       const { data: holdData, error: holdError } = await supabase
@@ -2018,65 +2042,303 @@ const CommandCenterPage = ({ theme }) => {
         setHoldContacts(filteredHoldContacts);
       }
 
-      // 3. Duplicates - read from duplicates_inbox table (populated by backend trigger)
-      // Fetch contact duplicates from duplicates_inbox
+      // 2b. Get companies/domains on hold - only those that match thread domains
+      const { data: holdCompaniesData, error: holdCompaniesError } = await supabase
+        .from('companies_hold')
+        .select('*')
+        .eq('status', 'pending')
+        .order('email_count', { ascending: false });
+
+      if (holdCompaniesError) {
+        console.error('Error fetching hold companies:', holdCompaniesError);
+      } else {
+        // Get thread domains from inbox emails
+        const threadDomainsSet = new Set();
+        allInboxEmails.forEach((value, key) => {
+          const domain = extractDomainFromEmail(key);
+          if (domain) threadDomainsSet.add(domain);
+        });
+
+        // Filter to only show hold companies whose domain is in thread
+        const filteredHoldCompanies = (holdCompaniesData || []).filter(company =>
+          company.domain && threadDomainsSet.has(normalizeDomain(company.domain))
+        );
+        setHoldCompanies(filteredHoldCompanies);
+      }
+
+      // 3. Duplicates - HYBRID APPROACH: backend trigger + frontend real-time search
+      // A) Read from duplicates_inbox table (backend detected)
       const { data: contactDupsRaw } = await supabase
         .from('duplicates_inbox')
         .select('*')
         .eq('entity_type', 'contact')
         .eq('status', 'pending');
 
+      // B) Get ignored contact duplicates to filter out
+      const { data: ignoredContactDups } = await supabase
+        .from('contact_duplicates')
+        .select('primary_contact_id, duplicate_contact_id')
+        .eq('status', 'ignored');
+
+      const ignoredContactPairs = new Set(
+        (ignoredContactDups || []).flatMap(d => [
+          `${d.primary_contact_id}:${d.duplicate_contact_id}`,
+          `${d.duplicate_contact_id}:${d.primary_contact_id}`
+        ])
+      );
+
+      // C) Frontend real-time search for contact duplicates
+      const frontendContactDups = await findContactDuplicatesForThread(allInboxEmails);
+
+      // Merge backend and frontend duplicates
+      let allContactDups = [];
+
+      // Process backend duplicates
       if (contactDupsRaw && contactDupsRaw.length > 0) {
-        // Get all contact IDs to fetch details
         const contactIds = [...new Set(contactDupsRaw.flatMap(d => [d.source_id, d.duplicate_id]))];
         const { data: contacts } = await supabase
           .from('contacts')
-          .select('contact_id, first_name, last_name')
+          .select('contact_id, first_name, last_name, contact_emails(email)')
           .in('contact_id', contactIds);
 
-        // Map contacts by ID
         const contactMap = Object.fromEntries((contacts || []).map(c => [c.contact_id, c]));
 
-        // Enrich duplicates with contact details
         const enrichedContactDups = contactDupsRaw.map(d => ({
           ...d,
           source: contactMap[d.source_id],
-          duplicate: contactMap[d.duplicate_id]
+          duplicate: contactMap[d.duplicate_id],
+          detection_source: 'backend'
         }));
 
-        setDuplicateContacts(enrichedContactDups);
-      } else {
-        setDuplicateContacts([]);
+        // Filter by thread participants
+        const filteredBackendDups = enrichedContactDups.filter(d => {
+          const sourceEmails = d.source?.contact_emails?.map(e => e.email?.toLowerCase().trim()) || [];
+          const dupEmails = d.duplicate?.contact_emails?.map(e => e.email?.toLowerCase().trim()) || [];
+          const allEmails = [...sourceEmails, ...dupEmails];
+          return allEmails.some(email => email && allInboxEmails.has(email));
+        });
+
+        allContactDups = [...filteredBackendDups];
       }
 
-      // Fetch company duplicates from duplicates_inbox
+      // Add frontend duplicates (avoiding duplicates already detected by backend OR already ignored)
+      frontendContactDups.forEach(fd => {
+        const pairKey1 = `${fd.source_id}:${fd.duplicate_id}`;
+        const pairKey2 = `${fd.duplicate_id}:${fd.source_id}`;
+
+        // Skip if already ignored
+        if (ignoredContactPairs.has(pairKey1) || ignoredContactPairs.has(pairKey2)) {
+          return;
+        }
+
+        const alreadyExists = allContactDups.some(bd =>
+          (bd.source_id === fd.source_id && bd.duplicate_id === fd.duplicate_id) ||
+          (bd.source_id === fd.duplicate_id && bd.duplicate_id === fd.source_id)
+        );
+        if (!alreadyExists) {
+          allContactDups.push({ ...fd, detection_source: 'frontend' });
+        }
+      });
+
+      setDuplicateContacts(allContactDups);
+
+      // Company duplicates - HYBRID APPROACH
       const { data: companyDupsRaw } = await supabase
         .from('duplicates_inbox')
         .select('*')
         .eq('entity_type', 'company')
         .eq('status', 'pending');
 
+      // Get ignored company duplicates to filter out
+      const { data: ignoredCompanyDups } = await supabase
+        .from('company_duplicates')
+        .select('primary_company_id, duplicate_company_id')
+        .eq('status', 'ignored');
+
+      const ignoredCompanyPairs = new Set(
+        (ignoredCompanyDups || []).flatMap(d => [
+          `${d.primary_company_id}:${d.duplicate_company_id}`,
+          `${d.duplicate_company_id}:${d.primary_company_id}`
+        ])
+      );
+
+      // Get thread domains for filtering
+      const threadDomains = getThreadDomains(selectedThread);
+
+      // Frontend real-time search for company duplicates
+      const frontendCompanyDups = await findCompanyDuplicatesForThread(threadDomains);
+
+      // Merge backend and frontend duplicates
+      let allCompanyDups = [];
+
       if (companyDupsRaw && companyDupsRaw.length > 0) {
-        // Get all company IDs to fetch details
         const companyIds = [...new Set(companyDupsRaw.flatMap(d => [d.source_id, d.duplicate_id]))];
         const { data: companies } = await supabase
           .from('companies')
-          .select('company_id, name, category')
+          .select('company_id, name, category, website, company_domains(domain)')
           .in('company_id', companyIds);
 
-        // Map companies by ID
         const companyMap = Object.fromEntries((companies || []).map(c => [c.company_id, c]));
 
-        // Enrich duplicates with company details
         const enrichedCompanyDups = companyDupsRaw.map(d => ({
           ...d,
           source: companyMap[d.source_id],
-          duplicate: companyMap[d.duplicate_id]
+          duplicate: companyMap[d.duplicate_id],
+          detection_source: 'backend'
         }));
 
-        setDuplicateCompanies(enrichedCompanyDups);
+        // Filter by thread domains
+        const filteredBackendDups = enrichedCompanyDups.filter(d => {
+          const getCompanyDomains = (company) => {
+            const domains = [];
+            if (company?.website) domains.push(normalizeDomain(company.website));
+            (company?.company_domains || []).forEach(cd => {
+              if (cd.domain) domains.push(normalizeDomain(cd.domain));
+            });
+            return domains.filter(Boolean);
+          };
+          const sourceDomains = getCompanyDomains(d.source);
+          const dupDomains = getCompanyDomains(d.duplicate);
+          const allDomains = [...sourceDomains, ...dupDomains];
+          return allDomains.some(domain => threadDomains.has(domain));
+        });
+
+        allCompanyDups = [...filteredBackendDups];
+      }
+
+      // Add frontend duplicates (avoiding duplicates already detected by backend OR already ignored)
+      frontendCompanyDups.forEach(fd => {
+        const pairKey1 = `${fd.source_id}:${fd.duplicate_id}`;
+        const pairKey2 = `${fd.duplicate_id}:${fd.source_id}`;
+
+        // Skip if already ignored
+        if (ignoredCompanyPairs.has(pairKey1) || ignoredCompanyPairs.has(pairKey2)) {
+          return;
+        }
+
+        const alreadyExists = allCompanyDups.some(bd =>
+          (bd.source_id === fd.source_id && bd.company_id === fd.company_id) ||
+          (bd.source_id === fd.company_id && bd.company_id === fd.source_id)
+        );
+        if (!alreadyExists) {
+          allCompanyDups.push({ ...fd, detection_source: 'frontend' });
+        }
+      });
+
+      setDuplicateCompanies(allCompanyDups);
+
+      // 4. Fetch Incomplete Contacts - completeness_score < 100 AND show_missing != false
+      // Optimized approach: Start with thread emails (limited set), find their contacts, then check completeness
+      const threadEmailsList = Array.from(allInboxEmails.keys()).slice(0, 500);
+
+      if (threadEmailsList.length > 0) {
+        // Get contacts that have emails in the thread
+        const { data: contactsInThread, error: contactsInThreadError } = await supabase
+          .from('contact_emails')
+          .select('contact_id, email, contacts(contact_id, first_name, last_name, show_missing)')
+          .in('email', threadEmailsList);
+
+        if (contactsInThreadError) {
+          console.error('Error fetching contacts in thread:', contactsInThreadError);
+          setIncompleteContacts([]);
+        } else {
+          // Get unique contacts with show_missing != false
+          const validContactsMap = new Map();
+          (contactsInThread || []).forEach(ce => {
+            if (ce.contacts && ce.contacts.show_missing !== false) {
+              if (!validContactsMap.has(ce.contact_id)) {
+                validContactsMap.set(ce.contact_id, {
+                  contact_id: ce.contact_id,
+                  first_name: ce.contacts.first_name,
+                  last_name: ce.contacts.last_name,
+                  emails: []
+                });
+              }
+              validContactsMap.get(ce.contact_id).emails.push({ email: ce.email });
+            }
+          });
+
+          if (validContactsMap.size > 0) {
+            // Get completeness for these contacts (limited set now)
+            const validContactIds = Array.from(validContactsMap.keys());
+            const { data: completenessData } = await supabase
+              .from('contact_completeness')
+              .select('contact_id, completeness_score')
+              .in('contact_id', validContactIds)
+              .lt('completeness_score', 100);
+
+            // Merge completeness with contact data
+            const incompleteList = (completenessData || []).map(c => ({
+              ...validContactsMap.get(c.contact_id),
+              completeness_score: c.completeness_score
+            })).filter(c => c && (c.first_name || c.last_name));
+
+            setIncompleteContacts(incompleteList);
+          } else {
+            setIncompleteContacts([]);
+          }
+        }
       } else {
-        setDuplicateCompanies([]);
+        setIncompleteContacts([]);
+      }
+
+      // 4b. Fetch Incomplete Companies - completeness_score < 100 AND show_missing != false
+      // Optimized approach: Start with thread domains (limited set), find their companies, then check completeness
+      const threadDomainsForCompleteness = new Set();
+      allInboxEmails.forEach((value, key) => {
+        const domain = extractDomainFromEmail(key);
+        if (domain) threadDomainsForCompleteness.add(domain);
+      });
+      const threadDomainsList = Array.from(threadDomainsForCompleteness).slice(0, 200);
+
+      if (threadDomainsList.length > 0) {
+        // Get companies that have domains in the thread
+        const { data: companiesInThread, error: companiesInThreadError } = await supabase
+          .from('company_domains')
+          .select('company_id, domain, companies(company_id, name, show_missing)')
+          .in('domain', threadDomainsList);
+
+        if (companiesInThreadError) {
+          console.error('Error fetching companies in thread:', companiesInThreadError);
+          setIncompleteCompanies([]);
+        } else {
+          // Get unique companies with show_missing != false
+          const validCompaniesMap = new Map();
+          (companiesInThread || []).forEach(cd => {
+            if (cd.companies && cd.companies.show_missing !== false) {
+              if (!validCompaniesMap.has(cd.company_id)) {
+                validCompaniesMap.set(cd.company_id, {
+                  company_id: cd.company_id,
+                  name: cd.companies.name,
+                  domains: []
+                });
+              }
+              validCompaniesMap.get(cd.company_id).domains.push({ domain: cd.domain });
+            }
+          });
+
+          if (validCompaniesMap.size > 0) {
+            // Get completeness for these companies (limited set now)
+            const validCompanyIds = Array.from(validCompaniesMap.keys());
+            const { data: completenessData } = await supabase
+              .from('company_completeness')
+              .select('company_id, completeness_score')
+              .in('company_id', validCompanyIds)
+              .lt('completeness_score', 100);
+
+            // Merge completeness with company data
+            const incompleteList = (completenessData || []).map(c => ({
+              ...validCompaniesMap.get(c.company_id),
+              completeness_score: c.completeness_score
+            })).filter(c => c && c.name);
+
+            setIncompleteCompanies(incompleteList);
+          } else {
+            setIncompleteCompanies([]);
+          }
+        }
+      } else {
+        setIncompleteCompanies([]);
       }
 
       // 5. Fetch Category Missing - contacts with category 'Inbox' or 'Not Set' and last_interaction_at after Dec 5
@@ -2200,7 +2462,7 @@ const CommandCenterPage = ({ theme }) => {
           (contactEmailsData || []).forEach(ce => {
             if (!ce.email || !ce.contacts) return;
 
-            const emailDomain = extractDomain(ce.email);
+            const emailDomain = extractDomainFromEmail(ce.email);
             if (!emailDomain) return;
 
             const matchingCompany = domainToCompany.get(emailDomain);
@@ -2235,30 +2497,83 @@ const CommandCenterPage = ({ theme }) => {
         setMissingCompanyLinks([]);
       }
 
+      // 9. Fetch Contacts Missing Company - contacts in thread with no company linked at all
+      try {
+        // Get contacts that have emails in the thread
+        const threadEmailsForMissingCompany = Array.from(allInboxEmails.keys()).slice(0, 500);
+
+        if (threadEmailsForMissingCompany.length > 0) {
+          const { data: contactsWithEmails, error: cwError } = await supabase
+            .from('contact_emails')
+            .select('contact_id, email, contacts(contact_id, first_name, last_name, category)')
+            .in('email', threadEmailsForMissingCompany);
+
+          if (!cwError && contactsWithEmails) {
+            // Get unique contacts from thread
+            const threadContactsMap = new Map();
+            (contactsWithEmails || []).forEach(ce => {
+              if (ce.contacts && ce.contact_id) {
+                if (!threadContactsMap.has(ce.contact_id)) {
+                  threadContactsMap.set(ce.contact_id, {
+                    contact_id: ce.contact_id,
+                    first_name: ce.contacts.first_name,
+                    last_name: ce.contacts.last_name,
+                    category: ce.contacts.category,
+                    emails: []
+                  });
+                }
+                threadContactsMap.get(ce.contact_id).emails.push(ce.email);
+              }
+            });
+
+            if (threadContactsMap.size > 0) {
+              // Get all contact_companies links for these contacts
+              const threadContactIds = Array.from(threadContactsMap.keys());
+              const { data: existingCompanyLinks } = await supabase
+                .from('contact_companies')
+                .select('contact_id')
+                .in('contact_id', threadContactIds);
+
+              // Create set of contacts that have company links
+              const contactsWithCompany = new Set((existingCompanyLinks || []).map(el => el.contact_id));
+
+              // Filter to contacts that don't have any company linked
+              const missingCompanyContacts = Array.from(threadContactsMap.values())
+                .filter(c => !contactsWithCompany.has(c.contact_id))
+                .sort((a, b) => {
+                  const nameA = `${a.first_name || ''} ${a.last_name || ''}`.trim();
+                  const nameB = `${b.first_name || ''} ${b.last_name || ''}`.trim();
+                  return nameA.localeCompare(nameB);
+                });
+
+              setContactsMissingCompany(missingCompanyContacts);
+            } else {
+              setContactsMissingCompany([]);
+            }
+          } else {
+            setContactsMissingCompany([]);
+          }
+        } else {
+          setContactsMissingCompany([]);
+        }
+      } catch (missingCompanyError) {
+        console.error('Error finding contacts missing company:', missingCompanyError);
+        setContactsMissingCompany([]);
+      }
+
     } catch (error) {
       console.error('Error fetching data integrity:', error);
     }
     setLoadingDataIntegrity(false);
   };
 
-  // Load data integrity on mount (to know if tab should be shown)
-  useEffect(() => {
-    fetchDataIntegrity();
-  }, []);
-
-  // Reload data integrity when tab becomes active
+  // Reload data integrity when tab becomes active or thread changes
   useEffect(() => {
     if (activeActionTab === 'dataIntegrity') {
       fetchDataIntegrity();
     }
-  }, [activeActionTab]);
+  }, [activeActionTab, selectedThread]);
 
-  // Switch away from Data Integrity tab if it becomes empty
-  useEffect(() => {
-    if (activeActionTab === 'dataIntegrity' && !hasDataIntegrityItems && !loadingDataIntegrity) {
-      setActiveActionTab('crm');
-    }
-  }, [hasDataIntegrityItems, activeActionTab, loadingDataIntegrity]);
 
   // Handler for creating company from domain
   const handleAddCompanyFromDomain = (domainData) => {
@@ -2277,37 +2592,130 @@ const CommandCenterPage = ({ theme }) => {
     toast.success('Company created! Complete the details below.');
   };
 
-  // Handler for domain Hold/Spam actions
-  const handleDomainAction = async (domain, action) => {
-    try {
-      // Add to ignored_domains table
-      const { error } = await supabase
-        .from('ignored_domains')
-        .insert({
-          domain: domain,
-          reason: action, // 'hold' or 'spam'
-          created_at: new Date().toISOString()
-        });
+  // Handler for domain Hold/Delete actions
+  const handleDomainAction = async (domainItem, action) => {
+    const domain = typeof domainItem === 'string' ? domainItem : domainItem.domain;
 
-      if (error) {
-        // If table doesn't exist or other error, try alternative
-        if (error.code === '42P01') {
-          // Table doesn't exist - just remove from list locally for now
-          setNotInCrmDomains(prev => prev.filter(d => d.domain !== domain));
-          toast.success(`Domain marked as ${action}`);
-          return;
+    try {
+      if (action === 'hold') {
+        // Check if domain already exists in companies_hold
+        const { data: existing } = await supabase
+          .from('companies_hold')
+          .select('company_id')
+          .eq('domain', domain)
+          .single();
+
+        if (existing) {
+          // Update existing record
+          await supabase
+            .from('companies_hold')
+            .update({
+              email_count: domainItem.count || 1,
+              last_seen_at: new Date().toISOString()
+            })
+            .eq('domain', domain);
+        } else {
+          // Insert new record
+          const { error } = await supabase
+            .from('companies_hold')
+            .insert({
+              company_id: crypto.randomUUID(),
+              domain: domain,
+              name: domain,
+              email_count: domainItem.count || 1,
+              status: 'pending',
+              first_seen_at: new Date().toISOString(),
+              last_seen_at: new Date().toISOString(),
+              created_at: new Date().toISOString()
+            });
+
+          if (error) throw error;
         }
-        throw error;
+
+        // Add to holdCompanies state
+        setHoldCompanies(prev => [...prev, {
+          domain,
+          name: domain,
+          email_count: domainItem.count || 1,
+          status: 'pending'
+        }]);
+
+        toast.success(`${domain} put on hold`);
+      } else if (action === 'delete') {
+        // Just remove from list, no DB action
+        toast.success(`${domain} dismissed`);
       }
 
-      // Remove from the list
+      // Remove from not in CRM list
       setNotInCrmDomains(prev => prev.filter(d => d.domain !== domain));
-      toast.success(`Domain marked as ${action}`);
     } catch (error) {
-      console.error('Error marking domain:', error);
-      // Still remove from list locally
-      setNotInCrmDomains(prev => prev.filter(d => d.domain !== domain));
-      toast.success(`Domain marked as ${action}`);
+      console.error('Error handling domain action:', error);
+      toast.error(`Failed to ${action} domain`);
+    }
+  };
+
+  // Handle adding company from hold to CRM
+  const handleAddCompanyFromHold = async (company) => {
+    try {
+      // Create the company
+      const { data: newCompany, error: createError } = await supabase
+        .from('companies')
+        .insert({
+          name: company.name || company.domain,
+          website: company.domain,
+          category: 'Inbox'
+        })
+        .select()
+        .single();
+
+      if (createError) throw createError;
+
+      // Add domain to company_domains
+      await supabase
+        .from('company_domains')
+        .insert({
+          company_id: newCompany.company_id,
+          domain: company.domain
+        });
+
+      // Remove from companies_hold
+      await supabase
+        .from('companies_hold')
+        .delete()
+        .eq('domain', company.domain);
+
+      // Update local state
+      setHoldCompanies(prev => prev.filter(c => c.domain !== company.domain));
+
+      // Open modal for further editing
+      setCompanyDataIntegrityCompanyId(newCompany.company_id);
+      setCompanyDataIntegrityModalOpen(true);
+
+      toast.success('Company created! Complete the details below.');
+    } catch (error) {
+      console.error('Error adding company from hold:', error);
+      toast.error('Failed to add company');
+    }
+  };
+
+  // Handle deleting company from hold
+  const handleDeleteCompanyFromHold = async (company) => {
+    try {
+      // Remove from companies_hold table
+      const { error } = await supabase
+        .from('companies_hold')
+        .delete()
+        .eq('domain', company.domain);
+
+      if (error) throw error;
+
+      // Update local state
+      setHoldCompanies(prev => prev.filter(c => c.domain !== company.domain));
+
+      toast.success(`${company.domain} removed from hold`);
+    } catch (error) {
+      console.error('Error deleting company from hold:', error);
+      toast.error('Failed to remove from hold');
     }
   };
 
@@ -2423,33 +2831,70 @@ const CommandCenterPage = ({ theme }) => {
     }
   };
 
-  // Dismiss a duplicate from duplicates_inbox (and its inverse pair)
+  // Dismiss a duplicate - move from inbox to main table with ignored status
   const handleDismissDuplicate = async (item) => {
     try {
-      // Dismiss this record
-      const { error: error1 } = await supabase
-        .from('duplicates_inbox')
-        .update({ status: 'dismissed' })
-        .eq('id', item.id);
+      if (item.entity_type === 'contact') {
+        // Insert into contact_duplicates with status='ignored' and false_positive=true
+        const { error: insertError } = await supabase
+          .from('contact_duplicates')
+          .insert({
+            primary_contact_id: item.source_id,
+            duplicate_contact_id: item.duplicate_id,
+            status: 'ignored',
+            false_positive: true,
+            notes: `Dismissed from duplicates_inbox: ${item.match_type || 'manual'} match`
+          });
 
-      if (error1) throw error1;
+        if (insertError) {
+          console.error('Error inserting dismissed contact duplicate:', insertError);
+          throw insertError;
+        }
+      } else {
+        // Insert into company_duplicates with status='ignored'
+        const { error: insertError } = await supabase
+          .from('company_duplicates')
+          .insert({
+            primary_company_id: item.source_id,
+            duplicate_company_id: item.duplicate_id,
+            status: 'ignored',
+            notes: `Dismissed from duplicates_inbox: ${item.match_type || 'manual'} match`
+          });
 
-      // Also dismiss the inverse pair (A→B and B→A)
-      const { error: error2 } = await supabase
-        .from('duplicates_inbox')
-        .update({ status: 'dismissed' })
-        .eq('entity_type', item.entity_type)
-        .eq('source_id', item.duplicate_id)
-        .eq('duplicate_id', item.source_id)
-        .eq('status', 'pending');
+        if (insertError) {
+          console.error('Error inserting dismissed company duplicate:', insertError);
+          throw insertError;
+        }
+      }
 
-      if (error2) {
-        console.error('Error dismissing inverse pair:', error2);
-        // Don't throw - main dismiss worked
+      // Delete from duplicates_inbox if it was backend-detected (has real UUID id)
+      if (item.detection_source === 'backend' && item.id) {
+        await supabase
+          .from('duplicates_inbox')
+          .delete()
+          .eq('id', item.id);
+
+        // Also delete inverse pair
+        await supabase
+          .from('duplicates_inbox')
+          .delete()
+          .eq('entity_type', item.entity_type)
+          .eq('source_id', item.duplicate_id)
+          .eq('duplicate_id', item.source_id);
+      }
+
+      // Remove from local state
+      if (item.entity_type === 'contact') {
+        setDuplicateContacts(prev => prev.filter(d =>
+          !(d.source_id === item.source_id && d.duplicate_id === item.duplicate_id)
+        ));
+      } else {
+        setDuplicateCompanies(prev => prev.filter(d =>
+          !(d.source_id === item.source_id && d.duplicate_id === item.duplicate_id)
+        ));
       }
 
       toast.success('Duplicate dismissed');
-      fetchDataIntegrity(); // Refresh the list
     } catch (error) {
       console.error('Error dismissing duplicate:', error);
       toast.error('Failed to dismiss duplicate');
@@ -2514,14 +2959,17 @@ const CommandCenterPage = ({ theme }) => {
       }
 
       // Delete from decision queue (no longer needs review)
-      const { error: deleteError } = await supabase
-        .from('duplicates_inbox')
-        .delete()
-        .eq('id', item.id);
+      // Only if it came from duplicates_inbox (has id), not from frontend detection
+      if (item.id) {
+        const { error: deleteError } = await supabase
+          .from('duplicates_inbox')
+          .delete()
+          .eq('id', item.id);
 
-      if (deleteError) {
-        console.error('Failed to delete from inbox:', deleteError);
-        // Don't return - merge was initiated, just log the error
+        if (deleteError) {
+          console.error('Failed to delete from inbox:', deleteError);
+          // Don't return - merge was initiated, just log the error
+        }
       }
 
       fetchDataIntegrity(); // Refresh the list
@@ -3595,7 +4043,7 @@ const CommandCenterPage = ({ theme }) => {
           deal_id,
           contact_id,
           relationship,
-          deals(deal_id, opportunity, stage, category, description, total_investment, created_at)
+          deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at)
         `)
         .in('contact_id', contactIds);
 
@@ -3650,7 +4098,7 @@ const CommandCenterPage = ({ theme }) => {
               deal_id,
               contact_id,
               relationship,
-              deals(deal_id, opportunity, stage, category, description, total_investment, created_at)
+              deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at)
             `)
             .in('contact_id', companyContactIds);
 
@@ -6059,11 +6507,9 @@ internet businesses.`;
             <ActionTabIcon theme={theme} $active={activeActionTab === 'chat'} onClick={() => setActiveActionTab('chat')} title="Chat with Claude">
               <FaRobot />
             </ActionTabIcon>
-            {hasDataIntegrityItems && (
-              <ActionTabIcon theme={theme} $active={activeActionTab === 'dataIntegrity'} onClick={() => setActiveActionTab('dataIntegrity')} title="Data Integrity">
-                <FaDatabase />
-              </ActionTabIcon>
-            )}
+            <ActionTabIcon theme={theme} $active={activeActionTab === 'dataIntegrity'} onClick={() => setActiveActionTab('dataIntegrity')} title="Data Integrity">
+              <FaDatabase />
+            </ActionTabIcon>
             <ActionTabIcon theme={theme} $active={activeActionTab === 'crm'} onClick={() => setActiveActionTab('crm')} title="CRM">
               <FaUser />
             </ActionTabIcon>
@@ -7069,15 +7515,6 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                                           color: theme === 'light' ? '#111827' : '#F9FAFB'
                                         }}>{item.domain}</div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                          <div style={{
-                                            fontSize: '11px',
-                                            color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                                            background: theme === 'light' ? '#F3F4F6' : '#374151',
-                                            padding: '2px 6px',
-                                            borderRadius: '4px'
-                                          }}>
-                                            {item.count} email{item.count !== 1 ? 's' : ''}
-                                          </div>
                                           <button
                                             onClick={(e) => {
                                               e.stopPropagation();
@@ -7100,8 +7537,8 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                                           <button
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              // Mark domain as Hold - add to ignored domains
-                                              handleDomainAction(item.domain, 'hold');
+                                              // Put domain on hold - save to companies_hold
+                                              handleDomainAction(item, 'hold');
                                             }}
                                             style={{
                                               padding: '4px 8px',
@@ -7120,8 +7557,8 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                                           <button
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              // Mark domain as Spam
-                                              handleDomainAction(item.domain, 'spam');
+                                              // Delete - just dismiss from list
+                                              handleDomainAction(item, 'delete');
                                             }}
                                             style={{
                                               padding: '4px 8px',
@@ -7133,9 +7570,9 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                                               cursor: 'pointer',
                                               fontWeight: 500
                                             }}
-                                            title="Mark as spam"
+                                            title="Dismiss from list"
                                           >
-                                            Spam
+                                            Delete
                                           </button>
                                         </div>
                                       </div>
@@ -7159,8 +7596,8 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                       </div>
                       )}
 
-                      {/* Hold Contacts Section */}
-                      {holdContacts.length > 0 && (
+                      {/* Hold Section (Contacts & Companies) */}
+                      {(holdContacts.length > 0 || holdCompanies.length > 0) && (
                       <div style={{ marginBottom: '8px' }}>
                         <div
                           onClick={() => setExpandedDataIntegrity(prev => prev.hold ? {} : { hold: true })}
@@ -7196,94 +7633,460 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                             color: theme === 'light' ? '#6B7280' : '#9CA3AF',
                             marginLeft: 'auto'
                           }}>
-                            {holdContacts.length}
+                            {holdContacts.length + holdCompanies.length}
                           </span>
                         </div>
                         {expandedDataIntegrity.hold && (
                           <div style={{ paddingLeft: '8px' }}>
-                            {holdContacts.length === 0 ? (
-                              <div style={{
-                                textAlign: 'center',
-                                padding: '16px',
-                                color: theme === 'light' ? '#9CA3AF' : '#6B7280',
-                                fontSize: '12px'
-                              }}>
-                                No contacts on hold
-                              </div>
-                            ) : (
-                              holdContacts.map((contact, idx) => (
-                                <div key={idx} style={{
-                                  padding: '8px 12px',
-                                  background: theme === 'light' ? '#FFFFFF' : '#1F2937',
-                                  borderRadius: '6px',
-                                  marginBottom: '4px',
-                                  border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  alignItems: 'center'
-                                }}>
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{
-                                      fontSize: '13px',
-                                      fontWeight: 500,
-                                      color: theme === 'light' ? '#111827' : '#F9FAFB',
-                                      whiteSpace: 'nowrap',
-                                      overflow: 'hidden',
-                                      textOverflow: 'ellipsis'
-                                    }}>{contact.full_name || contact.first_name || contact.email}</div>
-                                    <div style={{
-                                      fontSize: '11px',
-                                      color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                                      whiteSpace: 'nowrap',
-                                      overflow: 'hidden',
-                                      textOverflow: 'ellipsis'
-                                    }}>{contact.email}</div>
+                            {/* Tabs for Contacts / Companies */}
+                            <div style={{
+                              display: 'flex',
+                              gap: '4px',
+                              marginBottom: '8px',
+                              background: theme === 'light' ? '#E5E7EB' : '#1F2937',
+                              borderRadius: '6px',
+                              padding: '2px'
+                            }}>
+                              <button
+                                onClick={() => setHoldTab('contacts')}
+                                style={{
+                                  flex: 1,
+                                  padding: '6px 8px',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  fontSize: '12px',
+                                  fontWeight: 500,
+                                  cursor: 'pointer',
+                                  background: holdTab === 'contacts'
+                                    ? (theme === 'light' ? '#FFFFFF' : '#374151')
+                                    : 'transparent',
+                                  color: holdTab === 'contacts'
+                                    ? (theme === 'light' ? '#111827' : '#F9FAFB')
+                                    : (theme === 'light' ? '#6B7280' : '#9CA3AF'),
+                                  boxShadow: holdTab === 'contacts' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
+                                }}
+                              >
+                                Contacts ({holdContacts.length})
+                              </button>
+                              <button
+                                onClick={() => setHoldTab('companies')}
+                                style={{
+                                  flex: 1,
+                                  padding: '6px 8px',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  fontSize: '12px',
+                                  fontWeight: 500,
+                                  cursor: 'pointer',
+                                  background: holdTab === 'companies'
+                                    ? (theme === 'light' ? '#FFFFFF' : '#374151')
+                                    : 'transparent',
+                                  color: holdTab === 'companies'
+                                    ? (theme === 'light' ? '#111827' : '#F9FAFB')
+                                    : (theme === 'light' ? '#6B7280' : '#9CA3AF'),
+                                  boxShadow: holdTab === 'companies' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
+                                }}
+                              >
+                                Companies ({holdCompanies.length})
+                              </button>
+                            </div>
+
+                            {/* Contacts Tab Content */}
+                            {holdTab === 'contacts' && (
+                              <>
+                                {holdContacts.length === 0 ? (
+                                  <div style={{
+                                    textAlign: 'center',
+                                    padding: '16px',
+                                    color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                                    fontSize: '12px'
+                                  }}>
+                                    No contacts on hold
                                   </div>
-                                  <div style={{ display: 'flex', gap: '4px', marginLeft: '8px', flexShrink: 0, alignItems: 'center' }}>
-                                    <div style={{
-                                      fontSize: '10px',
-                                      padding: '2px 6px',
-                                      background: theme === 'light' ? '#FEF3C7' : '#78350F',
-                                      color: theme === 'light' ? '#92400E' : '#FCD34D',
-                                      borderRadius: '4px'
+                                ) : (
+                                  holdContacts.map((contact, idx) => (
+                                    <div key={idx} style={{
+                                      padding: '8px 12px',
+                                      background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                                      borderRadius: '6px',
+                                      marginBottom: '4px',
+                                      border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center'
                                     }}>
-                                      {contact.email_count || 1}x
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{
+                                          fontSize: '13px',
+                                          fontWeight: 500,
+                                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                          whiteSpace: 'nowrap',
+                                          overflow: 'hidden',
+                                          textOverflow: 'ellipsis'
+                                        }}>{contact.full_name || contact.first_name || contact.email}</div>
+                                        <div style={{
+                                          fontSize: '11px',
+                                          color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                          whiteSpace: 'nowrap',
+                                          overflow: 'hidden',
+                                          textOverflow: 'ellipsis'
+                                        }}>{contact.email}</div>
+                                      </div>
+                                      <div style={{ display: 'flex', gap: '4px', marginLeft: '8px', flexShrink: 0, alignItems: 'center' }}>
+                                        <div style={{
+                                          fontSize: '10px',
+                                          padding: '2px 6px',
+                                          background: theme === 'light' ? '#FEF3C7' : '#78350F',
+                                          color: theme === 'light' ? '#92400E' : '#FCD34D',
+                                          borderRadius: '4px'
+                                        }}>
+                                          {contact.email_count || 1}x
+                                        </div>
+                                        <button
+                                          onClick={() => handleAddFromHold(contact)}
+                                          title="Add to CRM"
+                                          style={{
+                                            padding: '4px 8px',
+                                            fontSize: '11px',
+                                            fontWeight: 500,
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            background: '#10B981',
+                                            color: 'white'
+                                          }}
+                                        >
+                                          Add
+                                        </button>
+                                        <button
+                                          onClick={() => handleSpamFromHold(contact.email)}
+                                          title="Mark as Spam"
+                                          style={{
+                                            padding: '4px 8px',
+                                            fontSize: '11px',
+                                            fontWeight: 500,
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            background: '#EF4444',
+                                            color: 'white'
+                                          }}
+                                        >
+                                          Spam
+                                        </button>
+                                      </div>
                                     </div>
-                                    <button
-                                      onClick={() => handleAddFromHold(contact)}
-                                      title="Add to CRM"
-                                      style={{
-                                        padding: '4px 8px',
-                                        fontSize: '11px',
-                                        fontWeight: 500,
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        cursor: 'pointer',
-                                        background: '#10B981',
-                                        color: 'white'
-                                      }}
-                                    >
-                                      Add
-                                    </button>
-                                    <button
-                                      onClick={() => handleSpamFromHold(contact.email)}
-                                      title="Mark as Spam"
-                                      style={{
-                                        padding: '4px 8px',
-                                        fontSize: '11px',
-                                        fontWeight: 500,
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        cursor: 'pointer',
-                                        background: '#EF4444',
-                                        color: 'white'
-                                      }}
-                                    >
-                                      Spam
-                                    </button>
+                                  ))
+                                )}
+                              </>
+                            )}
+
+                            {/* Companies Tab Content */}
+                            {holdTab === 'companies' && (
+                              <>
+                                {holdCompanies.length === 0 ? (
+                                  <div style={{
+                                    textAlign: 'center',
+                                    padding: '16px',
+                                    color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                                    fontSize: '12px'
+                                  }}>
+                                    No companies on hold
                                   </div>
-                                </div>
-                              ))
+                                ) : (
+                                  holdCompanies.map((company, idx) => (
+                                    <div key={idx} style={{
+                                      padding: '8px 12px',
+                                      background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                                      borderRadius: '6px',
+                                      marginBottom: '4px',
+                                      border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center'
+                                    }}>
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{
+                                          fontSize: '13px',
+                                          fontWeight: 500,
+                                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                          whiteSpace: 'nowrap',
+                                          overflow: 'hidden',
+                                          textOverflow: 'ellipsis'
+                                        }}>{company.name || company.domain}</div>
+                                        <div style={{
+                                          fontSize: '11px',
+                                          color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                          whiteSpace: 'nowrap',
+                                          overflow: 'hidden',
+                                          textOverflow: 'ellipsis'
+                                        }}>{company.domain}</div>
+                                      </div>
+                                      <div style={{ display: 'flex', gap: '4px', marginLeft: '8px', flexShrink: 0, alignItems: 'center' }}>
+                                        <button
+                                          onClick={() => handleAddCompanyFromHold(company)}
+                                          title="Add to CRM"
+                                          style={{
+                                            padding: '4px 8px',
+                                            fontSize: '11px',
+                                            fontWeight: 500,
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            background: '#10B981',
+                                            color: 'white'
+                                          }}
+                                        >
+                                          Add
+                                        </button>
+                                        <button
+                                          onClick={() => handleDeleteCompanyFromHold(company)}
+                                          title="Remove from hold"
+                                          style={{
+                                            padding: '4px 8px',
+                                            fontSize: '11px',
+                                            fontWeight: 500,
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            background: '#EF4444',
+                                            color: 'white'
+                                          }}
+                                        >
+                                          Delete
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      )}
+
+                      {/* Completeness Section */}
+                      {(incompleteContacts.length > 0 || incompleteCompanies.length > 0) && (
+                      <div style={{ marginBottom: '8px' }}>
+                        <div
+                          onClick={() => setExpandedDataIntegrity(prev => prev.completeness ? {} : { completeness: true })}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '10px 12px',
+                            background: theme === 'light' ? '#F3F4F6' : '#374151',
+                            cursor: 'pointer',
+                            borderRadius: '6px',
+                            marginBottom: expandedDataIntegrity.completeness ? '4px' : '0',
+                          }}
+                        >
+                          <FaChevronDown
+                            style={{
+                              transform: expandedDataIntegrity.completeness ? 'rotate(0deg)' : 'rotate(-90deg)',
+                              transition: 'transform 0.2s',
+                              fontSize: '10px',
+                              color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                            }}
+                          />
+                          <FaCheckCircle style={{ color: '#3B82F6', fontSize: '12px' }} />
+                          <span style={{
+                            fontWeight: 600,
+                            fontSize: '13px',
+                            color: theme === 'light' ? '#111827' : '#F9FAFB'
+                          }}>
+                            Incomplete
+                          </span>
+                          <span style={{
+                            fontSize: '12px',
+                            color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                            marginLeft: 'auto'
+                          }}>
+                            {incompleteContacts.length + incompleteCompanies.length}
+                          </span>
+                        </div>
+                        {expandedDataIntegrity.completeness && (
+                          <div style={{ paddingLeft: '8px' }}>
+                            {/* Tabs for Contacts / Companies */}
+                            <div style={{
+                              display: 'flex',
+                              gap: '4px',
+                              marginBottom: '8px',
+                              background: theme === 'light' ? '#E5E7EB' : '#1F2937',
+                              borderRadius: '6px',
+                              padding: '2px'
+                            }}>
+                              <button
+                                onClick={() => setCompletenessTab('contacts')}
+                                style={{
+                                  flex: 1,
+                                  padding: '6px 8px',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  fontSize: '12px',
+                                  fontWeight: 500,
+                                  cursor: 'pointer',
+                                  background: completenessTab === 'contacts'
+                                    ? (theme === 'light' ? '#FFFFFF' : '#374151')
+                                    : 'transparent',
+                                  color: completenessTab === 'contacts'
+                                    ? (theme === 'light' ? '#111827' : '#F9FAFB')
+                                    : (theme === 'light' ? '#6B7280' : '#9CA3AF'),
+                                  boxShadow: completenessTab === 'contacts' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
+                                }}
+                              >
+                                Contacts ({incompleteContacts.length})
+                              </button>
+                              <button
+                                onClick={() => setCompletenessTab('companies')}
+                                style={{
+                                  flex: 1,
+                                  padding: '6px 8px',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  fontSize: '12px',
+                                  fontWeight: 500,
+                                  cursor: 'pointer',
+                                  background: completenessTab === 'companies'
+                                    ? (theme === 'light' ? '#FFFFFF' : '#374151')
+                                    : 'transparent',
+                                  color: completenessTab === 'companies'
+                                    ? (theme === 'light' ? '#111827' : '#F9FAFB')
+                                    : (theme === 'light' ? '#6B7280' : '#9CA3AF'),
+                                  boxShadow: completenessTab === 'companies' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
+                                }}
+                              >
+                                Companies ({incompleteCompanies.length})
+                              </button>
+                            </div>
+
+                            {/* Contacts Tab Content */}
+                            {completenessTab === 'contacts' && (
+                              <>
+                                {incompleteContacts.length === 0 ? (
+                                  <div style={{
+                                    textAlign: 'center',
+                                    padding: '16px',
+                                    color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                                    fontSize: '12px'
+                                  }}>
+                                    All contacts are complete
+                                  </div>
+                                ) : (
+                                  incompleteContacts.map((contact, idx) => (
+                                    <div key={idx} style={{
+                                      padding: '8px 12px',
+                                      background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                                      borderRadius: '6px',
+                                      marginBottom: '4px',
+                                      border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center',
+                                      cursor: 'pointer'
+                                    }}
+                                    onClick={() => {
+                                      setDataIntegrityContactId(contact.contact_id);
+                                      setDataIntegrityModalOpen(true);
+                                    }}
+                                    >
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{
+                                          fontSize: '13px',
+                                          fontWeight: 500,
+                                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                          whiteSpace: 'nowrap',
+                                          overflow: 'hidden',
+                                          textOverflow: 'ellipsis'
+                                        }}>{contact.first_name} {contact.last_name}</div>
+                                      </div>
+                                      <div style={{
+                                        fontSize: '11px',
+                                        padding: '2px 8px',
+                                        background: contact.completeness_score >= 70
+                                          ? (theme === 'light' ? '#D1FAE5' : '#065F46')
+                                          : contact.completeness_score >= 40
+                                          ? (theme === 'light' ? '#FEF3C7' : '#78350F')
+                                          : (theme === 'light' ? '#FEE2E2' : '#7F1D1D'),
+                                        color: contact.completeness_score >= 70
+                                          ? (theme === 'light' ? '#065F46' : '#6EE7B7')
+                                          : contact.completeness_score >= 40
+                                          ? (theme === 'light' ? '#92400E' : '#FCD34D')
+                                          : (theme === 'light' ? '#991B1B' : '#FCA5A5'),
+                                        borderRadius: '4px',
+                                        fontWeight: 600
+                                      }}>
+                                        {contact.completeness_score}%
+                                      </div>
+                                    </div>
+                                  ))
+                                )}
+                              </>
+                            )}
+
+                            {/* Companies Tab Content */}
+                            {completenessTab === 'companies' && (
+                              <>
+                                {incompleteCompanies.length === 0 ? (
+                                  <div style={{
+                                    textAlign: 'center',
+                                    padding: '16px',
+                                    color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                                    fontSize: '12px'
+                                  }}>
+                                    All companies are complete
+                                  </div>
+                                ) : (
+                                  incompleteCompanies.map((company, idx) => (
+                                    <div key={idx} style={{
+                                      padding: '8px 12px',
+                                      background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                                      borderRadius: '6px',
+                                      marginBottom: '4px',
+                                      border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center',
+                                      cursor: 'pointer'
+                                    }}
+                                    onClick={() => {
+                                      setCompanyDataIntegrityCompanyId(company.company_id);
+                                      setCompanyDataIntegrityModalOpen(true);
+                                    }}
+                                    >
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{
+                                          fontSize: '13px',
+                                          fontWeight: 500,
+                                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                          whiteSpace: 'nowrap',
+                                          overflow: 'hidden',
+                                          textOverflow: 'ellipsis'
+                                        }}>{company.name}</div>
+                                      </div>
+                                      <div style={{
+                                        fontSize: '11px',
+                                        padding: '2px 8px',
+                                        background: company.completeness_score >= 70
+                                          ? (theme === 'light' ? '#D1FAE5' : '#065F46')
+                                          : company.completeness_score >= 40
+                                          ? (theme === 'light' ? '#FEF3C7' : '#78350F')
+                                          : (theme === 'light' ? '#FEE2E2' : '#7F1D1D'),
+                                        color: company.completeness_score >= 70
+                                          ? (theme === 'light' ? '#065F46' : '#6EE7B7')
+                                          : company.completeness_score >= 40
+                                          ? (theme === 'light' ? '#92400E' : '#FCD34D')
+                                          : (theme === 'light' ? '#991B1B' : '#FCA5A5'),
+                                        borderRadius: '4px',
+                                        fontWeight: 600
+                                      }}>
+                                        {company.completeness_score}%
+                                      </div>
+                                    </div>
+                                  ))
+                                )}
+                              </>
                             )}
                           </div>
                         )}
@@ -8284,6 +9087,108 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                         </div>
                       )}
 
+                      {/* Contacts Missing Company Section */}
+                      {contactsMissingCompany.length > 0 && (
+                        <div style={{ marginBottom: '8px' }}>
+                          <div
+                            onClick={() => setExpandedDataIntegrity(prev => prev.contactsMissingCompany ? {} : { contactsMissingCompany: true })}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              padding: '10px 12px',
+                              background: theme === 'light' ? '#F3F4F6' : '#374151',
+                              cursor: 'pointer',
+                              borderRadius: '6px',
+                              marginBottom: expandedDataIntegrity.contactsMissingCompany ? '4px' : '0',
+                            }}
+                          >
+                            <FaChevronDown
+                              style={{
+                                transform: expandedDataIntegrity.contactsMissingCompany ? 'rotate(0deg)' : 'rotate(-90deg)',
+                                transition: 'transform 0.2s',
+                                fontSize: '10px',
+                                color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                              }}
+                            />
+                            <FaBuilding style={{ color: '#8B5CF6', fontSize: '12px' }} />
+                            <span style={{
+                              fontWeight: 600,
+                              fontSize: '13px',
+                              color: theme === 'light' ? '#111827' : '#F9FAFB'
+                            }}>
+                              Contacts Missing Company
+                            </span>
+                            <span style={{
+                              fontSize: '12px',
+                              color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                              marginLeft: 'auto'
+                            }}>
+                              {contactsMissingCompany.length}
+                            </span>
+                          </div>
+                          {expandedDataIntegrity.contactsMissingCompany && (
+                            <div style={{ paddingLeft: '8px' }}>
+                              {contactsMissingCompany.map((contact) => (
+                                <div key={contact.contact_id} style={{
+                                  padding: '8px 12px',
+                                  background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                                  borderRadius: '6px',
+                                  marginBottom: '4px',
+                                  border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center'
+                                }}>
+                                  <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => navigate(`/contact/${contact.contact_id}`)}>
+                                    <div style={{
+                                      fontSize: '13px',
+                                      fontWeight: 500,
+                                      color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis'
+                                    }}>
+                                      {contact.first_name} {contact.last_name}
+                                    </div>
+                                    <div style={{
+                                      fontSize: '11px',
+                                      color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                      marginTop: '2px'
+                                    }}>
+                                      {contact.emails?.[0] || 'No email'}
+                                      {contact.category && ` • ${contact.category}`}
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      // Open data integrity modal for this contact
+                                      setDataIntegrityContactId(contact.contact_id);
+                                      setDataIntegrityModalOpen(true);
+                                    }}
+                                    style={{
+                                      padding: '4px 12px',
+                                      fontSize: '11px',
+                                      fontWeight: 500,
+                                      border: 'none',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      background: '#8B5CF6',
+                                      color: 'white',
+                                      marginLeft: '8px',
+                                      flexShrink: 0
+                                    }}
+                                  >
+                                    Add Company
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                     </>
                   )}
                 </div>
@@ -8582,11 +9487,11 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
 
               {activeActionTab === 'deals' && (
                 <>
-                  {/* Add New Deal Button - Always visible */}
-                  <ActionCard theme={theme} style={{ cursor: 'pointer' }} onClick={() => setDealModalOpen(true)}>
+                  {/* Add New Deal Button - AI Assisted */}
+                  <ActionCard theme={theme} style={{ cursor: 'pointer' }} onClick={() => setCreateDealAIOpen(true)}>
                     <ActionCardContent theme={theme} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px' }}>
-                      <FaDollarSign style={{ color: '#10B981' }} />
-                      <span style={{ fontWeight: 600 }}>Add New Deal</span>
+                      <FaRobot style={{ color: '#8B5CF6' }} />
+                      <span style={{ fontWeight: 600 }}>New Deal from Email</span>
                     </ActionCardContent>
                   </ActionCard>
 
@@ -8605,16 +9510,49 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                       </div>
                       {contactDeals.map(deal => (
                         <ActionCard key={deal.deal_id} theme={theme}>
-                          <ActionCardHeader theme={theme}>
-                            <FaDollarSign style={{ color: '#10B981' }} /> {deal.opportunity || 'Untitled Deal'}
+                          <ActionCardHeader theme={theme} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <FaDollarSign style={{ color: '#10B981' }} /> {deal.opportunity || 'Untitled Deal'}
+                            </span>
+                            <span style={{ display: 'flex', gap: '4px' }}>
+                              {deal.category && (
+                                <span style={{
+                                  fontSize: '10px',
+                                  padding: '2px 8px',
+                                  borderRadius: '10px',
+                                  background: theme === 'light' ? '#F3F4F6' : '#374151',
+                                  color: theme === 'light' ? '#374151' : '#D1D5DB',
+                                  fontWeight: 500
+                                }}>
+                                  {deal.category}
+                                </span>
+                              )}
+                              {deal.source_category && (
+                                <span style={{
+                                  fontSize: '10px',
+                                  padding: '2px 8px',
+                                  borderRadius: '10px',
+                                  background: deal.source_category === 'Introduction' ? '#FEE2E2' : '#DBEAFE',
+                                  color: deal.source_category === 'Introduction' ? '#DC2626' : '#1D4ED8',
+                                  fontWeight: 500
+                                }}>
+                                  {deal.source_category === 'Introduction' ? 'Intro' : 'Cold'}
+                                </span>
+                              )}
+                            </span>
                           </ActionCardHeader>
                           <ActionCardContent theme={theme}>
                             <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '4px' }}>
-                              {deal.stage || 'No stage'} {deal.category ? `• ${deal.category}` : ''}
+                              {deal.stage || 'No stage'} {(deal.proposed_at || deal.created_at) && `• ${new Date(deal.proposed_at || deal.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}`}
                             </div>
                             {deal.total_investment && (
                               <div style={{ fontSize: '13px', fontWeight: 600, color: '#10B981' }}>
-                                ${deal.total_investment.toLocaleString()}
+                                {deal.deal_currency === 'EUR' ? '€' : deal.deal_currency === 'GBP' ? '£' : deal.deal_currency === 'PLN' ? 'zł' : '$'}{deal.total_investment.toLocaleString()}
+                              </div>
+                            )}
+                            {deal.description && (
+                              <div style={{ fontSize: '12px', color: theme === 'light' ? '#4B5563' : '#D1D5DB', marginTop: '6px', lineHeight: '1.4' }}>
+                                {deal.description.length > 360 ? deal.description.substring(0, 360) + '...' : deal.description}
                               </div>
                             )}
                             {deal.contacts && deal.contacts.length > 0 && (
@@ -8638,7 +9576,7 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                                           const contactIds = emailContacts.filter(p => p.contact?.contact_id).map(p => p.contact.contact_id);
                                           const { data: refreshed } = await supabase
                                             .from('deals_contacts')
-                                            .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, description, total_investment, created_at)')
+                                            .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at)')
                                             .in('contact_id', contactIds);
                                           if (refreshed) {
                                             const dealsMap = new Map();
@@ -8691,16 +9629,49 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                       </div>
                       {companyDeals.map(deal => (
                         <ActionCard key={deal.deal_id} theme={theme}>
-                          <ActionCardHeader theme={theme}>
-                            <FaDollarSign style={{ color: '#8B5CF6' }} /> {deal.opportunity || 'Untitled Deal'}
+                          <ActionCardHeader theme={theme} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <FaDollarSign style={{ color: '#8B5CF6' }} /> {deal.opportunity || 'Untitled Deal'}
+                            </span>
+                            <span style={{ display: 'flex', gap: '4px' }}>
+                              {deal.category && (
+                                <span style={{
+                                  fontSize: '10px',
+                                  padding: '2px 8px',
+                                  borderRadius: '10px',
+                                  background: theme === 'light' ? '#F3F4F6' : '#374151',
+                                  color: theme === 'light' ? '#374151' : '#D1D5DB',
+                                  fontWeight: 500
+                                }}>
+                                  {deal.category}
+                                </span>
+                              )}
+                              {deal.source_category && (
+                                <span style={{
+                                  fontSize: '10px',
+                                  padding: '2px 8px',
+                                  borderRadius: '10px',
+                                  background: deal.source_category === 'Introduction' ? '#FEE2E2' : '#DBEAFE',
+                                  color: deal.source_category === 'Introduction' ? '#DC2626' : '#1D4ED8',
+                                  fontWeight: 500
+                                }}>
+                                  {deal.source_category === 'Introduction' ? 'Intro' : 'Cold'}
+                                </span>
+                              )}
+                            </span>
                           </ActionCardHeader>
                           <ActionCardContent theme={theme}>
                             <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '4px' }}>
-                              {deal.stage || 'No stage'} {deal.category ? `• ${deal.category}` : ''}
+                              {deal.stage || 'No stage'} {(deal.proposed_at || deal.created_at) && `• ${new Date(deal.proposed_at || deal.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}`}
                             </div>
                             {deal.total_investment && (
                               <div style={{ fontSize: '13px', fontWeight: 600, color: '#8B5CF6' }}>
-                                ${deal.total_investment.toLocaleString()}
+                                {deal.deal_currency === 'EUR' ? '€' : deal.deal_currency === 'GBP' ? '£' : deal.deal_currency === 'PLN' ? 'zł' : '$'}{deal.total_investment.toLocaleString()}
+                              </div>
+                            )}
+                            {deal.description && (
+                              <div style={{ fontSize: '12px', color: theme === 'light' ? '#4B5563' : '#D1D5DB', marginTop: '6px', lineHeight: '1.4' }}>
+                                {deal.description.length > 360 ? deal.description.substring(0, 360) + '...' : deal.description}
                               </div>
                             )}
                             {deal.companyName && (
@@ -9623,7 +10594,7 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                                 const contactIds = emailContacts.filter(p => p.contact?.contact_id).map(p => p.contact.contact_id);
                                 const { data: refreshed } = await supabase
                                   .from('deals_contacts')
-                                  .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, description, total_investment, created_at)')
+                                  .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at)')
                                   .in('contact_id', contactIds);
                                 if (refreshed) {
                                   const dealsMap = new Map();
@@ -9725,7 +10696,7 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                   const contactIds = emailContacts.filter(p => p.contact?.contact_id).map(p => p.contact.contact_id);
                   const { data: refreshed } = await supabase
                     .from('deals_contacts')
-                    .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, description, total_investment, created_at)')
+                    .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at)')
                     .in('contact_id', contactIds);
 
                   if (refreshed) {
@@ -10689,6 +11660,46 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
         domainData={createCompanyFromDomainData}
         theme={theme}
         onSuccess={handleCreateCompanyFromDomainSuccess}
+      />
+
+      {/* Create Deal AI Modal */}
+      <CreateDealAI
+        isOpen={createDealAIOpen}
+        onClose={() => setCreateDealAIOpen(false)}
+        email={selectedThread?.[0] || null}
+        theme={theme}
+        onSuccess={(newDeal) => {
+          // Refresh deals list
+          const fetchDeals = async () => {
+            const contactIds = emailContacts?.filter(p => p.contact?.contact_id).map(p => p.contact.contact_id) || [];
+            if (contactIds.length === 0) return;
+
+            const { data: dealsContactsData } = await supabase
+              .from('deals_contacts')
+              .select('deal_id, contact_id, relationship, deals(deal_id, opportunity, stage, category, source_category, description, total_investment, deal_currency, proposed_at, created_at)')
+              .in('contact_id', contactIds);
+
+            const dealsMap = new Map();
+            if (dealsContactsData) {
+              dealsContactsData.forEach(dc => {
+                if (!dc.deals) return;
+                const dealId = dc.deals.deal_id;
+                if (!dealsMap.has(dealId)) {
+                  dealsMap.set(dealId, { ...dc.deals, contacts: [] });
+                }
+                const contact = emailContacts.find(p => p.contact?.contact_id === dc.contact_id)?.contact;
+                if (contact) {
+                  dealsMap.get(dealId).contacts.push({
+                    ...contact,
+                    relationship: dc.relationship
+                  });
+                }
+              });
+              setContactDeals(Array.from(dealsMap.values()));
+            }
+          };
+          fetchDeals();
+        }}
       />
     </PageContainer>
   );

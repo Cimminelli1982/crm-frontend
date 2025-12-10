@@ -462,13 +462,8 @@ const CompanyEnrichmentModal = ({
           await fetchMatchingTags(apolloData.tags);
         }
 
-        if (apolloData.confidence >= 80) {
-          toast.success(`Company data enriched! (${apolloData.confidence}% confidence)`);
-        } else if (apolloData.confidence >= 50) {
-          toast(`Enriched with moderate confidence (${apolloData.confidence}%)`, { icon: '⚠️' });
-        } else {
-          toast.success('Company data enriched!');
-        }
+        // Always show success - user will review data themselves
+        toast.success('Company data enriched!');
       } else {
         toast(data.message || 'Limited enrichment data available', { icon: '⚠️' });
       }
@@ -800,17 +795,8 @@ const CompanyEnrichmentModal = ({
 
         setEnrichmentData(enrichedData);
 
-        if (apolloData.confidence) {
-          if (apolloData.confidence >= 80) {
-            toast.success(`Company data enriched successfully! (${apolloData.confidence}% confidence)`);
-          } else if (apolloData.confidence >= 50) {
-            toast(`Company data enriched with moderate confidence (${apolloData.confidence}%)`, { icon: '⚠️' });
-          } else {
-            toast(`Limited enrichment data available (${apolloData.confidence}% confidence)`, { icon: '⚠️' });
-          }
-        } else {
-          toast.success('Company data enriched successfully!');
-        }
+        // Always show success - user will review data themselves
+        toast.success('Company data enriched!');
       } else {
         toast(data.message || 'Limited enrichment data available', { icon: '⚠️' });
       }

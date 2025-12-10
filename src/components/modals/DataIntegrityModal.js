@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import ReactModal from 'react-modal';
 import { supabase } from '../../lib/supabaseClient';
+import { findContactDuplicates } from '../../utils/duplicateDetection';
 import toast from 'react-hot-toast';
 import {
   FaTimes, FaLinkedin, FaPhone, FaBuilding, FaMapMarkerAlt, FaTag,
@@ -9,9 +10,11 @@ import {
   FaCrown, FaUsers, FaSave, FaPlus, FaEdit, FaSearch, FaTrash,
   FaCodeBranch
 } from 'react-icons/fa';
-import { FiRefreshCw, FiX } from 'react-icons/fi';
+import { FiRefreshCw, FiX, FiCamera } from 'react-icons/fi';
 import ManageContactEmailsModal from './ManageContactEmailsModal';
 import ManageContactMobilesModal from './ManageContactMobilesModal';
+import ProfileImageModal from './ProfileImageModal';
+import { useProfileImageModal } from '../../hooks/useProfileImageModal';
 
 // Styled Components
 const Overlay = styled.div`
@@ -54,6 +57,17 @@ const HeaderInfo = styled.div`
   gap: 16px;
 `;
 
+const AvatarContainer = styled.div`
+  position: relative;
+  width: 48px;
+  height: 48px;
+  cursor: pointer;
+
+  &:hover .camera-overlay {
+    opacity: 1;
+  }
+`;
+
 const Avatar = styled.div`
   width: 48px;
   height: 48px;
@@ -66,6 +80,22 @@ const Avatar = styled.div`
   font-weight: 600;
   color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
   overflow: hidden;
+`;
+
+const CameraOverlay = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+  color: white;
 `;
 
 const HeaderText = styled.div``;
@@ -796,6 +826,16 @@ const DataIntegrityModal = ({
   const [subCompanySearch, setSubCompanySearch] = useState('');
   const [subCompanySuggestions, setSubCompanySuggestions] = useState([]);
 
+  // Profile image modal hook - initialized with a placeholder callback
+  // We'll call loadContactData manually after image update
+  const profileImageModal = useProfileImageModal((contactIdUpdated, newImageUrl) => {
+    // Update local contact state with new image
+    if (contact && contactIdUpdated === contactId) {
+      setContact(prev => ({ ...prev, profile_image_url: newImageUrl }));
+      if (onRefresh) onRefresh();
+    }
+  });
+
   // Load contact data
   const loadContactData = useCallback(async () => {
     if (!contactId) return;
@@ -891,159 +931,19 @@ const DataIntegrityModal = ({
     }
   }, [contactId]);
 
-  // Real-time duplicate detection
+  // Real-time duplicate detection using shared helper
   const findDuplicates = useCallback(async () => {
     if (!contactId || !contact) return;
 
     try {
-      const foundDuplicates = [];
-
-      // 1. Check for same email duplicates
-      if (emails.length > 0) {
-        const emailAddresses = emails.map(e => e.email?.toLowerCase()).filter(Boolean);
-        if (emailAddresses.length > 0) {
-          const { data: emailMatches } = await supabase
-            .from('contact_emails')
-            .select('contact_id, email')
-            .in('email', emailAddresses)
-            .neq('contact_id', contactId);
-
-          if (emailMatches && emailMatches.length > 0) {
-            const uniqueContactIds = [...new Set(emailMatches.map(m => m.contact_id))];
-            const { data: contactsData } = await supabase
-              .from('contacts')
-              .select('contact_id, first_name, last_name')
-              .in('contact_id', uniqueContactIds);
-
-            (contactsData || []).forEach(c => {
-              const matchedEmail = emailMatches.find(m => m.contact_id === c.contact_id)?.email;
-              foundDuplicates.push({
-                id: `email-${c.contact_id}`,
-                duplicate_id: c.contact_id,
-                duplicate: c,
-                match_type: 'email',
-                match_details: { value: matchedEmail }
-              });
-            });
-          }
-        }
-      }
-
-      // 2. Check for same mobile duplicates
-      if (mobiles.length > 0) {
-        const mobileNumbers = mobiles.map(m => m.mobile?.replace(/\s/g, '')).filter(Boolean);
-        if (mobileNumbers.length > 0) {
-          const { data: mobileMatches } = await supabase
-            .from('contact_mobiles')
-            .select('contact_id, mobile')
-            .neq('contact_id', contactId);
-
-          const matchingMobiles = (mobileMatches || []).filter(m =>
-            mobileNumbers.some(num => m.mobile?.replace(/\s/g, '') === num)
-          );
-
-          if (matchingMobiles.length > 0) {
-            const uniqueContactIds = [...new Set(matchingMobiles.map(m => m.contact_id))];
-            const { data: contactsData } = await supabase
-              .from('contacts')
-              .select('contact_id, first_name, last_name')
-              .in('contact_id', uniqueContactIds);
-
-            (contactsData || []).forEach(c => {
-              if (!foundDuplicates.some(d => d.duplicate_id === c.contact_id)) {
-                const matchedMobile = matchingMobiles.find(m => m.contact_id === c.contact_id)?.mobile;
-                foundDuplicates.push({
-                  id: `mobile-${c.contact_id}`,
-                  duplicate_id: c.contact_id,
-                  duplicate: c,
-                  match_type: 'mobile',
-                  match_details: { value: matchedMobile }
-                });
-              }
-            });
-          }
-        }
-      }
-
-      // 3. Check for same LinkedIn duplicates
-      if (linkedin?.trim()) {
-        const linkedinUrl = linkedin.toLowerCase().trim();
-        const { data: linkedinMatches } = await supabase
-          .from('contacts')
-          .select('contact_id, first_name, last_name, linkedin')
-          .neq('contact_id', contactId)
-          .not('linkedin', 'is', null);
-
-        const matchingLinkedin = (linkedinMatches || []).filter(c =>
-          c.linkedin?.toLowerCase().trim() === linkedinUrl
-        );
-
-        matchingLinkedin.forEach(c => {
-          if (!foundDuplicates.some(d => d.duplicate_id === c.contact_id)) {
-            foundDuplicates.push({
-              id: `linkedin-${c.contact_id}`,
-              duplicate_id: c.contact_id,
-              duplicate: c,
-              match_type: 'linkedin',
-              match_details: { value: c.linkedin }
-            });
-          }
-        });
-      }
-
-      // 4. Check for similar names (fuzzy matching)
-      if (firstName?.trim()) {
-        const firstNameLower = firstName.toLowerCase().trim();
-        const lastNameLower = (lastName || '').toLowerCase().trim();
-
-        const { data: nameMatches } = await supabase
-          .from('contacts')
-          .select('contact_id, first_name, last_name')
-          .neq('contact_id', contactId)
-          .ilike('first_name', firstNameLower);
-
-        const similarNames = (nameMatches || []).filter(c => {
-          const cFirstName = (c.first_name || '').toLowerCase().trim();
-          const cLastName = (c.last_name || '').toLowerCase().trim();
-
-          // Exact first name match required
-          if (cFirstName !== firstNameLower) return false;
-
-          // Check last name similarity
-          if (lastNameLower && cLastName) {
-            // Exact match
-            if (cLastName === lastNameLower) return true;
-            // One starts with the other (min 3 chars)
-            if (lastNameLower.length >= 3 && cLastName.startsWith(lastNameLower)) return true;
-            if (cLastName.length >= 3 && lastNameLower.startsWith(cLastName)) return true;
-            // Levenshtein-like: allow 1-2 char difference for longer names
-            if (lastNameLower.length >= 4 && cLastName.length >= 4) {
-              const maxLen = Math.max(lastNameLower.length, cLastName.length);
-              const minLen = Math.min(lastNameLower.length, cLastName.length);
-              if (maxLen - minLen <= 2 && (cLastName.includes(lastNameLower.slice(0, 3)) || lastNameLower.includes(cLastName.slice(0, 3)))) {
-                return true;
-              }
-            }
-          } else if (!lastNameLower && !cLastName) {
-            // Both have no last name but same first name
-            return true;
-          }
-
-          return false;
-        });
-
-        similarNames.forEach(c => {
-          if (!foundDuplicates.some(d => d.duplicate_id === c.contact_id)) {
-            foundDuplicates.push({
-              id: `name-${c.contact_id}`,
-              duplicate_id: c.contact_id,
-              duplicate: c,
-              match_type: 'name',
-              match_details: { similarity: 0.9 }
-            });
-          }
-        });
-      }
+      const foundDuplicates = await findContactDuplicates(
+        contactId,
+        emails,
+        mobiles,
+        linkedin,
+        firstName,
+        lastName
+      );
 
       // Merge with existing duplicates from inbox (avoid duplicates)
       setDuplicates(prev => {
@@ -1630,13 +1530,21 @@ const DataIntegrityModal = ({
       <ModalContainer theme={theme} onClick={e => e.stopPropagation()}>
         <Header theme={theme}>
           <HeaderInfo>
-            <Avatar theme={theme}>
-              {contact?.profile_image_url ? (
-                <img src={contact.profile_image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              ) : (
-                `${firstName?.[0] || ''}${lastName?.[0] || ''}`
-              )}
-            </Avatar>
+            <AvatarContainer
+              onClick={() => contact && profileImageModal.openModal(contact)}
+              title="Click to change profile image"
+            >
+              <Avatar theme={theme}>
+                {contact?.profile_image_url ? (
+                  <img src={contact.profile_image_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  `${firstName?.[0] || ''}${lastName?.[0] || ''}`
+                )}
+              </Avatar>
+              <CameraOverlay className="camera-overlay">
+                <FiCamera size={18} />
+              </CameraOverlay>
+            </AvatarContainer>
             <HeaderText>
               <ContactName theme={theme}>
                 {firstName} {lastName}
@@ -2234,6 +2142,30 @@ const DataIntegrityModal = ({
           <SubModalDoneBtn onClick={handleCloseCompaniesModal}>Done</SubModalDoneBtn>
         </SubModalFooter>
       </ReactModal>
+
+      {/* Profile Image Modal */}
+      <ProfileImageModal
+        isOpen={profileImageModal.isOpen}
+        onClose={profileImageModal.closeModal}
+        contact={profileImageModal.contact}
+        uploading={profileImageModal.uploading}
+        fetchingFromLinkedIn={profileImageModal.fetchingFromLinkedIn}
+        fetchingFromWhatsApp={profileImageModal.fetchingFromWhatsApp}
+        imagePreview={profileImageModal.imagePreview}
+        selectedFile={profileImageModal.selectedFile}
+        onFileSelect={profileImageModal.handleFileSelect}
+        onSave={profileImageModal.saveProfileImage}
+        onFetchFromLinkedIn={profileImageModal.fetchFromLinkedIn}
+        onFetchFromWhatsApp={profileImageModal.fetchFromWhatsApp}
+        onRemoveImage={() => {
+          // Reset to original contact image
+          if (profileImageModal.contact) {
+            profileImageModal.closeModal();
+            profileImageModal.openModal(profileImageModal.contact);
+          }
+        }}
+        theme={theme}
+      />
     </>
   );
 };

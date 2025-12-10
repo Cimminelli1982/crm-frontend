@@ -398,6 +398,7 @@ const CreateContactModalAI = ({
   const [dismissedDuplicates, setDismissedDuplicates] = useState([]);
   const [manualSearchQuery, setManualSearchQuery] = useState('');
   const [manualSearchLoading, setManualSearchLoading] = useState(false);
+  const [duplicatesCollapsed, setDuplicatesCollapsed] = useState(false);
 
   // Fetch AI suggestions - now returns all fields
   // manualNames: optional { firstName, lastName } from form for re-analyze with manual input
@@ -1162,6 +1163,7 @@ const CreateContactModalAI = ({
       setPotentialDuplicates([]);
       setDuplicatesHidden(false);
       setDismissedDuplicates([]);
+      setDuplicatesCollapsed(false);
 
       // Set email
       setEmail(emailData.email || '');
@@ -1685,136 +1687,149 @@ const CreateContactModalAI = ({
           </div>
         </div>
 
-        {/* Duplicate Warning Section */}
-        {!duplicatesHidden && (duplicatesLoading || visibleDuplicates.length > 0 || duplicatesChecked) && (
-          <DuplicateWarningContainer theme={theme}>
-            <DuplicateWarningHeader theme={theme}>
-              <FaExclamationTriangle />
-              {duplicatesLoading ? (
-                'Checking for duplicates...'
-              ) : visibleDuplicates.length > 0 ? (
-                `Potential Duplicates Found (${visibleDuplicates.length})`
-              ) : (
-                'No duplicates found'
-              )}
+        {/* Duplicate Warning Section - Only show in AI Suggestions tab */}
+        {activeTab === 0 && !duplicatesHidden && (duplicatesLoading || visibleDuplicates.length > 0 || duplicatesChecked) && (
+          <DuplicateWarningContainer theme={theme} style={{ padding: duplicatesCollapsed ? '12px 20px' : '16px 20px' }}>
+            <DuplicateWarningHeader
+              theme={theme}
+              style={{ marginBottom: duplicatesCollapsed ? 0 : 12, cursor: 'pointer' }}
+              onClick={() => setDuplicatesCollapsed(!duplicatesCollapsed)}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
+                <FaExclamationTriangle />
+                {duplicatesLoading ? (
+                  'Checking for duplicates...'
+                ) : visibleDuplicates.length > 0 ? (
+                  `Potential Duplicates (${visibleDuplicates.length})`
+                ) : (
+                  'No duplicates found'
+                )}
+              </div>
+              <span style={{ fontSize: '12px', opacity: 0.7 }}>
+                {duplicatesCollapsed ? '▼ Expand' : '▲ Collapse'}
+              </span>
             </DuplicateWarningHeader>
 
-            {/* Manual Search Input */}
-            <ManualSearchContainer theme={theme}>
-              <SearchInput
-                theme={theme}
-                type="text"
-                value={manualSearchQuery}
-                onChange={(e) => setManualSearchQuery(e.target.value)}
-                placeholder="Search by name..."
-                onKeyPress={(e) => e.key === 'Enter' && handleManualSearch()}
-              />
-              <SearchButton
-                onClick={handleManualSearch}
-                disabled={manualSearchLoading || !manualSearchQuery.trim()}
-              >
-                {manualSearchLoading ? '...' : <><FaSearch size={12} /> Search</>}
-              </SearchButton>
-            </ManualSearchContainer>
-
-            {duplicatesLoading ? (
-              <div style={{
-                textAlign: 'center',
-                padding: '12px',
-                color: isDark ? '#FCD34D' : '#92400E',
-                fontSize: '13px'
-              }}>
-                Searching your contacts...
-              </div>
-            ) : visibleDuplicates.length === 0 ? (
-              <div style={{
-                textAlign: 'center',
-                padding: '12px',
-                color: isDark ? '#FCD34D' : '#92400E',
-                fontSize: '13px'
-              }}>
-                Use search above to find contacts manually
-              </div>
-            ) : (
+            {!duplicatesCollapsed && (
               <>
-                {/* Sort by confidence score - highest first */}
-                {visibleDuplicates
-                  .sort((a, b) => (b.confidenceScore || 0) - (a.confidenceScore || 0))
-                  .slice(0, 3) // Show max 3 duplicates
-                  .map((duplicate) => (
-                    <DuplicateCard key={duplicate.contact_id} theme={theme}>
-                      <DuplicateInfo>
-                        <DuplicateAvatar theme={theme}>
-                          {duplicate.profile_image_url ? (
-                            <img src={duplicate.profile_image_url} alt="Profile" />
-                          ) : (
-                            <FaUser size={16} />
-                          )}
-                        </DuplicateAvatar>
-                        <DuplicateDetails>
-                          <DuplicateName theme={theme}>
-                            {duplicate.first_name} {duplicate.last_name}
-                            <ConfidenceIndicator level={duplicate.confidenceLabel || 'low'}>
-                              {duplicate.confidenceLabel === 'exact' ? 'EXACT' :
-                               duplicate.confidenceLabel === 'high' ? 'HIGH' :
-                               duplicate.confidenceLabel === 'medium' ? 'MEDIUM' : 'LOW'}
-                              {duplicate.confidenceScore ? ` ${duplicate.confidenceScore}%` : ''}
-                            </ConfidenceIndicator>
-                          </DuplicateName>
-                          <DuplicateMatchReason>
-                            {duplicate.matchReasons?.join(' • ')}
-                          </DuplicateMatchReason>
-                          <DuplicateMeta theme={theme}>
-                            {formatDuplicateEmail(duplicate.contact_emails) && (
-                              <span>
-                                <FaEnvelope size={10} style={{ marginRight: '4px' }} />
-                                {formatDuplicateEmail(duplicate.contact_emails)}
-                              </span>
-                            )}
-                            {duplicate.category && (
-                              <span style={{
-                                padding: '1px 6px',
-                                background: isDark ? '#374151' : '#E5E7EB',
-                                borderRadius: '4px',
-                                fontSize: '10px'
-                              }}>
-                                {duplicate.category}
-                              </span>
-                            )}
-                          </DuplicateMeta>
-                        </DuplicateDetails>
-                      </DuplicateInfo>
-                      <DuplicateActions>
-                        <MergeButton onClick={() => handleMergeWithDuplicate(duplicate)}>
-                          <FiGitMerge size={12} /> Merge
-                        </MergeButton>
-                        <DismissButton
-                          theme={theme}
-                          onClick={() => handleDismissDuplicate(duplicate.contact_id)}
-                        >
-                          Not this
-                        </DismissButton>
-                      </DuplicateActions>
-                    </DuplicateCard>
-                  ))}
+                {/* Manual Search Input */}
+                <ManualSearchContainer theme={theme}>
+                  <SearchInput
+                    theme={theme}
+                    type="text"
+                    value={manualSearchQuery}
+                    onChange={(e) => setManualSearchQuery(e.target.value)}
+                    placeholder="Search by name..."
+                    onKeyPress={(e) => e.key === 'Enter' && handleManualSearch()}
+                  />
+                  <SearchButton
+                    onClick={handleManualSearch}
+                    disabled={manualSearchLoading || !manualSearchQuery.trim()}
+                  >
+                    {manualSearchLoading ? '...' : <><FaSearch size={12} /> Search</>}
+                  </SearchButton>
+                </ManualSearchContainer>
 
-                {visibleDuplicates.length > 3 && (
+                {duplicatesLoading ? (
                   <div style={{
                     textAlign: 'center',
-                    fontSize: '12px',
+                    padding: '12px',
                     color: isDark ? '#FCD34D' : '#92400E',
-                    marginTop: '8px'
+                    fontSize: '13px'
                   }}>
-                    + {visibleDuplicates.length - 3} more potential duplicates
+                    Searching your contacts...
                   </div>
-                )}
+                ) : visibleDuplicates.length === 0 ? (
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '12px',
+                    color: isDark ? '#FCD34D' : '#92400E',
+                    fontSize: '13px'
+                  }}>
+                    Use search above to find contacts manually
+                  </div>
+                ) : (
+                  <>
+                    {/* Sort by confidence score - highest first */}
+                    {visibleDuplicates
+                      .sort((a, b) => (b.confidenceScore || 0) - (a.confidenceScore || 0))
+                      .slice(0, 3) // Show max 3 duplicates
+                      .map((duplicate) => (
+                        <DuplicateCard key={duplicate.contact_id} theme={theme}>
+                          <DuplicateInfo>
+                            <DuplicateAvatar theme={theme}>
+                              {duplicate.profile_image_url ? (
+                                <img src={duplicate.profile_image_url} alt="Profile" />
+                              ) : (
+                                <FaUser size={16} />
+                              )}
+                            </DuplicateAvatar>
+                            <DuplicateDetails>
+                              <DuplicateName theme={theme}>
+                                {duplicate.first_name} {duplicate.last_name}
+                                <ConfidenceIndicator level={duplicate.confidenceLabel || 'low'}>
+                                  {duplicate.confidenceLabel === 'exact' ? 'EXACT' :
+                                   duplicate.confidenceLabel === 'high' ? 'HIGH' :
+                                   duplicate.confidenceLabel === 'medium' ? 'MEDIUM' : 'LOW'}
+                                  {duplicate.confidenceScore ? ` ${duplicate.confidenceScore}%` : ''}
+                                </ConfidenceIndicator>
+                              </DuplicateName>
+                              <DuplicateMatchReason>
+                                {duplicate.matchReasons?.join(' • ')}
+                              </DuplicateMatchReason>
+                              <DuplicateMeta theme={theme}>
+                                {formatDuplicateEmail(duplicate.contact_emails) && (
+                                  <span>
+                                    <FaEnvelope size={10} style={{ marginRight: '4px' }} />
+                                    {formatDuplicateEmail(duplicate.contact_emails)}
+                                  </span>
+                                )}
+                                {duplicate.category && (
+                                  <span style={{
+                                    padding: '1px 6px',
+                                    background: isDark ? '#374151' : '#E5E7EB',
+                                    borderRadius: '4px',
+                                    fontSize: '10px'
+                                  }}>
+                                    {duplicate.category}
+                                  </span>
+                                )}
+                              </DuplicateMeta>
+                            </DuplicateDetails>
+                          </DuplicateInfo>
+                          <DuplicateActions>
+                            <MergeButton onClick={() => handleMergeWithDuplicate(duplicate)}>
+                              <FiGitMerge size={12} /> Merge
+                            </MergeButton>
+                            <DismissButton
+                              theme={theme}
+                              onClick={() => handleDismissDuplicate(duplicate.contact_id)}
+                            >
+                              Not this
+                            </DismissButton>
+                          </DuplicateActions>
+                        </DuplicateCard>
+                      ))}
 
-                <ProceedAnywayButton
-                  theme={theme}
-                  onClick={() => setDuplicatesHidden(true)}
-                >
-                  This is a new person - Create anyway →
-                </ProceedAnywayButton>
+                    {visibleDuplicates.length > 3 && (
+                      <div style={{
+                        textAlign: 'center',
+                        fontSize: '12px',
+                        color: isDark ? '#FCD34D' : '#92400E',
+                        marginTop: '8px'
+                      }}>
+                        + {visibleDuplicates.length - 3} more potential duplicates
+                      </div>
+                    )}
+
+                    <ProceedAnywayButton
+                      theme={theme}
+                      onClick={() => setDuplicatesHidden(true)}
+                    >
+                      This is a new person - Create anyway →
+                    </ProceedAnywayButton>
+                  </>
+                )}
               </>
             )}
           </DuplicateWarningContainer>

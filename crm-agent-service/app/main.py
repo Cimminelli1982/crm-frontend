@@ -1075,3 +1075,183 @@ async def audit_contact(contact_id: str):
     except Exception as e:
         logger.error("audit_contact_error", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== DEAL EXTRACTION ENDPOINT ====================
+
+@app.post("/extract-deal-from-email")
+async def extract_deal_from_email(request: dict):
+    """
+    Extract deal information from an email for CRM deal creation.
+
+    Uses Claude + Supabase queries to:
+    1. Find existing contacts by email
+    2. Find existing companies by domain/name
+    3. Extract deal info from email content
+    4. Suggest associations
+    """
+    logger.info("extract_deal_from_email_request", from_email=request.get("from_email"))
+
+    try:
+        import anthropic
+        import json as json_lib
+
+        from_name = request.get("from_name", "")
+        from_email = request.get("from_email", "")
+        subject = request.get("subject", "")
+        body_text = request.get("body_text", "")[:8000]
+        email_date = request.get("date", "")
+
+        # Extract domain from email
+        email_domain = from_email.split("@")[1] if "@" in from_email else None
+
+        # --- SUPABASE QUERIES: Find existing data ---
+
+        # 1. Find contact by email
+        existing_contact = None
+        if from_email:
+            result = db.client.table("contact_emails").select(
+                "contact_id, email, contacts(contact_id, first_name, last_name, job_role, linkedin, category)"
+            ).ilike("email", from_email).limit(1).execute()
+
+            if result.data and result.data[0].get("contacts"):
+                existing_contact = result.data[0]["contacts"]
+                existing_contact["email"] = from_email
+                logger.info(f"Found existing contact: {existing_contact.get('first_name')} {existing_contact.get('last_name')}")
+
+        # 2. Find company by domain
+        existing_company = None
+        if email_domain and email_domain not in ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com']:
+            domain_result = db.client.table("company_domains").select(
+                "company_id, domain, companies(company_id, name, category, website, description)"
+            ).ilike("domain", email_domain).limit(1).execute()
+
+            if domain_result.data and domain_result.data[0].get("companies"):
+                existing_company = domain_result.data[0]["companies"]
+                existing_company["domain"] = email_domain
+                logger.info(f"Found existing company by domain: {existing_company.get('name')}")
+
+        # 3. Get contact's companies if contact exists
+        contact_companies = []
+        if existing_contact:
+            cc_result = db.client.table("contact_companies").select(
+                "company_id, relationship, is_primary, companies(company_id, name, category)"
+            ).eq("contact_id", existing_contact["contact_id"]).execute()
+
+            if cc_result.data:
+                contact_companies = [
+                    {**cc.get("companies", {}), "relationship": cc.get("relationship")}
+                    for cc in cc_result.data if cc.get("companies")
+                ]
+
+        # --- BUILD CONTEXT FOR CLAUDE ---
+        db_context = f"""
+DATABASE CONTEXT (from Supabase queries):
+
+EXISTING CONTACT (by email {from_email}):
+{json_lib.dumps(existing_contact, indent=2, default=str) if existing_contact else "None found - will need to create new contact"}
+
+EXISTING COMPANY (by domain {email_domain}):
+{json_lib.dumps(existing_company, indent=2, default=str) if existing_company else "None found - will need to create new company"}
+
+CONTACT'S LINKED COMPANIES:
+{json_lib.dumps(contact_companies, indent=2, default=str) if contact_companies else "None"}
+"""
+
+        # --- CLAUDE EXTRACTION ---
+        prompt = f"""You are extracting deal information from an email for a CRM system.
+
+EMAIL:
+From: {from_name} <{from_email}>
+Subject: {subject}
+Date: {email_date}
+
+Body:
+{body_text}
+
+{db_context}
+
+TASK: Extract information to create a DEAL record with proper associations.
+
+Return JSON:
+{{
+  "contact": {{
+    "use_existing": true/false,
+    "existing_contact_id": "uuid if use_existing=true, else null",
+    "first_name": "extracted from email",
+    "last_name": "extracted from email",
+    "email": "{from_email}",
+    "job_role": "extracted from signature",
+    "linkedin": "extracted from signature or null",
+    "category": "Founder|Professional Investor|Manager|Advisor|Other"
+  }},
+  "company": {{
+    "use_existing": true/false,
+    "existing_company_id": "uuid if use_existing=true, else null",
+    "name": "company name",
+    "website": "https://... or null",
+    "domain": "domain.com or null",
+    "category": "Startup|Professional Investor|Corporation|SME|Advisory|Other",
+    "description": "brief description from email"
+  }},
+  "deal": {{
+    "opportunity": "Deal name - usually company name",
+    "total_investment": number or null,
+    "deal_currency": "EUR|USD|GBP|PLN",
+    "category": "Startup|Fund|Real Estate|Private Debt|Private Equity|Other",
+    "stage": "Lead",
+    "source_category": "Cold Contacting|Introduction",
+    "description": "Brief summary of what they're pitching"
+  }},
+  "associations": {{
+    "contact_is_proposer": true,
+    "link_contact_to_company": true,
+    "contact_company_relationship": "founder|employee|advisor|investor|other"
+  }}
+}}
+
+RULES:
+- If existing contact found, set use_existing=true and existing_contact_id
+- If existing company found, set use_existing=true and existing_company_id
+- Extract investment amount: "300k" = 300000, "€2M" = 2000000
+- Default currency EUR unless clearly stated otherwise
+- stage is always "Lead" for new inbound
+- source_category: "Cold Contacting" if unsolicited, "Introduction" if referred by someone"""
+
+        client = anthropic.Anthropic()
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=2000,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        response_text = response.content[0].text.strip()
+
+        # Handle markdown code blocks
+        if "```" in response_text:
+            lines = response_text.split("\n")
+            json_lines = []
+            in_json = False
+            for line in lines:
+                if line.startswith("```") and not in_json:
+                    in_json = True
+                    continue
+                elif line.startswith("```") and in_json:
+                    break
+                elif in_json:
+                    json_lines.append(line)
+            response_text = "\n".join(json_lines)
+
+        extracted = json_lib.loads(response_text)
+
+        return {
+            "success": True,
+            "extracted": extracted,
+            "existing_contact": existing_contact,
+            "existing_company": existing_company,
+            "contact_companies": contact_companies
+        }
+
+    except Exception as e:
+        logger.error("extract_deal_from_email_error", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

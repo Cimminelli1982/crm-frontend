@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import styled from 'styled-components';
 import { supabase } from '../../lib/supabaseClient';
+import { findCompanyDuplicates } from '../../utils/duplicateDetection';
 import toast from 'react-hot-toast';
 import {
   FaTimes, FaLinkedin, FaBuilding, FaMapMarkerAlt, FaTag,
@@ -534,6 +535,12 @@ const CompanyDataIntegrityModal = ({
 
   // Saving state
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Logo upload
+  const logoInputRef = useRef(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   // Helper to extract domain from URL
   const extractDomainFromUrl = (url) => {
@@ -672,7 +679,7 @@ const CompanyDataIntegrityModal = ({
       await loadSuggestedDomains(companyData.website, loadedDomains, companyId);
 
       // Find duplicates
-      await findDuplicates(companyData, companyId);
+      await findDuplicatesForCompany(companyData, companyId, loadedDomains);
 
     } catch (error) {
       console.error('Error loading company data:', error);
@@ -682,135 +689,11 @@ const CompanyDataIntegrityModal = ({
     }
   }, [companyId]);
 
-  // Find duplicates
-  const findDuplicates = async (companyData, currentCompanyId) => {
+  // Find duplicates using shared helper
+  const findDuplicatesForCompany = async (companyData, currentCompanyId, companyDomains) => {
     setSearchingDuplicates(true);
-    const foundDuplicates = [];
-
     try {
-      // 1. Same LinkedIn URL
-      if (companyData?.linkedin?.trim()) {
-        const { data } = await supabase
-          .from('companies')
-          .select('company_id, name, linkedin')
-          .neq('company_id', currentCompanyId)
-          .eq('linkedin', companyData.linkedin.trim());
-
-        if (data?.length) {
-          data.forEach(d => {
-            foundDuplicates.push({
-              company_id: d.company_id,
-              name: d.name,
-              match_type: 'linkedin',
-              match_value: d.linkedin
-            });
-          });
-        }
-      }
-
-      // 2. Same website
-      if (companyData?.website?.trim()) {
-        const { data } = await supabase
-          .from('companies')
-          .select('company_id, name, website')
-          .neq('company_id', currentCompanyId)
-          .eq('website', companyData.website.trim());
-
-        if (data?.length) {
-          data.forEach(d => {
-            if (!foundDuplicates.some(f => f.company_id === d.company_id)) {
-              foundDuplicates.push({
-                company_id: d.company_id,
-                name: d.name,
-                match_type: 'website',
-                match_value: d.website
-              });
-            }
-          });
-        }
-      }
-
-      // 3. Same domain
-      const { data: currentDomains } = await supabase
-        .from('company_domains')
-        .select('domain')
-        .eq('company_id', currentCompanyId);
-
-      if (currentDomains?.length) {
-        const domainValues = currentDomains.map(d => d.domain);
-        const { data } = await supabase
-          .from('company_domains')
-          .select('company_id, domain, companies(name)')
-          .in('domain', domainValues)
-          .neq('company_id', currentCompanyId);
-
-        if (data?.length) {
-          data.forEach(d => {
-            if (!foundDuplicates.some(f => f.company_id === d.company_id)) {
-              foundDuplicates.push({
-                company_id: d.company_id,
-                name: d.companies?.name || 'Unknown',
-                match_type: 'domain',
-                match_value: d.domain
-              });
-            }
-          });
-        }
-      }
-
-      // 4. Similar name (exact match for now)
-      if (companyData?.name?.trim()) {
-        const { data } = await supabase
-          .from('companies')
-          .select('company_id, name')
-          .neq('company_id', currentCompanyId)
-          .ilike('name', companyData.name.trim());
-
-        if (data?.length) {
-          data.forEach(d => {
-            if (!foundDuplicates.some(f => f.company_id === d.company_id)) {
-              foundDuplicates.push({
-                company_id: d.company_id,
-                name: d.name,
-                match_type: 'name',
-                match_value: d.name
-              });
-            }
-          });
-        }
-      }
-
-      // Also check existing duplicates table
-      const { data: existingDuplicates } = await supabase
-        .from('company_duplicates')
-        .select('*')
-        .or(`primary_company_id.eq.${currentCompanyId},duplicate_company_id.eq.${currentCompanyId}`)
-        .eq('status', 'pending');
-
-      if (existingDuplicates?.length) {
-        for (const dup of existingDuplicates) {
-          const otherCompanyId = dup.primary_company_id === currentCompanyId
-            ? dup.duplicate_company_id
-            : dup.primary_company_id;
-
-          if (!foundDuplicates.some(f => f.company_id === otherCompanyId)) {
-            const { data: otherCompany } = await supabase
-              .from('companies')
-              .select('name')
-              .eq('company_id', otherCompanyId)
-              .single();
-
-            foundDuplicates.push({
-              company_id: otherCompanyId,
-              name: otherCompany?.name || 'Unknown',
-              match_type: 'detected',
-              match_value: 'Previously detected',
-              duplicate_id: dup.duplicate_id
-            });
-          }
-        }
-      }
-
+      const foundDuplicates = await findCompanyDuplicates(currentCompanyId, companyData, companyDomains);
       setDuplicates(foundDuplicates);
     } catch (error) {
       console.error('Error finding duplicates:', error);
@@ -1011,6 +894,155 @@ const CompanyDataIntegrityModal = ({
       toast.error('Failed to save changes');
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Delete company and all related records
+  const handleDeleteCompany = async () => {
+    setDeleting(true);
+    try {
+      // Delete from all joint tables in order (foreign key constraints)
+      const deleteOperations = [
+        // Joint tables
+        supabase.from('company_domains').delete().eq('company_id', companyId),
+        supabase.from('company_tags').delete().eq('company_id', companyId),
+        supabase.from('company_cities').delete().eq('company_id', companyId),
+        supabase.from('company_attachments').delete().eq('company_id', companyId),
+        supabase.from('contact_companies').delete().eq('company_id', companyId),
+        supabase.from('notes_companies').delete().eq('company_id', companyId),
+        supabase.from('note_companies').delete().eq('company_id', companyId),
+        // Duplicates tables
+        supabase.from('company_duplicates').delete().eq('primary_company_id', companyId),
+        supabase.from('company_duplicates').delete().eq('duplicate_company_id', companyId),
+        supabase.from('duplicates_inbox').delete().eq('entity_type', 'company').eq('source_id', companyId),
+        supabase.from('duplicates_inbox').delete().eq('entity_type', 'company').eq('duplicate_id', companyId),
+      ];
+
+      // Execute all delete operations
+      const results = await Promise.all(deleteOperations);
+
+      // Check for errors
+      const errors = results.filter(r => r.error);
+      if (errors.length > 0) {
+        console.error('Some delete operations failed:', errors);
+      }
+
+      // Finally delete the company itself
+      const { error: companyError } = await supabase
+        .from('companies')
+        .delete()
+        .eq('company_id', companyId);
+
+      if (companyError) throw companyError;
+
+      toast.success('Company deleted successfully');
+      setShowDeleteConfirm(false);
+      if (onRefresh) onRefresh();
+      onClose();
+
+    } catch (error) {
+      console.error('Delete error:', error);
+      toast.error('Failed to delete company: ' + error.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // Logo upload handler
+  const handleLogoUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+    if (!validTypes.includes(file.type)) {
+      toast.error('Please upload an image file (JPEG, PNG, GIF, WebP, or SVG)');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image must be smaller than 5MB');
+      return;
+    }
+
+    setUploadingLogo(true);
+    try {
+      // Generate unique filename
+      const fileExt = file.name.split('.').pop();
+      const fileName = `company-logos/${companyId}/${Date.now()}.${fileExt}`;
+
+      // Upload to Supabase storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('attachments')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('attachments')
+        .getPublicUrl(fileName);
+
+      const permanentUrl = urlData?.publicUrl;
+
+      // Create attachment record
+      const { data: attachmentData, error: attachmentError } = await supabase
+        .from('attachments')
+        .insert({
+          file_name: file.name,
+          file_url: permanentUrl,
+          file_type: file.type,
+          file_size: file.size,
+          permanent_url: permanentUrl,
+          processing_status: 'completed'
+        })
+        .select()
+        .single();
+
+      if (attachmentError) throw attachmentError;
+
+      // Remove any existing logo links for this company
+      await supabase
+        .from('company_attachments')
+        .delete()
+        .eq('company_id', companyId)
+        .eq('is_logo', true);
+
+      // Link attachment to company as logo
+      const { error: linkError } = await supabase
+        .from('company_attachments')
+        .insert({
+          company_id: companyId,
+          attachment_id: attachmentData.attachment_id,
+          is_logo: true
+        });
+
+      if (linkError) throw linkError;
+
+      // Update local state
+      setLogoUrl(permanentUrl);
+      toast.success('Logo uploaded successfully');
+
+    } catch (error) {
+      console.error('Error uploading logo:', error);
+      toast.error('Failed to upload logo: ' + error.message);
+    } finally {
+      setUploadingLogo(false);
+      // Reset file input
+      if (logoInputRef.current) {
+        logoInputRef.current.value = '';
+      }
+    }
+  };
+
+  // Trigger logo file input
+  const handleLogoClick = () => {
+    if (logoInputRef.current) {
+      logoInputRef.current.click();
     }
   };
 
@@ -1450,11 +1482,35 @@ const CompanyDataIntegrityModal = ({
         <Modal theme={theme} onClick={e => e.stopPropagation()}>
           <Header theme={theme}>
             <HeaderInfo>
-              <Avatar theme={theme}>
-                {logoUrl ? (
+              <Avatar
+                theme={theme}
+                onClick={handleLogoClick}
+                style={{ cursor: uploadingLogo ? 'wait' : 'pointer', position: 'relative' }}
+                title={logoUrl ? 'Click to change logo' : 'Click to upload logo'}
+              >
+                {uploadingLogo ? (
+                  <FiRefreshCw className="spin" size={20} />
+                ) : logoUrl ? (
                   <img src={logoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                 ) : (
                   getInitials(name)
+                )}
+                {!uploadingLogo && (
+                  <div style={{
+                    position: 'absolute',
+                    bottom: -4,
+                    right: -4,
+                    width: 20,
+                    height: 20,
+                    borderRadius: '50%',
+                    background: theme === 'light' ? '#3B82F6' : '#60A5FA',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: `2px solid ${theme === 'light' ? '#FFFFFF' : '#1F2937'}`
+                  }}>
+                    <FaImage size={8} color="white" />
+                  </div>
                 )}
               </Avatar>
               <HeaderText>
@@ -1486,6 +1542,15 @@ const CompanyDataIntegrityModal = ({
           </Header>
 
           <Content>
+            {/* Hidden file input for logo upload */}
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleLogoUpload}
+              style={{ display: 'none' }}
+            />
+
             {loading ? (
               <div style={{ textAlign: 'center', padding: 40, color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
                 <FiRefreshCw className="spin" size={24} />
@@ -1510,9 +1575,18 @@ const CompanyDataIntegrityModal = ({
                   </SectionTitle>
                   <MissingFieldsContainer>
                     {missingFields.map(field => (
-                      <MissingFieldChip key={field.key} theme={theme}>
-                        <field.icon size={12} />
-                        {field.label}
+                      <MissingFieldChip
+                        key={field.key}
+                        theme={theme}
+                        onClick={field.key === 'logo' ? handleLogoClick : undefined}
+                        style={field.key === 'logo' ? { cursor: uploadingLogo ? 'wait' : 'pointer' } : {}}
+                      >
+                        {field.key === 'logo' && uploadingLogo ? (
+                          <FiRefreshCw className="spin" size={12} />
+                        ) : (
+                          <field.icon size={12} />
+                        )}
+                        {field.key === 'logo' && uploadingLogo ? 'Uploading...' : field.label}
                       </MissingFieldChip>
                     ))}
                     {missingFields.length === 0 && (
@@ -1985,6 +2059,71 @@ const CompanyDataIntegrityModal = ({
                     </FormGroup>
                   )}
 
+                  {/* Logo upload section */}
+                  {(showAllFields || initialMissingFieldKeys.has('logo')) && (
+                    <FormGroup>
+                      <Label theme={theme}>Logo</Label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                        {logoUrl ? (
+                          <div style={{
+                            width: 80,
+                            height: 80,
+                            borderRadius: 8,
+                            overflow: 'hidden',
+                            border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                            background: theme === 'light' ? '#F9FAFB' : '#1F2937',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}>
+                            <img
+                              src={logoUrl}
+                              alt="Company logo"
+                              style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                            />
+                          </div>
+                        ) : (
+                          <div style={{
+                            width: 80,
+                            height: 80,
+                            borderRadius: 8,
+                            border: `2px dashed ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                            background: theme === 'light' ? '#F9FAFB' : '#1F2937',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: theme === 'light' ? '#9CA3AF' : '#6B7280'
+                          }}>
+                            <FaImage size={24} />
+                          </div>
+                        )}
+                        <div style={{ flex: 1 }}>
+                          <SmallButton
+                            theme={theme}
+                            onClick={handleLogoClick}
+                            disabled={uploadingLogo}
+                            style={{ marginBottom: 8 }}
+                          >
+                            {uploadingLogo ? (
+                              <>
+                                <FiRefreshCw className="spin" size={12} />
+                                Uploading...
+                              </>
+                            ) : (
+                              <>
+                                <FaImage size={12} />
+                                {logoUrl ? 'Change Logo' : 'Upload Logo'}
+                              </>
+                            )}
+                          </SmallButton>
+                          <div style={{ fontSize: 11, color: theme === 'light' ? '#9CA3AF' : '#6B7280' }}>
+                            Accepts: JPEG, PNG, GIF, WebP, SVG (max 5MB)
+                          </div>
+                        </div>
+                      </div>
+                    </FormGroup>
+                  )}
+
                   {/* Contacts info */}
                   {initialMissingFieldKeys.has('contacts') && (
                     <FormGroup>
@@ -2059,6 +2198,62 @@ const CompanyDataIntegrityModal = ({
                   Mark Complete
                 </span>
               </label>
+              {!showDeleteConfirm ? (
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '8px 12px',
+                    background: 'transparent',
+                    border: `1px solid ${theme === 'light' ? '#FCA5A5' : '#7F1D1D'}`,
+                    borderRadius: 6,
+                    color: '#EF4444',
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    marginLeft: 12
+                  }}
+                >
+                  <FaTrash size={12} />
+                  Delete
+                </button>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 12 }}>
+                  <span style={{ fontSize: 12, color: '#EF4444', fontWeight: 500 }}>Confirm?</span>
+                  <button
+                    onClick={handleDeleteCompany}
+                    disabled={deleting}
+                    style={{
+                      padding: '6px 12px',
+                      background: '#EF4444',
+                      border: 'none',
+                      borderRadius: 4,
+                      color: 'white',
+                      fontSize: 12,
+                      fontWeight: 500,
+                      cursor: deleting ? 'wait' : 'pointer',
+                      opacity: deleting ? 0.7 : 1
+                    }}
+                  >
+                    {deleting ? 'Deleting...' : 'Yes, Delete'}
+                  </button>
+                  <button
+                    onClick={() => setShowDeleteConfirm(false)}
+                    style={{
+                      padding: '6px 12px',
+                      background: theme === 'light' ? '#E5E7EB' : '#374151',
+                      border: 'none',
+                      borderRadius: 4,
+                      color: theme === 'light' ? '#374151' : '#D1D5DB',
+                      fontSize: 12,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
             </FooterLeft>
             <FooterRight>
               <CancelButton theme={theme} onClick={onClose}>
