@@ -1259,6 +1259,12 @@ RULES:
 
 # ==================== WHATSAPP WEBHOOK ENDPOINT ====================
 
+@app.get("/whatsapp-webhook")
+async def whatsapp_webhook_verify():
+    """Verification endpoint for TimelinesAI webhook setup."""
+    return {"status": "ok", "message": "WhatsApp webhook endpoint ready"}
+
+
 @app.post("/whatsapp-webhook")
 async def whatsapp_webhook(request: Request):
     """
@@ -1358,3 +1364,160 @@ async def whatsapp_webhook(request: Request):
     except Exception as e:
         logger.error("whatsapp_webhook_error", error=str(e), exc_info=True)
         return {"success": False, "error": str(e)}
+
+
+# ==================== CALENDAR SYNC ENDPOINT ====================
+
+# ICS Feed URL for RockAndRoll calendar
+CALENDAR_ICS_URL = "https://user.fm/calendar/v1-74d4162109b3c98594b10f508dbb74d0/RockAndRoll.ics"
+
+
+@app.post("/calendar-sync")
+async def calendar_sync():
+    """
+    Sync calendar events from Fastmail ICS feed to command_center_inbox.
+
+    Fetches all events from the ICS feed and upserts them into staging.
+    Events are stored with type='calendar' for frontend filtering.
+    """
+    try:
+        from icalendar import Calendar
+        import json as json_lib
+
+        logger.info("calendar_sync_started")
+
+        # Fetch ICS feed
+        async with httpx.AsyncClient() as client:
+            response = await client.get(CALENDAR_ICS_URL, timeout=30.0)
+            response.raise_for_status()
+
+        ics_content = response.text
+        cal = Calendar.from_ical(ics_content)
+
+        synced_count = 0
+        updated_count = 0
+        deleted_count = 0
+        current_uids = set()
+
+        for component in cal.walk():
+            if component.name == "VEVENT":
+                # Extract event data
+                event_uid = str(component.get('uid', ''))
+                if not event_uid:
+                    continue
+
+                current_uids.add(event_uid)
+
+                # Skip cancelled events
+                status = str(component.get('status', 'CONFIRMED')).upper()
+                if status == 'CANCELLED':
+                    continue
+
+                # Parse dates
+                dtstart = component.get('dtstart')
+                dtend = component.get('dtend')
+
+                start_dt = dtstart.dt if dtstart else None
+                end_dt = dtend.dt if dtend else None
+
+                # Convert date to datetime if needed
+                if start_dt and not hasattr(start_dt, 'hour'):
+                    from datetime import datetime as dt_module, time
+                    start_dt = dt_module.combine(start_dt, time.min)
+                if end_dt and not hasattr(end_dt, 'hour'):
+                    from datetime import datetime as dt_module, time
+                    end_dt = dt_module.combine(end_dt, time.max)
+
+                # Extract organizer
+                organizer = component.get('organizer')
+                organizer_email = None
+                organizer_name = None
+                if organizer:
+                    organizer_str = str(organizer)
+                    if organizer_str.startswith('mailto:'):
+                        organizer_email = organizer_str[7:]
+                    organizer_name = str(organizer.params.get('cn', '')) if hasattr(organizer, 'params') else None
+
+                # Extract attendees
+                attendees = []
+                for attendee in component.get('attendee', []):
+                    if not isinstance(attendee, list):
+                        attendee = [attendee]
+                    for att in attendee if isinstance(component.get('attendee'), list) else [component.get('attendee')]:
+                        if att:
+                            att_email = str(att)
+                            if att_email.startswith('mailto:'):
+                                att_email = att_email[7:]
+                            att_name = str(att.params.get('cn', '')) if hasattr(att, 'params') else ''
+                            att_status = str(att.params.get('partstat', 'NEEDS-ACTION')) if hasattr(att, 'params') else 'NEEDS-ACTION'
+                            attendees.append({
+                                "email": att_email,
+                                "name": att_name,
+                                "status": att_status
+                            })
+                    break  # Only process once
+
+                # Build record
+                record = {
+                    "type": "calendar",
+                    "event_uid": event_uid,
+                    "subject": str(component.get('summary', '')),
+                    "body_text": str(component.get('description', '')),
+                    "date": start_dt.isoformat() if start_dt else None,
+                    "event_end": end_dt.isoformat() if end_dt else None,
+                    "event_location": str(component.get('location', '')),
+                    "from_name": organizer_name,
+                    "from_email": organizer_email,
+                    "to_recipients": json_lib.dumps(attendees) if attendees else None,
+                    "is_read": False
+                }
+
+                # Remove None/empty values
+                record = {k: v for k, v in record.items() if v is not None and v != ''}
+
+                # Check if event exists
+                existing = db.client.table('command_center_inbox').select('id').eq('event_uid', event_uid).execute()
+
+                if existing.data:
+                    # Update existing
+                    db.client.table('command_center_inbox').update(record).eq('event_uid', event_uid).execute()
+                    updated_count += 1
+                else:
+                    # Insert new
+                    db.client.table('command_center_inbox').insert(record).execute()
+                    synced_count += 1
+
+        # Delete events no longer in feed (cancelled or removed)
+        existing_events = db.client.table('command_center_inbox').select('id, event_uid').eq('type', 'calendar').execute()
+        for event in existing_events.data:
+            if event['event_uid'] and event['event_uid'] not in current_uids:
+                db.client.table('command_center_inbox').delete().eq('id', event['id']).execute()
+                deleted_count += 1
+
+        logger.info("calendar_sync_completed", synced=synced_count, updated=updated_count, deleted=deleted_count)
+
+        return {
+            "success": True,
+            "synced": synced_count,
+            "updated": updated_count,
+            "deleted": deleted_count
+        }
+
+    except Exception as e:
+        logger.error("calendar_sync_error", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/calendar-sync")
+async def calendar_sync_status():
+    """Get calendar sync status and count of staged events."""
+    try:
+        result = db.client.table('command_center_inbox').select('id, date', count='exact').eq('type', 'calendar').execute()
+        return {
+            "status": "ready",
+            "total_events": result.count,
+            "ics_url": CALENDAR_ICS_URL
+        }
+    except Exception as e:
+        logger.error("calendar_sync_status_error", error=str(e))
+        return {"status": "error", "error": str(e)}

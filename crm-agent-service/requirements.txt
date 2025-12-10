@@ -23,3 +23,6 @@ structlog>=24.4.0
 
 # HTTP client for Apollo API
 httpx>=0.25.0
+
+# Calendar ICS parsing
+icalendar>=5.0.0

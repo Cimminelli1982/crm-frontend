@@ -93,6 +93,11 @@ import { useQuickEditModal } from '../hooks/useQuickEditModal';
 import { getVisibleTabs, shouldShowField } from '../helpers/contactListHelpers';
 import ProfileImageModal from '../components/modals/ProfileImageModal';
 import { useProfileImageModal } from '../hooks/useProfileImageModal';
+import useEmailThreads from '../hooks/useEmailThreads';
+import useEmailCompose from '../hooks/useEmailCompose';
+import useTodoistTasks from '../hooks/useTodoistTasks';
+import useChatWithClaude from '../hooks/useChatWithClaude';
+import useContextContacts from '../hooks/useContextContacts';
 import CreateContactModalAI from '../components/modals/CreateContactModalAI';
 import DomainLinkModal from '../components/modals/DomainLinkModal';
 import CreateCompanyModal from '../components/modals/CreateCompanyModal';
@@ -112,6 +117,8 @@ import DealsTab from '../components/command-center/DealsTab';
 import IntroductionsTab from '../components/command-center/IntroductionsTab';
 import TasksTab from '../components/command-center/TasksTab';
 import NotesTab from '../components/command-center/NotesTab';
+import ComposeEmailModal from '../components/command-center/ComposeEmailModal';
+import WhatsAppTab, { WhatsAppChatList } from '../components/command-center/WhatsAppTab';
 
 const BACKEND_URL = 'https://command-center-backend-production.up.railway.app';
 const AGENT_SERVICE_URL = 'https://crm-agent-api-production.up.railway.app'; // CRM Agent Service
@@ -131,26 +138,69 @@ const sanitizeEmailHtml = (html) => {
 const CommandCenterPage = ({ theme }) => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('email');
-  const [emails, setEmails] = useState([]);
-  const [threads, setThreads] = useState([]); // Grouped by thread_id
-  const [selectedThread, setSelectedThread] = useState(null); // Array of emails in thread
   const [listCollapsed, setListCollapsed] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Compose modal state
-  const [composeModal, setComposeModal] = useState({ open: false, mode: null }); // mode: 'reply', 'replyAll', 'forward'
-  const [composeTo, setComposeTo] = useState([]); // Array of { email, name }
-  const [composeCc, setComposeCc] = useState([]); // Array of { email, name }
-  const [composeToInput, setComposeToInput] = useState('');
-  const [composeCcInput, setComposeCcInput] = useState('');
-  const [composeSubject, setComposeSubject] = useState('');
-  const [composeBody, setComposeBody] = useState('');
-  const [contactSuggestions, setContactSuggestions] = useState([]);
-  const [activeField, setActiveField] = useState(null); // 'to' or 'cc'
-  const [sending, setSending] = useState(false);
+  // Email threads hook
+  const {
+    emails,
+    threads,
+    selectedThread,
+    loading: threadsLoading,
+    setEmails,
+    setThreads,
+    setSelectedThread,
+    refreshThreads,
+    removeEmailsBySender
+  } = useEmailThreads(activeTab);
+
+  // WhatsApp state
+  const [whatsappMessages, setWhatsappMessages] = useState([]);
+  const [whatsappChats, setWhatsappChats] = useState([]); // Grouped by chat_id
+  const [selectedWhatsappChat, setSelectedWhatsappChat] = useState(null);
+
+  // Email compose hook (will set onSendSuccess via ref after saveAndArchive is defined)
+  const saveAndArchiveRef = useRef(null);
+  const emailCompose = useEmailCompose(selectedThread, () => saveAndArchiveRef.current?.());
+  const {
+    composeModal,
+    composeTo,
+    setComposeTo,
+    composeCc,
+    setComposeCc,
+    composeToInput,
+    setComposeToInput,
+    composeCcInput,
+    setComposeCcInput,
+    composeSubject,
+    setComposeSubject,
+    composeBody,
+    setComposeBody,
+    contactSuggestions,
+    setContactSuggestions,
+    activeField,
+    setActiveField,
+    searchContacts,
+    sending,
+    composeAttachments,
+    composeFileInputRef,
+    handleComposeFileSelect,
+    removeComposeAttachment,
+    openReply,
+    openReplyWithDraft,
+    openForward,
+    closeCompose,
+    handleSend,
+    addEmailToField,
+    removeEmailFromField,
+    handleEmailInputKeyDown,
+    extractDraftFromMessage,
+    hasDraftReply,
+    getLatestEmail,
+    formatRecipients,
+  } = emailCompose;
+
   const [saving, setSaving] = useState(false);
-  const [composeAttachments, setComposeAttachments] = useState([]); // Array of { name, type, size, data (base64), preview }
-  const composeFileInputRef = useRef(null);
 
   // Attachment save modal state
   const [attachmentModalOpen, setAttachmentModalOpen] = useState(false);
@@ -162,11 +212,8 @@ const CommandCenterPage = ({ theme }) => {
   const [activeActionTab, setActiveActionTab] = useState('crm');
   const [crmSubTab, setCrmSubTab] = useState('contacts'); // 'contacts' or 'companies' - sub-menu inside CRM tab
 
-  // Contacts from email (for Contacts tab)
-  const [emailContacts, setEmailContacts] = useState([]);
-
-  // Companies from email domains (for Companies tab)
-  const [emailCompanies, setEmailCompanies] = useState([]);
+  // Context contacts hook - handles Email, WhatsApp, and Calendar sources
+  // (emailContacts and emailCompanies are aliases for backwards compatibility)
 
   // Deals from contacts and companies (for Deals tab)
   const [contactDeals, setContactDeals] = useState([]); // Deals linked to email contacts
@@ -213,21 +260,71 @@ const CommandCenterPage = ({ theme }) => {
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [executingActions, setExecutingActions] = useState(false);
 
-  // Todoist Tasks state
-  const [todoistTasks, setTodoistTasks] = useState([]);
-  const [todoistProjects, setTodoistProjects] = useState([]);
-  const [loadingTasks, setLoadingTasks] = useState(false);
-  const [taskModalOpen, setTaskModalOpen] = useState(false);
-  const [newTaskContent, setNewTaskContent] = useState('');
-  const [newTaskDueString, setNewTaskDueString] = useState('');
-  const [newTaskProjectId, setNewTaskProjectId] = useState('2335921711'); // Inbox
-  const [newTaskSectionId, setNewTaskSectionId] = useState('');
-  const [newTaskPriority, setNewTaskPriority] = useState(1);
-  const [newTaskDescription, setNewTaskDescription] = useState('');
-  const [creatingTask, setCreatingTask] = useState(false);
-  const [editingTask, setEditingTask] = useState(null);
-  const [expandedProjects, setExpandedProjects] = useState({ '2335921711': true }); // Only Inbox expanded by default
-  const [expandedSections, setExpandedSections] = useState({}); // { sectionId: true/false }
+  // Todoist Tasks hook
+  const todoistHook = useTodoistTasks(activeActionTab, selectedThread);
+  const {
+    todoistTasks,
+    todoistProjects,
+    loadingTasks,
+    taskModalOpen,
+    setTaskModalOpen,
+    newTaskContent,
+    setNewTaskContent,
+    newTaskDueString,
+    setNewTaskDueString,
+    newTaskProjectId,
+    setNewTaskProjectId,
+    newTaskSectionId,
+    setNewTaskSectionId,
+    newTaskPriority,
+    setNewTaskPriority,
+    newTaskDescription,
+    setNewTaskDescription,
+    creatingTask,
+    editingTask,
+    expandedProjects,
+    setExpandedProjects,
+    expandedSections,
+    setExpandedSections,
+    handleSaveTask,
+    handleCompleteTask,
+    handleDeleteTask,
+    resetTaskForm,
+    openEditTask,
+    getProjectColor,
+  } = todoistHook;
+
+  // Context Contacts hook - handles Email, WhatsApp, Calendar sources
+  const contextContactsHook = useContextContacts(activeTab, selectedThread, selectedWhatsappChat, pendingCalendarEvent);
+  const {
+    emailContacts,
+    setEmailContacts,
+    emailCompanies,
+    setEmailCompanies,
+    loadingContacts,
+    loadingCompanies
+  } = contextContactsHook;
+
+  // AI Chat hook
+  const chatHook = useChatWithClaude(selectedThread, emailContacts);
+  const {
+    chatMessages,
+    setChatMessages,
+    chatInput,
+    setChatInput,
+    chatLoading,
+    setChatLoading,
+    chatImages,
+    setChatImages,
+    chatMessagesRef,
+    chatFileInputRef,
+    sendMessageToClaude,
+    handleQuickAction,
+    handleChatImageSelect,
+    removeChatImage,
+    sendDuplicateMCPInstruction,
+    addChatMessage,
+  } = chatHook;
 
   // Notes state
   const [contactNotes, setContactNotes] = useState([]);
@@ -277,18 +374,14 @@ const CommandCenterPage = ({ theme }) => {
   const [createCompanyFromDomainModalOpen, setCreateCompanyFromDomainModalOpen] = useState(false);
   const [createCompanyFromDomainData, setCreateCompanyFromDomainData] = useState(null);
 
-  // AI Chat state
-  const [chatMessages, setChatMessages] = useState([]);
-  const [chatInput, setChatInput] = useState('');
-  const [chatLoading, setChatLoading] = useState(false);
-  const [chatImages, setChatImages] = useState([]); // Array of { file, preview, base64 }
-  const chatMessagesRef = React.useRef(null);
-  const chatFileInputRef = React.useRef(null);
-
   // Calendar state
   const [pendingCalendarEvent, setPendingCalendarEvent] = useState(null);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [calendarEventEdits, setCalendarEventEdits] = useState({});
+
+  // Calendar events from DB (staging)
+  const [calendarEvents, setCalendarEvents] = useState([]);
+  const [selectedCalendarEvent, setSelectedCalendarEvent] = useState(null);
 
   // Quick Edit Modal - use the custom hook
   const quickEditModal = useQuickEditModal(() => {});
@@ -388,59 +481,88 @@ const CommandCenterPage = ({ theme }) => {
 
   const profileImageModal = useProfileImageModal(handleProfileImageUpdate);
 
-  // Group emails by thread_id
-  const groupByThread = (emailList) => {
-    const threadMap = new Map();
-
-    for (const email of emailList) {
-      const threadId = email.thread_id || email.id; // fallback to id if no thread_id
-      if (!threadMap.has(threadId)) {
-        threadMap.set(threadId, []);
-      }
-      threadMap.get(threadId).push(email);
-    }
-
-    // Sort each thread by date descending (newest first)
-    const result = [];
-    for (const [threadId, threadEmails] of threadMap) {
-      threadEmails.sort((a, b) => new Date(b.date) - new Date(a.date));
-      result.push({
-        threadId,
-        emails: threadEmails,
-        latestEmail: threadEmails[0],
-        count: threadEmails.length
-      });
-    }
-
-    // Sort threads by latest email date descending
-    result.sort((a, b) => new Date(b.latestEmail.date) - new Date(a.latestEmail.date));
-    return result;
-  };
-
-  // Fetch emails from Supabase
+  // Fetch WhatsApp messages from Supabase
   useEffect(() => {
-    const fetchEmails = async () => {
+    const fetchWhatsApp = async () => {
       setLoading(true);
       const { data, error } = await supabase
         .from('command_center_inbox')
         .select('*')
+        .eq('type', 'whatsapp')
         .order('date', { ascending: false });
 
       if (error) {
-        console.error('Error fetching emails:', error);
+        console.error('Error fetching WhatsApp messages:', error);
       } else {
-        setEmails(data || []);
-        const grouped = groupByThread(data || []);
-        setThreads(grouped);
+        setWhatsappMessages(data || []);
+        // Group by chat_id
+        const grouped = groupWhatsAppByChat(data || []);
+        setWhatsappChats(grouped);
         if (grouped.length > 0) {
-          setSelectedThread(grouped[0].emails);
+          setSelectedWhatsappChat(grouped[0]);
         }
       }
       setLoading(false);
     };
 
-    if (activeTab === 'email') {
-      fetchEmails();
+    if (activeTab === 'whatsapp') {
+      fetchWhatsApp();
+    }
+  }, [activeTab]);
+
+  // Group WhatsApp messages by chat_id
+  const groupWhatsAppByChat = (messages) => {
+    const chatMap = {};
+    messages.forEach(msg => {
+      const chatId = msg.chat_id || msg.id;
+      if (!chatMap[chatId]) {
+        chatMap[chatId] = {
+          chat_id: chatId,
+          chat_name: msg.chat_name || msg.from_name,
+          contact_number: msg.contact_number,
+          is_group_chat: msg.is_group_chat,
+          messages: [],
+          latestMessage: msg
+        };
+      }
+      chatMap[chatId].messages.push(msg);
+      // Update latest message if this one is newer
+      if (new Date(msg.date) > new Date(chatMap[chatId].latestMessage.date)) {
+        chatMap[chatId].latestMessage = msg;
+      }
+    });
+    // Convert to array and sort by latest message date
+    return Object.values(chatMap).sort((a, b) =>
+      new Date(b.latestMessage.date) - new Date(a.latestMessage.date)
+    );
+  };
+
+  // Fetch Calendar events from Supabase (staging - past/today only)
+  useEffect(() => {
+    const fetchCalendarEvents = async () => {
+      setCalendarLoading(true);
+      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+      const { data, error } = await supabase
+        .from('command_center_inbox')
+        .select('*')
+        .eq('type', 'calendar')
+        .lte('date', today + 'T23:59:59Z') // Only past and today
+        .order('date', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching calendar events:', error);
+      } else {
+        setCalendarEvents(data || []);
+        if (data && data.length > 0) {
+          setSelectedCalendarEvent(data[0]);
+        }
+      }
+      setCalendarLoading(false);
+    };
+
+    if (activeTab === 'calendar') {
+      fetchCalendarEvents();
     }
   }, [activeTab]);
 
@@ -512,26 +634,9 @@ const CommandCenterPage = ({ theme }) => {
       const deletedCount = deletedEmails?.length || 0;
 
       // 3. Update threads state - remove emails from this sender
-      setThreads(prev => {
-        const updated = prev.map(thread => ({
-          ...thread,
-          emails: thread.emails.filter(e => e.from_email?.toLowerCase() !== emailLower)
-        })).filter(thread => thread.emails.length > 0);
+      removeEmailsBySender(email);
 
-        return updated.map(t => ({
-          ...t,
-          latestEmail: t.emails[0]
-        }));
-      });
-
-      // 4. Clear selected thread if it was from this sender
-      setSelectedThread(prev => {
-        if (!prev) return null;
-        const remaining = prev.filter(e => e.from_email?.toLowerCase() !== emailLower);
-        return remaining.length > 0 ? remaining : null;
-      });
-
-      // 5. Remove from notInCrmEmails list
+      // 4. Remove from notInCrmEmails list
       setNotInCrmEmails(prev => prev.filter(item => item.email.toLowerCase() !== emailLower));
 
       toast.success(`${email} added to spam list${deletedCount > 0 ? ` - deleted ${deletedCount} emails` : ''}`);
@@ -846,26 +951,9 @@ const CommandCenterPage = ({ theme }) => {
       const deletedCount = deletedEmails?.length || 0;
 
       // 4. Update threads state - remove emails from this sender
-      setThreads(prev => {
-        const updated = prev.map(thread => ({
-          ...thread,
-          emails: thread.emails.filter(e => e.from_email?.toLowerCase() !== emailLower)
-        })).filter(thread => thread.emails.length > 0);
+      removeEmailsBySender(email);
 
-        return updated.map(t => ({
-          ...t,
-          latestEmail: t.emails[0]
-        }));
-      });
-
-      // 5. Clear selected thread if it was from this sender
-      setSelectedThread(prev => {
-        if (!prev) return null;
-        const remaining = prev.filter(e => e.from_email?.toLowerCase() !== emailLower);
-        return remaining.length > 0 ? remaining : null;
-      });
-
-      // 6. Update local hold contacts state
+      // 5. Update local hold contacts state
       setHoldContacts(prev => prev.filter(c => c.email.toLowerCase() !== emailLower));
 
       toast.success(`${email} marked as spam${deletedCount > 0 ? ` - deleted ${deletedCount} emails` : ''}`);
@@ -2255,193 +2343,6 @@ const CommandCenterPage = ({ theme }) => {
     }
   }, [activeActionTab]);
 
-  // Fetch Todoist tasks and projects
-  const fetchTodoistData = async () => {
-    setLoadingTasks(true);
-    try {
-      const [tasksRes, projectsRes] = await Promise.all([
-        fetch(`${BACKEND_URL}/todoist/tasks`),
-        fetch(`${BACKEND_URL}/todoist/projects`),
-      ]);
-
-      if (tasksRes.ok) {
-        const { tasks } = await tasksRes.json();
-        setTodoistTasks(tasks || []);
-      }
-
-      if (projectsRes.ok) {
-        const { projects } = await projectsRes.json();
-        setTodoistProjects(projects || []);
-      }
-    } catch (error) {
-      console.error('Error fetching Todoist data:', error);
-    }
-    setLoadingTasks(false);
-  };
-
-  // Load Todoist data when tasks tab is active
-  useEffect(() => {
-    if (activeActionTab === 'tasks' && selectedThread) {
-      fetchTodoistData();
-    }
-  }, [activeActionTab, selectedThread]);
-
-  // Create or update a task
-  const handleSaveTask = async () => {
-    if (!newTaskContent.trim()) {
-      toast.error('Task content is required');
-      return;
-    }
-
-    setCreatingTask(true);
-    try {
-      const taskData = {
-        content: newTaskContent.trim(),
-        description: newTaskDescription.trim(),
-        project_id: newTaskProjectId,
-        section_id: newTaskSectionId || undefined,
-        due_string: newTaskDueString || undefined,
-        priority: newTaskPriority,
-      };
-
-      let response;
-      if (editingTask) {
-        response = await fetch(`${BACKEND_URL}/todoist/tasks/${editingTask.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(taskData),
-        });
-      } else {
-        response = await fetch(`${BACKEND_URL}/todoist/tasks`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(taskData),
-        });
-      }
-
-      if (response.ok) {
-        toast.success(editingTask ? 'Task updated!' : 'Task created!');
-        setTaskModalOpen(false);
-        resetTaskForm();
-        // Small delay to let Todoist sync complete before refreshing
-        setTimeout(() => fetchTodoistData(), 500);
-      } else {
-        const error = await response.json();
-        toast.error(error.error || 'Failed to save task');
-      }
-    } catch (error) {
-      console.error('Error saving task:', error);
-      toast.error('Failed to save task');
-    }
-    setCreatingTask(false);
-  };
-
-  // Complete a task
-  const handleCompleteTask = async (taskId) => {
-    try {
-      const response = await fetch(`${BACKEND_URL}/todoist/tasks/${taskId}/close`, {
-        method: 'POST',
-      });
-
-      if (response.ok) {
-        toast.success('Task completed!');
-        fetchTodoistData();
-      } else {
-        toast.error('Failed to complete task');
-      }
-    } catch (error) {
-      console.error('Error completing task:', error);
-      toast.error('Failed to complete task');
-    }
-  };
-
-  // Delete a task
-  const handleDeleteTask = async (taskId) => {
-    if (!window.confirm('Delete this task?')) return;
-
-    try {
-      const response = await fetch(`${BACKEND_URL}/todoist/tasks/${taskId}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        toast.success('Task deleted');
-        fetchTodoistData();
-      } else {
-        toast.error('Failed to delete task');
-      }
-    } catch (error) {
-      console.error('Error deleting task:', error);
-      toast.error('Failed to delete task');
-    }
-  };
-
-  // Reset task form
-  const resetTaskForm = () => {
-    setNewTaskContent('');
-    setNewTaskDescription('');
-    setNewTaskDueString('');
-    setNewTaskProjectId('2335921711');
-    setNewTaskSectionId('');
-    setNewTaskPriority(1);
-    setEditingTask(null);
-  };
-
-  // Open edit mode for a task
-  const openEditTask = (task) => {
-    setEditingTask(task);
-    setNewTaskContent(task.content);
-    setNewTaskDescription(task.description || '');
-    setNewTaskDueString(task.due?.string || '');
-    setNewTaskProjectId(task.project_id);
-    setNewTaskSectionId(task.section_id || '');
-    setNewTaskPriority(task.priority);
-    setTaskModalOpen(true);
-  };
-
-  // Get project name by ID
-  const getProjectName = (projectId) => {
-    const project = todoistProjects.find(p => p.id === projectId);
-    return project?.name || 'Unknown';
-  };
-
-  // Get section name by ID
-  const getSectionName = (sectionId) => {
-    for (const project of todoistProjects) {
-      const section = project.sections?.find(s => s.id === sectionId);
-      if (section) return section.name;
-    }
-    return null;
-  };
-
-  // Get project color
-  const getProjectColor = (projectId) => {
-    const project = todoistProjects.find(p => p.id === projectId);
-    const colors = {
-      'berry_red': '#b8255f',
-      'red': '#db4035',
-      'orange': '#ff9933',
-      'yellow': '#fad000',
-      'olive_green': '#afb83b',
-      'lime_green': '#7ecc49',
-      'green': '#299438',
-      'mint_green': '#6accbc',
-      'teal': '#158fad',
-      'sky_blue': '#14aaf5',
-      'light_blue': '#96c3eb',
-      'blue': '#4073ff',
-      'grape': '#884dff',
-      'violet': '#af38eb',
-      'lavender': '#eb96eb',
-      'magenta': '#e05194',
-      'salmon': '#ff8d85',
-      'charcoal': '#808080',
-      'grey': '#b8b8b8',
-      'taupe': '#ccac93',
-    };
-    return colors[project?.color] || '#808080';
-  };
-
   // ===== Notes Functions =====
 
   // Fetch notes for the current thread's contacts
@@ -2781,427 +2682,6 @@ const CommandCenterPage = ({ theme }) => {
     }
   };
 
-  // Fetch contacts when selected thread changes
-  useEffect(() => {
-    const fetchEmailContacts = async () => {
-      if (!selectedThread || selectedThread.length === 0) {
-        setEmailContacts([]);
-        return;
-      }
-
-      // Collect all participants from the thread (from, to, cc) with their role
-      const participantsMap = new Map(); // email -> { email, name, roles: Set }
-
-      for (const email of selectedThread) {
-        // From
-        if (email.from_email) {
-          const key = email.from_email.toLowerCase();
-          if (!participantsMap.has(key)) {
-            participantsMap.set(key, {
-              email: email.from_email,
-              name: email.from_name || email.from_email,
-              roles: new Set()
-            });
-          }
-          participantsMap.get(key).roles.add('from');
-        }
-
-        // To
-        if (email.to_recipients) {
-          email.to_recipients.forEach(r => {
-            if (r.email) {
-              const key = r.email.toLowerCase();
-              if (!participantsMap.has(key)) {
-                participantsMap.set(key, {
-                  email: r.email,
-                  name: r.name || r.email,
-                  roles: new Set()
-                });
-              }
-              participantsMap.get(key).roles.add('to');
-            }
-          });
-        }
-
-        // CC
-        if (email.cc_recipients) {
-          email.cc_recipients.forEach(r => {
-            if (r.email) {
-              const key = r.email.toLowerCase();
-              if (!participantsMap.has(key)) {
-                participantsMap.set(key, {
-                  email: r.email,
-                  name: r.name || r.email,
-                  roles: new Set()
-                });
-              }
-              participantsMap.get(key).roles.add('cc');
-            }
-          });
-        }
-      }
-
-      const allEmails = Array.from(participantsMap.keys());
-
-      if (allEmails.length === 0) {
-        setEmailContacts([]);
-        return;
-      }
-
-      // Query contact_emails to find matching contacts
-      const { data: emailMatches } = await supabase
-        .from('contact_emails')
-        .select('email, contact_id')
-        .in('email', allEmails);
-
-      // Get contact details if we have matches
-      let contactsById = {};
-      if (emailMatches && emailMatches.length > 0) {
-        const contactIds = [...new Set(emailMatches.map(e => e.contact_id))];
-        const { data: contacts } = await supabase
-          .from('contacts')
-          .select('contact_id, first_name, last_name, category, job_role, profile_image_url, description, linkedin, score, birthday, show_missing')
-          .in('contact_id', contactIds);
-
-        // Fetch completeness scores for these contacts
-        const { data: completenessData } = await supabase
-          .from('contact_completeness')
-          .select('contact_id, completeness_score')
-          .in('contact_id', contactIds);
-
-        const completenessById = {};
-        if (completenessData) {
-          completenessData.forEach(c => {
-            completenessById[c.contact_id] = c.completeness_score;
-          });
-        }
-
-        // Get companies for these contacts (with domains)
-        const { data: contactCompanies } = await supabase
-          .from('contact_companies')
-          .select('contact_id, company_id, is_primary, companies(company_id, name)')
-          .in('contact_id', contactIds);
-
-        // Get company IDs to fetch their domains
-        const companyIds = [...new Set((contactCompanies || []).map(cc => cc.company_id).filter(Boolean))];
-
-        // Fetch domains for these companies
-        let companyDomains = {};
-        if (companyIds.length > 0) {
-          const { data: domainsData } = await supabase
-            .from('company_domains')
-            .select('company_id, domain')
-            .in('company_id', companyIds);
-
-          if (domainsData) {
-            domainsData.forEach(d => {
-              if (!companyDomains[d.company_id]) {
-                companyDomains[d.company_id] = [];
-              }
-              companyDomains[d.company_id].push(d.domain);
-            });
-          }
-        }
-
-        // Map contact to primary company with domains
-        const contactToCompany = {};
-        if (contactCompanies) {
-          contactCompanies.forEach(cc => {
-            // Prefer primary, otherwise take first
-            if (!contactToCompany[cc.contact_id] || cc.is_primary) {
-              contactToCompany[cc.contact_id] = {
-                name: cc.companies?.name,
-                domains: companyDomains[cc.company_id] || []
-              };
-            }
-          });
-        }
-
-        if (contacts) {
-          contacts.forEach(c => {
-            const companyData = contactToCompany[c.contact_id];
-            contactsById[c.contact_id] = {
-              ...c,
-              company_name: companyData?.name || null,
-              company_domains: companyData?.domains || [],
-              completeness_score: completenessById[c.contact_id] || 0
-            };
-          });
-        }
-      }
-
-      // Build email to contact mapping
-      const emailToContact = {};
-      if (emailMatches) {
-        emailMatches.forEach(em => {
-          emailToContact[em.email.toLowerCase()] = contactsById[em.contact_id];
-        });
-      }
-
-      // Build final list of all participants with contact data if available
-      // Exclude my own email
-      const myEmail = 'simone@cimminelli.com';
-      const allParticipantsRaw = Array.from(participantsMap.values())
-        .filter(p => p.email.toLowerCase() !== myEmail.toLowerCase())
-        .map(p => {
-          const contact = emailToContact[p.email.toLowerCase()];
-          return {
-            email: p.email,
-            name: p.name,
-            roles: Array.from(p.roles),
-            // Contact data if found
-            contact: contact || null,
-            hasContact: !!contact
-          };
-        });
-
-      // Deduplicate by contact_id - merge emails and roles for same contact
-      const contactIdMap = new Map(); // contact_id -> merged participant
-      const noContactList = []; // participants without a linked contact
-
-      allParticipantsRaw.forEach(p => {
-        if (p.contact?.contact_id) {
-          const cid = p.contact.contact_id;
-          if (contactIdMap.has(cid)) {
-            // Merge: add email and roles to existing entry
-            const existing = contactIdMap.get(cid);
-            existing.allEmails.push(p.email);
-            p.roles.forEach(r => {
-              if (!existing.roles.includes(r)) existing.roles.push(r);
-            });
-          } else {
-            // First occurrence of this contact
-            contactIdMap.set(cid, { ...p, allEmails: [p.email] });
-          }
-        } else {
-          noContactList.push(p);
-        }
-      });
-
-      const allParticipants = [...contactIdMap.values(), ...noContactList];
-
-      setEmailContacts(allParticipants);
-    };
-
-    fetchEmailContacts();
-  }, [selectedThread]);
-
-  // Fetch companies from email domains
-  useEffect(() => {
-    const fetchEmailCompanies = async () => {
-      if (!selectedThread || selectedThread.length === 0) {
-        setEmailCompanies([]);
-        return;
-      }
-
-      // Collect all unique domains from emails (excluding my domain)
-      const myDomain = 'cimminelli.com';
-      const domainsSet = new Set();
-
-      for (const email of selectedThread) {
-        // From domain
-        if (email.from_email) {
-          const domain = email.from_email.split('@')[1]?.toLowerCase();
-          if (domain && domain !== myDomain) {
-            domainsSet.add(domain);
-          }
-        }
-        // To domains
-        if (email.to_recipients) {
-          email.to_recipients.forEach(r => {
-            if (r.email) {
-              const domain = r.email.split('@')[1]?.toLowerCase();
-              if (domain && domain !== myDomain) {
-                domainsSet.add(domain);
-              }
-            }
-          });
-        }
-        // CC domains
-        if (email.cc_recipients) {
-          email.cc_recipients.forEach(r => {
-            if (r.email) {
-              const domain = r.email.split('@')[1]?.toLowerCase();
-              if (domain && domain !== myDomain) {
-                domainsSet.add(domain);
-              }
-            }
-          });
-        }
-      }
-
-      const allDomains = Array.from(domainsSet);
-      if (allDomains.length === 0) {
-        setEmailCompanies([]);
-        return;
-      }
-
-      // Query company_domains to find matching companies
-      const { data: domainMatches, error: domainError } = await supabase
-        .from('company_domains')
-        .select('domain, company_id, companies(company_id, name, website, category)')
-        .in('domain', allDomains);
-
-      if (domainError) console.error('domainMatches error:', domainError);
-
-      // Build domain to company mapping
-      const domainToCompany = {};
-      if (domainMatches) {
-        domainMatches.forEach(dm => {
-          if (dm.companies) {
-            domainToCompany[dm.domain.toLowerCase()] = dm.companies;
-          }
-        });
-      }
-
-      // Get contact IDs from email thread
-      const contactIds = emailContacts
-        .filter(p => p.contact?.contact_id)
-        .map(p => p.contact.contact_id);
-
-      // Get all contact_companies associations for contacts in this thread
-      let companyToContacts = {};
-      let contactCompaniesData = [];
-      if (contactIds.length > 0) {
-        const { data, error: ccError } = await supabase
-          .from('contact_companies')
-          .select('contact_id, company_id, companies(company_id, name, website, category)')
-          .in('contact_id', contactIds);
-        if (ccError) console.error('contact_companies error:', ccError);
-        contactCompaniesData = data || [];
-
-        // Build company to contacts mapping
-        contactCompaniesData.forEach(cc => {
-          if (!companyToContacts[cc.company_id]) {
-            companyToContacts[cc.company_id] = [];
-          }
-          const contact = emailContacts.find(p => p.contact?.contact_id === cc.contact_id);
-          if (contact) {
-            companyToContacts[cc.company_id].push({
-              name: contact.contact?.first_name + ' ' + contact.contact?.last_name,
-              email: contact.email
-            });
-          }
-        });
-      }
-
-      // Get all company IDs (from domains + from contact associations)
-      const companyIdsFromDomains = Object.values(domainToCompany).map(c => c.company_id).filter(Boolean);
-      const companyIdsFromContacts = contactCompaniesData.map(cc => cc.company_id).filter(Boolean);
-      const allCompanyIds = [...new Set([...companyIdsFromDomains, ...companyIdsFromContacts])];
-
-      // Get domains for all companies
-      let companyDomainsMap = {};
-      let companyCompletenessMap = {};
-      let companyLogosMap = {};
-      if (allCompanyIds.length > 0) {
-        const { data: domainsData } = await supabase
-          .from('company_domains')
-          .select('company_id, domain')
-          .in('company_id', allCompanyIds);
-
-        if (domainsData) {
-          domainsData.forEach(d => {
-            if (!companyDomainsMap[d.company_id]) {
-              companyDomainsMap[d.company_id] = [];
-            }
-            companyDomainsMap[d.company_id].push(d.domain);
-          });
-        }
-
-        // Fetch completeness scores for companies
-        const { data: completenessData } = await supabase
-          .from('company_completeness')
-          .select('company_id, completeness_score')
-          .in('company_id', allCompanyIds);
-
-        if (completenessData) {
-          completenessData.forEach(c => {
-            companyCompletenessMap[c.company_id] = c.completeness_score;
-          });
-        }
-
-        // Fetch company logos
-        const { data: logosData } = await supabase
-          .from('company_attachments')
-          .select(`
-            company_id,
-            attachments (
-              file_url,
-              permanent_url
-            )
-          `)
-          .in('company_id', allCompanyIds)
-          .eq('is_logo', true);
-
-        if (logosData) {
-          logosData.forEach(logo => {
-            if (logo.attachments) {
-              companyLogosMap[logo.company_id] = logo.attachments.permanent_url || logo.attachments.file_url;
-            }
-          });
-        }
-      }
-
-      // Build final companies list
-      const seenCompanyIds = new Set();
-      const companiesResult = [];
-
-      // First add companies from domains
-      // Collect all domains that belong to known companies
-      const domainsWithCompanies = new Set();
-      Object.values(companyDomainsMap).forEach(domainsList => {
-        domainsList.forEach(d => domainsWithCompanies.add(d));
-      });
-
-      // Common email providers to hide
-      const hiddenDomains = new Set(['gmail.com', 'googlemail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'me.com', 'mac.com', 'live.com', 'msn.com', 'aol.com']);
-
-      allDomains.forEach(domain => {
-        // Skip common email providers
-        if (hiddenDomains.has(domain.toLowerCase())) return;
-
-        const company = domainToCompany[domain];
-        if (company && !seenCompanyIds.has(company.company_id)) {
-          seenCompanyIds.add(company.company_id);
-          companiesResult.push({
-            domain,
-            domains: companyDomainsMap[company.company_id] || [domain],
-            company,
-            hasCompany: true,
-            contacts: companyToContacts[company.company_id] || [],
-            completeness_score: companyCompletenessMap[company.company_id] || 0,
-            logo_url: companyLogosMap[company.company_id] || null
-          });
-        } else if (!company && !domainsWithCompanies.has(domain)) {
-          // Domain not in CRM and not belonging to any known company - skip showing "+ Add"
-          // Only show if we want to suggest creating a new company for unknown domains
-          // For now, skip these to avoid showing domains that belong to already-shown companies
-        }
-      });
-
-      // Then add companies from contact associations (not already added)
-      contactCompaniesData.forEach(cc => {
-        if (cc.companies && !seenCompanyIds.has(cc.companies.company_id)) {
-          seenCompanyIds.add(cc.companies.company_id);
-          companiesResult.push({
-            domain: companyDomainsMap[cc.company_id]?.[0] || null,
-            domains: companyDomainsMap[cc.company_id] || [],
-            company: cc.companies,
-            hasCompany: true,
-            contacts: companyToContacts[cc.company_id] || [],
-            completeness_score: companyCompletenessMap[cc.company_id] || 0,
-            logo_url: companyLogosMap[cc.company_id] || null
-          });
-        }
-      });
-
-      setEmailCompanies(companiesResult);
-    };
-
-    fetchEmailCompanies();
-  }, [selectedThread, emailContacts]);
-
   // Fetch deals linked to contacts and companies
   useEffect(() => {
     const fetchDeals = async () => {
@@ -3407,234 +2887,6 @@ const CommandCenterPage = ({ theme }) => {
     fetchIntroductions();
   }, [emailContacts]);
 
-  // Scroll to bottom of chat when new messages arrive
-  useEffect(() => {
-    if (chatMessagesRef.current) {
-      chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight;
-    }
-  }, [chatMessages]);
-
-  // Clear chat when thread changes
-  useEffect(() => {
-    setChatMessages([]);
-    setChatInput('');
-  }, [selectedThread]);
-
-  // Build email context for Claude
-  const buildEmailContext = () => {
-    if (!selectedThread || selectedThread.length === 0) return '';
-
-    const threadSubject = selectedThread[0].subject?.replace(/^(Re: |Fwd: )+/i, '');
-    const participants = emailContacts.map(p => {
-      const name = p.contact ? `${p.contact.first_name} ${p.contact.last_name}` : p.name;
-      const role = p.contact?.job_role ? ` (${p.contact.job_role})` : '';
-      const company = p.contact?.company_name ? ` at ${p.contact.company_name}` : '';
-      return `- ${name}${role}${company}: ${p.email}`;
-    }).join('\n');
-
-    const emailsText = selectedThread.map(email => {
-      const sender = email.from_email?.toLowerCase() === MY_EMAIL ? 'Me' : (email.from_name || email.from_email);
-      const date = new Date(email.date).toLocaleString();
-      const body = email.body_text || email.snippet || '';
-      return `[${date}] From ${sender}:\n${body}`;
-    }).join('\n\n---\n\n');
-
-    return `
-EMAIL THREAD CONTEXT:
-Subject: ${threadSubject}
-
-Participants:
-${participants}
-
-Email Thread (${selectedThread.length} messages):
-${emailsText}
-`;
-  };
-
-  // Build instruction for duplicate processing
-  const buildDuplicateMCPInstruction = () => {
-    const instruction = `Help me clean up duplicate contacts using your CRM tools.
-
-1. First, use crm_find_duplicate_contacts with method="pending_queue" to see pending duplicates
-2. For each pair, use crm_compare_contacts to show me a side-by-side comparison
-3. I'll tell you which one to keep as primary
-4. Use crm_merge_contacts with dry_run=true first to preview changes
-5. If I approve, run crm_merge_contacts with dry_run=false to execute
-6. If not duplicates, use crm_mark_not_duplicate
-
-Let's start - show me the pending duplicates queue.`;
-
-    return instruction;
-  };
-
-  // Send MCP duplicate instruction to chat
-  const sendDuplicateMCPInstruction = () => {
-    const instruction = buildDuplicateMCPInstruction();
-    sendMessageToClaude(instruction);
-  };
-
-  // Handle image file selection for chat
-  const handleChatImageSelect = async (e) => {
-    const files = Array.from(e.target.files);
-    const imageFiles = files.filter(f => f.type.startsWith('image/'));
-
-    if (imageFiles.length === 0) {
-      toast.error('Please select image files');
-      return;
-    }
-
-    // Convert to base64
-    const newImages = await Promise.all(imageFiles.map(async (file) => {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const base64 = e.target.result.split(',')[1]; // Remove data:image/...;base64, prefix
-          resolve({
-            file,
-            preview: URL.createObjectURL(file),
-            base64,
-            mediaType: file.type
-          });
-        };
-        reader.readAsDataURL(file);
-      });
-    }));
-
-    setChatImages(prev => [...prev, ...newImages]);
-    e.target.value = ''; // Reset input
-  };
-
-  // Remove image from chat attachments
-  const removeChatImage = (index) => {
-    setChatImages(prev => {
-      const newImages = [...prev];
-      URL.revokeObjectURL(newImages[index].preview);
-      newImages.splice(index, 1);
-      return newImages;
-    });
-  };
-
-  // Send message to Claude
-  const sendMessageToClaude = async (message, { hideUserMessage = false } = {}) => {
-    if (!message.trim() && chatImages.length === 0) return;
-
-    // Build message content (text + images for Claude API)
-    let userContent;
-    const hasImages = chatImages.length > 0;
-
-    if (hasImages) {
-      // Multi-part content with images
-      userContent = [];
-
-      // Add images first
-      chatImages.forEach(img => {
-        userContent.push({
-          type: 'image',
-          source: {
-            type: 'base64',
-            media_type: img.mediaType,
-            data: img.base64
-          }
-        });
-      });
-
-      // Add text
-      if (message.trim()) {
-        userContent.push({
-          type: 'text',
-          text: message
-        });
-      }
-    } else {
-      userContent = message;
-    }
-
-    // Add user message to chat (for display) - skip if hideUserMessage is true
-    if (!hideUserMessage) {
-      const userMessageDisplay = {
-        role: 'user',
-        content: message,
-        images: chatImages.map(img => img.preview) // Store previews for display
-      };
-      setChatMessages(prev => [...prev, userMessageDisplay]);
-    }
-    setChatInput('');
-    setChatImages([]); // Clear images
-    setChatLoading(true);
-
-    try {
-      const emailContext = buildEmailContext();
-      const systemPrompt = `You are Simone Cimminelli's AI assistant for email management.
-
-TONE & STYLE:
-- Be direct and concise. No fluff, no corporate speak.
-- Friendly but professional. Like talking to a smart colleague.
-- Use short sentences. Get to the point fast.
-- When drafting replies: warm, personal, efficient. Never robotic.
-- Italian-style warmth when appropriate (natural, not forced).
-
-RESPONSE FORMAT:
-- Summaries: Max 2-3 bullet points. Just the essentials.
-- Actions: One clear recommendation. Maybe a second option.
-- Drafts: Keep them short. Real humans don't write essays in emails.
-- Key points: List format, 3-5 items max.
-- IMPORTANT: When writing draft emails, ALWAYS wrap the draft text between --- markers like this:
----
-Your draft email text here
----
-This format is required so the user can click "Accept & Edit" to use the draft.
-
-CONTEXT - Simone runs a newsletter business and is an investor. He values:
-- Building genuine relationships
-- Clear communication
-- Getting things done efficiently
-- Personal touch over corporate formality
-
-${emailContext}`;
-
-      // Build messages for API
-      const apiMessages = [...chatMessages, { role: 'user', content: userContent }].map(m => {
-        // If message has images array (from previous messages), reconstruct content
-        if (m.images && m.images.length > 0) {
-          // Previous messages with images - just send text for now (images already processed)
-          return { role: m.role, content: m.content };
-        }
-        return { role: m.role, content: m.content };
-      });
-
-      const response = await fetch(`${BACKEND_URL}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: apiMessages,
-          systemPrompt,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to get response from Claude');
-      }
-
-      const data = await response.json();
-      const assistantMessage = { role: 'assistant', content: data.response };
-      setChatMessages(prev => [...prev, assistantMessage]);
-    } catch (error) {
-      console.error('Chat error:', error);
-      toast.error('Failed to get AI response');
-      setChatMessages(prev => [...prev, {
-        role: 'assistant',
-        content: 'Sorry, I encountered an error. Please try again.'
-      }]);
-    } finally {
-      setChatLoading(false);
-    }
-  };
-
-  // Handle quick action clicks - hide the prompt, show only the response
-  const handleQuickAction = (action) => {
-    sendMessageToClaude(action, { hideUserMessage: true });
-  };
-
   // Handle calendar extraction from email
   const handleCalendarExtract = async () => {
     if (!selectedThread || selectedThread.length === 0) {
@@ -3803,12 +3055,6 @@ ${emailContext}`;
     });
   };
 
-  // Format recipients array to string
-  const formatRecipients = (recipients) => {
-    if (!recipients || !Array.isArray(recipients) || recipients.length === 0) return null;
-    return recipients.map(r => r.name ? `${r.name} <${r.email}>` : r.email).join(', ');
-  };
-
   // Find contact by email in emailContacts
   const findContactByEmail = (emailAddress) => {
     if (!emailAddress || !emailContacts) return null;
@@ -3958,404 +3204,11 @@ ${emailContext}`;
     return email.from_name || email.from_email;
   };
 
-  // Get the latest email in selected thread
-  const getLatestEmail = () => {
-    if (!selectedThread || selectedThread.length === 0) return null;
-    return selectedThread[0];
-  };
-
-  // Email signature
-  const EMAIL_SIGNATURE = `
-
---
-SIMONE CIMMINELLI
-Newsletter: https://www.angelinvesting.it/
-Website: https://www.cimminelli.com/
-LinkedIn: https://www.linkedin.com/in/cimminelli/
-
-Build / Buy / Invest in
-internet businesses.`;
-
-  // Open compose modal for reply
-  const openReply = (replyAll = false) => {
-    const latestEmail = getLatestEmail();
-    if (!latestEmail) return;
-
-    const mode = replyAll ? 'replyAll' : 'reply';
-    const myEmail = 'simone@cimminelli.com';
-    const isSentByMe = latestEmail.from_email?.toLowerCase() === myEmail.toLowerCase();
-
-    // Determine To recipients as array
-    let toRecipients = [];
-    if (isSentByMe && latestEmail.to_recipients?.length > 0) {
-      // If I sent it, reply to original recipients
-      toRecipients = latestEmail.to_recipients.map(r => ({ email: r.email, name: r.name || '' }));
-    } else {
-      toRecipients = [{ email: latestEmail.from_email, name: latestEmail.from_name || '' }];
-    }
-
-    // Get CC recipients for Reply All (excluding myself)
-    let ccRecipients = [];
-    if (replyAll) {
-      // Add other TO recipients (excluding myself and the sender who goes in TO)
-      if (!isSentByMe && latestEmail.to_recipients?.length > 0) {
-        const otherToRecipients = latestEmail.to_recipients
-          .filter(r => r.email?.toLowerCase() !== myEmail.toLowerCase())
-          .map(r => ({ email: r.email, name: r.name || '' }));
-        ccRecipients = [...ccRecipients, ...otherToRecipients];
-      }
-      // Add original CC recipients
-      if (latestEmail.cc_recipients?.length > 0) {
-        const originalCcRecipients = latestEmail.cc_recipients
-          .filter(r => r.email?.toLowerCase() !== myEmail.toLowerCase())
-          .map(r => ({ email: r.email, name: r.name || '' }));
-        ccRecipients = [...ccRecipients, ...originalCcRecipients];
-      }
-    }
-
-    const subject = latestEmail.subject?.startsWith('Re:')
-      ? latestEmail.subject
-      : `Re: ${latestEmail.subject}`;
-
-    setComposeTo(toRecipients);
-    setComposeCc(ccRecipients);
-    setComposeToInput('');
-    setComposeCcInput('');
-    setComposeSubject(subject);
-    setComposeBody('\n\n' + EMAIL_SIGNATURE + '\n\n' + '─'.repeat(40) + '\n' +
-      `On ${new Date(latestEmail.date).toLocaleString()}, ${latestEmail.from_name || latestEmail.from_email} wrote:\n\n` +
-      (latestEmail.body_text || latestEmail.snippet || ''));
-    setComposeModal({ open: true, mode });
-  };
-
-  // Open reply modal with AI-drafted text
-  const openReplyWithDraft = (draftText) => {
-    const latestEmail = getLatestEmail();
-    if (!latestEmail) return;
-
-    const myEmail = 'simone@cimminelli.com';
-    const isSentByMe = latestEmail.from_email?.toLowerCase() === myEmail.toLowerCase();
-
-    // Determine To recipients as array
-    let toRecipients = [];
-    if (isSentByMe && latestEmail.to_recipients?.length > 0) {
-      toRecipients = latestEmail.to_recipients.map(r => ({ email: r.email, name: r.name || '' }));
-    } else {
-      toRecipients = [{ email: latestEmail.from_email, name: latestEmail.from_name || '' }];
-    }
-
-    // Get CC recipients (including other TO recipients and original CC, excluding myself)
-    let ccRecipients = [];
-    // Add other TO recipients (excluding myself and the sender who goes in TO)
-    if (!isSentByMe && latestEmail.to_recipients?.length > 0) {
-      const otherToRecipients = latestEmail.to_recipients
-        .filter(r => r.email?.toLowerCase() !== myEmail.toLowerCase())
-        .map(r => ({ email: r.email, name: r.name || '' }));
-      ccRecipients = [...ccRecipients, ...otherToRecipients];
-    }
-    // Add original CC recipients
-    if (latestEmail.cc_recipients?.length > 0) {
-      const originalCcRecipients = latestEmail.cc_recipients
-        .filter(r => r.email?.toLowerCase() !== myEmail.toLowerCase())
-        .map(r => ({ email: r.email, name: r.name || '' }));
-      ccRecipients = [...ccRecipients, ...originalCcRecipients];
-    }
-
-    const subject = latestEmail.subject?.startsWith('Re:')
-      ? latestEmail.subject
-      : `Re: ${latestEmail.subject}`;
-
-    setComposeTo(toRecipients);
-    setComposeCc(ccRecipients);
-    setComposeToInput('');
-    setComposeCcInput('');
-    setComposeSubject(subject);
-    setComposeBody(draftText + '\n\n' + EMAIL_SIGNATURE + '\n\n' + '─'.repeat(40) + '\n' +
-      `On ${new Date(latestEmail.date).toLocaleString()}, ${latestEmail.from_name || latestEmail.from_email} wrote:\n\n` +
-      (latestEmail.body_text || latestEmail.snippet || ''));
-    setComposeModal({ open: true, mode: 'reply' });
-  };
-
-  // Extract draft text from Claude's response
-  const extractDraftFromMessage = (content) => {
-    // Look for text between --- markers (common draft format)
-    const draftMatch = content.match(/---\n([\s\S]*?)\n---/);
-    if (draftMatch) {
-      return draftMatch[1].trim();
-    }
-
-    // Look for Subject: followed by content
-    const subjectMatch = content.match(/\*\*Subject:\*\*.*?\n\n---\n([\s\S]*?)\n---/);
-    if (subjectMatch) {
-      return subjectMatch[1].trim();
-    }
-
-    return null;
-  };
-
-  // Check if message contains a draft reply
-  const hasDraftReply = (content) => {
-    return content.includes('---\n') &&
-           (content.toLowerCase().includes('ciao') ||
-            content.toLowerCase().includes('simone') ||
-            content.toLowerCase().includes('thanks') ||
-            content.toLowerCase().includes('send it?') ||
-            content.toLowerCase().includes('draft'));
-  };
-
-  // Open compose modal for forward
-  const openForward = () => {
-    const latestEmail = getLatestEmail();
-    if (!latestEmail) return;
-
-    const subject = latestEmail.subject?.startsWith('Fwd:')
-      ? latestEmail.subject
-      : `Fwd: ${latestEmail.subject}`;
-
-    setComposeTo([]);
-    setComposeCc([]);
-    setComposeToInput('');
-    setComposeCcInput('');
-    setComposeSubject(subject);
-    setComposeBody('\n\n' + EMAIL_SIGNATURE + '\n\n' + '─'.repeat(40) + '\n' +
-      `---------- Forwarded message ----------\n` +
-      `From: ${latestEmail.from_name || ''} <${latestEmail.from_email}>\n` +
-      `Date: ${new Date(latestEmail.date).toLocaleString()}\n` +
-      `Subject: ${latestEmail.subject}\n` +
-      `To: ${formatRecipients(latestEmail.to_recipients) || ''}\n\n` +
-      (latestEmail.body_text || latestEmail.snippet || ''));
-    setComposeModal({ open: true, mode: 'forward' });
-  };
-
-  // Close compose modal
-  const closeCompose = () => {
-    setComposeModal({ open: false, mode: null });
-    setComposeTo([]);
-    setComposeCc([]);
-    setComposeToInput('');
-    setComposeCcInput('');
-    setComposeSubject('');
-    setComposeBody('');
-    setContactSuggestions([]);
-    setActiveField(null);
-    setComposeAttachments([]);
-  };
-
-  // Handle file selection for attachments
-  const handleComposeFileSelect = async (e) => {
-    const files = Array.from(e.target.files);
-    if (!files.length) return;
-
-    const newAttachments = await Promise.all(files.map(async (file) => {
-      const base64 = await new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result.split(',')[1]); // Remove data:xxx;base64, prefix
-        reader.readAsDataURL(file);
-      });
-      return {
-        name: file.name,
-        type: file.type || 'application/octet-stream',
-        size: file.size,
-        data: base64,
-      };
-    }));
-
-    setComposeAttachments(prev => [...prev, ...newAttachments]);
-    // Reset input so same file can be selected again
-    if (composeFileInputRef.current) {
-      composeFileInputRef.current.value = '';
-    }
-  };
-
-  // Remove attachment
-  const removeComposeAttachment = (index) => {
-    setComposeAttachments(prev => prev.filter((_, i) => i !== index));
-  };
-
   // Format file size
   const formatFileSize = (bytes) => {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  };
-
-  // Search contacts in Supabase for autocomplete
-  const searchContacts = async (query) => {
-    if (!query || query.length < 2) {
-      setContactSuggestions([]);
-      return;
-    }
-
-    try {
-      // Search by email directly in contact_emails table
-      const { data: emailMatches, error: emailError } = await supabase
-        .from('contact_emails')
-        .select(`
-          email,
-          contacts (
-            contact_id,
-            first_name,
-            last_name,
-            profile_image_url
-          )
-        `)
-        .ilike('email', `%${query}%`)
-        .limit(8);
-
-      if (emailError) throw emailError;
-
-      // Also search by name in contacts and get their emails
-      const { data: nameMatches, error: nameError } = await supabase
-        .from('contacts')
-        .select(`
-          contact_id,
-          first_name,
-          last_name,
-          profile_image_url,
-          contact_emails (email)
-        `)
-        .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%`)
-        .limit(8);
-
-      if (nameError) throw nameError;
-
-      // Transform email matches to flat structure
-      const emailSuggestions = (emailMatches || [])
-        .filter(item => item.contacts)
-        .map(item => ({
-          id: item.contacts.contact_id,
-          first_name: item.contacts.first_name,
-          last_name: item.contacts.last_name,
-          email: item.email,
-          profile_image_url: item.contacts.profile_image_url
-        }));
-
-      // Transform name matches - expand to one entry per email
-      const nameSuggestions = (nameMatches || []).flatMap(contact => {
-        const emails = contact.contact_emails || [];
-        if (emails.length === 0) return [];
-        return emails.map(e => ({
-          id: contact.contact_id,
-          first_name: contact.first_name,
-          last_name: contact.last_name,
-          email: e.email,
-          profile_image_url: contact.profile_image_url
-        }));
-      });
-
-      // Combine and deduplicate by email
-      const allSuggestions = [...emailSuggestions, ...nameSuggestions];
-      const uniqueByEmail = allSuggestions.filter((item, index, self) =>
-        index === self.findIndex(t => t.email === item.email)
-      );
-
-      setContactSuggestions(uniqueByEmail.slice(0, 8));
-    } catch (error) {
-      console.error('Error searching contacts:', error);
-      setContactSuggestions([]);
-    }
-  };
-
-  // Add email to To or CC
-  const addEmailToField = (field, contact) => {
-    const email = typeof contact === 'string' ? contact : contact.email;
-    const name = typeof contact === 'string' ? '' : `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
-
-    if (field === 'to') {
-      if (!composeTo.find(r => r.email.toLowerCase() === email.toLowerCase())) {
-        setComposeTo([...composeTo, { email, name }]);
-      }
-      setComposeToInput('');
-    } else {
-      if (!composeCc.find(r => r.email.toLowerCase() === email.toLowerCase())) {
-        setComposeCc([...composeCc, { email, name }]);
-      }
-      setComposeCcInput('');
-    }
-    setContactSuggestions([]);
-  };
-
-  // Remove email from To or CC
-  const removeEmailFromField = (field, email) => {
-    if (field === 'to') {
-      setComposeTo(composeTo.filter(r => r.email !== email));
-    } else {
-      setComposeCc(composeCc.filter(r => r.email !== email));
-    }
-  };
-
-  // Handle input keydown for adding emails
-  const handleEmailInputKeyDown = (e, field) => {
-    const input = field === 'to' ? composeToInput : composeCcInput;
-
-    if (e.key === 'Enter' || e.key === 'Tab' || e.key === ',') {
-      e.preventDefault();
-      const trimmed = input.trim().replace(/,$/, '');
-      if (trimmed && trimmed.includes('@')) {
-        addEmailToField(field, trimmed);
-      }
-    } else if (e.key === 'Backspace' && !input) {
-      // Remove last email if backspace on empty input
-      if (field === 'to' && composeTo.length > 0) {
-        setComposeTo(composeTo.slice(0, -1));
-      } else if (field === 'cc' && composeCc.length > 0) {
-        setComposeCc(composeCc.slice(0, -1));
-      }
-    }
-  };
-
-  // Send email
-  const handleSend = async () => {
-    if (composeTo.length === 0 || !composeBody.trim()) {
-      toast.error('Please fill in recipient and message');
-      return;
-    }
-
-    const latestEmail = getLatestEmail();
-    if (!latestEmail) {
-      toast.error('No email selected');
-      return;
-    }
-
-    setSending(true);
-
-    try {
-      // Get just the body text (before the quote separator)
-      const bodyText = composeBody.split('─'.repeat(40))[0].trim();
-
-      // Use /send endpoint directly for full control
-      const response = await fetch(`${BACKEND_URL}/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: composeTo,
-          cc: composeCc.length > 0 ? composeCc : undefined,
-          subject: composeSubject,
-          textBody: bodyText,
-          inReplyTo: composeModal.mode !== 'forward' ? latestEmail.fastmail_id : undefined,
-          references: composeModal.mode !== 'forward' ? latestEmail.fastmail_id : undefined,
-          attachments: composeAttachments.length > 0 ? composeAttachments.map(a => ({
-            name: a.name,
-            type: a.type,
-            data: a.data,
-          })) : undefined,
-        }),
-      });
-
-      const result = await response.json();
-      if (!result.success) throw new Error(result.error);
-
-      toast.success('Email sent! Saving to CRM and archiving...');
-      closeCompose();
-
-      // Auto-save to CRM and archive after sending reply
-      await saveAndArchive();
-    } catch (error) {
-      console.error('Send error:', error);
-      toast.error(`Failed to send: ${error.message}`);
-    } finally {
-      setSending(false);
-    }
   };
 
   // Archive email in Fastmail
@@ -4862,6 +3715,113 @@ internet businesses.`;
     }
   };
 
+  // Set the ref for the compose hook callback
+  saveAndArchiveRef.current = saveAndArchive;
+
+  // Handle WhatsApp Done - save messages to CRM and remove from staging
+  const handleWhatsAppDone = async () => {
+    if (!selectedWhatsappChat) return;
+
+    setSaving(true);
+    try {
+      const chatId = selectedWhatsappChat.chat_id;
+      const messages = selectedWhatsappChat.messages || [];
+
+      // 1. Find or create the chat in chats table
+      let crmChatId = null;
+      const { data: existingChat, error: chatFindError } = await supabase
+        .from('chats')
+        .select('id')
+        .eq('external_chat_id', chatId)
+        .maybeSingle();
+
+      if (chatFindError) {
+        console.error('Error finding chat:', chatFindError);
+      }
+
+      if (existingChat) {
+        crmChatId = existingChat.id;
+      } else {
+        // Create new chat
+        const { data: newChat, error: chatCreateError } = await supabase
+          .from('chats')
+          .insert({
+            chat_name: selectedWhatsappChat.chat_name || selectedWhatsappChat.contact_number,
+            is_group_chat: selectedWhatsappChat.is_group_chat || false,
+            category: selectedWhatsappChat.is_group_chat ? 'group' : 'individual',
+            external_chat_id: chatId,
+            created_by: 'Edge Function'
+          })
+          .select('id')
+          .single();
+
+        if (chatCreateError) {
+          console.error('Error creating chat:', chatCreateError);
+          toast.error('Failed to create chat record');
+          setSaving(false);
+          return;
+        }
+        crmChatId = newChat.id;
+      }
+
+      // 2. Save each message as an interaction
+      for (const msg of messages) {
+        // Check if interaction already exists
+        const { data: existingInteraction } = await supabase
+          .from('interactions')
+          .select('interaction_id')
+          .eq('external_interaction_id', msg.message_uid || msg.id)
+          .maybeSingle();
+
+        if (!existingInteraction) {
+          await supabase
+            .from('interactions')
+            .insert({
+              interaction_type: 'whatsapp',
+              direction: msg.direction || 'received',
+              interaction_date: msg.date,
+              chat_id: crmChatId,
+              summary: msg.body_text || msg.snippet,
+              external_interaction_id: msg.message_uid || msg.id,
+              created_at: new Date().toISOString()
+            });
+        }
+      }
+
+      // 3. Delete messages from staging (command_center_inbox)
+      const messageIds = messages.map(m => m.id).filter(Boolean);
+      if (messageIds.length > 0) {
+        const { error: deleteError } = await supabase
+          .from('command_center_inbox')
+          .delete()
+          .in('id', messageIds);
+
+        if (deleteError) {
+          console.error('Error deleting from staging:', deleteError);
+        }
+      }
+
+      // 4. Update local state - remove processed chat
+      setWhatsappChats(prev => prev.filter(c => c.chat_id !== chatId));
+      setWhatsappMessages(prev => prev.filter(m => m.chat_id !== chatId));
+
+      // 5. Select next chat if available
+      const remainingChats = whatsappChats.filter(c => c.chat_id !== chatId);
+      if (remainingChats.length > 0) {
+        setSelectedWhatsappChat(remainingChats[0]);
+      } else {
+        setSelectedWhatsappChat(null);
+      }
+
+      toast.success('WhatsApp messages archived');
+    } catch (error) {
+      console.error('Error archiving WhatsApp:', error);
+      toast.error('Failed to archive WhatsApp messages');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Mark as spam - block email or domain, archive in Fastmail, and delete from Supabase
   const markAsSpam = async (type) => {
     const latestEmail = getLatestEmail();
@@ -5152,11 +4112,13 @@ internet businesses.`;
 
   // Check for unread emails
   const hasUnreadEmails = emails.some(email => email.is_read === false);
+  const hasUnreadWhatsapp = whatsappMessages.some(msg => msg.is_read === false);
 
+  const hasUnreadCalendar = calendarEvents.some(event => event.is_read === false);
   const tabs = [
     { id: 'email', label: 'Email', icon: FaEnvelope, count: emails.length, hasUnread: hasUnreadEmails },
-    { id: 'whatsapp', label: 'WhatsApp', icon: FaWhatsapp, count: 0, hasUnread: false },
-    { id: 'calendar', label: 'Calendar', icon: FaCalendar, count: 0, hasUnread: false },
+    { id: 'whatsapp', label: 'WhatsApp', icon: FaWhatsapp, count: whatsappMessages.length, hasUnread: hasUnreadWhatsapp },
+    { id: 'calendar', label: 'Calendar', icon: FaCalendar, count: calendarEvents.length, hasUnread: hasUnreadCalendar },
   ];
 
   return (
@@ -5196,7 +4158,7 @@ internet businesses.`;
             </CollapseButton>
           </ListHeader>
 
-          {!listCollapsed && (
+          {!listCollapsed && activeTab === 'email' && (
             <EmailList>
               {loading ? (
                 <EmptyState theme={theme}>Loading...</EmptyState>
@@ -5225,16 +4187,114 @@ internet businesses.`;
             </EmailList>
           )}
 
-          {!listCollapsed && threads.length > 0 && (
+          {!listCollapsed && activeTab === 'whatsapp' && (
+            <WhatsAppChatList
+              theme={theme}
+              chats={whatsappChats}
+              selectedChat={selectedWhatsappChat}
+              onSelectChat={setSelectedWhatsappChat}
+              loading={loading}
+            />
+          )}
+
+          {!listCollapsed && activeTab === 'email' && threads.length > 0 && (
             <PendingCount theme={theme}>
               {threads.length} threads ({emails.length} emails)
             </PendingCount>
           )}
+
+          {!listCollapsed && activeTab === 'whatsapp' && whatsappChats.length > 0 && (
+            <PendingCount theme={theme}>
+              {whatsappChats.length} chats ({whatsappMessages.length} messages)
+            </PendingCount>
+          )}
+
+          {/* Calendar Events List */}
+          {!listCollapsed && activeTab === 'calendar' && (
+            <EmailList>
+              {calendarLoading ? (
+                <EmptyState theme={theme}>Loading...</EmptyState>
+              ) : calendarEvents.length === 0 ? (
+                <EmptyState theme={theme}>
+                  <img src="/inbox-zero.png" alt="Inbox Zero" style={{ width: '150px', marginBottom: '16px' }} />
+                  <span style={{ color: '#10B981', fontWeight: 600 }}>Inbox Zero!</span>
+                </EmptyState>
+              ) : (
+                calendarEvents.map(event => {
+                  // Clean subject: remove "Simone Cimminelli", "<>", and trim
+                  const cleanSubject = (event.subject || 'No title')
+                    .replace(/Simone Cimminelli/gi, '')
+                    .replace(/<>/g, '')
+                    .replace(/\s+/g, ' ')
+                    .trim() || 'Meeting';
+
+                  // Determine if remote or in-person based on location
+                  const location = (event.event_location || '').toLowerCase();
+                  const isRemote = location.includes('zoom') || location.includes('meet') ||
+                    location.includes('teams') || location.includes('webex') ||
+                    location.includes('http') || location.includes('skype');
+
+                  const eventDate = new Date(event.date);
+                  const dateStr = `${String(eventDate.getDate()).padStart(2, '0')}-${String(eventDate.getMonth() + 1).padStart(2, '0')}-${String(eventDate.getFullYear()).slice(-2)}`;
+                  const timeStr = eventDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+
+                  return (
+                    <EmailItem
+                      key={event.id}
+                      theme={theme}
+                      $selected={selectedCalendarEvent?.id === event.id}
+                      $unread={!event.is_read}
+                      onClick={() => setSelectedCalendarEvent(event)}
+                    >
+                      <EmailSender theme={theme}>
+                        {!event.is_read && <EmailUnreadDot />}
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {cleanSubject}
+                        </span>
+                        <span style={{
+                          marginLeft: '8px',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          fontSize: '10px',
+                          fontWeight: 600,
+                          flexShrink: 0,
+                          backgroundColor: isRemote ? '#3B82F6' : '#10B981',
+                          color: 'white'
+                        }}>
+                          {isRemote ? 'Remote' : 'In Person'}
+                        </span>
+                      </EmailSender>
+                      <EmailSubject theme={theme} style={{ fontWeight: 600 }}>
+                        {dateStr} {timeStr}
+                        {event.event_end && ` - ${new Date(event.event_end).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`}
+                      </EmailSubject>
+                      <EmailSnippet theme={theme}>
+                        {event.event_location || 'No location'}
+                      </EmailSnippet>
+                    </EmailItem>
+                  );
+                })
+              )}
+            </EmailList>
+          )}
+
+          {!listCollapsed && activeTab === 'calendar' && calendarEvents.length > 0 && (
+            <PendingCount theme={theme}>
+              {calendarEvents.length} events to process
+            </PendingCount>
+          )}
         </EmailListPanel>
 
-        {/* Center: Email Content */}
+        {/* Center: Content Panel - Email or WhatsApp */}
         <EmailContentPanel theme={theme}>
-          {selectedThread && selectedThread.length > 0 ? (
+          {activeTab === 'whatsapp' ? (
+            <WhatsAppTab
+              theme={theme}
+              selectedChat={selectedWhatsappChat}
+              onDone={handleWhatsAppDone}
+              saving={saving}
+            />
+          ) : selectedThread && selectedThread.length > 0 ? (
             <>
               {/* Thread subject */}
               <div style={{
@@ -5905,230 +4965,34 @@ internet businesses.`;
       </MainContent>
 
       {/* Compose Modal */}
-      {composeModal.open && (
-        <ModalOverlay onClick={closeCompose}>
-          <ModalContent theme={theme} onClick={e => e.stopPropagation()}>
-            <ModalHeader theme={theme}>
-              <ModalTitle theme={theme}>
-                {composeModal.mode === 'forward' ? 'Forward' : composeModal.mode === 'replyAll' ? 'Reply All' : 'Reply'}
-              </ModalTitle>
-              <CloseButton theme={theme} onClick={closeCompose}>
-                <FaTimes size={18} />
-              </CloseButton>
-            </ModalHeader>
-
-            <ModalBody theme={theme}>
-              <FormField>
-                <FormLabel theme={theme}>To</FormLabel>
-                <EmailBubbleContainer theme={theme} onClick={() => document.getElementById('to-input')?.focus()}>
-                  {composeTo.map((recipient, idx) => (
-                    <EmailBubble key={idx} theme={theme}>
-                      {recipient.name || recipient.email}
-                      <EmailBubbleRemove theme={theme} onClick={(e) => { e.stopPropagation(); removeEmailFromField('to', recipient.email); }}>
-                        <FaTimes size={10} />
-                      </EmailBubbleRemove>
-                    </EmailBubble>
-                  ))}
-                  <EmailBubbleInput
-                    id="to-input"
-                    theme={theme}
-                    value={composeToInput}
-                    onChange={(e) => {
-                      setComposeToInput(e.target.value);
-                      setActiveField('to');
-                      searchContacts(e.target.value);
-                    }}
-                    onKeyDown={(e) => handleEmailInputKeyDown(e, 'to')}
-                    onFocus={() => setActiveField('to')}
-                    onBlur={() => setTimeout(() => { setContactSuggestions([]); setActiveField(null); }, 200)}
-                    placeholder={composeTo.length === 0 ? "Type name or email..." : ""}
-                  />
-                  {activeField === 'to' && contactSuggestions.length > 0 && (
-                    <AutocompleteDropdown theme={theme}>
-                      {contactSuggestions.map((contact) => (
-                        <AutocompleteItem
-                          key={`${contact.id}-${contact.email}`}
-                          theme={theme}
-                          onMouseDown={() => addEmailToField('to', contact)}
-                        >
-                          <AutocompleteAvatar theme={theme}>
-                            {contact.profile_image_url ? (
-                              <img src={contact.profile_image_url} alt="" style={{ width: 32, height: 32, borderRadius: '50%' }} />
-                            ) : (
-                              `${contact.first_name?.[0] || ''}${contact.last_name?.[0] || ''}`
-                            )}
-                          </AutocompleteAvatar>
-                          <AutocompleteInfo>
-                            <AutocompleteName theme={theme}>{contact.first_name} {contact.last_name}</AutocompleteName>
-                            <AutocompleteEmail theme={theme}>{contact.email}</AutocompleteEmail>
-                          </AutocompleteInfo>
-                        </AutocompleteItem>
-                      ))}
-                    </AutocompleteDropdown>
-                  )}
-                </EmailBubbleContainer>
-              </FormField>
-
-              <FormField>
-                <FormLabel theme={theme}>CC</FormLabel>
-                <EmailBubbleContainer theme={theme} onClick={() => document.getElementById('cc-input')?.focus()}>
-                  {composeCc.map((recipient, idx) => (
-                    <EmailBubble key={idx} theme={theme}>
-                      {recipient.name || recipient.email}
-                      <EmailBubbleRemove theme={theme} onClick={(e) => { e.stopPropagation(); removeEmailFromField('cc', recipient.email); }}>
-                        <FaTimes size={10} />
-                      </EmailBubbleRemove>
-                    </EmailBubble>
-                  ))}
-                  <EmailBubbleInput
-                    id="cc-input"
-                    theme={theme}
-                    value={composeCcInput}
-                    onChange={(e) => {
-                      setComposeCcInput(e.target.value);
-                      setActiveField('cc');
-                      searchContacts(e.target.value);
-                    }}
-                    onKeyDown={(e) => handleEmailInputKeyDown(e, 'cc')}
-                    onFocus={() => setActiveField('cc')}
-                    onBlur={() => setTimeout(() => { setContactSuggestions([]); setActiveField(null); }, 200)}
-                    placeholder={composeCc.length === 0 ? "Add CC (optional)..." : ""}
-                  />
-                  {activeField === 'cc' && contactSuggestions.length > 0 && (
-                    <AutocompleteDropdown theme={theme}>
-                      {contactSuggestions.map((contact) => (
-                        <AutocompleteItem
-                          key={`${contact.id}-${contact.email}`}
-                          theme={theme}
-                          onMouseDown={() => addEmailToField('cc', contact)}
-                        >
-                          <AutocompleteAvatar theme={theme}>
-                            {contact.profile_image_url ? (
-                              <img src={contact.profile_image_url} alt="" style={{ width: 32, height: 32, borderRadius: '50%' }} />
-                            ) : (
-                              `${contact.first_name?.[0] || ''}${contact.last_name?.[0] || ''}`
-                            )}
-                          </AutocompleteAvatar>
-                          <AutocompleteInfo>
-                            <AutocompleteName theme={theme}>{contact.first_name} {contact.last_name}</AutocompleteName>
-                            <AutocompleteEmail theme={theme}>{contact.email}</AutocompleteEmail>
-                          </AutocompleteInfo>
-                        </AutocompleteItem>
-                      ))}
-                    </AutocompleteDropdown>
-                  )}
-                </EmailBubbleContainer>
-              </FormField>
-
-              <FormField>
-                <FormLabel theme={theme}>Subject</FormLabel>
-                <FormInput
-                  theme={theme}
-                  type="text"
-                  value={composeSubject}
-                  onChange={e => setComposeSubject(e.target.value)}
-                />
-              </FormField>
-
-              <FormField>
-                <FormLabel theme={theme}>Message</FormLabel>
-                <FormTextarea
-                  theme={theme}
-                  value={composeBody}
-                  onChange={e => setComposeBody(e.target.value)}
-                  placeholder="Write your message..."
-                />
-              </FormField>
-
-              {/* Attachments Section */}
-              <FormField>
-                <input
-                  type="file"
-                  multiple
-                  ref={composeFileInputRef}
-                  onChange={handleComposeFileSelect}
-                  style={{ display: 'none' }}
-                />
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: composeAttachments.length > 0 ? '8px' : 0 }}>
-                  <button
-                    type="button"
-                    onClick={() => composeFileInputRef.current?.click()}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '6px 12px',
-                      background: theme === 'light' ? '#F3F4F6' : '#374151',
-                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
-                      borderRadius: '6px',
-                      color: theme === 'light' ? '#374151' : '#D1D5DB',
-                      cursor: 'pointer',
-                      fontSize: '13px',
-                    }}
-                  >
-                    <FaPaperclip size={12} />
-                    Attach Files
-                  </button>
-                  {composeAttachments.length > 0 && (
-                    <span style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
-                      {composeAttachments.length} file{composeAttachments.length > 1 ? 's' : ''} attached
-                    </span>
-                  )}
-                </div>
-                {composeAttachments.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                    {composeAttachments.map((att, idx) => (
-                      <div
-                        key={idx}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          padding: '6px 10px',
-                          background: theme === 'light' ? '#EFF6FF' : '#1E3A5F',
-                          borderRadius: '6px',
-                          fontSize: '12px',
-                        }}
-                      >
-                        <FaPaperclip size={10} style={{ color: theme === 'light' ? '#3B82F6' : '#60A5FA' }} />
-                        <span style={{ maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {att.name}
-                        </span>
-                        <span style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
-                          ({formatFileSize(att.size)})
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removeComposeAttachment(idx)}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            cursor: 'pointer',
-                            padding: '2px',
-                            color: theme === 'light' ? '#9CA3AF' : '#6B7280',
-                          }}
-                        >
-                          <FaTimes size={10} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </FormField>
-            </ModalBody>
-
-            <ModalFooter theme={theme}>
-              <CancelButton theme={theme} onClick={closeCompose}>
-                Cancel
-              </CancelButton>
-              <SendButton onClick={handleSend} disabled={sending}>
-                <FaPaperPlane />
-                {sending ? 'Sending...' : 'Send'}
-              </SendButton>
-            </ModalFooter>
-          </ModalContent>
-        </ModalOverlay>
-      )}
+      <ComposeEmailModal
+        theme={theme}
+        composeModal={composeModal}
+        closeCompose={closeCompose}
+        composeTo={composeTo}
+        composeToInput={composeToInput}
+        setComposeToInput={setComposeToInput}
+        composeCc={composeCc}
+        composeCcInput={composeCcInput}
+        setComposeCcInput={setComposeCcInput}
+        composeSubject={composeSubject}
+        setComposeSubject={setComposeSubject}
+        composeBody={composeBody}
+        setComposeBody={setComposeBody}
+        contactSuggestions={contactSuggestions}
+        activeField={activeField}
+        setActiveField={setActiveField}
+        searchContacts={searchContacts}
+        addEmailToField={addEmailToField}
+        removeEmailFromField={removeEmailFromField}
+        handleEmailInputKeyDown={handleEmailInputKeyDown}
+        composeAttachments={composeAttachments}
+        composeFileInputRef={composeFileInputRef}
+        handleComposeFileSelect={handleComposeFileSelect}
+        removeComposeAttachment={removeComposeAttachment}
+        sending={sending}
+        handleSend={handleSend}
+      />
 
       {/* Quick Edit Modal */}
       <QuickEditModal
