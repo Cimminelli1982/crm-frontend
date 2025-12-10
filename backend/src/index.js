@@ -5,6 +5,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { JMAPClient, transformEmail } from './jmap.js';
 import { upsertEmails, supabase, getLatestEmailDate, updateSyncDate } from './supabase.js';
 import { mcpManager } from './mcp-client.js';
+import { CalDAVClient } from './caldav.js';
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({
@@ -1265,6 +1266,219 @@ app.get('/obsidian/status', async (req, res) => {
     res.json({ connected: false, error: error.message });
   }
 });
+
+// ==================== CALENDAR ENDPOINTS ====================
+
+// Extract meeting info from email using Claude
+app.post('/calendar/extract-event', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'Email data required' });
+    }
+
+    console.log('[Calendar] Extracting event from email:', email.subject);
+
+    // Build context for Claude
+    const prompt = `Analyze this email and extract any meeting/event information.
+
+From: ${email.from_name || ''} <${email.from_email || ''}>
+To: ${JSON.stringify(email.to_recipients || [])}
+CC: ${JSON.stringify(email.cc_recipients || [])}
+Subject: ${email.subject || ''}
+Date: ${email.date || ''}
+
+Email Body:
+${email.body_text || email.snippet || ''}
+
+Extract meeting details and respond with ONLY valid JSON in this exact format:
+{
+  "found_event": true/false,
+  "title": "Meeting title (e.g., 'Coffee with [Name]' or from subject)",
+  "datetime": "ISO 8601 format if specific date/time found, null otherwise",
+  "date_text": "Original text that mentions the date/time (e.g., '10:30 ad High Street Ken')",
+  "duration_minutes": 60,
+  "location": "Location if mentioned, null otherwise",
+  "location_needs_clarification": true/false,
+  "location_options": ["Option 1", "Option 2"] or null,
+  "attendees": [{"email": "email@example.com", "name": "Name"}],
+  "description": "Brief context from email",
+  "confidence": "high/medium/low",
+  "clarification_needed": ["list of things that need user confirmation"]
+}
+
+Rules:
+- If there's a specific date/time mentioned, parse it to ISO 8601 format
+- If date is relative (e.g., "tomorrow", "next week"), calculate from today's date: ${new Date().toISOString().split('T')[0]}
+- Attendees should include the email sender and any CC recipients
+- Location needs clarification if it's abbreviated or unclear (e.g., "High Street Ken" could mean multiple places)
+- Title should be descriptive (not just "Meeting")
+- Set found_event to false if this doesn't appear to be about a meeting/event`;
+
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1000,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    // Parse Claude's response
+    let responseText = response.content[0].text.trim();
+
+    // Handle markdown code blocks
+    if (responseText.startsWith('```')) {
+      const lines = responseText.split('\n');
+      const jsonLines = [];
+      let inJson = false;
+      for (const line of lines) {
+        if (line.startsWith('```') && !inJson) {
+          inJson = true;
+          continue;
+        } else if (line.startsWith('```') && inJson) {
+          break;
+        } else if (inJson) {
+          jsonLines.push(line);
+        }
+      }
+      responseText = jsonLines.join('\n');
+    }
+
+    const extracted = JSON.parse(responseText);
+    console.log('[Calendar] Extracted event:', extracted);
+
+    res.json({
+      success: true,
+      event: extracted,
+    });
+  } catch (error) {
+    console.error('[Calendar] Extract error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Create a calendar event via CalDAV
+app.post('/calendar/create-event', async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      location,
+      startDate,
+      endDate,
+      allDay,
+      attendees,
+      reminders,
+    } = req.body;
+
+    if (!title || !startDate) {
+      return res.status(400).json({ success: false, error: 'Title and startDate are required' });
+    }
+
+    // Check for Fastmail credentials
+    const username = process.env.FASTMAIL_USERNAME;
+    const token = process.env.FASTMAIL_API_TOKEN;
+
+    if (!username || !token) {
+      return res.status(500).json({ success: false, error: 'Fastmail credentials not configured' });
+    }
+
+    console.log('[Calendar] Creating event:', title, 'at', startDate);
+
+    const caldav = new CalDAVClient(username, token);
+
+    const result = await caldav.createEvent({
+      title,
+      description: description || '',
+      location: location || '',
+      startDate: new Date(startDate),
+      endDate: endDate ? new Date(endDate) : null,
+      allDay: allDay || false,
+      attendees: attendees || [],
+      reminders: reminders || [15], // Default 15 min reminder
+    });
+
+    console.log('[Calendar] Event created:', result);
+
+    res.json({
+      success: true,
+      event: result,
+    });
+  } catch (error) {
+    console.error('[Calendar] Create event error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get calendars list
+app.get('/calendar/calendars', async (req, res) => {
+  try {
+    const username = process.env.FASTMAIL_USERNAME;
+    const token = process.env.FASTMAIL_API_TOKEN;
+
+    if (!username || !token) {
+      return res.status(500).json({ success: false, error: 'Fastmail credentials not configured' });
+    }
+
+    const caldav = new CalDAVClient(username, token);
+    const calendars = await caldav.getCalendars();
+
+    res.json({ success: true, calendars });
+  } catch (error) {
+    console.error('[Calendar] Get calendars error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get events in a date range
+app.get('/calendar/events', async (req, res) => {
+  try {
+    const { start, end } = req.query;
+
+    if (!start || !end) {
+      return res.status(400).json({ success: false, error: 'start and end dates required' });
+    }
+
+    const username = process.env.FASTMAIL_USERNAME;
+    const token = process.env.FASTMAIL_API_TOKEN;
+
+    if (!username || !token) {
+      return res.status(500).json({ success: false, error: 'Fastmail credentials not configured' });
+    }
+
+    const caldav = new CalDAVClient(username, token);
+    const events = await caldav.getEvents(new Date(start), new Date(end));
+
+    res.json({ success: true, events });
+  } catch (error) {
+    console.error('[Calendar] Get events error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Check calendar connection status
+app.get('/calendar/status', async (req, res) => {
+  try {
+    const username = process.env.FASTMAIL_USERNAME;
+    const token = process.env.FASTMAIL_API_TOKEN;
+
+    if (!username || !token) {
+      return res.json({ connected: false, error: 'Fastmail credentials not configured' });
+    }
+
+    const caldav = new CalDAVClient(username, token);
+    const calendars = await caldav.getCalendars();
+
+    res.json({
+      connected: true,
+      username,
+      calendars: calendars.length,
+    });
+  } catch (error) {
+    res.json({ connected: false, error: error.message });
+  }
+});
+
+// ============ END CALENDAR ============
 
 app.listen(PORT, () => {
   console.log(`Command Center Backend running on port ${PORT}`);
