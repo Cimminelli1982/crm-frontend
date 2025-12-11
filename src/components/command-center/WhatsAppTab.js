@@ -332,6 +332,73 @@ const AttachmentLink = styled.a`
   }
 `;
 
+const AttachmentAudio = styled.audio`
+  width: 100%;
+  max-width: 300px;
+  height: 40px;
+  margin-bottom: ${props => props.$hasText ? '8px' : '0'};
+  border-radius: 20px;
+`;
+
+const AttachmentVideo = styled.video`
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 8px;
+  margin-bottom: ${props => props.$hasText ? '8px' : '0'};
+`;
+
+const DocumentLink = styled.a`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
+  border-radius: 8px;
+  margin-bottom: ${props => props.$hasText ? '8px' : '0'};
+  text-decoration: none;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
+  }
+`;
+
+const DocumentIcon = styled.div`
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: ${props => {
+    if (props.$type === 'pdf') return '#EF4444';
+    if (props.$type === 'doc') return '#3B82F6';
+    if (props.$type === 'xls') return '#10B981';
+    return '#6B7280';
+  }};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+`;
+
+const DocumentInfo = styled.div`
+  flex: 1;
+  min-width: 0;
+`;
+
+const DocumentName = styled.div`
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const DocumentSize = styled.div`
+  font-size: 11px;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+`;
+
 // Chat List Item styled components
 const ChatListContainer = styled.div`
   display: flex;
@@ -531,7 +598,14 @@ export const WhatsAppChatList = ({
               </ChatListNumber>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <ChatListPreview theme={theme}>
-                  {chat.latestMessage?.body_text || chat.latestMessage?.snippet || 'No message'}
+                  {chat.latestMessage?.body_text || chat.latestMessage?.snippet || (chat.latestMessage?.has_attachments ? (() => {
+                    const attType = chat.latestMessage?.attachments?.[0]?.type || chat.latestMessage?.attachments?.[0]?.mimetype || '';
+                    if (attType.startsWith('image/')) return '📷 Photo';
+                    if (attType.startsWith('video/')) return '🎥 Video';
+                    if (attType.startsWith('audio/')) return '🎤 Voice message';
+                    if (attType.includes('pdf')) return '📄 PDF';
+                    return '📎 Attachment';
+                  })() : 'No message')}
                 </ChatListPreview>
                 {unreadCount > 0 && <UnreadBadge>{unreadCount}</UnreadBadge>}
               </div>
@@ -560,17 +634,19 @@ const WhatsAppTab = ({
   const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
 
-  // Fetch attachments for current chat messages
+  // Fetch attachments for current chat messages (staging + archived)
   useEffect(() => {
     const fetchAttachments = async () => {
-      if (!selectedChat?.messages || selectedChat.messages.length === 0) {
-        setAttachmentsMap({});
-        return;
-      }
-
-      const messageUids = selectedChat.messages
+      // Collect message UIDs from both staging and archived messages
+      const stagingUids = (selectedChat?.messages || [])
         .map(m => m.message_uid || m.id)
         .filter(Boolean);
+
+      const archivedUids = (archivedMessages || [])
+        .map(m => m.external_interaction_id)
+        .filter(Boolean);
+
+      const messageUids = [...stagingUids, ...archivedUids];
 
       if (messageUids.length === 0) {
         setAttachmentsMap({});
@@ -604,7 +680,7 @@ const WhatsAppTab = ({
     };
 
     fetchAttachments();
-  }, [selectedChat?.messages]);
+  }, [selectedChat?.messages, archivedMessages]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -788,6 +864,7 @@ const WhatsAppTab = ({
 
   const archivedMsgs = archivedMessages.map(m => ({
     id: m.interaction_id,
+    messageUid: m.external_interaction_id, // For attachment lookup in archived messages
     text: m.summary,
     direction: m.direction,
     date: m.interaction_date,
@@ -895,29 +972,78 @@ const WhatsAppTab = ({
                           <MessageSender $name={msg.sender}>{msg.sender}</MessageSender>
                         )}
                         {/* Render attachments */}
-                        {msg.messageUid && attachmentsMap[msg.messageUid]?.map((att, i) => (
-                          att.file_type?.startsWith('image/') ? (
-                            <AttachmentImage
-                              key={i}
-                              src={att.permanent_url}
-                              alt={att.file_name}
-                              theme={theme}
-                              $hasText={!!msg.text}
-                              onClick={() => window.open(att.permanent_url, '_blank')}
-                            />
-                          ) : (
-                            <AttachmentLink
+                        {msg.messageUid && attachmentsMap[msg.messageUid]?.map((att, i) => {
+                          const fileType = att.file_type?.toLowerCase() || '';
+                          const fileName = att.file_name || 'attachment';
+                          const fileExt = fileName.split('.').pop()?.toLowerCase();
+
+                          // Image (including GIFs)
+                          if (fileType.startsWith('image/') || ['gif', 'jpg', 'jpeg', 'png', 'webp'].includes(fileExt)) {
+                            return (
+                              <AttachmentImage
+                                key={i}
+                                src={att.permanent_url}
+                                alt={fileName}
+                                theme={theme}
+                                $hasText={!!msg.text}
+                                onClick={() => window.open(att.permanent_url, '_blank')}
+                              />
+                            );
+                          }
+
+                          // Audio
+                          if (fileType.startsWith('audio/') || ['ogg', 'opus', 'mp3', 'wav', 'm4a'].includes(fileExt)) {
+                            return (
+                              <AttachmentAudio
+                                key={i}
+                                controls
+                                $hasText={!!msg.text}
+                              >
+                                <source src={att.permanent_url} type={fileType || 'audio/ogg'} />
+                                Your browser does not support audio.
+                              </AttachmentAudio>
+                            );
+                          }
+
+                          // Video
+                          if (fileType.startsWith('video/') || ['mp4', 'webm', 'mov'].includes(fileExt)) {
+                            return (
+                              <AttachmentVideo
+                                key={i}
+                                controls
+                                $hasText={!!msg.text}
+                              >
+                                <source src={att.permanent_url} type={fileType || 'video/mp4'} />
+                                Your browser does not support video.
+                              </AttachmentVideo>
+                            );
+                          }
+
+                          // Documents (PDF, DOC, XLS, etc.)
+                          const docType = fileExt === 'pdf' ? 'pdf'
+                            : ['doc', 'docx'].includes(fileExt) ? 'doc'
+                            : ['xls', 'xlsx'].includes(fileExt) ? 'xls'
+                            : 'file';
+                          const docLabel = fileExt?.toUpperCase() || 'FILE';
+
+                          return (
+                            <DocumentLink
                               key={i}
                               href={att.permanent_url}
                               target="_blank"
                               rel="noopener noreferrer"
+                              download={fileName}
                               theme={theme}
                               $hasText={!!msg.text}
                             >
-                              📎 {att.file_name}
-                            </AttachmentLink>
-                          )
-                        ))}
+                              <DocumentIcon $type={docType}>{docLabel}</DocumentIcon>
+                              <DocumentInfo>
+                                <DocumentName>{fileName}</DocumentName>
+                                <DocumentSize theme={theme}>Tap to download</DocumentSize>
+                              </DocumentInfo>
+                            </DocumentLink>
+                          );
+                        })}
                         {renderMessageText(msg.text, theme, msg.direction === 'sent')}
                         <MessageTime theme={theme} $isSent={msg.direction === 'sent'}>
                           {formatMessageTime(msg.date)}
