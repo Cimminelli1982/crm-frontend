@@ -1361,6 +1361,14 @@ async def whatsapp_webhook(request: Request):
         inserted_id = result.data[0]['id'] if result.data else None
         logger.info("whatsapp_message_staged", id=inserted_id, phone=contact_phone)
 
+        # Auto-fetch WhatsApp profile image for contacts without one (fire-and-forget)
+        # Only for non-group chats and received messages
+        chat_id_str = str(chat.get('chat_id')) if chat.get('chat_id') else None
+        is_group = chat.get('is_group', False)
+        if contact_phone and chat_id_str and not is_group and direction == 'received':
+            import asyncio
+            asyncio.create_task(auto_fetch_whatsapp_profile_image(contact_phone, chat_id_str))
+
         # Download and store attachments permanently in Supabase Storage
         message_uid = message.get('message_uid')
         if attachments_list and len(attachments_list) > 0 and message_uid:
@@ -1661,6 +1669,125 @@ async def find_contact_linkedin(request: dict):
 # ==================== WHATSAPP SEND MESSAGE ====================
 
 TIMELINES_API_BASE = "https://app.timelines.ai/integrations/api"
+
+
+async def auto_fetch_whatsapp_profile_image(contact_phone: str, chat_id: str):
+    """
+    Automatically fetch and save WhatsApp profile image for a contact.
+
+    This is called from the webhook when a message is received.
+    It checks if the contact exists in CRM and doesn't have a profile image,
+    then fetches it from TimelinesAI and saves to Supabase Storage.
+
+    This runs in the background and doesn't block the webhook response.
+    """
+    try:
+        if not contact_phone or not chat_id:
+            return
+
+        logger.info("auto_fetch_profile_image_start", phone=contact_phone, chat_id=chat_id)
+
+        # Find contact by phone number
+        contact_result = db.client.table("contact_mobiles").select(
+            "contact_id, contacts!inner(contact_id, profile_image_url, first_name, last_name)"
+        ).eq("mobile", contact_phone).limit(1).execute()
+
+        if not contact_result.data or len(contact_result.data) == 0:
+            logger.info("auto_fetch_profile_image_no_contact", phone=contact_phone)
+            return
+
+        contact_data = contact_result.data[0]
+        contact_id = contact_data.get("contact_id")
+        contact_info = contact_data.get("contacts", {})
+
+        # Check if contact already has a profile image
+        existing_image = contact_info.get("profile_image_url")
+        if existing_image:
+            logger.info("auto_fetch_profile_image_already_has_image", contact_id=contact_id)
+            return
+
+        # Get Timelines API key
+        timelines_api_key = os.getenv("TIMELINES_API_KEY")
+        if not timelines_api_key:
+            logger.warning("auto_fetch_profile_image_no_api_key")
+            return
+
+        # Fetch chat details from TimelinesAI to get profile image
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            chat_response = await client.get(
+                f"{TIMELINES_API_BASE}/chats/{chat_id}",
+                headers={
+                    "Authorization": f"Bearer {timelines_api_key}",
+                    "Content-Type": "application/json"
+                }
+            )
+
+            if chat_response.status_code != 200:
+                logger.warning("auto_fetch_profile_image_chat_fetch_failed",
+                             chat_id=chat_id, status=chat_response.status_code)
+                return
+
+            chat_details = chat_response.json()
+            chat_data = chat_details.get("data", chat_details)
+
+            profile_image_url = chat_data.get("photo")
+
+            if not profile_image_url:
+                logger.info("auto_fetch_profile_image_no_photo", chat_id=chat_id)
+                return
+
+            # Make URL absolute if needed
+            if profile_image_url.startswith("/"):
+                profile_image_url = f"https://app.timelines.ai{profile_image_url}"
+
+            logger.info("auto_fetch_profile_image_found", url=profile_image_url)
+
+            # Download the image
+            image_response = await client.get(profile_image_url, timeout=30.0)
+
+            if image_response.status_code != 200:
+                logger.warning("auto_fetch_profile_image_download_failed",
+                             status=image_response.status_code)
+                return
+
+            image_content = image_response.content
+            content_type = image_response.headers.get("content-type", "image/jpeg")
+
+            # Determine file extension
+            ext = "jpg"
+            if "png" in content_type:
+                ext = "png"
+            elif "webp" in content_type:
+                ext = "webp"
+
+            # Upload to Supabase Storage
+            import time
+            file_name = f"{contact_id}_wa_auto_{int(time.time())}.{ext}"
+            storage_path = f"profile-images/{file_name}"
+
+            try:
+                db.client.storage.from_("avatars").upload(
+                    storage_path,
+                    image_content,
+                    {"content-type": content_type}
+                )
+
+                # Get public URL
+                permanent_url = db.client.storage.from_("avatars").get_public_url(storage_path)
+
+                # Update contact's profile_image_url
+                db.client.table("contacts").update({
+                    "profile_image_url": permanent_url
+                }).eq("contact_id", contact_id).execute()
+
+                logger.info("auto_fetch_profile_image_saved",
+                           contact_id=contact_id, url=permanent_url)
+
+            except Exception as storage_error:
+                logger.error("auto_fetch_profile_image_storage_error", error=str(storage_error))
+
+    except Exception as e:
+        logger.error("auto_fetch_profile_image_error", error=str(e), exc_info=True)
 
 
 @app.post("/whatsapp-upload-file")
