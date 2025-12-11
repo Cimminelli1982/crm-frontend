@@ -2,6 +2,8 @@ import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { toast } from 'react-hot-toast';
 
+const CRM_AGENT_API = 'https://crm-agent-api-production.up.railway.app';
+
 export const useProfileImageModal = (onImageUpdate) => {
   const [isOpen, setIsOpen] = useState(false);
   const [contact, setContact] = useState(null);
@@ -92,7 +94,6 @@ export const useProfileImageModal = (onImageUpdate) => {
     setUploading(true);
     try {
       let imageUrl = imagePreview;
-      let needsAttachmentRecord = false;
 
       // If a new file was selected, upload it first
       if (selectedFile) {
@@ -100,38 +101,11 @@ export const useProfileImageModal = (onImageUpdate) => {
         if (!imageUrl) {
           throw new Error('Failed to upload image');
         }
-      } else if (imagePreview && (imagePreview.startsWith('https://tl-prod-data.s3.amazonaws.com') || imagePreview.length > 255)) {
-        // This is a WhatsApp/external image URL that's too long - save to attachments table
-        needsAttachmentRecord = true;
-
-        // First, remove any existing profile image attachments for this contact
-        // We'll identify them by the file_name pattern
-        await supabase
-          .from('attachments')
-          .delete()
-          .eq('contact_id', contact.contact_id)
-          .like('file_name', '%_profile_image.jpg');
-
-        // Create attachment record for the external image
-        const { data: attachmentData, error: attachmentError } = await supabase
-          .from('attachments')
-          .insert({
-            contact_id: contact.contact_id,
-            file_name: `${contact.first_name || 'contact'}_${contact.last_name || 'profile'}_profile_image.jpg`,
-            file_url: imagePreview,
-            permanent_url: imagePreview,
-            file_type: 'image/jpeg'
-          })
-          .select()
-          .single();
-
-        if (attachmentError) throw attachmentError;
-
-        // Use the attachment ID as reference in contacts table
-        imageUrl = `attachment:${attachmentData.attachment_id}`;
       }
+      // Note: WhatsApp images from Railway API are already permanent URLs (stored in Supabase storage)
+      // So we can use imagePreview directly without re-uploading
 
-      // Update contact with new profile image URL (or attachment reference)
+      // Update contact with new profile image URL
       const { error } = await supabase
         .from('contacts')
         .update({ profile_image_url: imageUrl })
@@ -199,22 +173,27 @@ export const useProfileImageModal = (onImageUpdate) => {
 
     setFetchingFromWhatsApp(true);
     try {
-      // Call the edge function to fetch profile image from WhatsApp via Timelines
-      const { data, error } = await supabase.functions.invoke('whatsapp-profile-image', {
-        body: {
+      // Call Railway API to fetch and permanently store profile image from WhatsApp
+      const response = await fetch(`${CRM_AGENT_API}/whatsapp-profile-image`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
           contactId: contact.contact_id
-        }
+        })
       });
 
-      if (error) {
-        console.error('Edge function error:', error);
-        throw error;
-      }
+      const data = await response.json();
 
       if (data?.success && data?.profileImageUrl) {
-        // Set the preview but don't save yet - let user confirm
+        // Set the preview - the URL is already permanent (stored in Supabase)
         setImagePreview(data.profileImageUrl);
-        toast.success('Profile image fetched from WhatsApp! Click Save to apply.');
+        if (data.temporary) {
+          toast.success('Profile image fetched! Note: Using temporary URL.');
+        } else {
+          toast.success('Profile image fetched from WhatsApp! Click Save to apply.');
+        }
       } else {
         toast.error(data?.message || 'No WhatsApp profile image found');
       }

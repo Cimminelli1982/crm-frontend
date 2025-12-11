@@ -352,9 +352,11 @@ const useEmailCompose = (selectedThread, onSendSuccess) => {
     setComposeAttachments(prev => prev.filter((_, i) => i !== index));
   }, []);
 
-  // Send email
-  const handleSend = useCallback(async () => {
-    if (composeTo.length === 0 || !composeBody.trim()) {
+  // Send email (with optional body override for AI draft feature)
+  const handleSend = useCallback(async (bodyOverride = null) => {
+    const bodyToUse = bodyOverride || composeBody;
+
+    if (composeTo.length === 0 || !bodyToUse.trim()) {
       toast.error('Please fill in recipient and message');
       return;
     }
@@ -369,7 +371,7 @@ const useEmailCompose = (selectedThread, onSendSuccess) => {
 
     try {
       // Get just the body text (before the quote separator)
-      const bodyText = composeBody.split('─'.repeat(40))[0].trim();
+      const bodyText = bodyToUse.split('─'.repeat(40))[0].trim();
 
       // Use /send endpoint directly for full control
       const response = await fetch(`${BACKEND_URL}/send`, {

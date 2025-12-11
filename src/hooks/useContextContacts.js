@@ -31,7 +31,113 @@ const useContextContacts = (activeTab, selectedThread, selectedWhatsappChat, sel
   // Fetch contacts when participants change
   useEffect(() => {
     const fetchContacts = async () => {
-      const { emails, phones, type, participantsMap } = participants;
+      const { emails, phones, type, participantsMap, isGroupChat, chatId } = participants;
+
+      // For group chats, fetch contacts from contact_chats table
+      if (type === 'whatsapp' && isGroupChat && chatId) {
+        setLoadingContacts(true);
+        try {
+          // First find the chat id in our chats table using external_chat_id
+          const { data: chatData } = await supabase
+            .from('chats')
+            .select('id')
+            .eq('external_chat_id', chatId)
+            .maybeSingle();
+
+          if (chatData?.id) {
+            // Get all contacts linked to this chat
+            const { data: contactChatsData } = await supabase
+              .from('contact_chats')
+              .select('contact_id')
+              .eq('chat_id', chatData.id);
+
+            if (contactChatsData && contactChatsData.length > 0) {
+              const contactIds = contactChatsData.map(cc => cc.contact_id);
+
+              // Fetch full contact details
+              const { data: contacts } = await supabase
+                .from('contacts')
+                .select('contact_id, first_name, last_name, category, job_role, profile_image_url, description, linkedin, score, birthday, show_missing')
+                .in('contact_id', contactIds);
+
+              // Fetch completeness scores
+              const { data: completenessData } = await supabase
+                .from('contact_completeness')
+                .select('contact_id, completeness_score')
+                .in('contact_id', contactIds);
+
+              const completenessById = {};
+              if (completenessData) {
+                completenessData.forEach(c => {
+                  completenessById[c.contact_id] = c.completeness_score;
+                });
+              }
+
+              // Fetch companies for contacts
+              const { data: contactCompanies } = await supabase
+                .from('contact_companies')
+                .select('contact_id, company_id, is_primary, companies(company_id, name)')
+                .in('contact_id', contactIds);
+
+              // Map contact to primary company
+              const contactToCompany = {};
+              if (contactCompanies) {
+                contactCompanies.forEach(cc => {
+                  if (!contactToCompany[cc.contact_id] || cc.is_primary) {
+                    contactToCompany[cc.contact_id] = {
+                      name: cc.companies?.name
+                    };
+                  }
+                });
+              }
+
+              // Fetch phone numbers for contacts
+              const { data: mobilesData } = await supabase
+                .from('contact_mobiles')
+                .select('contact_id, mobile')
+                .in('contact_id', contactIds);
+
+              const contactToPhone = {};
+              if (mobilesData) {
+                mobilesData.forEach(m => {
+                  if (!contactToPhone[m.contact_id]) {
+                    contactToPhone[m.contact_id] = m.mobile;
+                  }
+                });
+              }
+
+              // Build participants list (exclude "WhatsApp Group Contact" category)
+              const groupParticipants = (contacts || [])
+                .filter(c => c.category !== 'WhatsApp Group Contact')
+                .map(c => ({
+                  phone: contactToPhone[c.contact_id] || null,
+                  name: `${c.first_name || ''} ${c.last_name || ''}`.trim(),
+                  roles: ['member'],
+                  contact: {
+                    ...c,
+                    company_name: contactToCompany[c.contact_id]?.name || null,
+                    completeness_score: completenessById[c.contact_id] || 0
+                  },
+                  hasContact: true
+                }));
+
+              setContextContacts(groupParticipants);
+              setLoadingContacts(false);
+              return;
+            }
+          }
+
+          // No contacts found for this group chat
+          setContextContacts([]);
+          setLoadingContacts(false);
+          return;
+        } catch (error) {
+          console.error('Error fetching group chat contacts:', error);
+          setContextContacts([]);
+          setLoadingContacts(false);
+          return;
+        }
+      }
 
       if (emails.length === 0 && phones.length === 0) {
         setContextContacts([]);
@@ -497,7 +603,9 @@ function extractWhatsAppParticipants(chat) {
     emails: [],
     phones: Array.from(phonesSet),
     type: 'whatsapp',
-    participantsMap: null
+    participantsMap: null,
+    isGroupChat: chat.is_group_chat || false,
+    chatId: chat.chat_id || null  // external_chat_id from command_center_inbox
   };
 }
 

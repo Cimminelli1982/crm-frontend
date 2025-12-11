@@ -100,7 +100,7 @@ const CRMTab = ({
                 // Check if contact is on hold
                 const isOnHold = holdContacts.some(h => h.email?.toLowerCase() === participant.email?.toLowerCase());
                 return (
-                <ActionCard key={participant.email + idx} theme={theme} style={isOnHold ? { borderLeft: '3px solid #F59E0B' } : {}}>
+                <ActionCard key={participant.contact?.contact_id || participant.email || participant.phone || idx} theme={theme} style={isOnHold ? { borderLeft: '3px solid #F59E0B' } : {}}>
                   <ActionCardHeader theme={theme} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div
                       style={{ cursor: participant.contact ? 'pointer' : 'default' }}

@@ -4370,7 +4370,7 @@ const CommandCenterPage = ({ theme }) => {
   const hasUnreadCalendar = calendarEvents.some(event => event.is_read === false);
   const tabs = [
     { id: 'email', label: 'Email', icon: FaEnvelope, count: emails.length, hasUnread: hasUnreadEmails },
-    { id: 'whatsapp', label: 'WhatsApp', icon: FaWhatsapp, count: whatsappMessages.length, hasUnread: hasUnreadWhatsapp },
+    { id: 'whatsapp', label: 'WhatsApp', icon: FaWhatsapp, count: whatsappChats.length, hasUnread: hasUnreadWhatsapp },
     { id: 'calendar', label: 'Calendar', icon: FaCalendar, count: calendarEvents.length, hasUnread: hasUnreadCalendar },
   ];
 
