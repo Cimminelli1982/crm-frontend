@@ -1361,6 +1361,56 @@ async def whatsapp_webhook(request: Request):
         inserted_id = result.data[0]['id'] if result.data else None
         logger.info("whatsapp_message_staged", id=inserted_id, phone=contact_phone)
 
+        # Download and store attachments permanently in Supabase Storage
+        message_uid = message.get('message_id')
+        if attachments_list and len(attachments_list) > 0 and message_uid:
+            chat_id_external = str(chat.get('chat_id')) if chat.get('chat_id') else 'unknown'
+
+            for att in attachments_list:
+                temp_url = att.get('temporary_download_url')
+                filename = att.get('filename') or 'attachment'
+                mimetype = att.get('mimetype') or 'application/octet-stream'
+                filesize = att.get('size') or 0
+
+                if temp_url:
+                    try:
+                        # Download from temporary URL
+                        async with httpx.AsyncClient() as http_client:
+                            download_response = await http_client.get(temp_url, timeout=60.0)
+                            if download_response.status_code == 200:
+                                file_content = download_response.content
+
+                                # Upload to Supabase Storage
+                                storage_path = f"{chat_id_external}/{message_uid}/{filename}"
+
+                                db.client.storage.from_('whatsapp-attachments').upload(
+                                    storage_path,
+                                    file_content,
+                                    {"content-type": mimetype}
+                                )
+
+                                # Get public URL
+                                permanent_url = db.client.storage.from_('whatsapp-attachments').get_public_url(storage_path)
+
+                                # Insert into attachments table
+                                db.client.table('attachments').insert({
+                                    "file_name": filename,
+                                    "file_url": temp_url,
+                                    "permanent_url": permanent_url,
+                                    "file_type": mimetype,
+                                    "file_size": filesize,
+                                    "external_reference": message_uid,
+                                    "processing_status": "completed",
+                                    "created_by": "Webhook",
+                                    "created_at": datetime.utcnow().isoformat()
+                                }).execute()
+
+                                logger.info("attachment_stored", message_uid=message_uid, filename=filename, permanent_url=permanent_url)
+                            else:
+                                logger.warning("attachment_download_failed", message_uid=message_uid, status=download_response.status_code)
+                    except Exception as att_error:
+                        logger.error("attachment_storage_error", error=str(att_error), filename=filename, message_uid=message_uid)
+
         return {"success": True, "id": inserted_id}
 
     except Exception as e:

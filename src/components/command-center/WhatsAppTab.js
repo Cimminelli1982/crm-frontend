@@ -98,12 +98,65 @@ const MessageBubble = styled.div`
   color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
   position: relative;
+  word-break: break-word;
 
   ${props => props.$isArchived && `
     opacity: 0.7;
     border: 1px dashed ${props.theme === 'light' ? '#9CA3AF' : '#4B5563'};
   `}
 `;
+
+const MessageLink = styled.a`
+  color: ${props => props.$isSent
+    ? (props.theme === 'light' ? '#0369A1' : '#7DD3FC')
+    : (props.theme === 'light' ? '#2563EB' : '#60A5FA')};
+  text-decoration: underline;
+  word-break: break-all;
+
+  &:hover {
+    text-decoration: none;
+  }
+`;
+
+// Helper function to render text with clickable links
+const renderMessageText = (text, theme, isSent) => {
+  if (!text) return null;
+
+  // First, clean up any existing HTML anchor tags and extract just URLs
+  let cleanText = text
+    // Remove <a> tags but keep the URL
+    .replace(/<a[^>]*href=["']([^"']+)["'][^>]*>[^<]*<\/a>/gi, '$1')
+    // Remove any remaining HTML tags
+    .replace(/<[^>]+>/g, '');
+
+  // URL regex pattern
+  const urlRegex = /(https?:\/\/[^\s<>"]+)/g;
+
+  const parts = cleanText.split(urlRegex);
+
+  return parts.map((part, index) => {
+    if (urlRegex.test(part)) {
+      // Reset regex lastIndex
+      urlRegex.lastIndex = 0;
+      // Clean URL (remove trailing punctuation)
+      const cleanUrl = part.replace(/[.,;:!?)]+$/, '');
+      return (
+        <MessageLink
+          key={index}
+          href={cleanUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          theme={theme}
+          $isSent={isSent}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {cleanUrl.length > 50 ? cleanUrl.substring(0, 50) + '...' : cleanUrl}
+        </MessageLink>
+      );
+    }
+    return part;
+  });
+};
 
 const MessageTime = styled.div`
   font-size: 11px;
@@ -247,6 +300,36 @@ const EmptyState = styled.div`
   color: ${props => props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
   font-size: 14px;
   gap: 12px;
+`;
+
+const AttachmentImage = styled.img`
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 8px;
+  margin-bottom: ${props => props.$hasText ? '8px' : '0'};
+  cursor: pointer;
+  display: block;
+
+  &:hover {
+    opacity: 0.9;
+  }
+`;
+
+const AttachmentLink = styled.a`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: ${props => props.theme === 'light' ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.1)'};
+  border-radius: 8px;
+  margin-bottom: ${props => props.$hasText ? '8px' : '0'};
+  font-size: 13px;
+  color: ${props => props.theme === 'light' ? '#3B82F6' : '#60A5FA'};
+  text-decoration: none;
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.15)'};
+  }
 `;
 
 // Chat List Item styled components
@@ -473,8 +556,55 @@ const WhatsAppTab = ({
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
   const [sentMessages, setSentMessages] = useState([]); // Local optimistic messages
+  const [attachmentsMap, setAttachmentsMap] = useState({}); // Map of message_uid -> attachments[]
   const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
+
+  // Fetch attachments for current chat messages
+  useEffect(() => {
+    const fetchAttachments = async () => {
+      if (!selectedChat?.messages || selectedChat.messages.length === 0) {
+        setAttachmentsMap({});
+        return;
+      }
+
+      const messageUids = selectedChat.messages
+        .map(m => m.message_uid || m.id)
+        .filter(Boolean);
+
+      if (messageUids.length === 0) {
+        setAttachmentsMap({});
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('attachments')
+          .select('external_reference, permanent_url, file_name, file_type')
+          .in('external_reference', messageUids);
+
+        if (error) {
+          console.error('Error fetching attachments:', error);
+          return;
+        }
+
+        if (data) {
+          const map = {};
+          data.forEach(att => {
+            if (!map[att.external_reference]) {
+              map[att.external_reference] = [];
+            }
+            map[att.external_reference].push(att);
+          });
+          setAttachmentsMap(map);
+        }
+      } catch (err) {
+        console.error('Error fetching attachments:', err);
+      }
+    };
+
+    fetchAttachments();
+  }, [selectedChat?.messages]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -512,8 +642,14 @@ const WhatsAppTab = ({
       const data = await response.json();
 
       if (response.ok && data.success) {
-        toast.success('Message sent!');
         setReplyText('');
+
+        // Refocus input for quick follow-up messages
+        setTimeout(() => {
+          if (textareaRef.current) {
+            textareaRef.current.focus();
+          }
+        }, 50);
 
         // Add to local sent messages for immediate display
         const newMessage = {
@@ -757,7 +893,7 @@ const WhatsAppTab = ({
                         {selectedChat.is_group_chat && msg.direction !== 'sent' && msg.sender && (
                           <MessageSender $name={msg.sender}>{msg.sender}</MessageSender>
                         )}
-                        {msg.text}
+                        {renderMessageText(msg.text, theme, msg.direction === 'sent')}
                         <MessageTime theme={theme} $isSent={msg.direction === 'sent'}>
                           {formatMessageTime(msg.date)}
                           {msg.direction === 'sent' && !msg.isLocal && (
