@@ -1521,3 +1521,306 @@ async def calendar_sync_status():
     except Exception as e:
         logger.error("calendar_sync_status_error", error=str(e))
         return {"status": "error", "error": str(e)}
+
+
+# ==================== CONTACT LINKEDIN FINDER ====================
+
+@app.post("/contact/find-linkedin")
+async def find_contact_linkedin(request: dict):
+    """
+    Find LinkedIn URL for a contact using Apollo.
+
+    Input: first_name, last_name, email (optional), company (optional)
+    Output: linkedin_url with confidence score
+
+    Uses Apollo People Match (if email provided) or People Search.
+    """
+    logger.info("find_contact_linkedin_request",
+                first_name=request.get("first_name"),
+                last_name=request.get("last_name"),
+                email=request.get("email"))
+
+    try:
+        first_name = request.get("first_name", "").strip()
+        last_name = request.get("last_name", "").strip()
+        email = request.get("email", "").strip()
+        company = request.get("company", "").strip()
+
+        if not first_name and not last_name:
+            return {
+                "success": False,
+                "error": "At least first_name or last_name required"
+            }
+
+        # Use existing Apollo search function
+        apollo_data = await search_apollo_person(
+            first_name=first_name,
+            last_name=last_name,
+            email=email if email else None,
+            company=company if company else None
+        )
+
+        if apollo_data and apollo_data.get("linkedin_url"):
+            linkedin_url = apollo_data["linkedin_url"]
+            confidence = apollo_data.get("confidence", "medium")
+
+            # Convert confidence to numeric score
+            confidence_score = {
+                "high": 95,
+                "medium": 70,
+                "low": 40
+            }.get(confidence, 50)
+
+            return {
+                "success": True,
+                "linkedin_url": linkedin_url,
+                "confidence": confidence,
+                "confidence_score": confidence_score,
+                "source": "apollo",
+                # Include extra data if available
+                "extra": {
+                    "photo_url": apollo_data.get("photo_url"),
+                    "title": apollo_data.get("title"),
+                    "organization_name": apollo_data.get("organization_name"),
+                    "organization_domain": apollo_data.get("organization_domain")
+                }
+            }
+
+        # Fallback: generate suggestion based on name
+        name_slug = f"{first_name.lower()}-{last_name.lower()}".replace(" ", "-")
+        suggestion = f"https://linkedin.com/in/{name_slug}"
+
+        return {
+            "success": True,
+            "linkedin_url": suggestion,
+            "confidence": "low",
+            "confidence_score": 20,
+            "source": "fallback_name_guess",
+            "message": "Apollo did not find a match. This is a name-based guess - please verify manually."
+        }
+
+    except Exception as e:
+        logger.error("find_contact_linkedin_error", error=str(e), exc_info=True)
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+# ==================== WHATSAPP SEND MESSAGE ====================
+
+TIMELINES_API_BASE = "https://app.timelines.ai/integrations/api"
+
+
+@app.post("/whatsapp-send")
+async def whatsapp_send_message(request: dict):
+    """
+    Send a WhatsApp message via Timelines API.
+
+    Input:
+    - chat_id: The Timelines chat ID to send to
+    - message: The text message to send
+
+    Returns success status and message details.
+    """
+    logger.info("whatsapp_send_request", chat_id=request.get("chat_id"))
+
+    try:
+        chat_id = request.get("chat_id")
+        message_text = request.get("message", "").strip()
+
+        if not chat_id:
+            raise HTTPException(status_code=400, detail="chat_id is required")
+
+        if not message_text:
+            raise HTTPException(status_code=400, detail="message is required")
+
+        # Get Timelines API key from environment
+        timelines_api_key = os.getenv("TIMELINES_API_KEY")
+        if not timelines_api_key:
+            logger.error("TIMELINES_API_KEY not configured")
+            raise HTTPException(status_code=500, detail="WhatsApp integration not configured")
+
+        # Send message via Timelines API
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{TIMELINES_API_BASE}/messages",
+                headers={
+                    "Authorization": f"Bearer {timelines_api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "chat_id": int(chat_id),
+                    "text": message_text
+                }
+            )
+
+            logger.info("timelines_send_response", status=response.status_code)
+
+            if response.status_code in [200, 201]:
+                response_data = response.json()
+                logger.info("whatsapp_message_sent", chat_id=chat_id)
+
+                return {
+                    "success": True,
+                    "message_id": response_data.get("data", {}).get("message_id") or response_data.get("message_id"),
+                    "chat_id": chat_id,
+                    "text": message_text
+                }
+            else:
+                error_text = response.text[:500]
+                logger.error("timelines_send_error", status=response.status_code, error=error_text)
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Timelines API error: {error_text}"
+                )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("whatsapp_send_error", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/contact/enrich")
+async def enrich_contact(request: dict):
+    """
+    Enrich contact data using LinkedIn URL via Apollo.
+
+    Input: linkedin_url, first_name (optional), last_name (optional), email (optional)
+    Output: Full profile data (job_title, photo, company, phones, city, etc.)
+
+    This uses Apollo's LinkedIn URL lookup for best results.
+    """
+    logger.info("enrich_contact_request", linkedin_url=request.get("linkedin_url"))
+
+    try:
+        linkedin_url = request.get("linkedin_url", "").strip()
+        first_name = request.get("first_name", "").strip()
+        last_name = request.get("last_name", "").strip()
+        email = request.get("email", "").strip()
+
+        if not linkedin_url:
+            return {
+                "success": False,
+                "error": "linkedin_url is required"
+            }
+
+        api_key = os.getenv("APOLLO_API_KEY")
+        if not api_key:
+            return {
+                "success": False,
+                "error": "Apollo API not configured"
+            }
+
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            # Apollo People Match with LinkedIn URL
+            response = await client.post(
+                "https://api.apollo.io/api/v1/people/match",
+                json={
+                    "api_key": api_key,
+                    "linkedin_url": linkedin_url,
+                    "first_name": first_name if first_name else None,
+                    "last_name": last_name if last_name else None,
+                    "email": email if email else None
+                }
+            )
+
+            logger.info("apollo_enrich_response", status=response.status_code)
+
+            if response.status_code == 200:
+                data = response.json()
+                person = data.get("person")
+
+                if person:
+                    # Extract organization data
+                    org = person.get("organization", {}) or {}
+
+                    # Extract phone numbers
+                    phones = []
+                    if person.get("phone_numbers"):
+                        for phone in person.get("phone_numbers", []):
+                            phones.append({
+                                "number": phone.get("sanitized_number") or phone.get("raw_number"),
+                                "type": phone.get("type", "unknown")
+                            })
+
+                    # Extract city from location
+                    city = person.get("city")
+                    state = person.get("state")
+                    country = person.get("country")
+
+                    enriched = {
+                        "success": True,
+                        "data": {
+                            "first_name": person.get("first_name"),
+                            "last_name": person.get("last_name"),
+                            "job_title": person.get("title"),
+                            "linkedin_url": person.get("linkedin_url"),
+                            "photo_url": person.get("photo_url"),
+                            "email": person.get("email"),
+                            "city": city,
+                            "state": state,
+                            "country": country,
+                            "phones": phones,
+                            "organization": {
+                                "name": org.get("name"),
+                                "website": org.get("website_url"),
+                                "domain": org.get("primary_domain"),
+                                "linkedin_url": org.get("linkedin_url"),
+                                "logo_url": org.get("logo_url"),
+                                "industry": org.get("industry"),
+                                "employee_count": org.get("estimated_num_employees")
+                            },
+                            "seniority": person.get("seniority"),
+                            "departments": person.get("departments", [])
+                        },
+                        "confidence": "high",
+                        "source": "apollo"
+                    }
+
+                    # Search for company in our DB
+                    org_name = org.get("name")
+                    org_domain = org.get("primary_domain")
+
+                    if org_name or org_domain:
+                        db_company = await search_company_in_db(
+                            name=org_name,
+                            domain=org_domain
+                        )
+
+                        if db_company:
+                            enriched["data"]["company_match"] = {
+                                "company_id": db_company["company_id"],
+                                "name": db_company["name"],
+                                "matched_by": db_company["matched_by"],
+                                "exists_in_db": True
+                            }
+                        else:
+                            enriched["data"]["company_match"] = {
+                                "name": org_name,
+                                "domain": org_domain,
+                                "exists_in_db": False
+                            }
+
+                    return enriched
+                else:
+                    return {
+                        "success": False,
+                        "error": "No person found for this LinkedIn URL",
+                        "linkedin_url": linkedin_url
+                    }
+            else:
+                logger.warning(f"Apollo enrich failed: {response.status_code} - {response.text[:200]}")
+                return {
+                    "success": False,
+                    "error": f"Apollo API error: {response.status_code}",
+                    "linkedin_url": linkedin_url
+                }
+
+    except Exception as e:
+        logger.error("enrich_contact_error", error=str(e), exc_info=True)
+        return {
+            "success": False,
+            "error": str(e)
+        }

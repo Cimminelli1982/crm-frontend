@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { FaUsers, FaArchive, FaCheck, FaCheckDouble } from 'react-icons/fa';
+import React, { useState, useEffect, useRef } from 'react';
+import { FaUsers, FaArchive, FaCheck, FaCheckDouble, FaPaperPlane } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
+import toast from 'react-hot-toast';
+
+const CRM_AGENT_API = 'https://crm-agent-api-production.up.railway.app';
 
 // Styled components for WhatsApp chat view
 const WhatsAppContainer = styled.div`
@@ -144,6 +147,94 @@ const DoneButton = styled.button`
   &:disabled {
     opacity: 0.7;
     cursor: not-allowed;
+  }
+`;
+
+// Reply input styled components
+const ReplyContainer = styled.div`
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  background: ${props => props.theme === 'light' ? '#FFFFFF' : '#1F2937'};
+`;
+
+const ReplyInputWrapper = styled.div`
+  flex: 1;
+  position: relative;
+`;
+
+const ReplyInput = styled.textarea`
+  width: 100%;
+  min-height: 44px;
+  max-height: 120px;
+  padding: 12px 16px;
+  border-radius: 22px;
+  border: 1px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  background: ${props => props.theme === 'light' ? '#F9FAFB' : '#111827'};
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  font-size: 14px;
+  line-height: 1.4;
+  resize: none;
+  outline: none;
+  font-family: inherit;
+
+  &:focus {
+    border-color: ${props => props.theme === 'light' ? '#10B981' : '#34D399'};
+    box-shadow: 0 0 0 2px ${props => props.theme === 'light' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(52, 211, 153, 0.1)'};
+  }
+
+  &::placeholder {
+    color: ${props => props.theme === 'light' ? '#9CA3AF' : '#6B7280'};
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+`;
+
+const SendButton = styled.button`
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: ${props => props.$hasText
+    ? (props.theme === 'light' ? '#25D366' : '#128C7E')
+    : (props.theme === 'light' ? '#E5E7EB' : '#374151')};
+  color: ${props => props.$hasText ? 'white' : (props.theme === 'light' ? '#9CA3AF' : '#6B7280')};
+  cursor: ${props => props.$hasText ? 'pointer' : 'default'};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+
+  &:hover {
+    background: ${props => props.$hasText
+      ? (props.theme === 'light' ? '#22C55E' : '#0E7A6D')
+      : (props.theme === 'light' ? '#E5E7EB' : '#374151')};
+    transform: ${props => props.$hasText ? 'scale(1.05)' : 'none'};
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+`;
+
+const SendingIndicator = styled.div`
+  width: 20px;
+  height: 20px;
+  border: 2px solid white;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 `;
 
@@ -374,10 +465,81 @@ const WhatsAppTab = ({
   theme,
   selectedChat,
   onDone,
-  saving
+  saving,
+  onMessageSent
 }) => {
   const [archivedMessages, setArchivedMessages] = useState([]);
   const [loadingArchived, setLoadingArchived] = useState(false);
+  const [replyText, setReplyText] = useState('');
+  const [sending, setSending] = useState(false);
+  const textareaRef = useRef(null);
+  const messagesEndRef = useRef(null);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 120) + 'px';
+    }
+  }, [replyText]);
+
+  // Clear reply text when chat changes
+  useEffect(() => {
+    setReplyText('');
+  }, [selectedChat?.chat_id]);
+
+  // Send message handler
+  const handleSendMessage = async () => {
+    if (!replyText.trim() || !selectedChat?.chat_id || sending) return;
+
+    setSending(true);
+    const messageToSend = replyText.trim();
+
+    try {
+      const response = await fetch(`${CRM_AGENT_API}/whatsapp-send`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chat_id: selectedChat.chat_id,
+          message: messageToSend
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        toast.success('Message sent!');
+        setReplyText('');
+
+        // Notify parent to refresh messages if callback provided
+        if (onMessageSent) {
+          onMessageSent({
+            chat_id: selectedChat.chat_id,
+            text: messageToSend,
+            direction: 'sent',
+            timestamp: new Date().toISOString()
+          });
+        }
+      } else {
+        throw new Error(data.detail || data.error || 'Failed to send message');
+      }
+    } catch (error) {
+      console.error('Send message error:', error);
+      toast.error(error.message || 'Failed to send message');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Handle Enter key (Shift+Enter for new line)
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
 
   // Fetch archived messages when chat changes
   useEffect(() => {
@@ -591,6 +753,35 @@ const WhatsAppTab = ({
           </>
         )}
       </MessagesContainer>
+
+      {/* Inline Reply Input */}
+      <ReplyContainer theme={theme}>
+        <ReplyInputWrapper>
+          <ReplyInput
+            ref={textareaRef}
+            theme={theme}
+            value={replyText}
+            onChange={(e) => setReplyText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type a message..."
+            disabled={sending}
+            rows={1}
+          />
+        </ReplyInputWrapper>
+        <SendButton
+          theme={theme}
+          $hasText={replyText.trim().length > 0}
+          onClick={handleSendMessage}
+          disabled={!replyText.trim() || sending}
+          title={replyText.trim() ? 'Send message' : 'Type a message first'}
+        >
+          {sending ? (
+            <SendingIndicator />
+          ) : (
+            <FaPaperPlane size={16} />
+          )}
+        </SendButton>
+      </ReplyContainer>
     </WhatsAppContainer>
   );
 };
