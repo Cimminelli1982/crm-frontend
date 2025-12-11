@@ -2,6 +2,7 @@
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 python-dotenv==1.0.1
+python-multipart>=0.0.9
 
 # Anthropic Claude Agent SDK
 anthropic>=0.40.0

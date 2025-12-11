@@ -1663,6 +1663,99 @@ async def find_contact_linkedin(request: dict):
 TIMELINES_API_BASE = "https://app.timelines.ai/integrations/api"
 
 
+@app.post("/whatsapp-upload-file")
+async def whatsapp_upload_file(request: Request):
+    """
+    Upload a file to TimelinesAI for sending as an attachment.
+
+    Accepts multipart form data with:
+    - file: The file to upload (max 2MB)
+
+    Returns the file_uid which can be used in /whatsapp-send
+    """
+    try:
+        # Get Timelines API key
+        timelines_api_key = os.getenv("TIMELINES_API_KEY")
+        if not timelines_api_key:
+            raise HTTPException(status_code=500, detail="WhatsApp integration not configured")
+
+        # Parse multipart form data
+        form = await request.form()
+        file = form.get("file")
+
+        if not file:
+            raise HTTPException(status_code=400, detail="No file provided")
+
+        # Read file content
+        file_content = await file.read()
+        file_name = file.filename
+        content_type = file.content_type or "application/octet-stream"
+
+        # Check file size (max 2MB for TimelinesAI)
+        max_size = 2 * 1024 * 1024  # 2MB
+        if len(file_content) > max_size:
+            raise HTTPException(status_code=400, detail="File too large. Maximum size is 2MB")
+
+        logger.info("whatsapp_upload_file", filename=file_name, size=len(file_content), content_type=content_type)
+
+        # Upload to TimelinesAI
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            # Use multipart form upload
+            files = {
+                "file": (file_name, file_content, content_type)
+            }
+
+            response = await client.post(
+                f"{TIMELINES_API_BASE}/files_upload",
+                headers={
+                    "Authorization": f"Bearer {timelines_api_key}"
+                },
+                files=files
+            )
+
+            logger.info("timelines_upload_response", status=response.status_code)
+
+            if response.status_code in [200, 201]:
+                response_data = response.json()
+                logger.info("timelines_upload_response_data", response_data=response_data)
+
+                # Try different possible response structures
+                file_uid = (
+                    response_data.get("data", {}).get("file_uid") or
+                    response_data.get("data", {}).get("uid") or
+                    response_data.get("file_uid") or
+                    response_data.get("uid") or
+                    response_data.get("id")
+                )
+
+                if not file_uid:
+                    logger.error("timelines_upload_no_uid", response=response_data)
+                    raise HTTPException(status_code=500, detail=f"Upload succeeded but no file_uid returned. Response: {response_data}")
+
+                logger.info("whatsapp_file_uploaded", file_uid=file_uid, filename=file_name)
+
+                return {
+                    "success": True,
+                    "file_uid": file_uid,
+                    "file_name": file_name,
+                    "file_size": len(file_content),
+                    "content_type": content_type
+                }
+            else:
+                error_text = response.text[:500]
+                logger.error("timelines_upload_error", status=response.status_code, error=error_text)
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"TimelinesAI upload error: {error_text}"
+                )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("whatsapp_upload_error", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/whatsapp-send")
 async def whatsapp_send_message(request: dict):
     """
@@ -1670,21 +1763,23 @@ async def whatsapp_send_message(request: dict):
 
     Input:
     - phone: The phone number to send to (required)
-    - message: The text message to send (required)
+    - message: The text message to send (optional if file_uid provided)
+    - file_uid: UID of uploaded file to attach (optional)
 
     Returns success status and message details.
     """
-    logger.info("whatsapp_send_request", phone=request.get("phone"))
+    logger.info("whatsapp_send_request", phone=request.get("phone"), has_file=bool(request.get("file_uid")))
 
     try:
         phone = request.get("phone", "").strip()
         message_text = request.get("message", "").strip()
+        file_uid = request.get("file_uid", "").strip() if request.get("file_uid") else None
 
         if not phone:
             raise HTTPException(status_code=400, detail="phone is required")
 
-        if not message_text:
-            raise HTTPException(status_code=400, detail="message is required")
+        if not message_text and not file_uid:
+            raise HTTPException(status_code=400, detail="message or file_uid is required")
 
         # Get Timelines API key from environment
         timelines_api_key = os.getenv("TIMELINES_API_KEY")
@@ -1694,9 +1789,14 @@ async def whatsapp_send_message(request: dict):
 
         # Build request payload
         payload = {
-            "phone": phone,
-            "text": message_text
+            "phone": phone
         }
+
+        if message_text:
+            payload["text"] = message_text
+
+        if file_uid:
+            payload["file_uid"] = file_uid
 
         logger.info("timelines_send_payload", payload=payload)
 
@@ -1715,13 +1815,14 @@ async def whatsapp_send_message(request: dict):
 
             if response.status_code in [200, 201]:
                 response_data = response.json()
-                logger.info("whatsapp_message_sent", phone=phone)
+                logger.info("whatsapp_message_sent", phone=phone, has_file=bool(file_uid))
 
                 return {
                     "success": True,
                     "message_id": response_data.get("data", {}).get("message_id") or response_data.get("message_id"),
                     "phone": phone,
-                    "text": message_text
+                    "text": message_text,
+                    "file_uid": file_uid
                 }
             else:
                 error_text = response.text[:500]

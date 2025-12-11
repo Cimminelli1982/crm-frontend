@@ -8,12 +8,13 @@ import {
   FaTimes, FaLinkedin, FaPhone, FaBuilding, FaMapMarkerAlt, FaTag,
   FaEnvelope, FaBriefcase, FaCheck, FaExclamationTriangle,
   FaCrown, FaUsers, FaSave, FaPlus, FaEdit, FaSearch, FaTrash,
-  FaCodeBranch
+  FaCodeBranch, FaMagic
 } from 'react-icons/fa';
 import { FiRefreshCw, FiX, FiCamera } from 'react-icons/fi';
 import ManageContactEmailsModal from './ManageContactEmailsModal';
 import ManageContactMobilesModal from './ManageContactMobilesModal';
 import ProfileImageModal from './ProfileImageModal';
+import ContactEnrichmentModal from './ContactEnrichmentModal';
 import { useProfileImageModal } from '../../hooks/useProfileImageModal';
 
 // Styled Components
@@ -722,6 +723,139 @@ const MergeButton = styled.button`
   }
 `;
 
+const EnrichButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 6px;
+  border: none;
+  background: ${props => props.theme === 'light' ? '#8B5CF6' : '#7C3AED'};
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 100%;
+
+  &:hover:not(:disabled) {
+    background: ${props => props.theme === 'light' ? '#7C3AED' : '#6D28D9'};
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+`;
+
+const SuggestionCard = styled.div`
+  padding: 12px 16px;
+  border: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  border-radius: 8px;
+  background: ${props => props.theme === 'light' ? '#F9FAFB' : '#111827'};
+  margin-bottom: 12px;
+`;
+
+const SuggestionHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+`;
+
+const SuggestionLabel = styled.div`
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+`;
+
+const ConfidenceBadge = styled.span`
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  background: ${props => {
+    if (props.level === 'high') return '#10B981';
+    if (props.level === 'medium') return '#F59E0B';
+    return '#EF4444';
+  }};
+  color: white;
+`;
+
+const SuggestionValue = styled.div`
+  font-size: 14px;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  font-weight: 500;
+`;
+
+const SuggestionActions = styled.div`
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+`;
+
+const AcceptButton = styled.button`
+  padding: 4px 12px;
+  font-size: 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  background: #10B981;
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+
+  &:hover {
+    background: #059669;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const AcceptedBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  background: #10B981;
+  color: white;
+  border-radius: 12px;
+  font-weight: 600;
+`;
+
+const AcceptAllButton = styled.button`
+  padding: 10px 20px;
+  border-radius: 6px;
+  border: none;
+  background: #10B981;
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 16px;
+
+  &:hover {
+    background: #059669;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
 const CATEGORY_OPTIONS = [
   'Professional Investor', 'Founder', 'Manager', 'Advisor', 'Friend and Family',
   'Team', 'Supplier', 'Media', 'Student', 'Institution', 'Other'
@@ -808,6 +942,11 @@ const DataIntegrityModal = ({
   // Show all fields toggle
   const [showAllFields, setShowAllFields] = useState(false);
 
+  // Enrichment state
+  const [enriching, setEnriching] = useState(false);
+  const [enrichmentSuggestions, setEnrichmentSuggestions] = useState(null);
+  const [acceptedFields, setAcceptedFields] = useState({});
+
   // Track initially missing fields (so they don't disappear when user starts typing)
   const [initialMissingFieldKeys, setInitialMissingFieldKeys] = useState(new Set());
 
@@ -817,6 +956,7 @@ const DataIntegrityModal = ({
   const [tagsModalOpen, setTagsModalOpen] = useState(false);
   const [citiesModalOpen, setCitiesModalOpen] = useState(false);
   const [companiesModalOpen, setCompaniesModalOpen] = useState(false);
+  const [enrichmentModalOpen, setEnrichmentModalOpen] = useState(false);
 
   // Sub-modal search states
   const [subTagSearch, setSubTagSearch] = useState('');
@@ -930,6 +1070,284 @@ const DataIntegrityModal = ({
       setLoading(false);
     }
   }, [contactId]);
+
+  // Enrich with Apollo
+  const enrichWithApollo = async () => {
+    if (emails.length === 0) {
+      toast.error('No email to enrich from');
+      return;
+    }
+
+    setEnriching(true);
+    setEnrichmentSuggestions(null);
+    setAcceptedFields({});
+
+    try {
+      const response = await fetch('https://crm-agent-api-production.up.railway.app/suggest-contact-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from_email: emails[0]?.email,
+          from_name: `${firstName} ${lastName}`.trim(),
+          manual_first_name: firstName,
+          manual_last_name: lastName
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.suggestions) {
+          setEnrichmentSuggestions(result.suggestions);
+          toast.success('Enrichment data found!');
+        } else {
+          toast.error('No enrichment data found');
+        }
+      } else {
+        toast.error('Enrichment service unavailable');
+      }
+    } catch (error) {
+      console.error('Enrichment error:', error);
+      toast.error('Enrichment failed');
+    }
+
+    setEnriching(false);
+  };
+
+  // Accept individual enrichment field
+  const acceptEnrichmentField = (field, value) => {
+    setAcceptedFields(prev => ({ ...prev, [field]: true }));
+
+    switch (field) {
+      case 'first_name':
+        setFirstName(value);
+        break;
+      case 'last_name':
+        setLastName(value);
+        break;
+      case 'job_title':
+        setJobRole(value);
+        break;
+      case 'linkedin_url':
+        setLinkedin(value);
+        break;
+      case 'description':
+        setDescription(value);
+        break;
+      default:
+        break;
+    }
+
+    toast.success(`${field.replace('_', ' ')} accepted`);
+  };
+
+  // Accept all enrichment suggestions
+  const acceptAllEnrichmentSuggestions = async () => {
+    if (!enrichmentSuggestions) return;
+
+    const s = enrichmentSuggestions;
+
+    // Names
+    if (s.first_name?.value && !firstName) {
+      setFirstName(s.first_name.value);
+      setAcceptedFields(prev => ({ ...prev, first_name: true }));
+    }
+    if (s.last_name?.value && !lastName) {
+      setLastName(s.last_name.value);
+      setAcceptedFields(prev => ({ ...prev, last_name: true }));
+    }
+
+    // Job title
+    if (s.job_title?.value && !jobRole) {
+      setJobRole(s.job_title.value);
+      setAcceptedFields(prev => ({ ...prev, job_title: true }));
+    }
+
+    // LinkedIn URL
+    if (s.linkedin_url?.value && !linkedin) {
+      setLinkedin(s.linkedin_url.value);
+      setAcceptedFields(prev => ({ ...prev, linkedin_url: true }));
+    }
+
+    // Description
+    if (s.description?.value && !description) {
+      setDescription(s.description.value);
+      setAcceptedFields(prev => ({ ...prev, description: true }));
+    }
+
+    // City
+    if (s.city?.value && cities.length === 0) {
+      await handleAcceptCity(s.city.value);
+      setAcceptedFields(prev => ({ ...prev, city: true }));
+    }
+
+    // Phones
+    if (s.phones && s.phones.length > 0 && mobiles.length === 0) {
+      await handleAcceptPhones(s.phones);
+      setAcceptedFields(prev => ({ ...prev, phones: true }));
+    }
+
+    // Company
+    if (s.apollo_company?.name && companies.length === 0) {
+      await handleAcceptCompany(s.apollo_company);
+      setAcceptedFields(prev => ({ ...prev, company: true }));
+    }
+
+    // Tags
+    if (s.suggested_tags && s.suggested_tags.length > 0 && tags.length === 0) {
+      await handleAcceptTags(s.suggested_tags);
+      setAcceptedFields(prev => ({ ...prev, tags: true }));
+    }
+
+    toast.success('All suggestions accepted!');
+  };
+
+  // Helper to accept city from enrichment
+  const handleAcceptCity = async (cityName) => {
+    try {
+      // Search for existing city
+      const { data: existingCities } = await supabase
+        .from('cities')
+        .select('*')
+        .ilike('name', cityName)
+        .limit(1);
+
+      let cityToAdd;
+      if (existingCities && existingCities.length > 0) {
+        cityToAdd = existingCities[0];
+      } else {
+        // Create new city
+        const { data: newCity, error } = await supabase
+          .from('cities')
+          .insert({ name: cityName, country: 'Unknown' })
+          .select()
+          .single();
+
+        if (error) throw error;
+        cityToAdd = newCity;
+      }
+
+      // Link to contact
+      await handleAddCity(cityToAdd);
+    } catch (error) {
+      console.error('Error accepting city:', error);
+      toast.error('Failed to add city');
+    }
+  };
+
+  // Helper to accept phones from enrichment
+  const handleAcceptPhones = async (phones) => {
+    try {
+      for (const phone of phones) {
+        await supabase
+          .from('contact_mobiles')
+          .insert({
+            contact_id: contactId,
+            number: phone.number,
+            is_primary: mobiles.length === 0
+          });
+      }
+      loadContactData();
+      toast.success(`${phones.length} phone(s) added`);
+    } catch (error) {
+      console.error('Error accepting phones:', error);
+      toast.error('Failed to add phones');
+    }
+  };
+
+  // Helper to accept company from enrichment
+  const handleAcceptCompany = async (companyData) => {
+    try {
+      if (companyData.exists_in_db && companyData.company_id) {
+        // Link to existing company
+        await supabase
+          .from('contact_companies')
+          .insert({
+            contact_id: contactId,
+            company_id: companyData.company_id,
+            is_primary: companies.length === 0
+          });
+      } else {
+        // Create new company
+        const { data: newCompany, error } = await supabase
+          .from('companies')
+          .insert({
+            name: companyData.name,
+            category: 'Inbox',
+            website: companyData.website
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        // Add domain if available
+        if (companyData.domain) {
+          await supabase
+            .from('company_domains')
+            .insert({
+              company_id: newCompany.company_id,
+              domain: companyData.domain.toLowerCase(),
+              is_primary: true
+            });
+        }
+
+        // Link to contact
+        await supabase
+          .from('contact_companies')
+          .insert({
+            contact_id: contactId,
+            company_id: newCompany.company_id,
+            is_primary: companies.length === 0
+          });
+      }
+
+      loadContactData();
+      toast.success('Company added');
+    } catch (error) {
+      console.error('Error accepting company:', error);
+      toast.error('Failed to add company');
+    }
+  };
+
+  // Helper to accept tags from enrichment
+  const handleAcceptTags = async (tagNames) => {
+    try {
+      for (const tagName of tagNames) {
+        // Search for existing tag
+        const { data: existingTags } = await supabase
+          .from('tags')
+          .select('*')
+          .ilike('name', tagName)
+          .limit(1);
+
+        let tagToAdd;
+        if (existingTags && existingTags.length > 0) {
+          tagToAdd = existingTags[0];
+        } else {
+          // Create new tag
+          const { data: newTag, error } = await supabase
+            .from('tags')
+            .insert({ name: tagName })
+            .select()
+            .single();
+
+          if (error) throw error;
+          tagToAdd = newTag;
+        }
+
+        // Link to contact
+        await supabase
+          .from('contact_tags')
+          .insert({ contact_id: contactId, tag_id: tagToAdd.tag_id });
+      }
+
+      loadContactData();
+      toast.success(`${tagNames.length} tag(s) added`);
+    } catch (error) {
+      console.error('Error accepting tags:', error);
+      toast.error('Failed to add tags');
+    }
+  };
 
   // Real-time duplicate detection using shared helper
   const findDuplicates = useCallback(async () => {
@@ -1612,6 +2030,321 @@ const DataIntegrityModal = ({
                 </MissingFieldsContainer>
               </Section>
 
+              {/* Apollo Enrichment Section */}
+              <Section>
+                <EnrichButton
+                  theme={theme}
+                  onClick={() => setEnrichmentModalOpen(true)}
+                  disabled={emails.length === 0}
+                >
+                  <FaMagic />
+                  Enrich with Apollo
+                </EnrichButton>
+
+                {/* Enrichment Suggestions */}
+                {enrichmentSuggestions && (
+                  <div style={{ marginTop: 16 }}>
+                    {/* Accept All Button */}
+                    <AcceptAllButton onClick={acceptAllEnrichmentSuggestions}>
+                      <FaCheck />
+                      Accept All Suggestions
+                    </AcceptAllButton>
+
+                    {/* First Name */}
+                    {enrichmentSuggestions.first_name?.value && (
+                      <SuggestionCard theme={theme}>
+                        <SuggestionHeader>
+                          <SuggestionLabel theme={theme}>First Name</SuggestionLabel>
+                          {enrichmentSuggestions.first_name.confidence && (
+                            <ConfidenceBadge level={enrichmentSuggestions.first_name.confidence}>
+                              {enrichmentSuggestions.first_name.confidence}
+                            </ConfidenceBadge>
+                          )}
+                        </SuggestionHeader>
+                        <SuggestionValue theme={theme}>{enrichmentSuggestions.first_name.value}</SuggestionValue>
+                        <SuggestionActions>
+                          {acceptedFields.first_name ? (
+                            <AcceptedBadge><FaCheck size={10} /> Accepted</AcceptedBadge>
+                          ) : (
+                            <AcceptButton onClick={() => acceptEnrichmentField('first_name', enrichmentSuggestions.first_name.value)}>
+                              <FaCheck size={10} /> Accept
+                            </AcceptButton>
+                          )}
+                        </SuggestionActions>
+                      </SuggestionCard>
+                    )}
+
+                    {/* Last Name */}
+                    {enrichmentSuggestions.last_name?.value && (
+                      <SuggestionCard theme={theme}>
+                        <SuggestionHeader>
+                          <SuggestionLabel theme={theme}>Last Name</SuggestionLabel>
+                          {enrichmentSuggestions.last_name.confidence && (
+                            <ConfidenceBadge level={enrichmentSuggestions.last_name.confidence}>
+                              {enrichmentSuggestions.last_name.confidence}
+                            </ConfidenceBadge>
+                          )}
+                        </SuggestionHeader>
+                        <SuggestionValue theme={theme}>{enrichmentSuggestions.last_name.value}</SuggestionValue>
+                        <SuggestionActions>
+                          {acceptedFields.last_name ? (
+                            <AcceptedBadge><FaCheck size={10} /> Accepted</AcceptedBadge>
+                          ) : (
+                            <AcceptButton onClick={() => acceptEnrichmentField('last_name', enrichmentSuggestions.last_name.value)}>
+                              <FaCheck size={10} /> Accept
+                            </AcceptButton>
+                          )}
+                        </SuggestionActions>
+                      </SuggestionCard>
+                    )}
+
+                    {/* Job Title */}
+                    {enrichmentSuggestions.job_title?.value && (
+                      <SuggestionCard theme={theme}>
+                        <SuggestionHeader>
+                          <SuggestionLabel theme={theme}>Job Title</SuggestionLabel>
+                          {enrichmentSuggestions.job_title.confidence && (
+                            <ConfidenceBadge level={enrichmentSuggestions.job_title.confidence}>
+                              {enrichmentSuggestions.job_title.confidence}
+                            </ConfidenceBadge>
+                          )}
+                        </SuggestionHeader>
+                        <SuggestionValue theme={theme}>{enrichmentSuggestions.job_title.value}</SuggestionValue>
+                        <SuggestionActions>
+                          {acceptedFields.job_title ? (
+                            <AcceptedBadge><FaCheck size={10} /> Accepted</AcceptedBadge>
+                          ) : (
+                            <AcceptButton onClick={() => acceptEnrichmentField('job_title', enrichmentSuggestions.job_title.value)}>
+                              <FaCheck size={10} /> Accept
+                            </AcceptButton>
+                          )}
+                        </SuggestionActions>
+                      </SuggestionCard>
+                    )}
+
+                    {/* LinkedIn URL */}
+                    {enrichmentSuggestions.linkedin_url?.value && (
+                      <SuggestionCard theme={theme}>
+                        <SuggestionHeader>
+                          <SuggestionLabel theme={theme}>LinkedIn URL</SuggestionLabel>
+                          {enrichmentSuggestions.linkedin_url.confidence && (
+                            <ConfidenceBadge level={enrichmentSuggestions.linkedin_url.confidence}>
+                              {enrichmentSuggestions.linkedin_url.confidence}
+                            </ConfidenceBadge>
+                          )}
+                        </SuggestionHeader>
+                        <SuggestionValue theme={theme}>
+                          <a href={enrichmentSuggestions.linkedin_url.value} target="_blank" rel="noopener noreferrer" style={{ color: '#3B82F6', textDecoration: 'none' }}>
+                            {enrichmentSuggestions.linkedin_url.value}
+                          </a>
+                        </SuggestionValue>
+                        <SuggestionActions>
+                          {acceptedFields.linkedin_url ? (
+                            <AcceptedBadge><FaCheck size={10} /> Accepted</AcceptedBadge>
+                          ) : (
+                            <AcceptButton onClick={() => acceptEnrichmentField('linkedin_url', enrichmentSuggestions.linkedin_url.value)}>
+                              <FaCheck size={10} /> Accept
+                            </AcceptButton>
+                          )}
+                        </SuggestionActions>
+                      </SuggestionCard>
+                    )}
+
+                    {/* Description */}
+                    {enrichmentSuggestions.description?.value && (
+                      <SuggestionCard theme={theme}>
+                        <SuggestionHeader>
+                          <SuggestionLabel theme={theme}>Description</SuggestionLabel>
+                          {enrichmentSuggestions.description.confidence && (
+                            <ConfidenceBadge level={enrichmentSuggestions.description.confidence}>
+                              {enrichmentSuggestions.description.confidence}
+                            </ConfidenceBadge>
+                          )}
+                        </SuggestionHeader>
+                        <SuggestionValue theme={theme}>{enrichmentSuggestions.description.value}</SuggestionValue>
+                        <SuggestionActions>
+                          {acceptedFields.description ? (
+                            <AcceptedBadge><FaCheck size={10} /> Accepted</AcceptedBadge>
+                          ) : (
+                            <AcceptButton onClick={() => acceptEnrichmentField('description', enrichmentSuggestions.description.value)}>
+                              <FaCheck size={10} /> Accept
+                            </AcceptButton>
+                          )}
+                        </SuggestionActions>
+                      </SuggestionCard>
+                    )}
+
+                    {/* City */}
+                    {enrichmentSuggestions.city?.value && (
+                      <SuggestionCard theme={theme}>
+                        <SuggestionHeader>
+                          <SuggestionLabel theme={theme}>City</SuggestionLabel>
+                          {enrichmentSuggestions.city.confidence && (
+                            <ConfidenceBadge level={enrichmentSuggestions.city.confidence}>
+                              {enrichmentSuggestions.city.confidence}
+                            </ConfidenceBadge>
+                          )}
+                        </SuggestionHeader>
+                        <SuggestionValue theme={theme}>{enrichmentSuggestions.city.value}</SuggestionValue>
+                        <SuggestionActions>
+                          {acceptedFields.city ? (
+                            <AcceptedBadge><FaCheck size={10} /> Accepted</AcceptedBadge>
+                          ) : (
+                            <AcceptButton onClick={() => handleAcceptCity(enrichmentSuggestions.city.value)}>
+                              <FaCheck size={10} /> Accept
+                            </AcceptButton>
+                          )}
+                        </SuggestionActions>
+                      </SuggestionCard>
+                    )}
+
+                    {/* Phones */}
+                    {enrichmentSuggestions.phones && enrichmentSuggestions.phones.length > 0 && (
+                      <SuggestionCard theme={theme}>
+                        <SuggestionHeader>
+                          <SuggestionLabel theme={theme}>Phone Numbers ({enrichmentSuggestions.phones.length})</SuggestionLabel>
+                        </SuggestionHeader>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {enrichmentSuggestions.phones.map((phone, idx) => (
+                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <SuggestionValue theme={theme}>{phone.number}</SuggestionValue>
+                              {phone.confidence && (
+                                <ConfidenceBadge level={phone.confidence}>{phone.confidence}</ConfidenceBadge>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        <SuggestionActions>
+                          {acceptedFields.phones ? (
+                            <AcceptedBadge><FaCheck size={10} /> Accepted</AcceptedBadge>
+                          ) : (
+                            <AcceptButton onClick={() => handleAcceptPhones(enrichmentSuggestions.phones)}>
+                              <FaCheck size={10} /> Accept All Phones
+                            </AcceptButton>
+                          )}
+                        </SuggestionActions>
+                      </SuggestionCard>
+                    )}
+
+                    {/* Company */}
+                    {enrichmentSuggestions.apollo_company?.name && (
+                      <SuggestionCard theme={theme}>
+                        <SuggestionHeader>
+                          <SuggestionLabel theme={theme}>Company</SuggestionLabel>
+                          {enrichmentSuggestions.apollo_company.confidence && (
+                            <ConfidenceBadge level={enrichmentSuggestions.apollo_company.confidence}>
+                              {enrichmentSuggestions.apollo_company.confidence}
+                            </ConfidenceBadge>
+                          )}
+                        </SuggestionHeader>
+                        <SuggestionValue theme={theme}>
+                          {enrichmentSuggestions.apollo_company.name}
+                          {enrichmentSuggestions.apollo_company.exists_in_db && (
+                            <span style={{ fontSize: 11, color: '#10B981', marginLeft: 8 }}>(Exists in DB)</span>
+                          )}
+                        </SuggestionValue>
+                        {enrichmentSuggestions.apollo_company.website && (
+                          <div style={{ fontSize: 12, color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginTop: 4 }}>
+                            {enrichmentSuggestions.apollo_company.website}
+                          </div>
+                        )}
+                        <SuggestionActions>
+                          {acceptedFields.company ? (
+                            <AcceptedBadge><FaCheck size={10} /> Accepted</AcceptedBadge>
+                          ) : (
+                            <AcceptButton onClick={() => handleAcceptCompany(enrichmentSuggestions.apollo_company)}>
+                              <FaCheck size={10} /> {enrichmentSuggestions.apollo_company.exists_in_db ? 'Link Company' : 'Create Company'}
+                            </AcceptButton>
+                          )}
+                        </SuggestionActions>
+                      </SuggestionCard>
+                    )}
+
+                    {/* Tags */}
+                    {enrichmentSuggestions.suggested_tags && enrichmentSuggestions.suggested_tags.length > 0 && (
+                      <SuggestionCard theme={theme}>
+                        <SuggestionHeader>
+                          <SuggestionLabel theme={theme}>Suggested Tags ({enrichmentSuggestions.suggested_tags.length})</SuggestionLabel>
+                        </SuggestionHeader>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {enrichmentSuggestions.suggested_tags.map((tag, idx) => (
+                            <span
+                              key={idx}
+                              style={{
+                                padding: '4px 10px',
+                                background: theme === 'light' ? '#E5E7EB' : '#374151',
+                                borderRadius: 16,
+                                fontSize: 12,
+                                color: theme === 'light' ? '#374151' : '#D1D5DB'
+                              }}
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                        <SuggestionActions>
+                          {acceptedFields.tags ? (
+                            <AcceptedBadge><FaCheck size={10} /> Accepted</AcceptedBadge>
+                          ) : (
+                            <AcceptButton onClick={() => handleAcceptTags(enrichmentSuggestions.suggested_tags)}>
+                              <FaCheck size={10} /> Accept All Tags
+                            </AcceptButton>
+                          )}
+                        </SuggestionActions>
+                      </SuggestionCard>
+                    )}
+
+                    {/* Photo URL */}
+                    {enrichmentSuggestions.photo_url?.value && (
+                      <SuggestionCard theme={theme}>
+                        <SuggestionHeader>
+                          <SuggestionLabel theme={theme}>Profile Photo</SuggestionLabel>
+                          {enrichmentSuggestions.photo_url.confidence && (
+                            <ConfidenceBadge level={enrichmentSuggestions.photo_url.confidence}>
+                              {enrichmentSuggestions.photo_url.confidence}
+                            </ConfidenceBadge>
+                          )}
+                        </SuggestionHeader>
+                        <div style={{ marginTop: 8 }}>
+                          <img
+                            src={enrichmentSuggestions.photo_url.value}
+                            alt="Profile"
+                            style={{
+                              width: 80,
+                              height: 80,
+                              borderRadius: '50%',
+                              objectFit: 'cover',
+                              border: `2px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
+                            }}
+                          />
+                        </div>
+                        <SuggestionActions>
+                          {acceptedFields.photo_url ? (
+                            <AcceptedBadge><FaCheck size={10} /> Accepted</AcceptedBadge>
+                          ) : (
+                            <AcceptButton onClick={async () => {
+                              try {
+                                await supabase
+                                  .from('contacts')
+                                  .update({ profile_image_url: enrichmentSuggestions.photo_url.value })
+                                  .eq('contact_id', contactId);
+                                setAcceptedFields(prev => ({ ...prev, photo_url: true }));
+                                loadContactData();
+                                toast.success('Profile photo updated');
+                              } catch (error) {
+                                toast.error('Failed to update photo');
+                              }
+                            }}>
+                              <FaCheck size={10} /> Use This Photo
+                            </AcceptButton>
+                          )}
+                        </SuggestionActions>
+                      </SuggestionCard>
+                    )}
+                  </div>
+                )}
+              </Section>
+
               {/* Edit Fields */}
               {(initialMissingFieldKeys.size > 0 || showAllFields) && (
                 <Section>
@@ -2163,6 +2896,19 @@ const DataIntegrityModal = ({
             profileImageModal.closeModal();
             profileImageModal.openModal(profileImageModal.contact);
           }
+        }}
+        theme={theme}
+      />
+
+      {/* Contact Enrichment Modal */}
+      <ContactEnrichmentModal
+        isOpen={enrichmentModalOpen}
+        onClose={() => setEnrichmentModalOpen(false)}
+        contact={contact}
+        contactEmails={emails}
+        onEnrichComplete={() => {
+          setEnrichmentModalOpen(false);
+          loadContactData();
         }}
         theme={theme}
       />

@@ -2,7 +2,7 @@
 // Docs: https://www.fastmail.com/dev/
 
 const CALDAV_BASE_URL = 'https://caldav.fastmail.com/dav/calendars/user';
-const DEFAULT_CALENDAR_PATH = '8c9da7c3-501d-4a38-a784-e515b201f9f3';
+const DEFAULT_CALENDAR_PATH = 'Default';
 
 // Generate a UUID v4
 function generateUUID() {

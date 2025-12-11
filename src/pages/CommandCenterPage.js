@@ -3267,8 +3267,134 @@ const CommandCenterPage = ({ theme }) => {
     }
   };
 
+  // Helper function to check if attachment is an image
+  const isImageAttachment = (att) => {
+    const imageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/svg+xml', 'image/ico'];
+    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'ico'];
+    const ext = att.name?.split('.').pop()?.toLowerCase();
+    return imageTypes.includes(att.type?.toLowerCase()) || imageExtensions.includes(ext);
+  };
+
+  // Helper function to check if attachment is an ICS calendar file
+  const isIcsAttachment = (att) => {
+    const ext = att.name?.split('.').pop()?.toLowerCase();
+    return att.type === 'text/calendar' || ext === 'ics';
+  };
+
+  // Parse ICS file and create calendar event
+  const parseIcsAndCreateEvent = async (att) => {
+    try {
+      // Download the ICS file
+      const downloadUrl = `${BACKEND_URL}/attachment/${encodeURIComponent(att.blobId)}?name=${encodeURIComponent(att.name || 'event.ics')}&type=text/calendar`;
+      const response = await fetch(downloadUrl);
+
+      if (!response.ok) {
+        console.error('Failed to download ICS file:', response.status);
+        return null;
+      }
+
+      const icsText = await response.text();
+      console.log('[ICS] Full ICS file:', icsText);
+
+      // Extract VEVENT block only (ignore VTIMEZONE etc)
+      const veventMatch = icsText.match(/BEGIN:VEVENT[\s\S]*?END:VEVENT/);
+      if (!veventMatch) {
+        console.warn('[ICS] No VEVENT block found');
+        return null;
+      }
+      const veventBlock = veventMatch[0];
+      console.log('[ICS] VEVENT block:', veventBlock);
+
+      // Parse ICS content from VEVENT block only
+      const summaryMatch = veventBlock.match(/SUMMARY[;:]([^\r\n]+)/);
+      // Handle both formats: DTSTART:20251216T140000Z and DTSTART;TZID=Europe/London:20251216T140000
+      const dtstartMatch = veventBlock.match(/DTSTART[^:]*:(\d{8}T?\d{0,6}Z?)/);
+      const dtendMatch = veventBlock.match(/DTEND[^:]*:(\d{8}T?\d{0,6}Z?)/);
+      const locationMatch = veventBlock.match(/LOCATION[;:]([^\r\n]+)/);
+      const descriptionMatch = veventBlock.match(/DESCRIPTION[;:]([^\r\n]+)/);
+
+      // Check if there's a TZID for the event
+      const tzidMatch = veventBlock.match(/DTSTART;TZID=([^:]+):/);
+      const eventTimezone = tzidMatch?.[1] || null;
+
+      if (!summaryMatch || !dtstartMatch) {
+        console.warn('[ICS] Could not parse essential fields from VEVENT');
+        return null;
+      }
+
+      // Parse iCal date format (YYYYMMDD or YYYYMMDDTHHMMSS or YYYYMMDDTHHMMSSZ)
+      const parseICalDate = (dateStr, timezone = null) => {
+        if (!dateStr) return null;
+        const year = dateStr.substring(0, 4);
+        const month = dateStr.substring(4, 6);
+        const day = dateStr.substring(6, 8);
+        let hour = '00', min = '00', sec = '00';
+
+        if (dateStr.length >= 15) {
+          hour = dateStr.substring(9, 11);
+          min = dateStr.substring(11, 13);
+          sec = dateStr.substring(13, 15);
+        }
+
+        const isUtc = dateStr.endsWith('Z');
+
+        // If UTC, parse as UTC
+        if (isUtc) {
+          return new Date(`${year}-${month}-${day}T${hour}:${min}:${sec}Z`);
+        }
+
+        // If we have a timezone like Europe/London, the date is in that timezone
+        // For simplicity, if it's Europe/London we assume it's the local time
+        // and we'll pass it as-is to the calendar API
+        const dateString = `${year}-${month}-${day}T${hour}:${min}:${sec}`;
+        return new Date(dateString);
+      };
+
+      const startDate = parseICalDate(dtstartMatch[1], eventTimezone);
+      const endDate = dtendMatch ? parseICalDate(dtendMatch[1], eventTimezone) : null;
+
+      // Clean up summary/location (remove escapes)
+      const cleanText = (text) => text?.replace(/\\n/g, '\n').replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\/g, '');
+
+      const eventData = {
+        title: cleanText(summaryMatch[1]),
+        startDate: startDate?.toISOString(),
+        endDate: endDate?.toISOString(),
+        location: cleanText(locationMatch?.[1]) || '',
+        description: cleanText(descriptionMatch?.[1]) || '',
+        allDay: dtstartMatch[1]?.length === 8, // YYYYMMDD = all-day event
+      };
+
+      console.log('[ICS] Parsed event data:', eventData);
+
+      // Create calendar event via backend
+      const createResponse = await fetch(`${BACKEND_URL}/calendar/create-event`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(eventData)
+      });
+
+      if (createResponse.ok) {
+        const result = await createResponse.json();
+        if (result.success) {
+          toast.success(`Calendar event created: ${eventData.title}`);
+          return result;
+        }
+      }
+
+      const errorResult = await createResponse.json().catch(() => ({}));
+      console.error('[ICS] Failed to create calendar event:', errorResult);
+      toast.error(`Failed to create calendar event: ${errorResult.error || 'Unknown error'}`);
+      return null;
+    } catch (error) {
+      console.error('[ICS] Error parsing/creating event:', error);
+      toast.error(`Error processing calendar invite: ${error.message}`);
+      return null;
+    }
+  };
+
   // Check for attachments and show modal before saving
-  const handleDoneClick = () => {
+  const handleDoneClick = async () => {
     if (!selectedThread || selectedThread.length === 0) return;
 
     // Collect all attachments from all emails in thread
@@ -3282,9 +3408,27 @@ const CommandCenterPage = ({ theme }) => {
     );
 
     if (allAttachments.length > 0) {
-      // Show attachment modal
-      setPendingAttachments(allAttachments);
-      setAttachmentModalOpen(true);
+      // Check for ICS files and create calendar events
+      const icsAttachments = allAttachments.filter(isIcsAttachment);
+      if (icsAttachments.length > 0) {
+        toast.loading('Processing calendar invites...', { id: 'ics-process' });
+        for (const icsAtt of icsAttachments) {
+          await parseIcsAndCreateEvent(icsAtt);
+        }
+        toast.dismiss('ics-process');
+      }
+
+      // Filter out images and ICS files for the modal
+      const nonImageNonIcsAttachments = allAttachments.filter(att => !isImageAttachment(att) && !isIcsAttachment(att));
+
+      if (nonImageNonIcsAttachments.length > 0) {
+        // Show attachment modal only for non-image, non-ICS attachments
+        setPendingAttachments(nonImageNonIcsAttachments);
+        setAttachmentModalOpen(true);
+      } else {
+        // All attachments are images or ICS files, skip modal
+        saveAndArchive();
+      }
     } else {
       // No attachments, proceed directly
       saveAndArchive();
@@ -3317,9 +3461,27 @@ const CommandCenterPage = ({ theme }) => {
     );
 
     if (allAttachments.length > 0) {
-      // Show attachment modal
-      setPendingAttachments(allAttachments);
-      setAttachmentModalOpen(true);
+      // Check for ICS files and create calendar events
+      const icsAttachments = allAttachments.filter(isIcsAttachment);
+      if (icsAttachments.length > 0) {
+        toast.loading('Processing calendar invites...', { id: 'ics-process' });
+        for (const icsAtt of icsAttachments) {
+          await parseIcsAndCreateEvent(icsAtt);
+        }
+        toast.dismiss('ics-process');
+      }
+
+      // Filter out images and ICS files for the modal
+      const nonImageNonIcsAttachments = allAttachments.filter(att => !isImageAttachment(att) && !isIcsAttachment(att));
+
+      if (nonImageNonIcsAttachments.length > 0) {
+        // Show attachment modal only for non-image, non-ICS attachments
+        setPendingAttachments(nonImageNonIcsAttachments);
+        setAttachmentModalOpen(true);
+      } else {
+        // All attachments are images or ICS files, skip modal
+        saveAndArchive();
+      }
     } else {
       // No attachments, proceed directly with saveAndArchive
       saveAndArchive();

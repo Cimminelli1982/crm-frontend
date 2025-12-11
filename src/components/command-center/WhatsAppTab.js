@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FaUsers, FaArchive, FaCheck, FaCheckDouble, FaPaperPlane, FaClock } from 'react-icons/fa';
+import { FaUsers, FaArchive, FaCheck, FaCheckDouble, FaPaperPlane, FaClock, FaPaperclip, FaTimes, FaFile, FaImage } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
 import toast from 'react-hot-toast';
@@ -283,6 +283,130 @@ const SendingIndicator = styled.div`
   height: 20px;
   border: 2px solid white;
   border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+`;
+
+const AttachButton = styled.button`
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: ${props => props.theme === 'light' ? '#F3F4F6' : '#374151'};
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#E5E7EB' : '#4B5563'};
+    color: ${props => props.theme === 'light' ? '#374151' : '#E5E7EB'};
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  input[type="file"] {
+    display: none;
+  }
+`;
+
+const AttachmentPreviewContainer = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: ${props => props.theme === 'light' ? '#F9FAFB' : '#1F2937'};
+  border-bottom: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+`;
+
+const AttachmentPreviewContent = styled.div`
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+`;
+
+const AttachmentPreviewImage = styled.img`
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 8px;
+  flex-shrink: 0;
+`;
+
+const AttachmentPreviewIcon = styled.div`
+  width: 48px;
+  height: 48px;
+  background: ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+  flex-shrink: 0;
+`;
+
+const AttachmentPreviewInfo = styled.div`
+  flex: 1;
+  min-width: 0;
+`;
+
+const AttachmentPreviewName = styled.div`
+  font-size: 14px;
+  font-weight: 500;
+  color: ${props => props.theme === 'light' ? '#111827' : '#F9FAFB'};
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const AttachmentPreviewSize = styled.div`
+  font-size: 12px;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+`;
+
+const AttachmentPreviewRemove = styled.button`
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: ${props => props.theme === 'light' ? '#FEE2E2' : '#7F1D1D'};
+  color: ${props => props.theme === 'light' ? '#DC2626' : '#FCA5A5'};
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+
+  &:hover {
+    background: ${props => props.theme === 'light' ? '#FECACA' : '#991B1B'};
+  }
+`;
+
+const UploadingOverlay = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: ${props => props.theme === 'light' ? '#6B7280' : '#9CA3AF'};
+`;
+
+const UploadingSpinner = styled.div`
+  width: 16px;
+  height: 16px;
+  border: 2px solid ${props => props.theme === 'light' ? '#D1D5DB' : '#4B5563'};
+  border-top-color: ${props => props.theme === 'light' ? '#10B981' : '#34D399'};
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 
@@ -631,8 +755,12 @@ const WhatsAppTab = ({
   const [sending, setSending] = useState(false);
   const [sentMessages, setSentMessages] = useState([]); // Local optimistic messages
   const [attachmentsMap, setAttachmentsMap] = useState({}); // Map of message_uid -> attachments[]
+  const [selectedFile, setSelectedFile] = useState(null); // File to attach
+  const [filePreview, setFilePreview] = useState(null); // Preview URL for images
+  const [uploading, setUploading] = useState(false); // File upload in progress
   const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   // Fetch attachments for current chat messages (staging + archived)
   useEffect(() => {
@@ -690,35 +818,121 @@ const WhatsAppTab = ({
     }
   }, [replyText]);
 
-  // Clear reply text and sent messages when chat changes
+  // Clear reply text, sent messages, and file when chat changes
   useEffect(() => {
     setReplyText('');
     setSentMessages([]);
+    setSelectedFile(null);
+    setFilePreview(null);
   }, [selectedChat?.chat_id]);
+
+  // File selection handler
+  const handleFileSelect = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Check file size (max 2MB for TimelinesAI)
+    const maxSize = 2 * 1024 * 1024;
+    if (file.size > maxSize) {
+      toast.error('File too large. Maximum size is 2MB');
+      return;
+    }
+
+    setSelectedFile(file);
+
+    // Create preview for images
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFilePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setFilePreview(null);
+    }
+
+    // Reset the input so same file can be selected again
+    event.target.value = '';
+  };
+
+  // Remove selected file
+  const handleRemoveFile = () => {
+    setSelectedFile(null);
+    setFilePreview(null);
+  };
+
+  // Format file size for display
+  const formatFileSize = (bytes) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
   // Send message handler
   const handleSendMessage = async () => {
-    if (!replyText.trim() || !selectedChat?.contact_number || sending) return;
+    const hasText = replyText.trim().length > 0;
+    const hasFile = !!selectedFile;
+
+    if ((!hasText && !hasFile) || !selectedChat?.contact_number || sending || uploading) return;
 
     setSending(true);
     const messageToSend = replyText.trim();
+    const fileToSend = selectedFile;
 
     try {
+      let fileUid = null;
+
+      // Upload file first if we have one
+      if (fileToSend) {
+        setUploading(true);
+        try {
+          const formData = new FormData();
+          formData.append('file', fileToSend);
+
+          const uploadResponse = await fetch(`${CRM_AGENT_API}/whatsapp-upload-file`, {
+            method: 'POST',
+            body: formData
+          });
+
+          const uploadData = await uploadResponse.json();
+
+          if (!uploadResponse.ok || !uploadData.success) {
+            throw new Error(uploadData.detail || uploadData.error || 'Failed to upload file');
+          }
+
+          fileUid = uploadData.file_uid;
+        } finally {
+          setUploading(false);
+        }
+      }
+
+      // Send message with optional file_uid
+      const payload = {
+        phone: selectedChat.contact_number
+      };
+
+      if (messageToSend) {
+        payload.message = messageToSend;
+      }
+
+      if (fileUid) {
+        payload.file_uid = fileUid;
+      }
+
       const response = await fetch(`${CRM_AGENT_API}/whatsapp-send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          phone: selectedChat.contact_number,
-          message: messageToSend
-        })
+        body: JSON.stringify(payload)
       });
 
       const data = await response.json();
 
       if (response.ok && data.success) {
         setReplyText('');
+        setSelectedFile(null);
+        setFilePreview(null);
 
         // Refocus input for quick follow-up messages
         setTimeout(() => {
@@ -730,10 +944,11 @@ const WhatsAppTab = ({
         // Add to local sent messages for immediate display
         const newMessage = {
           id: `sent_${Date.now()}`,
-          text: messageToSend,
+          text: messageToSend || (fileToSend ? `📎 ${fileToSend.name}` : ''),
           direction: 'sent',
           date: new Date().toISOString(),
-          isLocal: true // Mark as locally added
+          isLocal: true, // Mark as locally added
+          hasAttachment: !!fileToSend
         };
         setSentMessages(prev => [...prev, newMessage]);
 
@@ -743,8 +958,13 @@ const WhatsAppTab = ({
             chat_id: selectedChat.chat_id,
             text: messageToSend,
             direction: 'sent',
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            hasAttachment: !!fileToSend
           });
+        }
+
+        if (fileToSend) {
+          toast.success('Message with attachment sent!');
         }
       } else {
         throw new Error(data.detail || data.error || 'Failed to send message');
@@ -754,6 +974,7 @@ const WhatsAppTab = ({
       toast.error(error.message || 'Failed to send message');
     } finally {
       setSending(false);
+      setUploading(false);
     }
   };
 
@@ -1067,8 +1288,51 @@ const WhatsAppTab = ({
         )}
       </MessagesContainer>
 
+      {/* File Attachment Preview */}
+      {selectedFile && (
+        <AttachmentPreviewContainer theme={theme}>
+          <AttachmentPreviewContent>
+            {filePreview ? (
+              <AttachmentPreviewImage src={filePreview} alt={selectedFile.name} />
+            ) : (
+              <AttachmentPreviewIcon theme={theme}>
+                <FaFile size={20} />
+              </AttachmentPreviewIcon>
+            )}
+            <AttachmentPreviewInfo>
+              <AttachmentPreviewName theme={theme}>{selectedFile.name}</AttachmentPreviewName>
+              <AttachmentPreviewSize theme={theme}>{formatFileSize(selectedFile.size)}</AttachmentPreviewSize>
+            </AttachmentPreviewInfo>
+          </AttachmentPreviewContent>
+          {uploading ? (
+            <UploadingOverlay theme={theme}>
+              <UploadingSpinner theme={theme} />
+              Uploading...
+            </UploadingOverlay>
+          ) : (
+            <AttachmentPreviewRemove theme={theme} onClick={handleRemoveFile} title="Remove attachment">
+              <FaTimes size={14} />
+            </AttachmentPreviewRemove>
+          )}
+        </AttachmentPreviewContainer>
+      )}
+
       {/* Inline Reply Input */}
       <ReplyContainer theme={theme}>
+        <AttachButton
+          theme={theme}
+          onClick={() => fileInputRef.current?.click()}
+          disabled={sending || uploading}
+          title="Attach file (max 2MB)"
+        >
+          <FaPaperclip size={16} />
+          <input
+            ref={fileInputRef}
+            type="file"
+            onChange={handleFileSelect}
+            accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+          />
+        </AttachButton>
         <ReplyInputWrapper>
           <ReplyInput
             ref={textareaRef}
@@ -1076,19 +1340,19 @@ const WhatsAppTab = ({
             value={replyText}
             onChange={(e) => setReplyText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type a message..."
-            disabled={sending}
+            placeholder={selectedFile ? "Add a message (optional)..." : "Type a message..."}
+            disabled={sending || uploading}
             rows={1}
           />
         </ReplyInputWrapper>
         <SendButton
           theme={theme}
-          $hasText={replyText.trim().length > 0}
+          $hasText={replyText.trim().length > 0 || !!selectedFile}
           onClick={handleSendMessage}
-          disabled={!replyText.trim() || sending}
-          title={replyText.trim() ? 'Send message' : 'Type a message first'}
+          disabled={(!replyText.trim() && !selectedFile) || sending || uploading}
+          title={replyText.trim() || selectedFile ? 'Send message' : 'Type a message or attach a file'}
         >
-          {sending ? (
+          {sending || uploading ? (
             <SendingIndicator />
           ) : (
             <FaPaperPlane size={16} />
