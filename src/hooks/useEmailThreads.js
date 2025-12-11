@@ -62,7 +62,13 @@ const useEmailThreads = (activeTab) => {
     setLoading(false);
   }, [groupByThread]);
 
-  // Fetch on mount and when activeTab changes to 'email'
+  // Fetch on mount
+  useEffect(() => {
+    fetchEmails();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Also fetch when activeTab changes back to 'email'
   useEffect(() => {
     if (activeTab === 'email') {
       fetchEmails();

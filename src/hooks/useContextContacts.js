@@ -505,7 +505,7 @@ function extractWhatsAppParticipants(chat) {
 function extractCalendarParticipants(event) {
   const participantsMap = new Map();
 
-  // Attendees from calendar event
+  // Attendees from calendar event (standard format)
   if (event.attendees && Array.isArray(event.attendees)) {
     event.attendees.forEach(attendee => {
       const email = attendee.email || attendee;
@@ -524,6 +524,38 @@ function extractCalendarParticipants(event) {
     });
   }
 
+  // to_recipients from ICS calendar events (can be JSON string or array)
+  let recipients = event.to_recipients;
+  if (recipients && typeof recipients === 'string') {
+    try {
+      recipients = JSON.parse(recipients);
+    } catch (e) {
+      recipients = [];
+    }
+  }
+  if (recipients && Array.isArray(recipients)) {
+    recipients.forEach(r => {
+      // Handle both string format "MAILTO:email@domain.com" and object format {email: "...", name: "..."}
+      let rawEmail = typeof r === 'string' ? r : r.email;
+      let name = typeof r === 'object' ? r.name : null;
+
+      if (rawEmail) {
+        // Strip MAILTO: prefix from ICS format
+        const cleanEmail = rawEmail.replace(/^MAILTO:/i, '');
+        const key = cleanEmail.toLowerCase();
+        if (key !== MY_EMAIL.toLowerCase()) {
+          if (!participantsMap.has(key)) {
+            participantsMap.set(key, {
+              email: cleanEmail,
+              name: name || cleanEmail,
+              roles: new Set(['attendee'])
+            });
+          }
+        }
+      }
+    });
+  }
+
   // Organizer
   if (event.organizer?.email) {
     const key = event.organizer.email.toLowerCase();
@@ -531,6 +563,18 @@ function extractCalendarParticipants(event) {
       participantsMap.set(key, {
         email: event.organizer.email,
         name: event.organizer.name || event.organizer.email,
+        roles: new Set(['organizer'])
+      });
+    }
+  }
+
+  // from_email as organizer fallback (ICS events)
+  if (event.from_email && !event.organizer) {
+    const key = event.from_email.toLowerCase();
+    if (key !== MY_EMAIL.toLowerCase() && !participantsMap.has(key)) {
+      participantsMap.set(key, {
+        email: event.from_email,
+        name: event.from_name || event.from_email,
         roles: new Set(['organizer'])
       });
     }

@@ -139,7 +139,6 @@ const CommandCenterPage = ({ theme }) => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('email');
   const [listCollapsed, setListCollapsed] = useState(false);
-  const [loading, setLoading] = useState(true);
 
   // Email threads hook
   const {
@@ -158,6 +157,7 @@ const CommandCenterPage = ({ theme }) => {
   const [whatsappMessages, setWhatsappMessages] = useState([]);
   const [whatsappChats, setWhatsappChats] = useState([]); // Grouped by chat_id
   const [selectedWhatsappChat, setSelectedWhatsappChat] = useState(null);
+  const [whatsappLoading, setWhatsappLoading] = useState(false);
 
   // Email compose hook (will set onSendSuccess via ref after saveAndArchive is defined)
   const saveAndArchiveRef = useRef(null);
@@ -294,8 +294,12 @@ const CommandCenterPage = ({ theme }) => {
     getProjectColor,
   } = todoistHook;
 
+  // Calendar events from DB (staging) - must be before useContextContacts
+  const [calendarEvents, setCalendarEvents] = useState([]);
+  const [selectedCalendarEvent, setSelectedCalendarEvent] = useState(null);
+
   // Context Contacts hook - handles Email, WhatsApp, Calendar sources
-  const contextContactsHook = useContextContacts(activeTab, selectedThread, selectedWhatsappChat, pendingCalendarEvent);
+  const contextContactsHook = useContextContacts(activeTab, selectedThread, selectedWhatsappChat, selectedCalendarEvent);
   const {
     emailContacts,
     setEmailContacts,
@@ -378,10 +382,6 @@ const CommandCenterPage = ({ theme }) => {
   const [pendingCalendarEvent, setPendingCalendarEvent] = useState(null);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [calendarEventEdits, setCalendarEventEdits] = useState({});
-
-  // Calendar events from DB (staging)
-  const [calendarEvents, setCalendarEvents] = useState([]);
-  const [selectedCalendarEvent, setSelectedCalendarEvent] = useState(null);
 
   // Quick Edit Modal - use the custom hook
   const quickEditModal = useQuickEditModal(() => {});
@@ -484,7 +484,7 @@ const CommandCenterPage = ({ theme }) => {
   // Fetch WhatsApp messages from Supabase
   useEffect(() => {
     const fetchWhatsApp = async () => {
-      setLoading(true);
+      setWhatsappLoading(true);
       const { data, error } = await supabase
         .from('command_center_inbox')
         .select('*')
@@ -496,13 +496,50 @@ const CommandCenterPage = ({ theme }) => {
       } else {
         setWhatsappMessages(data || []);
         // Group by chat_id
-        const grouped = groupWhatsAppByChat(data || []);
+        let grouped = groupWhatsAppByChat(data || []);
+
+        // Fetch contact profile images by matching phone numbers
+        const phoneNumbers = [...new Set(grouped.map(c => c.contact_number).filter(Boolean))];
+        if (phoneNumbers.length > 0) {
+          // Normalize phone numbers for matching (remove non-digits except leading +)
+          const normalizePhone = (p) => p ? p.replace(/[^\d+]/g, '').replace(/^00/, '+') : '';
+
+          // Fetch contacts with their mobiles (increase limit to cover all records)
+          const { data: contactMobiles } = await supabase
+            .from('contact_mobiles')
+            .select('contact_id, mobile')
+            .limit(5000);
+
+          const { data: contacts } = await supabase
+            .from('contacts')
+            .select('contact_id, profile_image_url')
+            .not('profile_image_url', 'is', null)
+            .limit(5000);
+
+          if (contactMobiles && contacts) {
+            // Create lookup: normalized phone -> profile_image_url
+            const phoneToImage = {};
+            contactMobiles.forEach(cm => {
+              const contact = contacts.find(c => c.contact_id === cm.contact_id);
+              if (contact?.profile_image_url) {
+                phoneToImage[normalizePhone(cm.mobile)] = contact.profile_image_url;
+              }
+            });
+
+            // Add profile_image_url to each chat
+            grouped = grouped.map(chat => ({
+              ...chat,
+              profile_image_url: phoneToImage[normalizePhone(chat.contact_number)] || null
+            }));
+          }
+        }
+
         setWhatsappChats(grouped);
         if (grouped.length > 0) {
           setSelectedWhatsappChat(grouped[0]);
         }
       }
-      setLoading(false);
+      setWhatsappLoading(false);
     };
 
     if (activeTab === 'whatsapp') {
@@ -4160,7 +4197,7 @@ const CommandCenterPage = ({ theme }) => {
 
           {!listCollapsed && activeTab === 'email' && (
             <EmailList>
-              {loading ? (
+              {threadsLoading ? (
                 <EmptyState theme={theme}>Loading...</EmptyState>
               ) : threads.length === 0 ? (
                 <EmptyState theme={theme}></EmptyState>
@@ -4193,7 +4230,7 @@ const CommandCenterPage = ({ theme }) => {
               chats={whatsappChats}
               selectedChat={selectedWhatsappChat}
               onSelectChat={setSelectedWhatsappChat}
-              loading={loading}
+              loading={whatsappLoading}
             />
           )}
 
@@ -4294,6 +4331,158 @@ const CommandCenterPage = ({ theme }) => {
               onDone={handleWhatsAppDone}
               saving={saving}
             />
+          ) : activeTab === 'calendar' ? (
+            selectedCalendarEvent ? (
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                {/* Calendar Event Header */}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '0 24px',
+                  height: '56px',
+                  minHeight: '56px',
+                  borderBottom: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
+                }}>
+                  <EmailSubjectFull theme={theme} style={{ margin: 0 }}>
+                    {(selectedCalendarEvent.subject || 'Meeting')
+                      .replace(/Simone Cimminelli/gi, '')
+                      .replace(/<>/g, '')
+                      .replace(/\s+/g, ' ')
+                      .trim() || 'Meeting'}
+                  </EmailSubjectFull>
+                  <button
+                    onClick={() => {
+                      // TODO: Handle calendar done
+                      toast.success('Calendar event processed!');
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: theme === 'light' ? '#10B981' : '#059669',
+                      color: 'white',
+                      cursor: 'pointer',
+                      fontWeight: 500,
+                      fontSize: '14px',
+                    }}
+                  >
+                    <FaArchive size={14} />
+                    Done
+                  </button>
+                </div>
+
+                {/* Calendar Event Content */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+                  {/* Date & Time */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    marginBottom: '20px',
+                    padding: '16px',
+                    background: theme === 'light' ? '#F0FDF4' : '#064E3B',
+                    borderRadius: '12px'
+                  }}>
+                    <FaCalendar size={24} style={{ color: '#10B981' }} />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '18px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
+                        {new Date(selectedCalendarEvent.date).toLocaleDateString('en-GB', {
+                          weekday: 'long',
+                          day: 'numeric',
+                          month: 'long',
+                          year: 'numeric'
+                        })}
+                      </div>
+                      <div style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginTop: '4px' }}>
+                        {new Date(selectedCalendarEvent.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                        {selectedCalendarEvent.event_end && ` - ${new Date(selectedCalendarEvent.event_end).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Location */}
+                  {selectedCalendarEvent.event_location && (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '12px',
+                      marginBottom: '20px',
+                      padding: '16px',
+                      background: theme === 'light' ? '#F3F4F6' : '#374151',
+                      borderRadius: '12px'
+                    }}>
+                      <FaBuilding size={20} style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginTop: '2px' }} />
+                      <div style={{ color: theme === 'light' ? '#374151' : '#D1D5DB', wordBreak: 'break-word' }}>
+                        {selectedCalendarEvent.event_location.startsWith('http') ? (
+                          <a href={selectedCalendarEvent.event_location} target="_blank" rel="noopener noreferrer" style={{ color: '#3B82F6' }}>
+                            {selectedCalendarEvent.event_location}
+                          </a>
+                        ) : (
+                          selectedCalendarEvent.event_location
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Attendees */}
+                  {selectedCalendarEvent.to_recipients && (
+                    <div style={{
+                      marginBottom: '20px',
+                      padding: '16px',
+                      background: theme === 'light' ? '#F3F4F6' : '#374151',
+                      borderRadius: '12px'
+                    }}>
+                      <div style={{ fontWeight: 600, marginBottom: '12px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
+                        <FaUser size={14} style={{ marginRight: '8px' }} />
+                        Attendees
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {(Array.isArray(selectedCalendarEvent.to_recipients)
+                          ? selectedCalendarEvent.to_recipients
+                          : JSON.parse(selectedCalendarEvent.to_recipients || '[]')
+                        ).map((attendee, idx) => (
+                          <div key={idx} style={{
+                            color: theme === 'light' ? '#374151' : '#D1D5DB',
+                            padding: '8px 12px',
+                            background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                            borderRadius: '8px'
+                          }}>
+                            {(typeof attendee === 'string' ? attendee : attendee.email || attendee.name || JSON.stringify(attendee)).replace(/^MAILTO:/i, '')}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Description/Body */}
+                  {selectedCalendarEvent.body_text && (
+                    <div style={{
+                      padding: '16px',
+                      background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                      border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                      borderRadius: '12px'
+                    }}>
+                      <div style={{ fontWeight: 600, marginBottom: '12px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
+                        Description
+                      </div>
+                      <div style={{
+                        color: theme === 'light' ? '#374151' : '#D1D5DB',
+                        whiteSpace: 'pre-wrap',
+                        lineHeight: 1.6
+                      }}>
+                        {selectedCalendarEvent.body_text}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <EmptyState theme={theme}>Select an event to view details</EmptyState>
+            )
           ) : selectedThread && selectedThread.length > 0 ? (
             <>
               {/* Thread subject */}

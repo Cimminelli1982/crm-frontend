@@ -41,6 +41,7 @@ const ChatAvatar = styled.div`
     : (props.theme === 'light' ? '#10B981' : '#34D399')};
   font-weight: 600;
   font-size: 16px;
+  overflow: hidden;
 `;
 
 const ChatName = styled.div`
@@ -198,6 +199,13 @@ const ChatListAvatar = styled.div`
   font-size: 18px;
   flex-shrink: 0;
   position: relative;
+  overflow: hidden;
+`;
+
+const AvatarImage = styled.img`
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 `;
 
 const GroupBadge = styled.div`
@@ -324,7 +332,11 @@ export const WhatsAppChatList = ({
             onClick={() => onSelectChat(chat)}
           >
             <ChatListAvatar theme={theme} $isGroup={chat.is_group_chat}>
-              {getInitials(chat.chat_name, chat.contact_number)}
+              {chat.profile_image_url ? (
+                <AvatarImage src={chat.profile_image_url} alt={chat.chat_name || chat.contact_number} />
+              ) : (
+                getInitials(chat.chat_name, chat.contact_number)
+              )}
               {chat.is_group_chat && (
                 <GroupBadge theme={theme}>
                   <FaUsers size={8} />
@@ -489,7 +501,11 @@ const WhatsAppTab = ({
       <ChatHeader theme={theme}>
         <ChatHeaderInfo>
           <ChatAvatar theme={theme} $isGroup={selectedChat.is_group_chat}>
-            {getInitials(selectedChat.chat_name, selectedChat.contact_number)}
+            {selectedChat.profile_image_url ? (
+              <AvatarImage src={selectedChat.profile_image_url} alt={selectedChat.chat_name || selectedChat.contact_number} />
+            ) : (
+              getInitials(selectedChat.chat_name, selectedChat.contact_number)
+            )}
           </ChatAvatar>
           <div>
             <ChatName theme={theme}>
