@@ -1392,17 +1392,17 @@ async def whatsapp_webhook(request: Request):
                                 # Get public URL
                                 permanent_url = db.client.storage.from_('whatsapp-attachments').get_public_url(storage_path)
 
-                                # Insert into attachments table
+                                # Insert into attachments table (use permanent_url for file_url since temp expires)
                                 insert_result = db.client.table('attachments').insert({
                                     "file_name": filename,
-                                    "file_url": temp_url,
+                                    "file_url": permanent_url,  # temp_url expires in 15min, use permanent
                                     "permanent_url": permanent_url,
                                     "file_type": mimetype,
                                     "file_size": filesize,
                                     "external_reference": message_uid,
                                     "processing_status": "completed"
                                 }).execute()
-                                logger.info("attachment_db_insert", result=str(insert_result.data) if insert_result.data else "no data")
+                                logger.info("attachment_db_insert", result=str(insert_result.data) if insert_result.data else "no data", permanent_url=permanent_url)
 
                                 logger.info("attachment_stored", message_uid=message_uid, filename=filename, permanent_url=permanent_url)
                             else:
@@ -1879,4 +1879,191 @@ async def enrich_contact(request: dict):
         return {
             "success": False,
             "error": str(e)
+        }
+
+
+# ==================== WHATSAPP PROFILE IMAGE ====================
+
+@app.post("/whatsapp-profile-image")
+async def whatsapp_profile_image(request: dict):
+    """
+    Get WhatsApp profile image for a contact and upload it to Supabase Storage.
+
+    This endpoint:
+    1. Finds the WhatsApp chat for the contact
+    2. Gets the profile image URL from Timelines API
+    3. Downloads the image (bypassing CORS issues)
+    4. Uploads it to Supabase Storage
+    5. Returns a permanent URL
+
+    Input: contact_id (UUID)
+    Output: permanent profile image URL from Supabase Storage
+    """
+    logger.info("whatsapp_profile_image_request", contact_id=request.get("contactId"))
+
+    try:
+        contact_id = request.get("contactId")
+
+        if not contact_id:
+            return {
+                "success": False,
+                "message": "contactId is required"
+            }
+
+        # Get Timelines API key
+        timelines_api_key = os.getenv("TIMELINES_API_KEY")
+        if not timelines_api_key:
+            return {
+                "success": False,
+                "message": "Timelines integration not configured"
+            }
+
+        # Get contact info
+        contact_result = db.client.table("contacts").select(
+            "first_name, last_name"
+        ).eq("contact_id", contact_id).single().execute()
+
+        if not contact_result.data:
+            return {
+                "success": False,
+                "message": "Contact not found"
+            }
+
+        contact_info = contact_result.data
+        logger.info(f"Looking for WhatsApp chat for: {contact_info.get('first_name')} {contact_info.get('last_name')}")
+
+        # Find WhatsApp chat - try linked chats first
+        chat_data = None
+
+        # Try linked chat
+        linked_result = db.client.table("contact_chats").select(
+            "chats!inner(external_chat_id, is_group_chat, chat_name)"
+        ).eq("contact_id", contact_id).eq(
+            "chats.is_group_chat", False
+        ).not_.is_("chats.external_chat_id", "null").limit(1).execute()
+
+        if linked_result.data and len(linked_result.data) > 0:
+            chat_data = linked_result.data[0]
+            logger.info(f"Found linked chat: {chat_data}")
+        else:
+            # Search by last name in chat_name
+            last_name = contact_info.get("last_name", "")
+            if last_name:
+                orphan_result = db.client.table("chats").select(
+                    "external_chat_id, is_group_chat, chat_name"
+                ).eq("is_group_chat", False).ilike(
+                    "chat_name", f"%{last_name}%"
+                ).not_.is_("external_chat_id", "null").limit(1).execute()
+
+                if orphan_result.data and len(orphan_result.data) > 0:
+                    chat_data = {"chats": orphan_result.data[0]}
+                    logger.info(f"Found orphan chat by last name: {orphan_result.data[0]}")
+
+        if not chat_data:
+            return {
+                "success": False,
+                "message": "No WhatsApp chat found for this contact"
+            }
+
+        external_chat_id = chat_data.get("chats", {}).get("external_chat_id")
+        if not external_chat_id:
+            return {
+                "success": False,
+                "message": "No external chat ID found"
+            }
+
+        # Get chat details from Timelines API
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            chat_response = await client.get(
+                f"{TIMELINES_API_BASE}/chats/{external_chat_id}",
+                headers={
+                    "Authorization": f"Bearer {timelines_api_key}",
+                    "Content-Type": "application/json"
+                }
+            )
+
+            if chat_response.status_code != 200:
+                logger.error(f"Timelines API error: {chat_response.status_code}")
+                return {
+                    "success": False,
+                    "message": "Failed to fetch chat details from Timelines"
+                }
+
+            chat_details = chat_response.json()
+            chat_data_inner = chat_details.get("data", chat_details)
+
+            profile_image_url = chat_data_inner.get("photo")
+
+            if not profile_image_url:
+                return {
+                    "success": False,
+                    "message": "No profile image found in WhatsApp"
+                }
+
+            # Make URL absolute if needed
+            if profile_image_url.startswith("/"):
+                profile_image_url = f"https://app.timelines.ai{profile_image_url}"
+
+            logger.info(f"Found profile image URL: {profile_image_url}")
+
+            # Download the image
+            image_response = await client.get(profile_image_url, timeout=30.0)
+
+            if image_response.status_code != 200:
+                logger.error(f"Failed to download image: {image_response.status_code}")
+                return {
+                    "success": False,
+                    "message": "Failed to download profile image"
+                }
+
+            image_content = image_response.content
+            content_type = image_response.headers.get("content-type", "image/jpeg")
+
+            # Determine file extension
+            ext = "jpg"
+            if "png" in content_type:
+                ext = "png"
+            elif "webp" in content_type:
+                ext = "webp"
+
+            # Upload to Supabase Storage
+            import time
+            file_name = f"{contact_id}_wa_{int(time.time())}.{ext}"
+            storage_path = f"profile-images/{file_name}"
+
+            try:
+                db.client.storage.from_("avatars").upload(
+                    storage_path,
+                    image_content,
+                    {"content-type": content_type}
+                )
+
+                # Get public URL
+                permanent_url = db.client.storage.from_("avatars").get_public_url(storage_path)
+
+                logger.info(f"Profile image uploaded: {permanent_url}")
+
+                return {
+                    "success": True,
+                    "profileImageUrl": permanent_url,
+                    "source": "whatsapp_timelines",
+                    "message": "Profile image saved to storage"
+                }
+
+            except Exception as storage_error:
+                logger.error(f"Storage upload error: {storage_error}")
+                # Return the original URL as fallback (might expire)
+                return {
+                    "success": True,
+                    "profileImageUrl": profile_image_url,
+                    "source": "whatsapp_timelines",
+                    "message": "Using temporary URL - storage upload failed",
+                    "temporary": True
+                }
+
+    except Exception as e:
+        logger.error("whatsapp_profile_image_error", error=str(e), exc_info=True)
+        return {
+            "success": False,
+            "message": str(e)
         }
