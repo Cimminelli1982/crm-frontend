@@ -1346,7 +1346,7 @@ async def whatsapp_webhook(request: Request):
             "chat_jid": str(chat.get('chat_id')) if chat.get('chat_id') else None,
             "chat_name": chat.get('full_name'),
             "is_group_chat": chat.get('is_group', False),
-            "message_uid": message.get('message_id'),
+            "message_uid": message.get('message_uid'),
             "receiver": whatsapp_account.get('phone'),
             "has_attachments": has_attachments,
             "attachments": json_lib.dumps(attachments_json) if attachments_json else None,
@@ -1362,7 +1362,7 @@ async def whatsapp_webhook(request: Request):
         logger.info("whatsapp_message_staged", id=inserted_id, phone=contact_phone)
 
         # Download and store attachments permanently in Supabase Storage
-        message_uid = message.get('message_id')
+        message_uid = message.get('message_uid')
         if attachments_list and len(attachments_list) > 0 and message_uid:
             chat_id_external = str(chat.get('chat_id')) if chat.get('chat_id') else 'unknown'
 
@@ -1393,17 +1393,16 @@ async def whatsapp_webhook(request: Request):
                                 permanent_url = db.client.storage.from_('whatsapp-attachments').get_public_url(storage_path)
 
                                 # Insert into attachments table
-                                db.client.table('attachments').insert({
+                                insert_result = db.client.table('attachments').insert({
                                     "file_name": filename,
                                     "file_url": temp_url,
                                     "permanent_url": permanent_url,
                                     "file_type": mimetype,
                                     "file_size": filesize,
                                     "external_reference": message_uid,
-                                    "processing_status": "completed",
-                                    "created_by": "Webhook",
-                                    "created_at": datetime.utcnow().isoformat()
+                                    "processing_status": "completed"
                                 }).execute()
+                                logger.info("attachment_db_insert", result=str(insert_result.data) if insert_result.data else "no data")
 
                                 logger.info("attachment_stored", message_uid=message_uid, filename=filename, permanent_url=permanent_url)
                             else:

@@ -3299,6 +3299,33 @@ const CommandCenterPage = ({ theme }) => {
     saveAndArchive();
   };
 
+  // Wrapper for handleSend that checks attachments after sending
+  const handleSendWithAttachmentCheck = async (bodyOverride = null) => {
+    // First, send the email
+    await handleSend(bodyOverride);
+
+    // After sending, check for attachments in thread (same logic as Done button)
+    if (!selectedThread || selectedThread.length === 0) return;
+
+    const allAttachments = selectedThread.flatMap(email =>
+      (email.attachments || []).map(att => ({
+        ...att,
+        emailSubject: email.subject,
+        emailDate: email.date,
+        fastmailId: email.fastmail_id
+      }))
+    );
+
+    if (allAttachments.length > 0) {
+      // Show attachment modal
+      setPendingAttachments(allAttachments);
+      setAttachmentModalOpen(true);
+    } else {
+      // No attachments, proceed directly with saveAndArchive
+      saveAndArchive();
+    }
+  };
+
   // Save & Archive - save email to CRM tables and archive in Fastmail
   const saveAndArchive = async () => {
     if (!selectedThread || selectedThread.length === 0) return;
@@ -3763,6 +3790,7 @@ const CommandCenterPage = ({ theme }) => {
     try {
       const chatId = selectedWhatsappChat.chat_id;
       const messages = selectedWhatsappChat.messages || [];
+      const contactPhone = selectedWhatsappChat.contact_number;
 
       // 1. Find or create the chat in chats table
       let crmChatId = null;
@@ -3801,31 +3829,129 @@ const CommandCenterPage = ({ theme }) => {
         crmChatId = newChat.id;
       }
 
-      // 2. Save each message as an interaction
+      // 2. Find contact by phone number (consistent with email flow)
+      let contactId = null;
+      if (contactPhone && !selectedWhatsappChat.is_group_chat) {
+        // Normalize phone: remove spaces, dashes, parentheses
+        const normalizedPhone = contactPhone.replace(/[\s\-\(\)]/g, '');
+        // Also try without leading +
+        const phoneWithoutPlus = normalizedPhone.replace(/^\+/, '');
+
+        const { data: contactMobile, error: mobileError } = await supabase
+          .from('contact_mobiles')
+          .select('contact_id')
+          .or(`mobile.ilike.%${normalizedPhone}%,mobile.ilike.%${phoneWithoutPlus}%`)
+          .limit(1)
+          .maybeSingle();
+
+        if (mobileError) {
+          console.error('Error finding contact by phone:', mobileError);
+        } else if (contactMobile) {
+          contactId = contactMobile.contact_id;
+          console.log('Found contact for phone:', contactPhone, '-> contact_id:', contactId);
+        }
+      }
+
+      // 3. Link chat to contact (like contact_email_threads for email)
+      if (crmChatId && contactId) {
+        const { error: linkError } = await supabase
+          .from('contact_chats')
+          .upsert({
+            contact_id: contactId,
+            chat_id: crmChatId
+          }, { onConflict: 'contact_id,chat_id' });
+
+        if (linkError) {
+          console.error('Error linking chat to contact:', linkError);
+        } else {
+          console.log('Linked chat to contact:', crmChatId, '->', contactId);
+        }
+      }
+
+      // 4. Save each message as an interaction (now with contact_id)
       for (const msg of messages) {
+        const messageUid = msg.message_uid || msg.id;
+        let interactionId = null;
+
         // Check if interaction already exists
         const { data: existingInteraction } = await supabase
           .from('interactions')
           .select('interaction_id')
-          .eq('external_interaction_id', msg.message_uid || msg.id)
+          .eq('external_interaction_id', messageUid)
           .maybeSingle();
 
         if (!existingInteraction) {
-          await supabase
+          const interactionData = {
+            interaction_type: 'whatsapp',
+            direction: msg.direction || 'received',
+            interaction_date: msg.date,
+            chat_id: crmChatId,
+            summary: msg.body_text || msg.snippet,
+            external_interaction_id: messageUid,
+            created_at: new Date().toISOString()
+          };
+
+          // Add contact_id if we found one (consistent with email flow)
+          if (contactId) {
+            interactionData.contact_id = contactId;
+          }
+
+          const { data: newInteraction } = await supabase
             .from('interactions')
-            .insert({
-              interaction_type: 'whatsapp',
-              direction: msg.direction || 'received',
-              interaction_date: msg.date,
-              chat_id: crmChatId,
-              summary: msg.body_text || msg.snippet,
-              external_interaction_id: msg.message_uid || msg.id,
-              created_at: new Date().toISOString()
-            });
+            .insert(interactionData)
+            .select('interaction_id')
+            .single();
+
+          interactionId = newInteraction?.interaction_id;
+        } else {
+          interactionId = existingInteraction.interaction_id;
+        }
+
+        // 4.5 Link attachments to contact, chat, and interaction
+        if (messageUid) {
+          const attachmentUpdate = {
+            chat_id: crmChatId
+          };
+          if (contactId) attachmentUpdate.contact_id = contactId;
+          if (interactionId) attachmentUpdate.interaction_id = interactionId;
+
+          const { error: attachmentLinkError } = await supabase
+            .from('attachments')
+            .update(attachmentUpdate)
+            .eq('external_reference', messageUid);
+
+          if (attachmentLinkError) {
+            console.error('Error linking attachments:', attachmentLinkError);
+          }
         }
       }
 
-      // 3. Delete messages from staging (command_center_inbox)
+      // 5. Update contact's last_interaction_at (consistent with email flow)
+      if (contactId && messages.length > 0) {
+        // Find the latest message date
+        const latestMessageDate = messages.reduce((latest, msg) => {
+          const msgDate = new Date(msg.date);
+          return msgDate > latest ? msgDate : latest;
+        }, new Date(0));
+
+        const { error: updateError } = await supabase
+          .from('contacts')
+          .update({
+            last_interaction_at: latestMessageDate.toISOString(),
+            last_modified_at: new Date().toISOString(),
+            last_modified_by: 'User'
+          })
+          .eq('contact_id', contactId)
+          .or(`last_interaction_at.is.null,last_interaction_at.lt.${latestMessageDate.toISOString()}`);
+
+        if (updateError) {
+          console.error('Failed to update last_interaction_at:', updateError);
+        } else {
+          console.log('Updated last_interaction_at for contact:', contactId);
+        }
+      }
+
+      // 6. Delete messages from staging (command_center_inbox)
       const messageIds = messages.map(m => m.id).filter(Boolean);
       if (messageIds.length > 0) {
         const { error: deleteError } = await supabase
@@ -3838,11 +3964,11 @@ const CommandCenterPage = ({ theme }) => {
         }
       }
 
-      // 4. Update local state - remove processed chat
+      // 7. Update local state - remove processed chat
       setWhatsappChats(prev => prev.filter(c => c.chat_id !== chatId));
       setWhatsappMessages(prev => prev.filter(m => m.chat_id !== chatId));
 
-      // 5. Select next chat if available
+      // 8. Select next chat if available
       const remainingChats = whatsappChats.filter(c => c.chat_id !== chatId);
       if (remainingChats.length > 0) {
         setSelectedWhatsappChat(remainingChats[0]);
@@ -3854,6 +3980,96 @@ const CommandCenterPage = ({ theme }) => {
     } catch (error) {
       console.error('Error archiving WhatsApp:', error);
       toast.error('Failed to archive WhatsApp messages');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Handle WhatsApp Spam - add to spam list and delete messages + attachments
+  const handleWhatsAppSpam = async () => {
+    if (!selectedWhatsappChat) return;
+
+    setSaving(true);
+    try {
+      const phone = selectedWhatsappChat.contact_number;
+      const chatId = selectedWhatsappChat.chat_id;
+      const messages = selectedWhatsappChat.messages || [];
+      const messageUids = messages.map(m => m.message_uid || m.id).filter(Boolean);
+
+      // 1. Add to whatsapp_spam list
+      const { data: existing } = await supabase
+        .from('whatsapp_spam')
+        .select('counter')
+        .eq('mobile_number', phone)
+        .maybeSingle();
+
+      if (existing) {
+        await supabase
+          .from('whatsapp_spam')
+          .update({ counter: existing.counter + 1 })
+          .eq('mobile_number', phone);
+      } else {
+        await supabase
+          .from('whatsapp_spam')
+          .insert({ mobile_number: phone, counter: 1 });
+      }
+
+      // 2. Get attachments to delete
+      if (messageUids.length > 0) {
+        const { data: attachments } = await supabase
+          .from('attachments')
+          .select('attachment_id, permanent_url')
+          .in('external_reference', messageUids);
+
+        // 3. Delete from Storage bucket
+        if (attachments && attachments.length > 0) {
+          for (const att of attachments) {
+            if (att.permanent_url) {
+              // Extract path from URL: .../whatsapp-attachments/path/to/file
+              const urlParts = att.permanent_url.split('/whatsapp-attachments/');
+              if (urlParts[1]) {
+                const storagePath = decodeURIComponent(urlParts[1].split('?')[0]);
+                await supabase.storage
+                  .from('whatsapp-attachments')
+                  .remove([storagePath]);
+              }
+            }
+          }
+
+          // 4. Delete from attachments table
+          const attIds = attachments.map(a => a.attachment_id);
+          await supabase
+            .from('attachments')
+            .delete()
+            .in('attachment_id', attIds);
+        }
+      }
+
+      // 5. Delete from command_center_inbox
+      const messageIds = messages.map(m => m.id).filter(Boolean);
+      if (messageIds.length > 0) {
+        await supabase
+          .from('command_center_inbox')
+          .delete()
+          .in('id', messageIds);
+      }
+
+      // 6. Update local state
+      setWhatsappChats(prev => prev.filter(c => c.chat_id !== chatId));
+      setWhatsappMessages(prev => prev.filter(m => m.chat_id !== chatId));
+
+      // 7. Select next chat
+      const remainingChats = whatsappChats.filter(c => c.chat_id !== chatId);
+      if (remainingChats.length > 0) {
+        setSelectedWhatsappChat(remainingChats[0]);
+      } else {
+        setSelectedWhatsappChat(null);
+      }
+
+      toast.success(`${phone} marked as spam`);
+    } catch (error) {
+      console.error('Error marking WhatsApp as spam:', error);
+      toast.error('Failed to mark as spam');
     } finally {
       setSaving(false);
     }
@@ -5180,7 +5396,14 @@ const CommandCenterPage = ({ theme }) => {
         handleComposeFileSelect={handleComposeFileSelect}
         removeComposeAttachment={removeComposeAttachment}
         sending={sending}
-        handleSend={handleSend}
+        handleSend={handleSendWithAttachmentCheck}
+        // Chat props for AI assistant
+        chatMessages={chatMessages}
+        chatInput={chatInput}
+        setChatInput={setChatInput}
+        chatLoading={chatLoading}
+        sendMessageToClaude={sendMessageToClaude}
+        extractDraftFromMessage={extractDraftFromMessage}
       />
 
       {/* Quick Edit Modal */}

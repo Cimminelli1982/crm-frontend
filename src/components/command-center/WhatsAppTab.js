@@ -778,6 +778,7 @@ const WhatsAppTab = ({
   // Combine and sort messages: most recent first (descending)
   const stagingMessages = (selectedChat.messages || []).map(m => ({
     id: m.id || m.message_uid,
+    messageUid: m.message_uid || m.id, // For attachment lookup
     text: m.body_text || m.snippet,
     direction: m.direction,
     date: m.date,
@@ -893,6 +894,30 @@ const WhatsAppTab = ({
                         {selectedChat.is_group_chat && msg.direction !== 'sent' && msg.sender && (
                           <MessageSender $name={msg.sender}>{msg.sender}</MessageSender>
                         )}
+                        {/* Render attachments */}
+                        {msg.messageUid && attachmentsMap[msg.messageUid]?.map((att, i) => (
+                          att.file_type?.startsWith('image/') ? (
+                            <AttachmentImage
+                              key={i}
+                              src={att.permanent_url}
+                              alt={att.file_name}
+                              theme={theme}
+                              $hasText={!!msg.text}
+                              onClick={() => window.open(att.permanent_url, '_blank')}
+                            />
+                          ) : (
+                            <AttachmentLink
+                              key={i}
+                              href={att.permanent_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              theme={theme}
+                              $hasText={!!msg.text}
+                            >
+                              📎 {att.file_name}
+                            </AttachmentLink>
+                          )
+                        ))}
                         {renderMessageText(msg.text, theme, msg.direction === 'sent')}
                         <MessageTime theme={theme} $isSent={msg.direction === 'sent'}>
                           {formatMessageTime(msg.date)}
