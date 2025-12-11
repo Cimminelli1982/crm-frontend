@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FaUsers, FaArchive, FaCheck, FaCheckDouble, FaPaperPlane } from 'react-icons/fa';
+import { FaUsers, FaArchive, FaCheck, FaCheckDouble, FaPaperPlane, FaClock } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
 import toast from 'react-hot-toast';
@@ -472,6 +472,7 @@ const WhatsAppTab = ({
   const [loadingArchived, setLoadingArchived] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
+  const [sentMessages, setSentMessages] = useState([]); // Local optimistic messages
   const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
 
@@ -483,14 +484,15 @@ const WhatsAppTab = ({
     }
   }, [replyText]);
 
-  // Clear reply text when chat changes
+  // Clear reply text and sent messages when chat changes
   useEffect(() => {
     setReplyText('');
+    setSentMessages([]);
   }, [selectedChat?.chat_id]);
 
   // Send message handler
   const handleSendMessage = async () => {
-    if (!replyText.trim() || !selectedChat?.chat_id || sending) return;
+    if (!replyText.trim() || !selectedChat?.contact_number || sending) return;
 
     setSending(true);
     const messageToSend = replyText.trim();
@@ -502,7 +504,7 @@ const WhatsAppTab = ({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          chat_id: selectedChat.chat_id,
+          phone: selectedChat.contact_number,
           message: messageToSend
         })
       });
@@ -512,6 +514,16 @@ const WhatsAppTab = ({
       if (response.ok && data.success) {
         toast.success('Message sent!');
         setReplyText('');
+
+        // Add to local sent messages for immediate display
+        const newMessage = {
+          id: `sent_${Date.now()}`,
+          text: messageToSend,
+          direction: 'sent',
+          date: new Date().toISOString(),
+          isLocal: true // Mark as locally added
+        };
+        setSentMessages(prev => [...prev, newMessage]);
 
         // Notify parent to refresh messages if callback provided
         if (onMessageSent) {
@@ -646,8 +658,19 @@ const WhatsAppTab = ({
     isArchived: true
   }));
 
+  // Local sent messages (optimistic updates)
+  const localSentMsgs = sentMessages.map(m => ({
+    id: m.id,
+    text: m.text,
+    direction: 'sent',
+    date: m.date,
+    sender: null,
+    isArchived: false,
+    isLocal: true
+  }));
+
   // Combine all messages and sort by date descending (most recent first)
-  const allMessages = [...stagingMessages, ...archivedMsgs].sort((a, b) => new Date(b.date) - new Date(a.date));
+  const allMessages = [...stagingMessages, ...archivedMsgs, ...localSentMsgs].sort((a, b) => new Date(b.date) - new Date(a.date));
   const messagesByDate = {};
 
   allMessages.forEach(msg => {
@@ -737,8 +760,11 @@ const WhatsAppTab = ({
                         {msg.text}
                         <MessageTime theme={theme} $isSent={msg.direction === 'sent'}>
                           {formatMessageTime(msg.date)}
-                          {msg.direction === 'sent' && (
+                          {msg.direction === 'sent' && !msg.isLocal && (
                             <FaCheckDouble size={12} style={{ color: '#34D399' }} />
+                          )}
+                          {msg.isLocal && (
+                            <FaClock size={10} style={{ color: '#9CA3AF' }} title="Sending..." />
                           )}
                           {msg.isArchived && (
                             <FaArchive size={10} style={{ opacity: 0.5 }} />

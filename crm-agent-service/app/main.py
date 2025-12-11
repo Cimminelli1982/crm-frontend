@@ -1313,18 +1313,20 @@ async def whatsapp_webhook(request: Request):
                 logger.info("whatsapp_spam_blocked", phone=contact_phone)
                 return {"success": True, "skipped": "spam number"}
 
-        # Prepare attachment data
-        attachment = message.get('attachment')
+        # Prepare attachment data - TimelinesAI sends "attachments" (plural array)
+        attachments_list = message.get('attachments', [])
         attachments_json = None
         has_attachments = False
-        if attachment:
+        if attachments_list and len(attachments_list) > 0:
             has_attachments = True
-            attachments_json = [{
-                "url": attachment.get('temporary_download_url'),
-                "name": attachment.get('filename'),
-                "type": attachment.get('mimetype'),
-                "size": attachment.get('size')
-            }]
+            attachments_json = []
+            for att in attachments_list:
+                attachments_json.append({
+                    "url": att.get('temporary_download_url'),
+                    "name": att.get('filename'),
+                    "type": att.get('mimetype'),
+                    "size": att.get('size')
+                })
 
         # Insert into command_center_inbox
         import json as json_lib
@@ -1618,19 +1620,19 @@ async def whatsapp_send_message(request: dict):
     Send a WhatsApp message via Timelines API.
 
     Input:
-    - chat_id: The Timelines chat ID to send to
-    - message: The text message to send
+    - phone: The phone number to send to (required)
+    - message: The text message to send (required)
 
     Returns success status and message details.
     """
-    logger.info("whatsapp_send_request", chat_id=request.get("chat_id"))
+    logger.info("whatsapp_send_request", phone=request.get("phone"))
 
     try:
-        chat_id = request.get("chat_id")
+        phone = request.get("phone", "").strip()
         message_text = request.get("message", "").strip()
 
-        if not chat_id:
-            raise HTTPException(status_code=400, detail="chat_id is required")
+        if not phone:
+            raise HTTPException(status_code=400, detail="phone is required")
 
         if not message_text:
             raise HTTPException(status_code=400, detail="message is required")
@@ -1641,6 +1643,14 @@ async def whatsapp_send_message(request: dict):
             logger.error("TIMELINES_API_KEY not configured")
             raise HTTPException(status_code=500, detail="WhatsApp integration not configured")
 
+        # Build request payload
+        payload = {
+            "phone": phone,
+            "text": message_text
+        }
+
+        logger.info("timelines_send_payload", payload=payload)
+
         # Send message via Timelines API
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
@@ -1649,22 +1659,19 @@ async def whatsapp_send_message(request: dict):
                     "Authorization": f"Bearer {timelines_api_key}",
                     "Content-Type": "application/json"
                 },
-                json={
-                    "chat_id": int(chat_id),
-                    "text": message_text
-                }
+                json=payload
             )
 
             logger.info("timelines_send_response", status=response.status_code)
 
             if response.status_code in [200, 201]:
                 response_data = response.json()
-                logger.info("whatsapp_message_sent", chat_id=chat_id)
+                logger.info("whatsapp_message_sent", phone=phone)
 
                 return {
                     "success": True,
                     "message_id": response_data.get("data", {}).get("message_id") or response_data.get("message_id"),
-                    "chat_id": chat_id,
+                    "phone": phone,
                     "text": message_text
                 }
             else:
