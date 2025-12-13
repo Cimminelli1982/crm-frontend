@@ -1,15 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   FaChevronDown,
   FaUserSlash,
   FaExclamationTriangle,
   FaCheckCircle,
   FaClone,
-  FaTag,
-  FaCalendar,
   FaHandshake,
   FaBuilding,
-  FaExternalLinkAlt
+  FaExternalLinkAlt,
+  FaEnvelopeOpenText,
+  FaExchangeAlt
 } from 'react-icons/fa';
 
 const DataIntegrityTab = ({
@@ -33,11 +33,6 @@ const DataIntegrityTab = ({
   duplicateCompanies,
   duplicatesTab,
   setDuplicatesTab,
-  categoryMissingContacts,
-  categoryMissingCompanies,
-  categoryMissingTab,
-  setCategoryMissingTab,
-  keepInTouchMissingContacts,
   missingCompanyLinks,
   contactsMissingCompany,
   // Expanded state
@@ -55,21 +50,45 @@ const DataIntegrityTab = ({
   handleDeleteCompanyFromHold,
   handleConfirmMergeDuplicate,
   handleDismissDuplicate,
-  handleEditCategoryMissingContact,
-  handleHoldCategoryMissingContact,
-  handleDeleteCategoryMissingContact,
-  handleEditCategoryMissingCompany,
-  handleHoldCategoryMissingCompany,
-  handleDeleteCategoryMissingCompany,
-  handleOpenKeepInTouchModal,
-  handleDoNotKeepInTouch,
   handleLinkContactToCompany,
   // Modal setters
   setDataIntegrityContactId,
   setDataIntegrityModalOpen,
   setCompanyDataIntegrityCompanyId,
   setCompanyDataIntegrityModalOpen,
+  // Suggestions from current email
+  suggestionsFromMessage = [],
 }) => {
+  // Track which duplicates have been swapped (by id)
+  const [swappedDuplicates, setSwappedDuplicates] = useState(new Set());
+
+  const toggleSwap = (itemId) => {
+    setSwappedDuplicates(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(itemId)) {
+        newSet.delete(itemId);
+      } else {
+        newSet.add(itemId);
+      }
+      return newSet;
+    });
+  };
+
+  // Helper to get the correct keep/remove based on swap state
+  const getSwappedItem = (item) => {
+    const isSwapped = swappedDuplicates.has(item.id);
+    if (isSwapped) {
+      return {
+        ...item,
+        source_id: item.duplicate_id,
+        duplicate_id: item.source_id,
+        source: item.duplicate,
+        duplicate: item.source,
+      };
+    }
+    return item;
+  };
+
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: '8px' }}>
       {loadingDataIntegrity ? (
@@ -90,6 +109,141 @@ const DataIntegrityTab = ({
         </div>
       ) : (
         <>
+          {/* Suggestions From Message Section */}
+          {suggestionsFromMessage.length > 0 && (
+          <div style={{ marginBottom: '8px' }}>
+            <div
+              onClick={() => setExpandedDataIntegrity(prev => prev.suggestions ? {} : { suggestions: true })}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 12px',
+                background: theme === 'light' ? '#EFF6FF' : '#1E3A5F',
+                cursor: 'pointer',
+                borderRadius: '6px',
+                marginBottom: expandedDataIntegrity.suggestions ? '4px' : '0',
+                border: `1px solid ${theme === 'light' ? '#BFDBFE' : '#1E40AF'}`
+              }}
+            >
+              <FaChevronDown
+                style={{
+                  transform: expandedDataIntegrity.suggestions ? 'rotate(0deg)' : 'rotate(-90deg)',
+                  transition: 'transform 0.2s',
+                  fontSize: '10px',
+                  color: theme === 'light' ? '#3B82F6' : '#93C5FD'
+                }}
+              />
+              <FaEnvelopeOpenText style={{ color: '#3B82F6', fontSize: '12px' }} />
+              <span style={{
+                fontWeight: 600,
+                fontSize: '13px',
+                color: theme === 'light' ? '#1D4ED8' : '#BFDBFE'
+              }}>
+                Suggestions From Message
+              </span>
+              <span style={{
+                fontSize: '12px',
+                color: theme === 'light' ? '#3B82F6' : '#93C5FD',
+                marginLeft: 'auto'
+              }}>
+                {suggestionsFromMessage.length}
+              </span>
+            </div>
+            {expandedDataIntegrity.suggestions && (
+              <div style={{ paddingLeft: '8px' }}>
+                {suggestionsFromMessage.map((item, idx) => (
+                  <div key={idx} style={{
+                    padding: '8px 12px',
+                    background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                    borderRadius: '6px',
+                    marginBottom: '4px',
+                    border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      }}>{item.name || item.email}</div>
+                      {item.name && (
+                        <div style={{
+                          fontSize: '11px',
+                          color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        }}>{item.email}</div>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px', marginLeft: '8px', flexShrink: 0 }}>
+                      <button
+                        onClick={() => handleOpenCreateContact({
+                          email: item.email,
+                          name: item.name,
+                          firstName: item.firstName,
+                          lastName: item.lastName
+                        })}
+                        title="Add to CRM"
+                        style={{
+                          padding: '4px 8px',
+                          fontSize: '11px',
+                          fontWeight: 500,
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          background: '#10B981',
+                          color: 'white'
+                        }}
+                      >
+                        Add
+                      </button>
+                      <button
+                        onClick={() => handlePutOnHold({ email: item.email, name: item.name })}
+                        title="Put on Hold"
+                        style={{
+                          padding: '4px 8px',
+                          fontSize: '11px',
+                          fontWeight: 500,
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          background: '#F59E0B',
+                          color: 'white'
+                        }}
+                      >
+                        Hold
+                      </button>
+                      <button
+                        onClick={() => handleAddToSpam(item.email || item.mobile, item)}
+                        title="Mark as Spam"
+                        style={{
+                          padding: '4px 8px',
+                          fontSize: '11px',
+                          fontWeight: 500,
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          background: '#EF4444',
+                          color: 'white'
+                        }}
+                      >
+                        Spam
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          )}
+
           {/* Not in CRM Section */}
           {(notInCrmEmails.length > 0 || notInCrmDomains.length > 0) && (
           <div style={{ marginBottom: '8px' }}>
@@ -217,15 +371,15 @@ const DataIntegrityTab = ({
                               whiteSpace: 'nowrap',
                               overflow: 'hidden',
                               textOverflow: 'ellipsis'
-                            }}>{item.name || item.email}</div>
-                            {item.name && (
+                            }}>{item.name || item.email || item.mobile}</div>
+                            {(item.name && (item.email || item.mobile)) && (
                               <div style={{
                                 fontSize: '11px',
                                 color: theme === 'light' ? '#6B7280' : '#9CA3AF',
                                 whiteSpace: 'nowrap',
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis'
-                              }}>{item.email}</div>
+                              }}>{item.email || item.mobile}</div>
                             )}
                           </div>
                           <div style={{ display: 'flex', gap: '4px', marginLeft: '8px', flexShrink: 0 }}>
@@ -262,7 +416,7 @@ const DataIntegrityTab = ({
                               Hold
                             </button>
                             <button
-                              onClick={() => handleAddToSpam(item.email)}
+                              onClick={() => handleAddToSpam(item.email || item.mobile, item)}
                               title="Mark as Spam"
                               style={{
                                 padding: '4px 8px',
@@ -361,7 +515,7 @@ const DataIntegrityTab = ({
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleDomainAction(item, 'delete');
+                                  handleDomainAction(item, 'spam');
                                 }}
                                 style={{
                                   padding: '4px 8px',
@@ -373,9 +527,9 @@ const DataIntegrityTab = ({
                                   cursor: 'pointer',
                                   fontWeight: 500
                                 }}
-                                title="Dismiss from list"
+                                title="Add domain to spam list"
                               >
-                                Delete
+                                Spam
                               </button>
                             </div>
                           </div>
@@ -526,14 +680,14 @@ const DataIntegrityTab = ({
                               whiteSpace: 'nowrap',
                               overflow: 'hidden',
                               textOverflow: 'ellipsis'
-                            }}>{contact.full_name || contact.first_name || contact.email}</div>
+                            }}>{contact.full_name || contact.first_name || contact.email || contact.mobile}</div>
                             <div style={{
                               fontSize: '11px',
                               color: theme === 'light' ? '#6B7280' : '#9CA3AF',
                               whiteSpace: 'nowrap',
                               overflow: 'hidden',
                               textOverflow: 'ellipsis'
-                            }}>{contact.email}</div>
+                            }}>{contact.mobile && (!contact.email || contact.email?.startsWith('whatsapp_')) ? contact.mobile : contact.email}</div>
                           </div>
                           <div style={{ display: 'flex', gap: '4px', marginLeft: '8px', flexShrink: 0, alignItems: 'center' }}>
                             <div style={{
@@ -562,7 +716,7 @@ const DataIntegrityTab = ({
                               Add
                             </button>
                             <button
-                              onClick={() => handleSpamFromHold(contact.email)}
+                              onClick={() => handleSpamFromHold(contact)}
                               title="Mark as Spam"
                               style={{
                                 padding: '4px 8px',
@@ -1004,8 +1158,10 @@ const DataIntegrityTab = ({
                         No duplicate contacts
                       </div>
                     ) : (
-                      duplicateContacts.map((item, idx) => (
-                        <div key={item.id || idx} style={{
+                      duplicateContacts.map((rawItem, idx) => {
+                        const item = getSwappedItem(rawItem);
+                        return (
+                        <div key={rawItem.id || idx} style={{
                           padding: '10px 12px',
                           background: theme === 'light' ? '#FFFFFF' : '#1F2937',
                           borderRadius: '6px',
@@ -1029,13 +1185,13 @@ const DataIntegrityTab = ({
                             <div style={{
                               fontSize: '10px',
                               padding: '2px 6px',
-                              background: item.match_type === 'email' ? '#EF4444' : item.match_type === 'domain' ? '#F59E0B' : '#8B5CF6',
+                              background: rawItem.match_type === 'email' ? '#EF4444' : rawItem.match_type === 'domain' ? '#F59E0B' : '#8B5CF6',
                               color: 'white',
                               borderRadius: '4px',
                               fontWeight: 500,
                               textTransform: 'uppercase'
                             }}>
-                              {item.match_type}
+                              {rawItem.match_type}
                             </div>
                           </div>
                           {/* Source contact - will be KEPT */}
@@ -1045,7 +1201,7 @@ const DataIntegrityTab = ({
                               display: 'flex',
                               alignItems: 'center',
                               gap: '8px',
-                              marginBottom: '6px',
+                              marginBottom: '4px',
                               padding: '6px 8px',
                               background: theme === 'light' ? '#ECFDF5' : '#064E3B',
                               borderRadius: '4px',
@@ -1075,6 +1231,28 @@ const DataIntegrityTab = ({
                             </span>
                             <FaExternalLinkAlt size={10} style={{ marginLeft: 'auto', opacity: 0.5 }} />
                           </div>
+                          {/* Swap button */}
+                          <div style={{ display: 'flex', justifyContent: 'center', margin: '2px 0' }}>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); toggleSwap(rawItem.id); }}
+                              style={{
+                                padding: '4px 12px',
+                                fontSize: '10px',
+                                background: theme === 'light' ? '#F3F4F6' : '#374151',
+                                color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                              title="Swap keep/remove"
+                            >
+                              <FaExchangeAlt size={10} />
+                              Swap
+                            </button>
+                          </div>
                           {/* Duplicate contact - will be REMOVED */}
                           <div
                             onClick={() => window.open(`/new-crm/contact/${item.duplicate_id}`, '_blank')}
@@ -1083,6 +1261,7 @@ const DataIntegrityTab = ({
                               alignItems: 'center',
                               gap: '8px',
                               marginBottom: '8px',
+                              marginTop: '4px',
                               padding: '6px 8px',
                               background: theme === 'light' ? '#FEF2F2' : '#7F1D1D',
                               borderRadius: '4px',
@@ -1113,7 +1292,7 @@ const DataIntegrityTab = ({
                             <FaExternalLinkAlt size={10} style={{ marginLeft: 'auto', opacity: 0.5 }} />
                           </div>
                           {/* Match details if available */}
-                          {item.match_details && (
+                          {rawItem.match_details && (
                             <div style={{
                               fontSize: '11px',
                               color: theme === 'light' ? '#6B7280' : '#9CA3AF',
@@ -1122,8 +1301,8 @@ const DataIntegrityTab = ({
                               padding: '6px 8px',
                               borderRadius: '4px'
                             }}>
-                              {item.match_details.source_email && <div>Email: {item.match_details.source_email}</div>}
-                              {item.match_details.source_name && <div>Name match: "{item.match_details.source_name}" vs "{item.match_details.duplicate_name}"</div>}
+                              {rawItem.match_details.source_email && <div>Email: {rawItem.match_details.source_email}</div>}
+                              {rawItem.match_details.source_name && <div>Name match: "{rawItem.match_details.source_name}" vs "{rawItem.match_details.duplicate_name}"</div>}
                             </div>
                           )}
                           {/* Action buttons */}
@@ -1149,7 +1328,7 @@ const DataIntegrityTab = ({
                               Confirm Merge
                             </button>
                             <button
-                              onClick={() => handleDismissDuplicate(item)}
+                              onClick={() => handleDismissDuplicate(rawItem)}
                               style={{
                                 flex: 1,
                                 padding: '6px 12px',
@@ -1166,7 +1345,7 @@ const DataIntegrityTab = ({
                             </button>
                           </div>
                         </div>
-                      ))
+                      )})
                     )}
                   </>
                 )}
@@ -1184,8 +1363,10 @@ const DataIntegrityTab = ({
                         No duplicate companies
                       </div>
                     ) : (
-                      duplicateCompanies.map((item, idx) => (
-                        <div key={item.id || idx} style={{
+                      duplicateCompanies.map((rawItem, idx) => {
+                        const item = getSwappedItem(rawItem);
+                        return (
+                        <div key={rawItem.id || idx} style={{
                           padding: '10px 12px',
                           background: theme === 'light' ? '#FFFFFF' : '#1F2937',
                           borderRadius: '6px',
@@ -1209,13 +1390,13 @@ const DataIntegrityTab = ({
                             <div style={{
                               fontSize: '10px',
                               padding: '2px 6px',
-                              background: item.match_type === 'domain' ? '#EF4444' : item.match_type === 'email' ? '#F59E0B' : '#8B5CF6',
+                              background: rawItem.match_type === 'domain' ? '#EF4444' : rawItem.match_type === 'email' ? '#F59E0B' : '#8B5CF6',
                               color: 'white',
                               borderRadius: '4px',
                               fontWeight: 500,
                               textTransform: 'uppercase'
                             }}>
-                              {item.match_type}
+                              {rawItem.match_type}
                             </div>
                           </div>
                           {/* Source company - will be KEPT */}
@@ -1225,7 +1406,7 @@ const DataIntegrityTab = ({
                               display: 'flex',
                               alignItems: 'center',
                               gap: '8px',
-                              marginBottom: '6px',
+                              marginBottom: '4px',
                               padding: '6px 8px',
                               background: theme === 'light' ? '#ECFDF5' : '#064E3B',
                               borderRadius: '4px',
@@ -1255,6 +1436,28 @@ const DataIntegrityTab = ({
                             </span>
                             <FaExternalLinkAlt size={10} style={{ marginLeft: 'auto', opacity: 0.5 }} />
                           </div>
+                          {/* Swap button */}
+                          <div style={{ display: 'flex', justifyContent: 'center', margin: '2px 0' }}>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); toggleSwap(rawItem.id); }}
+                              style={{
+                                padding: '4px 12px',
+                                fontSize: '10px',
+                                background: theme === 'light' ? '#F3F4F6' : '#374151',
+                                color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                              title="Swap keep/remove"
+                            >
+                              <FaExchangeAlt size={10} />
+                              Swap
+                            </button>
+                          </div>
                           {/* Duplicate company - will be REMOVED */}
                           <div
                             onClick={() => window.open(`/new-crm/company/${item.duplicate_id}`, '_blank')}
@@ -1263,6 +1466,7 @@ const DataIntegrityTab = ({
                               alignItems: 'center',
                               gap: '8px',
                               marginBottom: '8px',
+                              marginTop: '4px',
                               padding: '6px 8px',
                               background: theme === 'light' ? '#FEF2F2' : '#7F1D1D',
                               borderRadius: '4px',
@@ -1293,7 +1497,7 @@ const DataIntegrityTab = ({
                             <FaExternalLinkAlt size={10} style={{ marginLeft: 'auto', opacity: 0.5 }} />
                           </div>
                           {/* Match details if available */}
-                          {item.match_details && (
+                          {rawItem.match_details && (
                             <div style={{
                               fontSize: '11px',
                               color: theme === 'light' ? '#6B7280' : '#9CA3AF',
@@ -1302,8 +1506,9 @@ const DataIntegrityTab = ({
                               padding: '6px 8px',
                               borderRadius: '4px'
                             }}>
-                              {item.match_details.domain && <div>Domain: {item.match_details.domain}</div>}
-                              {item.match_details.source_name && <div>Name match: "{item.match_details.source_name}" vs "{item.match_details.duplicate_name}"</div>}
+                              {rawItem.match_details.domain && <div>Domain: {rawItem.match_details.domain}</div>}
+                              {rawItem.match_details.matched_domain && <div>Domain: {rawItem.match_details.matched_domain}</div>}
+                              {rawItem.match_details.source_name && <div>Name match: "{rawItem.match_details.source_name}" vs "{rawItem.match_details.duplicate_name}"</div>}
                             </div>
                           )}
                           {/* Action buttons */}
@@ -1329,7 +1534,7 @@ const DataIntegrityTab = ({
                               Confirm Merge
                             </button>
                             <button
-                              onClick={() => handleDismissDuplicate(item)}
+                              onClick={() => handleDismissDuplicate(rawItem)}
                               style={{
                                 flex: 1,
                                 padding: '6px 12px',
@@ -1346,435 +1551,13 @@ const DataIntegrityTab = ({
                             </button>
                           </div>
                         </div>
-                      ))
+                      )})
                     )}
                   </>
                 )}
               </div>
             )}
           </div>
-          )}
-
-          {/* Category Missing Section */}
-          {(categoryMissingContacts.length > 0 || categoryMissingCompanies.length > 0) && (
-          <div style={{ marginBottom: '8px' }}>
-            <div
-              onClick={() => setExpandedDataIntegrity(prev => prev.categoryMissing ? {} : { categoryMissing: true })}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '10px 12px',
-                background: theme === 'light' ? '#F3F4F6' : '#374151',
-                cursor: 'pointer',
-                borderRadius: '6px',
-                marginBottom: expandedDataIntegrity.categoryMissing ? '4px' : '0',
-              }}
-            >
-              <FaChevronDown
-                style={{
-                  transform: expandedDataIntegrity.categoryMissing ? 'rotate(0deg)' : 'rotate(-90deg)',
-                  transition: 'transform 0.2s',
-                  fontSize: '10px',
-                  color: theme === 'light' ? '#6B7280' : '#9CA3AF'
-                }}
-              />
-              <FaTag style={{ color: '#F59E0B', fontSize: '12px' }} />
-              <span style={{
-                fontWeight: 600,
-                fontSize: '13px',
-                color: theme === 'light' ? '#111827' : '#F9FAFB'
-              }}>
-                Category Missing
-              </span>
-              <span style={{
-                fontSize: '12px',
-                color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                marginLeft: 'auto'
-              }}>
-                {categoryMissingContacts.length + categoryMissingCompanies.length}
-              </span>
-            </div>
-            {expandedDataIntegrity.categoryMissing && (
-              <div style={{ paddingLeft: '8px' }}>
-                {/* Tabs for Contacts / Companies */}
-                <div style={{
-                  display: 'flex',
-                  gap: '4px',
-                  marginBottom: '8px',
-                  background: theme === 'light' ? '#E5E7EB' : '#1F2937',
-                  borderRadius: '6px',
-                  padding: '2px'
-                }}>
-                  <button
-                    onClick={() => setCategoryMissingTab('contacts')}
-                    style={{
-                      flex: 1,
-                      padding: '6px 8px',
-                      border: 'none',
-                      borderRadius: '4px',
-                      fontSize: '12px',
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                      background: categoryMissingTab === 'contacts'
-                        ? (theme === 'light' ? '#FFFFFF' : '#374151')
-                        : 'transparent',
-                      color: categoryMissingTab === 'contacts'
-                        ? (theme === 'light' ? '#111827' : '#F9FAFB')
-                        : (theme === 'light' ? '#6B7280' : '#9CA3AF'),
-                      boxShadow: categoryMissingTab === 'contacts' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
-                    }}
-                  >
-                    Contacts ({categoryMissingContacts.length})
-                  </button>
-                  <button
-                    onClick={() => setCategoryMissingTab('companies')}
-                    style={{
-                      flex: 1,
-                      padding: '6px 8px',
-                      border: 'none',
-                      borderRadius: '4px',
-                      fontSize: '12px',
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                      background: categoryMissingTab === 'companies'
-                        ? (theme === 'light' ? '#FFFFFF' : '#374151')
-                        : 'transparent',
-                      color: categoryMissingTab === 'companies'
-                        ? (theme === 'light' ? '#111827' : '#F9FAFB')
-                        : (theme === 'light' ? '#6B7280' : '#9CA3AF'),
-                      boxShadow: categoryMissingTab === 'companies' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
-                    }}
-                  >
-                    Companies ({categoryMissingCompanies.length})
-                  </button>
-                </div>
-
-                {/* Contacts Tab Content */}
-                {categoryMissingTab === 'contacts' && (
-                  <>
-                    {categoryMissingContacts.length === 0 ? (
-                      <div style={{
-                        textAlign: 'center',
-                        padding: '16px',
-                        color: theme === 'light' ? '#9CA3AF' : '#6B7280',
-                        fontSize: '12px'
-                      }}>
-                        No contacts need categorization
-                      </div>
-                    ) : (
-                      categoryMissingContacts.map((contact, idx) => (
-                        <div key={contact.contact_id} style={{
-                          padding: '8px 12px',
-                          background: theme === 'light' ? '#FFFFFF' : '#1F2937',
-                          borderRadius: '6px',
-                          marginBottom: '4px',
-                          border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center'
-                        }}>
-                          <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => navigate(`/contact/${contact.contact_id}`)}>
-                            <div style={{
-                              fontSize: '13px',
-                              fontWeight: 500,
-                              color: theme === 'light' ? '#111827' : '#F9FAFB',
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis'
-                            }}>
-                              {contact.first_name} {contact.last_name}
-                            </div>
-                            <div style={{
-                              fontSize: '11px',
-                              color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                              marginTop: '2px'
-                            }}>
-                              Last: {contact.last_interaction_at ? new Date(contact.last_interaction_at).toLocaleDateString() : 'N/A'}
-                            </div>
-                          </div>
-                          <div style={{ display: 'flex', gap: '4px', marginLeft: '8px', flexShrink: 0 }}>
-                            <button
-                              onClick={() => handleEditCategoryMissingContact(contact)}
-                              title="Edit Contact"
-                              style={{
-                                padding: '4px 8px',
-                                fontSize: '11px',
-                                fontWeight: 500,
-                                border: 'none',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                background: '#10B981',
-                                color: 'white'
-                              }}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => handleHoldCategoryMissingContact(contact)}
-                              title="Put on Hold"
-                              style={{
-                                padding: '4px 8px',
-                                fontSize: '11px',
-                                fontWeight: 500,
-                                border: 'none',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                background: '#F59E0B',
-                                color: 'white'
-                              }}
-                            >
-                              Hold
-                            </button>
-                            <button
-                              onClick={() => handleDeleteCategoryMissingContact(contact)}
-                              title="Delete Contact"
-                              style={{
-                                padding: '4px 8px',
-                                fontSize: '11px',
-                                fontWeight: 500,
-                                border: 'none',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                background: '#EF4444',
-                                color: 'white'
-                              }}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </>
-                )}
-
-                {/* Companies Tab Content */}
-                {categoryMissingTab === 'companies' && (
-                  <>
-                    {categoryMissingCompanies.length === 0 ? (
-                      <div style={{
-                        textAlign: 'center',
-                        padding: '16px',
-                        color: theme === 'light' ? '#9CA3AF' : '#6B7280',
-                        fontSize: '12px'
-                      }}>
-                        No companies need categorization
-                      </div>
-                    ) : (
-                      categoryMissingCompanies.map((company, idx) => (
-                        <div key={company.company_id} style={{
-                          padding: '8px 12px',
-                          background: theme === 'light' ? '#FFFFFF' : '#1F2937',
-                          borderRadius: '6px',
-                          marginBottom: '4px',
-                          border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center'
-                        }}>
-                          <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => navigate(`/company/${company.company_id}`)}>
-                            <div style={{
-                              fontSize: '13px',
-                              fontWeight: 500,
-                              color: theme === 'light' ? '#111827' : '#F9FAFB',
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis'
-                            }}>
-                              {company.name}
-                            </div>
-                            <div style={{
-                              fontSize: '11px',
-                              color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                              marginTop: '2px'
-                            }}>
-                              {company.category}
-                            </div>
-                          </div>
-                          <div style={{ display: 'flex', gap: '4px', marginLeft: '8px', flexShrink: 0 }}>
-                            <button
-                              onClick={() => handleEditCategoryMissingCompany(company)}
-                              title="Edit Company"
-                              style={{
-                                padding: '4px 8px',
-                                fontSize: '11px',
-                                fontWeight: 500,
-                                border: 'none',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                background: '#10B981',
-                                color: 'white'
-                              }}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => handleHoldCategoryMissingCompany(company)}
-                              title="Put on Hold"
-                              style={{
-                                padding: '4px 8px',
-                                fontSize: '11px',
-                                fontWeight: 500,
-                                border: 'none',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                background: '#F59E0B',
-                                color: 'white'
-                              }}
-                            >
-                              Hold
-                            </button>
-                            <button
-                              onClick={() => handleDeleteCategoryMissingCompany(company)}
-                              title="Delete Company"
-                              style={{
-                                padding: '4px 8px',
-                                fontSize: '11px',
-                                fontWeight: 500,
-                                border: 'none',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                background: '#EF4444',
-                                color: 'white'
-                              }}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-          )}
-
-          {/* Keep in Touch Missing Section */}
-          {keepInTouchMissingContacts.length > 0 && (
-            <div style={{ marginBottom: '8px' }}>
-              <div
-                onClick={() => setExpandedDataIntegrity(prev => prev.keepInTouchMissing ? {} : { keepInTouchMissing: true })}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '10px 12px',
-                  background: theme === 'light' ? '#F3F4F6' : '#374151',
-                  cursor: 'pointer',
-                  borderRadius: '6px',
-                  marginBottom: expandedDataIntegrity.keepInTouchMissing ? '4px' : '0',
-                }}
-              >
-                <FaChevronDown
-                  style={{
-                    transform: expandedDataIntegrity.keepInTouchMissing ? 'rotate(0deg)' : 'rotate(-90deg)',
-                    transition: 'transform 0.2s',
-                    fontSize: '10px',
-                    color: theme === 'light' ? '#6B7280' : '#9CA3AF'
-                  }}
-                />
-                <FaCalendar style={{ color: '#8B5CF6', fontSize: '12px' }} />
-                <span style={{
-                  fontWeight: 600,
-                  fontSize: '13px',
-                  color: theme === 'light' ? '#111827' : '#F9FAFB'
-                }}>
-                  Keep in Touch Missing
-                </span>
-                <span style={{
-                  fontSize: '12px',
-                  color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                  marginLeft: 'auto'
-                }}>
-                  {keepInTouchMissingContacts.length}
-                </span>
-              </div>
-              {expandedDataIntegrity.keepInTouchMissing && (
-                <div style={{ paddingLeft: '8px' }}>
-                  {keepInTouchMissingContacts.length === 0 ? (
-                    <div style={{
-                      textAlign: 'center',
-                      padding: '16px',
-                      color: theme === 'light' ? '#9CA3AF' : '#6B7280',
-                      fontSize: '12px'
-                    }}>
-                      No contacts need keep in touch frequency
-                    </div>
-                  ) : (
-                    keepInTouchMissingContacts.map((contact, idx) => (
-                      <div key={contact.contact_id} style={{
-                        padding: '8px 12px',
-                        background: theme === 'light' ? '#FFFFFF' : '#1F2937',
-                        borderRadius: '6px',
-                        marginBottom: '4px',
-                        border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}>
-                        <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => navigate(`/contact/${contact.contact_id}`)}>
-                          <div style={{
-                            fontSize: '13px',
-                            fontWeight: 500,
-                            color: theme === 'light' ? '#111827' : '#F9FAFB',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis'
-                          }}>
-                            {contact.first_name} {contact.last_name}
-                          </div>
-                          <div style={{
-                            fontSize: '11px',
-                            color: theme === 'light' ? '#6B7280' : '#9CA3AF',
-                            marginTop: '2px'
-                          }}>
-                            {contact.category} • Last: {contact.last_interaction_at ? new Date(contact.last_interaction_at).toLocaleDateString() : 'N/A'}
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', gap: '4px', marginLeft: '8px', flexShrink: 0 }}>
-                          <button
-                            onClick={() => handleOpenKeepInTouchModal(contact)}
-                            title="Set Keep in Touch Frequency"
-                            style={{
-                              padding: '4px 12px',
-                              fontSize: '11px',
-                              fontWeight: 500,
-                              border: 'none',
-                              borderRadius: '4px',
-                              cursor: 'pointer',
-                              background: '#10B981',
-                              color: 'white',
-                              minWidth: '90px'
-                            }}
-                          >
-                            Keep in Touch
-                          </button>
-                          <button
-                            onClick={() => handleDoNotKeepInTouch(contact)}
-                            title="Set to Do Not Keep in Touch"
-                            style={{
-                              padding: '4px 8px',
-                              fontSize: '11px',
-                              fontWeight: 500,
-                              border: 'none',
-                              borderRadius: '4px',
-                              cursor: 'pointer',
-                              background: '#EF4444',
-                              color: 'white'
-                            }}
-                          >
-                            Don't
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
           )}
 
           {/* Missing Company Links Section */}

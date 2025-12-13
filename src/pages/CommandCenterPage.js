@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   PageContainer,
@@ -107,6 +107,7 @@ import AttachmentSaveModal from '../components/modals/AttachmentSaveModal';
 import DataIntegrityModal from '../components/modals/DataIntegrityModal';
 import CompanyDataIntegrityModal from '../components/modals/CompanyDataIntegrityModal';
 import CreateCompanyFromDomainModal from '../components/modals/CreateCompanyFromDomainModal';
+import AddCompanyModal from '../components/modals/AddCompanyModal';
 import CreateDealAI from '../components/modals/CreateDealAI';
 import { findContactDuplicatesForThread, findCompanyDuplicatesForThread } from '../utils/duplicateDetection';
 import DataIntegrityTab from '../components/command-center/DataIntegrityTab';
@@ -345,6 +346,7 @@ const CommandCenterPage = ({ theme }) => {
   // Data Integrity state
   const [notInCrmEmails, setNotInCrmEmails] = useState([]);
   const [notInCrmDomains, setNotInCrmDomains] = useState([]); // Domains not in company_domains
+  const [crmEmailSet, setCrmEmailSet] = useState(new Set()); // All emails in CRM for filtering
   const [notInCrmTab, setNotInCrmTab] = useState('contacts'); // 'contacts' or 'companies'
   const [holdContacts, setHoldContacts] = useState([]);
   const [holdCompanies, setHoldCompanies] = useState([]);
@@ -367,6 +369,82 @@ const CommandCenterPage = ({ theme }) => {
   const [editCompanyModalCompany, setEditCompanyModalCompany] = useState(null);
   const [loadingDataIntegrity, setLoadingDataIntegrity] = useState(false);
   const [expandedDataIntegrity, setExpandedDataIntegrity] = useState({ notInCrm: true }); // Collapsible sections
+
+  // Parse emails from current email body - suggestions for adding new contacts
+  const suggestionsFromMessage = useMemo(() => {
+    if (!selectedThread || selectedThread.length === 0 || crmEmailSet.size === 0) return [];
+
+    // Regex to match "Name <email>" or just "email@domain.com" patterns
+    const emailWithNameRegex = /([A-Za-zÀ-ÿ\s]+)\s*<([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})>/g;
+    const plainEmailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+
+    const foundEmails = new Map(); // email -> { email, name }
+
+    // Parse all emails in the thread
+    selectedThread.forEach(email => {
+      const bodyText = email.body_text || '';
+      const bodyHtml = email.body_html || '';
+      const combined = bodyText + ' ' + bodyHtml;
+
+      // First, try to match "Name <email>" pattern
+      let match;
+      while ((match = emailWithNameRegex.exec(combined)) !== null) {
+        const name = match[1].trim();
+        const emailAddr = match[2].toLowerCase().trim();
+        if (!foundEmails.has(emailAddr)) {
+          foundEmails.set(emailAddr, { email: emailAddr, name });
+        }
+      }
+
+      // Then, find any remaining plain emails
+      const allPlainEmails = combined.match(plainEmailRegex) || [];
+      allPlainEmails.forEach(emailAddr => {
+        const normalized = emailAddr.toLowerCase().trim();
+        if (!foundEmails.has(normalized)) {
+          foundEmails.set(normalized, { email: normalized, name: '' });
+        }
+      });
+    });
+
+    // Filter out:
+    // 1. Emails already in CRM
+    // 2. Our own email (simone@cimminelli.com)
+    // 3. Common no-reply/system emails
+    const excludePatterns = ['noreply', 'no-reply', 'mailer-daemon', 'postmaster', 'newsletter'];
+    const myEmails = ['simone@cimminelli.com', 'simone.cimminelli@gmail.com'];
+
+    const suggestions = [];
+    foundEmails.forEach((value, emailAddr) => {
+      // Skip if in CRM
+      if (crmEmailSet.has(emailAddr)) return;
+      // Skip my own emails
+      if (myEmails.includes(emailAddr)) return;
+      // Skip system/noreply emails
+      if (excludePatterns.some(p => emailAddr.includes(p))) return;
+
+      // Try to parse first/last name from the name field
+      let firstName = '';
+      let lastName = '';
+      if (value.name) {
+        const nameParts = value.name.split(/\s+/).filter(Boolean);
+        if (nameParts.length >= 2) {
+          firstName = nameParts[0];
+          lastName = nameParts.slice(1).join(' ');
+        } else if (nameParts.length === 1) {
+          firstName = nameParts[0];
+        }
+      }
+
+      suggestions.push({
+        email: emailAddr,
+        name: value.name,
+        firstName,
+        lastName
+      });
+    });
+
+    return suggestions;
+  }, [selectedThread, crmEmailSet]);
 
   // Domain Link Modal state
   const [domainLinkModalOpen, setDomainLinkModalOpen] = useState(false);
@@ -607,6 +685,9 @@ const CommandCenterPage = ({ theme }) => {
   const [createContactModalOpen, setCreateContactModalOpen] = useState(false);
   const [createContactEmail, setCreateContactEmail] = useState(null);
 
+  // State for Add Company Modal
+  const [addCompanyModalOpen, setAddCompanyModalOpen] = useState(false);
+
   // State for Data Integrity Modal (contacts)
   const [dataIntegrityModalOpen, setDataIntegrityModalOpen] = useState(false);
   const [dataIntegrityContactId, setDataIntegrityContactId] = useState(null);
@@ -615,95 +696,250 @@ const CommandCenterPage = ({ theme }) => {
   const [companyDataIntegrityModalOpen, setCompanyDataIntegrityModalOpen] = useState(false);
   const [companyDataIntegrityCompanyId, setCompanyDataIntegrityCompanyId] = useState(null);
 
-  // Handle adding email to spam list
-  const handleAddToSpam = async (email) => {
+  // Handle adding email or mobile to spam list
+  const handleAddToSpam = async (emailOrMobile, item = null) => {
     try {
-      const emailLower = email.toLowerCase();
+      // Simple logic: if item has mobile field, it's WhatsApp. If it has email field, it's email.
+      // data_integrity_inbox has separate columns: email (for email) and mobile (for WhatsApp)
+      const isWhatsApp = Boolean(item?.mobile);
+      const isEmailContact = Boolean(item?.email) && !item?.mobile;
 
-      // 1. Add to emails_spam
-      const { error } = await supabase
-        .from('emails_spam')
-        .upsert({
-          email: emailLower,
-          counter: 1,
-          created_at: new Date().toISOString(),
-          last_modified_at: new Date().toISOString(),
-        }, {
-          onConflict: 'email',
-        });
+      console.log('handleAddToSpam:', { emailOrMobile, item, isWhatsApp, isEmailContact });
 
-      if (error) throw error;
-
-      // 2. Get all emails from this sender (need fastmail_id for archiving)
-      const { data: emailsToArchive, error: fetchError } = await supabase
-        .from('command_center_inbox')
-        .select('id, fastmail_id')
-        .ilike('from_email', emailLower);
-
-      if (fetchError) {
-        console.error('Error fetching emails to archive:', fetchError);
+      // Guard: must have either mobile or email
+      if (!item?.mobile && !item?.email && !emailOrMobile) {
+        toast.error('No email or mobile to add to spam');
+        return;
       }
 
-      // 3. Archive each email in Fastmail
-      let archivedCount = 0;
-      for (const emailRecord of emailsToArchive || []) {
-        if (emailRecord.fastmail_id) {
-          try {
-            await archiveInFastmail(emailRecord.fastmail_id);
-            archivedCount++;
-          } catch (archiveErr) {
-            console.error('Failed to archive email:', emailRecord.fastmail_id, archiveErr);
+      if (isWhatsApp) {
+        // WhatsApp contact - add to whatsapp_spam
+        const mobile = item.mobile;
+        const { error } = await supabase
+          .from('whatsapp_spam')
+          .upsert({
+            mobile_number: mobile,
+            counter: 1,
+          }, {
+            onConflict: 'mobile_number',
+          });
+
+        if (error) throw error;
+
+        // First get message_uids before deleting (needed for attachments)
+        const { data: messagesToDelete } = await supabase
+          .from('command_center_inbox')
+          .select('id, message_uid')
+          .eq('contact_number', mobile)
+          .eq('type', 'whatsapp');
+
+        const messageUids = (messagesToDelete || [])
+          .map(m => m.message_uid)
+          .filter(Boolean);
+
+        // Delete attachments linked to these messages
+        let deletedAttachmentsCount = 0;
+        if (messageUids.length > 0) {
+          const { data: deletedAttachments, error: attachError } = await supabase
+            .from('attachments')
+            .delete()
+            .in('external_reference', messageUids)
+            .select('attachment_id');
+
+          if (attachError) {
+            console.error('Error deleting attachments:', attachError);
+          } else {
+            deletedAttachmentsCount = deletedAttachments?.length || 0;
           }
         }
+
+        // Delete WhatsApp messages from this contact
+        const { data: deletedMessages, error: deleteError } = await supabase
+          .from('command_center_inbox')
+          .delete()
+          .eq('contact_number', mobile)
+          .eq('type', 'whatsapp')
+          .select('id');
+
+        if (deleteError) {
+          console.error('Error deleting WhatsApp messages:', deleteError);
+        }
+
+        const deletedCount = deletedMessages?.length || 0;
+
+        // Mark all data_integrity issues for this mobile as dismissed
+        await supabase
+          .from('data_integrity_inbox')
+          .update({ status: 'dismissed', resolved_at: new Date().toISOString() })
+          .eq('mobile', mobile)
+          .eq('status', 'pending');
+
+        // Remove from notInCrmEmails list
+        setNotInCrmEmails(prev => prev.filter(i => i.mobile !== mobile));
+
+        // Update local WhatsApp state - remove chats/messages with this contact
+        setWhatsappChats(prev => prev.filter(c => c.contact_number !== mobile));
+        setWhatsappMessages(prev => prev.filter(m => m.contact_number !== mobile));
+
+        // Select first remaining chat
+        const remainingChats = whatsappChats.filter(c => c.contact_number !== mobile);
+        if (remainingChats.length > 0) {
+          setSelectedWhatsappChat(remainingChats[0]);
+        } else {
+          setSelectedWhatsappChat(null);
+        }
+
+        const attachmentMsg = deletedAttachmentsCount > 0 ? `, ${deletedAttachmentsCount} attachments` : '';
+        toast.success(`${mobile} added to WhatsApp spam${deletedCount > 0 ? ` - deleted ${deletedCount} messages${attachmentMsg}` : ''}`);
+      } else {
+        // Email contact - add to emails_spam
+        const emailLower = emailOrMobile.toLowerCase();
+
+        const { error } = await supabase
+          .from('emails_spam')
+          .upsert({
+            email: emailLower,
+            counter: 1,
+            created_at: new Date().toISOString(),
+            last_modified_at: new Date().toISOString(),
+          }, {
+            onConflict: 'email',
+          });
+
+        if (error) throw error;
+
+        // Get all emails from this sender (need fastmail_id for archiving)
+        const { data: emailsToArchive, error: fetchError } = await supabase
+          .from('command_center_inbox')
+          .select('id, fastmail_id')
+          .ilike('from_email', emailLower);
+
+        if (fetchError) {
+          console.error('Error fetching emails to archive:', fetchError);
+        }
+
+        // Archive each email in Fastmail
+        for (const emailRecord of emailsToArchive || []) {
+          if (emailRecord.fastmail_id) {
+            try {
+              await archiveInFastmail(emailRecord.fastmail_id);
+            } catch (archiveErr) {
+              console.error('Failed to archive email:', emailRecord.fastmail_id, archiveErr);
+            }
+          }
+        }
+
+        // Delete all emails from this sender from command_center_inbox
+        const { data: deletedEmails, error: deleteError } = await supabase
+          .from('command_center_inbox')
+          .delete()
+          .ilike('from_email', emailLower)
+          .select('id');
+
+        if (deleteError) {
+          console.error('Error deleting from inbox:', deleteError);
+        }
+
+        const deletedCount = deletedEmails?.length || 0;
+
+        // Mark all data_integrity issues for this email as dismissed
+        await supabase
+          .from('data_integrity_inbox')
+          .update({ status: 'dismissed', resolved_at: new Date().toISOString() })
+          .ilike('email', emailLower)
+          .eq('status', 'pending');
+
+        // Update threads state - remove emails from this sender
+        removeEmailsBySender(emailOrMobile);
+
+        // Remove from notInCrmEmails list
+        setNotInCrmEmails(prev => prev.filter(i => i.email?.toLowerCase() !== emailLower));
+
+        // Refresh threads and select first one
+        await refreshThreads();
+
+        toast.success(`${emailOrMobile} added to spam list${deletedCount > 0 ? ` - deleted ${deletedCount} emails` : ''}`);
       }
-
-      // 4. Delete all emails from this sender from command_center_inbox
-      const { data: deletedEmails, error: deleteError } = await supabase
-        .from('command_center_inbox')
-        .delete()
-        .ilike('from_email', emailLower)
-        .select('id');
-
-      if (deleteError) {
-        console.error('Error deleting from inbox:', deleteError);
-      }
-
-      const deletedCount = deletedEmails?.length || 0;
-
-      // 3. Update threads state - remove emails from this sender
-      removeEmailsBySender(email);
-
-      // 4. Remove from notInCrmEmails list
-      setNotInCrmEmails(prev => prev.filter(item => item.email.toLowerCase() !== emailLower));
-
-      toast.success(`${email} added to spam list${deletedCount > 0 ? ` - deleted ${deletedCount} emails` : ''}`);
     } catch (error) {
       console.error('Error adding to spam:', error);
       toast.error('Failed to add to spam list');
     }
   };
 
-  // Handle putting contact on hold
+  // Handle putting contact on hold (supports both email and WhatsApp contacts)
   const handlePutOnHold = async (item) => {
     try {
+      const isWhatsApp = item.mobile && !item.email;
+      const identifier = isWhatsApp ? item.mobile : item.email?.toLowerCase();
+
+      if (!identifier) {
+        toast.error('No email or mobile to put on hold');
+        return;
+      }
+
+      // Build upsert data based on contact type
+      const upsertData = {
+        full_name: item.name || null,
+        status: 'pending',
+        email_count: 1,
+        created_at: new Date().toISOString(),
+        source_type: isWhatsApp ? 'whatsapp' : 'email',
+      };
+
+      if (isWhatsApp) {
+        // For WhatsApp contacts, we need a placeholder email since email is NOT NULL
+        // Use a pattern that identifies it as a WhatsApp-only contact
+        upsertData.mobile = item.mobile;
+        upsertData.email = `whatsapp_${item.mobile.replace(/[^0-9]/g, '')}@placeholder.hold`;
+      } else {
+        upsertData.email = item.email.toLowerCase();
+      }
+
       const { error } = await supabase
         .from('contacts_hold')
-        .upsert({
-          email: item.email.toLowerCase(),
-          full_name: item.name || null,
-          status: 'pending',
-          email_count: 1,
-          created_at: new Date().toISOString(),
-        }, {
+        .upsert(upsertData, {
           onConflict: 'email',
         });
 
       if (error) throw error;
 
-      // Remove from list and add to hold list
-      setNotInCrmEmails(prev => prev.filter(i => i.email.toLowerCase() !== item.email.toLowerCase()));
-      setHoldContacts(prev => [...prev, { email: item.email, full_name: item.name, status: 'pending', email_count: 1 }]);
-      toast.success(`${item.name || item.email} put on hold`);
+      // Mark data_integrity_inbox issue as dismissed
+      if (item.id) {
+        await supabase
+          .from('data_integrity_inbox')
+          .update({ status: 'dismissed', resolved_at: new Date().toISOString() })
+          .eq('id', item.id);
+      } else {
+        // If no issue ID, try to find and dismiss by email/mobile
+        const matchField = isWhatsApp ? 'mobile' : 'email';
+        await supabase
+          .from('data_integrity_inbox')
+          .update({ status: 'dismissed', resolved_at: new Date().toISOString() })
+          .eq(matchField, identifier)
+          .eq('issue_type', 'not_in_crm')
+          .eq('entity_type', 'contact')
+          .eq('status', 'pending');
+      }
+
+      // Remove from notInCrmEmails list
+      setNotInCrmEmails(prev => prev.filter(i => {
+        if (isWhatsApp) {
+          return i.mobile !== item.mobile;
+        }
+        return i.email?.toLowerCase() !== item.email?.toLowerCase();
+      }));
+
+      // Add to hold list
+      setHoldContacts(prev => [...prev, {
+        email: upsertData.email,
+        mobile: isWhatsApp ? item.mobile : null,
+        full_name: item.name,
+        status: 'pending',
+        email_count: 1,
+        source_type: isWhatsApp ? 'whatsapp' : 'email'
+      }]);
+
+      toast.success(`${item.name || item.email || item.mobile} put on hold`);
     } catch (error) {
       console.error('Error putting on hold:', error);
       toast.error('Failed to put on hold');
@@ -888,143 +1124,236 @@ const CommandCenterPage = ({ theme }) => {
     }
   };
 
-  // Handle adding contact from hold to CRM
+  // Handle adding contact from hold to CRM (supports both email and WhatsApp contacts)
   const handleAddFromHold = async (contact) => {
-    // Find an email involving this contact (from, to, or cc) to get subject/body for AI suggestions
-    let emailContent = null;
-    for (const thread of threads) {
-      const found = thread.emails.find(e => {
-        const emailLower = contact.email.toLowerCase();
-        // Check if contact is sender
-        if (e.from_email?.toLowerCase() === emailLower) return true;
-        // Check if contact is in TO recipients
-        if (e.to_recipients?.some(r => r.email?.toLowerCase() === emailLower)) return true;
-        // Check if contact is in CC recipients
-        if (e.cc_recipients?.some(r => r.email?.toLowerCase() === emailLower)) return true;
-        return false;
-      });
-      if (found) {
-        emailContent = found;
-        break;
+    // Check if this is a WhatsApp contact
+    const isWhatsApp = contact.mobile || contact.source_type === 'whatsapp' ||
+                       contact.email?.startsWith('whatsapp_');
+
+    let contextContent = null;
+
+    if (isWhatsApp && contact.mobile) {
+      // For WhatsApp contacts, search WhatsApp messages for context
+      for (const thread of threads) {
+        if (thread.type === 'whatsapp' && thread.contact_number === contact.mobile) {
+          contextContent = {
+            chat_name: thread.chat_name,
+            body_text: thread.snippet || thread.body_text
+          };
+          break;
+        }
+      }
+    } else {
+      // For email contacts, find an email involving this contact
+      for (const thread of threads) {
+        const found = thread.emails?.find(e => {
+          const emailLower = contact.email?.toLowerCase();
+          if (!emailLower) return false;
+          // Check if contact is sender
+          if (e.from_email?.toLowerCase() === emailLower) return true;
+          // Check if contact is in TO recipients
+          if (e.to_recipients?.some(r => r.email?.toLowerCase() === emailLower)) return true;
+          // Check if contact is in CC recipients
+          if (e.cc_recipients?.some(r => r.email?.toLowerCase() === emailLower)) return true;
+          return false;
+        });
+        if (found) {
+          contextContent = found;
+          break;
+        }
       }
     }
 
     // Open the create contact modal with complete contact data from hold
     setCreateContactEmail({
-      email: contact.email,
+      email: isWhatsApp ? '' : contact.email,
+      mobile: contact.mobile || null,
       name: contact.full_name || contact.first_name,
       hold_id: contact.hold_id,
       first_name: contact.first_name,
       last_name: contact.last_name,
       company_name: contact.company_name,
       job_role: contact.job_role,
-      subject: emailContent?.subject || '',
-      body_text: emailContent?.body_text || emailContent?.snippet || ''
+      subject: contextContent?.subject || contextContent?.chat_name || '',
+      body_text: contextContent?.body_text || contextContent?.snippet || '',
+      source_type: isWhatsApp ? 'whatsapp' : 'email'
     });
     setCreateContactModalOpen(true);
   };
 
-  // Handle marking contact from hold as spam
-  const handleSpamFromHold = async (email) => {
+  // Handle marking contact from hold as spam (supports both email and WhatsApp contacts)
+  const handleSpamFromHold = async (contact) => {
     try {
-      const emailLower = email.toLowerCase();
+      // Check if this is a WhatsApp contact
+      const isWhatsApp = contact.mobile || contact.source_type === 'whatsapp' ||
+                         contact.email?.startsWith('whatsapp_');
+      const identifier = isWhatsApp ? contact.mobile : contact.email?.toLowerCase();
 
-      // 1. Add to spam list
-      const { error: spamError } = await supabase
-        .from('emails_spam')
-        .upsert({
-          email: emailLower,
-          counter: 1,
-          created_at: new Date().toISOString(),
-          last_modified_at: new Date().toISOString(),
-        }, {
-          onConflict: 'email',
-        });
-
-      if (spamError) throw spamError;
-
-      // 2. Remove from contacts_hold
-      const { error: deleteError } = await supabase
-        .from('contacts_hold')
-        .delete()
-        .eq('email', emailLower);
-
-      if (deleteError) throw deleteError;
-
-      // 3. Get all emails from this sender (need fastmail_id for archiving)
-      const { data: emailsToArchive, error: fetchError } = await supabase
-        .from('command_center_inbox')
-        .select('id, fastmail_id')
-        .ilike('from_email', emailLower);
-
-      if (fetchError) {
-        console.error('Error fetching emails to archive:', fetchError);
+      if (!identifier) {
+        toast.error('No email or mobile to mark as spam');
+        return;
       }
 
-      // 4. Archive each email in Fastmail
-      let archivedCount = 0;
-      for (const emailRecord of emailsToArchive || []) {
-        if (emailRecord.fastmail_id) {
-          try {
-            await archiveInFastmail(emailRecord.fastmail_id);
-            archivedCount++;
-          } catch (archiveErr) {
-            console.error('Failed to archive email:', emailRecord.fastmail_id, archiveErr);
+      if (isWhatsApp) {
+        // 1. Add to WhatsApp spam list
+        const { error: spamError } = await supabase
+          .from('whatsapp_spam')
+          .upsert({
+            mobile_number: contact.mobile,
+            counter: 1,
+          }, {
+            onConflict: 'mobile_number',
+          });
+
+        if (spamError) throw spamError;
+
+        // 2. Remove from contacts_hold (match by mobile or placeholder email)
+        if (contact.email) {
+          await supabase.from('contacts_hold').delete().eq('email', contact.email);
+        }
+        if (contact.mobile) {
+          await supabase.from('contacts_hold').delete().eq('mobile', contact.mobile);
+        }
+
+        // 3. Delete WhatsApp messages from this contact
+        const { data: deletedMessages, error: inboxDeleteError } = await supabase
+          .from('command_center_inbox')
+          .delete()
+          .eq('contact_number', contact.mobile)
+          .eq('type', 'whatsapp')
+          .select('id');
+
+        if (inboxDeleteError) {
+          console.error('Error deleting WhatsApp messages:', inboxDeleteError);
+        }
+
+        const deletedCount = deletedMessages?.length || 0;
+
+        // 4. Update threads state - remove WhatsApp messages from this contact
+        setThreads(prev => prev.filter(t => !(t.type === 'whatsapp' && t.contact_number === contact.mobile)));
+
+        // 5. Update local hold contacts state
+        setHoldContacts(prev => prev.filter(c => c.mobile !== contact.mobile));
+
+        toast.success(`${contact.mobile} marked as spam${deletedCount > 0 ? ` - deleted ${deletedCount} messages` : ''}`);
+      } else {
+        // Original email spam logic
+        const emailLower = contact.email.toLowerCase();
+
+        // 1. Add to email spam list
+        const { error: spamError } = await supabase
+          .from('emails_spam')
+          .upsert({
+            email: emailLower,
+            counter: 1,
+            created_at: new Date().toISOString(),
+            last_modified_at: new Date().toISOString(),
+          }, {
+            onConflict: 'email',
+          });
+
+        if (spamError) throw spamError;
+
+        // 2. Remove from contacts_hold
+        const { error: deleteError } = await supabase
+          .from('contacts_hold')
+          .delete()
+          .eq('email', emailLower);
+
+        if (deleteError) throw deleteError;
+
+        // 3. Get all emails from this sender (need fastmail_id for archiving)
+        const { data: emailsToArchive, error: fetchError } = await supabase
+          .from('command_center_inbox')
+          .select('id, fastmail_id')
+          .ilike('from_email', emailLower);
+
+        if (fetchError) {
+          console.error('Error fetching emails to archive:', fetchError);
+        }
+
+        // 4. Archive each email in Fastmail
+        for (const emailRecord of emailsToArchive || []) {
+          if (emailRecord.fastmail_id) {
+            try {
+              await archiveInFastmail(emailRecord.fastmail_id);
+            } catch (archiveErr) {
+              console.error('Failed to archive email:', emailRecord.fastmail_id, archiveErr);
+            }
           }
         }
+
+        // 5. Delete all emails from this sender from command_center_inbox
+        const { data: deletedEmails, error: inboxDeleteError } = await supabase
+          .from('command_center_inbox')
+          .delete()
+          .ilike('from_email', emailLower)
+          .select('id');
+
+        if (inboxDeleteError) {
+          console.error('Error deleting from inbox:', inboxDeleteError);
+        }
+
+        const deletedCount = deletedEmails?.length || 0;
+
+        // 6. Update threads state - remove emails from this sender
+        removeEmailsBySender(contact.email);
+
+        // 7. Update local hold contacts state
+        setHoldContacts(prev => prev.filter(c => c.email?.toLowerCase() !== emailLower));
+
+        toast.success(`${contact.email} marked as spam${deletedCount > 0 ? ` - deleted ${deletedCount} emails` : ''}`);
       }
-
-      // 5. Delete all emails from this sender from command_center_inbox
-      const { data: deletedEmails, error: inboxDeleteError } = await supabase
-        .from('command_center_inbox')
-        .delete()
-        .ilike('from_email', emailLower)
-        .select('id');
-
-      if (inboxDeleteError) {
-        console.error('Error deleting from inbox:', inboxDeleteError);
-      }
-
-      const deletedCount = deletedEmails?.length || 0;
-
-      // 4. Update threads state - remove emails from this sender
-      removeEmailsBySender(email);
-
-      // 5. Update local hold contacts state
-      setHoldContacts(prev => prev.filter(c => c.email.toLowerCase() !== emailLower));
-
-      toast.success(`${email} marked as spam${deletedCount > 0 ? ` - deleted ${deletedCount} emails` : ''}`);
     } catch (error) {
       console.error('Error marking as spam from hold:', error);
       toast.error('Failed to mark as spam');
     }
   };
 
-  // Handle opening create contact modal
+  // Handle opening create contact modal (supports both email and WhatsApp contacts)
   const handleOpenCreateContact = (item) => {
-    // Find an email involving this contact (from, to, or cc) to get subject/body for AI suggestions
-    let emailContent = null;
-    for (const thread of threads) {
-      const found = thread.emails.find(e => {
-        const emailLower = item.email.toLowerCase();
-        // Check if contact is sender
-        if (e.from_email?.toLowerCase() === emailLower) return true;
-        // Check if contact is in TO recipients
-        if (e.to_recipients?.some(r => r.email?.toLowerCase() === emailLower)) return true;
-        // Check if contact is in CC recipients
-        if (e.cc_recipients?.some(r => r.email?.toLowerCase() === emailLower)) return true;
-        return false;
-      });
-      if (found) {
-        emailContent = found;
-        break;
+    // Check if this is a WhatsApp contact
+    const isWhatsApp = item.mobile && !item.email;
+
+    let contextContent = null;
+
+    if (isWhatsApp) {
+      // For WhatsApp contacts, search WhatsApp messages for context
+      for (const thread of threads) {
+        if (thread.type === 'whatsapp' && thread.contact_number === item.mobile) {
+          contextContent = {
+            chat_name: thread.chat_name,
+            body_text: thread.snippet || thread.body_text
+          };
+          break;
+        }
+      }
+    } else {
+      // For email contacts, find an email involving this contact
+      for (const thread of threads) {
+        const found = thread.emails?.find(e => {
+          const emailLower = item.email?.toLowerCase();
+          if (!emailLower) return false;
+          // Check if contact is sender
+          if (e.from_email?.toLowerCase() === emailLower) return true;
+          // Check if contact is in TO recipients
+          if (e.to_recipients?.some(r => r.email?.toLowerCase() === emailLower)) return true;
+          // Check if contact is in CC recipients
+          if (e.cc_recipients?.some(r => r.email?.toLowerCase() === emailLower)) return true;
+          return false;
+        });
+        if (found) {
+          contextContent = found;
+          break;
+        }
       }
     }
 
     setCreateContactEmail({
       ...item,
-      subject: emailContent?.subject || '',
-      body_text: emailContent?.body_text || emailContent?.snippet || ''
+      subject: contextContent?.subject || contextContent?.chat_name || '',
+      body_text: contextContent?.body_text || contextContent?.snippet || '',
+      source_type: isWhatsApp ? 'whatsapp' : 'email'
     });
     setCreateContactModalOpen(true);
   };
@@ -1097,16 +1426,24 @@ const CommandCenterPage = ({ theme }) => {
     return domains;
   };
 
-  // Fetch Data Integrity data
+  // Fetch Data Integrity data - NOW READS FROM BACKEND TABLES
   const fetchDataIntegrity = async () => {
     setLoadingDataIntegrity(true);
 
     try {
-      // 1. Get participants from selected thread (thread-aware)
-      const allInboxEmails = getThreadParticipants(selectedThread);
+      // Get inbox_ids from selected thread, whatsapp chat, or calendar event
+      let inboxIds = [];
 
-      // Skip if no thread selected
-      if (allInboxEmails.size === 0) {
+      if (activeTab === 'email' && selectedThread) {
+        inboxIds = selectedThread.map(email => email.id).filter(Boolean);
+      } else if (activeTab === 'whatsapp' && selectedWhatsappChat?.messages) {
+        inboxIds = selectedWhatsappChat.messages.map(msg => msg.id).filter(Boolean);
+      } else if (activeTab === 'calendar' && selectedCalendarEvent) {
+        inboxIds = [selectedCalendarEvent.id].filter(Boolean);
+      }
+
+      // Skip if no selection
+      if (inboxIds.length === 0) {
         setNotInCrmEmails([]);
         setNotInCrmDomains([]);
         setHoldContacts([]);
@@ -1119,692 +1456,190 @@ const CommandCenterPage = ({ theme }) => {
         setCategoryMissingCompanies([]);
         setKeepInTouchMissingContacts([]);
         setMissingCompanyLinks([]);
+        setContactsMissingCompany([]);
         setLoadingDataIntegrity(false);
         return;
       }
 
-      // Get ALL emails from contact_emails table (Supabase default limit is 1000)
-        // We need to paginate to get all ~3000+ emails
-        let allCrmEmails = [];
-        let from = 0;
-        const pageSize = 1000;
-        let hasMore = true;
-
-        while (hasMore) {
-          const { data: crmEmailsBatch, error: crmError } = await supabase
-            .from('contact_emails')
-            .select('email')
-            .range(from, from + pageSize - 1);
-
-          if (crmError) {
-            console.error('Error fetching CRM emails:', crmError);
-            break;
-          }
-
-          if (crmEmailsBatch && crmEmailsBatch.length > 0) {
-            allCrmEmails = allCrmEmails.concat(crmEmailsBatch);
-            from += pageSize;
-            hasMore = crmEmailsBatch.length === pageSize;
-          } else {
-            hasMore = false;
-          }
-        }
-
-        // Create a set of normalized emails (lowercase, trimmed)
-        const crmEmailSet = new Set(
-          allCrmEmails
-            .map(e => e.email?.toLowerCase().trim())
-            .filter(Boolean)
-        );
-
-        // Get emails on hold to exclude from "not in CRM" list
-        const { data: holdEmailData } = await supabase
-          .from('contacts_hold')
-          .select('email')
-          .eq('status', 'pending');
-
-        const holdEmailSet = new Set(
-          (holdEmailData || [])
-            .map(h => h.email?.toLowerCase().trim())
-            .filter(Boolean)
-        );
-
-        // Find emails not in CRM (and not on hold)
-        const notInCrm = [];
-        allInboxEmails.forEach((value, key) => {
-          const normalizedKey = key.toLowerCase().trim();
-          if (!crmEmailSet.has(normalizedKey) && !holdEmailSet.has(normalizedKey)) {
-            notInCrm.push(value);
-          }
-        });
-
-        setNotInCrmEmails(notInCrm);
-
-        // Extract domains from all emails for company check
-        // Collect all unique domains from emails (with count)
-        const allDomains = new Map(); // domain -> { domain, count, sampleEmails }
-        const myDomain = 'cimminelli.com';
-
-        // Common email providers to exclude
-        const excludeDomains = new Set([
-          'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com',
-          'me.com', 'mac.com', 'aol.com', 'live.com', 'msn.com', 'protonmail.com',
-          'proton.me', 'fastmail.com', 'fastmail.fm', 'zoho.com', 'ymail.com',
-          'googlemail.com', 'mail.com', 'email.com', 'gmx.com', 'gmx.net',
-          myDomain
-        ]);
-
-        allInboxEmails.forEach((value, key) => {
-          const domain = extractDomainFromEmail(key);
-          if (domain && !excludeDomains.has(domain)) {
-            if (allDomains.has(domain)) {
-              const existing = allDomains.get(domain);
-              existing.count++;
-              if (existing.sampleEmails.length < 3) {
-                existing.sampleEmails.push(value.email);
-              }
-            } else {
-              allDomains.set(domain, {
-                domain,
-                count: 1,
-                sampleEmails: [value.email]
-              });
-            }
-          }
-        });
-
-        // Get ALL domains from company_domains table (paginated like contact_emails)
-        let allCrmDomains = [];
-        let domainFrom = 0;
-        let domainHasMore = true;
-
-        while (domainHasMore) {
-          const { data: crmDomainsBatch, error: crmDomainError } = await supabase
-            .from('company_domains')
-            .select('domain')
-            .range(domainFrom, domainFrom + pageSize - 1);
-
-          if (crmDomainError) {
-            console.error('Error fetching CRM domains:', crmDomainError);
-            break;
-          }
-
-          if (crmDomainsBatch && crmDomainsBatch.length > 0) {
-            allCrmDomains = allCrmDomains.concat(crmDomainsBatch);
-            domainFrom += pageSize;
-            domainHasMore = crmDomainsBatch.length === pageSize;
-          } else {
-            domainHasMore = false;
-          }
-        }
-
-        // Create a set of normalized CRM domains
-        const crmDomainSet = new Set(
-          allCrmDomains
-            .map(d => normalizeDomain(d.domain))
-            .filter(Boolean)
-        );
-
-        // Get domains on hold to exclude from "not in CRM" list
-        const { data: holdDomainsData } = await supabase
-          .from('companies_hold')
-          .select('domain')
-          .eq('status', 'pending');
-
-        const holdDomainSet = new Set(
-          (holdDomainsData || [])
-            .map(h => normalizeDomain(h.domain))
-            .filter(Boolean)
-        );
-
-        // Find domains not in CRM (and not on hold)
-        const domainsNotInCrm = [];
-        allDomains.forEach((value, key) => {
-          if (!crmDomainSet.has(key) && !holdDomainSet.has(key)) {
-            domainsNotInCrm.push(value);
-          }
-        });
-
-        // Sort by count (most frequent first)
-        domainsNotInCrm.sort((a, b) => b.count - a.count);
-
-        setNotInCrmDomains(domainsNotInCrm);
-
-      // 2. Get contacts on hold - only those that are in the inbox emails
-      const { data: holdData, error: holdError } = await supabase
-        .from('contacts_hold')
+      // ============================================
+      // 1. FETCH FROM data_integrity_inbox (backend)
+      // ============================================
+      const { data: integrityIssues, error: integrityError } = await supabase
+        .from('data_integrity_inbox')
         .select('*')
-        .eq('status', 'pending')
-        .order('email_count', { ascending: false });
-
-      if (holdError) {
-        console.error('Error fetching hold contacts:', holdError);
-      } else {
-        // Filter to only show hold contacts that exist in inbox emails (from, to, cc)
-        const filteredHoldContacts = (holdData || []).filter(contact =>
-          contact.email && allInboxEmails.has(contact.email.toLowerCase().trim())
-        );
-        setHoldContacts(filteredHoldContacts);
-      }
-
-      // 2b. Get companies/domains on hold - only those that match thread domains
-      const { data: holdCompaniesData, error: holdCompaniesError } = await supabase
-        .from('companies_hold')
-        .select('*')
-        .eq('status', 'pending')
-        .order('email_count', { ascending: false });
-
-      if (holdCompaniesError) {
-        console.error('Error fetching hold companies:', holdCompaniesError);
-      } else {
-        // Get thread domains from inbox emails
-        const threadDomainsSet = new Set();
-        allInboxEmails.forEach((value, key) => {
-          const domain = extractDomainFromEmail(key);
-          if (domain) threadDomainsSet.add(domain);
-        });
-
-        // Filter to only show hold companies whose domain is in thread
-        const filteredHoldCompanies = (holdCompaniesData || []).filter(company =>
-          company.domain && threadDomainsSet.has(normalizeDomain(company.domain))
-        );
-        setHoldCompanies(filteredHoldCompanies);
-      }
-
-      // 3. Duplicates - HYBRID APPROACH: backend trigger + frontend real-time search
-      // A) Read from duplicates_inbox table (backend detected)
-      const { data: contactDupsRaw } = await supabase
-        .from('duplicates_inbox')
-        .select('*')
-        .eq('entity_type', 'contact')
+        .in('inbox_id', inboxIds)
         .eq('status', 'pending');
 
-      // B) Get ignored contact duplicates to filter out
-      const { data: ignoredContactDups } = await supabase
-        .from('contact_duplicates')
-        .select('primary_contact_id, duplicate_contact_id')
-        .eq('status', 'ignored');
+      if (integrityError) {
+        console.error('Error fetching data integrity issues:', integrityError);
+      }
 
-      const ignoredContactPairs = new Set(
-        (ignoredContactDups || []).flatMap(d => [
-          `${d.primary_contact_id}:${d.duplicate_contact_id}`,
-          `${d.duplicate_contact_id}:${d.primary_contact_id}`
-        ])
-      );
+      // Group issues by type
+      const issues = integrityIssues || [];
 
-      // C) Frontend real-time search for contact duplicates
-      const frontendContactDups = await findContactDuplicatesForThread(allInboxEmails);
+      // DEBUG: Log raw data from Supabase
+      console.log('RAW integrityIssues from Supabase:', integrityIssues);
 
-      // Merge backend and frontend duplicates
-      let allContactDups = [];
+      // NOT IN CRM - Contacts (deduplicate by email or mobile)
+      const notInCrmContactIssues = issues.filter(i => i.issue_type === 'not_in_crm' && i.entity_type === 'contact');
+      console.log('notInCrmContactIssues:', notInCrmContactIssues);
+      const seenContacts = new Set();
+      const uniqueNotInCrmContacts = notInCrmContactIssues.filter(i => {
+        const key = i.email?.toLowerCase() || i.mobile;
+        if (!key || seenContacts.has(key)) return false;
+        seenContacts.add(key);
+        return true;
+      });
+      setNotInCrmEmails(uniqueNotInCrmContacts.map(i => ({
+        id: i.id,  // issue ID for updating status later
+        email: i.email,
+        mobile: i.mobile,  // WhatsApp contacts have mobile instead of email
+        name: i.name,
+        firstName: i.name?.split(' ')[0] || '',
+        lastName: i.name?.split(' ').slice(1).join(' ') || ''
+      })));
 
-      // Process backend duplicates
-      if (contactDupsRaw && contactDupsRaw.length > 0) {
-        const contactIds = [...new Set(contactDupsRaw.flatMap(d => [d.source_id, d.duplicate_id]))];
+      // NOT IN CRM - Companies (domains)
+      const notInCrmCompanyIssues = issues.filter(i => i.issue_type === 'not_in_crm' && i.entity_type === 'company');
+      setNotInCrmDomains(notInCrmCompanyIssues.map(i => ({
+        domain: i.domain,
+        count: 1,
+        sampleEmails: i.email ? [i.email] : []
+      })));
+
+      // HOLD - Contacts
+      const holdContactIssues = issues.filter(i => i.issue_type === 'hold' && i.entity_type === 'contact');
+      setHoldContacts(holdContactIssues.map(i => ({
+        email: i.email,
+        mobile: i.mobile,
+        full_name: i.name,
+        first_name: i.name?.split(' ')[0] || '',
+        last_name: i.name?.split(' ').slice(1).join(' ') || '',
+        email_count: 1,
+        status: 'pending'
+      })));
+
+      // HOLD - Companies
+      const holdCompanyIssues = issues.filter(i => i.issue_type === 'hold' && i.entity_type === 'company');
+      setHoldCompanies(holdCompanyIssues.map(i => ({
+        domain: i.domain,
+        name: i.name || i.domain,
+        status: 'pending'
+      })));
+
+      // INCOMPLETE - Contacts
+      const incompleteContactIssues = issues.filter(i => i.issue_type === 'incomplete' && i.entity_type === 'contact');
+      setIncompleteContacts(incompleteContactIssues.map(i => ({
+        contact_id: i.entity_id,
+        first_name: i.name?.split(' ')[0] || '',
+        last_name: i.name?.split(' ').slice(1).join(' ') || '',
+        completeness_score: i.details?.completeness_score || 0
+      })));
+
+      // INCOMPLETE - Companies
+      const incompleteCompanyIssues = issues.filter(i => i.issue_type === 'incomplete' && i.entity_type === 'company');
+      setIncompleteCompanies(incompleteCompanyIssues.map(i => ({
+        company_id: i.entity_id,
+        name: i.name,
+        completeness_score: i.details?.completeness_score || 0
+      })));
+
+      // MISSING COMPANY LINK
+      const missingLinkIssues = issues.filter(i => i.issue_type === 'missing_company_link');
+      setMissingCompanyLinks(missingLinkIssues.map(i => ({
+        contact_id: i.entity_id,
+        contact_name: i.name,
+        email: i.email,
+        company_id: i.details?.company_id,
+        company_name: i.details?.company_name,
+        domain: i.domain
+      })));
+
+      // MISSING COMPANY
+      const missingCompanyIssues = issues.filter(i => i.issue_type === 'missing_company');
+      setContactsMissingCompany(missingCompanyIssues.map(i => ({
+        contact_id: i.entity_id,
+        first_name: i.name?.split(' ')[0] || '',
+        last_name: i.name?.split(' ').slice(1).join(' ') || '',
+        emails: i.email ? [i.email] : [],
+        category: i.details?.category
+      })));
+
+      // ============================================
+      // 2. FETCH FROM duplicates_inbox (backend)
+      // ============================================
+      const { data: duplicatesRaw, error: duplicatesError } = await supabase
+        .from('duplicates_inbox')
+        .select('*')
+        .in('inbox_id', inboxIds)
+        .eq('status', 'pending');
+
+      if (duplicatesError) {
+        console.error('Error fetching duplicates:', duplicatesError);
+      }
+
+      const duplicates = duplicatesRaw || [];
+
+      // Contact Duplicates - enrich with contact details
+      const contactDups = duplicates.filter(d => d.entity_type === 'contact');
+      if (contactDups.length > 0) {
+        const contactIds = [...new Set(contactDups.flatMap(d => [d.source_id, d.duplicate_id]))];
         const { data: contacts } = await supabase
           .from('contacts')
-          .select('contact_id, first_name, last_name, contact_emails(email)')
+          .select('contact_id, first_name, last_name')
           .in('contact_id', contactIds);
 
         const contactMap = Object.fromEntries((contacts || []).map(c => [c.contact_id, c]));
 
-        const enrichedContactDups = contactDupsRaw.map(d => ({
-          ...d,
+        setDuplicateContacts(contactDups.map(d => ({
+          id: d.id,
+          entity_type: 'contact',
+          source_id: d.source_id,
+          duplicate_id: d.duplicate_id,
+          match_type: d.match_type,
           source: contactMap[d.source_id],
           duplicate: contactMap[d.duplicate_id],
-          detection_source: 'backend'
-        }));
-
-        // Filter by thread participants
-        const filteredBackendDups = enrichedContactDups.filter(d => {
-          const sourceEmails = d.source?.contact_emails?.map(e => e.email?.toLowerCase().trim()) || [];
-          const dupEmails = d.duplicate?.contact_emails?.map(e => e.email?.toLowerCase().trim()) || [];
-          const allEmails = [...sourceEmails, ...dupEmails];
-          return allEmails.some(email => email && allInboxEmails.has(email));
-        });
-
-        allContactDups = [...filteredBackendDups];
+          match_details: d.match_details
+        })));
+      } else {
+        setDuplicateContacts([]);
       }
 
-      // Add frontend duplicates (avoiding duplicates already detected by backend OR already ignored)
-      frontendContactDups.forEach(fd => {
-        const pairKey1 = `${fd.source_id}:${fd.duplicate_id}`;
-        const pairKey2 = `${fd.duplicate_id}:${fd.source_id}`;
-
-        // Skip if already ignored
-        if (ignoredContactPairs.has(pairKey1) || ignoredContactPairs.has(pairKey2)) {
-          return;
-        }
-
-        const alreadyExists = allContactDups.some(bd =>
-          (bd.source_id === fd.source_id && bd.duplicate_id === fd.duplicate_id) ||
-          (bd.source_id === fd.duplicate_id && bd.duplicate_id === fd.source_id)
-        );
-        if (!alreadyExists) {
-          allContactDups.push({ ...fd, detection_source: 'frontend' });
-        }
-      });
-
-      setDuplicateContacts(allContactDups);
-
-      // Company duplicates - HYBRID APPROACH
-      const { data: companyDupsRaw } = await supabase
-        .from('duplicates_inbox')
-        .select('*')
-        .eq('entity_type', 'company')
-        .eq('status', 'pending');
-
-      // Get ignored company duplicates to filter out
-      const { data: ignoredCompanyDups } = await supabase
-        .from('company_duplicates')
-        .select('primary_company_id, duplicate_company_id')
-        .eq('status', 'ignored');
-
-      const ignoredCompanyPairs = new Set(
-        (ignoredCompanyDups || []).flatMap(d => [
-          `${d.primary_company_id}:${d.duplicate_company_id}`,
-          `${d.duplicate_company_id}:${d.primary_company_id}`
-        ])
-      );
-
-      // Get thread domains for filtering
-      const threadDomains = getThreadDomains(selectedThread);
-
-      // Frontend real-time search for company duplicates
-      const frontendCompanyDups = await findCompanyDuplicatesForThread(threadDomains);
-
-      // Merge backend and frontend duplicates
-      let allCompanyDups = [];
-
-      if (companyDupsRaw && companyDupsRaw.length > 0) {
-        const companyIds = [...new Set(companyDupsRaw.flatMap(d => [d.source_id, d.duplicate_id]))];
+      // Company Duplicates - enrich with company details
+      const companyDups = duplicates.filter(d => d.entity_type === 'company');
+      if (companyDups.length > 0) {
+        const companyIds = [...new Set(companyDups.flatMap(d => [d.source_id, d.duplicate_id]))];
         const { data: companies } = await supabase
           .from('companies')
-          .select('company_id, name, category, website, company_domains(domain)')
+          .select('company_id, name, category')
           .in('company_id', companyIds);
 
         const companyMap = Object.fromEntries((companies || []).map(c => [c.company_id, c]));
 
-        const enrichedCompanyDups = companyDupsRaw.map(d => ({
-          ...d,
+        setDuplicateCompanies(companyDups.map(d => ({
+          id: d.id,
+          entity_type: 'company',
+          source_id: d.source_id,
+          duplicate_id: d.duplicate_id,
+          match_type: d.match_type,
           source: companyMap[d.source_id],
           duplicate: companyMap[d.duplicate_id],
-          detection_source: 'backend'
-        }));
-
-        // Filter by thread domains
-        const filteredBackendDups = enrichedCompanyDups.filter(d => {
-          const getCompanyDomains = (company) => {
-            const domains = [];
-            if (company?.website) domains.push(normalizeDomain(company.website));
-            (company?.company_domains || []).forEach(cd => {
-              if (cd.domain) domains.push(normalizeDomain(cd.domain));
-            });
-            return domains.filter(Boolean);
-          };
-          const sourceDomains = getCompanyDomains(d.source);
-          const dupDomains = getCompanyDomains(d.duplicate);
-          const allDomains = [...sourceDomains, ...dupDomains];
-          return allDomains.some(domain => threadDomains.has(domain));
-        });
-
-        allCompanyDups = [...filteredBackendDups];
-      }
-
-      // Add frontend duplicates (avoiding duplicates already detected by backend OR already ignored)
-      frontendCompanyDups.forEach(fd => {
-        const pairKey1 = `${fd.source_id}:${fd.duplicate_id}`;
-        const pairKey2 = `${fd.duplicate_id}:${fd.source_id}`;
-
-        // Skip if already ignored
-        if (ignoredCompanyPairs.has(pairKey1) || ignoredCompanyPairs.has(pairKey2)) {
-          return;
-        }
-
-        const alreadyExists = allCompanyDups.some(bd =>
-          (bd.source_id === fd.source_id && bd.company_id === fd.company_id) ||
-          (bd.source_id === fd.company_id && bd.company_id === fd.source_id)
-        );
-        if (!alreadyExists) {
-          allCompanyDups.push({ ...fd, detection_source: 'frontend' });
-        }
-      });
-
-      setDuplicateCompanies(allCompanyDups);
-
-      // 4. Fetch Incomplete Contacts - completeness_score < 100 AND show_missing != false
-      // Optimized approach: Start with thread emails (limited set), find their contacts, then check completeness
-      const threadEmailsList = Array.from(allInboxEmails.keys()).slice(0, 500);
-
-      if (threadEmailsList.length > 0) {
-        // Get contacts that have emails in the thread
-        const { data: contactsInThread, error: contactsInThreadError } = await supabase
-          .from('contact_emails')
-          .select('contact_id, email, contacts(contact_id, first_name, last_name, show_missing)')
-          .in('email', threadEmailsList);
-
-        if (contactsInThreadError) {
-          console.error('Error fetching contacts in thread:', contactsInThreadError);
-          setIncompleteContacts([]);
-        } else {
-          // Get unique contacts with show_missing != false
-          const validContactsMap = new Map();
-          (contactsInThread || []).forEach(ce => {
-            if (ce.contacts && ce.contacts.show_missing !== false) {
-              if (!validContactsMap.has(ce.contact_id)) {
-                validContactsMap.set(ce.contact_id, {
-                  contact_id: ce.contact_id,
-                  first_name: ce.contacts.first_name,
-                  last_name: ce.contacts.last_name,
-                  emails: []
-                });
-              }
-              validContactsMap.get(ce.contact_id).emails.push({ email: ce.email });
-            }
-          });
-
-          if (validContactsMap.size > 0) {
-            // Get completeness for these contacts (limited set now)
-            const validContactIds = Array.from(validContactsMap.keys());
-            const { data: completenessData } = await supabase
-              .from('contact_completeness')
-              .select('contact_id, completeness_score')
-              .in('contact_id', validContactIds)
-              .lt('completeness_score', 100);
-
-            // Merge completeness with contact data
-            const incompleteList = (completenessData || []).map(c => ({
-              ...validContactsMap.get(c.contact_id),
-              completeness_score: c.completeness_score
-            })).filter(c => c && (c.first_name || c.last_name));
-
-            setIncompleteContacts(incompleteList);
-          } else {
-            setIncompleteContacts([]);
-          }
-        }
+          match_details: d.match_details
+        })));
       } else {
-        setIncompleteContacts([]);
+        setDuplicateCompanies([]);
       }
 
-      // 4b. Fetch Incomplete Companies - completeness_score < 100 AND show_missing != false
-      // Optimized approach: Start with thread domains (limited set), find their companies, then check completeness
-      const threadDomainsForCompleteness = new Set();
-      allInboxEmails.forEach((value, key) => {
-        const domain = extractDomainFromEmail(key);
-        if (domain) threadDomainsForCompleteness.add(domain);
-      });
-      const threadDomainsList = Array.from(threadDomainsForCompleteness).slice(0, 200);
+      // Category missing and keep in touch - these are not in data_integrity_inbox yet
+      // TODO: Add these to backend trigger if needed
+      setCategoryMissingContacts([]);
+      setCategoryMissingCompanies([]);
+      setKeepInTouchMissingContacts([]);
 
-      if (threadDomainsList.length > 0) {
-        // Get companies that have domains in the thread
-        const { data: companiesInThread, error: companiesInThreadError } = await supabase
-          .from('company_domains')
-          .select('company_id, domain, companies(company_id, name, show_missing)')
-          .in('domain', threadDomainsList);
-
-        if (companiesInThreadError) {
-          console.error('Error fetching companies in thread:', companiesInThreadError);
-          setIncompleteCompanies([]);
-        } else {
-          // Get unique companies with show_missing != false
-          const validCompaniesMap = new Map();
-          (companiesInThread || []).forEach(cd => {
-            if (cd.companies && cd.companies.show_missing !== false) {
-              if (!validCompaniesMap.has(cd.company_id)) {
-                validCompaniesMap.set(cd.company_id, {
-                  company_id: cd.company_id,
-                  name: cd.companies.name,
-                  domains: []
-                });
-              }
-              validCompaniesMap.get(cd.company_id).domains.push({ domain: cd.domain });
-            }
-          });
-
-          if (validCompaniesMap.size > 0) {
-            // Get completeness for these companies (limited set now)
-            const validCompanyIds = Array.from(validCompaniesMap.keys());
-            const { data: completenessData } = await supabase
-              .from('company_completeness')
-              .select('company_id, completeness_score')
-              .in('company_id', validCompanyIds)
-              .lt('completeness_score', 100);
-
-            // Merge completeness with company data
-            const incompleteList = (completenessData || []).map(c => ({
-              ...validCompaniesMap.get(c.company_id),
-              completeness_score: c.completeness_score
-            })).filter(c => c && c.name);
-
-            setIncompleteCompanies(incompleteList);
-          } else {
-            setIncompleteCompanies([]);
-          }
-        }
-      } else {
-        setIncompleteCompanies([]);
-      }
-
-      // 5. Fetch Category Missing - contacts with category 'Inbox' or 'Not Set' and last_interaction_at after Dec 5
-      const { data: catMissingContacts, error: catMissingContactsError } = await supabase
-        .from('contacts')
-        .select('contact_id, first_name, last_name, category, last_interaction_at, contact_emails(email)')
-        .in('category', ['Inbox', 'Not Set'])
-        .gt('last_interaction_at', '2025-12-05')
-        .order('last_interaction_at', { ascending: false });
-
-      if (catMissingContactsError) {
-        console.error('Error fetching category missing contacts:', catMissingContactsError);
-        setCategoryMissingContacts([]);
-      } else {
-        // Filter to only show contacts that have an email in the inbox
-        const filteredCatMissing = (catMissingContacts || []).filter(contact =>
-          contact.contact_emails?.some(e => e.email && allInboxEmails.has(e.email.toLowerCase().trim()))
-        );
-        setCategoryMissingContacts(filteredCatMissing);
-      }
-
-      // 6. Fetch Category Missing - companies with category 'Inbox' or 'Not Set' AND connected contacts with last_interaction_at after Dec 5
-      const { data: catMissingCompaniesRaw, error: catMissingCompaniesError } = await supabase
-        .from('companies')
-        .select(`
-          company_id,
-          name,
-          category,
-          contact_companies!inner(
-            contacts!inner(
-              last_interaction_at,
-              contact_emails(email)
-            )
-          )
-        `)
-        .in('category', ['Inbox', 'Not Set'])
-        .gt('contact_companies.contacts.last_interaction_at', '2025-12-05');
-
-      if (catMissingCompaniesError) {
-        console.error('Error fetching category missing companies:', catMissingCompaniesError);
-        setCategoryMissingCompanies([]);
-      } else {
-        // Filter to only show companies that have at least one contact with an email in the inbox
-        const filteredCatMissingCompanies = (catMissingCompaniesRaw || []).filter(company => {
-          // Check if any connected contact has an email in the inbox
-          return company.contact_companies?.some(cc =>
-            cc.contacts?.contact_emails?.some(e =>
-              e.email && allInboxEmails.has(e.email.toLowerCase().trim())
-            )
-          );
-        });
-        // Deduplicate companies (may appear multiple times if multiple qualifying contacts)
-        const catMissingCompanies = filteredCatMissingCompanies.length > 0
-          ? [...new Map(filteredCatMissingCompanies.map(c => [c.company_id, { company_id: c.company_id, name: c.name, category: c.category }])).values()]
-              .sort((a, b) => a.name.localeCompare(b.name))
-          : [];
-        setCategoryMissingCompanies(catMissingCompanies);
-      }
-
-      // 7. Fetch Keep in Touch Missing - contacts NOT in Hold/Not Set/WhatsApp Group Chat, with keep_in_touch_frequency null or 'Not Set', recent interaction
-      const { data: kitMissingContacts, error: kitMissingContactsError } = await supabase
-        .from('contacts')
-        .select('contact_id, first_name, last_name, category, last_interaction_at, keep_in_touch_frequency, contact_emails(email)')
-        .not('category', 'in', '("Inbox","Hold","Skip","Not Set","WhatsApp Group Contact")')
-        .or('keep_in_touch_frequency.is.null,keep_in_touch_frequency.eq.Not Set')
-        .gt('last_interaction_at', '2025-12-05')
-        .order('last_interaction_at', { ascending: false });
-
-      if (kitMissingContactsError) {
-        console.error('Error fetching keep in touch missing contacts:', kitMissingContactsError);
-        setKeepInTouchMissingContacts([]);
-      } else {
-        // Filter to only show contacts that have an email in the inbox
-        const filteredKitMissing = (kitMissingContacts || []).filter(contact =>
-          contact.contact_emails?.some(e => e.email && allInboxEmails.has(e.email.toLowerCase().trim()))
-        );
-        setKeepInTouchMissingContacts(filteredKitMissing);
-      }
-
-      // 8. Find contacts with email domains matching company_domains but not linked via contact_companies
-      try {
-        // Get all contact emails with contact info
-        const { data: contactEmailsData, error: ceError } = await supabase
-          .from('contact_emails')
-          .select('email, contact_id, contacts(contact_id, first_name, last_name, category)');
-
-        // Get all company domains with company info
-        const { data: companyDomainsData, error: cdError } = await supabase
-          .from('company_domains')
-          .select('domain, company_id, companies(company_id, name)');
-
-        // Get all existing contact_companies links
-        const { data: existingLinks, error: elError } = await supabase
-          .from('contact_companies')
-          .select('contact_id, company_id');
-
-        if (!ceError && !cdError && !elError && contactEmailsData && companyDomainsData) {
-          // Create a map of normalized domain -> company info
-          const domainToCompany = new Map();
-          (companyDomainsData || []).forEach(cd => {
-            if (cd.domain && cd.companies) {
-              const normalized = normalizeDomain(cd.domain);
-              if (normalized) {
-                domainToCompany.set(normalized, {
-                  company_id: cd.company_id,
-                  company_name: cd.companies.name
-                });
-              }
-            }
-          });
-
-          // Create a set of existing links for quick lookup
-          const existingLinkSet = new Set(
-            (existingLinks || []).map(el => `${el.contact_id}:${el.company_id}`)
-          );
-
-          // Find contacts whose email domain matches a company but not linked
-          const missingLinks = [];
-          const seenPairs = new Set(); // Avoid duplicates
-
-          (contactEmailsData || []).forEach(ce => {
-            if (!ce.email || !ce.contacts) return;
-
-            const emailDomain = extractDomainFromEmail(ce.email);
-            if (!emailDomain) return;
-
-            const matchingCompany = domainToCompany.get(emailDomain);
-            if (!matchingCompany) return;
-
-            const pairKey = `${ce.contact_id}:${matchingCompany.company_id}`;
-
-            // Check if this link already exists
-            if (!existingLinkSet.has(pairKey) && !seenPairs.has(pairKey)) {
-              seenPairs.add(pairKey);
-              missingLinks.push({
-                contact_id: ce.contact_id,
-                contact_name: `${ce.contacts.first_name || ''} ${ce.contacts.last_name || ''}`.trim(),
-                contact_category: ce.contacts.category,
-                email: ce.email,
-                company_id: matchingCompany.company_id,
-                company_name: matchingCompany.company_name,
-                domain: emailDomain
-              });
-            }
-          });
-
-          // Filter to only include contacts whose email appears in inbox
-          const filteredMissingLinks = missingLinks.filter(item =>
-            allInboxEmails.has(item.email.toLowerCase())
-          );
-
-          setMissingCompanyLinks(filteredMissingLinks);
-        }
-      } catch (linkError) {
-        console.error('Error finding missing company links:', linkError);
-        setMissingCompanyLinks([]);
-      }
-
-      // 9. Fetch Contacts Missing Company - contacts in thread with no company linked at all
-      try {
-        // Get contacts that have emails in the thread
-        const threadEmailsForMissingCompany = Array.from(allInboxEmails.keys()).slice(0, 500);
-
-        if (threadEmailsForMissingCompany.length > 0) {
-          const { data: contactsWithEmails, error: cwError } = await supabase
-            .from('contact_emails')
-            .select('contact_id, email, contacts(contact_id, first_name, last_name, category)')
-            .in('email', threadEmailsForMissingCompany);
-
-          if (!cwError && contactsWithEmails) {
-            // Get unique contacts from thread
-            const threadContactsMap = new Map();
-            (contactsWithEmails || []).forEach(ce => {
-              if (ce.contacts && ce.contact_id) {
-                if (!threadContactsMap.has(ce.contact_id)) {
-                  threadContactsMap.set(ce.contact_id, {
-                    contact_id: ce.contact_id,
-                    first_name: ce.contacts.first_name,
-                    last_name: ce.contacts.last_name,
-                    category: ce.contacts.category,
-                    emails: []
-                  });
-                }
-                threadContactsMap.get(ce.contact_id).emails.push(ce.email);
-              }
-            });
-
-            if (threadContactsMap.size > 0) {
-              // Get all contact_companies links for these contacts
-              const threadContactIds = Array.from(threadContactsMap.keys());
-              const { data: existingCompanyLinks } = await supabase
-                .from('contact_companies')
-                .select('contact_id')
-                .in('contact_id', threadContactIds);
-
-              // Create set of contacts that have company links
-              const contactsWithCompany = new Set((existingCompanyLinks || []).map(el => el.contact_id));
-
-              // Filter to contacts that don't have any company linked
-              const missingCompanyContacts = Array.from(threadContactsMap.values())
-                .filter(c => !contactsWithCompany.has(c.contact_id))
-                .sort((a, b) => {
-                  const nameA = `${a.first_name || ''} ${a.last_name || ''}`.trim();
-                  const nameB = `${b.first_name || ''} ${b.last_name || ''}`.trim();
-                  return nameA.localeCompare(nameB);
-                });
-
-              setContactsMissingCompany(missingCompanyContacts);
-            } else {
-              setContactsMissingCompany([]);
-            }
-          } else {
-            setContactsMissingCompany([]);
-          }
-        } else {
-          setContactsMissingCompany([]);
-        }
-      } catch (missingCompanyError) {
-        console.error('Error finding contacts missing company:', missingCompanyError);
-        setContactsMissingCompany([]);
-      }
+      // Keep crmEmailSet for other uses (backward compatibility)
+      const allInboxEmails = getThreadParticipants(selectedThread);
+      const crmEmailSetLocal = new Set(); // Will be populated if needed
+      setCrmEmailSet(crmEmailSetLocal);
 
     } catch (error) {
       console.error('Error fetching data integrity:', error);
@@ -1812,12 +1647,12 @@ const CommandCenterPage = ({ theme }) => {
     setLoadingDataIntegrity(false);
   };
 
-  // Reload data integrity when tab becomes active or thread changes
+  // Reload data integrity when tab becomes active or selection changes
   useEffect(() => {
     if (activeActionTab === 'dataIntegrity') {
       fetchDataIntegrity();
     }
-  }, [activeActionTab, selectedThread]);
+  }, [activeActionTab, selectedThread, selectedWhatsappChat, selectedCalendarEvent]);
 
 
   // Handler for creating company from domain
@@ -1886,6 +1721,56 @@ const CommandCenterPage = ({ theme }) => {
         }]);
 
         toast.success(`${domain} put on hold`);
+      } else if (action === 'spam') {
+        // Add domain to domains_spam
+        const { error: spamError } = await supabase
+          .from('domains_spam')
+          .upsert({
+            domain: domain,
+            counter: 1
+          }, {
+            onConflict: 'domain'
+          });
+
+        if (spamError) throw spamError;
+
+        // Get all emails from this domain (need fastmail_id for archiving)
+        const { data: emailsToArchive } = await supabase
+          .from('command_center_inbox')
+          .select('id, fastmail_id')
+          .ilike('from_email', `%@${domain}`);
+
+        // Archive each email in Fastmail
+        for (const emailRecord of emailsToArchive || []) {
+          if (emailRecord.fastmail_id) {
+            try {
+              await archiveInFastmail(emailRecord.fastmail_id);
+            } catch (archiveErr) {
+              console.error('Failed to archive email:', emailRecord.fastmail_id, archiveErr);
+            }
+          }
+        }
+
+        // Delete all emails from this domain from command_center_inbox
+        const { data: deletedEmails } = await supabase
+          .from('command_center_inbox')
+          .delete()
+          .ilike('from_email', `%@${domain}`)
+          .select('id');
+
+        const deletedCount = deletedEmails?.length || 0;
+
+        // Mark all data_integrity issues for this domain as dismissed
+        await supabase
+          .from('data_integrity_inbox')
+          .update({ status: 'dismissed', resolved_at: new Date().toISOString() })
+          .eq('domain', domain)
+          .eq('status', 'pending');
+
+        // Refresh threads and select first one
+        await refreshThreads();
+
+        toast.success(`${domain} added to spam${deletedCount > 0 ? ` - deleted ${deletedCount} emails` : ''}`);
       } else if (action === 'delete') {
         // Just remove from list, no DB action
         toast.success(`${domain} dismissed`);
@@ -2151,12 +2036,14 @@ const CommandCenterPage = ({ theme }) => {
     try {
       if (item.entity_type === 'contact') {
         // CONTACT MERGE: Use contact_duplicates table + trigger
+        // Use upsert to handle case where pair already exists
         const { error: insertError } = await supabase
           .from('contact_duplicates')
-          .insert({
+          .upsert({
             primary_contact_id: item.source_id,
             duplicate_contact_id: item.duplicate_id,
             start_trigger: true,
+            status: 'pending',
             merge_selections: {
               emails: 'combine',
               mobiles: 'combine',
@@ -2165,6 +2052,8 @@ const CommandCenterPage = ({ theme }) => {
               cities: 'combine'
             },
             notes: `From duplicates_inbox: ${item.match_type} match`
+          }, {
+            onConflict: 'primary_contact_id,duplicate_contact_id'
           });
 
         if (insertError) {
@@ -2176,12 +2065,14 @@ const CommandCenterPage = ({ theme }) => {
         toast.success('Contacts merged successfully');
       } else if (item.entity_type === 'company') {
         // COMPANY MERGE: Use company_duplicates table + trigger
+        // Use upsert to handle case where pair already exists
         const { error: insertError } = await supabase
           .from('company_duplicates')
-          .insert({
+          .upsert({
             primary_company_id: item.source_id,
             duplicate_company_id: item.duplicate_id,
             start_trigger: true,
+            status: 'pending',
             merge_selections: {
               contacts: 'combine',
               domains: 'combine',
@@ -2189,6 +2080,8 @@ const CommandCenterPage = ({ theme }) => {
               cities: 'combine'
             },
             notes: `From duplicates_inbox: ${item.match_type} match`
+          }, {
+            onConflict: 'primary_company_id,duplicate_company_id'
           });
 
         if (insertError) {
@@ -3282,6 +3175,9 @@ const CommandCenterPage = ({ theme }) => {
   };
 
   // Parse ICS file and create calendar event
+  // Track created events to avoid duplicates (title+startDate)
+  const createdEventsRef = useRef(new Set());
+
   const parseIcsAndCreateEvent = async (att) => {
     try {
       // Download the ICS file
@@ -3367,6 +3263,14 @@ const CommandCenterPage = ({ theme }) => {
 
       console.log('[ICS] Parsed event data:', eventData);
 
+      // Check for duplicates (same title + startDate)
+      const eventKey = `${eventData.title}|${eventData.startDate}`;
+      if (createdEventsRef.current.has(eventKey)) {
+        console.log('[ICS] Skipping duplicate event:', eventKey);
+        return null;
+      }
+      createdEventsRef.current.add(eventKey);
+
       // Create calendar event via backend
       const createResponse = await fetch(`${BACKEND_URL}/calendar/create-event`, {
         method: 'POST',
@@ -3411,6 +3315,8 @@ const CommandCenterPage = ({ theme }) => {
       // Check for ICS files and create calendar events
       const icsAttachments = allAttachments.filter(isIcsAttachment);
       if (icsAttachments.length > 0) {
+        // Clear duplicate tracker for this batch
+        createdEventsRef.current.clear();
         toast.loading('Processing calendar invites...', { id: 'ics-process' });
         for (const icsAtt of icsAttachments) {
           await parseIcsAndCreateEvent(icsAtt);
@@ -3464,6 +3370,8 @@ const CommandCenterPage = ({ theme }) => {
       // Check for ICS files and create calendar events
       const icsAttachments = allAttachments.filter(isIcsAttachment);
       if (icsAttachments.length > 0) {
+        // Clear duplicate tracker for this batch
+        createdEventsRef.current.clear();
         toast.loading('Processing calendar invites...', { id: 'ics-process' });
         for (const icsAtt of icsAttachments) {
           await parseIcsAndCreateEvent(icsAtt);
@@ -5350,7 +5258,7 @@ const CommandCenterPage = ({ theme }) => {
             </ActionTabIcon>
           </ActionsPanelTabs>
 
-          {selectedThread && selectedThread.length > 0 && (
+          {((selectedThread && selectedThread.length > 0) || selectedWhatsappChat || selectedCalendarEvent) && (
             <>
               {activeActionTab === 'chat' && (
                 <ChatTab
@@ -5450,6 +5358,7 @@ const CommandCenterPage = ({ theme }) => {
                   setDataIntegrityModalOpen={setDataIntegrityModalOpen}
                   setCompanyDataIntegrityCompanyId={setCompanyDataIntegrityCompanyId}
                   setCompanyDataIntegrityModalOpen={setCompanyDataIntegrityModalOpen}
+                  suggestionsFromMessage={suggestionsFromMessage}
                 />
               )}
 
@@ -5471,6 +5380,11 @@ const CommandCenterPage = ({ theme }) => {
                   runContactAuditById={runContactAuditById}
                   setCompanyDataIntegrityCompanyId={setCompanyDataIntegrityCompanyId}
                   setCompanyDataIntegrityModalOpen={setCompanyDataIntegrityModalOpen}
+                  onAddNewContact={() => {
+                    setCreateContactEmail({ email: '', name: '', subject: '', body_text: '' });
+                    setCreateContactModalOpen(true);
+                  }}
+                  onAddNewCompany={() => setAddCompanyModalOpen(true)}
                 />
               )}
               {activeActionTab === 'deals' && (
@@ -6713,6 +6627,16 @@ const CommandCenterPage = ({ theme }) => {
           // Refresh data integrity stats
           fetchDataIntegrity();
           toast.success(`Contact ${newContact.first_name} ${newContact.last_name} created successfully!`);
+        }}
+      />
+
+      {/* Add Company Modal (for CRM tab button) */}
+      <AddCompanyModal
+        isOpen={addCompanyModalOpen}
+        onRequestClose={() => setAddCompanyModalOpen(false)}
+        onSuccess={(company) => {
+          toast.success(`Company ${company.name} created successfully!`);
+          fetchDataIntegrity();
         }}
       />
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { FaUser, FaBuilding, FaCrown, FaRobot } from 'react-icons/fa';
+import { FaUser, FaBuilding, FaCrown, FaRobot, FaPlus } from 'react-icons/fa';
 import { ActionCard, ActionCardHeader, ActionCardContent } from '../../pages/CommandCenterPage.styles';
 
 const CRMTab = ({
@@ -19,9 +19,35 @@ const CRMTab = ({
   runContactAuditById,
   setCompanyDataIntegrityCompanyId,
   setCompanyDataIntegrityModalOpen,
+  onAddNewContact,
+  onAddNewCompany,
 }) => {
   return (
     <>
+      {/* Add New Contact/Company Buttons */}
+      <div style={{ display: 'flex', gap: '8px', margin: '8px' }}>
+        <ActionCard
+          theme={theme}
+          style={{ cursor: 'pointer', flex: 1, margin: 0 }}
+          onClick={onAddNewContact}
+        >
+          <ActionCardContent theme={theme} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '10px' }}>
+            <FaUser style={{ color: '#10B981' }} size={12} />
+            <span style={{ fontWeight: 600, fontSize: '13px' }}>Add Contact</span>
+          </ActionCardContent>
+        </ActionCard>
+        <ActionCard
+          theme={theme}
+          style={{ cursor: 'pointer', flex: 1, margin: 0 }}
+          onClick={onAddNewCompany}
+        >
+          <ActionCardContent theme={theme} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '10px' }}>
+            <FaBuilding style={{ color: '#3B82F6' }} size={12} />
+            <span style={{ fontWeight: 600, fontSize: '13px' }}>Add Company</span>
+          </ActionCardContent>
+        </ActionCard>
+      </div>
+
       {/* Sub-menu tabs for Contacts / Companies */}
       <div style={{
         display: 'flex',
@@ -154,7 +180,7 @@ const CRMTab = ({
                       {!participant.hasContact && (
                         <>
                           <button
-                            onClick={(e) => { e.stopPropagation(); handleOpenCreateContact({ email: participant.email, name: participant.name }); }}
+                            onClick={(e) => { e.stopPropagation(); handleOpenCreateContact({ email: participant.email, mobile: participant.phone, name: participant.name }); }}
                             title="Add to CRM"
                             style={{
                               padding: '4px 8px',
@@ -171,7 +197,7 @@ const CRMTab = ({
                           </button>
                           {!isOnHold && (
                             <button
-                              onClick={(e) => { e.stopPropagation(); handlePutOnHold({ email: participant.email, name: participant.name }); }}
+                              onClick={(e) => { e.stopPropagation(); handlePutOnHold({ email: participant.email, mobile: participant.phone, name: participant.name }); }}
                               title="Put on Hold"
                               style={{
                                 padding: '4px 8px',
@@ -188,7 +214,7 @@ const CRMTab = ({
                             </button>
                           )}
                           <button
-                            onClick={(e) => { e.stopPropagation(); handleAddToSpam(participant.email); }}
+                            onClick={(e) => { e.stopPropagation(); handleAddToSpam(participant.email || participant.phone, { email: participant.email, mobile: participant.phone, name: participant.name }); }}
                             title="Mark as Spam"
                             style={{
                               padding: '4px 8px',
