@@ -7,8 +7,9 @@ const MY_EMAIL = 'simone@cimminelli.com';
 /**
  * Custom hook for managing Claude AI chat functionality
  * Handles messages, images, sending, and quick actions
+ * Supports both email and WhatsApp context
  */
-const useChatWithClaude = (selectedThread, emailContacts) => {
+const useChatWithClaude = (selectedThread, emailContacts, activeTab, selectedWhatsappChat, contextContacts) => {
   // Chat state
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
@@ -26,11 +27,11 @@ const useChatWithClaude = (selectedThread, emailContacts) => {
     }
   }, [chatMessages]);
 
-  // Clear chat when thread changes
+  // Clear chat when thread/chat changes
   useEffect(() => {
     setChatMessages([]);
     setChatInput('');
-  }, [selectedThread]);
+  }, [selectedThread, selectedWhatsappChat]);
 
   // Build email context for Claude
   const buildEmailContext = useCallback(() => {
@@ -62,6 +63,47 @@ Email Thread (${selectedThread.length} messages):
 ${emailsText}
 `;
   }, [selectedThread, emailContacts]);
+
+  // Build WhatsApp context for Claude
+  const buildWhatsAppContext = useCallback(() => {
+    if (!selectedWhatsappChat || !selectedWhatsappChat.messages || selectedWhatsappChat.messages.length === 0) return '';
+
+    const chatName = selectedWhatsappChat.chat_name || 'Unknown Chat';
+    const isGroup = selectedWhatsappChat.is_group_chat;
+    const contactNumber = selectedWhatsappChat.contact_number || '';
+
+    // Build participants from contextContacts
+    const participants = contextContacts?.map(p => {
+      const name = p.contact ? `${p.contact.first_name} ${p.contact.last_name}` : p.name;
+      const role = p.contact?.job_role ? ` (${p.contact.job_role})` : '';
+      const company = p.contact?.company_name ? ` at ${p.contact.company_name}` : '';
+      const phone = p.phone || '';
+      return `- ${name}${role}${company}${phone ? `: ${phone}` : ''}`;
+    }).join('\n') || 'No participants found';
+
+    // Sort messages by date
+    const sortedMessages = [...selectedWhatsappChat.messages].sort(
+      (a, b) => new Date(a.date) - new Date(b.date)
+    );
+
+    const messagesText = sortedMessages.map(msg => {
+      const sender = msg.direction === 'sent' ? 'Me' : (msg.from_name || msg.contact_number || 'Unknown');
+      const date = new Date(msg.date).toLocaleString();
+      const body = msg.body_text || msg.snippet || '';
+      return `[${date}] ${sender}:\n${body}`;
+    }).join('\n\n---\n\n');
+
+    return `
+WHATSAPP CHAT CONTEXT:
+Chat: ${chatName}${isGroup ? ' (Group)' : ''}${contactNumber ? ` - ${contactNumber}` : ''}
+
+Participants:
+${participants}
+
+Messages (${sortedMessages.length} messages):
+${messagesText}
+`;
+  }, [selectedWhatsappChat, contextContacts]);
 
   // Build instruction for duplicate processing
   const buildDuplicateMCPInstruction = useCallback(() => {
@@ -169,8 +211,11 @@ Let's start - show me the pending duplicates queue.`;
     setChatLoading(true);
 
     try {
-      const emailContext = buildEmailContext();
-      const systemPrompt = `You are Simone Cimminelli's AI assistant for email management.
+      // Build context based on active tab
+      const isWhatsApp = activeTab === 'whatsapp';
+      const context = isWhatsApp ? buildWhatsAppContext() : buildEmailContext();
+
+      const systemPrompt = `You are Simone Cimminelli's AI assistant for ${isWhatsApp ? 'WhatsApp messaging' : 'email management'}.
 
 TONE & STYLE:
 - Be direct and concise. No fluff, no corporate speak.
@@ -182,11 +227,11 @@ TONE & STYLE:
 RESPONSE FORMAT:
 - Summaries: Max 2-3 bullet points. Just the essentials.
 - Actions: One clear recommendation. Maybe a second option.
-- Drafts: Keep them short. Real humans don't write essays in emails.
+- Drafts: Keep them short. Real humans don't write essays in ${isWhatsApp ? 'messages' : 'emails'}.
 - Key points: List format, 3-5 items max.
-- IMPORTANT: When writing draft emails, ALWAYS wrap the draft text between --- markers like this:
+- IMPORTANT: When writing draft ${isWhatsApp ? 'messages' : 'emails'}, ALWAYS wrap the draft text between --- markers like this:
 ---
-Your draft email text here
+Your draft ${isWhatsApp ? 'message' : 'email'} text here
 ---
 This format is required so the user can click "Accept & Edit" to use the draft.
 
@@ -196,7 +241,7 @@ CONTEXT - Simone runs a newsletter business and is an investor. He values:
 - Getting things done efficiently
 - Personal touch over corporate formality
 
-${emailContext}`;
+${context}`;
 
       // Build messages for API - need to use current state plus new message
       const currentMessages = chatMessages;
@@ -235,7 +280,7 @@ ${emailContext}`;
     } finally {
       setChatLoading(false);
     }
-  }, [chatImages, chatMessages, buildEmailContext]);
+  }, [chatImages, chatMessages, buildEmailContext, buildWhatsAppContext, activeTab]);
 
   // Handle quick action clicks - hide the prompt, show only the response
   const handleQuickAction = useCallback((action) => {

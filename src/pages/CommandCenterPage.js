@@ -107,6 +107,7 @@ import AttachmentSaveModal from '../components/modals/AttachmentSaveModal';
 import DataIntegrityModal from '../components/modals/DataIntegrityModal';
 import CompanyDataIntegrityModal from '../components/modals/CompanyDataIntegrityModal';
 import CreateCompanyFromDomainModal from '../components/modals/CreateCompanyFromDomainModal';
+import LinkToExistingModal from '../components/modals/LinkToExistingModal';
 import AddCompanyModal from '../components/modals/AddCompanyModal';
 import CreateDealAI from '../components/modals/CreateDealAI';
 import { findContactDuplicatesForThread, findCompanyDuplicatesForThread } from '../utils/duplicateDetection';
@@ -310,8 +311,8 @@ const CommandCenterPage = ({ theme }) => {
     loadingCompanies
   } = contextContactsHook;
 
-  // AI Chat hook
-  const chatHook = useChatWithClaude(selectedThread, emailContacts);
+  // AI Chat hook - supports both Email and WhatsApp context
+  const chatHook = useChatWithClaude(selectedThread, emailContacts, activeTab, selectedWhatsappChat, emailContacts);
   const {
     chatMessages,
     setChatMessages,
@@ -363,6 +364,7 @@ const CommandCenterPage = ({ theme }) => {
   const [keepInTouchMissingContacts, setKeepInTouchMissingContacts] = useState([]);
   const [missingCompanyLinks, setMissingCompanyLinks] = useState([]); // Contacts with email domain matching company but not linked
   const [contactsMissingCompany, setContactsMissingCompany] = useState([]); // Contacts with no company linked at all
+  const [potentialCompanyMatches, setPotentialCompanyMatches] = useState([]); // Domains that might match existing companies by name
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteModalContact, setDeleteModalContact] = useState(null);
   const [editCompanyModalOpen, setEditCompanyModalOpen] = useState(false);
@@ -455,6 +457,11 @@ const CommandCenterPage = ({ theme }) => {
   // Create Company from Domain Modal state
   const [createCompanyFromDomainModalOpen, setCreateCompanyFromDomainModalOpen] = useState(false);
   const [createCompanyFromDomainData, setCreateCompanyFromDomainData] = useState(null);
+
+  // Link to Existing Modal state
+  const [linkToExistingModalOpen, setLinkToExistingModalOpen] = useState(false);
+  const [linkToExistingEntityType, setLinkToExistingEntityType] = useState('company'); // 'company' or 'contact'
+  const [linkToExistingItemData, setLinkToExistingItemData] = useState(null);
 
   // Calendar state
   const [pendingCalendarEvent, setPendingCalendarEvent] = useState(null);
@@ -1492,6 +1499,7 @@ const CommandCenterPage = ({ theme }) => {
       });
       setNotInCrmEmails(uniqueNotInCrmContacts.map(i => ({
         id: i.id,  // issue ID for updating status later
+        issueId: i.id,  // same as id, for LinkToExisting modal
         email: i.email,
         mobile: i.mobile,  // WhatsApp contacts have mobile instead of email
         name: i.name,
@@ -1499,13 +1507,32 @@ const CommandCenterPage = ({ theme }) => {
         lastName: i.name?.split(' ').slice(1).join(' ') || ''
       })));
 
-      // NOT IN CRM - Companies (domains)
+      // NOT IN CRM - Companies (domains) - deduplicate by domain
       const notInCrmCompanyIssues = issues.filter(i => i.issue_type === 'not_in_crm' && i.entity_type === 'company');
-      setNotInCrmDomains(notInCrmCompanyIssues.map(i => ({
-        domain: i.domain,
-        count: 1,
-        sampleEmails: i.email ? [i.email] : []
-      })));
+      const domainMap = new Map();
+      notInCrmCompanyIssues.forEach(i => {
+        if (!i.domain) return;
+        if (domainMap.has(i.domain)) {
+          const existing = domainMap.get(i.domain);
+          if (i.email && !existing.sampleEmails.includes(i.email)) {
+            existing.sampleEmails.push(i.email);
+          }
+          existing.count++;
+          // Collect all issue IDs for this domain
+          if (!existing.issueIds.includes(i.id)) {
+            existing.issueIds.push(i.id);
+          }
+        } else {
+          domainMap.set(i.domain, {
+            domain: i.domain,
+            issueId: i.id, // First issue ID (for backwards compatibility)
+            issueIds: [i.id], // All issue IDs for this domain
+            count: 1,
+            sampleEmails: i.email ? [i.email] : []
+          });
+        }
+      });
+      setNotInCrmDomains([...domainMap.values()]);
 
       // HOLD - Contacts
       const holdContactIssues = issues.filter(i => i.issue_type === 'hold' && i.entity_type === 'contact');
@@ -1527,22 +1554,70 @@ const CommandCenterPage = ({ theme }) => {
         status: 'pending'
       })));
 
-      // INCOMPLETE - Contacts
+      // INCOMPLETE - Contacts (deduplicate by contact_id, fetch real-time scores)
       const incompleteContactIssues = issues.filter(i => i.issue_type === 'incomplete' && i.entity_type === 'contact');
-      setIncompleteContacts(incompleteContactIssues.map(i => ({
-        contact_id: i.entity_id,
-        first_name: i.name?.split(' ')[0] || '',
-        last_name: i.name?.split(' ').slice(1).join(' ') || '',
-        completeness_score: i.details?.completeness_score || 0
-      })));
+      const incompleteByContact = new Map();
+      incompleteContactIssues.forEach(i => {
+        const contactId = i.entity_id;
+        if (!incompleteByContact.has(contactId)) {
+          incompleteByContact.set(contactId, {
+            contact_id: contactId,
+            first_name: i.name?.split(' ')[0] || '',
+            last_name: i.name?.split(' ').slice(1).join(' ') || '',
+            completeness_score: i.details?.completeness_score || 0 // fallback
+          });
+        }
+      });
 
-      // INCOMPLETE - Companies
+      // Fetch real-time completeness scores AND current names for contacts
+      const contactIds = Array.from(incompleteByContact.keys()).filter(Boolean);
+      if (contactIds.length > 0) {
+        const { data: realTimeData } = await supabase
+          .from('contact_completeness')
+          .select('contact_id, completeness_score, first_name, last_name')
+          .in('contact_id', contactIds);
+
+        if (realTimeData) {
+          realTimeData.forEach(data => {
+            const contact = incompleteByContact.get(data.contact_id);
+            if (contact) {
+              contact.completeness_score = Math.round(data.completeness_score);
+              contact.first_name = data.first_name || contact.first_name;
+              contact.last_name = data.last_name || contact.last_name;
+            }
+          });
+        }
+      }
+      setIncompleteContacts(Array.from(incompleteByContact.values()));
+
+      // INCOMPLETE - Companies (fetch real-time scores)
       const incompleteCompanyIssues = issues.filter(i => i.issue_type === 'incomplete' && i.entity_type === 'company');
-      setIncompleteCompanies(incompleteCompanyIssues.map(i => ({
+      const incompleteCompaniesData = incompleteCompanyIssues.map(i => ({
         company_id: i.entity_id,
         name: i.name,
-        completeness_score: i.details?.completeness_score || 0
-      })));
+        completeness_score: i.details?.completeness_score || 0 // fallback
+      }));
+
+      // Fetch real-time completeness scores AND current names for companies
+      const companyIds = incompleteCompaniesData.map(c => c.company_id).filter(Boolean);
+      if (companyIds.length > 0) {
+        const { data: realTimeCompanyData } = await supabase
+          .from('company_completeness')
+          .select('company_id, completeness_score, name')
+          .in('company_id', companyIds);
+
+        if (realTimeCompanyData) {
+          const dataMap = new Map(realTimeCompanyData.map(s => [s.company_id, s]));
+          incompleteCompaniesData.forEach(company => {
+            const data = dataMap.get(company.company_id);
+            if (data) {
+              company.completeness_score = Math.round(data.completeness_score);
+              company.name = data.name || company.name;
+            }
+          });
+        }
+      }
+      setIncompleteCompanies(incompleteCompaniesData);
 
       // MISSING COMPANY LINK
       const missingLinkIssues = issues.filter(i => i.issue_type === 'missing_company_link');
@@ -1555,14 +1630,36 @@ const CommandCenterPage = ({ theme }) => {
         domain: i.domain
       })));
 
-      // MISSING COMPANY
+      // MISSING COMPANY - deduplicate by contact_id
       const missingCompanyIssues = issues.filter(i => i.issue_type === 'missing_company');
-      setContactsMissingCompany(missingCompanyIssues.map(i => ({
-        contact_id: i.entity_id,
-        first_name: i.name?.split(' ')[0] || '',
-        last_name: i.name?.split(' ').slice(1).join(' ') || '',
-        emails: i.email ? [i.email] : [],
-        category: i.details?.category
+      const missingCompanyByContact = new Map();
+      missingCompanyIssues.forEach(i => {
+        const contactId = i.entity_id;
+        if (!missingCompanyByContact.has(contactId)) {
+          missingCompanyByContact.set(contactId, {
+            issue_ids: [i.id],
+            contact_id: contactId,
+            first_name: i.name?.split(' ')[0] || '',
+            last_name: i.name?.split(' ').slice(1).join(' ') || '',
+            emails: i.email ? [i.email] : [],
+            category: i.details?.category
+          });
+        } else {
+          // Same contact, collect all issue_ids to mark them all resolved later
+          missingCompanyByContact.get(contactId).issue_ids.push(i.id);
+        }
+      });
+      setContactsMissingCompany(Array.from(missingCompanyByContact.values()));
+
+      // POTENTIAL COMPANY MATCHES - domains that might match existing companies by name
+      const potentialMatchIssues = issues.filter(i => i.issue_type === 'potential_company_match');
+      setPotentialCompanyMatches(potentialMatchIssues.map(i => ({
+        id: i.id,
+        domain: i.domain,
+        email: i.email,
+        matched_company_id: i.entity_id,
+        matched_company_name: i.name,
+        details: i.details
       })));
 
       // ============================================
@@ -1655,13 +1752,81 @@ const CommandCenterPage = ({ theme }) => {
   }, [activeActionTab, selectedThread, selectedWhatsappChat, selectedCalendarEvent]);
 
 
-  // Handler for creating company from domain
+  // Handler for Add button on company - opens LinkToExisting modal first
   const handleAddCompanyFromDomain = (domainData) => {
-    setCreateCompanyFromDomainData(domainData);
-    setCreateCompanyFromDomainModalOpen(true);
+    setLinkToExistingEntityType('company');
+    setLinkToExistingItemData({
+      domain: domainData.domain,
+      issueId: domainData.issueId,
+      issueIds: domainData.issueIds || [domainData.issueId], // All issue IDs for this domain
+      count: domainData.count,
+      sampleEmails: domainData.sampleEmails
+    });
+    setLinkToExistingModalOpen(true);
   };
 
-  const handleCreateCompanyFromDomainSuccess = (newCompanyId) => {
+  // Handler for Add button on contact - opens LinkToExisting modal first
+  const handleAddContactFromNotInCrm = (contactData) => {
+    setLinkToExistingEntityType('contact');
+    setLinkToExistingItemData({
+      email: contactData.email,
+      mobile: contactData.mobile,
+      name: contactData.name,
+      issueId: contactData.issueId
+    });
+    setLinkToExistingModalOpen(true);
+  };
+
+  // Called when "Create New" is clicked in LinkToExisting modal
+  const handleCreateNewFromLinkModal = (itemData) => {
+    if (linkToExistingEntityType === 'company') {
+      // Open the CreateCompanyFromDomainModal
+      setCreateCompanyFromDomainData({
+        domain: itemData.domain,
+        count: itemData.count,
+        sampleEmails: itemData.sampleEmails
+      });
+      setCreateCompanyFromDomainModalOpen(true);
+    } else {
+      // Open the CreateContact modal
+      setCreateContactEmail({
+        email: itemData.email || '',
+        mobile: itemData.mobile || null,
+        name: itemData.name || '',
+        first_name: itemData.name?.split(' ')[0] || '',
+        last_name: itemData.name?.split(' ').slice(1).join(' ') || '',
+        subject: '',
+        body_text: ''
+      });
+      setCreateContactModalOpen(true);
+    }
+  };
+
+  // Called when link is successful in LinkToExisting modal
+  const handleLinkSuccess = () => {
+    fetchDataIntegrity();
+    // Remove item from local state
+    if (linkToExistingEntityType === 'company') {
+      setNotInCrmDomains(prev => prev.filter(c => c.domain !== linkToExistingItemData?.domain));
+    } else {
+      setNotInCrmEmails(prev => prev.filter(c =>
+        c.email !== linkToExistingItemData?.email && c.mobile !== linkToExistingItemData?.mobile
+      ));
+    }
+  };
+
+  const handleCreateCompanyFromDomainSuccess = async (newCompanyId) => {
+    // Mark data_integrity_inbox issues as resolved for this domain
+    if (createCompanyFromDomainData?.domain) {
+      await supabase
+        .from('data_integrity_inbox')
+        .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+        .eq('domain', createCompanyFromDomainData.domain)
+        .eq('issue_type', 'not_in_crm')
+        .eq('entity_type', 'company')
+        .eq('status', 'pending');
+    }
+
     // Refresh data integrity list
     fetchDataIntegrity();
 
@@ -1886,6 +2051,125 @@ const CommandCenterPage = ({ theme }) => {
     }
   };
 
+  // Handle linking a domain to an existing company (potential_company_match)
+  const handleLinkDomainToCompany = async (item) => {
+    try {
+      // Insert the domain into company_domains
+      const { error } = await supabase
+        .from('company_domains')
+        .insert({
+          company_id: item.matched_company_id,
+          domain: item.domain
+        });
+
+      if (error) throw error;
+
+      // Mark the data_integrity_inbox issue as resolved
+      if (item.id) {
+        await supabase
+          .from('data_integrity_inbox')
+          .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+          .eq('id', item.id);
+      }
+
+      // Remove from the list
+      setPotentialCompanyMatches(prev =>
+        prev.filter(match => match.id !== item.id)
+      );
+
+      toast.success(`Domain ${item.domain} linked to ${item.matched_company_name}`);
+    } catch (error) {
+      console.error('Error linking domain to company:', error);
+      toast.error('Failed to link domain to company');
+    }
+  };
+
+  // Handle dismissing a potential company match
+  const handleDismissPotentialMatch = async (item) => {
+    try {
+      // Mark the data_integrity_inbox issue as dismissed
+      if (item.id) {
+        await supabase
+          .from('data_integrity_inbox')
+          .update({ status: 'dismissed', resolved_at: new Date().toISOString() })
+          .eq('id', item.id);
+      }
+
+      // Remove from the list
+      setPotentialCompanyMatches(prev =>
+        prev.filter(match => match.id !== item.id)
+      );
+
+      toast.success('Match dismissed');
+    } catch (error) {
+      console.error('Error dismissing potential match:', error);
+      toast.error('Failed to dismiss match');
+    }
+  };
+
+  // Handle linking a contact to company by email domain (for missing_company issues)
+  const handleLinkContactToCompanyByDomain = async (contact) => {
+    try {
+      const email = contact.emails?.[0];
+      if (!email) {
+        toast.error('Contact has no email');
+        return;
+      }
+
+      // Extract domain from email
+      const domain = email.split('@')[1]?.toLowerCase();
+      if (!domain) {
+        toast.error('Invalid email format');
+        return;
+      }
+
+      // Find company by domain in company_domains
+      const { data: domainData, error: domainError } = await supabase
+        .from('company_domains')
+        .select('company_id, companies(company_id, name)')
+        .eq('domain', domain)
+        .single();
+
+      if (domainError || !domainData) {
+        toast.error(`No company found for domain ${domain}`);
+        return;
+      }
+
+      const companyId = domainData.company_id;
+      const companyName = domainData.companies?.name || domain;
+
+      // Insert into contact_companies
+      const { error: linkError } = await supabase
+        .from('contact_companies')
+        .insert({
+          contact_id: contact.contact_id,
+          company_id: companyId,
+          is_primary: true
+        });
+
+      if (linkError) throw linkError;
+
+      // Mark all data_integrity_inbox issues as resolved (may have multiple per contact)
+      const issueIds = contact.issue_ids || (contact.issue_id ? [contact.issue_id] : []);
+      if (issueIds.length > 0) {
+        await supabase
+          .from('data_integrity_inbox')
+          .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+          .in('id', issueIds);
+      }
+
+      // Remove from the list
+      setContactsMissingCompany(prev =>
+        prev.filter(c => c.contact_id !== contact.contact_id)
+      );
+
+      toast.success(`${contact.first_name} linked to ${companyName}`);
+    } catch (error) {
+      console.error('Error linking contact to company:', error);
+      toast.error('Failed to link contact to company');
+    }
+  };
+
   // Fetch AI suggestions from Supabase
   const fetchAiSuggestions = async () => {
     setLoadingAiSuggestions(true);
@@ -1965,34 +2249,34 @@ const CommandCenterPage = ({ theme }) => {
   const handleDismissDuplicate = async (item) => {
     try {
       if (item.entity_type === 'contact') {
-        // Insert into contact_duplicates with status='ignored' and false_positive=true
+        // Upsert into contact_duplicates with status='ignored' and false_positive=true
         const { error: insertError } = await supabase
           .from('contact_duplicates')
-          .insert({
+          .upsert({
             primary_contact_id: item.source_id,
             duplicate_contact_id: item.duplicate_id,
             status: 'ignored',
             false_positive: true,
             notes: `Dismissed from duplicates_inbox: ${item.match_type || 'manual'} match`
-          });
+          }, { onConflict: 'primary_contact_id,duplicate_contact_id' });
 
         if (insertError) {
-          console.error('Error inserting dismissed contact duplicate:', insertError);
+          console.error('Error upserting dismissed contact duplicate:', insertError);
           throw insertError;
         }
       } else {
-        // Insert into company_duplicates with status='ignored'
+        // Upsert into company_duplicates with status='ignored'
         const { error: insertError } = await supabase
           .from('company_duplicates')
-          .insert({
+          .upsert({
             primary_company_id: item.source_id,
             duplicate_company_id: item.duplicate_id,
             status: 'ignored',
             notes: `Dismissed from duplicates_inbox: ${item.match_type || 'manual'} match`
-          });
+          }, { onConflict: 'primary_company_id,duplicate_company_id' });
 
         if (insertError) {
-          console.error('Error inserting dismissed company duplicate:', insertError);
+          console.error('Error upserting dismissed company duplicate:', insertError);
           throw insertError;
         }
       }
@@ -2116,41 +2400,6 @@ const CommandCenterPage = ({ theme }) => {
       console.error('Merge error:', err);
       toast.error('An error occurred during merge');
     }
-  };
-
-  // Run contact audit for a specific contact by ID
-  const runContactAuditById = async (contactId, contactName) => {
-    if (!contactId) {
-      toast.error('No contact to audit');
-      return;
-    }
-
-    setLoadingAudit(true);
-    setAuditResult(null);
-    setAuditActions([]);
-    setSelectedActions(new Set());
-    setActiveActionTab('ai'); // Switch to AI tab to show results
-
-    try {
-      const response = await fetch(`${AGENT_SERVICE_URL}/audit-contact/${contactId}`);
-
-      if (response.ok) {
-        const result = await response.json();
-        setAuditResult(result.audit);
-        setAuditActions(result.actions || []);
-        // Pre-select all recommended actions
-        const allIndices = new Set(result.actions?.map((_, i) => i) || []);
-        setSelectedActions(allIndices);
-        toast.success(`Audit complete for ${contactName}: ${result.action_count} actions found`);
-      } else {
-        const error = await response.json();
-        toast.error(error.detail || 'Audit failed');
-      }
-    } catch (error) {
-      console.error('Error running audit:', error);
-      toast.error('Could not connect to agent service');
-    }
-    setLoadingAudit(false);
   };
 
   // Run contact audit for selected email
@@ -4439,7 +4688,7 @@ const CommandCenterPage = ({ theme }) => {
 
   const hasUnreadCalendar = calendarEvents.some(event => event.is_read === false);
   const tabs = [
-    { id: 'email', label: 'Email', icon: FaEnvelope, count: emails.length, hasUnread: hasUnreadEmails },
+    { id: 'email', label: 'Email', icon: FaEnvelope, count: threads.length, hasUnread: hasUnreadEmails },
     { id: 'whatsapp', label: 'WhatsApp', icon: FaWhatsapp, count: whatsappChats.length, hasUnread: hasUnreadWhatsapp },
     { id: 'calendar', label: 'Calendar', icon: FaCalendar, count: calendarEvents.length, hasUnread: hasUnreadCalendar },
   ];
@@ -5335,6 +5584,7 @@ const CommandCenterPage = ({ theme }) => {
                   expandedDataIntegrity={expandedDataIntegrity}
                   setExpandedDataIntegrity={setExpandedDataIntegrity}
                   handleOpenCreateContact={handleOpenCreateContact}
+                  handleAddContactFromNotInCrm={handleAddContactFromNotInCrm}
                   handlePutOnHold={handlePutOnHold}
                   handleAddToSpam={handleAddToSpam}
                   handleAddCompanyFromDomain={handleAddCompanyFromDomain}
@@ -5354,6 +5604,10 @@ const CommandCenterPage = ({ theme }) => {
                   handleOpenKeepInTouchModal={handleOpenKeepInTouchModal}
                   handleDoNotKeepInTouch={handleDoNotKeepInTouch}
                   handleLinkContactToCompany={handleLinkContactToCompany}
+                  potentialCompanyMatches={potentialCompanyMatches}
+                  handleLinkDomainToCompany={handleLinkDomainToCompany}
+                  handleDismissPotentialMatch={handleDismissPotentialMatch}
+                  handleLinkContactToCompanyByDomain={handleLinkContactToCompanyByDomain}
                   setDataIntegrityContactId={setDataIntegrityContactId}
                   setDataIntegrityModalOpen={setDataIntegrityModalOpen}
                   setCompanyDataIntegrityCompanyId={setCompanyDataIntegrityCompanyId}
@@ -5375,9 +5629,9 @@ const CommandCenterPage = ({ theme }) => {
                   setDataIntegrityContactId={setDataIntegrityContactId}
                   setDataIntegrityModalOpen={setDataIntegrityModalOpen}
                   handleOpenCreateContact={handleOpenCreateContact}
+                  handleAddContactFromNotInCrm={handleAddContactFromNotInCrm}
                   handlePutOnHold={handlePutOnHold}
                   handleAddToSpam={handleAddToSpam}
-                  runContactAuditById={runContactAuditById}
                   setCompanyDataIntegrityCompanyId={setCompanyDataIntegrityCompanyId}
                   setCompanyDataIntegrityModalOpen={setCompanyDataIntegrityModalOpen}
                   onAddNewContact={() => {
@@ -6623,6 +6877,15 @@ const CommandCenterPage = ({ theme }) => {
               .from('contacts_hold')
               .delete()
               .eq('email', createContactEmail.email.toLowerCase());
+
+            // Mark data_integrity_inbox issues as resolved for this email
+            await supabase
+              .from('data_integrity_inbox')
+              .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+              .eq('email', createContactEmail.email.toLowerCase())
+              .eq('issue_type', 'not_in_crm')
+              .eq('entity_type', 'contact')
+              .eq('status', 'pending');
           }
           // Refresh data integrity stats
           fetchDataIntegrity();
@@ -6650,9 +6913,19 @@ const CommandCenterPage = ({ theme }) => {
         domain={selectedDomainForLink?.domain || ''}
         sampleEmails={selectedDomainForLink?.sampleEmails || []}
         theme={theme}
-        onDomainLinked={({ company, domain }) => {
+        onDomainLinked={async ({ company, domain }) => {
           // Remove from not in CRM list
           setNotInCrmDomains(prev => prev.filter(item => item.domain !== domain));
+
+          // Mark data_integrity_inbox issues as resolved for this domain
+          await supabase
+            .from('data_integrity_inbox')
+            .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+            .eq('domain', domain)
+            .eq('issue_type', 'not_in_crm')
+            .eq('entity_type', 'company')
+            .eq('status', 'pending');
+
           toast.success(`Domain ${domain} linked to ${company.name}`);
           // Refresh data
           fetchDataIntegrity();
@@ -6766,6 +7039,20 @@ const CommandCenterPage = ({ theme }) => {
         domainData={createCompanyFromDomainData}
         theme={theme}
         onSuccess={handleCreateCompanyFromDomainSuccess}
+      />
+
+      {/* Link to Existing Modal */}
+      <LinkToExistingModal
+        isOpen={linkToExistingModalOpen}
+        onClose={() => {
+          setLinkToExistingModalOpen(false);
+          setLinkToExistingItemData(null);
+        }}
+        entityType={linkToExistingEntityType}
+        itemData={linkToExistingItemData}
+        theme={theme}
+        onLink={handleLinkSuccess}
+        onCreateNew={handleCreateNewFromLinkModal}
       />
 
       {/* Create Deal AI Modal */}

@@ -2,7 +2,7 @@
 // Docs: https://www.fastmail.com/dev/
 
 const CALDAV_BASE_URL = 'https://caldav.fastmail.com/dav/calendars/user';
-const DEFAULT_CALENDAR_PATH = 'Default';
+const DEFAULT_CALENDAR_PATH = '8c9da7c3-501d-4a38-a784-e515b201f9f3';
 
 // Generate a UUID v4
 function generateUUID() {
@@ -179,26 +179,48 @@ DESCRIPTION:Reminder
 TRIGGER:-PT${mins}M
 END:VALARM`).join('');
 
-    // Build the iCalendar event
-    const ics = `BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//CRM Command Center//EN
-CALSCALE:GREGORIAN
-METHOD:REQUEST
-BEGIN:VEVENT
-UID:${uid}@cimminelli.com
-DTSTAMP:${dtstamp}
-${dtstart}
-${dtend}
-SUMMARY:${escapeICalText(title)}
-${description ? `DESCRIPTION:${escapeICalText(description)}` : ''}
-${location ? `LOCATION:${escapeICalText(location)}` : ''}
-${attendeeLines}
-ORGANIZER;CN=Simone Cimminelli:mailto:${this.username}
-STATUS:CONFIRMED
-SEQUENCE:0${alarmLines}
-END:VEVENT
-END:VCALENDAR`.replace(/\n\n+/g, '\n').trim();
+    // Build the iCalendar event - use array to avoid empty line issues
+    // Use METHOD:PUBLISH for personal events, METHOD:REQUEST only when there are attendees
+    const hasAttendees = attendees && attendees.length > 0;
+    const icsLines = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//CRM Command Center//EN',
+      'CALSCALE:GREGORIAN',
+      hasAttendees ? 'METHOD:REQUEST' : 'METHOD:PUBLISH',
+      'BEGIN:VEVENT',
+      `UID:${uid}@cimminelli.com`,
+      `DTSTAMP:${dtstamp}`,
+      dtstart,
+      dtend,
+      `SUMMARY:${escapeICalText(title)}`,
+    ];
+
+    if (description) icsLines.push(`DESCRIPTION:${escapeICalText(description)}`);
+    if (location) icsLines.push(`LOCATION:${escapeICalText(location)}`);
+    if (attendeeLines) icsLines.push(attendeeLines);
+
+    icsLines.push(
+      `ORGANIZER;CN=Simone Cimminelli:mailto:${this.username}`,
+      'STATUS:CONFIRMED',
+      'SEQUENCE:0'
+    );
+
+    // Add alarms
+    reminders.forEach(mins => {
+      icsLines.push(
+        'BEGIN:VALARM',
+        'ACTION:DISPLAY',
+        'DESCRIPTION:Reminder',
+        `TRIGGER:-PT${mins}M`,
+        'END:VALARM'
+      );
+    });
+
+    icsLines.push('END:VEVENT', 'END:VCALENDAR');
+
+    // Join with CRLF as per iCalendar spec
+    const ics = icsLines.join('\r\n');
 
     console.log('[CalDAV] Creating event with ICS:', ics);
 

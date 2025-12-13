@@ -400,7 +400,16 @@ const CreateContactModal = ({
       setCompanies([]); // Reset companies array
 
       // Tab 3
-      setMobiles([]);
+      // Initialize mobiles - if emailData.mobile is provided (e.g. from WhatsApp), add it
+      if (emailData.mobile) {
+        setMobiles([{
+          id: `temp-${Date.now()}`,
+          mobile_number: emailData.mobile,
+          is_primary: true
+        }]);
+      } else {
+        setMobiles([]);
+      }
       setCities([]);
       setCitySearch('');
       setBirthday('');

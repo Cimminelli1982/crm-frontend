@@ -246,8 +246,9 @@ const EmptyChat = styled.div`
 
 const ModalFooter = styled.div`
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
+  gap: 12px;
   padding: 16px 20px;
   border-top: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
 `;
@@ -1169,25 +1170,21 @@ LANGUAGE RULE: Use same language as original message`)}>
         </ModalBody>
 
         <ModalFooter theme={theme}>
-          <FooterLeft>
-            <SendAIDraftButton
-              onClick={handleSendAIDraft}
-              disabled={sending || chatLoading || !hasAIDraft}
-              title={!hasAIDraft ? 'Wait for AI suggestion' : 'Send email with AI draft'}
-            >
-              <FaRobot size={14} />
-              {sending ? 'Sending...' : 'Send AI Draft'}
-            </SendAIDraftButton>
-          </FooterLeft>
-          <FooterRight>
-            <CancelButton theme={theme} onClick={closeCompose}>
-              Cancel
-            </CancelButton>
-            <SendButton onClick={() => handleSend()} disabled={sending}>
-              <FaPaperPlane />
-              {sending ? 'Sending...' : 'Send'}
-            </SendButton>
-          </FooterRight>
+          <SendAIDraftButton
+            onClick={handleSendAIDraft}
+            disabled={sending || chatLoading || !hasAIDraft}
+            title={!hasAIDraft ? 'Wait for AI suggestion' : 'Send email with AI draft'}
+          >
+            <FaRobot size={14} />
+            {sending ? 'Sending...' : 'Send AI Draft'}
+          </SendAIDraftButton>
+          <CancelButton theme={theme} onClick={closeCompose}>
+            Cancel
+          </CancelButton>
+          <SendButton onClick={() => handleSend()} disabled={sending}>
+            <FaPaperPlane />
+            {sending ? 'Sending...' : 'Send'}
+          </SendButton>
         </ModalFooter>
       </WideModalContent>
 

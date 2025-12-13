@@ -1,5 +1,5 @@
 import React from 'react';
-import { FaUser, FaBuilding, FaCrown, FaRobot, FaPlus } from 'react-icons/fa';
+import { FaUser, FaBuilding, FaCrown, FaPlus } from 'react-icons/fa';
 import { ActionCard, ActionCardHeader, ActionCardContent } from '../../pages/CommandCenterPage.styles';
 
 const CRMTab = ({
@@ -14,9 +14,9 @@ const CRMTab = ({
   setDataIntegrityContactId,
   setDataIntegrityModalOpen,
   handleOpenCreateContact,
+  handleAddContactFromNotInCrm,
   handlePutOnHold,
   handleAddToSpam,
-  runContactAuditById,
   setCompanyDataIntegrityCompanyId,
   setCompanyDataIntegrityModalOpen,
   onAddNewContact,
@@ -180,7 +180,14 @@ const CRMTab = ({
                       {!participant.hasContact && (
                         <>
                           <button
-                            onClick={(e) => { e.stopPropagation(); handleOpenCreateContact({ email: participant.email, mobile: participant.phone, name: participant.name }); }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (handleAddContactFromNotInCrm) {
+                                handleAddContactFromNotInCrm({ email: participant.email, mobile: participant.phone, name: participant.name });
+                              } else {
+                                handleOpenCreateContact({ email: participant.email, mobile: participant.phone, name: participant.name });
+                              }
+                            }}
                             title="Add to CRM"
                             style={{
                               padding: '4px 8px',
@@ -230,14 +237,6 @@ const CRMTab = ({
                             Spam
                           </button>
                         </>
-                      )}
-                      {participant.contact && (
-                        <span
-                          onClick={(e) => { e.stopPropagation(); runContactAuditById(participant.contact.contact_id, `${participant.contact.first_name} ${participant.contact.last_name}`); }}
-                          style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#DBEAFE' : '#1E3A5F', color: theme === 'light' ? '#1D4ED8' : '#93C5FD', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                        >
-                          <FaRobot size={10} /> Audit
-                        </span>
                       )}
                     </div>
                   </ActionCardContent>

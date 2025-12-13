@@ -23,7 +23,7 @@ mcpManager.init().then(() => {
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
 
 const PORT = process.env.PORT || 3001;
 const SYNC_INTERVAL = 60 * 1000; // 60 seconds
@@ -173,15 +173,31 @@ async function autoSync() {
   }
 }
 
+// Calendar sync - calls crm-agent-service
+async function syncCalendar() {
+  try {
+    const agentUrl = process.env.CRM_AGENT_URL || 'https://crm-agent-api-production.up.railway.app';
+    const response = await fetch(`${agentUrl}/calendar-sync`, { method: 'POST' });
+    if (response.ok) {
+      const result = await response.json();
+      console.log(`[Calendar] Synced ${result.synced || 0} events, updated ${result.updated || 0}`);
+    }
+  } catch (error) {
+    console.error(`[Calendar] Sync error:`, error.message);
+  }
+}
+
 // Start polling
 function startPolling() {
   console.log(`Starting email polling every ${SYNC_INTERVAL / 1000} seconds...`);
 
   // Initial sync
   autoSync();
+  syncCalendar();
 
   // Then every 60 seconds
   setInterval(autoSync, SYNC_INTERVAL);
+  setInterval(syncCalendar, SYNC_INTERVAL);
 }
 
 // Health check

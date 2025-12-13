@@ -527,6 +527,8 @@ const DocumentSize = styled.div`
 const ChatListContainer = styled.div`
   display: flex;
   flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
 `;
 
 const ChatListItem = styled.div`

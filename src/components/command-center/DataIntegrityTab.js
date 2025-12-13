@@ -12,6 +12,35 @@ import {
   FaExchangeAlt
 } from 'react-icons/fa';
 
+// Helper function to deduplicate duplicate pairs
+// Same pair (A, B) can appear multiple times with different match_type (DOMAIN, NAME, etc.)
+// or inverted (B, A). We want to show only one entry per unique pair.
+const deduplicatePairs = (items) => {
+  const seenPairs = new Map();
+
+  for (const item of items) {
+    // Create a normalized key - sort the two IDs to handle (A,B) and (B,A) as same pair
+    const ids = [item.source_id, item.duplicate_id].sort();
+    const pairKey = ids.join('|');
+
+    if (!seenPairs.has(pairKey)) {
+      // First time seeing this pair - store it with all match types
+      seenPairs.set(pairKey, {
+        ...item,
+        matchTypes: [item.match_type]
+      });
+    } else {
+      // Already seen - just add the match type if different
+      const existing = seenPairs.get(pairKey);
+      if (!existing.matchTypes.includes(item.match_type)) {
+        existing.matchTypes.push(item.match_type);
+      }
+    }
+  }
+
+  return Array.from(seenPairs.values());
+};
+
 const DataIntegrityTab = ({
   theme,
   navigate,
@@ -40,6 +69,7 @@ const DataIntegrityTab = ({
   setExpandedDataIntegrity,
   // Handlers
   handleOpenCreateContact,
+  handleAddContactFromNotInCrm,
   handlePutOnHold,
   handleAddToSpam,
   handleAddCompanyFromDomain,
@@ -51,6 +81,12 @@ const DataIntegrityTab = ({
   handleConfirmMergeDuplicate,
   handleDismissDuplicate,
   handleLinkContactToCompany,
+  // Potential company matches
+  potentialCompanyMatches = [],
+  handleLinkDomainToCompany,
+  handleDismissPotentialMatch,
+  // Missing company handler
+  handleLinkContactToCompanyByDomain,
   // Modal setters
   setDataIntegrityContactId,
   setDataIntegrityModalOpen,
@@ -59,6 +95,10 @@ const DataIntegrityTab = ({
   // Suggestions from current email
   suggestionsFromMessage = [],
 }) => {
+  // Deduplicate the pairs
+  const dedupedContacts = deduplicatePairs(duplicateContacts);
+  const dedupedCompanies = deduplicatePairs(duplicateCompanies);
+
   // Track which duplicates have been swapped (by id)
   const [swappedDuplicates, setSwappedDuplicates] = useState(new Set());
 
@@ -244,6 +284,140 @@ const DataIntegrityTab = ({
           </div>
           )}
 
+          {/* Potential Company Matches Section */}
+          {potentialCompanyMatches.length > 0 && (
+          <div style={{ marginBottom: '8px' }}>
+            <div
+              onClick={() => setExpandedDataIntegrity(prev => prev.potentialMatches ? {} : { potentialMatches: true })}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 12px',
+                background: theme === 'light' ? '#F0FDF4' : '#14532D',
+                cursor: 'pointer',
+                borderRadius: '6px',
+                marginBottom: expandedDataIntegrity.potentialMatches ? '4px' : '0',
+                border: `1px solid ${theme === 'light' ? '#86EFAC' : '#166534'}`
+              }}
+            >
+              <FaChevronDown
+                style={{
+                  transform: expandedDataIntegrity.potentialMatches ? 'rotate(0deg)' : 'rotate(-90deg)',
+                  transition: 'transform 0.2s',
+                  fontSize: '10px',
+                  color: theme === 'light' ? '#16A34A' : '#86EFAC'
+                }}
+              />
+              <FaHandshake style={{ color: '#16A34A', fontSize: '12px' }} />
+              <span style={{
+                fontWeight: 600,
+                fontSize: '13px',
+                color: theme === 'light' ? '#166534' : '#DCFCE7'
+              }}>
+                Potential Company Matches
+              </span>
+              <span style={{
+                fontSize: '12px',
+                color: theme === 'light' ? '#16A34A' : '#86EFAC',
+                marginLeft: 'auto'
+              }}>
+                {potentialCompanyMatches.length}
+              </span>
+            </div>
+            {expandedDataIntegrity.potentialMatches && (
+              <div style={{ paddingLeft: '8px' }}>
+                {potentialCompanyMatches.map((item, idx) => (
+                  <div key={item.id || idx} style={{
+                    padding: '10px 12px',
+                    background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                    borderRadius: '6px',
+                    marginBottom: '4px',
+                    border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
+                  }}>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      marginBottom: '8px'
+                    }}>
+                      <span style={{
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        color: theme === 'light' ? '#111827' : '#F9FAFB'
+                      }}>
+                        {item.domain}
+                      </span>
+                      <span style={{
+                        fontSize: '11px',
+                        color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                      }}>
+                        →
+                      </span>
+                      <span
+                        style={{
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          color: '#16A34A',
+                          cursor: 'pointer'
+                        }}
+                        onClick={() => window.open(`/new-crm/company/${item.matched_company_id}`, '_blank')}
+                        title="View company"
+                      >
+                        {item.matched_company_name}
+                        <FaExternalLinkAlt size={10} style={{ marginLeft: '4px', opacity: 0.7 }} />
+                      </span>
+                    </div>
+                    {item.email && (
+                      <div style={{
+                        fontSize: '11px',
+                        color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                        marginBottom: '8px'
+                      }}>
+                        From: {item.email}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={() => handleLinkDomainToCompany(item)}
+                        style={{
+                          flex: 1,
+                          padding: '6px 12px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          background: '#10B981',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Link Domain
+                      </button>
+                      <button
+                        onClick={() => handleDismissPotentialMatch(item)}
+                        style={{
+                          flex: 1,
+                          padding: '6px 12px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          background: theme === 'light' ? '#E5E7EB' : '#374151',
+                          color: theme === 'light' ? '#374151' : '#D1D5DB',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          )}
+
           {/* Not in CRM Section */}
           {(notInCrmEmails.length > 0 || notInCrmDomains.length > 0) && (
           <div style={{ marginBottom: '8px' }}>
@@ -384,7 +558,12 @@ const DataIntegrityTab = ({
                           </div>
                           <div style={{ display: 'flex', gap: '4px', marginLeft: '8px', flexShrink: 0 }}>
                             <button
-                              onClick={() => handleOpenCreateContact(item)}
+                              onClick={() => handleAddContactFromNotInCrm ? handleAddContactFromNotInCrm({
+                                email: item.email,
+                                mobile: item.mobile,
+                                name: item.name,
+                                issueId: item.issueId
+                              }) : handleOpenCreateContact(item)}
                               title="Add to CRM"
                               style={{
                                 padding: '4px 8px',
@@ -539,8 +718,9 @@ const DataIntegrityTab = ({
                               color: theme === 'light' ? '#6B7280' : '#9CA3AF',
                               marginTop: '4px'
                             }}>
-                              {item.sampleEmails.slice(0, 2).join(', ')}
-                              {item.sampleEmails.length > 2 && '...'}
+                              {item.sampleEmails.map((email, i) => (
+                                <div key={i}>{email}</div>
+                              ))}
                             </div>
                           )}
                         </div>
@@ -1051,7 +1231,7 @@ const DataIntegrityTab = ({
           )}
 
           {/* Duplicates Section */}
-          {(duplicateContacts.length > 0 || duplicateCompanies.length > 0) && (
+          {(dedupedContacts.length > 0 || dedupedCompanies.length > 0) && (
           <div style={{ marginTop: '8px' }}>
             <div
               onClick={() => setExpandedDataIntegrity(prev => prev.duplicates ? {} : { duplicates: true })}
@@ -1087,7 +1267,7 @@ const DataIntegrityTab = ({
                 color: theme === 'light' ? '#6B7280' : '#9CA3AF',
                 marginLeft: 'auto'
               }}>
-                {duplicateContacts.length + duplicateCompanies.length}
+                {dedupedContacts.length + dedupedCompanies.length}
               </span>
             </div>
             {expandedDataIntegrity.duplicates && (
@@ -1120,7 +1300,7 @@ const DataIntegrityTab = ({
                       boxShadow: duplicatesTab === 'contacts' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
                     }}
                   >
-                    Contacts ({duplicateContacts.length})
+                    Contacts ({dedupedContacts.length})
                   </button>
                   <button
                     onClick={() => setDuplicatesTab('companies')}
@@ -1141,14 +1321,14 @@ const DataIntegrityTab = ({
                       boxShadow: duplicatesTab === 'companies' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
                     }}
                   >
-                    Companies ({duplicateCompanies.length})
+                    Companies ({dedupedCompanies.length})
                   </button>
                 </div>
 
                 {/* Contacts Tab Content */}
                 {duplicatesTab === 'contacts' && (
                   <>
-                    {duplicateContacts.length === 0 ? (
+                    {dedupedContacts.length === 0 ? (
                       <div style={{
                         textAlign: 'center',
                         padding: '16px',
@@ -1158,7 +1338,7 @@ const DataIntegrityTab = ({
                         No duplicate contacts
                       </div>
                     ) : (
-                      duplicateContacts.map((rawItem, idx) => {
+                      dedupedContacts.map((rawItem, idx) => {
                         const item = getSwappedItem(rawItem);
                         return (
                         <div key={rawItem.id || idx} style={{
@@ -1168,7 +1348,7 @@ const DataIntegrityTab = ({
                           marginBottom: '6px',
                           border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
                         }}>
-                          {/* Header with match type badge */}
+                          {/* Header with match type badges */}
                           <div style={{
                             display: 'flex',
                             justifyContent: 'space-between',
@@ -1182,16 +1362,20 @@ const DataIntegrityTab = ({
                             }}>
                               Duplicate Contact Pair
                             </div>
-                            <div style={{
-                              fontSize: '10px',
-                              padding: '2px 6px',
-                              background: rawItem.match_type === 'email' ? '#EF4444' : rawItem.match_type === 'domain' ? '#F59E0B' : '#8B5CF6',
-                              color: 'white',
-                              borderRadius: '4px',
-                              fontWeight: 500,
-                              textTransform: 'uppercase'
-                            }}>
-                              {rawItem.match_type}
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              {(rawItem.matchTypes || [rawItem.match_type]).map((mt, i) => (
+                                <div key={i} style={{
+                                  fontSize: '10px',
+                                  padding: '2px 6px',
+                                  background: mt === 'email' ? '#EF4444' : mt === 'domain' ? '#F59E0B' : '#8B5CF6',
+                                  color: 'white',
+                                  borderRadius: '4px',
+                                  fontWeight: 500,
+                                  textTransform: 'uppercase'
+                                }}>
+                                  {mt}
+                                </div>
+                              ))}
                             </div>
                           </div>
                           {/* Source contact - will be KEPT */}
@@ -1353,7 +1537,7 @@ const DataIntegrityTab = ({
                 {/* Companies Tab Content */}
                 {duplicatesTab === 'companies' && (
                   <>
-                    {duplicateCompanies.length === 0 ? (
+                    {dedupedCompanies.length === 0 ? (
                       <div style={{
                         textAlign: 'center',
                         padding: '16px',
@@ -1363,7 +1547,7 @@ const DataIntegrityTab = ({
                         No duplicate companies
                       </div>
                     ) : (
-                      duplicateCompanies.map((rawItem, idx) => {
+                      dedupedCompanies.map((rawItem, idx) => {
                         const item = getSwappedItem(rawItem);
                         return (
                         <div key={rawItem.id || idx} style={{
@@ -1373,7 +1557,7 @@ const DataIntegrityTab = ({
                           marginBottom: '6px',
                           border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
                         }}>
-                          {/* Header with match type badge */}
+                          {/* Header with match type badges */}
                           <div style={{
                             display: 'flex',
                             justifyContent: 'space-between',
@@ -1387,16 +1571,20 @@ const DataIntegrityTab = ({
                             }}>
                               Duplicate Company Pair
                             </div>
-                            <div style={{
-                              fontSize: '10px',
-                              padding: '2px 6px',
-                              background: rawItem.match_type === 'domain' ? '#EF4444' : rawItem.match_type === 'email' ? '#F59E0B' : '#8B5CF6',
-                              color: 'white',
-                              borderRadius: '4px',
-                              fontWeight: 500,
-                              textTransform: 'uppercase'
-                            }}>
-                              {rawItem.match_type}
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              {(rawItem.matchTypes || [rawItem.match_type]).map((mt, i) => (
+                                <div key={i} style={{
+                                  fontSize: '10px',
+                                  padding: '2px 6px',
+                                  background: mt === 'domain' ? '#EF4444' : mt === 'email' ? '#F59E0B' : '#8B5CF6',
+                                  color: 'white',
+                                  borderRadius: '4px',
+                                  fontWeight: 500,
+                                  textTransform: 'uppercase'
+                                }}>
+                                  {mt}
+                                </div>
+                              ))}
                             </div>
                           </div>
                           {/* Source company - will be KEPT */}
@@ -1749,8 +1937,7 @@ const DataIntegrityTab = ({
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          setDataIntegrityContactId(contact.contact_id);
-                          setDataIntegrityModalOpen(true);
+                          handleLinkContactToCompanyByDomain(contact);
                         }}
                         style={{
                           padding: '4px 12px',
@@ -1765,7 +1952,7 @@ const DataIntegrityTab = ({
                           flexShrink: 0
                         }}
                       >
-                        Add Company
+                        Link Company
                       </button>
                     </div>
                   ))}

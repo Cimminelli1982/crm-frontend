@@ -1365,7 +1365,10 @@ async def whatsapp_webhook(request: Request):
         # Only for non-group chats and received messages
         chat_id_str = str(chat.get('chat_id')) if chat.get('chat_id') else None
         is_group = chat.get('is_group', False)
+        logger.info("auto_fetch_check", phone=contact_phone, chat_id=chat_id_str,
+                   is_group=is_group, direction=direction)
         if contact_phone and chat_id_str and not is_group and direction == 'received':
+            logger.info("auto_fetch_triggering", phone=contact_phone, chat_id=chat_id_str)
             import asyncio
             asyncio.create_task(auto_fetch_whatsapp_profile_image(contact_phone, chat_id_str))
 
@@ -1702,8 +1705,30 @@ async def auto_fetch_whatsapp_profile_image(contact_phone: str, chat_id: str):
 
         # Check if contact already has a profile image
         existing_image = contact_info.get("profile_image_url")
+        should_try_fetch = True
+
         if existing_image:
-            logger.info("auto_fetch_profile_image_already_has_image", contact_id=contact_id)
+            # Check if existing image might be a placeholder (small file size)
+            # by making a HEAD request to check content-length
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as check_client:
+                    head_resp = await check_client.head(existing_image)
+                    if head_resp.status_code == 200:
+                        content_length = int(head_resp.headers.get("content-length", 0))
+                        # If image is larger than 10KB, it's probably a real photo
+                        if content_length > 10000:
+                            logger.info("auto_fetch_profile_image_already_has_good_image",
+                                       contact_id=contact_id, size=content_length)
+                            should_try_fetch = False
+                        else:
+                            logger.info("auto_fetch_profile_image_existing_is_placeholder",
+                                       contact_id=contact_id, size=content_length)
+                            # Will try to fetch a better image
+            except Exception as check_error:
+                logger.warning("auto_fetch_profile_image_check_existing_failed", error=str(check_error))
+                should_try_fetch = False  # Don't overwrite if we can't verify
+
+        if not should_try_fetch:
             return
 
         # Get Timelines API key
@@ -1752,6 +1777,15 @@ async def auto_fetch_whatsapp_profile_image(contact_phone: str, chat_id: str):
 
             image_content = image_response.content
             content_type = image_response.headers.get("content-type", "image/jpeg")
+
+            # Skip if image is too small (likely a placeholder/default avatar)
+            image_size = len(image_content)
+            if image_size < 10000:  # Less than 10KB
+                logger.info("auto_fetch_profile_image_skipped_placeholder",
+                           contact_id=contact_id, size=image_size, url=profile_image_url)
+                return
+
+            logger.info("auto_fetch_profile_image_good_size", contact_id=contact_id, size=image_size)
 
             # Determine file extension
             ext = "jpg"

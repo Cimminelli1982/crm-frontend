@@ -80,6 +80,33 @@ const ActionButton = styled.button`
   }
 `;
 
+const DismissButton = styled.button`
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  color: white;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 4px;
+  padding: 0;
+  transition: all 0.2s ease;
+  vertical-align: middle;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.35);
+    transform: scale(1.1);
+  }
+
+  svg {
+    width: 12px;
+    height: 12px;
+  }
+`;
+
 const CloseButton = styled.button`
   background: none;
   border: none;
@@ -112,6 +139,7 @@ const NotificationBar = ({
   theme = 'light',
   contacts = [],
   onContactClick,
+  onDismissBirthday,
   notificationType = 'general'
 }) => {
   const [isVisible, setIsVisible] = useState(visible);
@@ -162,6 +190,17 @@ const NotificationBar = ({
               >
                 {contact.first_name}{contact.last_name ? ` ${contact.last_name}` : ''}
               </ContactLink>
+              <DismissButton
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onDismissBirthday) onDismissBirthday(contact.contact_id);
+                }}
+                title="Dismiss this birthday notification"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </DismissButton>
               {index < contacts.length - 1 && ', '}
             </span>
           ))}

@@ -161,6 +161,51 @@ const CRMAppContent = () => {
     setNotification(prev => ({ ...prev, visible: false }));
   };
 
+  // Get today's date key for localStorage (format: YYYY-MM-DD)
+  const getTodayKey = () => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  };
+
+  // Get dismissed birthday contact IDs for today
+  const getDismissedBirthdays = () => {
+    const todayKey = getTodayKey();
+    const stored = localStorage.getItem('crm-dismissed-birthdays');
+    if (!stored) return [];
+    try {
+      const data = JSON.parse(stored);
+      // Only return IDs if they're from today, otherwise clear old data
+      if (data.date === todayKey) {
+        return data.contactIds || [];
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  };
+
+  // Dismiss a birthday notification
+  const handleDismissBirthday = (contactId) => {
+    const todayKey = getTodayKey();
+    const dismissed = getDismissedBirthdays();
+    const newDismissed = [...dismissed, contactId];
+
+    // Save to localStorage
+    localStorage.setItem('crm-dismissed-birthdays', JSON.stringify({
+      date: todayKey,
+      contactIds: newDismissed
+    }));
+
+    // Update notification - filter out dismissed contact
+    setNotification(prev => {
+      const remainingContacts = (prev.contacts || []).filter(c => c.contact_id !== contactId);
+      if (remainingContacts.length === 0) {
+        return { ...prev, visible: false, contacts: [] };
+      }
+      return { ...prev, contacts: remainingContacts };
+    });
+  };
+
   const fetchTodayBirthdays = async () => {
     try {
       const today = new Date();
@@ -185,14 +230,20 @@ const CRMAppContent = () => {
         return contactMonth === month && contactDay === day;
       });
 
-      setBirthdayContacts(todayBirthdays);
+      // Filter out already dismissed birthdays
+      const dismissedIds = getDismissedBirthdays();
+      const filteredBirthdays = todayBirthdays.filter(
+        contact => !dismissedIds.includes(contact.contact_id)
+      );
 
-      if (todayBirthdays.length > 0) {
+      setBirthdayContacts(filteredBirthdays);
+
+      if (filteredBirthdays.length > 0) {
         setNotification({
           message: '',
           type: 'success',
           visible: true,
-          contacts: todayBirthdays,
+          contacts: filteredBirthdays,
           notificationType: 'birthday'
         });
         // Auto-hide after 8 seconds
@@ -257,6 +308,7 @@ const CRMAppContent = () => {
           theme={theme}
           contacts={notification.contacts}
           onContactClick={(contactId) => navigate(`/contact/${contactId}`)}
+          onDismissBirthday={handleDismissBirthday}
           notificationType={notification.notificationType}
         />
         <PageContainer>
