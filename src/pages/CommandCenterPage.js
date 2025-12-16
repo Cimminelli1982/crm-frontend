@@ -85,7 +85,7 @@ import {
   SendButton,
   CancelButton
 } from './CommandCenterPage.styles';
-import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag } from 'react-icons/fa';
+import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import QuickEditModal from '../components/QuickEditModalRefactored';
@@ -160,6 +160,24 @@ const CommandCenterPage = ({ theme }) => {
   const [whatsappChats, setWhatsappChats] = useState([]); // Grouped by chat_id
   const [selectedWhatsappChat, setSelectedWhatsappChat] = useState(null);
   const [whatsappLoading, setWhatsappLoading] = useState(false);
+
+  // Expanded sections state for left panel (inbox, need_actions, waiting_input)
+  const [statusSections, setStatusSections] = useState({
+    inbox: true,
+    need_actions: false,
+    waiting_input: false
+  });
+
+  // Toggle section expansion
+  const toggleStatusSection = (section) => {
+    setStatusSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  // Filter threads/chats by status
+  const filterByStatus = (items, status) => {
+    if (status === 'inbox') return items.filter(item => !item.status);
+    return items.filter(item => item.status === status);
+  };
 
   // Email compose hook (will set onSendSuccess via ref after saveAndArchive is defined)
   const saveAndArchiveRef = useRef(null);
@@ -644,13 +662,15 @@ const CommandCenterPage = ({ theme }) => {
           contact_number: msg.contact_number,
           is_group_chat: msg.is_group_chat,
           messages: [],
-          latestMessage: msg
+          latestMessage: msg,
+          status: msg.status || null
         };
       }
       chatMap[chatId].messages.push(msg);
       // Update latest message if this one is newer
       if (new Date(msg.date) > new Date(chatMap[chatId].latestMessage.date)) {
         chatMap[chatId].latestMessage = msg;
+        chatMap[chatId].status = msg.status || null;
       }
     });
     // Convert to array and sort by latest message date
@@ -1622,10 +1642,11 @@ const CommandCenterPage = ({ theme }) => {
       // MISSING COMPANY LINK
       const missingLinkIssues = issues.filter(i => i.issue_type === 'missing_company_link');
       setMissingCompanyLinks(missingLinkIssues.map(i => ({
+        id: i.id, // Include issue ID for marking as resolved
         contact_id: i.entity_id,
         contact_name: i.name,
         email: i.email,
-        company_id: i.details?.company_id,
+        company_id: i.details?.company_id || i.duplicate_entity_id,
         company_name: i.details?.company_name,
         domain: i.domain
       })));
@@ -1803,7 +1824,33 @@ const CommandCenterPage = ({ theme }) => {
   };
 
   // Called when link is successful in LinkToExisting modal
-  const handleLinkSuccess = () => {
+  const handleLinkSuccess = async () => {
+    // Mark data_integrity_inbox issue as resolved
+    if (linkToExistingEntityType === 'company' && linkToExistingItemData?.domain) {
+      await supabase
+        .from('data_integrity_inbox')
+        .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+        .eq('domain', linkToExistingItemData.domain)
+        .eq('issue_type', 'not_in_crm')
+        .eq('entity_type', 'company')
+        .eq('status', 'pending');
+    } else if (linkToExistingItemData?.email || linkToExistingItemData?.mobile) {
+      // For contacts, mark by email or mobile
+      let query = supabase
+        .from('data_integrity_inbox')
+        .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+        .eq('issue_type', 'not_in_crm')
+        .eq('entity_type', 'contact')
+        .eq('status', 'pending');
+
+      if (linkToExistingItemData.email) {
+        query = query.eq('email', linkToExistingItemData.email);
+      } else if (linkToExistingItemData.mobile) {
+        query = query.eq('mobile', linkToExistingItemData.mobile);
+      }
+      await query;
+    }
+
     fetchDataIntegrity();
     // Remove item from local state
     if (linkToExistingEntityType === 'company') {
@@ -2017,6 +2064,47 @@ const CommandCenterPage = ({ theme }) => {
   // Handler to link contact to company (for missing company links)
   const handleLinkContactToCompany = async (item) => {
     try {
+      // First, lookup the current company by domain (in case original was merged)
+      let companyId = item.company_id;
+      let companyName = item.company_name;
+
+      if (item.domain) {
+        const { data: domainLookup } = await supabase
+          .from('company_domains')
+          .select('company_id, companies(name)')
+          .eq('domain', item.domain.toLowerCase())
+          .single();
+
+        if (domainLookup) {
+          companyId = domainLookup.company_id;
+          companyName = domainLookup.companies?.name || companyName;
+        }
+      }
+
+      // Check if already linked to this company
+      const { data: existingLink } = await supabase
+        .from('contact_companies')
+        .select('contact_companies_id')
+        .eq('contact_id', item.contact_id)
+        .eq('company_id', companyId)
+        .single();
+
+      if (existingLink) {
+        // Mark as resolved since it's already linked
+        if (item.id) {
+          await supabase
+            .from('data_integrity_inbox')
+            .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+            .eq('id', item.id);
+        }
+        toast.success(`${item.contact_name} is already linked to ${companyName}`);
+        // Remove from list since it's resolved
+        setMissingCompanyLinks(prev =>
+          prev.filter(link => link.contact_id !== item.contact_id || link.domain !== item.domain)
+        );
+        return;
+      }
+
       // Check if contact already has a primary company
       const { data: existingPrimary } = await supabase
         .from('contact_companies')
@@ -2030,36 +2118,9 @@ const CommandCenterPage = ({ theme }) => {
         .from('contact_companies')
         .insert({
           contact_id: item.contact_id,
-          company_id: item.company_id,
+          company_id: companyId,
           is_primary: !existingPrimary, // Primary if no existing primary
           relationship: 'not_set'
-        });
-
-      if (error) throw error;
-
-      // Remove from the list
-      setMissingCompanyLinks(prev =>
-        prev.filter(link =>
-          !(link.contact_id === item.contact_id && link.company_id === item.company_id)
-        )
-      );
-
-      toast.success(`${item.contact_name} linked to ${item.company_name}`);
-    } catch (error) {
-      console.error('Error linking contact to company:', error);
-      toast.error('Failed to link contact to company');
-    }
-  };
-
-  // Handle linking a domain to an existing company (potential_company_match)
-  const handleLinkDomainToCompany = async (item) => {
-    try {
-      // Insert the domain into company_domains
-      const { error } = await supabase
-        .from('company_domains')
-        .insert({
-          company_id: item.matched_company_id,
-          domain: item.domain
         });
 
       if (error) throw error;
@@ -2073,11 +2134,55 @@ const CommandCenterPage = ({ theme }) => {
       }
 
       // Remove from the list
-      setPotentialCompanyMatches(prev =>
-        prev.filter(match => match.id !== item.id)
+      setMissingCompanyLinks(prev =>
+        prev.filter(link => link.contact_id !== item.contact_id || link.domain !== item.domain)
       );
 
-      toast.success(`Domain ${item.domain} linked to ${item.matched_company_name}`);
+      toast.success(`${item.contact_name} linked to ${companyName}`);
+    } catch (error) {
+      console.error('Error linking contact to company:', error);
+      toast.error('Failed to link contact to company');
+    }
+  };
+
+  // Handle linking a domain to an existing company (potential_company_match)
+  const handleLinkDomainToCompany = async (item) => {
+    try {
+      // Check if domain already exists
+      const { data: existingDomain } = await supabase
+        .from('company_domains')
+        .select('company_id, companies(name)')
+        .eq('domain', item.domain.toLowerCase())
+        .single();
+
+      if (existingDomain) {
+        // Domain already linked - just resolve the issues
+        toast.success(`Domain ${item.domain} already linked to ${existingDomain.companies?.name || 'company'}`);
+      } else {
+        // Insert the domain into company_domains
+        const { error } = await supabase
+          .from('company_domains')
+          .insert({
+            company_id: item.matched_company_id,
+            domain: item.domain.toLowerCase()
+          });
+
+        if (error) throw error;
+        toast.success(`Domain ${item.domain} linked to ${item.matched_company_name}`);
+      }
+
+      // Mark ALL potential_company_match issues with this domain as resolved (not just clicked one)
+      await supabase
+        .from('data_integrity_inbox')
+        .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+        .eq('issue_type', 'potential_company_match')
+        .eq('domain', item.domain.toLowerCase())
+        .eq('status', 'pending');
+
+      // Remove ALL matches with this domain from local state
+      setPotentialCompanyMatches(prev =>
+        prev.filter(match => match.domain?.toLowerCase() !== item.domain?.toLowerCase())
+      );
     } catch (error) {
       console.error('Error linking domain to company:', error);
       toast.error('Failed to link domain to company');
@@ -2087,17 +2192,17 @@ const CommandCenterPage = ({ theme }) => {
   // Handle dismissing a potential company match
   const handleDismissPotentialMatch = async (item) => {
     try {
-      // Mark the data_integrity_inbox issue as dismissed
-      if (item.id) {
-        await supabase
-          .from('data_integrity_inbox')
-          .update({ status: 'dismissed', resolved_at: new Date().toISOString() })
-          .eq('id', item.id);
-      }
+      // Mark ALL potential_company_match issues with this domain as dismissed
+      await supabase
+        .from('data_integrity_inbox')
+        .update({ status: 'dismissed', resolved_at: new Date().toISOString() })
+        .eq('issue_type', 'potential_company_match')
+        .eq('domain', item.domain.toLowerCase())
+        .eq('status', 'pending');
 
-      // Remove from the list
+      // Remove ALL matches with this domain from local state
       setPotentialCompanyMatches(prev =>
-        prev.filter(match => match.id !== item.id)
+        prev.filter(match => match.domain?.toLowerCase() !== item.domain?.toLowerCase())
       );
 
       toast.success('Match dismissed');
@@ -2281,20 +2386,19 @@ const CommandCenterPage = ({ theme }) => {
         }
       }
 
-      // Delete from duplicates_inbox if it was backend-detected (has real UUID id)
-      if (item.detection_source === 'backend' && item.id) {
-        await supabase
-          .from('duplicates_inbox')
-          .delete()
-          .eq('id', item.id);
+      // Delete from duplicates_inbox (both directions of the pair)
+      await supabase
+        .from('duplicates_inbox')
+        .delete()
+        .eq('entity_type', item.entity_type)
+        .or(`and(source_id.eq.${item.source_id},duplicate_id.eq.${item.duplicate_id}),and(source_id.eq.${item.duplicate_id},duplicate_id.eq.${item.source_id})`);
 
-        // Also delete inverse pair
+      // Update data_integrity_inbox to mark as dismissed
+      if (item.id) {
         await supabase
-          .from('duplicates_inbox')
-          .delete()
-          .eq('entity_type', item.entity_type)
-          .eq('source_id', item.duplicate_id)
-          .eq('duplicate_id', item.source_id);
+          .from('data_integrity_inbox')
+          .update({ status: 'dismissed', resolved_at: new Date().toISOString() })
+          .eq('id', item.id);
       }
 
       // Remove from local state
@@ -2380,19 +2484,12 @@ const CommandCenterPage = ({ theme }) => {
         return;
       }
 
-      // Delete from decision queue (no longer needs review)
-      // Only if it came from duplicates_inbox (has id), not from frontend detection
-      if (item.id) {
-        const { error: deleteError } = await supabase
-          .from('duplicates_inbox')
-          .delete()
-          .eq('id', item.id);
-
-        if (deleteError) {
-          console.error('Failed to delete from inbox:', deleteError);
-          // Don't return - merge was initiated, just log the error
-        }
-      }
+      // Delete from duplicates_inbox (both directions of the pair)
+      await supabase
+        .from('duplicates_inbox')
+        .delete()
+        .eq('entity_type', item.entity_type)
+        .or(`and(source_id.eq.${item.source_id},duplicate_id.eq.${item.duplicate_id}),and(source_id.eq.${item.duplicate_id},duplicate_id.eq.${item.source_id})`);
 
       fetchDataIntegrity(); // Refresh the list
 
@@ -4101,6 +4198,45 @@ const CommandCenterPage = ({ theme }) => {
   // Set the ref for the compose hook callback
   saveAndArchiveRef.current = saveAndArchive;
 
+  // Update status of selected thread/chat (for Need Actions / Waiting Input)
+  const updateItemStatus = async (newStatus) => {
+    if (activeTab === 'email' && selectedThread?.length > 0) {
+      const ids = selectedThread.map(e => e.id);
+      const { error } = await supabase
+        .from('command_center_inbox')
+        .update({ status: newStatus })
+        .in('id', ids);
+
+      if (error) {
+        toast.error('Failed to update status');
+        console.error('Error updating status:', error);
+      } else {
+        toast.success(`Moved to ${newStatus === 'need_actions' ? 'Need Actions' : 'Waiting Input'}`);
+        // Refresh threads to reflect new status
+        refreshThreads();
+      }
+    } else if (activeTab === 'whatsapp' && selectedWhatsappChat) {
+      const ids = selectedWhatsappChat.messages.map(m => m.id);
+      const { error } = await supabase
+        .from('command_center_inbox')
+        .update({ status: newStatus })
+        .in('id', ids);
+
+      if (error) {
+        toast.error('Failed to update status');
+        console.error('Error updating status:', error);
+      } else {
+        toast.success(`Moved to ${newStatus === 'need_actions' ? 'Need Actions' : 'Waiting Input'}`);
+        // Refresh WhatsApp chats
+        setWhatsappChats(prev => prev.map(chat =>
+          chat.chat_id === selectedWhatsappChat.chat_id
+            ? { ...chat, status: newStatus }
+            : chat
+        ));
+      }
+    }
+  };
+
   // Handle WhatsApp Done - save messages to CRM and remove from staging
   const handleWhatsAppDone = async () => {
     if (!selectedWhatsappChat) return;
@@ -4724,49 +4860,185 @@ const CommandCenterPage = ({ theme }) => {
         {/* Left: Email List */}
         <EmailListPanel theme={theme} $collapsed={listCollapsed}>
           <ListHeader theme={theme}>
-            {!listCollapsed && <span>Inbox</span>}
+            {!listCollapsed && <span>Messages</span>}
             <CollapseButton theme={theme} onClick={() => setListCollapsed(!listCollapsed)}>
               {listCollapsed ? <FaChevronRight /> : <FaChevronLeft />}
             </CollapseButton>
           </ListHeader>
 
-          {!listCollapsed && activeTab === 'email' && (
-            <EmailList>
-              {threadsLoading ? (
+          {!listCollapsed && (activeTab === 'email' || activeTab === 'whatsapp') && (
+            <EmailList style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+              {threadsLoading || whatsappLoading ? (
                 <EmptyState theme={theme}>Loading...</EmptyState>
-              ) : threads.length === 0 ? (
-                <EmptyState theme={theme}></EmptyState>
               ) : (
-                threads.map(thread => (
-                  <EmailItem
-                    key={thread.threadId}
-                    theme={theme}
-                    $selected={selectedThread?.[0]?.thread_id === thread.threadId || selectedThread?.[0]?.id === thread.threadId}
-                    onClick={() => handleSelectThread(thread.emails)}
+                <>
+                  {/* Inbox Section (null status) */}
+                  <div
+                    onClick={() => toggleStatusSection('inbox')}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      backgroundColor: theme === 'dark' ? '#1f2937' : '#f3f4f6',
+                      borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`,
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 1
+                    }}
                   >
-                    <EmailSender theme={theme}>
-                      {thread.emails.some(e => e.is_read === false) && <EmailUnreadDot />}
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {getRelevantPerson(thread.latestEmail)}
-                      </span>
-                      {thread.count > 1 && <span style={{ opacity: 0.6, flexShrink: 0 }}>({thread.count})</span>}
-                    </EmailSender>
-                    <EmailSubject theme={theme}>{thread.latestEmail.subject}</EmailSubject>
-                    <EmailSnippet theme={theme}>{thread.latestEmail.snippet}</EmailSnippet>
-                  </EmailItem>
-                ))
+                    <FaChevronDown style={{ transform: statusSections.inbox ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', fontSize: '10px' }} />
+                    <span>Inbox</span>
+                    <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: '12px' }}>
+                      {activeTab === 'email' ? filterByStatus(threads, 'inbox').length : filterByStatus(whatsappChats, 'inbox').length}
+                    </span>
+                  </div>
+                  {statusSections.inbox && (
+                    activeTab === 'email' ? (
+                      filterByStatus(threads, 'inbox').map(thread => (
+                        <EmailItem
+                          key={thread.threadId}
+                          theme={theme}
+                          $selected={selectedThread?.[0]?.thread_id === thread.threadId || selectedThread?.[0]?.id === thread.threadId}
+                          onClick={() => handleSelectThread(thread.emails)}
+                        >
+                          <EmailSender theme={theme}>
+                            {thread.emails.some(e => e.is_read === false) && <EmailUnreadDot />}
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {getRelevantPerson(thread.latestEmail)}
+                            </span>
+                            {thread.count > 1 && <span style={{ opacity: 0.6, flexShrink: 0 }}>({thread.count})</span>}
+                          </EmailSender>
+                          <EmailSubject theme={theme}>{thread.latestEmail.subject}</EmailSubject>
+                          <EmailSnippet theme={theme}>{thread.latestEmail.snippet}</EmailSnippet>
+                        </EmailItem>
+                      ))
+                    ) : (
+                      <WhatsAppChatList
+                        theme={theme}
+                        chats={filterByStatus(whatsappChats, 'inbox')}
+                        selectedChat={selectedWhatsappChat}
+                        onSelectChat={setSelectedWhatsappChat}
+                        loading={false}
+                      />
+                    )
+                  )}
+
+                  {/* Need Actions Section */}
+                  <div
+                    onClick={() => toggleStatusSection('need_actions')}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      backgroundColor: theme === 'dark' ? '#1f2937' : '#f3f4f6',
+                      borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`,
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 1
+                    }}
+                  >
+                    <FaChevronDown style={{ transform: statusSections.need_actions ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', fontSize: '10px' }} />
+                    <span>Need Actions</span>
+                    <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: '12px' }}>
+                      {activeTab === 'email' ? filterByStatus(threads, 'need_actions').length : filterByStatus(whatsappChats, 'need_actions').length}
+                    </span>
+                  </div>
+                  {statusSections.need_actions && (
+                    activeTab === 'email' ? (
+                      filterByStatus(threads, 'need_actions').map(thread => (
+                        <EmailItem
+                          key={thread.threadId}
+                          theme={theme}
+                          $selected={selectedThread?.[0]?.thread_id === thread.threadId || selectedThread?.[0]?.id === thread.threadId}
+                          onClick={() => handleSelectThread(thread.emails)}
+                        >
+                          <EmailSender theme={theme}>
+                            {thread.emails.some(e => e.is_read === false) && <EmailUnreadDot />}
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {getRelevantPerson(thread.latestEmail)}
+                            </span>
+                            {thread.count > 1 && <span style={{ opacity: 0.6, flexShrink: 0 }}>({thread.count})</span>}
+                          </EmailSender>
+                          <EmailSubject theme={theme}>{thread.latestEmail.subject}</EmailSubject>
+                          <EmailSnippet theme={theme}>{thread.latestEmail.snippet}</EmailSnippet>
+                        </EmailItem>
+                      ))
+                    ) : (
+                      <WhatsAppChatList
+                        theme={theme}
+                        chats={filterByStatus(whatsappChats, 'need_actions')}
+                        selectedChat={selectedWhatsappChat}
+                        onSelectChat={setSelectedWhatsappChat}
+                        loading={false}
+                      />
+                    )
+                  )}
+
+                  {/* Waiting Input Section */}
+                  <div
+                    onClick={() => toggleStatusSection('waiting_input')}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      backgroundColor: theme === 'dark' ? '#1f2937' : '#f3f4f6',
+                      borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`,
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 1
+                    }}
+                  >
+                    <FaChevronDown style={{ transform: statusSections.waiting_input ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', fontSize: '10px' }} />
+                    <span>Waiting Input</span>
+                    <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: '12px' }}>
+                      {activeTab === 'email' ? filterByStatus(threads, 'waiting_input').length : filterByStatus(whatsappChats, 'waiting_input').length}
+                    </span>
+                  </div>
+                  {statusSections.waiting_input && (
+                    activeTab === 'email' ? (
+                      filterByStatus(threads, 'waiting_input').map(thread => (
+                        <EmailItem
+                          key={thread.threadId}
+                          theme={theme}
+                          $selected={selectedThread?.[0]?.thread_id === thread.threadId || selectedThread?.[0]?.id === thread.threadId}
+                          onClick={() => handleSelectThread(thread.emails)}
+                        >
+                          <EmailSender theme={theme}>
+                            {thread.emails.some(e => e.is_read === false) && <EmailUnreadDot />}
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {getRelevantPerson(thread.latestEmail)}
+                            </span>
+                            {thread.count > 1 && <span style={{ opacity: 0.6, flexShrink: 0 }}>({thread.count})</span>}
+                          </EmailSender>
+                          <EmailSubject theme={theme}>{thread.latestEmail.subject}</EmailSubject>
+                          <EmailSnippet theme={theme}>{thread.latestEmail.snippet}</EmailSnippet>
+                        </EmailItem>
+                      ))
+                    ) : (
+                      <WhatsAppChatList
+                        theme={theme}
+                        chats={filterByStatus(whatsappChats, 'waiting_input')}
+                        selectedChat={selectedWhatsappChat}
+                        onSelectChat={setSelectedWhatsappChat}
+                        loading={false}
+                      />
+                    )
+                  )}
+                </>
               )}
             </EmailList>
-          )}
-
-          {!listCollapsed && activeTab === 'whatsapp' && (
-            <WhatsAppChatList
-              theme={theme}
-              chats={whatsappChats}
-              selectedChat={selectedWhatsappChat}
-              onSelectChat={setSelectedWhatsappChat}
-              loading={whatsappLoading}
-            />
           )}
 
           {!listCollapsed && activeTab === 'email' && threads.length > 0 && (
@@ -4864,6 +5136,7 @@ const CommandCenterPage = ({ theme }) => {
               theme={theme}
               selectedChat={selectedWhatsappChat}
               onDone={handleWhatsAppDone}
+              onStatusChange={updateItemStatus}
               saving={saving}
             />
           ) : activeTab === 'calendar' ? (
@@ -5034,56 +5307,91 @@ const CommandCenterPage = ({ theme }) => {
                   {selectedThread[0].subject?.replace(/^(Re: |Fwd: )+/i, '')}
                   {selectedThread.length > 1 && <span style={{ opacity: 0.6, marginLeft: '8px' }}>({selectedThread.length} messages)</span>}
                 </EmailSubjectFull>
-                <button
-                  onClick={handleDoneClick}
-                  disabled={saving}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '8px 16px',
-                    borderRadius: '8px',
-                    border: 'none',
-                    background: saving
-                      ? (theme === 'light' ? '#9CA3AF' : '#6B7280')
-                      : (theme === 'light' ? '#10B981' : '#059669'),
-                    color: 'white',
-                    cursor: saving ? 'not-allowed' : 'pointer',
-                    fontWeight: 500,
-                    fontSize: '14px',
-                    transition: 'all 0.2s ease',
-                    opacity: saving ? 0.7 : 1,
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!saving) {
-                      e.target.style.background = theme === 'light' ? '#059669' : '#047857';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!saving) {
-                      e.target.style.background = theme === 'light' ? '#10B981' : '#059669';
-                    }
-                  }}
-                >
-                  {saving ? (
-                    <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {/* Need Actions */}
+                  <button
+                    onClick={() => updateItemStatus('need_actions')}
+                    disabled={saving}
+                    title="Need Actions"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: theme === 'light' ? '#FEF3C7' : '#78350F',
+                      cursor: saving ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.2s ease',
+                      opacity: saving ? 0.5 : 1,
+                      fontSize: '16px',
+                    }}
+                  >
+                    ❗
+                  </button>
+
+                  {/* Waiting Input */}
+                  <button
+                    onClick={() => updateItemStatus('waiting_input')}
+                    disabled={saving}
+                    title="Waiting Input"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: theme === 'light' ? '#DBEAFE' : '#1E3A8A',
+                      cursor: saving ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.2s ease',
+                      opacity: saving ? 0.5 : 1,
+                      fontSize: '16px',
+                    }}
+                  >
+                    👀
+                  </button>
+
+                  {/* Done */}
+                  <button
+                    onClick={handleDoneClick}
+                    disabled={saving}
+                    title="Done"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: saving
+                        ? (theme === 'light' ? '#9CA3AF' : '#6B7280')
+                        : (theme === 'light' ? '#D1FAE5' : '#065F46'),
+                      color: saving
+                        ? 'white'
+                        : (theme === 'light' ? '#059669' : '#6EE7B7'),
+                      cursor: saving ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.2s ease',
+                      opacity: saving ? 0.7 : 1,
+                    }}
+                  >
+                    {saving ? (
                       <span style={{
                         width: '14px',
                         height: '14px',
-                        border: '2px solid white',
+                        border: '2px solid currentColor',
                         borderTopColor: 'transparent',
                         borderRadius: '50%',
                         animation: 'spin 1s linear infinite'
                       }} />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <FaArchive size={14} />
-                      Done
-                    </>
-                  )}
-                </button>
+                    ) : (
+                      <FaCheck size={16} />
+                    )}
+                  </button>
+                </div>
               </div>
 
               {/* All messages in thread */}
@@ -7060,6 +7368,8 @@ const CommandCenterPage = ({ theme }) => {
         isOpen={createDealAIOpen}
         onClose={() => setCreateDealAIOpen(false)}
         email={selectedThread?.[0] || null}
+        whatsappChat={selectedWhatsappChat}
+        sourceType={activeTab}
         theme={theme}
         onSuccess={(newDeal) => {
           // Refresh deals list

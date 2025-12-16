@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FaUsers, FaArchive, FaCheck, FaCheckDouble, FaPaperPlane, FaClock, FaPaperclip, FaTimes, FaFile, FaImage } from 'react-icons/fa';
+import { FaUsers, FaArchive, FaCheck, FaCheckDouble, FaPaperPlane, FaClock, FaPaperclip, FaTimes, FaFile, FaImage, FaBolt } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
 import toast from 'react-hot-toast';
@@ -748,6 +748,7 @@ const WhatsAppTab = ({
   theme,
   selectedChat,
   onDone,
+  onStatusChange,
   saving,
   onMessageSent
 }) => {
@@ -1142,14 +1143,91 @@ const WhatsAppTab = ({
             <ChatNumber theme={theme}>{selectedChat.contact_number}</ChatNumber>
           </div>
         </ChatHeaderInfo>
-        <DoneButton theme={theme} onClick={onDone} disabled={saving}>
-          {saving ? 'Saving...' : (
-            <>
-              <FaArchive size={14} />
-              Done
-            </>
-          )}
-        </DoneButton>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Need Actions */}
+          <button
+            onClick={() => onStatusChange?.('need_actions')}
+            disabled={saving}
+            title="Need Actions"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '36px',
+              height: '36px',
+              borderRadius: '8px',
+              border: 'none',
+              background: theme === 'light' ? '#FEF3C7' : '#78350F',
+              cursor: saving ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s ease',
+              opacity: saving ? 0.5 : 1,
+              fontSize: '16px',
+            }}
+          >
+            ❗
+          </button>
+
+          {/* Waiting Input */}
+          <button
+            onClick={() => onStatusChange?.('waiting_input')}
+            disabled={saving}
+            title="Waiting Input"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '36px',
+              height: '36px',
+              borderRadius: '8px',
+              border: 'none',
+              background: theme === 'light' ? '#DBEAFE' : '#1E3A8A',
+              cursor: saving ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s ease',
+              opacity: saving ? 0.5 : 1,
+              fontSize: '16px',
+            }}
+          >
+            👀
+          </button>
+
+          {/* Done */}
+          <button
+            onClick={onDone}
+            disabled={saving}
+            title="Done"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '36px',
+              height: '36px',
+              borderRadius: '8px',
+              border: 'none',
+              background: saving
+                ? (theme === 'light' ? '#9CA3AF' : '#6B7280')
+                : (theme === 'light' ? '#D1FAE5' : '#065F46'),
+              color: saving
+                ? 'white'
+                : (theme === 'light' ? '#059669' : '#6EE7B7'),
+              cursor: saving ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s ease',
+              opacity: saving ? 0.7 : 1,
+            }}
+          >
+            {saving ? (
+              <span style={{
+                width: '14px',
+                height: '14px',
+                border: '2px solid currentColor',
+                borderTopColor: 'transparent',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite'
+              }} />
+            ) : (
+              <FaCheck size={16} />
+            )}
+          </button>
+        </div>
       </ChatHeader>
 
       <MessagesContainer theme={theme}>

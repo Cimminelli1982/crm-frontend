@@ -27,11 +27,14 @@ const useEmailThreads = (activeTab) => {
     const result = [];
     for (const [threadId, threadEmails] of threadMap) {
       threadEmails.sort((a, b) => new Date(b.date) - new Date(a.date));
+      // Thread status is determined by the latest email's status
+      const status = threadEmails[0]?.status || null;
       result.push({
         threadId,
         emails: threadEmails,
         latestEmail: threadEmails[0],
-        count: threadEmails.length
+        count: threadEmails.length,
+        status
       });
     }
 
