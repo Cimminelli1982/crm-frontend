@@ -12,12 +12,12 @@ This document explains how data flows into the CRM system through three channels
         ▼                 ▼                 ▼
    ┌─────────┐      ┌───────────┐     ┌──────────┐
    │ Fastmail│      │TimelinesAI│     │ Fastmail │
-   │  (JMAP) │      │ (Webhook) │     │  (ICS)   │
+   │  (JMAP) │      │ (Webhook) │     │ (CalDAV) │
    └────┬────┘      └─────┬─────┘     └────┬─────┘
         │                 │                 │
         ▼                 ▼                 ▼
    ┌─────────┐      ┌───────────┐     ┌──────────┐
-   │ Node.js │      │  Python   │     │  Python  │
+   │ Node.js │      │  Python   │     │  Node.js │
    │ Backend │      │  Backend  │     │  Backend │
    └────┬────┘      └─────┬─────┘     └────┬─────┘
         │                 │                 │
@@ -35,7 +35,7 @@ This document explains how data flows into the CRM system through three channels
 |---------|--------|--------|---------|-------------|-----------|
 | Email | Fastmail | PULL (60s poll) | `command-center-backend` (Node.js) | `emails_spam` + `domains_spam` | `fastmail_id` |
 | WhatsApp | TimelinesAI | PUSH (webhook) | `crm-agent-service` (Python) | `whatsapp_spam` | N/A (webhook = no dupes) |
-| Calendar | Fastmail ICS | PULL (manual) | `crm-agent-service` (Python) | None | `event_uid` |
+| Calendar | Fastmail CalDAV | PULL (60s poll) | `command-center-backend` (Node.js) | `calendar_dismissed` | `event_uid` + `etag` |
 
 ---
 
@@ -246,48 +246,72 @@ TimelinesAI format → Supabase format:
 
 ### Source
 - **Provider:** Fastmail
-- **Protocol:** ICS feed (iCalendar)
-- **Handler:** `crm-agent-service/app/main.py`
+- **Protocol:** CalDAV (with ctag/etag change detection)
+- **Handler:** `backend/src/index.js` + `backend/src/caldav.js`
+- **Calendar:** RockAndRoll (configurable in caldav.js)
 
 ### Sync Method
-- **Type:** PULL (manual trigger)
-- **Trigger:** POST `/calendar-sync` endpoint
+- **Type:** PULL (polling)
+- **Frequency:** Every 60 seconds
+- **Optimization:** ctag change detection (only syncs when calendar changes)
 
 ### Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  POST /calendar-sync triggered                                  │
+│  syncCalendar() runs every 60 seconds                           │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  1. FETCH ICS feed from Fastmail                                │
-│     URL: https://user.fm/calendar/v1-.../RockAndRoll.ics        │
+│  1. CHECK ctag (calendar version)                               │
+│     Compare: current ctag vs saved ctag                         │
+│     If unchanged: SKIP (no API calls)                           │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  2. PARSE iCalendar                                             │
-│     For each VEVENT:                                            │
-│       Extract: uid, summary, description, dtstart, dtend        │
-│       Extract: location, organizer, attendees                   │
-│       Skip: CANCELLED events                                    │
+│  2. LOAD dismissed event_uids from calendar_dismissed           │
+│     These events won't be synced (user dismissed them)          │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  3. UPSERT to command_center_inbox                              │
-│     Check: SELECT WHERE event_uid = uid                         │
-│     If exists: UPDATE                                           │
-│     If not: INSERT                                              │
+│  3. FETCH events via CalDAV REPORT                              │
+│     Time range: 3 months back → 12 months forward               │
+│     Returns: ICS data + etag per event                          │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  4. DELETE removed events                                       │
-│     Compare: current ICS uids vs DB uids                        │
-│     Delete: events no longer in ICS feed                        │
+│  4. PARSE iCalendar (VEVENT section only)                       │
+│     Extract: uid, summary, description, dtstart, dtend/duration │
+│     Extract: location (strip LANGUAGE= prefix)                  │
+│     Extract: organizer, attendees (with PARTSTAT)               │
+│     Skip: CANCELLED events                                      │
+│     Skip: DISMISSED events (uid in calendar_dismissed)          │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  5. UPSERT to command_center_inbox                              │
+│     Compare: etag to detect changes                             │
+│     If etag unchanged: SKIP                                     │
+│     If new/changed: INSERT/UPDATE                               │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  6. DELETE removed FUTURE events                                │
+│     Compare: current CalDAV uids vs DB uids                     │
+│     Delete: future events no longer in CalDAV                   │
+│     Keep: past events (for history)                             │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  7. UPDATE sync_state                                           │
+│     Save: current ctag for next comparison                      │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -296,34 +320,43 @@ TimelinesAI format → Supabase format:
 | Table | Operation | Purpose |
 |-------|-----------|---------|
 | `command_center_inbox` | SELECT/INSERT/UPDATE/DELETE | Sync events |
+| `calendar_dismissed` | SELECT | Skip dismissed events during sync |
+| `sync_state` | READ/UPDATE | Store ctag for change detection |
 
 ### Data Transformation
 
-iCalendar format → Supabase format:
+CalDAV/iCalendar format → Supabase format:
 
-```python
+```javascript
 {
-  "type": "calendar",
-  "event_uid": vevent.uid,
-  "subject": vevent.summary,
-  "body_text": vevent.description,
-  "date": vevent.dtstart,
-  "event_end": vevent.dtend,
-  "event_location": vevent.location,
-  "from_name": organizer_name,
-  "from_email": organizer_email,
-  "to_recipients": [{email, name, status}, ...]  # Attendees
+  type: "calendar",
+  event_uid: vevent.uid,
+  subject: vevent.summary,
+  body_text: vevent.description,
+  date: vevent.dtstart,
+  event_end: vevent.dtend,  // or calculated from DURATION
+  event_location: vevent.location,
+  from_name: organizer.cn,
+  from_email: organizer.email,
+  to_recipients: [{email, name, status, role, rsvp}, ...],  // Attendees
+  etag: event.etag,
+  sequence: vevent.sequence,
+  all_day: boolean,
+  recurrence_rule: vevent.rrule
 }
 ```
 
 ### Deduplication Strategy
 
-- **Supabase check:** `SELECT WHERE event_uid = uid` before insert/update
-- **Deletion:** Events removed from ICS are deleted from DB
+1. **ctag:** Calendar-level change detection (skip sync if unchanged)
+2. **etag:** Event-level change detection (skip update if unchanged)
+3. **Deletion:** Only future events removed from CalDAV are deleted
 
-### Spam Filtering
+### Dismissal (User-controlled filtering)
 
-- **None:** Calendar events come from your own calendar - you control what's there
+- **Table:** `calendar_dismissed` stores event_uids that user dismissed
+- **Behavior:** Dismissed events are skipped during sync and won't reappear
+- **Endpoint:** `POST /calendar/delete-event` adds event to dismissed table and removes from inbox
 
 ---
 
@@ -331,12 +364,13 @@ iCalendar format → Supabase format:
 
 | Aspect | Email | WhatsApp | Calendar |
 |--------|-------|----------|----------|
-| **Checks** | 3 (name, email, domain) | 1 (phone) | 0 |
-| **Tables** | `emails_spam` + `domains_spam` | `whatsapp_spam` | - |
-| **Counter** | Yes | Yes | - |
-| **Auto-add patterns** | Yes (name patterns) | No | - |
-| **Move to folder** | Yes (Skip_Email/Skip_Domain) | No | - |
-| **Wildcard** | Yes (`*@domain.com`) | No | - |
+| **Checks** | 3 (name, email, domain) | 1 (phone) | 1 (dismissed) |
+| **Tables** | `emails_spam` + `domains_spam` | `whatsapp_spam` | `calendar_dismissed` |
+| **Counter** | Yes | Yes | No |
+| **Auto-add patterns** | Yes (name patterns) | No | No |
+| **Move to folder** | Yes (Skip_Email/Skip_Domain) | No | No |
+| **Wildcard** | Yes (`*@domain.com`) | No | No |
+| **User dismiss** | No | No | Yes (via UI button) |
 
 ### How Spam Filtering Works
 
@@ -405,15 +439,16 @@ MESSAGE ARRIVES
 
 ## Environment Variables
 
-### command-center-backend (Email)
+### command-center-backend (Email + Calendar)
 ```
 FASTMAIL_USERNAME=your@email.com
 FASTMAIL_API_TOKEN=xxx
+FASTMAIL_CALDAV_PASSWORD=xxx  # App password for CalDAV
 SUPABASE_URL=https://xxx.supabase.co
 SUPABASE_SERVICE_KEY=xxx
 ```
 
-### crm-agent-service (WhatsApp + Calendar)
+### crm-agent-service (WhatsApp)
 ```
 SUPABASE_URL=https://xxx.supabase.co
 SUPABASE_SERVICE_KEY=xxx
@@ -427,7 +462,8 @@ SUPABASE_SERVICE_KEY=xxx
 |----------|------|
 | Email sync | `backend/src/index.js` (autoSync function) |
 | JMAP client | `backend/src/jmap.js` |
+| Calendar sync | `backend/src/index.js` (syncCalendar function) |
+| CalDAV client | `backend/src/caldav.js` |
 | Spam filter | `backend/src/supabase.js` |
 | WhatsApp webhook | `crm-agent-service/app/main.py` (whatsapp_webhook) |
-| Calendar sync | `crm-agent-service/app/main.py` (calendar_sync) |
 | Database ops | `crm-agent-service/app/database.py` |
