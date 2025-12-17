@@ -910,9 +910,10 @@ const WhatsAppTab = ({
       }
 
       // Send message with optional file_uid
-      const payload = {
-        phone: selectedChat.contact_number
-      };
+      // For group chats, use chat_id; for individuals, use phone (contact_number)
+      const payload = selectedChat.is_group_chat
+        ? { chat_id: selectedChat.chat_id }
+        : { phone: selectedChat.contact_number };
 
       if (messageToSend) {
         payload.message = messageToSend;

@@ -305,13 +305,14 @@ const ActionBtn = styled.button`
 
 // Actions Panel (right)
 const ActionsPanel = styled.div`
-  width: 25%;
-  min-width: 280px;
+  width: ${props => props.$collapsed ? '50px' : '25%'};
+  min-width: ${props => props.$collapsed ? '50px' : '280px'};
   background: ${props => props.theme === 'light' ? '#F9FAFB' : '#111827'};
   border-left: 1px solid ${props => props.theme === 'light' ? '#E5E7EB' : '#374151'};
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  transition: all 0.3s ease;
 `;
 
 const ActionsPanelTabs = styled.div`

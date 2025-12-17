@@ -257,7 +257,7 @@ const DEAL_CURRENCIES = ['EUR', 'USD', 'GBP', 'PLN'];
 const CONTACT_CATEGORIES = ['Founder', 'Professional Investor', 'Manager', 'Advisor', 'Other'];
 const COMPANY_CATEGORIES = ['Startup', 'Professional Investor', 'Corporation', 'SME', 'Advisory', 'Other'];
 
-const CreateDealAI = ({ isOpen, onClose, email, theme = 'light', onSuccess }) => {
+const CreateDealAI = ({ isOpen, onClose, email, whatsappChat, sourceType = 'email', theme = 'light', onSuccess }) => {
   const [extracting, setExtracting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [extracted, setExtracted] = useState(null);
@@ -269,6 +269,7 @@ const CreateDealAI = ({ isOpen, onClose, email, theme = 'light', onSuccess }) =>
     first_name: '',
     last_name: '',
     email: '',
+    phone: '',
     job_role: '',
     linkedin: '',
     category: 'Founder'
@@ -301,22 +302,48 @@ const CreateDealAI = ({ isOpen, onClose, email, theme = 'light', onSuccess }) =>
     contact_company_relationship: 'founder'
   });
 
-  // Extract deal info from email
+  // Extract deal info from email or WhatsApp
   const extractDealInfo = useCallback(async () => {
-    if (!email) return;
+    // Check if we have valid source data
+    if (sourceType === 'email' && !email) return;
+    if (sourceType === 'whatsapp' && !whatsappChat) return;
+
     setExtracting(true);
 
     try {
-      const response = await fetch(`${AGENT_SERVICE_URL}/extract-deal-from-email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let payload;
+
+      if (sourceType === 'whatsapp') {
+        // WhatsApp: combine all messages into conversation text
+        const messages = whatsappChat.messages || [];
+        const conversationText = messages.map(msg => {
+          const sender = msg.is_from_me ? 'Me' : (whatsappChat.chat_name || whatsappChat.contact_number);
+          return `[${sender}]: ${msg.body || ''}`;
+        }).join('\n');
+
+        payload = {
+          source_type: 'whatsapp',
+          contact_phone: whatsappChat.contact_number,
+          contact_name: whatsappChat.chat_name || '',
+          conversation_text: conversationText,
+          date: messages[messages.length - 1]?.timestamp || ''
+        };
+      } else {
+        // Email
+        payload = {
+          source_type: 'email',
           from_email: email.from_email,
           from_name: email.from_name || '',
           subject: email.subject || '',
           body_text: email.body_text || email.snippet || '',
           date: email.date || ''
-        })
+        };
+      }
+
+      const response = await fetch(`${AGENT_SERVICE_URL}/extract-deal-from-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       });
 
       if (!response.ok) {
@@ -335,7 +362,8 @@ const CreateDealAI = ({ isOpen, onClose, email, theme = 'light', onSuccess }) =>
           existing_contact_id: c.existing_contact_id || null,
           first_name: c.first_name || '',
           last_name: c.last_name || '',
-          email: c.email || email.from_email,
+          email: c.email || (sourceType === 'email' ? email?.from_email : '') || '',
+          phone: c.phone || (sourceType === 'whatsapp' ? whatsappChat?.contact_number : '') || '',
           job_role: c.job_role || '',
           linkedin: c.linkedin || '',
           category: c.category || 'Founder'
@@ -355,6 +383,16 @@ const CreateDealAI = ({ isOpen, onClose, email, theme = 'light', onSuccess }) =>
 
         // Populate deal form
         const d = result.extracted.deal || {};
+        // Get date from email or last WhatsApp message
+        let proposedDate;
+        if (sourceType === 'email' && email?.date) {
+          proposedDate = new Date(email.date).toISOString().split('T')[0];
+        } else if (sourceType === 'whatsapp' && whatsappChat?.messages?.length) {
+          const lastMsg = whatsappChat.messages[whatsappChat.messages.length - 1];
+          proposedDate = lastMsg?.timestamp ? new Date(lastMsg.timestamp).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+        } else {
+          proposedDate = new Date().toISOString().split('T')[0];
+        }
         setDealData({
           opportunity: d.opportunity || '',
           total_investment: d.total_investment ? String(d.total_investment) : '',
@@ -363,7 +401,7 @@ const CreateDealAI = ({ isOpen, onClose, email, theme = 'light', onSuccess }) =>
           stage: d.stage || 'Lead',
           source_category: d.source_category || 'Cold Contacting',
           description: d.description || '',
-          proposed_at: email.date ? new Date(email.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+          proposed_at: proposedDate
         });
 
         // Populate associations
@@ -381,7 +419,7 @@ const CreateDealAI = ({ isOpen, onClose, email, theme = 'light', onSuccess }) =>
     } finally {
       setExtracting(false);
     }
-  }, [email]);
+  }, [email, whatsappChat, sourceType]);
 
   // Save everything
   const handleSave = async () => {
@@ -419,6 +457,15 @@ const CreateDealAI = ({ isOpen, onClose, email, theme = 'light', onSuccess }) =>
           await supabase.from('contact_emails').insert({
             contact_id: contactId,
             email: contactData.email,
+            is_primary: true
+          });
+        }
+
+        // Add phone (for WhatsApp contacts)
+        if (contactData.phone) {
+          await supabase.from('contact_mobiles').insert({
+            contact_id: contactId,
+            mobile_number: contactData.phone,
             is_primary: true
           });
         }
@@ -524,18 +571,19 @@ const CreateDealAI = ({ isOpen, onClose, email, theme = 'light', onSuccess }) =>
     }
   };
 
-  // Extract on open
+  // Extract on open - handles both email and whatsapp
   useEffect(() => {
-    if (isOpen && email && !extracted) {
+    const hasSource = (sourceType === 'email' && email) || (sourceType === 'whatsapp' && whatsappChat);
+    if (isOpen && hasSource && !extracted) {
       extractDealInfo();
     }
-  }, [isOpen, email, extracted, extractDealInfo]);
+  }, [isOpen, email, whatsappChat, sourceType, extracted, extractDealInfo]);
 
   // Reset on close
   useEffect(() => {
     if (!isOpen) {
       setExtracted(null);
-      setContactData({ use_existing: false, existing_contact_id: null, first_name: '', last_name: '', email: '', job_role: '', linkedin: '', category: 'Founder' });
+      setContactData({ use_existing: false, existing_contact_id: null, first_name: '', last_name: '', email: '', phone: '', job_role: '', linkedin: '', category: 'Founder' });
       setCompanyData({ use_existing: false, existing_company_id: null, name: '', website: '', domain: '', category: 'Startup', description: '' });
       setDealData({ opportunity: '', total_investment: '', deal_currency: 'EUR', category: 'Startup', stage: 'Lead', source_category: 'Cold Contacting', description: '', proposed_at: '' });
       setAssociations({ contact_is_proposer: true, link_contact_to_company: true, contact_company_relationship: 'founder' });
@@ -548,7 +596,7 @@ const CreateDealAI = ({ isOpen, onClose, email, theme = 'light', onSuccess }) =>
         <ModalHeader theme={theme}>
           <ModalTitle theme={theme}>
             <FaRobot style={{ color: '#8B5CF6' }} />
-            Create Deal from Email
+            New Deal from {sourceType === 'whatsapp' ? 'WhatsApp' : 'Email'}
           </ModalTitle>
           <CloseButton theme={theme} onClick={onClose}><FaTimes size={18} /></CloseButton>
         </ModalHeader>
@@ -577,10 +625,17 @@ const CreateDealAI = ({ isOpen, onClose, email, theme = 'light', onSuccess }) =>
                 <Label theme={theme}>Last Name</Label>
                 <Input theme={theme} value={contactData.last_name} onChange={(e) => setContactData(p => ({ ...p, last_name: e.target.value }))} disabled={contactData.use_existing} />
               </FormGroup>
-              <FormGroup>
-                <Label theme={theme}>Email</Label>
-                <Input theme={theme} value={contactData.email} onChange={(e) => setContactData(p => ({ ...p, email: e.target.value }))} disabled={contactData.use_existing} />
-              </FormGroup>
+              {sourceType === 'email' ? (
+                <FormGroup>
+                  <Label theme={theme}>Email</Label>
+                  <Input theme={theme} value={contactData.email} onChange={(e) => setContactData(p => ({ ...p, email: e.target.value }))} disabled={contactData.use_existing} />
+                </FormGroup>
+              ) : (
+                <FormGroup>
+                  <Label theme={theme}>Phone</Label>
+                  <Input theme={theme} value={contactData.phone} onChange={(e) => setContactData(p => ({ ...p, phone: e.target.value }))} disabled={contactData.use_existing} />
+                </FormGroup>
+              )}
               <FormGroup>
                 <Label theme={theme}>Job Role</Label>
                 <Input theme={theme} value={contactData.job_role} onChange={(e) => setContactData(p => ({ ...p, job_role: e.target.value }))} disabled={contactData.use_existing} />

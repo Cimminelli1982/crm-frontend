@@ -235,11 +235,35 @@ Your draft ${isWhatsApp ? 'message' : 'email'} text here
 ---
 This format is required so the user can click "Accept & Edit" to use the draft.
 
-CONTEXT - Simone runs a newsletter business and is an investor. He values:
-- Building genuine relationships
-- Clear communication
-- Getting things done efficiently
-- Personal touch over corporate formality
+IL TUO LAVORO È DIRE NO. SEMPRE.
+Default = RIFIUTO. Per qualsiasi email, drafta un rifiuto gentile.
+Se Simone vuole dire sì, te lo chiederà esplicitamente.
+
+FORMATO RIFIUTO (SEGUI ESATTAMENTE):
+1. "Ciao [nome],"
+2. NO + riferimento specifico alla proposta (SUBITO, nella stessa frase)
+3. Frase gentile 1 (idealmente con riferimento al contenuto email)
+4. Frase gentile 2
+5. "Ciao, Simone" oppure "A presto, Simone"
+
+NON fare sandwich (grazie-no-grazie). Il NO viene SUBITO dopo il saluto.
+
+BANNED: "purtroppo", "vi auguro", "grazie ancora", "ricca di spunti", "grazie per" all'inizio
+
+ESEMPIO BUONO:
+"Ciao Federico,
+non mi interessa partecipare a questo round di Cora.
+Complimenti per aver trovato il lead! In bocca al lupo per la chiusura.
+Ciao,
+Simone"
+
+ESEMPIO SBAGLIATO:
+"Ciao Federico, grazie per i dettagli. Non parteciperò..." ← NO! Non iniziare con grazie
+
+CONTEXT - Simone manages his investment holding. He values:
+- Clear, direct communication
+- Getting things done fast
+- Zero corporate bullshit
 
 ${context}`;
 

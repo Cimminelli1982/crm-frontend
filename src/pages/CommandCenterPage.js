@@ -140,7 +140,11 @@ const sanitizeEmailHtml = (html) => {
 const CommandCenterPage = ({ theme }) => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('email');
-  const [listCollapsed, setListCollapsed] = useState(false);
+
+  // Mobile detection for default collapsed state
+  const isMobile = window.innerWidth <= 768;
+  const [listCollapsed, setListCollapsed] = useState(isMobile);
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(isMobile);
 
   // Email threads hook
   const {
@@ -179,9 +183,36 @@ const CommandCenterPage = ({ theme }) => {
     return items.filter(item => item.status === status);
   };
 
-  // Email compose hook (will set onSendSuccess via ref after saveAndArchive is defined)
-  const saveAndArchiveRef = useRef(null);
-  const emailCompose = useEmailCompose(selectedThread, () => saveAndArchiveRef.current?.());
+  // Calendar sections state (upcoming, past)
+  const [calendarSections, setCalendarSections] = useState({
+    upcoming: true,
+    past: false
+  });
+
+  const toggleCalendarSection = (section) => {
+    setCalendarSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  // Filter calendar events by upcoming/past
+  const filterCalendarEvents = (events, type) => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0); // Start of today
+
+    if (type === 'upcoming') {
+      // Events from today onwards, sorted closest first
+      return events
+        .filter(event => new Date(event.date) >= now)
+        .sort((a, b) => new Date(a.date) - new Date(b.date));
+    } else {
+      // Past events, sorted most recent first
+      return events
+        .filter(event => new Date(event.date) < now)
+        .sort((a, b) => new Date(b.date) - new Date(a.date));
+    }
+  };
+
+  // Email compose hook - handleSendWithAttachmentCheck handles post-send logic, so no callback needed
+  const emailCompose = useEmailCompose(selectedThread, null);
   const {
     composeModal,
     composeTo,
@@ -209,6 +240,7 @@ const CommandCenterPage = ({ theme }) => {
     openReply,
     openReplyWithDraft,
     openForward,
+    openNewCompose,
     closeCompose,
     handleSend,
     addEmailToField,
@@ -221,6 +253,9 @@ const CommandCenterPage = ({ theme }) => {
   } = emailCompose;
 
   const [saving, setSaving] = useState(false);
+
+  // Pending status for keeping email in inbox after send (used by handleSendWithAttachmentCheck -> saveAndArchive)
+  const pendingInboxStatusRef = useRef(null);
 
   // Attachment save modal state
   const [attachmentModalOpen, setAttachmentModalOpen] = useState(false);
@@ -679,18 +714,16 @@ const CommandCenterPage = ({ theme }) => {
     );
   };
 
-  // Fetch Calendar events from Supabase (staging - past/today only)
+  // Fetch Calendar events from Supabase (all events - upcoming and past)
   useEffect(() => {
     const fetchCalendarEvents = async () => {
       setCalendarLoading(true);
-      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
       const { data, error } = await supabase
         .from('command_center_inbox')
         .select('*')
         .eq('type', 'calendar')
-        .lte('date', today + 'T23:59:59Z') // Only past and today
-        .order('date', { ascending: false });
+        .order('date', { ascending: true }); // Order by date for processing
 
       if (error) {
         console.error('Error fetching calendar events:', error);
@@ -1504,12 +1537,8 @@ const CommandCenterPage = ({ theme }) => {
       // Group issues by type
       const issues = integrityIssues || [];
 
-      // DEBUG: Log raw data from Supabase
-      console.log('RAW integrityIssues from Supabase:', integrityIssues);
-
       // NOT IN CRM - Contacts (deduplicate by email or mobile)
       const notInCrmContactIssues = issues.filter(i => i.issue_type === 'not_in_crm' && i.entity_type === 'contact');
-      console.log('notInCrmContactIssues:', notInCrmContactIssues);
       const seenContacts = new Set();
       const uniqueNotInCrmContacts = notInCrmContactIssues.filter(i => {
         const key = i.email?.toLowerCase() || i.mobile;
@@ -2933,6 +2962,24 @@ const CommandCenterPage = ({ theme }) => {
     }
   };
 
+  // Handler for updating deal stage (used by ComposeEmailModal)
+  const handleUpdateDealStage = async (dealId, newStage) => {
+    const { error } = await supabase
+      .from('deals')
+      .update({ stage: newStage })
+      .eq('deal_id', dealId);
+
+    if (error) {
+      toast.error('Failed to update deal stage');
+      return;
+    }
+
+    toast.success(`Deal marked as ${newStage}`);
+
+    // Update local state to remove the deal from active deals list
+    setContactDeals(prev => prev.filter(deal => deal.deal_id !== dealId));
+  };
+
   // Handler for editing introduction (used by IntroductionsTab)
   const handleEditIntroduction = (intro) => {
     setEditingIntroduction(intro);
@@ -3163,14 +3210,23 @@ const CommandCenterPage = ({ theme }) => {
     fetchIntroductions();
   }, [emailContacts]);
 
-  // Handle calendar extraction from email
+  // Handle calendar extraction from email or WhatsApp
   const handleCalendarExtract = async () => {
-    if (!selectedThread || selectedThread.length === 0) {
-      toast.error('No email selected');
-      return;
+    // Context-aware: check which tab is active
+    const isWhatsApp = activeTab === 'whatsapp';
+
+    if (isWhatsApp) {
+      if (!selectedWhatsappChat || !selectedWhatsappChat.messages?.length) {
+        toast.error('No WhatsApp chat selected');
+        return;
+      }
+    } else {
+      if (!selectedThread || selectedThread.length === 0) {
+        toast.error('No email selected');
+        return;
+      }
     }
 
-    const email = selectedThread[0];
     setCalendarLoading(true);
     setPendingCalendarEvent(null);
     setCalendarEventEdits({});
@@ -3178,14 +3234,27 @@ const CommandCenterPage = ({ theme }) => {
     // Add a user message to chat
     setChatMessages(prev => [...prev, {
       role: 'user',
-      content: '📅 Extract meeting from this email'
+      content: isWhatsApp ? '📅 Extract meeting from this WhatsApp chat' : '📅 Extract meeting from this email'
     }]);
 
     try {
-      const response = await fetch(`${BACKEND_URL}/calendar/extract-event`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      // Build request body based on source
+      let requestBody;
+      if (isWhatsApp) {
+        requestBody = {
+          whatsapp: {
+            contact_name: selectedWhatsappChat.chat_name || selectedWhatsappChat.contact_number,
+            contact_number: selectedWhatsappChat.contact_number,
+            messages: selectedWhatsappChat.messages.map(m => ({
+              content: m.body_text,
+              is_from_me: m.direction === 'sent',
+              timestamp: m.date,
+            })),
+          }
+        };
+      } else {
+        const email = selectedThread[0];
+        requestBody = {
           email: {
             from_email: email.from_email,
             from_name: email.from_name,
@@ -3196,7 +3265,13 @@ const CommandCenterPage = ({ theme }) => {
             snippet: email.snippet,
             date: email.date,
           }
-        }),
+        };
+      }
+
+      const response = await fetch(`${BACKEND_URL}/calendar/extract-event`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -3238,9 +3313,10 @@ const CommandCenterPage = ({ theme }) => {
           calendarEvent: event
         }]);
       } else {
+        const sourceText = isWhatsApp ? 'this chat' : 'this email';
         setChatMessages(prev => [...prev, {
           role: 'assistant',
-          content: '🤔 No meeting found in this email. Is there something specific you\'d like to schedule?'
+          content: `🤔 No meeting found in ${sourceText}. Is there something specific you'd like to schedule?`
         }]);
       }
     } catch (error) {
@@ -3252,6 +3328,51 @@ const CommandCenterPage = ({ theme }) => {
       toast.error('Failed to extract calendar event');
     } finally {
       setCalendarLoading(false);
+    }
+  };
+
+  // Dismiss calendar event from inbox (won't be re-synced)
+  const handleDeleteCalendarEvent = async (eventId) => {
+    if (!eventId) {
+      toast.error('No event selected');
+      return;
+    }
+
+    if (!window.confirm('Dismiss this calendar event? It won\'t appear again on future syncs.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${AGENT_SERVICE_URL}/calendar/delete-event`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id: eventId }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to dismiss event');
+      }
+
+      // Remove from local state
+      const currentIndex = calendarEvents.findIndex(e => e.id === eventId);
+      setCalendarEvents(prev => prev.filter(e => e.id !== eventId));
+
+      // Select next event or clear selection
+      if (calendarEvents.length > 1) {
+        const nextIndex = currentIndex >= calendarEvents.length - 1 ? currentIndex - 1 : currentIndex;
+        const nextEvent = calendarEvents.filter(e => e.id !== eventId)[nextIndex];
+        setSelectedCalendarEvent(nextEvent || null);
+      } else {
+        setSelectedCalendarEvent(null);
+      }
+
+      toast.success('Calendar event dismissed');
+    } catch (error) {
+      console.error('Error dismissing calendar event:', error);
+      toast.error('Failed to dismiss calendar event');
     }
   };
 
@@ -3271,7 +3392,8 @@ const CommandCenterPage = ({ theme }) => {
         description: calendarEventEdits.description || pendingCalendarEvent.description || '',
         location: calendarEventEdits.location || pendingCalendarEvent.location || '',
         startDate: calendarEventEdits.datetime || pendingCalendarEvent.datetime,
-        attendees: pendingCalendarEvent.attendees || [],
+        attendees: calendarEventEdits.attendees || pendingCalendarEvent.attendees || [],
+        timezone: calendarEventEdits.timezone || 'Europe/Rome',
         reminders: [15], // 15 min before
       };
 
@@ -3506,141 +3628,12 @@ const CommandCenterPage = ({ theme }) => {
     }
   };
 
-  // Helper function to check if attachment is an image
-  const isImageAttachment = (att) => {
-    const imageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/svg+xml', 'image/ico'];
-    const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'ico'];
+  // Helper function to check if attachment should be auto-skipped (images, ICS files)
+  const shouldSkipAttachment = (att) => {
+    const skipTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/svg+xml', 'image/ico', 'text/calendar'];
+    const skipExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'ico', 'ics'];
     const ext = att.name?.split('.').pop()?.toLowerCase();
-    return imageTypes.includes(att.type?.toLowerCase()) || imageExtensions.includes(ext);
-  };
-
-  // Helper function to check if attachment is an ICS calendar file
-  const isIcsAttachment = (att) => {
-    const ext = att.name?.split('.').pop()?.toLowerCase();
-    return att.type === 'text/calendar' || ext === 'ics';
-  };
-
-  // Parse ICS file and create calendar event
-  // Track created events to avoid duplicates (title+startDate)
-  const createdEventsRef = useRef(new Set());
-
-  const parseIcsAndCreateEvent = async (att) => {
-    try {
-      // Download the ICS file
-      const downloadUrl = `${BACKEND_URL}/attachment/${encodeURIComponent(att.blobId)}?name=${encodeURIComponent(att.name || 'event.ics')}&type=text/calendar`;
-      const response = await fetch(downloadUrl);
-
-      if (!response.ok) {
-        console.error('Failed to download ICS file:', response.status);
-        return null;
-      }
-
-      const icsText = await response.text();
-      console.log('[ICS] Full ICS file:', icsText);
-
-      // Extract VEVENT block only (ignore VTIMEZONE etc)
-      const veventMatch = icsText.match(/BEGIN:VEVENT[\s\S]*?END:VEVENT/);
-      if (!veventMatch) {
-        console.warn('[ICS] No VEVENT block found');
-        return null;
-      }
-      const veventBlock = veventMatch[0];
-      console.log('[ICS] VEVENT block:', veventBlock);
-
-      // Parse ICS content from VEVENT block only
-      const summaryMatch = veventBlock.match(/SUMMARY[;:]([^\r\n]+)/);
-      // Handle both formats: DTSTART:20251216T140000Z and DTSTART;TZID=Europe/London:20251216T140000
-      const dtstartMatch = veventBlock.match(/DTSTART[^:]*:(\d{8}T?\d{0,6}Z?)/);
-      const dtendMatch = veventBlock.match(/DTEND[^:]*:(\d{8}T?\d{0,6}Z?)/);
-      const locationMatch = veventBlock.match(/LOCATION[;:]([^\r\n]+)/);
-      const descriptionMatch = veventBlock.match(/DESCRIPTION[;:]([^\r\n]+)/);
-
-      // Check if there's a TZID for the event
-      const tzidMatch = veventBlock.match(/DTSTART;TZID=([^:]+):/);
-      const eventTimezone = tzidMatch?.[1] || null;
-
-      if (!summaryMatch || !dtstartMatch) {
-        console.warn('[ICS] Could not parse essential fields from VEVENT');
-        return null;
-      }
-
-      // Parse iCal date format (YYYYMMDD or YYYYMMDDTHHMMSS or YYYYMMDDTHHMMSSZ)
-      const parseICalDate = (dateStr, timezone = null) => {
-        if (!dateStr) return null;
-        const year = dateStr.substring(0, 4);
-        const month = dateStr.substring(4, 6);
-        const day = dateStr.substring(6, 8);
-        let hour = '00', min = '00', sec = '00';
-
-        if (dateStr.length >= 15) {
-          hour = dateStr.substring(9, 11);
-          min = dateStr.substring(11, 13);
-          sec = dateStr.substring(13, 15);
-        }
-
-        const isUtc = dateStr.endsWith('Z');
-
-        // If UTC, parse as UTC
-        if (isUtc) {
-          return new Date(`${year}-${month}-${day}T${hour}:${min}:${sec}Z`);
-        }
-
-        // If we have a timezone like Europe/London, the date is in that timezone
-        // For simplicity, if it's Europe/London we assume it's the local time
-        // and we'll pass it as-is to the calendar API
-        const dateString = `${year}-${month}-${day}T${hour}:${min}:${sec}`;
-        return new Date(dateString);
-      };
-
-      const startDate = parseICalDate(dtstartMatch[1], eventTimezone);
-      const endDate = dtendMatch ? parseICalDate(dtendMatch[1], eventTimezone) : null;
-
-      // Clean up summary/location (remove escapes)
-      const cleanText = (text) => text?.replace(/\\n/g, '\n').replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\/g, '');
-
-      const eventData = {
-        title: cleanText(summaryMatch[1]),
-        startDate: startDate?.toISOString(),
-        endDate: endDate?.toISOString(),
-        location: cleanText(locationMatch?.[1]) || '',
-        description: cleanText(descriptionMatch?.[1]) || '',
-        allDay: dtstartMatch[1]?.length === 8, // YYYYMMDD = all-day event
-      };
-
-      console.log('[ICS] Parsed event data:', eventData);
-
-      // Check for duplicates (same title + startDate)
-      const eventKey = `${eventData.title}|${eventData.startDate}`;
-      if (createdEventsRef.current.has(eventKey)) {
-        console.log('[ICS] Skipping duplicate event:', eventKey);
-        return null;
-      }
-      createdEventsRef.current.add(eventKey);
-
-      // Create calendar event via backend
-      const createResponse = await fetch(`${BACKEND_URL}/calendar/create-event`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(eventData)
-      });
-
-      if (createResponse.ok) {
-        const result = await createResponse.json();
-        if (result.success) {
-          toast.success(`Calendar event created: ${eventData.title}`);
-          return result;
-        }
-      }
-
-      const errorResult = await createResponse.json().catch(() => ({}));
-      console.error('[ICS] Failed to create calendar event:', errorResult);
-      toast.error(`Failed to create calendar event: ${errorResult.error || 'Unknown error'}`);
-      return null;
-    } catch (error) {
-      console.error('[ICS] Error parsing/creating event:', error);
-      toast.error(`Error processing calendar invite: ${error.message}`);
-      return null;
-    }
+    return skipTypes.includes(att.type?.toLowerCase()) || skipExtensions.includes(ext);
   };
 
   // Check for attachments and show modal before saving
@@ -3658,27 +3651,15 @@ const CommandCenterPage = ({ theme }) => {
     );
 
     if (allAttachments.length > 0) {
-      // Check for ICS files and create calendar events
-      const icsAttachments = allAttachments.filter(isIcsAttachment);
-      if (icsAttachments.length > 0) {
-        // Clear duplicate tracker for this batch
-        createdEventsRef.current.clear();
-        toast.loading('Processing calendar invites...', { id: 'ics-process' });
-        for (const icsAtt of icsAttachments) {
-          await parseIcsAndCreateEvent(icsAtt);
-        }
-        toast.dismiss('ics-process');
-      }
-
       // Filter out images and ICS files for the modal
-      const nonImageNonIcsAttachments = allAttachments.filter(att => !isImageAttachment(att) && !isIcsAttachment(att));
+      const relevantAttachments = allAttachments.filter(att => !shouldSkipAttachment(att));
 
-      if (nonImageNonIcsAttachments.length > 0) {
-        // Show attachment modal only for non-image, non-ICS attachments
-        setPendingAttachments(nonImageNonIcsAttachments);
+      if (relevantAttachments.length > 0) {
+        // Show attachment modal only for relevant attachments
+        setPendingAttachments(relevantAttachments);
         setAttachmentModalOpen(true);
       } else {
-        // All attachments are images or ICS files, skip modal
+        // All attachments are images or ICS, skip modal
         saveAndArchive();
       }
     } else {
@@ -3696,9 +3677,12 @@ const CommandCenterPage = ({ theme }) => {
   };
 
   // Wrapper for handleSend that checks attachments after sending
-  const handleSendWithAttachmentCheck = async (bodyOverride = null) => {
+  const handleSendWithAttachmentCheck = async (bodyOverride = null, keepInInboxWithStatus = null) => {
+    // Store the status for later use in saveAndArchive
+    pendingInboxStatusRef.current = keepInInboxWithStatus;
+
     // First, send the email
-    await handleSend(bodyOverride);
+    await handleSend(bodyOverride, keepInInboxWithStatus);
 
     // After sending, check for attachments in thread (same logic as Done button)
     if (!selectedThread || selectedThread.length === 0) return;
@@ -3713,27 +3697,15 @@ const CommandCenterPage = ({ theme }) => {
     );
 
     if (allAttachments.length > 0) {
-      // Check for ICS files and create calendar events
-      const icsAttachments = allAttachments.filter(isIcsAttachment);
-      if (icsAttachments.length > 0) {
-        // Clear duplicate tracker for this batch
-        createdEventsRef.current.clear();
-        toast.loading('Processing calendar invites...', { id: 'ics-process' });
-        for (const icsAtt of icsAttachments) {
-          await parseIcsAndCreateEvent(icsAtt);
-        }
-        toast.dismiss('ics-process');
-      }
-
       // Filter out images and ICS files for the modal
-      const nonImageNonIcsAttachments = allAttachments.filter(att => !isImageAttachment(att) && !isIcsAttachment(att));
+      const relevantAttachments = allAttachments.filter(att => !shouldSkipAttachment(att));
 
-      if (nonImageNonIcsAttachments.length > 0) {
-        // Show attachment modal only for non-image, non-ICS attachments
-        setPendingAttachments(nonImageNonIcsAttachments);
+      if (relevantAttachments.length > 0) {
+        // Show attachment modal only for relevant attachments
+        setPendingAttachments(relevantAttachments);
         setAttachmentModalOpen(true);
       } else {
-        // All attachments are images or ICS files, skip modal
+        // All attachments are images or ICS, skip modal
         saveAndArchive();
       }
     } else {
@@ -3753,7 +3725,6 @@ const CommandCenterPage = ({ theme }) => {
     const log = (step, message, data = null) => {
       const entry = { step, message, data, timestamp: new Date().toISOString() };
       logs.push(entry);
-      console.log(`[SaveArchive] ${step}: ${message}`, data || '');
     };
 
     try {
@@ -4124,22 +4095,39 @@ const CommandCenterPage = ({ theme }) => {
             errors.push({ step: 'fastmail_archive', error: archiveError.message });
           }
 
-          // 9. Remove from command_center_inbox
+          // 9. Remove from command_center_inbox OR update status if keeping in inbox
+          const keepStatus = pendingInboxStatusRef.current;
           try {
-            const { error: deleteError } = await supabase
-              .from('command_center_inbox')
-              .delete()
-              .eq('id', email.id);
+            if (keepStatus) {
+              // Keep in inbox but update status
+              const { error: updateError } = await supabase
+                .from('command_center_inbox')
+                .update({ status: keepStatus })
+                .eq('id', email.id);
 
-            if (deleteError) {
-              log('ERROR', 'Failed to delete from command_center_inbox', deleteError);
-              errors.push({ step: 'delete_inbox', error: deleteError });
+              if (updateError) {
+                log('ERROR', 'Failed to update status in command_center_inbox', updateError);
+                errors.push({ step: 'update_inbox_status', error: updateError });
+              } else {
+                log('STATUS_UPDATE', `Updated status to '${keepStatus}' in command_center_inbox`, { id: email.id });
+              }
             } else {
-              log('CLEANUP', 'Removed from command_center_inbox', { id: email.id });
+              // Normal flow - delete from inbox
+              const { error: deleteError } = await supabase
+                .from('command_center_inbox')
+                .delete()
+                .eq('id', email.id);
+
+              if (deleteError) {
+                log('ERROR', 'Failed to delete from command_center_inbox', deleteError);
+                errors.push({ step: 'delete_inbox', error: deleteError });
+              } else {
+                log('CLEANUP', 'Removed from command_center_inbox', { id: email.id });
+              }
             }
-          } catch (deleteError) {
-            log('ERROR', 'Delete operation failed', deleteError.message);
-            errors.push({ step: 'delete', error: deleteError.message });
+          } catch (opError) {
+            log('ERROR', 'Inbox operation failed', opError.message);
+            errors.push({ step: 'inbox_operation', error: opError.message });
           }
 
           // Track this email as successfully saved
@@ -4149,54 +4137,69 @@ const CommandCenterPage = ({ theme }) => {
         }
       }
 
-      // Update local state - only remove successfully saved emails
+      // Update local state based on whether we're keeping with status or removing
+      const keepStatus = pendingInboxStatusRef.current;
       if (successfullySavedEmails.length > 0) {
         const processedIds = new Set(successfullySavedEmails);
-        setEmails(prev => prev.filter(e => !processedIds.has(e.id)));
-        setThreads(prev => {
-          const updated = prev.map(t => ({
+
+        if (keepStatus) {
+          // Update status in local state instead of removing
+          setEmails(prev => prev.map(e =>
+            processedIds.has(e.id) ? { ...e, status: keepStatus } : e
+          ));
+          setThreads(prev => prev.map(t => ({
             ...t,
-            emails: t.emails.filter(e => !processedIds.has(e.id)),
-            count: t.emails.filter(e => !processedIds.has(e.id)).length
-          })).filter(t => t.emails.length > 0);
-          return updated.map(t => ({
-            ...t,
-            latestEmail: t.emails[0]
-          }));
-        });
-        setSelectedThread(null);
-        log('STATE_UPDATE', `Removed ${successfullySavedEmails.length} emails from local state`);
+            emails: t.emails.map(e =>
+              processedIds.has(e.id) ? { ...e, status: keepStatus } : e
+            ),
+            status: t.emails.some(e => processedIds.has(e.id)) ? keepStatus : t.status
+          })));
+          setSelectedThread(null);
+          log('STATE_UPDATE', `Updated status to '${keepStatus}' for ${successfullySavedEmails.length} emails in local state`);
+        } else {
+          // Normal flow - remove from local state
+          setEmails(prev => prev.filter(e => !processedIds.has(e.id)));
+          setThreads(prev => {
+            const updated = prev.map(t => ({
+              ...t,
+              emails: t.emails.filter(e => !processedIds.has(e.id)),
+              count: t.emails.filter(e => !processedIds.has(e.id)).length
+            })).filter(t => t.emails.length > 0);
+            return updated.map(t => ({
+              ...t,
+              latestEmail: t.emails[0]
+            }));
+          });
+          setSelectedThread(null);
+          log('STATE_UPDATE', `Removed ${successfullySavedEmails.length} emails from local state`);
+        }
       } else {
         log('STATE_UPDATE', 'No emails were successfully saved - keeping all in local state');
       }
 
+      // Clear the pending status ref
+      pendingInboxStatusRef.current = null;
+
       log('COMPLETE', `Finished with ${errors.length} errors, ${successfullySavedEmails.length} saved`);
 
       if (successfullySavedEmails.length === 0) {
-        console.error('[SaveArchive] All saves failed:', errors);
         toast.error('Failed to save - emails not archived');
       } else if (errors.length > 0) {
-        console.error('[SaveArchive] Errors:', errors);
-        toast.success(`Saved & Archived ${successfullySavedEmails.length} emails (${errors.length} warnings)`);
+        const action = keepStatus ? `moved to '${keepStatus}'` : 'archived';
+        toast.success(`Saved & ${action} ${successfullySavedEmails.length} emails (${errors.length} warnings)`);
       } else {
-        toast.success('Saved & Archived successfully');
+        const action = keepStatus ? `Saved & moved to '${keepStatus}'` : 'Saved & Archived';
+        toast.success(`${action} successfully`);
       }
 
     } catch (error) {
       log('FATAL', 'Unexpected error', error.message);
       errors.push({ step: 'fatal', error: error.message });
-      console.error('[SaveArchive] Fatal error:', error);
-      console.error('[SaveArchive] Logs:', logs);
       toast.error('Failed to Save & Archive');
     } finally {
       setSaving(false);
-      // Log summary to console for debugging
-      console.log('[SaveArchive] Complete log:', logs);
     }
   };
-
-  // Set the ref for the compose hook callback
-  saveAndArchiveRef.current = saveAndArchive;
 
   // Update status of selected thread/chat (for Need Actions / Waiting Input)
   const updateItemStatus = async (newStatus) => {
@@ -5064,67 +5067,170 @@ const CommandCenterPage = ({ theme }) => {
                   <span style={{ color: '#10B981', fontWeight: 600 }}>Inbox Zero!</span>
                 </EmptyState>
               ) : (
-                calendarEvents.map(event => {
-                  // Clean subject: remove "Simone Cimminelli", "<>", and trim
-                  const cleanSubject = (event.subject || 'No title')
-                    .replace(/Simone Cimminelli/gi, '')
-                    .replace(/<>/g, '')
-                    .replace(/\s+/g, ' ')
-                    .trim() || 'Meeting';
+                <>
+                  {/* Upcoming Events Section */}
+                  <div
+                    onClick={() => toggleCalendarSection('upcoming')}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      backgroundColor: theme === 'dark' ? '#1f2937' : '#f3f4f6',
+                      borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`,
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 1
+                    }}
+                  >
+                    <FaChevronDown style={{ transform: calendarSections.upcoming ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', fontSize: '10px' }} />
+                    <span>Upcoming</span>
+                    <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: '12px' }}>
+                      {filterCalendarEvents(calendarEvents, 'upcoming').length}
+                    </span>
+                  </div>
+                  {calendarSections.upcoming && (
+                    filterCalendarEvents(calendarEvents, 'upcoming').map(event => {
+                      const cleanSubject = (event.subject || 'No title')
+                        .replace(/Simone Cimminelli/gi, '')
+                        .replace(/<>/g, '')
+                        .replace(/\s+/g, ' ')
+                        .trim() || 'Meeting';
 
-                  // Determine if remote or in-person based on location
-                  const location = (event.event_location || '').toLowerCase();
-                  const isRemote = location.includes('zoom') || location.includes('meet') ||
-                    location.includes('teams') || location.includes('webex') ||
-                    location.includes('http') || location.includes('skype');
+                      const location = (event.event_location || '').toLowerCase();
+                      const isRemote = location.includes('zoom') || location.includes('meet') ||
+                        location.includes('teams') || location.includes('webex') ||
+                        location.includes('http') || location.includes('skype');
 
-                  const eventDate = new Date(event.date);
-                  const dateStr = `${String(eventDate.getDate()).padStart(2, '0')}-${String(eventDate.getMonth() + 1).padStart(2, '0')}-${String(eventDate.getFullYear()).slice(-2)}`;
-                  const timeStr = eventDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                      const eventDate = new Date(event.date);
+                      const dayName = eventDate.toLocaleDateString('en-GB', { weekday: 'short' });
+                      const dateStr = `${dayName} ${String(eventDate.getDate()).padStart(2, '0')}-${String(eventDate.getMonth() + 1).padStart(2, '0')}-${eventDate.getFullYear()}`;
 
-                  return (
-                    <EmailItem
-                      key={event.id}
-                      theme={theme}
-                      $selected={selectedCalendarEvent?.id === event.id}
-                      $unread={!event.is_read}
-                      onClick={() => setSelectedCalendarEvent(event)}
-                    >
-                      <EmailSender theme={theme}>
-                        {!event.is_read && <EmailUnreadDot />}
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {cleanSubject}
-                        </span>
-                        <span style={{
-                          marginLeft: '8px',
-                          padding: '2px 6px',
-                          borderRadius: '4px',
-                          fontSize: '10px',
-                          fontWeight: 600,
-                          flexShrink: 0,
-                          backgroundColor: isRemote ? '#3B82F6' : '#10B981',
-                          color: 'white'
-                        }}>
-                          {isRemote ? 'Remote' : 'In Person'}
-                        </span>
-                      </EmailSender>
-                      <EmailSubject theme={theme} style={{ fontWeight: 600 }}>
-                        {dateStr} {timeStr}
-                        {event.event_end && ` - ${new Date(event.event_end).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`}
-                      </EmailSubject>
-                      <EmailSnippet theme={theme}>
-                        {event.event_location || 'No location'}
-                      </EmailSnippet>
-                    </EmailItem>
-                  );
-                })
+                      return (
+                        <EmailItem
+                          key={event.id}
+                          theme={theme}
+                          $selected={selectedCalendarEvent?.id === event.id}
+                          $unread={!event.is_read}
+                          onClick={() => setSelectedCalendarEvent(event)}
+                        >
+                          <EmailSender theme={theme}>
+                            {!event.is_read && <EmailUnreadDot />}
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {cleanSubject}
+                            </span>
+                            <span style={{
+                              marginLeft: '8px',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              fontSize: '10px',
+                              fontWeight: 600,
+                              flexShrink: 0,
+                              backgroundColor: isRemote ? '#3B82F6' : '#10B981',
+                              color: 'white'
+                            }}>
+                              {isRemote ? 'Remote' : 'In Person'}
+                            </span>
+                          </EmailSender>
+                          <EmailSubject theme={theme} style={{ fontWeight: 600 }}>
+                            {dateStr}
+                          </EmailSubject>
+                          <EmailSnippet theme={theme}>
+                            {event.event_location || 'No location'}
+                          </EmailSnippet>
+                        </EmailItem>
+                      );
+                    })
+                  )}
+
+                  {/* Past Events Section */}
+                  <div
+                    onClick={() => toggleCalendarSection('past')}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      backgroundColor: theme === 'dark' ? '#1f2937' : '#f3f4f6',
+                      borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`,
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 1
+                    }}
+                  >
+                    <FaChevronDown style={{ transform: calendarSections.past ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', fontSize: '10px' }} />
+                    <span>Past</span>
+                    <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: '12px' }}>
+                      {filterCalendarEvents(calendarEvents, 'past').length}
+                    </span>
+                  </div>
+                  {calendarSections.past && (
+                    filterCalendarEvents(calendarEvents, 'past').map(event => {
+                      const cleanSubject = (event.subject || 'No title')
+                        .replace(/Simone Cimminelli/gi, '')
+                        .replace(/<>/g, '')
+                        .replace(/\s+/g, ' ')
+                        .trim() || 'Meeting';
+
+                      const location = (event.event_location || '').toLowerCase();
+                      const isRemote = location.includes('zoom') || location.includes('meet') ||
+                        location.includes('teams') || location.includes('webex') ||
+                        location.includes('http') || location.includes('skype');
+
+                      const eventDate = new Date(event.date);
+                      const dayName = eventDate.toLocaleDateString('en-GB', { weekday: 'short' });
+                      const dateStr = `${dayName} ${String(eventDate.getDate()).padStart(2, '0')}-${String(eventDate.getMonth() + 1).padStart(2, '0')}-${eventDate.getFullYear()}`;
+
+                      return (
+                        <EmailItem
+                          key={event.id}
+                          theme={theme}
+                          $selected={selectedCalendarEvent?.id === event.id}
+                          $unread={!event.is_read}
+                          onClick={() => setSelectedCalendarEvent(event)}
+                        >
+                          <EmailSender theme={theme}>
+                            {!event.is_read && <EmailUnreadDot />}
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {cleanSubject}
+                            </span>
+                            <span style={{
+                              marginLeft: '8px',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              fontSize: '10px',
+                              fontWeight: 600,
+                              flexShrink: 0,
+                              backgroundColor: isRemote ? '#3B82F6' : '#10B981',
+                              color: 'white'
+                            }}>
+                              {isRemote ? 'Remote' : 'In Person'}
+                            </span>
+                          </EmailSender>
+                          <EmailSubject theme={theme} style={{ fontWeight: 600 }}>
+                            {dateStr}
+                          </EmailSubject>
+                          <EmailSnippet theme={theme}>
+                            {event.event_location || 'No location'}
+                          </EmailSnippet>
+                        </EmailItem>
+                      );
+                    })
+                  )}
+                </>
               )}
             </EmailList>
           )}
 
           {!listCollapsed && activeTab === 'calendar' && calendarEvents.length > 0 && (
             <PendingCount theme={theme}>
-              {calendarEvents.length} events to process
+              {filterCalendarEvents(calendarEvents, 'upcoming').length} upcoming, {filterCalendarEvents(calendarEvents, 'past').length} past
             </PendingCount>
           )}
         </EmailListPanel>
@@ -5159,28 +5265,50 @@ const CommandCenterPage = ({ theme }) => {
                       .replace(/\s+/g, ' ')
                       .trim() || 'Meeting'}
                   </EmailSubjectFull>
-                  <button
-                    onClick={() => {
-                      // TODO: Handle calendar done
-                      toast.success('Calendar event processed!');
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      padding: '8px 16px',
-                      borderRadius: '8px',
-                      border: 'none',
-                      background: theme === 'light' ? '#10B981' : '#059669',
-                      color: 'white',
-                      cursor: 'pointer',
-                      fontWeight: 500,
-                      fontSize: '14px',
-                    }}
-                  >
-                    <FaArchive size={14} />
-                    Done
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <button
+                      onClick={() => handleDeleteCalendarEvent(selectedCalendarEvent.id)}
+                      title="Dismiss event (won't sync again)"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '8px 16px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: theme === 'light' ? '#EF4444' : '#DC2626',
+                        color: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 500,
+                        fontSize: '14px',
+                      }}
+                    >
+                      <FaTrash size={14} />
+                      Dismiss
+                    </button>
+                    <button
+                      onClick={() => {
+                        // TODO: Handle calendar done
+                        toast.success('Calendar event processed!');
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '8px 16px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: theme === 'light' ? '#10B981' : '#059669',
+                        color: 'white',
+                        cursor: 'pointer',
+                        fontWeight: 500,
+                        fontSize: '14px',
+                      }}
+                    >
+                      <FaArchive size={14} />
+                      Done
+                    </button>
+                  </div>
                 </div>
 
                 {/* Calendar Event Content */}
@@ -5308,6 +5436,31 @@ const CommandCenterPage = ({ theme }) => {
                   {selectedThread.length > 1 && <span style={{ opacity: 0.6, marginLeft: '8px' }}>({selectedThread.length} messages)</span>}
                 </EmailSubjectFull>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {/* New Email */}
+                  <button
+                    onClick={openNewCompose}
+                    title="New Email"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      padding: '0 12px',
+                      height: '36px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: theme === 'light' ? '#10B981' : '#059669',
+                      color: 'white',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                    }}
+                  >
+                    <FaEnvelope size={12} />
+                    New
+                  </button>
+
                   {/* Need Actions */}
                   <button
                     onClick={() => updateItemStatus('need_actions')}
@@ -5582,6 +5735,7 @@ const CommandCenterPage = ({ theme }) => {
                           color: theme === 'light' ? '#374151' : '#D1D5DB',
                           fontSize: '14px',
                           lineHeight: '1.6',
+                          whiteSpace: 'pre-wrap',
                         }}
                         dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(email.body_html) }}
                       />
@@ -5790,32 +5944,39 @@ const CommandCenterPage = ({ theme }) => {
         </EmailContentPanel>
 
         {/* Right: Actions Panel */}
-        <ActionsPanel theme={theme}>
-          <ActionsPanelTabs theme={theme}>
-            <ActionTabIcon theme={theme} $active={activeActionTab === 'chat'} onClick={() => setActiveActionTab('chat')} title="Chat with Claude">
-              <FaRobot />
-            </ActionTabIcon>
-            <ActionTabIcon theme={theme} $active={activeActionTab === 'dataIntegrity'} onClick={() => setActiveActionTab('dataIntegrity')} title="Data Integrity">
-              <FaDatabase />
-            </ActionTabIcon>
-            <ActionTabIcon theme={theme} $active={activeActionTab === 'crm'} onClick={() => setActiveActionTab('crm')} title="CRM">
-              <FaUser />
-            </ActionTabIcon>
-            <ActionTabIcon theme={theme} $active={activeActionTab === 'deals'} onClick={() => setActiveActionTab('deals')} title="Deals">
-              <FaDollarSign />
-            </ActionTabIcon>
-            <ActionTabIcon theme={theme} $active={activeActionTab === 'introductions'} onClick={() => setActiveActionTab('introductions')} title="Introductions">
-              <FaHandshake />
-            </ActionTabIcon>
-            <ActionTabIcon theme={theme} $active={activeActionTab === 'tasks'} onClick={() => setActiveActionTab('tasks')} title="Tasks">
-              <FaTasks />
-            </ActionTabIcon>
-            <ActionTabIcon theme={theme} $active={activeActionTab === 'notes'} onClick={() => setActiveActionTab('notes')} title="Notes">
-              <FaStickyNote />
-            </ActionTabIcon>
+        <ActionsPanel theme={theme} $collapsed={rightPanelCollapsed}>
+          <ActionsPanelTabs theme={theme} style={{ justifyContent: rightPanelCollapsed ? 'center' : 'center' }}>
+            <CollapseButton theme={theme} onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)} style={{ marginRight: rightPanelCollapsed ? 0 : '8px' }}>
+              {rightPanelCollapsed ? <FaChevronLeft /> : <FaChevronRight />}
+            </CollapseButton>
+            {!rightPanelCollapsed && (
+              <>
+                <ActionTabIcon theme={theme} $active={activeActionTab === 'chat'} onClick={() => setActiveActionTab('chat')} title="Chat with Claude">
+                  <FaRobot />
+                </ActionTabIcon>
+                <ActionTabIcon theme={theme} $active={activeActionTab === 'dataIntegrity'} onClick={() => setActiveActionTab('dataIntegrity')} title="Data Integrity">
+                  <FaDatabase />
+                </ActionTabIcon>
+                <ActionTabIcon theme={theme} $active={activeActionTab === 'crm'} onClick={() => setActiveActionTab('crm')} title="CRM">
+                  <FaUser />
+                </ActionTabIcon>
+                <ActionTabIcon theme={theme} $active={activeActionTab === 'deals'} onClick={() => setActiveActionTab('deals')} title="Deals">
+                  <FaDollarSign />
+                </ActionTabIcon>
+                <ActionTabIcon theme={theme} $active={activeActionTab === 'introductions'} onClick={() => setActiveActionTab('introductions')} title="Introductions">
+                  <FaHandshake />
+                </ActionTabIcon>
+                <ActionTabIcon theme={theme} $active={activeActionTab === 'tasks'} onClick={() => setActiveActionTab('tasks')} title="Tasks">
+                  <FaTasks />
+                </ActionTabIcon>
+                <ActionTabIcon theme={theme} $active={activeActionTab === 'notes'} onClick={() => setActiveActionTab('notes')} title="Notes">
+                  <FaStickyNote />
+                </ActionTabIcon>
+              </>
+            )}
           </ActionsPanelTabs>
 
-          {((selectedThread && selectedThread.length > 0) || selectedWhatsappChat || selectedCalendarEvent) && (
+          {!rightPanelCollapsed && ((selectedThread && selectedThread.length > 0) || selectedWhatsappChat || selectedCalendarEvent) && (
             <>
               {activeActionTab === 'chat' && (
                 <ChatTab
@@ -5928,6 +6089,7 @@ const CommandCenterPage = ({ theme }) => {
                 <CRMTab
                   theme={theme}
                   navigate={navigate}
+                  activeTab={activeTab}
                   crmSubTab={crmSubTab}
                   setCrmSubTab={setCrmSubTab}
                   emailContacts={emailContacts}
@@ -5957,6 +6119,7 @@ const CommandCenterPage = ({ theme }) => {
                   companyDeals={companyDeals}
                   setCreateDealAIOpen={setCreateDealAIOpen}
                   onDeleteDealContact={handleDeleteDealContact}
+                  onUpdateDealStage={handleUpdateDealStage}
                 />
               )}
               {activeActionTab === 'introductions' && (
@@ -6042,6 +6205,13 @@ const CommandCenterPage = ({ theme }) => {
         chatLoading={chatLoading}
         sendMessageToClaude={sendMessageToClaude}
         extractDraftFromMessage={extractDraftFromMessage}
+        // Deals props
+        contactDeals={contactDeals}
+        onUpdateDealStage={handleUpdateDealStage}
+        // Task modal
+        setTaskModalOpen={setTaskModalOpen}
+        // Create Deal AI modal
+        setCreateDealAIOpen={setCreateDealAIOpen}
       />
 
       {/* Quick Edit Modal */}

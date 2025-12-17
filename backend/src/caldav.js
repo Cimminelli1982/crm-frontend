@@ -532,6 +532,7 @@ export class CalDAVClient {
     allDay = false,
     attendees = [],
     reminders = [15],
+    timezone = 'Europe/Rome',
   }) {
     const uid = generateUUID();
     const now = new Date();
@@ -547,13 +548,26 @@ export class CalDAVClient {
       }
     }
 
+    // Format date as local time string without timezone conversion (YYYYMMDDTHHMMSS)
+    const formatLocalDateTime = (date) => {
+      const d = new Date(date);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      const seconds = String(d.getSeconds()).padStart(2, '0');
+      return `${year}${month}${day}T${hours}${minutes}${seconds}`;
+    };
+
     let dtstart, dtend;
     if (allDay) {
       dtstart = `DTSTART;VALUE=DATE:${formatICalDateTime(startDate, true)}`;
       dtend = `DTEND;VALUE=DATE:${formatICalDateTime(endDate, true)}`;
     } else {
-      dtstart = `DTSTART:${formatICalDateTime(startDate)}`;
-      dtend = `DTEND:${formatICalDateTime(endDate)}`;
+      // Use TZID for timezone-aware datetime
+      dtstart = `DTSTART;TZID=${timezone}:${formatLocalDateTime(startDate)}`;
+      dtend = `DTEND;TZID=${timezone}:${formatLocalDateTime(endDate)}`;
     }
 
     const attendeeLines = attendees.map(att => {

@@ -1,6 +1,83 @@
-import React from 'react';
+import React, { useState } from 'react';
+import styled from 'styled-components';
 import { FaDollarSign, FaRobot, FaTrash } from 'react-icons/fa';
 import { ActionCard, ActionCardHeader, ActionCardContent } from '../../pages/CommandCenterPage.styles';
+
+const DealActionsRow = styled.div`
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+`;
+
+const DealActionBtn = styled.button`
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+
+  &.invested {
+    background: #D1FAE5;
+    color: #059669;
+    &:hover {
+      background: #A7F3D0;
+    }
+  }
+
+  &.passed {
+    background: #FEE2E2;
+    color: #DC2626;
+    &:hover {
+      background: #FECACA;
+    }
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const StageBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+
+  &.lead {
+    background: #DBEAFE;
+    color: #1D4ED8;
+  }
+  &.evaluating {
+    background: #FEF3C7;
+    color: #D97706;
+  }
+  &.closing {
+    background: #E9D5FF;
+    color: #7C3AED;
+  }
+  &.invested {
+    background: #D1FAE5;
+    color: #059669;
+  }
+  &.monitoring {
+    background: #CFFAFE;
+    color: #0891B2;
+  }
+  &.passed {
+    background: #FEE2E2;
+    color: #DC2626;
+  }
+`;
 
 const DealsTab = ({
   theme,
@@ -9,7 +86,23 @@ const DealsTab = ({
   companyDeals,
   setCreateDealAIOpen,
   onDeleteDealContact,
+  onUpdateDealStage,
 }) => {
+  const [updatingDeals, setUpdatingDeals] = useState({});
+
+  const handleStageUpdate = async (dealId, newStage) => {
+    if (!onUpdateDealStage) return;
+    setUpdatingDeals(prev => ({ ...prev, [dealId]: true }));
+    await onUpdateDealStage(dealId, newStage);
+    setUpdatingDeals(prev => ({ ...prev, [dealId]: false }));
+  };
+
+  // Check if deal is in an active stage (show buttons only for active deals)
+  const isActiveStage = (stage) => {
+    const activeStages = ['Lead', 'Evaluating', 'Closing'];
+    return !stage || activeStages.includes(stage);
+  };
+
   return (
     <>
       {/* Add New Deal Button - AI Assisted */}
@@ -67,8 +160,15 @@ const DealsTab = ({
                 </span>
               </ActionCardHeader>
               <ActionCardContent theme={theme}>
-                <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '4px' }}>
-                  {deal.stage || 'No stage'} {(deal.proposed_at || deal.created_at) && `• ${new Date(deal.proposed_at || deal.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}`}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  <StageBadge className={deal.stage?.toLowerCase() || 'lead'}>
+                    {deal.stage || 'Lead'}
+                  </StageBadge>
+                  {(deal.proposed_at || deal.created_at) && (
+                    <span style={{ fontSize: '11px', color: theme === 'light' ? '#9CA3AF' : '#6B7280' }}>
+                      {new Date(deal.proposed_at || deal.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </span>
+                  )}
                 </div>
                 {deal.total_investment && (
                   <div style={{ fontSize: '13px', fontWeight: 600, color: '#10B981' }}>
@@ -98,6 +198,25 @@ const DealsTab = ({
                       </div>
                     ))}
                   </div>
+                )}
+                {/* Invested/Passed buttons - only for active stages */}
+                {isActiveStage(deal.stage) && onUpdateDealStage && (
+                  <DealActionsRow>
+                    <DealActionBtn
+                      className="invested"
+                      disabled={updatingDeals[deal.deal_id]}
+                      onClick={() => handleStageUpdate(deal.deal_id, 'Invested')}
+                    >
+                      {updatingDeals[deal.deal_id] ? '...' : '✓ Invested'}
+                    </DealActionBtn>
+                    <DealActionBtn
+                      className="passed"
+                      disabled={updatingDeals[deal.deal_id]}
+                      onClick={() => handleStageUpdate(deal.deal_id, 'Passed')}
+                    >
+                      {updatingDeals[deal.deal_id] ? '...' : '✗ Passed'}
+                    </DealActionBtn>
+                  </DealActionsRow>
                 )}
               </ActionCardContent>
             </ActionCard>
@@ -152,8 +271,15 @@ const DealsTab = ({
                 </span>
               </ActionCardHeader>
               <ActionCardContent theme={theme}>
-                <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '4px' }}>
-                  {deal.stage || 'No stage'} {(deal.proposed_at || deal.created_at) && `• ${new Date(deal.proposed_at || deal.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}`}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  <StageBadge className={deal.stage?.toLowerCase() || 'lead'}>
+                    {deal.stage || 'Lead'}
+                  </StageBadge>
+                  {(deal.proposed_at || deal.created_at) && (
+                    <span style={{ fontSize: '11px', color: theme === 'light' ? '#9CA3AF' : '#6B7280' }}>
+                      {new Date(deal.proposed_at || deal.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </span>
+                  )}
                 </div>
                 {deal.total_investment && (
                   <div style={{ fontSize: '13px', fontWeight: 600, color: '#8B5CF6' }}>
@@ -169,6 +295,25 @@ const DealsTab = ({
                   <div style={{ fontSize: '11px', color: theme === 'light' ? '#9CA3AF' : '#6B7280', marginTop: '4px' }}>
                     via {deal.companyName}
                   </div>
+                )}
+                {/* Invested/Passed buttons - only for active stages */}
+                {isActiveStage(deal.stage) && onUpdateDealStage && (
+                  <DealActionsRow>
+                    <DealActionBtn
+                      className="invested"
+                      disabled={updatingDeals[deal.deal_id]}
+                      onClick={() => handleStageUpdate(deal.deal_id, 'Invested')}
+                    >
+                      {updatingDeals[deal.deal_id] ? '...' : '✓ Invested'}
+                    </DealActionBtn>
+                    <DealActionBtn
+                      className="passed"
+                      disabled={updatingDeals[deal.deal_id]}
+                      onClick={() => handleStageUpdate(deal.deal_id, 'Passed')}
+                    >
+                      {updatingDeals[deal.deal_id] ? '...' : '✗ Passed'}
+                    </DealActionBtn>
+                  </DealActionsRow>
                 )}
               </ActionCardContent>
             </ActionCard>

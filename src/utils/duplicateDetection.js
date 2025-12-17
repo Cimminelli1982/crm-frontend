@@ -21,7 +21,9 @@ export const normalizeMobile = (mobile) => {
  */
 export const normalizeLinkedin = (url) => {
   if (!url) return null;
-  return url.toLowerCase().trim();
+  const normalized = url.toLowerCase().trim();
+  // Return null for empty strings to avoid matching empty values
+  return normalized || null;
 };
 
 /**
@@ -208,27 +210,32 @@ export const findContactDuplicates = async (contactId, emails = [], mobiles = []
     // 3. Check for same LinkedIn duplicates
     if (linkedin?.trim()) {
       const linkedinUrl = normalizeLinkedin(linkedin);
-      const { data: linkedinMatches } = await supabase
-        .from('contacts')
-        .select('contact_id, first_name, last_name, linkedin')
-        .neq('contact_id', contactId)
-        .not('linkedin', 'is', null);
+      // Skip if normalized URL is null/empty
+      if (linkedinUrl) {
+        const { data: linkedinMatches } = await supabase
+          .from('contacts')
+          .select('contact_id, first_name, last_name, linkedin')
+          .neq('contact_id', contactId)
+          .not('linkedin', 'is', null);
 
-      const matchingLinkedin = (linkedinMatches || []).filter(c =>
-        normalizeLinkedin(c.linkedin) === linkedinUrl
-      );
+        const matchingLinkedin = (linkedinMatches || []).filter(c => {
+          const normalizedMatch = normalizeLinkedin(c.linkedin);
+          // Both must be non-null to match
+          return normalizedMatch && normalizedMatch === linkedinUrl;
+        });
 
-      matchingLinkedin.forEach(c => {
-        if (!foundDuplicates.some(d => d.duplicate_id === c.contact_id)) {
-          foundDuplicates.push({
-            id: `linkedin-${c.contact_id}`,
-            duplicate_id: c.contact_id,
-            duplicate: c,
-            match_type: 'linkedin',
-            match_details: { value: c.linkedin }
-          });
-        }
-      });
+        matchingLinkedin.forEach(c => {
+          if (!foundDuplicates.some(d => d.duplicate_id === c.contact_id)) {
+            foundDuplicates.push({
+              id: `linkedin-${c.contact_id}`,
+              duplicate_id: c.contact_id,
+              duplicate: c,
+              match_type: 'linkedin',
+              match_details: { value: c.linkedin }
+            });
+          }
+        });
+      }
     }
 
     // 4. Check for similar names (fuzzy matching)

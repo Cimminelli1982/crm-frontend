@@ -284,7 +284,7 @@ const useEmailCompose = (selectedThread, onSendSuccess) => {
   }, [getLatestEmail]);
 
   // Open compose modal for forward
-  const openForward = useCallback(() => {
+  const openForward = useCallback(async () => {
     const latestEmail = getLatestEmail();
     if (!latestEmail) return;
 
@@ -304,8 +304,57 @@ const useEmailCompose = (selectedThread, onSendSuccess) => {
       `Subject: ${latestEmail.subject}\n` +
       `To: ${formatRecipients(latestEmail.to_recipients) || ''}\n\n` +
       (latestEmail.body_text || latestEmail.snippet || ''));
+
+    // Include original attachments for forward
+    if (latestEmail.attachments && latestEmail.attachments.length > 0) {
+      // Download attachments from backend and add to compose
+      const downloadedAttachments = await Promise.all(
+        latestEmail.attachments.map(async (att) => {
+          try {
+            const downloadUrl = `${BACKEND_URL}/attachment/${encodeURIComponent(att.blobId)}?name=${encodeURIComponent(att.name)}&type=${encodeURIComponent(att.type)}`;
+            const response = await fetch(downloadUrl);
+            if (!response.ok) return null;
+
+            const blob = await response.blob();
+            const base64 = await new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result.split(',')[1]);
+              reader.readAsDataURL(blob);
+            });
+
+            return {
+              name: att.name,
+              type: att.type || 'application/octet-stream',
+              size: att.size || blob.size,
+              data: base64,
+            };
+          } catch (error) {
+            console.error('Failed to download attachment for forward:', att.name, error);
+            return null;
+          }
+        })
+      );
+
+      // Filter out failed downloads
+      const validAttachments = downloadedAttachments.filter(a => a !== null);
+      setComposeAttachments(validAttachments);
+    } else {
+      setComposeAttachments([]);
+    }
+
     setComposeModal({ open: true, mode: 'forward' });
   }, [getLatestEmail, formatRecipients]);
+
+  // Open compose modal for new email (no pre-populated recipients)
+  const openNewCompose = useCallback(() => {
+    setComposeTo([]);
+    setComposeCc([]);
+    setComposeToInput('');
+    setComposeCcInput('');
+    setComposeSubject('');
+    setComposeBody('\n\n' + EMAIL_SIGNATURE);
+    setComposeModal({ open: true, mode: 'new' });
+  }, []);
 
   // Close compose modal
   const closeCompose = useCallback(() => {
@@ -353,7 +402,8 @@ const useEmailCompose = (selectedThread, onSendSuccess) => {
   }, []);
 
   // Send email (with optional body override for AI draft feature)
-  const handleSend = useCallback(async (bodyOverride = null) => {
+  // keepInInboxWithStatus: null (archive normally), 'need_actions', or 'waiting_input' (keep in inbox with status)
+  const handleSend = useCallback(async (bodyOverride = null, keepInInboxWithStatus = null) => {
     const bodyToUse = bodyOverride || composeBody;
 
     if (composeTo.length === 0 || !bodyToUse.trim()) {
@@ -361,9 +411,18 @@ const useEmailCompose = (selectedThread, onSendSuccess) => {
       return;
     }
 
+    // For new emails (mode: 'new'), we don't need a selected thread
+    const isNewEmail = composeModal.mode === 'new';
     const latestEmail = getLatestEmail();
-    if (!latestEmail) {
+
+    if (!isNewEmail && !latestEmail) {
       toast.error('No email selected');
+      return;
+    }
+
+    // For new emails, require a subject
+    if (isNewEmail && !composeSubject.trim()) {
+      toast.error('Please enter a subject');
       return;
     }
 
@@ -382,8 +441,9 @@ const useEmailCompose = (selectedThread, onSendSuccess) => {
           cc: composeCc.length > 0 ? composeCc : undefined,
           subject: composeSubject,
           textBody: bodyText,
-          inReplyTo: composeModal.mode !== 'forward' ? latestEmail.fastmail_id : undefined,
-          references: composeModal.mode !== 'forward' ? latestEmail.fastmail_id : undefined,
+          // Only set inReplyTo/references for replies (not forward or new)
+          inReplyTo: (!isNewEmail && composeModal.mode !== 'forward' && latestEmail) ? latestEmail.fastmail_id : undefined,
+          references: (!isNewEmail && composeModal.mode !== 'forward' && latestEmail) ? latestEmail.fastmail_id : undefined,
           attachments: composeAttachments.length > 0 ? composeAttachments.map(a => ({
             name: a.name,
             type: a.type,
@@ -395,13 +455,16 @@ const useEmailCompose = (selectedThread, onSendSuccess) => {
       const result = await response.json();
       if (!result.success) throw new Error(result.error);
 
-      toast.success('Email sent! Saving to CRM and archiving...');
+      toast.success(isNewEmail ? 'Email sent!' : 'Email sent! Saving to CRM and archiving...');
       closeCompose();
 
-      // Call success callback (e.g., saveAndArchive)
+      // Call success callback (e.g., saveAndArchive) with status parameter
       if (onSendSuccess) {
-        await onSendSuccess();
+        await onSendSuccess(keepInInboxWithStatus);
       }
+
+      // Return the status so callers can use it
+      return { success: true, keepInInboxWithStatus };
     } catch (error) {
       console.error('Send error:', error);
       toast.error(`Failed to send: ${error.message}`);
@@ -480,6 +543,7 @@ const useEmailCompose = (selectedThread, onSendSuccess) => {
     openReply,
     openReplyWithDraft,
     openForward,
+    openNewCompose,
     closeCompose,
     handleSend,
     addEmailToField,

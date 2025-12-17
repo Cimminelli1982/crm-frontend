@@ -5,6 +5,7 @@ import { ActionCard, ActionCardHeader, ActionCardContent } from '../../pages/Com
 const CRMTab = ({
   theme,
   navigate,
+  activeTab,
   crmSubTab,
   setCrmSubTab,
   emailContacts,
@@ -170,9 +171,11 @@ const CRMTab = ({
                     )}
                   </ActionCardHeader>
                   <ActionCardContent theme={theme}>
-                    <div style={{ fontSize: '13px', marginBottom: '8px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
-                      <span style={{ fontWeight: 700 }}>{primaryRole}:</span> <span style={{ fontWeight: 400 }}>{participant.email}</span>
-                    </div>
+                    {activeTab === 'email' && primaryRole && (
+                      <div style={{ fontSize: '13px', marginBottom: '8px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                        <span style={{ fontWeight: 700 }}>{primaryRole}:</span> <span style={{ fontWeight: 400 }}>{participant.email}</span>
+                      </div>
+                    )}
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
                       {participant.contact?.category && (
                         <span style={{ fontSize: '12px', padding: '3px 8px', borderRadius: '6px', background: theme === 'light' ? '#E5E7EB' : '#374151', color: theme === 'light' ? '#374151' : '#D1D5DB' }}>{participant.contact.category}</span>

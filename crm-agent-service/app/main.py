@@ -1082,34 +1082,62 @@ async def audit_contact(contact_id: str):
 @app.post("/extract-deal-from-email")
 async def extract_deal_from_email(request: dict):
     """
-    Extract deal information from an email for CRM deal creation.
+    Extract deal information from an email or WhatsApp conversation for CRM deal creation.
 
     Uses Claude + Supabase queries to:
-    1. Find existing contacts by email
+    1. Find existing contacts by email or phone
     2. Find existing companies by domain/name
-    3. Extract deal info from email content
+    3. Extract deal info from content
     4. Suggest associations
+
+    Supports both email and WhatsApp sources via source_type field.
     """
-    logger.info("extract_deal_from_email_request", from_email=request.get("from_email"))
+    source_type = request.get("source_type", "email")
+    logger.info("extract_deal_request", source_type=source_type,
+                from_email=request.get("from_email"),
+                contact_phone=request.get("contact_phone"))
 
     try:
         import anthropic
         import json as json_lib
 
-        from_name = request.get("from_name", "")
-        from_email = request.get("from_email", "")
-        subject = request.get("subject", "")
-        body_text = request.get("body_text", "")[:8000]
-        email_date = request.get("date", "")
-
-        # Extract domain from email
-        email_domain = from_email.split("@")[1] if "@" in from_email else None
+        # Handle both email and WhatsApp sources
+        if source_type == "whatsapp":
+            contact_phone = request.get("contact_phone", "")
+            contact_name = request.get("contact_name", "")
+            conversation_text = request.get("conversation_text", "")[:8000]
+            message_date = request.get("date", "")
+            from_email = ""
+            email_domain = None
+            subject = f"WhatsApp conversation with {contact_name or contact_phone}"
+            body_text = conversation_text
+        else:
+            from_name = request.get("from_name", "")
+            from_email = request.get("from_email", "")
+            subject = request.get("subject", "")
+            body_text = request.get("body_text", "")[:8000]
+            message_date = request.get("date", "")
+            contact_phone = ""
+            contact_name = from_name
+            # Extract domain from email
+            email_domain = from_email.split("@")[1] if "@" in from_email else None
 
         # --- SUPABASE QUERIES: Find existing data ---
 
-        # 1. Find contact by email
         existing_contact = None
-        if from_email:
+
+        # 1. Find contact by email or phone
+        if source_type == "whatsapp" and contact_phone:
+            # Search by phone number
+            result = db.client.table("contact_mobiles").select(
+                "contact_id, mobile, contacts(contact_id, first_name, last_name, job_role, linkedin, category)"
+            ).eq("mobile", contact_phone).limit(1).execute()
+
+            if result.data and result.data[0].get("contacts"):
+                existing_contact = result.data[0]["contacts"]
+                existing_contact["phone"] = contact_phone
+                logger.info(f"Found existing contact by phone: {existing_contact.get('first_name')} {existing_contact.get('last_name')}")
+        elif from_email:
             result = db.client.table("contact_emails").select(
                 "contact_id, email, contacts(contact_id, first_name, last_name, job_role, linkedin, category)"
             ).ilike("email", from_email).limit(1).execute()
@@ -1119,7 +1147,7 @@ async def extract_deal_from_email(request: dict):
                 existing_contact["email"] = from_email
                 logger.info(f"Found existing contact: {existing_contact.get('first_name')} {existing_contact.get('last_name')}")
 
-        # 2. Find company by domain
+        # 2. Find company by domain (only for email)
         existing_company = None
         if email_domain and email_domain not in ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com']:
             domain_result = db.client.table("company_domains").select(
@@ -1145,26 +1173,92 @@ async def extract_deal_from_email(request: dict):
                 ]
 
         # --- BUILD CONTEXT FOR CLAUDE ---
+        contact_identifier = contact_phone if source_type == "whatsapp" else from_email
         db_context = f"""
 DATABASE CONTEXT (from Supabase queries):
 
-EXISTING CONTACT (by email {from_email}):
+EXISTING CONTACT (by {"phone " + contact_phone if source_type == "whatsapp" else "email " + from_email}):
 {json_lib.dumps(existing_contact, indent=2, default=str) if existing_contact else "None found - will need to create new contact"}
 
 EXISTING COMPANY (by domain {email_domain}):
-{json_lib.dumps(existing_company, indent=2, default=str) if existing_company else "None found - will need to create new company"}
+{json_lib.dumps(existing_company, indent=2, default=str) if existing_company else "None found - may need to create new company (extract from conversation)"}
 
 CONTACT'S LINKED COMPANIES:
 {json_lib.dumps(contact_companies, indent=2, default=str) if contact_companies else "None"}
 """
 
         # --- CLAUDE EXTRACTION ---
-        prompt = f"""You are extracting deal information from an email for a CRM system.
+        if source_type == "whatsapp":
+            prompt = f"""You are extracting deal information from a WhatsApp conversation for a CRM system.
+
+WHATSAPP CONVERSATION:
+Contact: {contact_name} ({contact_phone})
+Date: {message_date}
+
+Conversation:
+{body_text}
+
+{db_context}
+
+TASK: Extract information to create a DEAL record with proper associations.
+Look for mentions of:
+- Company/startup names being discussed
+- Investment opportunities or deals
+- Fundraising rounds, amounts
+- Product/service descriptions
+
+Return JSON:
+{{
+  "contact": {{
+    "use_existing": true/false,
+    "existing_contact_id": "uuid if use_existing=true, else null",
+    "first_name": "extracted from conversation or name",
+    "last_name": "extracted from conversation or name",
+    "phone": "{contact_phone}",
+    "job_role": "extracted if mentioned or null",
+    "linkedin": null,
+    "category": "Founder|Professional Investor|Manager|Advisor|Other"
+  }},
+  "company": {{
+    "use_existing": true/false,
+    "existing_company_id": "uuid if use_existing=true, else null",
+    "name": "company/startup name mentioned",
+    "website": "https://... if mentioned or null",
+    "domain": "domain if mentioned or null",
+    "category": "Startup|Professional Investor|Corporation|SME|Advisory|Other",
+    "description": "brief description from conversation"
+  }},
+  "deal": {{
+    "opportunity": "Deal name - usually company/startup name",
+    "total_investment": number or null,
+    "deal_currency": "EUR|USD|GBP|PLN",
+    "category": "Startup|Fund|Real Estate|Private Debt|Private Equity|Other",
+    "stage": "Lead",
+    "source_category": "Cold Contacting|Introduction",
+    "description": "Brief summary of what they're discussing/pitching"
+  }},
+  "associations": {{
+    "contact_is_proposer": true,
+    "link_contact_to_company": true,
+    "contact_company_relationship": "founder|employee|advisor|investor|other"
+  }}
+}}
+
+RULES:
+- If existing contact found, set use_existing=true and existing_contact_id
+- If existing company found, set use_existing=true and existing_company_id
+- Extract investment amount: "300k" = 300000, "€2M" = 2000000
+- Default currency EUR unless clearly stated otherwise
+- stage is always "Lead" for new conversations
+- source_category: "Cold Contacting" if cold outreach, "Introduction" if referred
+- Parse first_name/last_name from contact_name if provided"""
+        else:
+            prompt = f"""You are extracting deal information from an email for a CRM system.
 
 EMAIL:
-From: {from_name} <{from_email}>
+From: {contact_name} <{from_email}>
 Subject: {subject}
-Date: {email_date}
+Date: {message_date}
 
 Body:
 {body_text}
@@ -1448,6 +1542,11 @@ async def calendar_sync():
 
         logger.info("calendar_sync_started")
 
+        # Load dismissed event_uids to skip
+        dismissed_result = db.client.table('calendar_dismissed').select('event_uid').execute()
+        dismissed_uids = {r['event_uid'] for r in dismissed_result.data} if dismissed_result.data else set()
+        logger.info("calendar_sync_dismissed_loaded", count=len(dismissed_uids))
+
         # Fetch ICS feed
         async with httpx.AsyncClient() as client:
             response = await client.get(CALENDAR_ICS_URL, timeout=30.0)
@@ -1459,6 +1558,7 @@ async def calendar_sync():
         synced_count = 0
         updated_count = 0
         deleted_count = 0
+        skipped_dismissed = 0
         current_uids = set()
 
         for component in cal.walk():
@@ -1469,6 +1569,11 @@ async def calendar_sync():
                     continue
 
                 current_uids.add(event_uid)
+
+                # Skip dismissed events
+                if event_uid in dismissed_uids:
+                    skipped_dismissed += 1
+                    continue
 
                 # Skip cancelled events
                 status = str(component.get('status', 'CONFIRMED')).upper()
@@ -1502,10 +1607,12 @@ async def calendar_sync():
 
                 # Extract attendees
                 attendees = []
-                for attendee in component.get('attendee', []):
-                    if not isinstance(attendee, list):
-                        attendee = [attendee]
-                    for att in attendee if isinstance(component.get('attendee'), list) else [component.get('attendee')]:
+                raw_attendees = component.get('attendee')
+                if raw_attendees:
+                    # Normalize to list (single attendee returns object, multiple returns list)
+                    if not isinstance(raw_attendees, list):
+                        raw_attendees = [raw_attendees]
+                    for att in raw_attendees:
                         if att:
                             att_email = str(att)
                             if att_email.startswith('mailto:'):
@@ -1517,13 +1624,21 @@ async def calendar_sync():
                                 "name": att_name,
                                 "status": att_status
                             })
-                    break  # Only process once
+
+                # Clean language prefix from summary (e.g., "LANGUAGE=en-gb:Title" -> "Title")
+                raw_summary = str(component.get('summary', ''))
+                if raw_summary.startswith('LANGUAGE='):
+                    # Strip "LANGUAGE=xx-XX:" prefix
+                    parts = raw_summary.split(':', 1)
+                    clean_summary = parts[1] if len(parts) > 1 else raw_summary
+                else:
+                    clean_summary = raw_summary
 
                 # Build record
                 record = {
                     "type": "calendar",
                     "event_uid": event_uid,
-                    "subject": str(component.get('summary', '')),
+                    "subject": clean_summary,
                     "body_text": str(component.get('description', '')),
                     "date": start_dt.isoformat() if start_dt else None,
                     "event_end": end_dt.isoformat() if end_dt else None,
@@ -1556,13 +1671,14 @@ async def calendar_sync():
                 db.client.table('command_center_inbox').delete().eq('id', event['id']).execute()
                 deleted_count += 1
 
-        logger.info("calendar_sync_completed", synced=synced_count, updated=updated_count, deleted=deleted_count)
+        logger.info("calendar_sync_completed", synced=synced_count, updated=updated_count, deleted=deleted_count, skipped_dismissed=skipped_dismissed)
 
         return {
             "success": True,
             "synced": synced_count,
             "updated": updated_count,
-            "deleted": deleted_count
+            "deleted": deleted_count,
+            "skipped_dismissed": skipped_dismissed
         }
 
     except Exception as e:
@@ -1583,6 +1699,59 @@ async def calendar_sync_status():
     except Exception as e:
         logger.error("calendar_sync_status_error", error=str(e))
         return {"status": "error", "error": str(e)}
+
+
+@app.delete("/calendar/delete-event")
+@app.post("/calendar/delete-event")
+async def delete_calendar_event(request: dict):
+    """
+    Dismiss a calendar event - adds to calendar_dismissed table and removes from inbox.
+    Dismissed events won't be re-synced from the ICS feed.
+
+    Input: id (UUID of the event to delete)
+    Output: success status
+    """
+    logger.info("delete_calendar_event_request", event_id=request.get("id"))
+
+    try:
+        event_id = request.get("id")
+
+        if not event_id:
+            raise HTTPException(status_code=400, detail="Event ID is required")
+
+        # First get the event to retrieve event_uid and subject
+        event = db.client.table('command_center_inbox').select('event_uid, subject').eq('id', event_id).eq('type', 'calendar').execute()
+
+        if not event.data:
+            raise HTTPException(status_code=404, detail="Event not found or not a calendar event")
+
+        event_uid = event.data[0].get('event_uid')
+        subject = event.data[0].get('subject')
+
+        # Add to calendar_dismissed table (prevents re-sync)
+        if event_uid:
+            db.client.table('calendar_dismissed').upsert({
+                'event_uid': event_uid,
+                'subject': subject
+            }, on_conflict='event_uid').execute()
+            logger.info("calendar_event_dismissed", event_uid=event_uid, subject=subject)
+
+        # Delete from command_center_inbox
+        result = db.client.table('command_center_inbox').delete().eq('id', event_id).eq('type', 'calendar').execute()
+
+        logger.info("calendar_event_deleted", event_id=event_id)
+
+        return {
+            "success": True,
+            "deleted": result.data[0] if result.data else None,
+            "dismissed_uid": event_uid
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("delete_calendar_event_error", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ==================== CONTACT LINKEDIN FINDER ====================
@@ -1923,21 +2092,23 @@ async def whatsapp_send_message(request: dict):
     Send a WhatsApp message via Timelines API.
 
     Input:
-    - phone: The phone number to send to (required)
+    - phone: The phone number to send to (required for individual chats)
+    - chat_id: The Timelines chat ID (required for group chats)
     - message: The text message to send (optional if file_uid provided)
     - file_uid: UID of uploaded file to attach (optional)
 
     Returns success status and message details.
     """
-    logger.info("whatsapp_send_request", phone=request.get("phone"), has_file=bool(request.get("file_uid")))
+    logger.info("whatsapp_send_request", phone=request.get("phone"), chat_id=request.get("chat_id"), has_file=bool(request.get("file_uid")))
 
     try:
-        phone = request.get("phone", "").strip()
+        phone = request.get("phone", "").strip() if request.get("phone") else None
+        chat_id = request.get("chat_id", "").strip() if request.get("chat_id") else None
         message_text = request.get("message", "").strip()
         file_uid = request.get("file_uid", "").strip() if request.get("file_uid") else None
 
-        if not phone:
-            raise HTTPException(status_code=400, detail="phone is required")
+        if not phone and not chat_id:
+            raise HTTPException(status_code=400, detail="phone or chat_id is required")
 
         if not message_text and not file_uid:
             raise HTTPException(status_code=400, detail="message or file_uid is required")
@@ -1949,9 +2120,15 @@ async def whatsapp_send_message(request: dict):
             raise HTTPException(status_code=500, detail="WhatsApp integration not configured")
 
         # Build request payload
-        payload = {
-            "phone": phone
-        }
+        # For groups: Timelines API requires both phone (can be any valid number) AND chat_id
+        # For individuals: just phone
+        payload = {}
+        if chat_id:
+            # For group chats, Timelines needs chat_id AND a phone (use placeholder)
+            payload["chat_id"] = chat_id
+            payload["phone"] = phone if phone else "group"  # Timelines requires phone field
+        else:
+            payload["phone"] = phone
 
         if message_text:
             payload["text"] = message_text

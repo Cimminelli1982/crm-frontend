@@ -471,6 +471,10 @@ const CreateContactModalAI = ({
         break;
       case 'job_title':
         setJobRole(value);
+        // Auto-set category to Founder if job title is Founder
+        if (value.toLowerCase().includes('founder')) {
+          setCategory('Founder');
+        }
         break;
       case 'category':
         setCategory(value);
@@ -669,10 +673,18 @@ const CreateContactModalAI = ({
     if (s.job_title?.value) {
       setJobRole(s.job_title.value);
       setAcceptedFields(prev => ({ ...prev, job_title: true }));
+      // Auto-set category to Founder if job title is Founder
+      if (s.job_title.value.toLowerCase().includes('founder')) {
+        setCategory('Founder');
+      }
     } else if (s.apollo_job_title?.value) {
       // Fallback to Apollo job title if no email signature job title
       setJobRole(s.apollo_job_title.value);
       setAcceptedFields(prev => ({ ...prev, apollo_job_title: true }));
+      // Auto-set category to Founder if job title is Founder
+      if (s.apollo_job_title.value.toLowerCase().includes('founder')) {
+        setCategory('Founder');
+      }
     }
     if (s.description?.value) {
       setDescription(s.description.value);
@@ -2000,6 +2012,10 @@ const CreateContactModalAI = ({
                           <AcceptButton onClick={() => {
                             setJobRole(aiSuggestions.apollo_job_title.value);
                             setAcceptedFields(prev => ({ ...prev, apollo_job_title: true }));
+                            // Auto-set category to Founder if job title is Founder
+                            if (aiSuggestions.apollo_job_title.value.toLowerCase().includes('founder')) {
+                              setCategory('Founder');
+                            }
                             toast.success('Job title (Apollo) accepted');
                           }}>
                             <FaCheck size={10} /> Accept
@@ -2363,7 +2379,25 @@ const CreateContactModalAI = ({
               </div>
 
               <div style={{ marginBottom: '16px' }}>
-                <label style={labelStyle}>Description</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <label style={{ ...labelStyle, marginBottom: 0 }}>Description</label>
+                  <button
+                    type="button"
+                    onClick={() => setDescription('Cold contacted me to pitch his startup')}
+                    style={{
+                      padding: '2px 8px',
+                      fontSize: '10px',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      background: theme === 'light' ? '#FEF3C7' : '#78350F',
+                      color: theme === 'light' ? '#92400E' : '#FDE68A',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Founder cold contact
+                  </button>
+                </div>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -2566,7 +2600,29 @@ const CreateContactModalAI = ({
           {activeTab === 3 && (
             <>
               <div style={{ marginBottom: '16px' }}>
-                <label style={labelStyle}>Keep in Touch</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <label style={{ ...labelStyle, marginBottom: 0 }}>Keep in Touch</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setKeepInTouchFrequency('Do not keep in touch');
+                      setChristmas('no wishes');
+                      setEaster('no wishes');
+                    }}
+                    style={{
+                      padding: '2px 8px',
+                      fontSize: '10px',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      background: theme === 'light' ? '#FEE2E2' : '#7F1D1D',
+                      color: theme === 'light' ? '#991B1B' : '#FECACA',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Don't keep in touch
+                  </button>
+                </div>
                 <select
                   value={keepInTouchFrequency}
                   onChange={(e) => setKeepInTouchFrequency(e.target.value)}
@@ -2584,7 +2640,7 @@ const CreateContactModalAI = ({
                   {[1, 2, 3, 4, 5].map(s => (
                     <button
                       key={s}
-                      onClick={() => setScore(s)}
+                      onClick={() => setScore(score === s ? null : s)}
                       style={{
                         width: '40px',
                         height: '40px',

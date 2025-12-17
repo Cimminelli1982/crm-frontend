@@ -3,7 +3,17 @@ import express from 'express';
 import cors from 'cors';
 import Anthropic from '@anthropic-ai/sdk';
 import { JMAPClient, transformEmail } from './jmap.js';
-import { upsertEmails, supabase, getLatestEmailDate, updateSyncDate } from './supabase.js';
+import {
+  upsertEmails,
+  supabase,
+  getLatestEmailDate,
+  updateSyncDate,
+  loadDismissedCalendarEvents,
+  upsertCalendarEvents,
+  deleteRemovedCalendarEvents,
+  getCalendarSyncState,
+  updateCalendarSyncState,
+} from './supabase.js';
 import { mcpManager } from './mcp-client.js';
 import { CalDAVClient } from './caldav.js';
 
@@ -173,14 +183,51 @@ async function autoSync() {
   }
 }
 
-// Calendar sync - calls crm-agent-service
+// Calendar sync via CalDAV (with ctag change detection)
 async function syncCalendar() {
+  const username = process.env.FASTMAIL_USERNAME;
+  const caldavPassword = process.env.FASTMAIL_CALDAV_PASSWORD || process.env.FASTMAIL_API_TOKEN;
+
+  if (!username || !caldavPassword) {
+    console.log('[Calendar] CalDAV credentials not configured, skipping sync');
+    return;
+  }
+
   try {
-    const agentUrl = process.env.CRM_AGENT_URL || 'https://crm-agent-api-production.up.railway.app';
-    const response = await fetch(`${agentUrl}/calendar-sync`, { method: 'POST' });
-    if (response.ok) {
-      const result = await response.json();
-      console.log(`[Calendar] Synced ${result.synced || 0} events, updated ${result.updated || 0}`);
+    const caldav = new CalDAVClient(username, caldavPassword);
+
+    // Step 1: Check if calendar changed (ctag)
+    const { ctag: currentCtag } = await caldav.getCalendarCtag();
+    const { ctag: savedCtag } = await getCalendarSyncState();
+
+    if (currentCtag && savedCtag && currentCtag === savedCtag) {
+      // No changes since last sync - skip
+      return;
+    }
+
+    console.log(`[Calendar] Calendar changed (ctag: ${savedCtag?.substring(0, 8) || 'none'} → ${currentCtag?.substring(0, 8)}), syncing...`);
+
+    // Step 2: Load dismissed events
+    const dismissedUids = await loadDismissedCalendarEvents();
+
+    // Step 3: Full sync from CalDAV (3 months back, 12 months forward)
+    const events = await caldav.fullSync();
+    console.log(`[Calendar] Fetched ${events.length} events from CalDAV`);
+
+    // Step 4: Upsert events to DB (with etag change detection)
+    const results = await upsertCalendarEvents(events, dismissedUids);
+
+    // Step 5: Delete events no longer in CalDAV
+    const currentUids = new Set(events.map(e => e.uid));
+    const deleted = await deleteRemovedCalendarEvents(currentUids, dismissedUids);
+    results.deleted = deleted;
+
+    // Step 6: Update sync state with new ctag
+    await updateCalendarSyncState(currentCtag);
+
+    const total = results.synced + results.updated + results.deleted;
+    if (total > 0 || results.errors > 0) {
+      console.log(`[Calendar] Sync complete: ${results.synced} new, ${results.updated} updated, ${results.deleted} deleted, ${results.unchanged} unchanged, ${results.skipped} dismissed, ${results.errors} errors`);
     }
   } catch (error) {
     console.error(`[Calendar] Sync error:`, error.message);
@@ -1288,13 +1335,11 @@ app.get('/obsidian/status', async (req, res) => {
 // Extract meeting info from email using Claude
 app.post('/calendar/extract-event', async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email, whatsapp } = req.body;
 
-    if (!email) {
-      return res.status(400).json({ success: false, error: 'Email data required' });
+    if (!email && !whatsapp) {
+      return res.status(400).json({ success: false, error: 'Email or WhatsApp data required' });
     }
-
-    console.log('[Calendar] Extracting event from email:', email.subject);
 
     // Get current date in UK timezone
     const ukDate = new Date().toLocaleDateString('en-GB', {
@@ -1306,8 +1351,36 @@ app.post('/calendar/extract-event', async (req, res) => {
     });
     const ukDateISO = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' }); // YYYY-MM-DD format
 
-    // Build context for Claude
-    const prompt = `Analyze this email and extract any meeting/event information.
+    let prompt;
+
+    if (whatsapp) {
+      // WhatsApp extraction
+      console.log('[Calendar] Extracting event from WhatsApp:', whatsapp.contact_name);
+
+      // Format messages for context
+      const messagesText = (whatsapp.messages || []).map(m => {
+        const sender = m.is_from_me ? 'Simone' : (whatsapp.contact_name || whatsapp.contact_number);
+        const time = m.timestamp ? new Date(m.timestamp).toLocaleString('it-IT') : '';
+        return `[${time}] ${sender}: ${m.content || m.text || ''}`;
+      }).join('\n');
+
+      prompt = `Analyze this WhatsApp conversation and extract any meeting/event information.
+
+IMPORTANT - TODAY'S DATE: ${ukDate} (${ukDateISO})
+This is crucial for interpreting relative dates like "tomorrow", "next week", etc.
+
+Chat with: ${whatsapp.contact_name || whatsapp.contact_number}
+Phone: ${whatsapp.contact_number || 'unknown'}
+
+Messages:
+${messagesText}
+
+`;
+    } else {
+      // Email extraction
+      console.log('[Calendar] Extracting event from email:', email.subject);
+
+      prompt = `Analyze this email and extract any meeting/event information.
 
 IMPORTANT - TODAY'S DATE: ${ukDate} (${ukDateISO})
 This is crucial for interpreting relative dates like "tomorrow", "next week", etc.
@@ -1321,7 +1394,11 @@ Email Date: ${email.date || ''}
 Email Body:
 ${email.body_text || email.snippet || ''}
 
-Extract meeting details and respond with ONLY valid JSON in this exact format:
+`;
+    }
+
+    // Common JSON format and rules
+    prompt += `Extract meeting details and respond with ONLY valid JSON in this exact format:
 {
   "found_event": true/false,
   "title": "[Other Person Name] <> Simone Cimminelli",
@@ -1332,17 +1409,16 @@ Extract meeting details and respond with ONLY valid JSON in this exact format:
   "location_needs_clarification": true/false,
   "location_options": ["Option 1", "Option 2"] or null,
   "attendees": [{"email": "email@example.com", "name": "Name"}],
-  "description": "Brief context from email",
+  "description": "Brief context from the conversation",
   "confidence": "high/medium/low",
   "clarification_needed": ["list of things that need user confirmation"]
 }
 
 Rules:
 - TITLE FORMAT: Always use "[Other Person's Full Name] <> Simone Cimminelli" (e.g., "Lorenzo De Angeli <> Simone Cimminelli")
-- TIMEZONE: All times must be in UK time (Europe/London). If the email mentions a time, assume it's UK time.
-- RELATIVE DATES: Today is ${ukDateISO}. "Tomorrow" means the day after today. "Next week" means the following week. Always calculate from TODAY'S DATE shown above, NOT from the email date.
-- DATE INFERENCE: If only a TIME is mentioned without an explicit date (e.g., "10:30 at High Street Ken"), assume the meeting is for TOMORROW (the next day), NOT today. People don't typically schedule meetings for the same day via email unless they explicitly say "today" or "oggi".
-- Attendees should include the email sender and any CC recipients
+- TIMEZONE: All times must be in UK time (Europe/London). If a time is mentioned, assume it's UK time.
+- RELATIVE DATES: Today is ${ukDateISO}. "Tomorrow" means the day after today. "Next week" means the following week. Always calculate from TODAY'S DATE shown above.
+- DATE INFERENCE: If only a TIME is mentioned without an explicit date, assume the meeting is for TOMORROW (the next day), NOT today.
 - LOCATION SHORTCUTS - expand these to full addresses:
   * "notting hill", "in ufficio", "in my office", "my office", "office" → "Fora - United House, 9 Pembridge Rd, London W11 3JY"
   * "club", "high street kensington", "high street ken", "roof gardens", "kensington" → "The Roof Gardens, 99 Kensington High St, London W8 5SA"
@@ -1401,6 +1477,7 @@ app.post('/calendar/create-event', async (req, res) => {
       allDay,
       attendees,
       reminders,
+      timezone,
     } = req.body;
 
     if (!title || !startDate) {
@@ -1415,7 +1492,7 @@ app.post('/calendar/create-event', async (req, res) => {
       return res.status(500).json({ success: false, error: 'Fastmail CalDAV credentials not configured' });
     }
 
-    console.log('[Calendar] Creating event:', title, 'at', startDate);
+    console.log('[Calendar] Creating event:', title, 'at', startDate, 'timezone:', timezone || 'Europe/Rome');
 
     const caldav = new CalDAVClient(username, caldavPassword);
 
@@ -1428,6 +1505,7 @@ app.post('/calendar/create-event', async (req, res) => {
       allDay: allDay || false,
       attendees: attendees || [],
       reminders: reminders || [15], // Default 15 min reminder
+      timezone: timezone || 'Europe/Rome',
     });
 
     console.log('[Calendar] Event created:', result);

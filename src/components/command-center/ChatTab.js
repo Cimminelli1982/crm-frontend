@@ -1,5 +1,5 @@
-import React from 'react';
-import { FaRobot, FaTimes, FaImage, FaPaperPlane, FaCheck } from 'react-icons/fa';
+import React, { useState } from 'react';
+import { FaRobot, FaTimes, FaImage, FaPaperPlane, FaCheck, FaPlus } from 'react-icons/fa';
 import {
   ChatContainer,
   QuickActionsContainer,
@@ -144,6 +144,33 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
               boxSizing: 'border-box',
             }}
           />
+          {/* Timezone selector */}
+          <select
+            value={calendarEventEdits.timezone ?? 'Europe/Rome'}
+            onChange={(e) => updateCalendarEventField('timezone', e.target.value)}
+            style={{
+              width: '100%',
+              padding: '8px',
+              marginBottom: '8px',
+              borderRadius: '4px',
+              border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+              background: theme === 'light' ? '#FFFFFF' : '#374151',
+              color: theme === 'light' ? '#111827' : '#F9FAFB',
+              fontSize: '13px',
+              boxSizing: 'border-box',
+            }}
+          >
+            <option value="Europe/Rome">Europe/Rome (CET)</option>
+            <option value="Europe/London">Europe/London (GMT)</option>
+            <option value="Europe/Paris">Europe/Paris (CET)</option>
+            <option value="Europe/Berlin">Europe/Berlin (CET)</option>
+            <option value="America/New_York">America/New_York (EST)</option>
+            <option value="America/Los_Angeles">America/Los_Angeles (PST)</option>
+            <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
+            <option value="Asia/Seoul">Asia/Seoul (KST)</option>
+            <option value="Asia/Shanghai">Asia/Shanghai (CST)</option>
+            <option value="UTC">UTC</option>
+          </select>
           <input
             type="text"
             placeholder="Location"
@@ -161,11 +188,104 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
               boxSizing: 'border-box',
             }}
           />
-          {pendingCalendarEvent.attendees?.length > 0 && (
-            <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '8px' }}>
-              👥 {pendingCalendarEvent.attendees.map(a => a.name || a.email).join(', ')}
+          {/* Attendees - editable list */}
+          <div style={{ marginBottom: '8px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 500, color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '4px' }}>
+              👥 Attendees
             </div>
-          )}
+            {/* List of attendees with remove button */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '6px' }}>
+              {(calendarEventEdits.attendees ?? pendingCalendarEvent.attendees ?? []).map((attendee, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '4px 8px',
+                    borderRadius: '12px',
+                    background: theme === 'light' ? '#E0F2FE' : '#1E3A5F',
+                    color: theme === 'light' ? '#0369A1' : '#7DD3FC',
+                    fontSize: '11px',
+                  }}
+                >
+                  <span>{attendee.name || attendee.email}</span>
+                  <button
+                    onClick={() => {
+                      const currentAttendees = calendarEventEdits.attendees ?? pendingCalendarEvent.attendees ?? [];
+                      const newAttendees = currentAttendees.filter((_, i) => i !== idx);
+                      updateCalendarEventField('attendees', newAttendees);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: '0',
+                      cursor: 'pointer',
+                      color: theme === 'light' ? '#0369A1' : '#7DD3FC',
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <FaTimes size={10} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            {/* Add new attendee input */}
+            <div style={{ display: 'flex', gap: '4px' }}>
+              <input
+                type="email"
+                placeholder="Add attendee email..."
+                id="new-attendee-input"
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && e.target.value.trim()) {
+                    const email = e.target.value.trim();
+                    const currentAttendees = calendarEventEdits.attendees ?? pendingCalendarEvent.attendees ?? [];
+                    // Check if already exists
+                    if (!currentAttendees.some(a => a.email === email)) {
+                      updateCalendarEventField('attendees', [...currentAttendees, { email, name: email.split('@')[0] }]);
+                    }
+                    e.target.value = '';
+                  }
+                }}
+                style={{
+                  flex: 1,
+                  padding: '6px 8px',
+                  borderRadius: '4px',
+                  border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                  background: theme === 'light' ? '#FFFFFF' : '#374151',
+                  color: theme === 'light' ? '#111827' : '#F9FAFB',
+                  fontSize: '12px',
+                  boxSizing: 'border-box',
+                }}
+              />
+              <button
+                onClick={() => {
+                  const input = document.getElementById('new-attendee-input');
+                  if (input && input.value.trim()) {
+                    const email = input.value.trim();
+                    const currentAttendees = calendarEventEdits.attendees ?? pendingCalendarEvent.attendees ?? [];
+                    if (!currentAttendees.some(a => a.email === email)) {
+                      updateCalendarEventField('attendees', [...currentAttendees, { email, name: email.split('@')[0] }]);
+                    }
+                    input.value = '';
+                  }
+                }}
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: '4px',
+                  border: 'none',
+                  background: theme === 'light' ? '#E5E7EB' : '#4B5563',
+                  color: theme === 'light' ? '#374151' : '#E5E7EB',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+              >
+                <FaPlus size={10} />
+              </button>
+            </div>
+          </div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button
               onClick={handleCreateCalendarEvent}

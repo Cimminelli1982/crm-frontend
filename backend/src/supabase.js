@@ -213,3 +213,228 @@ export async function updateSyncDate(date, mailboxType = 'inbox') {
     console.error(`Error updating sync state for ${mailboxType}:`, error);
   }
 }
+
+// ==================== CALENDAR FUNCTIONS ====================
+
+// Get calendar sync state (ctag for change detection)
+export async function getCalendarSyncState() {
+  const { data, error } = await supabase
+    .from('sync_state')
+    .select('last_sync_date, ctag')
+    .eq('id', 'calendar_sync')
+    .single();
+
+  if (error && error.code !== 'PGRST116') {
+    console.error('Error fetching calendar sync state:', error);
+  }
+
+  return {
+    lastSync: data?.last_sync_date || null,
+    ctag: data?.ctag || null,
+  };
+}
+
+// Update calendar sync state with ctag
+export async function updateCalendarSyncState(ctag) {
+  const { error } = await supabase
+    .from('sync_state')
+    .upsert({
+      id: 'calendar_sync',
+      last_sync_date: new Date().toISOString(),
+      ctag: ctag,
+    });
+
+  if (error) {
+    console.error('Error updating calendar sync state:', error);
+  }
+}
+
+// Load dismissed calendar event UIDs
+export async function loadDismissedCalendarEvents() {
+  const { data, error } = await supabase
+    .from('calendar_dismissed')
+    .select('event_uid');
+
+  if (error) {
+    console.error('Error loading dismissed calendar events:', error);
+    return new Set();
+  }
+
+  return new Set((data || []).map(d => d.event_uid));
+}
+
+// Get existing calendar events with their etags for change detection
+export async function getExistingCalendarEvents() {
+  const { data, error } = await supabase
+    .from('command_center_inbox')
+    .select('id, event_uid, etag, sequence')
+    .eq('type', 'calendar')
+    .not('event_uid', 'is', null);
+
+  if (error) {
+    console.error('Error loading existing calendar events:', error);
+    return new Map();
+  }
+
+  // Return map of uid -> { id, etag, sequence }
+  const eventMap = new Map();
+  for (const e of data || []) {
+    eventMap.set(e.event_uid, {
+      id: e.id,
+      etag: e.etag,
+      sequence: e.sequence,
+    });
+  }
+  return eventMap;
+}
+
+// Transform CalDAV event to command_center_inbox format (enhanced)
+export function transformCalendarEvent(event) {
+  return {
+    type: 'calendar',
+    event_uid: event.uid,
+    subject: event.title || 'Untitled Event',
+    body_text: event.description || null,
+    date: event.startDate,
+    event_end: event.endDate,
+    event_location: event.location || null,
+    from_name: event.organizerName || null,
+    from_email: event.organizerEmail || null,
+    // Store full attendee details with status, role, rsvp
+    to_recipients: event.attendees || [],
+    is_read: false,
+    // Track etag and sequence for change detection
+    etag: event.etag || null,
+    sequence: event.sequence || 0,
+    // Additional useful fields
+    is_all_day: event.allDay || false,
+    event_status: event.status || 'CONFIRMED',
+    recurrence_rule: event.recurrenceRule || null,
+  };
+}
+
+// Upsert calendar events to command_center_inbox (with etag change detection)
+export async function upsertCalendarEvents(events, dismissedUids) {
+  const results = { synced: 0, updated: 0, skipped: 0, unchanged: 0, errors: 0 };
+
+  // Filter out dismissed events
+  const validEvents = events.filter(e => {
+    if (dismissedUids.has(e.uid)) {
+      results.skipped++;
+      return false;
+    }
+    return true;
+  });
+
+  if (validEvents.length === 0) {
+    return results;
+  }
+
+  // Get existing events with etags for change detection
+  const existingEvents = await getExistingCalendarEvents();
+
+  for (const event of validEvents) {
+    const transformed = transformCalendarEvent(event);
+    const existing = existingEvents.get(event.uid);
+
+    try {
+      if (existing) {
+        // Check if event actually changed (etag or sequence)
+        const hasChanged = !existing.etag ||
+                          existing.etag !== event.etag ||
+                          (existing.sequence || 0) < (event.sequence || 0);
+
+        if (!hasChanged) {
+          results.unchanged++;
+          continue;
+        }
+
+        // Update existing event
+        const { error } = await supabase
+          .from('command_center_inbox')
+          .update({
+            subject: transformed.subject,
+            body_text: transformed.body_text,
+            date: transformed.date,
+            event_end: transformed.event_end,
+            event_location: transformed.event_location,
+            from_name: transformed.from_name,
+            from_email: transformed.from_email,
+            to_recipients: transformed.to_recipients,
+            etag: transformed.etag,
+            sequence: transformed.sequence,
+            is_all_day: transformed.is_all_day,
+            event_status: transformed.event_status,
+            recurrence_rule: transformed.recurrence_rule,
+          })
+          .eq('event_uid', event.uid)
+          .eq('type', 'calendar');
+
+        if (error) {
+          console.error(`Error updating calendar event ${event.uid}:`, error);
+          results.errors++;
+        } else {
+          results.updated++;
+        }
+      } else {
+        // Insert new event
+        const { error } = await supabase
+          .from('command_center_inbox')
+          .insert(transformed);
+
+        if (error) {
+          console.error(`Error inserting calendar event ${event.uid}:`, error);
+          results.errors++;
+        } else {
+          results.synced++;
+        }
+      }
+    } catch (err) {
+      console.error(`Error processing calendar event ${event.uid}:`, err);
+      results.errors++;
+    }
+  }
+
+  return results;
+}
+
+// Delete calendar events that no longer exist in CalDAV
+// Only deletes FUTURE events that are missing (past events are kept)
+export async function deleteRemovedCalendarEvents(currentUids, dismissedUids) {
+  const now = new Date().toISOString();
+
+  // Get only FUTURE calendar events in DB (don't touch past events)
+  const { data, error } = await supabase
+    .from('command_center_inbox')
+    .select('id, event_uid, date')
+    .eq('type', 'calendar')
+    .not('event_uid', 'is', null)
+    .gte('date', now); // Only future events
+
+  if (error) {
+    console.error('Error fetching calendar events for deletion:', error);
+    return 0;
+  }
+
+  // Find events to delete (in DB but not in current CalDAV response and not dismissed)
+  const toDelete = (data || []).filter(e =>
+    !currentUids.has(e.event_uid) && !dismissedUids.has(e.event_uid)
+  );
+
+  if (toDelete.length === 0) {
+    return 0;
+  }
+
+  const idsToDelete = toDelete.map(e => e.id);
+  const { error: deleteError } = await supabase
+    .from('command_center_inbox')
+    .delete()
+    .in('id', idsToDelete);
+
+  if (deleteError) {
+    console.error('Error deleting removed calendar events:', deleteError);
+    return 0;
+  }
+
+  return toDelete.length;
+}
