@@ -16,6 +16,15 @@ import {
 } from './supabase.js';
 import { mcpManager } from './mcp-client.js';
 import { CalDAVClient } from './caldav.js';
+import {
+  initBaileys,
+  getStatus as getBaileysStatus,
+  getQRCode,
+  clearSession,
+  sendMessage as baileysSendMessage,
+  sendMessageToChat,
+  sendMedia,
+} from './baileys.js';
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({
@@ -1510,9 +1519,80 @@ app.post('/calendar/create-event', async (req, res) => {
 
     console.log('[Calendar] Event created:', result);
 
+    // Send invite emails to attendees if there are any
+    let invitesSent = [];
+    if (attendees && attendees.length > 0 && result.ics) {
+      console.log('[Calendar] Sending invite emails to', attendees.length, 'attendees');
+
+      try {
+        const jmap = new JMAPClient(username, process.env.FASTMAIL_API_TOKEN);
+        await jmap.init();
+
+        // Upload ICS as blob
+        const icsBuffer = Buffer.from(result.ics, 'utf-8');
+        const blob = await jmap.uploadBlob(icsBuffer, 'text/calendar');
+        console.log('[Calendar] ICS blob uploaded:', blob.blobId);
+
+        // Format date for email
+        const eventDate = new Date(startDate);
+        const dateStr = eventDate.toLocaleDateString('en-GB', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          timeZone: timezone || 'Europe/Rome',
+        });
+
+        // Send invite to each attendee
+        for (const attendee of attendees) {
+          try {
+            const emailSubject = `Invitation: ${title}`;
+            const emailBody = `You have been invited to:\n\n${title}\n\nWhen: ${dateStr}\n${location ? `Where: ${location}\n` : ''}\n\nPlease find the calendar invitation attached.\n\n--\nSimone Cimminelli`;
+            const htmlBody = `
+              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+                <h2 style="color: #1a73e8;">Calendar Invitation</h2>
+                <p>You have been invited to:</p>
+                <div style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin: 16px 0;">
+                  <h3 style="margin: 0 0 8px 0;">${title}</h3>
+                  <p style="margin: 4px 0;"><strong>When:</strong> ${dateStr}</p>
+                  ${location ? `<p style="margin: 4px 0;"><strong>Where:</strong> ${location}</p>` : ''}
+                </div>
+                <p>Please find the calendar invitation attached.</p>
+                <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 24px 0;">
+                <p style="color: #666;">Simone Cimminelli</p>
+              </div>
+            `;
+
+            await jmap.sendEmail({
+              to: [{ email: attendee.email, name: attendee.name || '' }],
+              subject: emailSubject,
+              textBody: emailBody,
+              htmlBody: htmlBody,
+              attachments: [{
+                blobId: blob.blobId,
+                type: 'text/calendar; method=REQUEST',
+                name: 'invite.ics',
+                size: blob.size,
+              }],
+            });
+
+            console.log('[Calendar] Invite sent to:', attendee.email);
+            invitesSent.push(attendee.email);
+          } catch (emailError) {
+            console.error('[Calendar] Failed to send invite to', attendee.email, ':', emailError.message);
+          }
+        }
+      } catch (jmapError) {
+        console.error('[Calendar] Failed to send invite emails:', jmapError.message);
+      }
+    }
+
     res.json({
       success: true,
       event: result,
+      invitesSent,
     });
   } catch (error) {
     console.error('[Calendar] Create event error:', error);
@@ -1591,7 +1671,179 @@ app.get('/calendar/status', async (req, res) => {
 
 // ============ END CALENDAR ============
 
+// ==================== WHATSAPP (BAILEYS) ====================
+
+// Initialize Baileys on startup (will wait for QR if no session)
+let baileysInitPromise = null;
+
+async function initBaileysOnStartup() {
+  try {
+    console.log('[WhatsApp] Initializing Baileys...');
+    await initBaileys();
+  } catch (error) {
+    console.error('[WhatsApp] Startup init error:', error.message);
+  }
+}
+
+// Get WhatsApp connection status
+app.get('/whatsapp/status', (req, res) => {
+  const status = getBaileysStatus();
+  res.json(status);
+});
+
+// Get QR code for scanning (returns base64 data URL)
+app.get('/whatsapp/qr', async (req, res) => {
+  try {
+    const status = getBaileysStatus();
+
+    // If not connected and no QR, trigger connection
+    if (status.status === 'disconnected' && !status.hasQR) {
+      await initBaileys();
+    }
+
+    const qr = getQRCode();
+
+    if (!qr) {
+      const currentStatus = getBaileysStatus();
+      if (currentStatus.status === 'connected') {
+        return res.json({ success: true, connected: true, message: 'Already connected' });
+      }
+      return res.json({ success: false, error: 'QR code not available yet', status: currentStatus });
+    }
+
+    // Generate QR code as data URL
+    const QRCode = await import('qrcode');
+    const dataUrl = await QRCode.toDataURL(qr);
+
+    res.json({ success: true, qr: dataUrl });
+  } catch (error) {
+    console.error('[WhatsApp] QR error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get QR code as actual image (easier to scan)
+app.get('/whatsapp/qr-image', async (req, res) => {
+  try {
+    const status = getBaileysStatus();
+
+    if (status.status === 'connected') {
+      return res.send('<h1>✅ Already connected!</h1>');
+    }
+
+    // If not connected and no QR, trigger connection
+    if (status.status === 'disconnected' && !status.hasQR) {
+      await initBaileys();
+      // Wait a bit for QR to generate
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+
+    const qr = getQRCode();
+
+    if (!qr) {
+      return res.send('<h1>⏳ Waiting for QR... Refresh in a few seconds</h1><script>setTimeout(() => location.reload(), 3000)</script>');
+    }
+
+    // Generate QR code as PNG buffer
+    const QRCode = await import('qrcode');
+    const buffer = await QRCode.toBuffer(qr, { width: 400 });
+
+    res.setHeader('Content-Type', 'image/png');
+    res.send(buffer);
+  } catch (error) {
+    console.error('[WhatsApp] QR image error:', error);
+    res.status(500).send('Error generating QR');
+  }
+});
+
+// Reconnect / reinitialize
+app.post('/whatsapp/connect', async (req, res) => {
+  try {
+    await initBaileys();
+    const status = getBaileysStatus();
+    res.json({ success: true, status });
+  } catch (error) {
+    console.error('[WhatsApp] Connect error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Logout and clear session
+app.post('/whatsapp/logout', (req, res) => {
+  const result = clearSession();
+  res.json(result);
+});
+
+// Send message (text)
+app.post('/whatsapp/send', async (req, res) => {
+  try {
+    const { phone, chat_id, message, text } = req.body;
+    const messageText = message || text;
+
+    if (!messageText) {
+      return res.status(400).json({ success: false, error: 'Message text required' });
+    }
+
+    if (!phone && !chat_id) {
+      return res.status(400).json({ success: false, error: 'Phone or chat_id required' });
+    }
+
+    let result;
+
+    if (chat_id) {
+      // Send to group/chat by ID
+      result = await sendMessageToChat(chat_id, messageText);
+    } else {
+      // Send to phone number
+      result = await baileysSendMessage(phone, messageText);
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('[WhatsApp] Send error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Send media (file upload)
+app.post('/whatsapp/send-media', async (req, res) => {
+  try {
+    const { phone, chat_id, caption, file } = req.body;
+
+    if (!file || !file.data) {
+      return res.status(400).json({ success: false, error: 'File data required (base64)' });
+    }
+
+    if (!phone && !chat_id) {
+      return res.status(400).json({ success: false, error: 'Phone or chat_id required' });
+    }
+
+    const buffer = Buffer.from(file.data, 'base64');
+    const to = chat_id || phone;
+
+    const result = await sendMedia(
+      to,
+      buffer,
+      file.mimetype || 'application/octet-stream',
+      file.filename || 'file',
+      caption || ''
+    );
+
+    res.json(result);
+  } catch (error) {
+    console.error('[WhatsApp] Send media error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============ END WHATSAPP ============
+
 app.listen(PORT, () => {
   console.log(`Command Center Backend running on port ${PORT}`);
   startPolling();
+
+  // Initialize Baileys after server starts
+  setTimeout(() => {
+    initBaileysOnStartup();
+  }, 2000);
 });

@@ -4,6 +4,9 @@ import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
 import toast from 'react-hot-toast';
 
+// Use Node.js backend for sending (Baileys) - falls back to Python if not connected
+// Always use Railway backend (Baileys session is there)
+const BAILEYS_API = 'https://command-center-backend-production.up.railway.app';
 const CRM_AGENT_API = 'https://crm-agent-api-production.up.railway.app';
 
 // Styled components for WhatsApp chat view
@@ -871,7 +874,7 @@ const WhatsAppTab = ({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  // Send message handler
+  // Send message handler - uses Baileys (Node.js) with fallback to TimelinesAI (Python)
   const handleSendMessage = async () => {
     const hasText = replyText.trim().length > 0;
     const hasFile = !!selectedFile;
@@ -883,95 +886,166 @@ const WhatsAppTab = ({
     const fileToSend = selectedFile;
 
     try {
-      let fileUid = null;
-
-      // Upload file first if we have one
-      if (fileToSend) {
-        setUploading(true);
-        try {
-          const formData = new FormData();
-          formData.append('file', fileToSend);
-
-          const uploadResponse = await fetch(`${CRM_AGENT_API}/whatsapp-upload-file`, {
-            method: 'POST',
-            body: formData
-          });
-
-          const uploadData = await uploadResponse.json();
-
-          if (!uploadResponse.ok || !uploadData.success) {
-            throw new Error(uploadData.detail || uploadData.error || 'Failed to upload file');
-          }
-
-          fileUid = uploadData.file_uid;
-        } finally {
-          setUploading(false);
-        }
+      // Check Baileys connection status first
+      let useBaileys = false;
+      try {
+        const statusRes = await fetch(`${BAILEYS_API}/whatsapp/status`);
+        const statusData = await statusRes.json();
+        useBaileys = statusData.status === 'connected';
+      } catch (e) {
+        console.log('[WhatsApp] Baileys not available, using TimelinesAI');
       }
 
-      // Send message with optional file_uid
-      // For group chats, use chat_id; for individuals, use phone (contact_number)
-      const payload = selectedChat.is_group_chat
-        ? { chat_id: selectedChat.chat_id }
-        : { phone: selectedChat.contact_number };
-
-      if (messageToSend) {
-        payload.message = messageToSend;
-      }
-
-      if (fileUid) {
-        payload.file_uid = fileUid;
-      }
-
-      const response = await fetch(`${CRM_AGENT_API}/whatsapp-send`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        setReplyText('');
-        setSelectedFile(null);
-        setFilePreview(null);
-
-        // Refocus input for quick follow-up messages
-        setTimeout(() => {
-          if (textareaRef.current) {
-            textareaRef.current.focus();
-          }
-        }, 50);
-
-        // Add to local sent messages for immediate display
-        const newMessage = {
-          id: `sent_${Date.now()}`,
-          text: messageToSend || (fileToSend ? `📎 ${fileToSend.name}` : ''),
-          direction: 'sent',
-          date: new Date().toISOString(),
-          isLocal: true, // Mark as locally added
-          hasAttachment: !!fileToSend
-        };
-        setSentMessages(prev => [...prev, newMessage]);
-
-        // Notify parent to refresh messages if callback provided
-        if (onMessageSent) {
-          onMessageSent({
-            chat_id: selectedChat.chat_id,
-            text: messageToSend,
-            direction: 'sent',
-            timestamp: new Date().toISOString(),
-            hasAttachment: !!fileToSend
-          });
-        }
+      if (useBaileys) {
+        // === BAILEYS PATH (free) ===
+        console.log('[WhatsApp] Sending via Baileys...');
 
         if (fileToSend) {
-          toast.success('Message with attachment sent!');
+          // Send media via Baileys
+          setUploading(true);
+          try {
+            const reader = new FileReader();
+            const fileData = await new Promise((resolve, reject) => {
+              reader.onload = () => resolve(reader.result.split(',')[1]); // base64
+              reader.onerror = reject;
+              reader.readAsDataURL(fileToSend);
+            });
+
+            const payload = {
+              phone: selectedChat.is_group_chat ? undefined : selectedChat.contact_number,
+              chat_id: selectedChat.is_group_chat ? selectedChat.chat_jid || selectedChat.chat_id : undefined,
+              caption: messageToSend || '',
+              file: {
+                data: fileData,
+                mimetype: fileToSend.type,
+                filename: fileToSend.name
+              }
+            };
+
+            const response = await fetch(`${BAILEYS_API}/whatsapp/send-media`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+              throw new Error(data.error || 'Failed to send media');
+            }
+          } finally {
+            setUploading(false);
+          }
+        } else {
+          // Send text via Baileys
+          const payload = {
+            phone: selectedChat.is_group_chat ? undefined : selectedChat.contact_number,
+            chat_id: selectedChat.is_group_chat ? selectedChat.chat_jid || selectedChat.chat_id : undefined,
+            message: messageToSend
+          };
+
+          const response = await fetch(`${BAILEYS_API}/whatsapp/send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          const data = await response.json();
+          if (!response.ok || !data.success) {
+            throw new Error(data.error || 'Failed to send message');
+          }
         }
       } else {
-        throw new Error(data.detail || data.error || 'Failed to send message');
+        // === TIMELINESAI PATH (fallback - paid) ===
+        console.log('[WhatsApp] Sending via TimelinesAI (fallback)...');
+
+        let fileUid = null;
+
+        // Upload file first if we have one
+        if (fileToSend) {
+          setUploading(true);
+          try {
+            const formData = new FormData();
+            formData.append('file', fileToSend);
+
+            const uploadResponse = await fetch(`${CRM_AGENT_API}/whatsapp-upload-file`, {
+              method: 'POST',
+              body: formData
+            });
+
+            const uploadData = await uploadResponse.json();
+
+            if (!uploadResponse.ok || !uploadData.success) {
+              throw new Error(uploadData.detail || uploadData.error || 'Failed to upload file');
+            }
+
+            fileUid = uploadData.file_uid;
+          } finally {
+            setUploading(false);
+          }
+        }
+
+        // Send message with optional file_uid
+        const payload = selectedChat.is_group_chat
+          ? { chat_id: selectedChat.chat_id }
+          : { phone: selectedChat.contact_number };
+
+        if (messageToSend) {
+          payload.message = messageToSend;
+        }
+
+        if (fileUid) {
+          payload.file_uid = fileUid;
+        }
+
+        const response = await fetch(`${CRM_AGENT_API}/whatsapp-send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(data.detail || data.error || 'Failed to send message');
+        }
+      }
+
+      // Success - update UI
+      setReplyText('');
+      setSelectedFile(null);
+      setFilePreview(null);
+
+      // Refocus input for quick follow-up messages
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+        }
+      }, 50);
+
+      // Add to local sent messages for immediate display
+      const newMessage = {
+        id: `sent_${Date.now()}`,
+        text: messageToSend || (fileToSend ? `📎 ${fileToSend.name}` : ''),
+        direction: 'sent',
+        date: new Date().toISOString(),
+        isLocal: true,
+        hasAttachment: !!fileToSend
+      };
+      setSentMessages(prev => [...prev, newMessage]);
+
+      // Notify parent to refresh messages if callback provided
+      if (onMessageSent) {
+        onMessageSent({
+          chat_id: selectedChat.chat_id,
+          text: messageToSend,
+          direction: 'sent',
+          timestamp: new Date().toISOString(),
+          hasAttachment: !!fileToSend
+        });
+      }
+
+      if (fileToSend) {
+        toast.success('Message with attachment sent!');
       }
     } catch (error) {
       console.error('Send message error:', error);

@@ -639,6 +639,7 @@ export class CalDAVClient {
       endDate,
       location,
       attendees,
+      ics, // Return ICS for email invite
     };
   }
 

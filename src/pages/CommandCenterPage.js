@@ -3417,10 +3417,15 @@ const CommandCenterPage = ({ theme }) => {
       const data = await response.json();
 
       if (data.success) {
-        toast.success('📅 Event created and invites sent!');
+        const invitesSent = data.invitesSent || [];
+        const inviteMsg = invitesSent.length > 0
+          ? `\n📧 Invites sent to: ${invitesSent.join(', ')}`
+          : (eventData.attendees?.length > 0 ? '\n⚠️ Attendees added but invites not sent' : '');
+
+        toast.success(invitesSent.length > 0 ? '📅 Event created and invites sent!' : '📅 Event created!');
         setChatMessages(prev => [...prev, {
           role: 'assistant',
-          content: `✅ **Event created!**\n\n**${eventData.title}**\n📆 ${new Date(eventData.startDate).toLocaleString('it-IT')}\n${eventData.location ? `📍 ${eventData.location}\n` : ''}${eventData.attendees?.length > 0 ? `\n📧 Invites sent to: ${eventData.attendees.map(a => a.email).join(', ')}` : ''}`
+          content: `✅ **Event created!**\n\n**${eventData.title}**\n📆 ${new Date(eventData.startDate).toLocaleString('it-IT')}\n${eventData.location ? `📍 ${eventData.location}\n` : ''}${inviteMsg}`
         }]);
         setPendingCalendarEvent(null);
         setCalendarEventEdits({});
@@ -5095,6 +5100,7 @@ const CommandCenterPage = ({ theme }) => {
                   {calendarSections.upcoming && (
                     filterCalendarEvents(calendarEvents, 'upcoming').map(event => {
                       const cleanSubject = (event.subject || 'No title')
+                        .replace(/^\[(CONFIRMED|TENTATIVE|CANCELLED|CANCELED)\]\s*/i, '')
                         .replace(/Simone Cimminelli/gi, '')
                         .replace(/<>/g, '')
                         .replace(/\s+/g, ' ')
@@ -5173,6 +5179,7 @@ const CommandCenterPage = ({ theme }) => {
                   {calendarSections.past && (
                     filterCalendarEvents(calendarEvents, 'past').map(event => {
                       const cleanSubject = (event.subject || 'No title')
+                        .replace(/^\[(CONFIRMED|TENTATIVE|CANCELLED|CANCELED)\]\s*/i, '')
                         .replace(/Simone Cimminelli/gi, '')
                         .replace(/<>/g, '')
                         .replace(/\s+/g, ' ')
@@ -5260,6 +5267,7 @@ const CommandCenterPage = ({ theme }) => {
                 }}>
                   <EmailSubjectFull theme={theme} style={{ margin: 0 }}>
                     {(selectedCalendarEvent.subject || 'Meeting')
+                      .replace(/^\[(CONFIRMED|TENTATIVE|CANCELLED|CANCELED)\]\s*/i, '')
                       .replace(/Simone Cimminelli/gi, '')
                       .replace(/<>/g, '')
                       .replace(/\s+/g, ' ')

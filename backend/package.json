@@ -24,8 +24,11 @@
     "@anthropic-ai/sdk": "^0.39.0",
     "@modelcontextprotocol/sdk": "^1.24.3",
     "@supabase/supabase-js": "^2.86.2",
+    "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0"
   }
 }
