@@ -85,7 +85,7 @@ import {
   SendButton,
   CancelButton
 } from './CommandCenterPage.styles';
-import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt } from 'react-icons/fa';
+import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt, FaUpload } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import QuickEditModal from '../components/QuickEditModalRefactored';
@@ -588,6 +588,12 @@ const CommandCenterPage = ({ theme }) => {
   const [dealCompanySearchQuery, setDealCompanySearchQuery] = useState('');
   const [dealCompanySearchResults, setDealCompanySearchResults] = useState([]);
   const [dealCompanySearchLoading, setDealCompanySearchLoading] = useState(false);
+  const [addDealAttachmentModalOpen, setAddDealAttachmentModalOpen] = useState(false);
+  const [dealAttachmentSearchQuery, setDealAttachmentSearchQuery] = useState('');
+  const [dealAttachmentSearchResults, setDealAttachmentSearchResults] = useState([]);
+  const [dealAttachmentSearchLoading, setDealAttachmentSearchLoading] = useState(false);
+  const [dealAttachmentUploading, setDealAttachmentUploading] = useState(false);
+  const dealAttachmentFileInputRef = useRef(null);
   const [createDealModalOpen, setCreateDealModalOpen] = useState(false);
   const [newDealForm, setNewDealForm] = useState({
     opportunity: '',
@@ -948,6 +954,178 @@ const CommandCenterPage = ({ theme }) => {
     } catch (err) {
       console.error('Error adding company to deal:', err);
       toast.error('Failed to add company');
+    }
+  };
+
+  // Search for attachments to add to a deal
+  const handleSearchDealAttachments = async (query) => {
+    setDealAttachmentSearchQuery(query);
+    if (!query.trim()) {
+      setDealAttachmentSearchResults([]);
+      return;
+    }
+    setDealAttachmentSearchLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('attachments')
+        .select('attachment_id, file_name, file_url, permanent_url, file_type, file_size, created_at')
+        .ilike('file_name', `%${query}%`)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) throw error;
+
+      // Filter out attachments already linked to this deal
+      const linkedAttachmentIds = (selectedPipelineDeal?.deal_attachments || []).map(da => da.attachment_id);
+      const filteredResults = (data || []).filter(a => !linkedAttachmentIds.includes(a.attachment_id));
+
+      setDealAttachmentSearchResults(filteredResults);
+    } catch (err) {
+      console.error('Error searching attachments:', err);
+      toast.error('Failed to search attachments');
+    } finally {
+      setDealAttachmentSearchLoading(false);
+    }
+  };
+
+  // Add an attachment to a deal
+  const handleAddDealAttachment = async (attachment) => {
+    if (!selectedPipelineDeal || !attachment) return;
+    try {
+      const { error } = await supabase
+        .from('deal_attachments')
+        .insert({
+          deal_id: selectedPipelineDeal.deal_id,
+          attachment_id: attachment.attachment_id,
+          created_by: 'User'
+        });
+      if (error) throw error;
+
+      // Update local state
+      const newAttachmentLink = {
+        deal_id: selectedPipelineDeal.deal_id,
+        attachment_id: attachment.attachment_id,
+        attachments: attachment
+      };
+      const updatedAttachments = [...(selectedPipelineDeal.deal_attachments || []), newAttachmentLink];
+      const updatedDeal = { ...selectedPipelineDeal, deal_attachments: updatedAttachments };
+      setSelectedPipelineDeal(updatedDeal);
+      setPipelineDeals(prev => prev.map(d => d.deal_id === selectedPipelineDeal.deal_id ? updatedDeal : d));
+
+      // Clear search and close modal
+      setDealAttachmentSearchQuery('');
+      setDealAttachmentSearchResults([]);
+      setAddDealAttachmentModalOpen(false);
+      toast.success('Attachment added to deal');
+    } catch (err) {
+      console.error('Error adding attachment to deal:', err);
+      toast.error('Failed to add attachment');
+    }
+  };
+
+  // Remove an attachment from a deal
+  const handleRemoveDealAttachment = async (attachmentId) => {
+    if (!selectedPipelineDeal || !attachmentId) return;
+    try {
+      const { error } = await supabase
+        .from('deal_attachments')
+        .delete()
+        .eq('deal_id', selectedPipelineDeal.deal_id)
+        .eq('attachment_id', attachmentId);
+      if (error) throw error;
+
+      // Update local state
+      const updatedAttachments = selectedPipelineDeal.deal_attachments.filter(da => da.attachment_id !== attachmentId);
+      const updatedDeal = { ...selectedPipelineDeal, deal_attachments: updatedAttachments };
+      setSelectedPipelineDeal(updatedDeal);
+      setPipelineDeals(prev => prev.map(d => d.deal_id === selectedPipelineDeal.deal_id ? updatedDeal : d));
+      toast.success('Attachment removed from deal');
+    } catch (err) {
+      console.error('Error removing attachment from deal:', err);
+      toast.error('Failed to remove attachment');
+    }
+  };
+
+  // Upload a new attachment and link it to the deal
+  const handleUploadDealAttachment = async (event) => {
+    const files = event.target.files;
+    if (!files || files.length === 0 || !selectedPipelineDeal) return;
+
+    setDealAttachmentUploading(true);
+    try {
+      for (const file of files) {
+        // Sanitize filename
+        const sanitizedName = file.name
+          .replace(/[^\w\s.-]/g, '_')
+          .replace(/\s+/g, '_')
+          .replace(/_+/g, '_');
+        const fileName = `${Date.now()}_${sanitizedName}`;
+        const filePath = `deals/${selectedPipelineDeal.deal_id}/${fileName}`;
+
+        // Upload to Supabase Storage
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('attachments')
+          .upload(filePath, file, {
+            contentType: file.type || 'application/octet-stream'
+          });
+
+        if (uploadError) throw uploadError;
+
+        // Get public URL
+        const { data: urlData } = supabase.storage
+          .from('attachments')
+          .getPublicUrl(filePath);
+
+        // Create attachment record
+        const { data: attachmentRecord, error: insertError } = await supabase
+          .from('attachments')
+          .insert({
+            file_name: file.name,
+            file_url: uploadData.path,
+            file_type: file.type,
+            file_size: file.size,
+            permanent_url: urlData.publicUrl,
+            created_by: 'User'
+          })
+          .select()
+          .single();
+
+        if (insertError) throw insertError;
+
+        // Link to deal
+        const { error: linkError } = await supabase
+          .from('deal_attachments')
+          .insert({
+            deal_id: selectedPipelineDeal.deal_id,
+            attachment_id: attachmentRecord.attachment_id,
+            created_by: 'User'
+          });
+
+        if (linkError) throw linkError;
+
+        // Update local state
+        const newAttachmentLink = {
+          deal_id: selectedPipelineDeal.deal_id,
+          attachment_id: attachmentRecord.attachment_id,
+          attachments: attachmentRecord
+        };
+        const updatedAttachments = [...(selectedPipelineDeal.deal_attachments || []), newAttachmentLink];
+        const updatedDeal = { ...selectedPipelineDeal, deal_attachments: updatedAttachments };
+        setSelectedPipelineDeal(updatedDeal);
+        setPipelineDeals(prev => prev.map(d => d.deal_id === selectedPipelineDeal.deal_id ? updatedDeal : d));
+      }
+
+      toast.success(`${files.length} file${files.length > 1 ? 's' : ''} uploaded successfully`);
+      setAddDealAttachmentModalOpen(false);
+    } catch (err) {
+      console.error('Error uploading attachment:', err);
+      toast.error('Failed to upload file: ' + err.message);
+    } finally {
+      setDealAttachmentUploading(false);
+      // Clear the file input
+      if (dealAttachmentFileInputRef.current) {
+        dealAttachmentFileInputRef.current.value = '';
+      }
     }
   };
 
@@ -1331,6 +1509,19 @@ const CommandCenterPage = ({ theme }) => {
             companies (
               company_id,
               name
+            )
+          ),
+          deal_attachments (
+            deal_attachment_id,
+            attachment_id,
+            created_at,
+            attachments (
+              attachment_id,
+              file_name,
+              file_url,
+              permanent_url,
+              file_type,
+              file_size
             )
           )
         `)
@@ -7362,6 +7553,257 @@ const CommandCenterPage = ({ theme }) => {
                     ) : (
                       <div style={{ color: theme === 'light' ? '#9CA3AF' : '#6B7280', fontSize: '13px', fontStyle: 'italic' }}>
                         No companies linked yet
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Linked Attachments */}
+                  <div style={{
+                    marginBottom: '20px',
+                    padding: '16px',
+                    background: theme === 'light' ? '#F3F4F6' : '#374151',
+                    borderRadius: '12px',
+                    position: 'relative'
+                  }}>
+                    <div style={{ fontWeight: 600, marginBottom: '12px', color: theme === 'light' ? '#111827' : '#F9FAFB', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <FaPaperclip size={14} style={{ marginRight: '8px' }} />
+                        Attachments {selectedPipelineDeal.deal_attachments?.length > 0 && `(${selectedPipelineDeal.deal_attachments.length})`}
+                      </div>
+                      <button
+                        onClick={() => setAddDealAttachmentModalOpen(true)}
+                        style={{
+                          background: theme === 'light' ? '#E5E7EB' : '#4B5563',
+                          border: 'none',
+                          borderRadius: '4px',
+                          padding: '4px 8px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          color: theme === 'light' ? '#374151' : '#D1D5DB',
+                          fontSize: '12px'
+                        }}
+                      >
+                        <FaPlus size={10} /> Add
+                      </button>
+                    </div>
+
+                    {/* Add Attachment Modal */}
+                    {addDealAttachmentModalOpen && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '50px',
+                        left: '16px',
+                        right: '16px',
+                        background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                        borderRadius: '8px',
+                        boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
+                        zIndex: 100,
+                        padding: '12px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                          <span style={{ fontWeight: 500, fontSize: '13px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>Add Attachment to Deal</span>
+                          <button
+                            onClick={() => {
+                              setAddDealAttachmentModalOpen(false);
+                              setDealAttachmentSearchQuery('');
+                              setDealAttachmentSearchResults([]);
+                            }}
+                            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: theme === 'light' ? '#6B7280' : '#9CA3AF', padding: '4px' }}
+                          >
+                            <FaTimes size={12} />
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          value={dealAttachmentSearchQuery}
+                          onChange={(e) => handleSearchDealAttachments(e.target.value)}
+                          placeholder="Search attachments by file name..."
+                          autoFocus
+                          style={{
+                            width: '100%',
+                            padding: '8px 10px',
+                            background: theme === 'light' ? '#F9FAFB' : '#111827',
+                            border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                            borderRadius: '6px',
+                            color: theme === 'light' ? '#111827' : '#F9FAFB',
+                            fontSize: '13px',
+                            outline: 'none'
+                          }}
+                        />
+                        {dealAttachmentSearchLoading && (
+                          <div style={{ padding: '10px', textAlign: 'center', color: theme === 'light' ? '#6B7280' : '#9CA3AF', fontSize: '13px' }}>
+                            Searching...
+                          </div>
+                        )}
+                        {!dealAttachmentSearchLoading && dealAttachmentSearchResults.length > 0 && (
+                          <div style={{ marginTop: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+                            {dealAttachmentSearchResults.map((attachment) => (
+                              <div
+                                key={attachment.attachment_id}
+                                onClick={() => handleAddDealAttachment(attachment)}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '10px',
+                                  padding: '8px',
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  background: 'transparent'
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.background = theme === 'light' ? '#F3F4F6' : '#374151'}
+                                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                              >
+                                <div style={{
+                                  width: 28,
+                                  height: 28,
+                                  borderRadius: '6px',
+                                  backgroundColor: theme === 'light' ? '#E5E7EB' : '#4B5563',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center'
+                                }}>
+                                  <FaPaperclip size={12} style={{ color: '#9CA3AF' }} />
+                                </div>
+                                <div style={{ flex: 1, overflow: 'hidden' }}>
+                                  <div style={{ fontWeight: 500, fontSize: '13px', color: theme === 'light' ? '#111827' : '#F9FAFB', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {attachment.file_name}
+                                  </div>
+                                  <div style={{ fontSize: '11px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                                    {attachment.file_type} • {attachment.file_size ? `${(attachment.file_size / 1024).toFixed(1)} KB` : 'Unknown size'}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {!dealAttachmentSearchLoading && dealAttachmentSearchQuery && dealAttachmentSearchResults.length === 0 && (
+                          <div style={{ padding: '10px', textAlign: 'center', color: theme === 'light' ? '#6B7280' : '#9CA3AF', fontSize: '13px' }}>
+                            No attachments found
+                          </div>
+                        )}
+
+                        {/* Upload new file section */}
+                        <div style={{
+                          borderTop: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                          marginTop: '12px',
+                          paddingTop: '12px'
+                        }}>
+                          <input
+                            type="file"
+                            ref={dealAttachmentFileInputRef}
+                            onChange={handleUploadDealAttachment}
+                            style={{ display: 'none' }}
+                            multiple
+                          />
+                          <button
+                            onClick={() => dealAttachmentFileInputRef.current?.click()}
+                            disabled={dealAttachmentUploading}
+                            style={{
+                              width: '100%',
+                              padding: '10px',
+                              background: theme === 'light' ? '#3B82F6' : '#2563EB',
+                              color: '#FFFFFF',
+                              border: 'none',
+                              borderRadius: '6px',
+                              cursor: dealAttachmentUploading ? 'not-allowed' : 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '8px',
+                              fontSize: '13px',
+                              fontWeight: 500,
+                              opacity: dealAttachmentUploading ? 0.6 : 1
+                            }}
+                          >
+                            <FaUpload size={12} />
+                            {dealAttachmentUploading ? 'Uploading...' : 'Upload New File'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Attachment List */}
+                    {selectedPipelineDeal.deal_attachments && selectedPipelineDeal.deal_attachments.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {selectedPipelineDeal.deal_attachments.map((da, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '12px',
+                              padding: '8px 12px',
+                              background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                              borderRadius: '8px'
+                            }}
+                          >
+                            <div
+                              onClick={() => {
+                                const url = da.attachments?.permanent_url || da.attachments?.file_url;
+                                if (url) window.open(url, '_blank');
+                              }}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '12px',
+                                flex: 1,
+                                cursor: 'pointer',
+                                overflow: 'hidden'
+                              }}
+                            >
+                              <div style={{
+                                width: 32,
+                                height: 32,
+                                borderRadius: '8px',
+                                backgroundColor: theme === 'light' ? '#E5E7EB' : '#4B5563',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0
+                              }}>
+                                <FaPaperclip size={14} style={{ color: theme === 'light' ? '#9CA3AF' : '#9CA3AF' }} />
+                              </div>
+                              <div style={{ overflow: 'hidden' }}>
+                                <div style={{ fontWeight: 500, color: theme === 'light' ? '#111827' : '#F9FAFB', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {da.attachments?.file_name || 'Unknown file'}
+                                </div>
+                                <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                                  {da.attachments?.file_type || 'Unknown type'} {da.attachments?.file_size ? `• ${(da.attachments.file_size / 1024).toFixed(1)} KB` : ''}
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveDealAttachment(da.attachment_id);
+                              }}
+                              style={{
+                                background: 'transparent',
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: '6px',
+                                borderRadius: '4px',
+                                color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0
+                              }}
+                              onMouseEnter={(e) => e.target.style.color = '#EF4444'}
+                              onMouseLeave={(e) => e.target.style.color = theme === 'light' ? '#9CA3AF' : '#6B7280'}
+                              title="Remove attachment from deal"
+                            >
+                              <FaTimes size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ color: theme === 'light' ? '#9CA3AF' : '#6B7280', fontSize: '13px', fontStyle: 'italic' }}>
+                        No attachments linked yet
                       </div>
                     )}
                   </div>
