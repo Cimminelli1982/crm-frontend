@@ -16,6 +16,7 @@ import {
 } from './supabase.js';
 import { mcpManager } from './mcp-client.js';
 import { CalDAVClient } from './caldav.js';
+import { getGoogleCalendarClient } from './google-calendar.js';
 import {
   initBaileys,
   getStatus as getBaileysStatus,
@@ -243,6 +244,130 @@ async function syncCalendar() {
   }
 }
 
+// Google Calendar sync - syncs from Google Calendar to command_center_inbox
+let googleCalendarSyncToken = null;
+
+async function syncGoogleCalendar() {
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_REFRESH_TOKEN || !process.env.GOOGLE_CALENDAR_ID) {
+    console.log('[GoogleCalendar] Credentials not configured, skipping sync');
+    return;
+  }
+
+  try {
+    const gcal = getGoogleCalendarClient();
+
+    // Load dismissed events
+    const dismissedUids = await loadDismissedCalendarEvents();
+
+    // Get events from Google Calendar
+    const { events, nextSyncToken } = await gcal.getEvents({
+      syncToken: googleCalendarSyncToken,
+    });
+
+    if (events.length === 0 && googleCalendarSyncToken) {
+      // No changes since last sync
+      return;
+    }
+
+    console.log(`[GoogleCalendar] Fetched ${events.length} events from Google Calendar`);
+
+    // Transform and filter events
+    const transformedEvents = [];
+    for (const event of events) {
+      const transformed = gcal.transformEventForInbox(event);
+      if (!transformed) continue; // Skip cancelled events
+      if (dismissedUids.has(transformed.event_uid)) continue; // Skip dismissed
+
+      transformedEvents.push(transformed);
+    }
+
+    if (transformedEvents.length > 0) {
+      // Upsert to command_center_inbox
+      const results = await upsertGoogleCalendarEvents(transformedEvents);
+      console.log(`[GoogleCalendar] Sync complete: ${results.synced} new, ${results.updated} updated, ${results.errors} errors`);
+    }
+
+    // Save sync token for incremental sync
+    if (nextSyncToken) {
+      googleCalendarSyncToken = nextSyncToken;
+    }
+  } catch (error) {
+    console.error('[GoogleCalendar] Sync error:', error.message);
+    // Reset sync token on error to force full sync next time
+    if (error.message.includes('410') || error.message.includes('Sync token')) {
+      googleCalendarSyncToken = null;
+    }
+  }
+}
+
+// Helper function to upsert Google Calendar events to command_center_inbox
+async function upsertGoogleCalendarEvents(events) {
+  const results = { synced: 0, updated: 0, errors: 0 };
+
+  for (const event of events) {
+    try {
+      // Check if event already exists
+      const { data: existing } = await supabase
+        .from('command_center_inbox')
+        .select('id, etag')
+        .eq('type', 'calendar')
+        .eq('event_uid', event.event_uid)
+        .single();
+
+      if (existing) {
+        // Update if etag changed
+        if (existing.etag !== event.etag) {
+          const { error } = await supabase
+            .from('command_center_inbox')
+            .update({
+              subject: event.subject,
+              body_text: event.body_text,
+              date: event.date,
+              event_end: event.event_end,
+              event_location: event.event_location,
+              from_name: event.from_name,
+              from_email: event.from_email,
+              to_recipients: event.to_recipients,
+              etag: event.etag,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', existing.id);
+
+          if (error) throw error;
+          results.updated++;
+        }
+      } else {
+        // Insert new event
+        const { error } = await supabase
+          .from('command_center_inbox')
+          .insert({
+            type: 'calendar',
+            event_uid: event.event_uid,
+            subject: event.subject,
+            body_text: event.body_text,
+            date: event.date,
+            event_end: event.event_end,
+            event_location: event.event_location,
+            from_name: event.from_name,
+            from_email: event.from_email,
+            to_recipients: event.to_recipients,
+            etag: event.etag,
+            is_read: false,
+            created_at: new Date().toISOString(),
+          });
+
+        if (error) throw error;
+        results.synced++;
+      }
+    } catch (error) {
+      console.error(`[GoogleCalendar] Error upserting event ${event.event_uid}:`, error.message);
+      results.errors++;
+    }
+  }
+
+  return results;
+}
+
 // Start polling
 function startPolling() {
   console.log(`Starting email polling every ${SYNC_INTERVAL / 1000} seconds...`);
@@ -250,10 +375,12 @@ function startPolling() {
   // Initial sync
   autoSync();
   syncCalendar();
+  syncGoogleCalendar();
 
   // Then every 60 seconds
   setInterval(autoSync, SYNC_INTERVAL);
   setInterval(syncCalendar, SYNC_INTERVAL);
+  setInterval(syncGoogleCalendar, SYNC_INTERVAL);
 }
 
 // Health check
@@ -1663,6 +1790,203 @@ app.get('/calendar/status', async (req, res) => {
       connected: true,
       username,
       calendars: calendars.length,
+    });
+  } catch (error) {
+    res.json({ connected: false, error: error.message });
+  }
+});
+
+// ==================== GOOGLE CALENDAR API ====================
+
+// Create event in Google Calendar (with invites)
+app.post('/google-calendar/create-event', async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      location,
+      startDate,
+      endDate,
+      allDay,
+      attendees,
+      sendUpdates = 'all', // 'all' sends invite emails
+    } = req.body;
+
+    if (!title || !startDate) {
+      return res.status(400).json({ success: false, error: 'Title and startDate are required' });
+    }
+
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_REFRESH_TOKEN) {
+      return res.status(500).json({ success: false, error: 'Google Calendar credentials not configured' });
+    }
+
+    const gcal = getGoogleCalendarClient();
+
+    console.log('[GoogleCalendar] Creating event:', title, 'at', startDate);
+
+    const result = await gcal.createEvent({
+      title,
+      description: description || '',
+      location: location || '',
+      startDate,
+      endDate,
+      allDay: allDay || false,
+      attendees: attendees || [],
+      sendUpdates,
+    });
+
+    console.log('[GoogleCalendar] Event created:', result.id);
+
+    // Also add to command_center_inbox immediately
+    const transformed = gcal.transformEventForInbox(result);
+    if (transformed) {
+      await supabase
+        .from('command_center_inbox')
+        .upsert({
+          type: 'calendar',
+          event_uid: transformed.event_uid,
+          subject: transformed.subject,
+          body_text: transformed.body_text,
+          date: transformed.date,
+          event_end: transformed.event_end,
+          event_location: transformed.event_location,
+          from_name: transformed.from_name,
+          from_email: transformed.from_email,
+          to_recipients: transformed.to_recipients,
+          etag: transformed.etag,
+          is_read: true, // Mark as read since we just created it
+          created_at: new Date().toISOString(),
+        }, { onConflict: 'event_uid' });
+    }
+
+    res.json({
+      success: true,
+      event: {
+        id: result.id,
+        htmlLink: result.htmlLink,
+        title,
+        startDate,
+        endDate,
+        location,
+        attendees,
+      },
+      invitesSent: sendUpdates === 'all' && attendees?.length > 0,
+    });
+  } catch (error) {
+    console.error('[GoogleCalendar] Create event error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Update event in Google Calendar
+app.put('/google-calendar/update-event/:eventId', async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const updates = req.body;
+
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_REFRESH_TOKEN) {
+      return res.status(500).json({ success: false, error: 'Google Calendar credentials not configured' });
+    }
+
+    const gcal = getGoogleCalendarClient();
+    const result = await gcal.updateEvent(eventId, updates);
+
+    console.log('[GoogleCalendar] Event updated:', eventId);
+
+    res.json({ success: true, event: result });
+  } catch (error) {
+    console.error('[GoogleCalendar] Update event error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Delete event from Google Calendar
+app.delete('/google-calendar/delete-event/:eventId', async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const { sendUpdates = 'all' } = req.query;
+
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_REFRESH_TOKEN) {
+      return res.status(500).json({ success: false, error: 'Google Calendar credentials not configured' });
+    }
+
+    const gcal = getGoogleCalendarClient();
+    await gcal.deleteEvent(eventId, sendUpdates);
+
+    // Also remove from command_center_inbox
+    await supabase
+      .from('command_center_inbox')
+      .delete()
+      .eq('type', 'calendar')
+      .eq('event_uid', eventId);
+
+    console.log('[GoogleCalendar] Event deleted:', eventId);
+
+    res.json({ success: true, eventId });
+  } catch (error) {
+    console.error('[GoogleCalendar] Delete event error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get Google Calendar events directly
+app.get('/google-calendar/events', async (req, res) => {
+  try {
+    const { timeMin, timeMax, maxResults = 100 } = req.query;
+
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_REFRESH_TOKEN) {
+      return res.status(500).json({ success: false, error: 'Google Calendar credentials not configured' });
+    }
+
+    const gcal = getGoogleCalendarClient();
+    const { events } = await gcal.getEvents({
+      timeMin,
+      timeMax,
+      maxResults: parseInt(maxResults),
+    });
+
+    res.json({ success: true, events });
+  } catch (error) {
+    console.error('[GoogleCalendar] Get events error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Manual sync trigger for Google Calendar
+app.post('/google-calendar/sync', async (req, res) => {
+  try {
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_REFRESH_TOKEN) {
+      return res.status(500).json({ success: false, error: 'Google Calendar credentials not configured' });
+    }
+
+    // Reset sync token to force full sync
+    googleCalendarSyncToken = null;
+    await syncGoogleCalendar();
+
+    res.json({ success: true, message: 'Google Calendar sync triggered' });
+  } catch (error) {
+    console.error('[GoogleCalendar] Manual sync error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Google Calendar status
+app.get('/google-calendar/status', async (req, res) => {
+  try {
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_REFRESH_TOKEN || !process.env.GOOGLE_CALENDAR_ID) {
+      return res.json({
+        connected: false,
+        error: 'Google Calendar credentials not configured',
+      });
+    }
+
+    const gcal = getGoogleCalendarClient();
+    // Test connection by getting a token
+    await gcal.getAccessToken();
+
+    res.json({
+      connected: true,
+      calendarId: process.env.GOOGLE_CALENDAR_ID,
     });
   } catch (error) {
     res.json({ connected: false, error: error.message });

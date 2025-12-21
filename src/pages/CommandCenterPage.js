@@ -165,6 +165,10 @@ const CommandCenterPage = ({ theme }) => {
   const [selectedWhatsappChat, setSelectedWhatsappChat] = useState(null);
   const [whatsappLoading, setWhatsappLoading] = useState(false);
 
+  // Baileys WhatsApp connection status
+  const [baileysStatus, setBaileysStatus] = useState({ status: 'unknown', hasQR: false });
+  const [showBaileysQRModal, setShowBaileysQRModal] = useState(false);
+
   // Expanded sections state for left panel (inbox, need_actions, waiting_input)
   const [statusSections, setStatusSections] = useState({
     inbox: true,
@@ -183,8 +187,9 @@ const CommandCenterPage = ({ theme }) => {
     return items.filter(item => item.status === status);
   };
 
-  // Calendar sections state (upcoming, past)
+  // Calendar sections state (thisWeek, upcoming, past)
   const [calendarSections, setCalendarSections] = useState({
+    thisWeek: true,
     upcoming: true,
     past: false
   });
@@ -193,15 +198,30 @@ const CommandCenterPage = ({ theme }) => {
     setCalendarSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
-  // Filter calendar events by upcoming/past
+  // Filter calendar events by thisWeek/upcoming/past
   const filterCalendarEvents = (events, type) => {
     const now = new Date();
     now.setHours(0, 0, 0, 0); // Start of today
 
-    if (type === 'upcoming') {
-      // Events from today onwards, sorted closest first
+    // Get end of this week (Sunday)
+    const endOfWeek = new Date(now);
+    const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
+    endOfWeek.setDate(now.getDate() + daysUntilSunday);
+    endOfWeek.setHours(23, 59, 59, 999);
+
+    if (type === 'thisWeek') {
+      // Events from today until end of this week
       return events
-        .filter(event => new Date(event.date) >= now)
+        .filter(event => {
+          const eventDate = new Date(event.date);
+          return eventDate >= now && eventDate <= endOfWeek;
+        })
+        .sort((a, b) => new Date(a.date) - new Date(b.date));
+    } else if (type === 'upcoming') {
+      // Events after this week
+      return events
+        .filter(event => new Date(event.date) > endOfWeek)
         .sort((a, b) => new Date(a.date) - new Date(b.date));
     } else {
       // Past events, sorted most recent first
@@ -209,6 +229,21 @@ const CommandCenterPage = ({ theme }) => {
         .filter(event => new Date(event.date) < now)
         .sort((a, b) => new Date(b.date) - new Date(a.date));
     }
+  };
+
+  // Get color for deal category
+  const getDealCategoryColor = (category) => {
+    const colors = {
+      'Real Estate': '#3B82F6',  // Blue
+      'Fund': '#8B5CF6',         // Purple
+      'Startup': '#10B981',      // Green
+      'Infrastructure': '#F59E0B', // Amber
+      'Private Equity': '#EC4899', // Pink
+      'Venture Capital': '#06B6D4', // Cyan
+      'Debt': '#EF4444',         // Red
+      'Other': '#6B7280',        // Gray
+    };
+    return colors[category] || '#6B7280';
   };
 
   // Email compose hook - handleSendWithAttachmentCheck handles post-send logic, so no callback needed
@@ -353,8 +388,12 @@ const CommandCenterPage = ({ theme }) => {
   const [calendarEvents, setCalendarEvents] = useState([]);
   const [selectedCalendarEvent, setSelectedCalendarEvent] = useState(null);
 
-  // Context Contacts hook - handles Email, WhatsApp, Calendar sources
-  const contextContactsHook = useContextContacts(activeTab, selectedThread, selectedWhatsappChat, selectedCalendarEvent);
+  // Deals Pipeline state - must be before useContextContacts
+  const [pipelineDeals, setPipelineDeals] = useState([]);
+  const [selectedPipelineDeal, setSelectedPipelineDeal] = useState(null);
+
+  // Context Contacts hook - handles Email, WhatsApp, Calendar, Deals sources
+  const contextContactsHook = useContextContacts(activeTab, selectedThread, selectedWhatsappChat, selectedCalendarEvent, selectedPipelineDeal);
   const {
     emailContacts,
     setEmailContacts,
@@ -365,7 +404,7 @@ const CommandCenterPage = ({ theme }) => {
   } = contextContactsHook;
 
   // AI Chat hook - supports both Email and WhatsApp context
-  const chatHook = useChatWithClaude(selectedThread, emailContacts, activeTab, selectedWhatsappChat, emailContacts);
+  const chatHook = useChatWithClaude(selectedThread, emailContacts, activeTab, selectedWhatsappChat, emailContacts, selectedPipelineDeal);
   const {
     chatMessages,
     setChatMessages,
@@ -520,6 +559,513 @@ const CommandCenterPage = ({ theme }) => {
   const [pendingCalendarEvent, setPendingCalendarEvent] = useState(null);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [calendarEventEdits, setCalendarEventEdits] = useState({});
+
+  // Deals Pipeline additional state
+  const [dealsLoading, setDealsLoading] = useState(false);
+  const [dealsSections, setDealsSections] = useState({
+    open: true,
+    invested: false,
+    monitoring: false,
+    closed: false
+  });
+  const [stageDropdownOpen, setStageDropdownOpen] = useState(false);
+  const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
+  const [sourceDropdownOpen, setSourceDropdownOpen] = useState(false);
+  const [investmentEditOpen, setInvestmentEditOpen] = useState(false);
+  const [investmentEditValue, setInvestmentEditValue] = useState('');
+  const [currencyEditValue, setCurrencyEditValue] = useState('EUR');
+  const [titleEditOpen, setTitleEditOpen] = useState(false);
+  const [titleEditValue, setTitleEditValue] = useState('');
+  const [descriptionEditOpen, setDescriptionEditOpen] = useState(false);
+  const [descriptionEditValue, setDescriptionEditValue] = useState('');
+  const [addContactModalOpen, setAddContactModalOpen] = useState(false);
+  const [contactSearchQuery, setContactSearchQuery] = useState('');
+  const [contactSearchResults, setContactSearchResults] = useState([]);
+  const [contactSearchLoading, setContactSearchLoading] = useState(false);
+  const [selectedContactRelationship, setSelectedContactRelationship] = useState('other');
+  const DEAL_RELATIONSHIP_TYPES = ['proposer', 'introducer', 'co-investor', 'advisor', 'other'];
+  const [addDealCompanyModalOpen, setAddDealCompanyModalOpen] = useState(false);
+  const [dealCompanySearchQuery, setDealCompanySearchQuery] = useState('');
+  const [dealCompanySearchResults, setDealCompanySearchResults] = useState([]);
+  const [dealCompanySearchLoading, setDealCompanySearchLoading] = useState(false);
+  const [createDealModalOpen, setCreateDealModalOpen] = useState(false);
+  const [newDealForm, setNewDealForm] = useState({
+    opportunity: '',
+    category: 'Inbox',
+    total_investment: '',
+    deal_currency: 'EUR',
+    description: ''
+  });
+
+  const DEAL_STAGES = ['Lead', 'Monitoring', 'Invested', 'Closed'];
+  const DEAL_CATEGORIES = ['Inbox', 'Startup', 'Fund', 'Real Estate', 'Private Debt', 'Private Equity', 'Other'];
+  const DEAL_CURRENCIES = ['EUR', 'USD', 'GBP', 'CHF'];
+  const DEAL_SOURCES = ['Not Set', 'Cold Contacting', 'Introduction'];
+
+  const handlePipelineDealStageChange = async (newStage) => {
+    if (!selectedPipelineDeal) return;
+
+    try {
+      const { error } = await supabase
+        .from('deals')
+        .update({ stage: newStage, last_modified_at: new Date().toISOString() })
+        .eq('deal_id', selectedPipelineDeal.deal_id);
+
+      if (error) throw error;
+
+      // Update local state
+      const updatedDeal = { ...selectedPipelineDeal, stage: newStage };
+      setSelectedPipelineDeal(updatedDeal);
+      setPipelineDeals(prev => prev.map(d => d.deal_id === selectedPipelineDeal.deal_id ? updatedDeal : d));
+      setStageDropdownOpen(false);
+      toast.success(`Stage updated to ${newStage}`);
+    } catch (err) {
+      console.error('Error updating deal stage:', err);
+      toast.error('Failed to update stage');
+    }
+  };
+
+  const handleUpdateDealCategory = async (newCategory) => {
+    if (!selectedPipelineDeal) return;
+    try {
+      const { error } = await supabase
+        .from('deals')
+        .update({ category: newCategory, last_modified_at: new Date().toISOString() })
+        .eq('deal_id', selectedPipelineDeal.deal_id);
+      if (error) throw error;
+      const updatedDeal = { ...selectedPipelineDeal, category: newCategory };
+      setSelectedPipelineDeal(updatedDeal);
+      setPipelineDeals(prev => prev.map(d => d.deal_id === selectedPipelineDeal.deal_id ? updatedDeal : d));
+      setCategoryDropdownOpen(false);
+      toast.success(`Category updated to ${newCategory}`);
+    } catch (err) {
+      console.error('Error updating deal category:', err);
+      toast.error('Failed to update category');
+    }
+  };
+
+  const handleUpdateDealSource = async (newSource) => {
+    if (!selectedPipelineDeal) return;
+    try {
+      const { error } = await supabase
+        .from('deals')
+        .update({ source_category: newSource, last_modified_at: new Date().toISOString() })
+        .eq('deal_id', selectedPipelineDeal.deal_id);
+      if (error) throw error;
+      const updatedDeal = { ...selectedPipelineDeal, source_category: newSource };
+      setSelectedPipelineDeal(updatedDeal);
+      setPipelineDeals(prev => prev.map(d => d.deal_id === selectedPipelineDeal.deal_id ? updatedDeal : d));
+      setSourceDropdownOpen(false);
+      toast.success(`Source updated to ${newSource}`);
+    } catch (err) {
+      console.error('Error updating deal source:', err);
+      toast.error('Failed to update source');
+    }
+  };
+
+  const handleUpdateDealInvestment = async () => {
+    if (!selectedPipelineDeal) return;
+    try {
+      const { error } = await supabase
+        .from('deals')
+        .update({
+          total_investment: investmentEditValue ? parseFloat(investmentEditValue) : null,
+          deal_currency: currencyEditValue,
+          last_modified_at: new Date().toISOString()
+        })
+        .eq('deal_id', selectedPipelineDeal.deal_id);
+      if (error) throw error;
+      const updatedDeal = {
+        ...selectedPipelineDeal,
+        total_investment: investmentEditValue ? parseFloat(investmentEditValue) : null,
+        deal_currency: currencyEditValue
+      };
+      setSelectedPipelineDeal(updatedDeal);
+      setPipelineDeals(prev => prev.map(d => d.deal_id === selectedPipelineDeal.deal_id ? updatedDeal : d));
+      setInvestmentEditOpen(false);
+      toast.success('Investment updated');
+    } catch (err) {
+      console.error('Error updating deal investment:', err);
+      toast.error('Failed to update investment');
+    }
+  };
+
+  const handleUpdateDealTitle = async () => {
+    if (!selectedPipelineDeal || !titleEditValue.trim()) return;
+    try {
+      const { error } = await supabase
+        .from('deals')
+        .update({ opportunity: titleEditValue.trim(), last_modified_at: new Date().toISOString() })
+        .eq('deal_id', selectedPipelineDeal.deal_id);
+      if (error) throw error;
+      const updatedDeal = { ...selectedPipelineDeal, opportunity: titleEditValue.trim() };
+      setSelectedPipelineDeal(updatedDeal);
+      setPipelineDeals(prev => prev.map(d => d.deal_id === selectedPipelineDeal.deal_id ? updatedDeal : d));
+      setTitleEditOpen(false);
+      toast.success('Title updated');
+    } catch (err) {
+      console.error('Error updating deal title:', err);
+      toast.error('Failed to update title');
+    }
+  };
+
+  const handleUpdateDealDescription = async () => {
+    if (!selectedPipelineDeal) return;
+    try {
+      const { error } = await supabase
+        .from('deals')
+        .update({ description: descriptionEditValue.trim() || null, last_modified_at: new Date().toISOString() })
+        .eq('deal_id', selectedPipelineDeal.deal_id);
+      if (error) throw error;
+      const updatedDeal = { ...selectedPipelineDeal, description: descriptionEditValue.trim() || null };
+      setSelectedPipelineDeal(updatedDeal);
+      setPipelineDeals(prev => prev.map(d => d.deal_id === selectedPipelineDeal.deal_id ? updatedDeal : d));
+      setDescriptionEditOpen(false);
+      toast.success('Description updated');
+    } catch (err) {
+      console.error('Error updating deal description:', err);
+      toast.error('Failed to update description');
+    }
+  };
+
+  // Remove a contact from a deal
+  const handleRemoveDealContact = async (contactId) => {
+    if (!selectedPipelineDeal || !contactId) return;
+    try {
+      const { error } = await supabase
+        .from('deals_contacts')
+        .delete()
+        .eq('deal_id', selectedPipelineDeal.deal_id)
+        .eq('contact_id', contactId);
+      if (error) throw error;
+
+      // Update local state
+      const updatedContacts = selectedPipelineDeal.deals_contacts.filter(dc => dc.contact_id !== contactId);
+      const updatedDeal = { ...selectedPipelineDeal, deals_contacts: updatedContacts };
+      setSelectedPipelineDeal(updatedDeal);
+      setPipelineDeals(prev => prev.map(d => d.deal_id === selectedPipelineDeal.deal_id ? updatedDeal : d));
+      toast.success('Contact removed from deal');
+    } catch (err) {
+      console.error('Error removing contact from deal:', err);
+      toast.error('Failed to remove contact');
+    }
+  };
+
+  // Remove a company from a deal
+  const handleRemoveDealCompany = async (companyId) => {
+    if (!selectedPipelineDeal || !companyId) return;
+    try {
+      const { error } = await supabase
+        .from('deal_companies')
+        .delete()
+        .eq('deal_id', selectedPipelineDeal.deal_id)
+        .eq('company_id', companyId);
+      if (error) throw error;
+
+      // Update local state
+      const updatedCompanies = selectedPipelineDeal.deal_companies.filter(dc => dc.company_id !== companyId);
+      const updatedDeal = { ...selectedPipelineDeal, deal_companies: updatedCompanies };
+      setSelectedPipelineDeal(updatedDeal);
+      setPipelineDeals(prev => prev.map(d => d.deal_id === selectedPipelineDeal.deal_id ? updatedDeal : d));
+      toast.success('Company removed from deal');
+    } catch (err) {
+      console.error('Error removing company from deal:', err);
+      toast.error('Failed to remove company');
+    }
+  };
+
+  // Search for contacts to add to a deal
+  const handleSearchContacts = async (query) => {
+    setContactSearchQuery(query);
+    if (!query.trim()) {
+      setContactSearchResults([]);
+      return;
+    }
+    setContactSearchLoading(true);
+    try {
+      const searchTerms = query.trim().split(/\s+/);
+
+      // Build name search query - search each term in first_name or last_name
+      let nameSearchQuery = supabase
+        .from('contacts')
+        .select('contact_id, first_name, last_name, profile_image_url, contact_emails(email)');
+
+      // For each search term, add a filter that matches first_name OR last_name
+      searchTerms.forEach(term => {
+        nameSearchQuery = nameSearchQuery.or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%`);
+      });
+
+      const nameSearch = nameSearchQuery.limit(10);
+
+      // Search by email (use first term or full query)
+      const emailSearch = supabase
+        .from('contact_emails')
+        .select('contact_id, email, contacts(contact_id, first_name, last_name, profile_image_url)')
+        .ilike('email', `%${searchTerms[0]}%`)
+        .limit(10);
+
+      const [nameResult, emailResult] = await Promise.all([nameSearch, emailSearch]);
+
+      if (nameResult.error) throw nameResult.error;
+      if (emailResult.error) throw emailResult.error;
+
+      // Merge results, avoiding duplicates
+      const contactMap = new Map();
+
+      // Add name search results
+      (nameResult.data || []).forEach(c => {
+        contactMap.set(c.contact_id, {
+          ...c,
+          email: c.contact_emails?.[0]?.email || null
+        });
+      });
+
+      // Add email search results
+      (emailResult.data || []).forEach(e => {
+        if (e.contacts && !contactMap.has(e.contact_id)) {
+          contactMap.set(e.contact_id, {
+            ...e.contacts,
+            email: e.email
+          });
+        }
+      });
+
+      // Filter out contacts already linked to this deal
+      const linkedContactIds = (selectedPipelineDeal?.deals_contacts || []).map(dc => dc.contact_id);
+      const filteredResults = Array.from(contactMap.values()).filter(c => !linkedContactIds.includes(c.contact_id));
+
+      setContactSearchResults(filteredResults.slice(0, 10));
+    } catch (err) {
+      console.error('Error searching contacts:', err);
+      toast.error('Failed to search contacts');
+    } finally {
+      setContactSearchLoading(false);
+    }
+  };
+
+  // Add a contact to a deal
+  const handleAddDealContact = async (contact) => {
+    if (!selectedPipelineDeal || !contact) return;
+    try {
+      const { error } = await supabase
+        .from('deals_contacts')
+        .insert({
+          deal_id: selectedPipelineDeal.deal_id,
+          contact_id: contact.contact_id,
+          relationship: selectedContactRelationship
+        });
+      if (error) throw error;
+
+      // Update local state
+      const newContactLink = {
+        deal_id: selectedPipelineDeal.deal_id,
+        contact_id: contact.contact_id,
+        relationship: selectedContactRelationship,
+        contacts: contact
+      };
+      const updatedContacts = [...(selectedPipelineDeal.deals_contacts || []), newContactLink];
+      const updatedDeal = { ...selectedPipelineDeal, deals_contacts: updatedContacts };
+      setSelectedPipelineDeal(updatedDeal);
+      setPipelineDeals(prev => prev.map(d => d.deal_id === selectedPipelineDeal.deal_id ? updatedDeal : d));
+
+      // Clear search and close modal
+      setContactSearchQuery('');
+      setContactSearchResults([]);
+      setAddContactModalOpen(false);
+      toast.success('Contact added to deal');
+    } catch (err) {
+      console.error('Error adding contact to deal:', err);
+      toast.error('Failed to add contact');
+    }
+  };
+
+  // Search for companies to add to a deal
+  const handleSearchDealCompanies = async (query) => {
+    setDealCompanySearchQuery(query);
+    if (!query.trim()) {
+      setDealCompanySearchResults([]);
+      return;
+    }
+    setDealCompanySearchLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('companies')
+        .select('company_id, name, company_domains(domain)')
+        .ilike('name', `%${query}%`)
+        .limit(10);
+
+      if (error) throw error;
+
+      // Filter out companies already linked to this deal
+      const linkedCompanyIds = (selectedPipelineDeal?.deal_companies || []).map(dc => dc.company_id);
+      const filteredResults = (data || []).filter(c => !linkedCompanyIds.includes(c.company_id));
+
+      // Extract primary domain for display
+      const resultsWithDomain = filteredResults.map(c => ({
+        ...c,
+        domain: c.company_domains?.[0]?.domain || null
+      }));
+
+      setDealCompanySearchResults(resultsWithDomain);
+    } catch (err) {
+      console.error('Error searching companies:', err);
+      toast.error('Failed to search companies');
+    } finally {
+      setDealCompanySearchLoading(false);
+    }
+  };
+
+  // Add a company to a deal
+  const handleAddDealCompany = async (company) => {
+    if (!selectedPipelineDeal || !company) return;
+    try {
+      const { error } = await supabase
+        .from('deal_companies')
+        .insert({
+          deal_id: selectedPipelineDeal.deal_id,
+          company_id: company.company_id,
+          is_primary: false
+        });
+      if (error) throw error;
+
+      // Update local state
+      const newCompanyLink = {
+        deal_id: selectedPipelineDeal.deal_id,
+        company_id: company.company_id,
+        is_primary: false,
+        companies: company
+      };
+      const updatedCompanies = [...(selectedPipelineDeal.deal_companies || []), newCompanyLink];
+      const updatedDeal = { ...selectedPipelineDeal, deal_companies: updatedCompanies };
+      setSelectedPipelineDeal(updatedDeal);
+      setPipelineDeals(prev => prev.map(d => d.deal_id === selectedPipelineDeal.deal_id ? updatedDeal : d));
+
+      // Clear search and close modal
+      setDealCompanySearchQuery('');
+      setDealCompanySearchResults([]);
+      setAddDealCompanyModalOpen(false);
+      toast.success('Company added to deal');
+    } catch (err) {
+      console.error('Error adding company to deal:', err);
+      toast.error('Failed to add company');
+    }
+  };
+
+  const handleDeleteDeal = async () => {
+    if (!selectedPipelineDeal) return;
+
+    if (!window.confirm(`Are you sure you want to delete "${selectedPipelineDeal.deal_name || selectedPipelineDeal.opportunity}"?`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('deals')
+        .update({ stage: 'DELETE', last_modified_at: new Date().toISOString() })
+        .eq('deal_id', selectedPipelineDeal.deal_id);
+
+      if (error) throw error;
+
+      // Remove from local state and select next deal
+      const remainingDeals = pipelineDeals.filter(d => d.deal_id !== selectedPipelineDeal.deal_id);
+      setPipelineDeals(remainingDeals);
+
+      if (remainingDeals.length > 0) {
+        const openDeals = remainingDeals.filter(d => ['Lead', 'Qualified', 'Evaluating', 'Negotiation', 'Closing'].includes(d.stage));
+        setSelectedPipelineDeal(openDeals.length > 0 ? openDeals[0] : remainingDeals[0]);
+      } else {
+        setSelectedPipelineDeal(null);
+      }
+
+      toast.success('Deal deleted');
+    } catch (err) {
+      console.error('Error deleting deal:', err);
+      toast.error('Failed to delete deal');
+    }
+  };
+
+  const handleCreateDeal = async () => {
+    if (!newDealForm.opportunity.trim()) {
+      toast.error('Please enter a deal name');
+      return;
+    }
+
+    try {
+      const insertData = {
+        opportunity: newDealForm.opportunity.trim(),
+        stage: 'Lead',
+        category: newDealForm.category,
+        total_investment: newDealForm.total_investment ? parseFloat(newDealForm.total_investment) : null,
+        deal_currency: newDealForm.deal_currency,
+        description: newDealForm.description || null,
+        source_category: 'Not Set',
+        created_at: new Date().toISOString(),
+        last_modified_at: new Date().toISOString()
+      };
+
+      const { data: newDeal, error } = await supabase
+        .from('deals')
+        .insert([insertData])
+        .select('*')
+        .single();
+
+      if (error) throw error;
+
+      // Add to local state and select the new deal
+      setPipelineDeals(prev => [newDeal, ...prev]);
+      setSelectedPipelineDeal(newDeal);
+
+      // Reset form and close modal
+      setNewDealForm({
+        opportunity: '',
+        category: 'Inbox',
+        total_investment: '',
+        deal_currency: 'EUR',
+        description: ''
+      });
+      setCreateDealModalOpen(false);
+
+      // Make sure Open section is expanded
+      setDealsSections(prev => ({ ...prev, open: true }));
+
+      toast.success('Deal created');
+    } catch (err) {
+      console.error('Error creating deal:', err);
+      toast.error('Failed to create deal');
+    }
+  };
+
+  const toggleDealsSection = (section) => {
+    setDealsSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  // Filter deals by status category
+  const filterDealsByStatus = (deals, statusCategory) => {
+    const openStages = ['Lead', 'Qualified', 'Evaluating', 'Negotiation', 'Closing'];
+    const investedStages = ['Closed Won', 'Invested'];
+    const monitoringStages = ['Monitoring'];
+    const closedStages = ['Passed', 'Closed Lost'];
+
+    let filtered;
+    switch (statusCategory) {
+      case 'open':
+        filtered = deals.filter(d => openStages.includes(d.stage));
+        break;
+      case 'invested':
+        filtered = deals.filter(d => investedStages.includes(d.stage));
+        break;
+      case 'monitoring':
+        filtered = deals.filter(d => monitoringStages.includes(d.stage));
+        break;
+      case 'closed':
+        filtered = deals.filter(d => closedStages.includes(d.stage));
+        break;
+      default:
+        filtered = deals;
+    }
+    // Sort by created_at descending (newest first)
+    return filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  };
 
   // Quick Edit Modal - use the custom hook
   const quickEditModal = useQuickEditModal(() => {});
@@ -685,6 +1231,25 @@ const CommandCenterPage = ({ theme }) => {
     }
   }, [activeTab]);
 
+  // Check Baileys connection status periodically (when WhatsApp tab is active)
+  useEffect(() => {
+    const checkBaileysStatus = async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/whatsapp/status`);
+        const data = await res.json();
+        setBaileysStatus(data);
+      } catch (e) {
+        setBaileysStatus({ status: 'error', error: e.message });
+      }
+    };
+
+    if (activeTab === 'whatsapp') {
+      checkBaileysStatus();
+      const interval = setInterval(checkBaileysStatus, 30000); // Check every 30 seconds
+      return () => clearInterval(interval);
+    }
+  }, [activeTab]);
+
   // Group WhatsApp messages by chat_id
   const groupWhatsAppByChat = (messages) => {
     const chatMap = {};
@@ -738,6 +1303,55 @@ const CommandCenterPage = ({ theme }) => {
 
     if (activeTab === 'calendar') {
       fetchCalendarEvents();
+    }
+  }, [activeTab]);
+
+  // Fetch Deals from Supabase (all deals)
+  useEffect(() => {
+    const fetchDeals = async () => {
+      setDealsLoading(true);
+
+      const { data, error } = await supabase
+        .from('deals')
+        .select(`
+          *,
+          deals_contacts (
+            contact_id,
+            relationship,
+            contacts (
+              contact_id,
+              first_name,
+              last_name,
+              profile_image_url
+            )
+          ),
+          deal_companies (
+            company_id,
+            is_primary,
+            companies (
+              company_id,
+              name
+            )
+          )
+        `)
+        .neq('stage', 'DELETE')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching deals:', error);
+      } else {
+        setPipelineDeals(data || []);
+        if (data && data.length > 0) {
+          // Select first open deal, or first deal if no open deals
+          const openDeals = data.filter(d => ['Lead', 'Qualified', 'Evaluating', 'Negotiation', 'Closing'].includes(d.stage));
+          setSelectedPipelineDeal(openDeals.length > 0 ? openDeals[0] : data[0]);
+        }
+      }
+      setDealsLoading(false);
+    };
+
+    if (activeTab === 'deals') {
+      fetchDeals();
     }
   }, [activeTab]);
 
@@ -3403,7 +4017,7 @@ const CommandCenterPage = ({ theme }) => {
         return;
       }
 
-      const response = await fetch(`${BACKEND_URL}/calendar/create-event`, {
+      const response = await fetch(`${BACKEND_URL}/google-calendar/create-event`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(eventData),
@@ -3417,12 +4031,15 @@ const CommandCenterPage = ({ theme }) => {
       const data = await response.json();
 
       if (data.success) {
-        const invitesSent = data.invitesSent || [];
-        const inviteMsg = invitesSent.length > 0
-          ? `\n📧 Invites sent to: ${invitesSent.join(', ')}`
-          : (eventData.attendees?.length > 0 ? '\n⚠️ Attendees added but invites not sent' : '');
+        // invitesSent can be boolean (Google) or array (legacy)
+        const invitesSent = data.invitesSent;
+        const hasInvites = invitesSent === true || (Array.isArray(invitesSent) && invitesSent.length > 0);
+        const attendeeNames = eventData.attendees?.map(a => a.name || a.email).join(', ');
+        const inviteMsg = hasInvites && attendeeNames
+          ? `\n📧 Invites sent to: ${attendeeNames}`
+          : (eventData.attendees?.length > 0 && !hasInvites ? '\n⚠️ Attendees added but invites not sent' : '');
 
-        toast.success(invitesSent.length > 0 ? '📅 Event created and invites sent!' : '📅 Event created!');
+        toast.success(hasInvites ? '📅 Event created and invites sent!' : '📅 Event created!');
         setChatMessages(prev => [...prev, {
           role: 'assistant',
           content: `✅ **Event created!**\n\n**${eventData.title}**\n📆 ${new Date(eventData.startDate).toLocaleString('it-IT')}\n${eventData.location ? `📍 ${eventData.location}\n` : ''}${inviteMsg}`
@@ -4832,9 +5449,10 @@ const CommandCenterPage = ({ theme }) => {
 
   const hasUnreadCalendar = calendarEvents.some(event => event.is_read === false);
   const tabs = [
-    { id: 'email', label: 'Email', icon: FaEnvelope, count: threads.length, hasUnread: hasUnreadEmails },
-    { id: 'whatsapp', label: 'WhatsApp', icon: FaWhatsapp, count: whatsappChats.length, hasUnread: hasUnreadWhatsapp },
-    { id: 'calendar', label: 'Calendar', icon: FaCalendar, count: calendarEvents.length, hasUnread: hasUnreadCalendar },
+    { id: 'email', label: 'Email', icon: FaEnvelope, count: filterByStatus(threads, 'inbox').length + filterByStatus(threads, 'need_actions').length, hasUnread: hasUnreadEmails },
+    { id: 'whatsapp', label: 'WhatsApp', icon: FaWhatsapp, count: filterByStatus(whatsappChats, 'inbox').length + filterByStatus(whatsappChats, 'need_actions').length, hasUnread: hasUnreadWhatsapp },
+    { id: 'calendar', label: 'Calendar', icon: FaCalendar, count: filterCalendarEvents(calendarEvents, 'thisWeek').length, hasUnread: hasUnreadCalendar },
+    { id: 'deals', label: 'Deals', icon: FaDollarSign, count: filterDealsByStatus(pipelineDeals, 'open').length, hasUnread: false },
   ];
 
   return (
@@ -4868,7 +5486,40 @@ const CommandCenterPage = ({ theme }) => {
         {/* Left: Email List */}
         <EmailListPanel theme={theme} $collapsed={listCollapsed}>
           <ListHeader theme={theme}>
-            {!listCollapsed && <span>Messages</span>}
+            {!listCollapsed && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>Messages</span>
+                {activeTab === 'whatsapp' && (
+                  <div
+                    onClick={() => baileysStatus.status !== 'connected' && setShowBaileysQRModal(true)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      fontSize: '11px',
+                      fontWeight: 500,
+                      cursor: baileysStatus.status !== 'connected' ? 'pointer' : 'default',
+                      background: baileysStatus.status === 'connected'
+                        ? (theme === 'light' ? '#D1FAE5' : '#065F46')
+                        : baileysStatus.status === 'qr_ready'
+                        ? (theme === 'light' ? '#FEF3C7' : '#78350F')
+                        : (theme === 'light' ? '#FEE2E2' : '#7F1D1D'),
+                      color: baileysStatus.status === 'connected'
+                        ? (theme === 'light' ? '#059669' : '#6EE7B7')
+                        : baileysStatus.status === 'qr_ready'
+                        ? (theme === 'light' ? '#D97706' : '#FCD34D')
+                        : (theme === 'light' ? '#DC2626' : '#FCA5A5'),
+                    }}
+                    title={baileysStatus.status === 'connected' ? 'Baileys connected' : 'Click to reconnect Baileys'}
+                  >
+                    <FaBolt size={10} />
+                    {baileysStatus.status === 'connected' ? 'On' : baileysStatus.status === 'qr_ready' ? 'QR' : 'Off'}
+                  </div>
+                )}
+              </div>
+            )}
             <CollapseButton theme={theme} onClick={() => setListCollapsed(!listCollapsed)}>
               {listCollapsed ? <FaChevronRight /> : <FaChevronLeft />}
             </CollapseButton>
@@ -5073,6 +5724,85 @@ const CommandCenterPage = ({ theme }) => {
                 </EmptyState>
               ) : (
                 <>
+                  {/* This Week Events Section */}
+                  <div
+                    onClick={() => toggleCalendarSection('thisWeek')}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      backgroundColor: theme === 'dark' ? '#1f2937' : '#f3f4f6',
+                      borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`,
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 1
+                    }}
+                  >
+                    <FaChevronDown style={{ transform: calendarSections.thisWeek ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', fontSize: '10px' }} />
+                    <span>This week</span>
+                    <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: '12px' }}>
+                      {filterCalendarEvents(calendarEvents, 'thisWeek').length}
+                    </span>
+                  </div>
+                  {calendarSections.thisWeek && (
+                    filterCalendarEvents(calendarEvents, 'thisWeek').map(event => {
+                      const cleanSubject = (event.subject || 'No title')
+                        .replace(/^\[(CONFIRMED|TENTATIVE|CANCELLED|CANCELED)\]\s*/i, '')
+                        .replace(/Simone Cimminelli/gi, '')
+                        .replace(/<>/g, '')
+                        .replace(/\s+/g, ' ')
+                        .trim() || 'Meeting';
+
+                      const location = (event.event_location || '').toLowerCase();
+                      const isRemote = location.includes('zoom') || location.includes('meet') ||
+                        location.includes('teams') || location.includes('webex') ||
+                        location.includes('http') || location.includes('skype');
+
+                      const eventDate = new Date(event.date);
+                      const dayName = eventDate.toLocaleDateString('en-GB', { weekday: 'short' });
+                      const dateStr = `${dayName} ${String(eventDate.getDate()).padStart(2, '0')}-${String(eventDate.getMonth() + 1).padStart(2, '0')}-${eventDate.getFullYear()}`;
+
+                      return (
+                        <EmailItem
+                          key={event.id}
+                          theme={theme}
+                          $selected={selectedCalendarEvent?.id === event.id}
+                          $unread={!event.is_read}
+                          onClick={() => setSelectedCalendarEvent(event)}
+                        >
+                          <EmailSender theme={theme}>
+                            {!event.is_read && <EmailUnreadDot />}
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {cleanSubject}
+                            </span>
+                            <span style={{
+                              marginLeft: '8px',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              fontSize: '10px',
+                              fontWeight: 600,
+                              flexShrink: 0,
+                              backgroundColor: isRemote ? '#3B82F6' : '#10B981',
+                              color: 'white'
+                            }}>
+                              {isRemote ? 'Remote' : 'In Person'}
+                            </span>
+                          </EmailSender>
+                          <EmailSubject theme={theme} style={{ fontWeight: 600 }}>
+                            {dateStr}
+                          </EmailSubject>
+                          <EmailSnippet theme={theme}>
+                            {event.event_location || 'No location'}
+                          </EmailSnippet>
+                        </EmailItem>
+                      );
+                    })
+                  )}
+
                   {/* Upcoming Events Section */}
                   <div
                     onClick={() => toggleCalendarSection('upcoming')}
@@ -5237,7 +5967,265 @@ const CommandCenterPage = ({ theme }) => {
 
           {!listCollapsed && activeTab === 'calendar' && calendarEvents.length > 0 && (
             <PendingCount theme={theme}>
-              {filterCalendarEvents(calendarEvents, 'upcoming').length} upcoming, {filterCalendarEvents(calendarEvents, 'past').length} past
+              {filterCalendarEvents(calendarEvents, 'thisWeek').length} this week, {filterCalendarEvents(calendarEvents, 'upcoming').length} upcoming, {filterCalendarEvents(calendarEvents, 'past').length} past
+            </PendingCount>
+          )}
+
+          {/* Deals List */}
+          {!listCollapsed && activeTab === 'deals' && (
+            <EmailList>
+              {dealsLoading ? (
+                <EmptyState theme={theme}>Loading...</EmptyState>
+              ) : pipelineDeals.length === 0 ? (
+                <EmptyState theme={theme}>
+                  <FaDollarSign size={40} style={{ marginBottom: '16px', opacity: 0.5 }} />
+                  <span>No deals found</span>
+                </EmptyState>
+              ) : (
+                <>
+                  {/* Open Deals Section */}
+                  <div
+                    onClick={() => toggleDealsSection('open')}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      backgroundColor: theme === 'dark' ? '#1f2937' : '#f3f4f6',
+                      borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`,
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 1
+                    }}
+                  >
+                    <FaChevronDown style={{ transform: dealsSections.open ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', fontSize: '10px' }} />
+                    <span>Open</span>
+                    <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: '12px' }}>
+                      {filterDealsByStatus(pipelineDeals, 'open').length}
+                    </span>
+                  </div>
+                  {dealsSections.open && filterDealsByStatus(pipelineDeals, 'open').map(deal => (
+                    <EmailItem
+                      key={deal.deal_id}
+                      theme={theme}
+                      $selected={selectedPipelineDeal?.deal_id === deal.deal_id}
+                      onClick={() => setSelectedPipelineDeal(deal)}
+                    >
+                      <EmailSender theme={theme}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {deal.deal_name || deal.opportunity}
+                        </span>
+                        {deal.category && (
+                          <span style={{
+                            marginLeft: '8px',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            fontSize: '10px',
+                            fontWeight: 600,
+                            flexShrink: 0,
+                            backgroundColor: getDealCategoryColor(deal.category),
+                            color: 'white'
+                          }}>
+                            {deal.category}
+                          </span>
+                        )}
+                      </EmailSender>
+                      <EmailSubject theme={theme} style={{ fontWeight: 600 }}>
+                        {deal.stage} {deal.total_investment ? `• ${deal.deal_currency || ''} ${Number(deal.total_investment).toLocaleString()}` : ''}
+                      </EmailSubject>
+                      <EmailSnippet theme={theme}>
+                        {new Date(deal.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </EmailSnippet>
+                    </EmailItem>
+                  ))}
+
+                  {/* Monitoring Section */}
+                  <div
+                    onClick={() => toggleDealsSection('monitoring')}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      backgroundColor: theme === 'dark' ? '#1f2937' : '#f3f4f6',
+                      borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`,
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 1
+                    }}
+                  >
+                    <FaChevronDown style={{ transform: dealsSections.monitoring ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', fontSize: '10px' }} />
+                    <span>Monitoring</span>
+                    <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: '12px' }}>
+                      {filterDealsByStatus(pipelineDeals, 'monitoring').length}
+                    </span>
+                  </div>
+                  {dealsSections.monitoring && filterDealsByStatus(pipelineDeals, 'monitoring').map(deal => (
+                    <EmailItem
+                      key={deal.deal_id}
+                      theme={theme}
+                      $selected={selectedPipelineDeal?.deal_id === deal.deal_id}
+                      onClick={() => setSelectedPipelineDeal(deal)}
+                    >
+                      <EmailSender theme={theme}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {deal.deal_name || deal.opportunity}
+                        </span>
+                        {deal.category && (
+                          <span style={{
+                            marginLeft: '8px',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            fontSize: '10px',
+                            fontWeight: 600,
+                            flexShrink: 0,
+                            backgroundColor: '#F59E0B',
+                            color: 'white'
+                          }}>
+                            {deal.category}
+                          </span>
+                        )}
+                      </EmailSender>
+                      <EmailSubject theme={theme} style={{ fontWeight: 600 }}>
+                        {deal.stage} {deal.total_investment ? `• ${deal.deal_currency || ''} ${Number(deal.total_investment).toLocaleString()}` : ''}
+                      </EmailSubject>
+                      <EmailSnippet theme={theme}>
+                        {new Date(deal.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </EmailSnippet>
+                    </EmailItem>
+                  ))}
+
+                  {/* Invested Section */}
+                  <div
+                    onClick={() => toggleDealsSection('invested')}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      backgroundColor: theme === 'dark' ? '#1f2937' : '#f3f4f6',
+                      borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`,
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 1
+                    }}
+                  >
+                    <FaChevronDown style={{ transform: dealsSections.invested ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', fontSize: '10px' }} />
+                    <span>Invested</span>
+                    <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: '12px' }}>
+                      {filterDealsByStatus(pipelineDeals, 'invested').length}
+                    </span>
+                  </div>
+                  {dealsSections.invested && filterDealsByStatus(pipelineDeals, 'invested').map(deal => (
+                    <EmailItem
+                      key={deal.deal_id}
+                      theme={theme}
+                      $selected={selectedPipelineDeal?.deal_id === deal.deal_id}
+                      onClick={() => setSelectedPipelineDeal(deal)}
+                    >
+                      <EmailSender theme={theme}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {deal.deal_name || deal.opportunity}
+                        </span>
+                        {deal.category && (
+                          <span style={{
+                            marginLeft: '8px',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            fontSize: '10px',
+                            fontWeight: 600,
+                            flexShrink: 0,
+                            backgroundColor: '#10B981',
+                            color: 'white'
+                          }}>
+                            {deal.category}
+                          </span>
+                        )}
+                      </EmailSender>
+                      <EmailSubject theme={theme} style={{ fontWeight: 600 }}>
+                        {deal.stage} {deal.total_investment ? `• ${deal.deal_currency || ''} ${Number(deal.total_investment).toLocaleString()}` : ''}
+                      </EmailSubject>
+                      <EmailSnippet theme={theme}>
+                        {new Date(deal.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </EmailSnippet>
+                    </EmailItem>
+                  ))}
+
+                  {/* Closed Section */}
+                  <div
+                    onClick={() => toggleDealsSection('closed')}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      backgroundColor: theme === 'dark' ? '#1f2937' : '#f3f4f6',
+                      borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`,
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 1
+                    }}
+                  >
+                    <FaChevronDown style={{ transform: dealsSections.closed ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', fontSize: '10px' }} />
+                    <span>Closed</span>
+                    <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: '12px' }}>
+                      {filterDealsByStatus(pipelineDeals, 'closed').length}
+                    </span>
+                  </div>
+                  {dealsSections.closed && filterDealsByStatus(pipelineDeals, 'closed').map(deal => (
+                    <EmailItem
+                      key={deal.deal_id}
+                      theme={theme}
+                      $selected={selectedPipelineDeal?.deal_id === deal.deal_id}
+                      onClick={() => setSelectedPipelineDeal(deal)}
+                    >
+                      <EmailSender theme={theme}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {deal.deal_name || deal.opportunity}
+                        </span>
+                        {deal.category && (
+                          <span style={{
+                            marginLeft: '8px',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            fontSize: '10px',
+                            fontWeight: 600,
+                            flexShrink: 0,
+                            backgroundColor: '#6B7280',
+                            color: 'white'
+                          }}>
+                            {deal.category}
+                          </span>
+                        )}
+                      </EmailSender>
+                      <EmailSubject theme={theme} style={{ fontWeight: 600 }}>
+                        {deal.stage} {deal.total_investment ? `• ${deal.deal_currency || ''} ${Number(deal.total_investment).toLocaleString()}` : ''}
+                      </EmailSubject>
+                      <EmailSnippet theme={theme}>
+                        {new Date(deal.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </EmailSnippet>
+                    </EmailItem>
+                  ))}
+                </>
+              )}
+            </EmailList>
+          )}
+
+          {!listCollapsed && activeTab === 'deals' && pipelineDeals.length > 0 && (
+            <PendingCount theme={theme}>
+              {filterDealsByStatus(pipelineDeals, 'open').length} open, {filterDealsByStatus(pipelineDeals, 'invested').length} invested
             </PendingCount>
           )}
         </EmailListPanel>
@@ -5426,6 +6414,1039 @@ const CommandCenterPage = ({ theme }) => {
               </div>
             ) : (
               <EmptyState theme={theme}>Select an event to view details</EmptyState>
+            )
+          ) : activeTab === 'deals' ? (
+            selectedPipelineDeal ? (
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                {/* Deal Header */}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '0 24px',
+                  height: '56px',
+                  minHeight: '56px',
+                  borderBottom: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
+                }}>
+                  {titleEditOpen ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, marginRight: '16px' }}>
+                      <input
+                        type="text"
+                        value={titleEditValue}
+                        onChange={(e) => setTitleEditValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleUpdateDealTitle();
+                          if (e.key === 'Escape') setTitleEditOpen(false);
+                        }}
+                        autoFocus
+                        style={{
+                          flex: 1,
+                          padding: '8px 12px',
+                          borderRadius: '6px',
+                          border: `2px solid #3B82F6`,
+                          background: theme === 'light' ? '#FFFFFF' : '#374151',
+                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                          fontSize: '16px',
+                          fontWeight: 600,
+                          outline: 'none'
+                        }}
+                      />
+                      <button
+                        onClick={handleUpdateDealTitle}
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: '6px',
+                          border: 'none',
+                          background: '#10B981',
+                          color: 'white',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                          fontWeight: 500
+                        }}
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => setTitleEditOpen(false)}
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: '6px',
+                          border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                          background: 'transparent',
+                          color: theme === 'light' ? '#374151' : '#D1D5DB',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                          fontWeight: 500
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <EmailSubjectFull
+                      theme={theme}
+                      style={{ margin: 0, cursor: 'pointer' }}
+                      onClick={() => {
+                        setTitleEditValue(selectedPipelineDeal.opportunity || '');
+                        setTitleEditOpen(true);
+                      }}
+                      title="Click to edit"
+                    >
+                      {selectedPipelineDeal.deal_name || selectedPipelineDeal.opportunity}
+                      <FaEdit size={12} style={{ marginLeft: '8px', opacity: 0.5 }} />
+                    </EmailSubjectFull>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
+                    <button
+                      onClick={() => setStageDropdownOpen(!stageDropdownOpen)}
+                      style={{
+                        padding: '4px 12px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        border: 'none',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        backgroundColor:
+                          ['Lead', 'Qualified', 'Evaluating', 'Negotiation', 'Closing'].includes(selectedPipelineDeal.stage) ? '#3B82F6' :
+                          ['Closed Won', 'Invested'].includes(selectedPipelineDeal.stage) ? '#10B981' :
+                          selectedPipelineDeal.stage === 'Monitoring' ? '#F59E0B' : '#6B7280',
+                        color: 'white'
+                      }}
+                    >
+                      {selectedPipelineDeal.stage}
+                      <FaChevronDown size={10} />
+                    </button>
+                    {stageDropdownOpen && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        right: 0,
+                        marginTop: '4px',
+                        backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                        zIndex: 100,
+                        minWidth: '150px',
+                        overflow: 'hidden'
+                      }}>
+                        {DEAL_STAGES.map(stage => (
+                          <div
+                            key={stage}
+                            onClick={() => handlePipelineDealStageChange(stage)}
+                            style={{
+                              padding: '8px 12px',
+                              cursor: 'pointer',
+                              fontSize: '13px',
+                              backgroundColor: selectedPipelineDeal.stage === stage
+                                ? (theme === 'light' ? '#F3F4F6' : '#374151')
+                                : 'transparent',
+                              color: theme === 'light' ? '#111827' : '#F9FAFB',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px'
+                            }}
+                            onMouseEnter={(e) => e.target.style.backgroundColor = theme === 'light' ? '#F3F4F6' : '#374151'}
+                            onMouseLeave={(e) => e.target.style.backgroundColor = selectedPipelineDeal.stage === stage ? (theme === 'light' ? '#F3F4F6' : '#374151') : 'transparent'}
+                          >
+                            <span style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: '50%',
+                              backgroundColor:
+                                stage === 'Lead' ? '#3B82F6' :
+                                stage === 'Invested' ? '#10B981' :
+                                stage === 'Monitoring' ? '#F59E0B' : '#6B7280'
+                            }} />
+                            {stage}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Deal Content */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+                  {/* Category & Investment */}
+                  <div style={{
+                    display: 'flex',
+                    gap: '16px',
+                    marginBottom: '20px',
+                    flexWrap: 'wrap'
+                  }}>
+                    {/* Category Dropdown */}
+                    <div style={{ position: 'relative' }}>
+                      <button
+                        onClick={() => { setCategoryDropdownOpen(!categoryDropdownOpen); setSourceDropdownOpen(false); setInvestmentEditOpen(false); }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '12px 16px',
+                          background: theme === 'light' ? '#F3F4F6' : '#374151',
+                          borderRadius: '12px',
+                          border: 'none',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <FaTag size={16} style={{ color: '#8B5CF6' }} />
+                        <span style={{ fontWeight: 600, color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
+                          {selectedPipelineDeal.category || 'Set Category'}
+                        </span>
+                        <FaChevronDown size={10} style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF' }} />
+                      </button>
+                      {categoryDropdownOpen && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          marginTop: '4px',
+                          backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                          border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                          borderRadius: '8px',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                          zIndex: 100,
+                          minWidth: '150px',
+                          overflow: 'hidden'
+                        }}>
+                          {DEAL_CATEGORIES.map(cat => (
+                            <div
+                              key={cat}
+                              onClick={() => handleUpdateDealCategory(cat)}
+                              style={{
+                                padding: '8px 12px',
+                                cursor: 'pointer',
+                                fontSize: '13px',
+                                backgroundColor: selectedPipelineDeal.category === cat ? (theme === 'light' ? '#F3F4F6' : '#374151') : 'transparent',
+                                color: theme === 'light' ? '#111827' : '#F9FAFB'
+                              }}
+                              onMouseEnter={(e) => e.target.style.backgroundColor = theme === 'light' ? '#F3F4F6' : '#374151'}
+                              onMouseLeave={(e) => e.target.style.backgroundColor = selectedPipelineDeal.category === cat ? (theme === 'light' ? '#F3F4F6' : '#374151') : 'transparent'}
+                            >
+                              {cat}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Investment Edit */}
+                    <div style={{ position: 'relative' }}>
+                      <button
+                        onClick={() => {
+                          setInvestmentEditOpen(!investmentEditOpen);
+                          setInvestmentEditValue(selectedPipelineDeal.total_investment ? String(selectedPipelineDeal.total_investment) : '');
+                          setCurrencyEditValue(selectedPipelineDeal.deal_currency || 'EUR');
+                          setCategoryDropdownOpen(false);
+                          setSourceDropdownOpen(false);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '12px 16px',
+                          background: theme === 'light' ? '#F0FDF4' : '#064E3B',
+                          borderRadius: '12px',
+                          border: 'none',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <FaDollarSign size={16} style={{ color: '#10B981' }} />
+                        <span style={{ fontWeight: 600, color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
+                          {selectedPipelineDeal.total_investment
+                            ? `${selectedPipelineDeal.deal_currency || 'EUR'} ${Number(selectedPipelineDeal.total_investment).toLocaleString()}`
+                            : 'Set Amount'}
+                        </span>
+                        <FaEdit size={10} style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF' }} />
+                      </button>
+                      {investmentEditOpen && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          marginTop: '4px',
+                          backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                          border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                          borderRadius: '8px',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                          zIndex: 100,
+                          padding: '12px',
+                          minWidth: '200px'
+                        }}>
+                          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                            <select
+                              value={currencyEditValue}
+                              onChange={(e) => setCurrencyEditValue(e.target.value)}
+                              style={{
+                                padding: '8px',
+                                borderRadius: '6px',
+                                border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                                background: theme === 'light' ? '#FFFFFF' : '#374151',
+                                color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                fontSize: '13px',
+                                width: '70px'
+                              }}
+                            >
+                              {DEAL_CURRENCIES.map(cur => (
+                                <option key={cur} value={cur}>{cur}</option>
+                              ))}
+                            </select>
+                            <input
+                              type="number"
+                              value={investmentEditValue}
+                              onChange={(e) => setInvestmentEditValue(e.target.value)}
+                              placeholder="Amount"
+                              style={{
+                                flex: 1,
+                                padding: '8px',
+                                borderRadius: '6px',
+                                border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                                background: theme === 'light' ? '#FFFFFF' : '#374151',
+                                color: theme === 'light' ? '#111827' : '#F9FAFB',
+                                fontSize: '13px'
+                              }}
+                            />
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                            <button
+                              onClick={() => setInvestmentEditOpen(false)}
+                              style={{
+                                padding: '6px 12px',
+                                borderRadius: '6px',
+                                border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                                background: 'transparent',
+                                color: theme === 'light' ? '#374151' : '#D1D5DB',
+                                cursor: 'pointer',
+                                fontSize: '12px'
+                              }}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={handleUpdateDealInvestment}
+                              style={{
+                                padding: '6px 12px',
+                                borderRadius: '6px',
+                                border: 'none',
+                                background: '#10B981',
+                                color: 'white',
+                                cursor: 'pointer',
+                                fontSize: '12px'
+                              }}
+                            >
+                              Save
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Source Dropdown */}
+                    <div style={{ position: 'relative' }}>
+                      <button
+                        onClick={() => { setSourceDropdownOpen(!sourceDropdownOpen); setCategoryDropdownOpen(false); setInvestmentEditOpen(false); }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '12px 16px',
+                          background: theme === 'light' ? '#FEF3C7' : '#78350F',
+                          borderRadius: '12px',
+                          border: 'none',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <FaLightbulb size={16} style={{ color: '#F59E0B' }} />
+                        <span style={{ fontWeight: 600, color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
+                          {selectedPipelineDeal.source_category || 'Set Source'}
+                        </span>
+                        <FaChevronDown size={10} style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF' }} />
+                      </button>
+                      {sourceDropdownOpen && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          marginTop: '4px',
+                          backgroundColor: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                          border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                          borderRadius: '8px',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                          zIndex: 100,
+                          minWidth: '150px',
+                          overflow: 'hidden'
+                        }}>
+                          {DEAL_SOURCES.map(src => (
+                            <div
+                              key={src}
+                              onClick={() => handleUpdateDealSource(src)}
+                              style={{
+                                padding: '8px 12px',
+                                cursor: 'pointer',
+                                fontSize: '13px',
+                                backgroundColor: selectedPipelineDeal.source_category === src ? (theme === 'light' ? '#F3F4F6' : '#374151') : 'transparent',
+                                color: theme === 'light' ? '#111827' : '#F9FAFB'
+                              }}
+                              onMouseEnter={(e) => e.target.style.backgroundColor = theme === 'light' ? '#F3F4F6' : '#374151'}
+                              onMouseLeave={(e) => e.target.style.backgroundColor = selectedPipelineDeal.source_category === src ? (theme === 'light' ? '#F3F4F6' : '#374151') : 'transparent'}
+                            >
+                              {src}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  <div style={{
+                    marginBottom: '20px',
+                    padding: '16px',
+                    background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                    border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                    borderRadius: '12px'
+                  }}>
+                    <div style={{ fontWeight: 600, marginBottom: '8px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', fontSize: '12px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span>Description</span>
+                      {!descriptionEditOpen && (
+                        <FaEdit
+                          size={12}
+                          style={{ cursor: 'pointer', opacity: 0.6 }}
+                          onClick={() => {
+                            setDescriptionEditValue(selectedPipelineDeal.description || '');
+                            setDescriptionEditOpen(true);
+                          }}
+                        />
+                      )}
+                    </div>
+                    {descriptionEditOpen ? (
+                      <div>
+                        <textarea
+                          value={descriptionEditValue}
+                          onChange={(e) => setDescriptionEditValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Escape') {
+                              setDescriptionEditOpen(false);
+                            }
+                            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                              handleUpdateDealDescription();
+                            }
+                          }}
+                          autoFocus
+                          style={{
+                            width: '100%',
+                            minHeight: '100px',
+                            padding: '10px',
+                            background: theme === 'light' ? '#F9FAFB' : '#111827',
+                            border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                            borderRadius: '6px',
+                            color: theme === 'light' ? '#111827' : '#F9FAFB',
+                            fontSize: '14px',
+                            fontFamily: 'inherit',
+                            resize: 'vertical',
+                            outline: 'none'
+                          }}
+                          placeholder="Add a description..."
+                        />
+                        <div style={{ display: 'flex', gap: '8px', marginTop: '10px', justifyContent: 'flex-end' }}>
+                          <button
+                            onClick={() => setDescriptionEditOpen(false)}
+                            style={{
+                              padding: '6px 12px',
+                              background: theme === 'light' ? '#E5E7EB' : '#374151',
+                              border: 'none',
+                              borderRadius: '6px',
+                              color: theme === 'light' ? '#374151' : '#D1D5DB',
+                              cursor: 'pointer',
+                              fontSize: '13px'
+                            }}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={handleUpdateDealDescription}
+                            style={{
+                              padding: '6px 12px',
+                              background: '#10B981',
+                              border: 'none',
+                              borderRadius: '6px',
+                              color: '#fff',
+                              cursor: 'pointer',
+                              fontSize: '13px'
+                            }}
+                          >
+                            Save
+                          </button>
+                        </div>
+                        <div style={{ fontSize: '11px', color: theme === 'light' ? '#9CA3AF' : '#6B7280', marginTop: '6px' }}>
+                          Press Cmd/Ctrl+Enter to save, Escape to cancel
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        onClick={() => {
+                          setDescriptionEditValue(selectedPipelineDeal.description || '');
+                          setDescriptionEditOpen(true);
+                        }}
+                        style={{
+                          color: selectedPipelineDeal.description ? (theme === 'light' ? '#374151' : '#D1D5DB') : (theme === 'light' ? '#9CA3AF' : '#6B7280'),
+                          whiteSpace: 'pre-wrap',
+                          lineHeight: 1.6,
+                          cursor: 'pointer',
+                          fontStyle: selectedPipelineDeal.description ? 'normal' : 'italic'
+                        }}
+                      >
+                        {selectedPipelineDeal.description || 'Click to add a description...'}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Linked Contacts */}
+                  <div style={{
+                    marginBottom: '20px',
+                    padding: '16px',
+                    background: theme === 'light' ? '#F3F4F6' : '#374151',
+                    borderRadius: '12px',
+                    position: 'relative'
+                  }}>
+                    <div style={{ fontWeight: 600, marginBottom: '12px', color: theme === 'light' ? '#111827' : '#F9FAFB', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <FaUser size={14} style={{ marginRight: '8px' }} />
+                        Linked Contacts {selectedPipelineDeal.deals_contacts?.length > 0 && `(${selectedPipelineDeal.deals_contacts.length})`}
+                      </div>
+                      <button
+                        onClick={() => setAddContactModalOpen(true)}
+                        style={{
+                          background: theme === 'light' ? '#E5E7EB' : '#4B5563',
+                          border: 'none',
+                          borderRadius: '4px',
+                          padding: '4px 8px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          color: theme === 'light' ? '#374151' : '#D1D5DB',
+                          fontSize: '12px'
+                        }}
+                      >
+                        <FaPlus size={10} /> Add
+                      </button>
+                    </div>
+
+                    {/* Add Contact Modal */}
+                    {addContactModalOpen && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '50px',
+                        left: '16px',
+                        right: '16px',
+                        background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                        borderRadius: '8px',
+                        boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
+                        zIndex: 100,
+                        padding: '12px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                          <span style={{ fontWeight: 500, fontSize: '13px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>Add Contact to Deal</span>
+                          <button
+                            onClick={() => {
+                              setAddContactModalOpen(false);
+                              setContactSearchQuery('');
+                              setContactSearchResults([]);
+                              setSelectedContactRelationship('other');
+                            }}
+                            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: theme === 'light' ? '#6B7280' : '#9CA3AF', padding: '4px' }}
+                          >
+                            <FaTimes size={12} />
+                          </button>
+                        </div>
+                        <div style={{ marginBottom: '10px' }}>
+                          <label style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', display: 'block', marginBottom: '4px' }}>
+                            Relationship
+                          </label>
+                          <select
+                            value={selectedContactRelationship}
+                            onChange={(e) => setSelectedContactRelationship(e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '8px 10px',
+                              background: theme === 'light' ? '#F9FAFB' : '#111827',
+                              border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                              borderRadius: '6px',
+                              color: theme === 'light' ? '#111827' : '#F9FAFB',
+                              fontSize: '13px',
+                              outline: 'none',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {DEAL_RELATIONSHIP_TYPES.map(rel => (
+                              <option key={rel} value={rel} style={{ textTransform: 'capitalize' }}>
+                                {rel.charAt(0).toUpperCase() + rel.slice(1)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <input
+                          type="text"
+                          value={contactSearchQuery}
+                          onChange={(e) => handleSearchContacts(e.target.value)}
+                          placeholder="Search contacts by name or email..."
+                          autoFocus
+                          style={{
+                            width: '100%',
+                            padding: '8px 10px',
+                            background: theme === 'light' ? '#F9FAFB' : '#111827',
+                            border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                            borderRadius: '6px',
+                            color: theme === 'light' ? '#111827' : '#F9FAFB',
+                            fontSize: '13px',
+                            outline: 'none'
+                          }}
+                        />
+                        {contactSearchLoading && (
+                          <div style={{ padding: '10px', textAlign: 'center', color: theme === 'light' ? '#6B7280' : '#9CA3AF', fontSize: '13px' }}>
+                            Searching...
+                          </div>
+                        )}
+                        {!contactSearchLoading && contactSearchResults.length > 0 && (
+                          <div style={{ marginTop: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+                            {contactSearchResults.map((contact) => (
+                              <div
+                                key={contact.contact_id}
+                                onClick={() => handleAddDealContact(contact)}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '10px',
+                                  padding: '8px',
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  background: 'transparent'
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.background = theme === 'light' ? '#F3F4F6' : '#374151'}
+                                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                              >
+                                {contact.profile_image_url ? (
+                                  <img src={contact.profile_image_url} alt="" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }} />
+                                ) : (
+                                  <div style={{
+                                    width: 28,
+                                    height: 28,
+                                    borderRadius: '50%',
+                                    backgroundColor: theme === 'light' ? '#E5E7EB' : '#4B5563',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                  }}>
+                                    <FaUser size={12} style={{ color: '#9CA3AF' }} />
+                                  </div>
+                                )}
+                                <div>
+                                  <div style={{ fontWeight: 500, fontSize: '13px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
+                                    {contact.first_name} {contact.last_name}
+                                  </div>
+                                  {contact.email && (
+                                    <div style={{ fontSize: '11px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                                      {contact.email}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {!contactSearchLoading && contactSearchQuery && contactSearchResults.length === 0 && (
+                          <div style={{ padding: '10px', textAlign: 'center', color: theme === 'light' ? '#6B7280' : '#9CA3AF', fontSize: '13px' }}>
+                            No contacts found
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Contact List */}
+                    {selectedPipelineDeal.deals_contacts && selectedPipelineDeal.deals_contacts.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {selectedPipelineDeal.deals_contacts.map((dc, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '12px',
+                              padding: '8px 12px',
+                              background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                              borderRadius: '8px'
+                            }}
+                          >
+                            <div
+                              onClick={() => dc.contacts && navigate(`/contact/${dc.contacts.contact_id}`)}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '12px',
+                                flex: 1,
+                                cursor: dc.contacts ? 'pointer' : 'default'
+                              }}
+                            >
+                              {dc.contacts?.profile_image_url ? (
+                                <img
+                                  src={dc.contacts.profile_image_url}
+                                  alt=""
+                                  style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }}
+                                />
+                              ) : (
+                                <div style={{
+                                  width: 32,
+                                  height: 32,
+                                  borderRadius: '50%',
+                                  backgroundColor: theme === 'light' ? '#E5E7EB' : '#4B5563',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center'
+                                }}>
+                                  <FaUser size={14} style={{ color: theme === 'light' ? '#9CA3AF' : '#9CA3AF' }} />
+                                </div>
+                              )}
+                              <div>
+                                <div style={{ fontWeight: 500, color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
+                                  {dc.contacts?.first_name} {dc.contacts?.last_name}
+                                </div>
+                                {dc.relationship && (
+                                  <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                                    {dc.relationship}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveDealContact(dc.contact_id);
+                              }}
+                              style={{
+                                background: 'transparent',
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: '6px',
+                                borderRadius: '4px',
+                                color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
+                              onMouseEnter={(e) => e.target.style.color = '#EF4444'}
+                              onMouseLeave={(e) => e.target.style.color = theme === 'light' ? '#9CA3AF' : '#6B7280'}
+                              title="Remove contact from deal"
+                            >
+                              <FaTimes size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ color: theme === 'light' ? '#9CA3AF' : '#6B7280', fontSize: '13px', fontStyle: 'italic' }}>
+                        No contacts linked yet
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Linked Companies */}
+                  <div style={{
+                    marginBottom: '20px',
+                    padding: '16px',
+                    background: theme === 'light' ? '#F3F4F6' : '#374151',
+                    borderRadius: '12px',
+                    position: 'relative'
+                  }}>
+                    <div style={{ fontWeight: 600, marginBottom: '12px', color: theme === 'light' ? '#111827' : '#F9FAFB', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <FaBuilding size={14} style={{ marginRight: '8px' }} />
+                        Linked Companies {selectedPipelineDeal.deal_companies?.length > 0 && `(${selectedPipelineDeal.deal_companies.length})`}
+                      </div>
+                      <button
+                        onClick={() => setAddDealCompanyModalOpen(true)}
+                        style={{
+                          background: theme === 'light' ? '#E5E7EB' : '#4B5563',
+                          border: 'none',
+                          borderRadius: '4px',
+                          padding: '4px 8px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          color: theme === 'light' ? '#374151' : '#D1D5DB',
+                          fontSize: '12px'
+                        }}
+                      >
+                        <FaPlus size={10} /> Add
+                      </button>
+                    </div>
+
+                    {/* Add Company Modal */}
+                    {addDealCompanyModalOpen && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '50px',
+                        left: '16px',
+                        right: '16px',
+                        background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                        borderRadius: '8px',
+                        boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
+                        zIndex: 100,
+                        padding: '12px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                          <span style={{ fontWeight: 500, fontSize: '13px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>Add Company to Deal</span>
+                          <button
+                            onClick={() => {
+                              setAddDealCompanyModalOpen(false);
+                              setDealCompanySearchQuery('');
+                              setDealCompanySearchResults([]);
+                            }}
+                            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: theme === 'light' ? '#6B7280' : '#9CA3AF', padding: '4px' }}
+                          >
+                            <FaTimes size={12} />
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          value={dealCompanySearchQuery}
+                          onChange={(e) => handleSearchDealCompanies(e.target.value)}
+                          placeholder="Search companies by name..."
+                          autoFocus
+                          style={{
+                            width: '100%',
+                            padding: '8px 10px',
+                            background: theme === 'light' ? '#F9FAFB' : '#111827',
+                            border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                            borderRadius: '6px',
+                            color: theme === 'light' ? '#111827' : '#F9FAFB',
+                            fontSize: '13px',
+                            outline: 'none'
+                          }}
+                        />
+                        {dealCompanySearchLoading && (
+                          <div style={{ padding: '10px', textAlign: 'center', color: theme === 'light' ? '#6B7280' : '#9CA3AF', fontSize: '13px' }}>
+                            Searching...
+                          </div>
+                        )}
+                        {!dealCompanySearchLoading && dealCompanySearchResults.length > 0 && (
+                          <div style={{ marginTop: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+                            {dealCompanySearchResults.map((company) => (
+                              <div
+                                key={company.company_id}
+                                onClick={() => handleAddDealCompany(company)}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '10px',
+                                  padding: '8px',
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  background: 'transparent'
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.background = theme === 'light' ? '#F3F4F6' : '#374151'}
+                                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                              >
+                                <div style={{
+                                width: 28,
+                                height: 28,
+                                borderRadius: '6px',
+                                backgroundColor: theme === 'light' ? '#E5E7EB' : '#4B5563',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}>
+                                <FaBuilding size={12} style={{ color: '#9CA3AF' }} />
+                              </div>
+                                <div>
+                                  <div style={{ fontWeight: 500, fontSize: '13px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
+                                    {company.name}
+                                  </div>
+                                  {company.domain && (
+                                    <div style={{ fontSize: '11px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                                      {company.domain}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {!dealCompanySearchLoading && dealCompanySearchQuery && dealCompanySearchResults.length === 0 && (
+                          <div style={{ padding: '10px', textAlign: 'center', color: theme === 'light' ? '#6B7280' : '#9CA3AF', fontSize: '13px' }}>
+                            No companies found
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Company List */}
+                    {selectedPipelineDeal.deal_companies && selectedPipelineDeal.deal_companies.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {selectedPipelineDeal.deal_companies.map((dco, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '12px',
+                              padding: '8px 12px',
+                              background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                              borderRadius: '8px'
+                            }}
+                          >
+                            <div
+                              onClick={() => dco.companies && navigate(`/company/${dco.companies.company_id}`)}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '12px',
+                                flex: 1,
+                                cursor: dco.companies ? 'pointer' : 'default'
+                              }}
+                            >
+                              <div style={{
+                                width: 32,
+                                height: 32,
+                                borderRadius: '8px',
+                                backgroundColor: theme === 'light' ? '#E5E7EB' : '#4B5563',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}>
+                                <FaBuilding size={14} style={{ color: theme === 'light' ? '#9CA3AF' : '#9CA3AF' }} />
+                              </div>
+                              <div>
+                                <div style={{ fontWeight: 500, color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
+                                  {dco.companies?.name}
+                                </div>
+                                {dco.is_primary && (
+                                  <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                                    Primary
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveDealCompany(dco.company_id);
+                              }}
+                              style={{
+                                background: 'transparent',
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: '6px',
+                                borderRadius: '4px',
+                                color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
+                              onMouseEnter={(e) => e.target.style.color = '#EF4444'}
+                              onMouseLeave={(e) => e.target.style.color = theme === 'light' ? '#9CA3AF' : '#6B7280'}
+                              title="Remove company from deal"
+                            >
+                              <FaTimes size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ color: theme === 'light' ? '#9CA3AF' : '#6B7280', fontSize: '13px', fontStyle: 'italic' }}>
+                        No companies linked yet
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Dates */}
+                  <div style={{
+                    display: 'flex',
+                    gap: '16px',
+                    flexWrap: 'wrap'
+                  }}>
+                    <div style={{
+                      padding: '12px 16px',
+                      background: theme === 'light' ? '#F3F4F6' : '#374151',
+                      borderRadius: '12px',
+                      flex: 1,
+                      minWidth: '150px'
+                    }}>
+                      <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '4px' }}>
+                        Created
+                      </div>
+                      <div style={{ fontWeight: 500, color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
+                        {new Date(selectedPipelineDeal.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </div>
+                    </div>
+                    {selectedPipelineDeal.proposed_at && (
+                      <div style={{
+                        padding: '12px 16px',
+                        background: theme === 'light' ? '#F3F4F6' : '#374151',
+                        borderRadius: '12px',
+                        flex: 1,
+                        minWidth: '150px'
+                      }}>
+                        <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '4px' }}>
+                          Proposed
+                        </div>
+                        <div style={{ fontWeight: 500, color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
+                          {new Date(selectedPipelineDeal.proposed_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </div>
+                      </div>
+                    )}
+                    {selectedPipelineDeal.last_modified_at && (
+                      <div style={{
+                        padding: '12px 16px',
+                        background: theme === 'light' ? '#F3F4F6' : '#374151',
+                        borderRadius: '12px',
+                        flex: 1,
+                        minWidth: '150px'
+                      }}>
+                        <div style={{ fontSize: '12px', color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginBottom: '4px' }}>
+                          Last Modified
+                        </div>
+                        <div style={{ fontWeight: 500, color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
+                          {new Date(selectedPipelineDeal.last_modified_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Deal Actions Bar */}
+                <EmailActions theme={theme}>
+                  <ActionBtn
+                    theme={theme}
+                    onClick={() => setCreateDealModalOpen(true)}
+                  >
+                    <FaPlus size={12} style={{ marginRight: '6px' }} />
+                    New Deal
+                  </ActionBtn>
+                  <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto' }}>
+                    <ActionBtn
+                      theme={theme}
+                      onClick={handleDeleteDeal}
+                      style={{
+                        background: theme === 'light' ? '#FEE2E2' : '#7F1D1D',
+                        color: theme === 'light' ? '#DC2626' : '#FCA5A5'
+                      }}
+                    >
+                      <FaTrash size={12} style={{ marginRight: '6px' }} />
+                      Delete Deal
+                    </ActionBtn>
+                  </div>
+                </EmailActions>
+              </div>
+            ) : (
+              <EmptyState theme={theme}>Select a deal to view details</EmptyState>
             )
           ) : selectedThread && selectedThread.length > 0 ? (
             <>
@@ -5841,7 +7862,7 @@ const CommandCenterPage = ({ theme }) => {
                 const isSentByMe = latestEmail.from_email?.toLowerCase() === MY_EMAIL;
                 const toCount = latestEmail.to_recipients?.length || 0;
                 const ccCount = latestEmail.cc_recipients?.length || 0;
-                const showReplyAll = isSentByMe ? (toCount + ccCount > 1) : (ccCount > 0);
+                const showReplyAll = isSentByMe ? (toCount + ccCount > 1) : (toCount > 1 || ccCount > 0);
 
                 return (
                   <EmailActions theme={theme}>
@@ -5984,7 +8005,7 @@ const CommandCenterPage = ({ theme }) => {
             )}
           </ActionsPanelTabs>
 
-          {!rightPanelCollapsed && ((selectedThread && selectedThread.length > 0) || selectedWhatsappChat || selectedCalendarEvent) && (
+          {!rightPanelCollapsed && ((selectedThread && selectedThread.length > 0) || selectedWhatsappChat || selectedCalendarEvent || selectedPipelineDeal) && (
             <>
               {activeActionTab === 'chat' && (
                 <ChatTab
@@ -7582,6 +9603,310 @@ const CommandCenterPage = ({ theme }) => {
           fetchDeals();
         }}
       />
+
+      {/* Baileys QR Code Modal */}
+      {showBaileysQRModal && (
+        <ModalOverlay onClick={() => setShowBaileysQRModal(false)}>
+          <ModalContent theme={theme} onClick={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+            <ModalHeader theme={theme}>
+              <ModalTitle theme={theme}>
+                <FaWhatsapp style={{ marginRight: '8px', color: '#25D366' }} />
+                Connect WhatsApp (Baileys)
+              </ModalTitle>
+              <CloseButton theme={theme} onClick={() => setShowBaileysQRModal(false)}>
+                <FaTimes />
+              </CloseButton>
+            </ModalHeader>
+            <ModalBody theme={theme}>
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                {baileysStatus.status === 'connected' ? (
+                  <div>
+                    <div style={{
+                      width: '60px',
+                      height: '60px',
+                      borderRadius: '50%',
+                      background: theme === 'light' ? '#D1FAE5' : '#065F46',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      margin: '0 auto 16px'
+                    }}>
+                      <FaCheck size={28} style={{ color: theme === 'light' ? '#059669' : '#6EE7B7' }} />
+                    </div>
+                    <p style={{ fontSize: '16px', fontWeight: 600, marginBottom: '8px' }}>Connected!</p>
+                    <p style={{ fontSize: '13px', opacity: 0.7 }}>WhatsApp Baileys is connected and ready to send messages.</p>
+                  </div>
+                ) : baileysStatus.hasQR || baileysStatus.status === 'qr_ready' ? (
+                  <div>
+                    <p style={{ fontSize: '14px', marginBottom: '16px' }}>
+                      Scan this QR code with WhatsApp on your phone:
+                    </p>
+                    <p style={{ fontSize: '12px', opacity: 0.7, marginBottom: '12px' }}>
+                      WhatsApp → Settings → Linked Devices → Link a Device
+                    </p>
+                    <img
+                      src={`${BACKEND_URL}/whatsapp/qr-image?t=${Date.now()}`}
+                      alt="WhatsApp QR Code"
+                      style={{
+                        maxWidth: '280px',
+                        width: '100%',
+                        borderRadius: '8px',
+                        border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
+                      }}
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                      }}
+                    />
+                    <p style={{ fontSize: '11px', opacity: 0.5, marginTop: '12px' }}>
+                      QR codes expire after ~60 seconds. Refresh if needed.
+                    </p>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await fetch(`${BACKEND_URL}/whatsapp/connect`, { method: 'POST' });
+                          // Force re-fetch status
+                          const res = await fetch(`${BACKEND_URL}/whatsapp/status`);
+                          const data = await res.json();
+                          setBaileysStatus(data);
+                        } catch (e) {
+                          console.error('Reconnect error:', e);
+                        }
+                      }}
+                      style={{
+                        marginTop: '16px',
+                        padding: '8px 16px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: theme === 'light' ? '#F3F4F6' : '#374151',
+                        cursor: 'pointer',
+                        fontSize: '13px'
+                      }}
+                    >
+                      Refresh QR
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{
+                      width: '60px',
+                      height: '60px',
+                      borderRadius: '50%',
+                      background: theme === 'light' ? '#FEE2E2' : '#7F1D1D',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      margin: '0 auto 16px'
+                    }}>
+                      <FaTimes size={28} style={{ color: theme === 'light' ? '#DC2626' : '#FCA5A5' }} />
+                    </div>
+                    <p style={{ fontSize: '16px', fontWeight: 600, marginBottom: '8px' }}>Disconnected</p>
+                    <p style={{ fontSize: '13px', opacity: 0.7, marginBottom: '16px' }}>
+                      {baileysStatus.error || 'WhatsApp Baileys is not connected.'}
+                    </p>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await fetch(`${BACKEND_URL}/whatsapp/connect`, { method: 'POST' });
+                          // Wait a bit then re-fetch status
+                          setTimeout(async () => {
+                            const res = await fetch(`${BACKEND_URL}/whatsapp/status`);
+                            const data = await res.json();
+                            setBaileysStatus(data);
+                          }, 2000);
+                        } catch (e) {
+                          console.error('Connect error:', e);
+                          toast.error('Failed to connect to Baileys');
+                        }
+                      }}
+                      style={{
+                        padding: '10px 20px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: '#25D366',
+                        color: 'white',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        fontWeight: 500
+                      }}
+                    >
+                      Connect Baileys
+                    </button>
+                  </div>
+                )}
+              </div>
+            </ModalBody>
+          </ModalContent>
+        </ModalOverlay>
+      )}
+
+      {/* Create Deal Modal */}
+      {createDealModalOpen && (
+        <ModalOverlay onClick={() => setCreateDealModalOpen(false)}>
+          <ModalContent theme={theme} onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <ModalHeader theme={theme}>
+              <ModalTitle theme={theme}>
+                <FaDollarSign style={{ marginRight: '8px', color: '#10B981' }} />
+                New Deal
+              </ModalTitle>
+              <CloseButton theme={theme} onClick={() => setCreateDealModalOpen(false)}>
+                <FaTimes />
+              </CloseButton>
+            </ModalHeader>
+            <ModalBody theme={theme}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {/* Deal Name */}
+                <div>
+                  <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: 500, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
+                    Deal Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={newDealForm.opportunity}
+                    onChange={(e) => setNewDealForm(prev => ({ ...prev, opportunity: e.target.value }))}
+                    placeholder="Enter deal name..."
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                      background: theme === 'light' ? '#FFFFFF' : '#374151',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB',
+                      fontSize: '14px'
+                    }}
+                  />
+                </div>
+
+                {/* Category */}
+                <div>
+                  <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: 500, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
+                    Category
+                  </label>
+                  <select
+                    value={newDealForm.category}
+                    onChange={(e) => setNewDealForm(prev => ({ ...prev, category: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                      background: theme === 'light' ? '#FFFFFF' : '#374151',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB',
+                      fontSize: '14px'
+                    }}
+                  >
+                    {DEAL_CATEGORIES.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Investment Amount */}
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: 500, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
+                      Investment Amount
+                    </label>
+                    <input
+                      type="number"
+                      value={newDealForm.total_investment}
+                      onChange={(e) => setNewDealForm(prev => ({ ...prev, total_investment: e.target.value }))}
+                      placeholder="0"
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        background: theme === 'light' ? '#FFFFFF' : '#374151',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px'
+                      }}
+                    />
+                  </div>
+                  <div style={{ width: '100px' }}>
+                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: 500, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
+                      Currency
+                    </label>
+                    <select
+                      value={newDealForm.deal_currency}
+                      onChange={(e) => setNewDealForm(prev => ({ ...prev, deal_currency: e.target.value }))}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        background: theme === 'light' ? '#FFFFFF' : '#374151',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px'
+                      }}
+                    >
+                      {DEAL_CURRENCIES.map(cur => (
+                        <option key={cur} value={cur}>{cur}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Description */}
+                <div>
+                  <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: 500, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
+                    Description
+                  </label>
+                  <textarea
+                    value={newDealForm.description}
+                    onChange={(e) => setNewDealForm(prev => ({ ...prev, description: e.target.value }))}
+                    placeholder="Enter deal description..."
+                    rows={3}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                      background: theme === 'light' ? '#FFFFFF' : '#374151',
+                      color: theme === 'light' ? '#111827' : '#F9FAFB',
+                      fontSize: '14px',
+                      resize: 'vertical'
+                    }}
+                  />
+                </div>
+
+                {/* Actions */}
+                <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
+                  <button
+                    onClick={() => setCreateDealModalOpen(false)}
+                    style={{
+                      padding: '10px 20px',
+                      borderRadius: '8px',
+                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                      background: 'transparent',
+                      color: theme === 'light' ? '#374151' : '#D1D5DB',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      fontWeight: 500
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleCreateDeal}
+                    style={{
+                      padding: '10px 20px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: '#10B981',
+                      color: 'white',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      fontWeight: 500
+                    }}
+                  >
+                    Create Deal
+                  </button>
+                </div>
+              </div>
+            </ModalBody>
+          </ModalContent>
+        </ModalOverlay>
+      )}
     </PageContainer>
   );
 };
