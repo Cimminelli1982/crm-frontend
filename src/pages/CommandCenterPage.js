@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   PageContainer,
@@ -85,7 +85,7 @@ import {
   SendButton,
   CancelButton
 } from './CommandCenterPage.styles';
-import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt, FaUpload } from 'react-icons/fa';
+import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaCheckDouble, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt, FaUpload, FaFileAlt } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import QuickEditModal from '../components/QuickEditModalRefactored';
@@ -113,7 +113,7 @@ import ManageContactEmailsModal from '../components/modals/ManageContactEmailsMo
 import ManageContactMobilesModal from '../components/modals/ManageContactMobilesModal';
 import ManageContactTagsModal from '../components/modals/ManageContactTagsModal';
 import ManageContactCitiesModal from '../components/modals/ManageContactCitiesModal';
-import CompanyAssociationModal from '../components/modals/CompanyAssociationModal';
+import ManageContactCompaniesModal from '../components/modals/ManageContactCompaniesModal';
 import CreateDealAI from '../components/modals/CreateDealAI';
 import { findContactDuplicatesForThread, findCompanyDuplicatesForThread } from '../utils/duplicateDetection';
 import DataIntegrityTab from '../components/command-center/DataIntegrityTab';
@@ -616,6 +616,7 @@ const CommandCenterPage = ({ theme }) => {
   // Keep in Touch state
   const [keepInTouchContacts, setKeepInTouchContacts] = useState([]);
   const [keepInTouchLoading, setKeepInTouchLoading] = useState(false);
+  const [keepInTouchRefreshTrigger, setKeepInTouchRefreshTrigger] = useState(0);
   const [selectedKeepInTouchContact, setSelectedKeepInTouchContact] = useState(null);
   const [keepInTouchSections, setKeepInTouchSections] = useState({
     due: true,
@@ -636,6 +637,34 @@ const CommandCenterPage = ({ theme }) => {
   const [kitTagsModalOpen, setKitTagsModalOpen] = useState(false);
   const [kitCityModalOpen, setKitCityModalOpen] = useState(false);
   const [kitCompanyModalContact, setKitCompanyModalContact] = useState(null);
+  const [kitWhatsappMessages, setKitWhatsappMessages] = useState([]);
+  const [kitWhatsappLoading, setKitWhatsappLoading] = useState(false);
+  const [kitWhatsappInput, setKitWhatsappInput] = useState('');
+  const [kitWhatsappSending, setKitWhatsappSending] = useState(false);
+  const [kitWhatsappBestPhone, setKitWhatsappBestPhone] = useState(null); // Phone number with most messages
+  // Keep in Touch Email state
+  const [kitEmailSubject, setKitEmailSubject] = useState('');
+  const [kitEmailBody, setKitEmailBody] = useState('');
+  const [kitEmailSending, setKitEmailSending] = useState(false);
+  const [kitSelectedEmail, setKitSelectedEmail] = useState(null); // Selected email address for sending
+  // Template state for KIT email
+  const [kitTemplateDropdownOpen, setKitTemplateDropdownOpen] = useState(false);
+  const [kitTemplateSearch, setKitTemplateSearch] = useState('');
+  const [kitTemplates, setKitTemplates] = useState([]);
+  const [kitTemplatesLoading, setKitTemplatesLoading] = useState(false);
+  const kitTemplateDropdownRef = useRef(null);
+
+  // Email signature for Keep in Touch emails
+  const KIT_EMAIL_SIGNATURE = `
+
+--
+SIMONE CIMMINELLI
+Newsletter: https://www.angelinvesting.it/
+Website: https://www.cimminelli.com/
+LinkedIn: https://www.linkedin.com/in/cimminelli/
+
+Build / Buy / Invest in
+internet businesses.`;
 
   // Keep in Touch enum values
   const KEEP_IN_TOUCH_FREQUENCIES = ['Not Set', 'Weekly', 'Monthly', 'Quarterly', 'Twice per Year', 'Once per Year', 'Do not keep in touch'];
@@ -661,6 +690,12 @@ const CommandCenterPage = ({ theme }) => {
       ));
 
       toast.success(`${field.charAt(0).toUpperCase() + field.slice(1)} updated`);
+
+      // Refresh the list when frequency changes (affects days_until_next calculation)
+      if (field === 'frequency') {
+        setSelectedKeepInTouchContact(null);
+        setKeepInTouchRefreshTrigger(prev => prev + 1);
+      }
     } catch (err) {
       console.error(`Error updating ${field}:`, err);
       toast.error(`Failed to update ${field}`);
@@ -1636,8 +1671,8 @@ const CommandCenterPage = ({ theme }) => {
         console.error('Error fetching keep in touch contacts:', error);
       } else {
         setKeepInTouchContacts(data || []);
-        if (data && data.length > 0) {
-          // Select first due contact, or first contact
+        // Only auto-select on initial load, not on refresh
+        if (data && data.length > 0 && !selectedKeepInTouchContact) {
           const dueContacts = data.filter(c => parseInt(c.days_until_next) <= 0);
           setSelectedKeepInTouchContact(dueContacts.length > 0 ? dueContacts[0] : data[0]);
         }
@@ -1648,7 +1683,7 @@ const CommandCenterPage = ({ theme }) => {
     if (activeTab === 'keepintouch') {
       fetchKeepInTouch();
     }
-  }, [activeTab]);
+  }, [activeTab, keepInTouchRefreshTrigger]);
 
   // Filter Keep in Touch contacts by status
   const filterKeepInTouchByStatus = (contacts, status) => {
@@ -1710,6 +1745,7 @@ const CommandCenterPage = ({ theme }) => {
         .eq('contact_id', contactId)
         .order('is_primary', { ascending: false });
       setKeepInTouchEmails(emailsData || []);
+      setKitSelectedEmail(null); // Reset selected email when contact changes
 
       // Fetch mobiles
       const { data: mobilesData } = await supabase
@@ -1798,6 +1834,311 @@ const CommandCenterPage = ({ theme }) => {
 
     fetchContactDetailsAndInteractions();
   }, [selectedKeepInTouchContact?.contact_id]);
+
+  // Fetch WhatsApp messages for Keep in Touch contact
+  useEffect(() => {
+    const fetchKitWhatsappMessages = async () => {
+      if (!selectedKeepInTouchContact || keepInTouchMobiles.length === 0) {
+        setKitWhatsappMessages([]);
+        return;
+      }
+
+      setKitWhatsappLoading(true);
+      try {
+        // Normalize phone numbers for matching
+        const normalizePhone = (p) => p ? p.replace(/[^\d+]/g, '').replace(/^00/, '+') : '';
+        const contactPhones = keepInTouchMobiles.map(m => normalizePhone(m.mobile));
+
+        // Fetch messages from command_center_inbox matching any of the contact's phone numbers
+        const { data: inboxMessages, error: inboxError } = await supabase
+          .from('command_center_inbox')
+          .select('*')
+          .eq('type', 'whatsapp')
+          .order('date', { ascending: false });
+
+        if (inboxError) {
+          console.error('Error fetching inbox messages:', inboxError);
+        }
+
+        // Filter messages by matching phone numbers (compare last 9 digits for accuracy)
+        const getLast9Digits = (phone) => phone.replace(/\D/g, '').slice(-9);
+
+        // Count messages per phone number to find the best one
+        const phoneMessageCount = {};
+        keepInTouchMobiles.forEach(m => {
+          phoneMessageCount[m.mobile] = 0;
+        });
+
+        const matchingMessages = (inboxMessages || []).filter(msg => {
+          const msgPhoneSuffix = getLast9Digits(msg.contact_number || '');
+          if (msgPhoneSuffix.length < 9) return false;
+
+          // Find which contact phone matches
+          const matchingMobile = keepInTouchMobiles.find(m =>
+            getLast9Digits(m.mobile) === msgPhoneSuffix
+          );
+
+          if (matchingMobile) {
+            // Only count RECEIVED messages to determine the best phone
+            // (you can send to any number, but only receive from real WhatsApp numbers)
+            if (msg.direction === 'received') {
+              phoneMessageCount[matchingMobile.mobile]++;
+            }
+            return true;
+          }
+          return false;
+        });
+
+        // Find phone with most RECEIVED messages (if any)
+        let bestPhone = null;
+        let maxMessages = 0;
+        Object.entries(phoneMessageCount).forEach(([phone, count]) => {
+          if (count > maxMessages) {
+            maxMessages = count;
+            bestPhone = phone;
+          }
+        });
+        setKitWhatsappBestPhone(bestPhone);
+
+        // Also fetch archived messages from interactions
+        const { data: archivedData } = await supabase
+          .from('interactions')
+          .select('interaction_id, interaction_type, direction, interaction_date, summary, external_interaction_id')
+          .eq('contact_id', selectedKeepInTouchContact.contact_id)
+          .eq('interaction_type', 'whatsapp')
+          .order('interaction_date', { ascending: false });
+
+        // Combine and format messages
+        const inboxFormatted = matchingMessages.map(m => ({
+          id: m.id || m.message_uid,
+          text: m.body_text || m.snippet || '',
+          direction: m.direction,
+          date: m.date,
+          source: 'inbox'
+        }));
+
+        const archivedFormatted = (archivedData || []).map(m => ({
+          id: m.interaction_id,
+          text: m.summary || '',
+          direction: m.direction,
+          date: m.interaction_date,
+          source: 'archived'
+        }));
+
+        // Combine, deduplicate by date proximity, and sort by date descending
+        const allMessages = [...inboxFormatted, ...archivedFormatted];
+        allMessages.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        setKitWhatsappMessages(allMessages);
+      } catch (err) {
+        console.error('Error fetching KIT WhatsApp messages:', err);
+        setKitWhatsappMessages([]);
+      }
+      setKitWhatsappLoading(false);
+    };
+
+    if (activeActionTab === 'kitWhatsapp') {
+      fetchKitWhatsappMessages();
+    }
+  }, [selectedKeepInTouchContact?.contact_id, keepInTouchMobiles, activeActionTab]);
+
+  // Send WhatsApp message for Keep in Touch contact
+  const handleKitSendWhatsapp = async () => {
+    if (!kitWhatsappInput.trim() || kitWhatsappSending) return;
+    if (keepInTouchMobiles.length === 0) {
+      toast.error('No phone number available for this contact');
+      return;
+    }
+
+    // Use the phone with received messages if available
+    // Otherwise prefer mobile numbers (Italian mobiles start with +393)
+    // Fall back to first number as last resort
+    let phoneNumber = kitWhatsappBestPhone;
+    if (!phoneNumber) {
+      // Try to find a mobile number (not a landline)
+      const mobileNumber = keepInTouchMobiles.find(m =>
+        m.mobile.startsWith('+393') || // Italian mobile
+        m.mobile.startsWith('+44') ||  // UK
+        m.mobile.startsWith('+1') ||   // US/Canada
+        !m.mobile.match(/^\+39\s?0/)   // Not Italian landline (06, 02, etc.)
+      );
+      phoneNumber = mobileNumber?.mobile || keepInTouchMobiles[0].mobile;
+    }
+    const messageText = kitWhatsappInput.trim();
+
+    setKitWhatsappSending(true);
+    try {
+      // Try Baileys first
+      const baileysRes = await fetch(`${BACKEND_URL}/whatsapp/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: phoneNumber,
+          message: messageText
+        })
+      });
+
+      const baileysData = await baileysRes.json();
+
+      if (!baileysRes.ok || !baileysData.success) {
+        throw new Error(baileysData.error || 'Failed to send via Baileys');
+      }
+
+      // Update last_interaction_at immediately when message is queued
+      // This way the contact moves out of overdue even before staging approval
+      const now = new Date();
+      const { error: updateError } = await supabase
+        .from('contacts')
+        .update({
+          last_interaction_at: now.toISOString(),
+          last_whatsapp_sent: now.toISOString().split('T')[0] // date only
+        })
+        .eq('contact_id', selectedKeepInTouchContact.contact_id);
+
+      if (updateError) {
+        console.error('Failed to update last_interaction_at:', updateError);
+      } else {
+        // Update local state to reflect the change
+        setSelectedKeepInTouchContact(prev => ({
+          ...prev,
+          last_interaction_at: now.toISOString()
+        }));
+        // Refresh the keep in touch list to show updated status
+        fetchKeepInTouchContacts();
+      }
+
+      // Add optimistic message
+      const newMessage = {
+        id: `sent_${Date.now()}`,
+        text: messageText,
+        direction: 'sent',
+        date: new Date().toISOString(),
+        source: 'local'
+      };
+      setKitWhatsappMessages(prev => [newMessage, ...prev]);
+      setKitWhatsappInput('');
+      toast.success('Message sent!');
+    } catch (error) {
+      console.error('Error sending WhatsApp:', error);
+      toast.error(error.message || 'Failed to send message');
+    } finally {
+      setKitWhatsappSending(false);
+    }
+  };
+
+  // Send Email for Keep in Touch contact
+  const handleKitSendEmail = async () => {
+    if (!kitEmailSubject.trim() || !kitEmailBody.trim() || kitEmailSending) return;
+    if (keepInTouchEmails.length === 0) {
+      toast.error('No email address available for this contact');
+      return;
+    }
+
+    const toEmail = kitSelectedEmail || keepInTouchEmails[0].email; // Use selected or primary email
+    const fullBody = kitEmailBody.trim() + KIT_EMAIL_SIGNATURE;
+
+    setKitEmailSending(true);
+    try {
+      const response = await fetch(`${BACKEND_URL}/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: [toEmail],
+          subject: kitEmailSubject.trim(),
+          textBody: fullBody,
+        }),
+      });
+
+      const result = await response.json();
+      if (!result.success) throw new Error(result.error);
+
+      // Update last_interaction_at immediately when email is sent
+      const now = new Date();
+      const { error: updateError } = await supabase
+        .from('contacts')
+        .update({
+          last_interaction_at: now.toISOString(),
+          last_email_sent: now.toISOString().split('T')[0] // date only
+        })
+        .eq('contact_id', selectedKeepInTouchContact.contact_id);
+
+      if (updateError) {
+        console.error('Failed to update last_interaction_at:', updateError);
+      } else {
+        // Update local state
+        setSelectedKeepInTouchContact(prev => ({
+          ...prev,
+          last_interaction_at: now.toISOString()
+        }));
+        // Refresh the keep in touch list
+        fetchKeepInTouchContacts();
+      }
+
+      // Clear the form
+      setKitEmailSubject('');
+      setKitEmailBody('');
+      toast.success('Email sent!');
+    } catch (error) {
+      console.error('Error sending email:', error);
+      toast.error(error.message || 'Failed to send email');
+    } finally {
+      setKitEmailSending(false);
+    }
+  };
+
+  // Fetch templates for KIT email
+  const fetchKitTemplates = useCallback(async (searchTerm = '') => {
+    setKitTemplatesLoading(true);
+    try {
+      let query = supabase
+        .from('email_templates')
+        .select('*')
+        .order('name');
+
+      if (searchTerm.trim()) {
+        query = query.or(`name.ilike.%${searchTerm}%,short_description.ilike.%${searchTerm}%`);
+      }
+
+      const { data, error } = await query.limit(20);
+      if (error) throw error;
+      setKitTemplates(data || []);
+    } catch (error) {
+      console.error('Error fetching templates:', error);
+    }
+    setKitTemplatesLoading(false);
+  }, []);
+
+  // Search templates with debounce for KIT email
+  useEffect(() => {
+    if (kitTemplateDropdownOpen) {
+      const debounce = setTimeout(() => {
+        fetchKitTemplates(kitTemplateSearch);
+      }, 200);
+      return () => clearTimeout(debounce);
+    }
+  }, [kitTemplateSearch, kitTemplateDropdownOpen, fetchKitTemplates]);
+
+  // Close template dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (kitTemplateDropdownRef.current && !kitTemplateDropdownRef.current.contains(event.target)) {
+        setKitTemplateDropdownOpen(false);
+      }
+    };
+
+    if (kitTemplateDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [kitTemplateDropdownOpen]);
+
+  // Apply template to KIT email body
+  const applyKitTemplate = (template) => {
+    setKitEmailBody(template.template_text);
+    setKitTemplateDropdownOpen(false);
+    setKitTemplateSearch('');
+    toast.success(`Template "${template.name}" applied`);
+  };
 
   // State for Create Contact Modal
   const [createContactModalOpen, setCreateContactModalOpen] = useState(false);
@@ -8575,9 +8916,13 @@ const CommandCenterPage = ({ theme }) => {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                     <div style={{
                       padding: '16px',
-                      background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                      background: (!selectedKeepInTouchContact.christmas || selectedKeepInTouchContact.christmas === 'no wishes set')
+                        ? (theme === 'dark' ? '#7f1d1d' : '#fef2f2')
+                        : (theme === 'dark' ? '#1F2937' : '#F9FAFB'),
                       borderRadius: '12px',
-                      border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
+                      border: (!selectedKeepInTouchContact.christmas || selectedKeepInTouchContact.christmas === 'no wishes set')
+                        ? '1px solid #ef4444'
+                        : `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
                     }}>
                       <div style={{ fontSize: '12px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '8px' }}>
                         Christmas
@@ -8603,9 +8948,13 @@ const CommandCenterPage = ({ theme }) => {
                     </div>
                     <div style={{
                       padding: '16px',
-                      background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                      background: (!selectedKeepInTouchContact.easter || selectedKeepInTouchContact.easter === 'no wishes set')
+                        ? (theme === 'dark' ? '#7f1d1d' : '#fef2f2')
+                        : (theme === 'dark' ? '#1F2937' : '#F9FAFB'),
                       borderRadius: '12px',
-                      border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
+                      border: (!selectedKeepInTouchContact.easter || selectedKeepInTouchContact.easter === 'no wishes set')
+                        ? '1px solid #ef4444'
+                        : `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
                     }}>
                       <div style={{ fontSize: '12px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '8px' }}>
                         Easter
@@ -9241,7 +9590,20 @@ const CommandCenterPage = ({ theme }) => {
             <CollapseButton theme={theme} onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)} style={{ marginRight: rightPanelCollapsed ? 0 : '8px' }}>
               {rightPanelCollapsed ? <FaChevronLeft /> : <FaChevronRight />}
             </CollapseButton>
-            {!rightPanelCollapsed && (
+            {!rightPanelCollapsed && activeTab === 'keepintouch' && selectedKeepInTouchContact && (
+              <>
+                <ActionTabIcon theme={theme} $active={activeActionTab === 'crm'} onClick={() => setActiveActionTab('crm')} title="Contact Details">
+                  <FaUser />
+                </ActionTabIcon>
+                <ActionTabIcon theme={theme} $active={activeActionTab === 'kitWhatsapp'} onClick={() => setActiveActionTab('kitWhatsapp')} title="WhatsApp Chat" style={activeActionTab === 'kitWhatsapp' ? { background: '#22C55E', color: 'white' } : {}}>
+                  <FaWhatsapp />
+                </ActionTabIcon>
+                <ActionTabIcon theme={theme} $active={activeActionTab === 'kitEmail'} onClick={() => setActiveActionTab('kitEmail')} title="Send Email" style={activeActionTab === 'kitEmail' ? { background: '#3B82F6', color: 'white' } : {}}>
+                  <FaEnvelope />
+                </ActionTabIcon>
+              </>
+            )}
+            {!rightPanelCollapsed && activeTab !== 'keepintouch' && (
               <>
                 <ActionTabIcon theme={theme} $active={activeActionTab === 'chat'} onClick={() => setActiveActionTab('chat')} title="Chat with Claude">
                   <FaRobot />
@@ -9269,7 +9631,7 @@ const CommandCenterPage = ({ theme }) => {
           </ActionsPanelTabs>
 
           {/* Keep in Touch - Contact Details Panel */}
-          {!rightPanelCollapsed && activeTab === 'keepintouch' && selectedKeepInTouchContact && keepInTouchContactDetails && (
+          {!rightPanelCollapsed && activeTab === 'keepintouch' && selectedKeepInTouchContact && keepInTouchContactDetails && activeActionTab === 'crm' && (
             <div style={{ flex: 1, overflow: 'auto', padding: '12px' }}>
               {/* Section 1: Info Base */}
               <div style={{
@@ -9621,6 +9983,454 @@ const CommandCenterPage = ({ theme }) => {
                   )}
                 </div>
               </div>
+
+              {/* Description Section */}
+              <div style={{
+                marginTop: '12px',
+                padding: '12px',
+                borderRadius: '8px',
+                background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column'
+              }}>
+                <div style={{ fontSize: '11px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Description
+                </div>
+                <textarea
+                  value={keepInTouchContactDetails?.description || ''}
+                  onChange={async (e) => {
+                    const newValue = e.target.value;
+                    setKeepInTouchContactDetails(prev => ({ ...prev, description: newValue }));
+                  }}
+                  onBlur={async (e) => {
+                    const newValue = e.target.value;
+                    if (selectedKeepInTouchContact?.contact_id) {
+                      const { error } = await supabase
+                        .from('contacts')
+                        .update({ description: newValue })
+                        .eq('contact_id', selectedKeepInTouchContact.contact_id);
+                      if (error) {
+                        console.error('Error updating description:', error);
+                      }
+                    }
+                  }}
+                  placeholder="Add notes about this contact..."
+                  style={{
+                    flex: 1,
+                    minHeight: '200px',
+                    padding: '10px',
+                    fontSize: '13px',
+                    border: `1px solid ${theme === 'dark' ? '#374151' : '#D1D5DB'}`,
+                    borderRadius: '6px',
+                    background: theme === 'dark' ? '#111827' : '#FFFFFF',
+                    color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                    resize: 'none',
+                    outline: 'none',
+                    fontFamily: 'inherit',
+                    lineHeight: '1.5'
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Keep in Touch - WhatsApp Chat Panel */}
+          {!rightPanelCollapsed && activeTab === 'keepintouch' && selectedKeepInTouchContact && activeActionTab === 'kitWhatsapp' && (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              {/* Messages Container */}
+              <div style={{
+                flex: 1,
+                overflow: 'auto',
+                padding: '12px',
+                display: 'flex',
+                flexDirection: 'column-reverse',
+                gap: '8px',
+                background: theme === 'dark' ? '#111827' : '#F3F4F6'
+              }}>
+                {kitWhatsappLoading ? (
+                  <div style={{ textAlign: 'center', padding: '20px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }}>
+                    Loading messages...
+                  </div>
+                ) : kitWhatsappMessages.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '20px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }}>
+                    {keepInTouchMobiles.length === 0 ? (
+                      <div>
+                        <FaWhatsapp size={32} style={{ marginBottom: '8px', opacity: 0.5 }} />
+                        <div>No phone number available</div>
+                        <div style={{ fontSize: '12px', marginTop: '4px' }}>Add a phone number to view WhatsApp messages</div>
+                      </div>
+                    ) : (
+                      <div>
+                        <FaWhatsapp size={32} style={{ marginBottom: '8px', opacity: 0.5 }} />
+                        <div>No messages yet</div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  kitWhatsappMessages.map((msg, idx) => (
+                    <div
+                      key={msg.id || idx}
+                      style={{
+                        maxWidth: '85%',
+                        padding: '8px 12px',
+                        borderRadius: '12px',
+                        fontSize: '13px',
+                        lineHeight: '1.4',
+                        alignSelf: msg.direction === 'sent' ? 'flex-end' : 'flex-start',
+                        background: msg.direction === 'sent'
+                          ? (theme === 'dark' ? '#054640' : '#DCF8C6')
+                          : (theme === 'dark' ? '#1F2937' : '#FFFFFF'),
+                        color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                        border: msg.direction === 'sent'
+                          ? 'none'
+                          : `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
+                      }}
+                    >
+                      <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{msg.text}</div>
+                      <div style={{
+                        fontSize: '10px',
+                        color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                        marginTop: '4px',
+                        textAlign: 'right',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'flex-end',
+                        gap: '4px'
+                      }}>
+                        {new Date(msg.date).toLocaleString('en-GB', {
+                          day: '2-digit',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                        {msg.direction === 'sent' && (
+                          <FaCheckDouble size={10} style={{ color: '#34D399' }} />
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Input Area */}
+              {keepInTouchMobiles.length > 0 && (
+                <div style={{
+                  padding: '12px',
+                  borderTop: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                  background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+                  display: 'flex',
+                  gap: '8px',
+                  alignItems: 'flex-end'
+                }}>
+                  <textarea
+                    value={kitWhatsappInput}
+                    onChange={(e) => setKitWhatsappInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleKitSendWhatsapp();
+                      }
+                    }}
+                    placeholder="Type a message..."
+                    style={{
+                      flex: 1,
+                      padding: '10px 12px',
+                      borderRadius: '20px',
+                      border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                      background: theme === 'dark' ? '#374151' : '#F9FAFB',
+                      color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                      fontSize: '13px',
+                      resize: 'none',
+                      outline: 'none',
+                      maxHeight: '100px',
+                      minHeight: '40px',
+                      fontFamily: 'inherit'
+                    }}
+                    rows={1}
+                  />
+                  <button
+                    onClick={handleKitSendWhatsapp}
+                    disabled={!kitWhatsappInput.trim() || kitWhatsappSending}
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      borderRadius: '50%',
+                      border: 'none',
+                      background: kitWhatsappInput.trim() && !kitWhatsappSending ? '#22C55E' : (theme === 'dark' ? '#374151' : '#E5E7EB'),
+                      color: kitWhatsappInput.trim() && !kitWhatsappSending ? 'white' : (theme === 'dark' ? '#6B7280' : '#9CA3AF'),
+                      cursor: kitWhatsappInput.trim() && !kitWhatsappSending ? 'pointer' : 'not-allowed',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0
+                    }}
+                  >
+                    {kitWhatsappSending ? (
+                      <FaClock size={16} />
+                    ) : (
+                      <FaPaperPlane size={16} />
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Keep in Touch - Email Panel */}
+          {!rightPanelCollapsed && activeTab === 'keepintouch' && selectedKeepInTouchContact && activeActionTab === 'kitEmail' && (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '12px' }}>
+              {/* To Field - dropdown if multiple emails */}
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '4px', fontWeight: 600 }}>To</label>
+                {keepInTouchEmails.length === 0 ? (
+                  <div style={{
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                    background: theme === 'dark' ? '#374151' : '#F9FAFB',
+                    color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
+                    fontSize: '13px',
+                    fontStyle: 'italic'
+                  }}>
+                    No email address
+                  </div>
+                ) : keepInTouchEmails.length === 1 ? (
+                  <div style={{
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                    background: theme === 'dark' ? '#374151' : '#F9FAFB',
+                    color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                    fontSize: '13px'
+                  }}>
+                    {keepInTouchEmails[0].email}
+                  </div>
+                ) : (
+                  <select
+                    value={kitSelectedEmail || keepInTouchEmails[0].email}
+                    onChange={(e) => setKitSelectedEmail(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                      background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                      color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                      fontSize: '13px',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {keepInTouchEmails.map((e, idx) => (
+                      <option key={e.email_id || idx} value={e.email}>
+                        {e.email}{e.is_primary ? ' (primary)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {/* Subject Field */}
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '4px', fontWeight: 600 }}>Subject</label>
+                <input
+                  type="text"
+                  value={kitEmailSubject}
+                  onChange={(e) => setKitEmailSubject(e.target.value)}
+                  placeholder="Enter subject..."
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                    background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                    color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                    fontSize: '13px',
+                    outline: 'none'
+                  }}
+                />
+              </div>
+
+              {/* Template Button */}
+              <div style={{ marginBottom: '12px', position: 'relative' }} ref={kitTemplateDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setKitTemplateDropdownOpen(!kitTemplateDropdownOpen)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 12px',
+                    background: theme === 'dark' ? '#374151' : '#F3F4F6',
+                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                    borderRadius: '6px',
+                    color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                    cursor: 'pointer',
+                    fontSize: '13px'
+                  }}
+                >
+                  <FaFileAlt size={12} />
+                  Templates
+                </button>
+
+                {kitTemplateDropdownOpen && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    marginTop: '4px',
+                    background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+                    border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                    zIndex: 100,
+                    maxHeight: '300px',
+                    overflow: 'hidden',
+                    display: 'flex',
+                    flexDirection: 'column'
+                  }}>
+                    {/* Search Input */}
+                    <div style={{ padding: '8px', borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}` }}>
+                      <input
+                        type="text"
+                        placeholder="Search templates..."
+                        value={kitTemplateSearch}
+                        onChange={(e) => setKitTemplateSearch(e.target.value)}
+                        autoFocus
+                        style={{
+                          width: '100%',
+                          padding: '8px 10px',
+                          border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                          borderRadius: '6px',
+                          background: theme === 'dark' ? '#374151' : '#F9FAFB',
+                          color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                          fontSize: '13px',
+                          outline: 'none'
+                        }}
+                      />
+                    </div>
+
+                    {/* Template List */}
+                    <div style={{ overflow: 'auto', maxHeight: '200px' }}>
+                      {kitTemplatesLoading ? (
+                        <div style={{ padding: '16px', textAlign: 'center', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', fontSize: '13px' }}>
+                          Loading...
+                        </div>
+                      ) : kitTemplates.length === 0 ? (
+                        <div style={{ padding: '16px', textAlign: 'center', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', fontSize: '13px' }}>
+                          {kitTemplateSearch ? 'No templates found' : 'No templates yet'}
+                        </div>
+                      ) : (
+                        kitTemplates.map((template) => (
+                          <div
+                            key={template.template_id}
+                            onClick={() => applyKitTemplate(template)}
+                            style={{
+                              padding: '10px 12px',
+                              cursor: 'pointer',
+                              borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#F3F4F6'}`,
+                              transition: 'background 0.15s'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.background = theme === 'dark' ? '#374151' : '#F3F4F6'}
+                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <div style={{ fontWeight: 500, fontSize: '13px', color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
+                              {template.name}
+                            </div>
+                            {template.short_description && (
+                              <div style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginTop: '2px' }}>
+                                {template.short_description}
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Message Body */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', marginBottom: '12px', minHeight: 0 }}>
+                <label style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '4px', fontWeight: 600 }}>Message</label>
+                <textarea
+                  value={kitEmailBody}
+                  onChange={(e) => setKitEmailBody(e.target.value)}
+                  placeholder="Write your message..."
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                    background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                    color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                    fontSize: '13px',
+                    resize: 'none',
+                    outline: 'none',
+                    fontFamily: 'inherit',
+                    lineHeight: '1.5',
+                    minHeight: '150px'
+                  }}
+                />
+              </div>
+
+              {/* Signature Preview */}
+              <div style={{
+                padding: '10px 12px',
+                borderRadius: '8px',
+                background: theme === 'dark' ? '#1F2937' : '#F3F4F6',
+                border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                marginBottom: '12px',
+                fontSize: '11px',
+                color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                whiteSpace: 'pre-wrap',
+                lineHeight: '1.4'
+              }}>
+                <div style={{ fontWeight: 600, marginBottom: '4px' }}>Signature:</div>
+                --{'\n'}SIMONE CIMMINELLI{'\n'}Newsletter | Website | LinkedIn
+              </div>
+
+              {/* Send Button */}
+              <button
+                onClick={handleKitSendEmail}
+                disabled={!kitEmailSubject.trim() || !kitEmailBody.trim() || kitEmailSending || keepInTouchEmails.length === 0}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: (kitEmailSubject.trim() && kitEmailBody.trim() && !kitEmailSending && keepInTouchEmails.length > 0)
+                    ? '#3B82F6'
+                    : (theme === 'dark' ? '#374151' : '#E5E7EB'),
+                  color: (kitEmailSubject.trim() && kitEmailBody.trim() && !kitEmailSending && keepInTouchEmails.length > 0)
+                    ? 'white'
+                    : (theme === 'dark' ? '#6B7280' : '#9CA3AF'),
+                  cursor: (kitEmailSubject.trim() && kitEmailBody.trim() && !kitEmailSending && keepInTouchEmails.length > 0)
+                    ? 'pointer'
+                    : 'not-allowed',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+              >
+                {kitEmailSending ? (
+                  <>
+                    <FaClock size={14} />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <FaPaperPlane size={14} />
+                    Send Email
+                  </>
+                )}
+              </button>
             </div>
           )}
 
@@ -11323,39 +12133,37 @@ const CommandCenterPage = ({ theme }) => {
         }}
       />
 
-      {/* Keep in Touch - Company Association Modal */}
-      {kitCompanyModalContact && (
-        <CompanyAssociationModal
-          theme={theme}
-          contact={kitCompanyModalContact}
-          onClose={() => setKitCompanyModalContact(null)}
-          onCompanyAdded={async () => {
-            // Refresh companies for the selected contact
-            if (selectedKeepInTouchContact?.contact_id) {
-              const { data: companiesData } = await supabase
-                .from('contact_companies')
-                .select('contact_companies_id, company_id, is_primary, relationship')
-                .eq('contact_id', selectedKeepInTouchContact.contact_id)
-                .order('is_primary', { ascending: false });
-              if (companiesData && companiesData.length > 0) {
-                const companyIds = companiesData.map(c => c.company_id);
-                const { data: companyDetails } = await supabase
-                  .from('companies')
-                  .select('company_id, name')
-                  .in('company_id', companyIds);
-                const companiesWithDetails = companiesData.map(cc => ({
-                  ...cc,
-                  company: companyDetails?.find(c => c.company_id === cc.company_id)
-                }));
-                setKeepInTouchCompanies(companiesWithDetails);
-              } else {
-                setKeepInTouchCompanies([]);
-              }
+      {/* Keep in Touch - Company Management Modal */}
+      <ManageContactCompaniesModal
+        isOpen={!!kitCompanyModalContact}
+        onClose={() => setKitCompanyModalContact(null)}
+        contact={kitCompanyModalContact || selectedKeepInTouchContact}
+        theme={theme}
+        onCompaniesUpdated={async () => {
+          // Refresh companies for the selected contact
+          if (selectedKeepInTouchContact?.contact_id) {
+            const { data: companiesData } = await supabase
+              .from('contact_companies')
+              .select('contact_companies_id, company_id, is_primary, relationship')
+              .eq('contact_id', selectedKeepInTouchContact.contact_id)
+              .order('is_primary', { ascending: false });
+            if (companiesData && companiesData.length > 0) {
+              const companyIds = companiesData.map(c => c.company_id);
+              const { data: companyDetails } = await supabase
+                .from('companies')
+                .select('company_id, name')
+                .in('company_id', companyIds);
+              const companiesWithDetails = companiesData.map(cc => ({
+                ...cc,
+                company: companyDetails?.find(c => c.company_id === cc.company_id)
+              }));
+              setKeepInTouchCompanies(companiesWithDetails);
+            } else {
+              setKeepInTouchCompanies([]);
             }
-            setKitCompanyModalContact(null);
-          }}
-        />
-      )}
+          }
+        }}
+      />
 
       {/* Baileys QR Code Modal */}
       {showBaileysQRModal && (
