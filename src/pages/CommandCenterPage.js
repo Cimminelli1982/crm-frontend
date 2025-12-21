@@ -608,6 +608,48 @@ const CommandCenterPage = ({ theme }) => {
   const DEAL_CURRENCIES = ['EUR', 'USD', 'GBP', 'CHF'];
   const DEAL_SOURCES = ['Not Set', 'Cold Contacting', 'Introduction'];
 
+  // Keep in Touch state
+  const [keepInTouchContacts, setKeepInTouchContacts] = useState([]);
+  const [keepInTouchLoading, setKeepInTouchLoading] = useState(false);
+  const [selectedKeepInTouchContact, setSelectedKeepInTouchContact] = useState(null);
+  const [keepInTouchSections, setKeepInTouchSections] = useState({
+    due: true,
+    dueSoon: true,
+    notDue: false
+  });
+  const [keepInTouchContactDetails, setKeepInTouchContactDetails] = useState(null);
+  const [keepInTouchInteractions, setKeepInTouchInteractions] = useState([]);
+
+  // Keep in Touch enum values
+  const KEEP_IN_TOUCH_FREQUENCIES = ['Not Set', 'Weekly', 'Monthly', 'Quarterly', 'Twice per Year', 'Once per Year', 'Do not keep in touch'];
+  const WISHES_TYPES = ['no wishes set', 'whatsapp standard', 'email standard', 'email custom', 'whatsapp custom', 'call', 'present', 'no wishes'];
+
+  // Update Keep in Touch field
+  const handleUpdateKeepInTouchField = async (field, value) => {
+    if (!selectedKeepInTouchContact) return;
+
+    try {
+      const { error } = await supabase
+        .from('keep_in_touch')
+        .update({ [field]: value, updated_at: new Date().toISOString() })
+        .eq('contact_id', selectedKeepInTouchContact.contact_id);
+
+      if (error) throw error;
+
+      // Update local state
+      const updatedContact = { ...selectedKeepInTouchContact, [field]: value };
+      setSelectedKeepInTouchContact(updatedContact);
+      setKeepInTouchContacts(prev => prev.map(c =>
+        c.contact_id === selectedKeepInTouchContact.contact_id ? updatedContact : c
+      ));
+
+      toast.success(`${field.charAt(0).toUpperCase() + field.slice(1)} updated`);
+    } catch (err) {
+      console.error(`Error updating ${field}:`, err);
+      toast.error(`Failed to update ${field}`);
+    }
+  };
+
   const handlePipelineDealStageChange = async (newStage) => {
     if (!selectedPipelineDeal) return;
 
@@ -1545,6 +1587,116 @@ const CommandCenterPage = ({ theme }) => {
       fetchDeals();
     }
   }, [activeTab]);
+
+  // Fetch Keep in Touch contacts from mv_keep_in_touch view
+  useEffect(() => {
+    const fetchKeepInTouch = async () => {
+      setKeepInTouchLoading(true);
+
+      const { data, error } = await supabase
+        .from('mv_keep_in_touch')
+        .select('*')
+        .order('days_until_next', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching keep in touch contacts:', error);
+      } else {
+        setKeepInTouchContacts(data || []);
+        if (data && data.length > 0) {
+          // Select first due contact, or first contact
+          const dueContacts = data.filter(c => parseInt(c.days_until_next) <= 0);
+          setSelectedKeepInTouchContact(dueContacts.length > 0 ? dueContacts[0] : data[0]);
+        }
+      }
+      setKeepInTouchLoading(false);
+    };
+
+    if (activeTab === 'keepintouch') {
+      fetchKeepInTouch();
+    }
+  }, [activeTab]);
+
+  // Filter Keep in Touch contacts by status
+  const filterKeepInTouchByStatus = (contacts, status) => {
+    return contacts.filter(contact => {
+      const daysUntil = parseInt(contact.days_until_next);
+      if (status === 'due') return daysUntil <= 0;
+      if (status === 'dueSoon') return daysUntil > 0 && daysUntil <= 14;
+      if (status === 'notDue') return daysUntil > 14;
+      return true;
+    });
+  };
+
+  // Fetch contact details and interactions for Keep in Touch
+  useEffect(() => {
+    const fetchContactDetailsAndInteractions = async () => {
+      if (!selectedKeepInTouchContact) {
+        setKeepInTouchContactDetails(null);
+        setKeepInTouchInteractions([]);
+        return;
+      }
+
+      // Fetch contact details with category, job role and profile image
+      const { data: contactData, error: contactError } = await supabase
+        .from('contacts')
+        .select('contact_id, first_name, last_name, category, job_role, show_missing, profile_image_url, linkedin')
+        .eq('contact_id', selectedKeepInTouchContact.contact_id)
+        .single();
+
+      let companyData = null;
+      let completenessScore = 0;
+      if (!contactError && contactData) {
+        // Fetch completeness score from dedicated table
+        const { data: completenessData } = await supabase
+          .from('contact_completeness')
+          .select('completeness_score')
+          .eq('contact_id', selectedKeepInTouchContact.contact_id)
+          .maybeSingle();
+
+        if (completenessData) {
+          completenessScore = completenessData.completeness_score;
+        }
+
+        // Fetch company separately to avoid FK conflict
+        const { data: ccData } = await supabase
+          .from('contact_companies')
+          .select('company_id, is_primary')
+          .eq('contact_id', selectedKeepInTouchContact.contact_id)
+          .order('is_primary', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (ccData?.company_id) {
+          const { data: company } = await supabase
+            .from('companies')
+            .select('company_id, name')
+            .eq('company_id', ccData.company_id)
+            .maybeSingle();
+          companyData = company;
+        }
+
+        setKeepInTouchContactDetails({
+          ...contactData,
+          company: companyData,
+          completeness_score: completenessScore
+        });
+      }
+
+      // Fetch last 10 interactions
+      const { data: interactionsData, error: interactionsError } = await supabase
+        .from('interactions')
+        .select('interaction_id, interaction_type, direction, interaction_date, summary')
+        .eq('contact_id', selectedKeepInTouchContact.contact_id)
+        .order('interaction_date', { ascending: false })
+        .limit(10);
+
+      if (!interactionsError) {
+        setKeepInTouchInteractions(interactionsData || []);
+      }
+    };
+
+    fetchContactDetailsAndInteractions();
+  }, [selectedKeepInTouchContact?.contact_id]);
 
   // State for Create Contact Modal
   const [createContactModalOpen, setCreateContactModalOpen] = useState(false);
@@ -5644,6 +5796,7 @@ const CommandCenterPage = ({ theme }) => {
     { id: 'whatsapp', label: 'WhatsApp', icon: FaWhatsapp, count: filterByStatus(whatsappChats, 'inbox').length + filterByStatus(whatsappChats, 'need_actions').length, hasUnread: hasUnreadWhatsapp },
     { id: 'calendar', label: 'Calendar', icon: FaCalendar, count: filterCalendarEvents(calendarEvents, 'thisWeek').length, hasUnread: hasUnreadCalendar },
     { id: 'deals', label: 'Deals', icon: FaDollarSign, count: filterDealsByStatus(pipelineDeals, 'open').length, hasUnread: false },
+    { id: 'keepintouch', label: 'Keep in Touch', icon: FaUserCheck, count: filterKeepInTouchByStatus(keepInTouchContacts, 'due').length, hasUnread: filterKeepInTouchByStatus(keepInTouchContacts, 'due').length > 0 },
   ];
 
   return (
@@ -6417,6 +6570,165 @@ const CommandCenterPage = ({ theme }) => {
           {!listCollapsed && activeTab === 'deals' && pipelineDeals.length > 0 && (
             <PendingCount theme={theme}>
               {filterDealsByStatus(pipelineDeals, 'open').length} open, {filterDealsByStatus(pipelineDeals, 'invested').length} invested
+            </PendingCount>
+          )}
+
+          {/* Keep in Touch List */}
+          {!listCollapsed && activeTab === 'keepintouch' && (
+            <EmailList>
+              {keepInTouchLoading ? (
+                <EmptyState theme={theme}>Loading...</EmptyState>
+              ) : keepInTouchContacts.length === 0 ? (
+                <EmptyState theme={theme}>
+                  <FaUserCheck size={40} style={{ marginBottom: '16px', opacity: 0.5 }} />
+                  <span>No contacts to keep in touch with</span>
+                </EmptyState>
+              ) : (
+                <>
+                  {/* Due Section */}
+                  <div
+                    onClick={() => setKeepInTouchSections(prev => ({ ...prev, due: !prev.due }))}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      backgroundColor: theme === 'dark' ? '#7f1d1d' : '#fef2f2',
+                      borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`,
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 1,
+                      color: theme === 'dark' ? '#fca5a5' : '#b91c1c'
+                    }}
+                  >
+                    <FaChevronDown style={{ transform: keepInTouchSections.due ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', fontSize: '10px' }} />
+                    <span>Due</span>
+                    <span style={{ marginLeft: 'auto', opacity: 0.8, fontSize: '12px' }}>
+                      {filterKeepInTouchByStatus(keepInTouchContacts, 'due').length}
+                    </span>
+                  </div>
+                  {keepInTouchSections.due && filterKeepInTouchByStatus(keepInTouchContacts, 'due').map(contact => (
+                    <EmailItem
+                      key={contact.contact_id}
+                      theme={theme}
+                      $selected={selectedKeepInTouchContact?.contact_id === contact.contact_id}
+                      onClick={() => setSelectedKeepInTouchContact(contact)}
+                    >
+                      <EmailSender theme={theme}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {contact.full_name}
+                        </span>
+                      </EmailSender>
+                      <EmailSubject theme={theme} style={{ fontWeight: 600, color: '#ef4444' }}>
+                        {Math.abs(parseInt(contact.days_until_next))} days overdue
+                      </EmailSubject>
+                      <EmailSnippet theme={theme}>
+                        {contact.frequency} • Last: {contact.last_interaction_at ? new Date(contact.last_interaction_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'Never'}
+                      </EmailSnippet>
+                    </EmailItem>
+                  ))}
+
+                  {/* Due Soon Section */}
+                  <div
+                    onClick={() => setKeepInTouchSections(prev => ({ ...prev, dueSoon: !prev.dueSoon }))}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      backgroundColor: theme === 'dark' ? '#78350f' : '#fffbeb',
+                      borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`,
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 1,
+                      color: theme === 'dark' ? '#fcd34d' : '#b45309'
+                    }}
+                  >
+                    <FaChevronDown style={{ transform: keepInTouchSections.dueSoon ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', fontSize: '10px' }} />
+                    <span>Due Soon</span>
+                    <span style={{ marginLeft: 'auto', opacity: 0.8, fontSize: '12px' }}>
+                      {filterKeepInTouchByStatus(keepInTouchContacts, 'dueSoon').length}
+                    </span>
+                  </div>
+                  {keepInTouchSections.dueSoon && filterKeepInTouchByStatus(keepInTouchContacts, 'dueSoon').map(contact => (
+                    <EmailItem
+                      key={contact.contact_id}
+                      theme={theme}
+                      $selected={selectedKeepInTouchContact?.contact_id === contact.contact_id}
+                      onClick={() => setSelectedKeepInTouchContact(contact)}
+                    >
+                      <EmailSender theme={theme}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {contact.full_name}
+                        </span>
+                      </EmailSender>
+                      <EmailSubject theme={theme} style={{ fontWeight: 600, color: '#f59e0b' }}>
+                        {contact.days_until_next} days left
+                      </EmailSubject>
+                      <EmailSnippet theme={theme}>
+                        {contact.frequency} • Last: {contact.last_interaction_at ? new Date(contact.last_interaction_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'Never'}
+                      </EmailSnippet>
+                    </EmailItem>
+                  ))}
+
+                  {/* Not Due Section */}
+                  <div
+                    onClick={() => setKeepInTouchSections(prev => ({ ...prev, notDue: !prev.notDue }))}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      backgroundColor: theme === 'dark' ? '#1f2937' : '#f3f4f6',
+                      borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`,
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 1
+                    }}
+                  >
+                    <FaChevronDown style={{ transform: keepInTouchSections.notDue ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', fontSize: '10px' }} />
+                    <span>Not Due</span>
+                    <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: '12px' }}>
+                      {filterKeepInTouchByStatus(keepInTouchContacts, 'notDue').length}
+                    </span>
+                  </div>
+                  {keepInTouchSections.notDue && filterKeepInTouchByStatus(keepInTouchContacts, 'notDue').map(contact => (
+                    <EmailItem
+                      key={contact.contact_id}
+                      theme={theme}
+                      $selected={selectedKeepInTouchContact?.contact_id === contact.contact_id}
+                      onClick={() => setSelectedKeepInTouchContact(contact)}
+                    >
+                      <EmailSender theme={theme}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {contact.full_name}
+                        </span>
+                      </EmailSender>
+                      <EmailSubject theme={theme} style={{ fontWeight: 600 }}>
+                        {contact.days_until_next} days left
+                      </EmailSubject>
+                      <EmailSnippet theme={theme}>
+                        {contact.frequency} • Last: {contact.last_interaction_at ? new Date(contact.last_interaction_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'Never'}
+                      </EmailSnippet>
+                    </EmailItem>
+                  ))}
+                </>
+              )}
+            </EmailList>
+          )}
+
+          {!listCollapsed && activeTab === 'keepintouch' && keepInTouchContacts.length > 0 && (
+            <PendingCount theme={theme}>
+              {filterKeepInTouchByStatus(keepInTouchContacts, 'due').length} due, {filterKeepInTouchByStatus(keepInTouchContacts, 'dueSoon').length} due soon
             </PendingCount>
           )}
         </EmailListPanel>
@@ -7890,6 +8202,414 @@ const CommandCenterPage = ({ theme }) => {
             ) : (
               <EmptyState theme={theme}>Select a deal to view details</EmptyState>
             )
+          ) : activeTab === 'keepintouch' ? (
+            selectedKeepInTouchContact ? (
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                {/* Contact Header */}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '12px 24px',
+                  minHeight: '70px',
+                  borderBottom: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    {/* Profile Image */}
+                    <div
+                      onClick={() => profileImageModal.openModal(keepInTouchContactDetails)}
+                      style={{ cursor: 'pointer' }}
+                      title={keepInTouchContactDetails?.profile_image_url ? 'Change profile image' : 'Add profile image'}
+                    >
+                      {keepInTouchContactDetails?.profile_image_url ? (
+                        <img
+                          src={keepInTouchContactDetails.profile_image_url}
+                          alt=""
+                          style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <div style={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: '50%',
+                          background: theme === 'light' ? '#E5E7EB' : '#374151',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '16px',
+                          fontWeight: 600,
+                          color: theme === 'light' ? '#6B7280' : '#9CA3AF'
+                        }}>
+                          {selectedKeepInTouchContact.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?'}
+                        </div>
+                      )}
+                    </div>
+                    {/* Name and details */}
+                    <div>
+                      <EmailSubjectFull theme={theme} style={{ margin: 0 }}>
+                        {selectedKeepInTouchContact.full_name}
+                      </EmailSubjectFull>
+                      {(keepInTouchContactDetails?.category || keepInTouchContactDetails?.job_role || keepInTouchContactDetails?.company) && (
+                        <div style={{ fontSize: '13px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginTop: '4px' }}>
+                          {keepInTouchContactDetails?.category && (
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              background: theme === 'dark' ? '#374151' : '#E5E7EB',
+                              marginRight: '8px',
+                              fontSize: '12px'
+                            }}>
+                              {keepInTouchContactDetails.category}
+                            </span>
+                          )}
+                          {keepInTouchContactDetails?.job_role}
+                          {keepInTouchContactDetails?.job_role && keepInTouchContactDetails?.company && ' at '}
+                          {keepInTouchContactDetails?.company && (
+                            <span style={{ fontWeight: 500 }}>{keepInTouchContactDetails.company.name}</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <button
+                      onClick={() => navigate(`/contacts/${selectedKeepInTouchContact.contact_id}`)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        border: 'none',
+                        background: theme === 'light' ? '#3B82F6' : '#2563EB',
+                        color: 'white',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        fontWeight: 500
+                      }}
+                    >
+                      <FaExternalLinkAlt size={11} /> View Profile
+                    </button>
+                  </div>
+                </div>
+
+                {/* Contact Details */}
+                <div style={{ flex: 1, overflow: 'auto', padding: '24px' }}>
+                  {/* Status Card - Split in two */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+                    {/* Left: Overdue Status */}
+                    <div style={{
+                      padding: '20px',
+                      background: parseInt(selectedKeepInTouchContact.days_until_next) <= 0
+                        ? (theme === 'dark' ? '#7f1d1d' : '#fef2f2')
+                        : parseInt(selectedKeepInTouchContact.days_until_next) <= 14
+                          ? (theme === 'dark' ? '#78350f' : '#fffbeb')
+                          : (theme === 'dark' ? '#1F2937' : '#F9FAFB'),
+                      borderRadius: '12px',
+                      border: parseInt(selectedKeepInTouchContact.days_until_next) <= 0
+                        ? '1px solid #ef4444'
+                        : parseInt(selectedKeepInTouchContact.days_until_next) <= 14
+                          ? '1px solid #f59e0b'
+                          : `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
+                    }}>
+                      <div style={{
+                        fontSize: '28px',
+                        fontWeight: 700,
+                        marginBottom: '8px',
+                        color: parseInt(selectedKeepInTouchContact.days_until_next) <= 0
+                          ? '#ef4444'
+                          : parseInt(selectedKeepInTouchContact.days_until_next) <= 14
+                            ? '#f59e0b'
+                            : (theme === 'dark' ? '#10B981' : '#059669')
+                      }}>
+                        {parseInt(selectedKeepInTouchContact.days_until_next) <= 0
+                          ? `${Math.abs(parseInt(selectedKeepInTouchContact.days_until_next))} days overdue`
+                          : `${selectedKeepInTouchContact.days_until_next} days until next`}
+                      </div>
+                      <div style={{ fontSize: '14px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        Frequency:
+                        <select
+                          value={selectedKeepInTouchContact.frequency || 'Not Set'}
+                          onChange={(e) => handleUpdateKeepInTouchField('frequency', e.target.value)}
+                          style={{
+                            padding: '4px 8px',
+                            borderRadius: '6px',
+                            border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                            background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                            color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                            fontSize: '14px',
+                            fontWeight: 600,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {KEEP_IN_TOUCH_FREQUENCIES.map(freq => (
+                            <option key={freq} value={freq}>{freq}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Right: Completeness Score */}
+                    {(() => {
+                      const score = keepInTouchContactDetails?.completeness_score || 0;
+                      const isMarkedComplete = keepInTouchContactDetails?.show_missing === false;
+                      const circumference = 2 * Math.PI * 36;
+                      const strokeDashoffset = isMarkedComplete ? 0 : circumference - (score / 100) * circumference;
+                      const scoreColor = isMarkedComplete ? '#F59E0B' : (score >= 70 ? '#10B981' : score >= 40 ? '#F59E0B' : '#EF4444');
+                      return (
+                        <div style={{
+                          padding: '20px',
+                          background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                          borderRadius: '12px',
+                          border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}>
+                          <div style={{ fontSize: '12px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '12px', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.5px' }}>
+                            Profile Completeness
+                          </div>
+                          <div
+                            style={{ position: 'relative', width: 80, height: 80, cursor: 'pointer' }}
+                            title={isMarkedComplete ? 'Marked complete' : `${score}% complete`}
+                            onClick={() => {
+                              setDataIntegrityContactId(selectedKeepInTouchContact.contact_id);
+                              setDataIntegrityModalOpen(true);
+                            }}
+                          >
+                            <svg width="80" height="80" style={{ transform: 'rotate(-90deg)' }}>
+                              <circle cx="40" cy="40" r="36" fill="none" stroke={theme === 'light' ? '#E5E7EB' : '#374151'} strokeWidth="6" />
+                              <circle cx="40" cy="40" r="36" fill="none" stroke={scoreColor} strokeWidth="6" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} />
+                            </svg>
+                            <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontSize: '18px', fontWeight: 700, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
+                              {(isMarkedComplete || score === 100) ? <FaCrown size={24} color="#F59E0B" /> : `${score}%`}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Info Grid */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+                    <div style={{
+                      padding: '16px',
+                      background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                      borderRadius: '12px',
+                      border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
+                    }}>
+                      <div style={{ fontSize: '12px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '4px' }}>
+                        Last Interaction
+                      </div>
+                      <div style={{ fontSize: '16px', fontWeight: 600, color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
+                        {selectedKeepInTouchContact.last_interaction_at
+                          ? new Date(selectedKeepInTouchContact.last_interaction_at).toLocaleDateString('en-GB', {
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric'
+                            })
+                          : 'Never'}
+                      </div>
+                    </div>
+                    <div style={{
+                      padding: '16px',
+                      background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                      borderRadius: '12px',
+                      border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
+                    }}>
+                      <div style={{ fontSize: '12px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '4px' }}>
+                        Next Interaction Due
+                      </div>
+                      <div style={{ fontSize: '16px', fontWeight: 600, color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
+                        {selectedKeepInTouchContact.next_interaction_date
+                          ? new Date(selectedKeepInTouchContact.next_interaction_date).toLocaleDateString('en-GB', {
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric'
+                            })
+                          : 'Not set'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Why Keeping in Touch */}
+                  {selectedKeepInTouchContact.why_keeping_in_touch && (
+                    <div style={{
+                      padding: '16px',
+                      background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                      borderRadius: '12px',
+                      marginBottom: '20px',
+                      border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
+                    }}>
+                      <div style={{ fontSize: '12px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '8px' }}>
+                        Why Keeping in Touch
+                      </div>
+                      <div style={{ fontSize: '14px', color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
+                        {selectedKeepInTouchContact.why_keeping_in_touch}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Next Follow-up Notes */}
+                  {selectedKeepInTouchContact.next_follow_up_notes && (
+                    <div style={{
+                      padding: '16px',
+                      background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                      borderRadius: '12px',
+                      marginBottom: '20px',
+                      border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
+                    }}>
+                      <div style={{ fontSize: '12px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '8px' }}>
+                        Next Follow-up Notes
+                      </div>
+                      <div style={{ fontSize: '14px', color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
+                        {selectedKeepInTouchContact.next_follow_up_notes}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Holiday Wishes */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div style={{
+                      padding: '16px',
+                      background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                      borderRadius: '12px',
+                      border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
+                    }}>
+                      <div style={{ fontSize: '12px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '8px' }}>
+                        Christmas
+                      </div>
+                      <select
+                        value={selectedKeepInTouchContact.christmas || 'no wishes set'}
+                        onChange={(e) => handleUpdateKeepInTouchField('christmas', e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px 10px',
+                          borderRadius: '6px',
+                          border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                          background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                          color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                          fontSize: '13px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {WISHES_TYPES.map(wish => (
+                          <option key={wish} value={wish}>{wish}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div style={{
+                      padding: '16px',
+                      background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                      borderRadius: '12px',
+                      border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
+                    }}>
+                      <div style={{ fontSize: '12px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '8px' }}>
+                        Easter
+                      </div>
+                      <select
+                        value={selectedKeepInTouchContact.easter || 'no wishes set'}
+                        onChange={(e) => handleUpdateKeepInTouchField('easter', e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px 10px',
+                          borderRadius: '6px',
+                          border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                          background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                          color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                          fontSize: '13px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {WISHES_TYPES.map(wish => (
+                          <option key={wish} value={wish}>{wish}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Last 3 Interactions */}
+                  <div style={{
+                    marginTop: '20px',
+                    padding: '16px',
+                    background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                    borderRadius: '12px',
+                    border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
+                  }}>
+                    <div style={{ fontSize: '12px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '12px', fontWeight: 600, textTransform: 'uppercase' }}>
+                      Last Interactions
+                    </div>
+                    {keepInTouchInteractions.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {keepInTouchInteractions.map((interaction) => (
+                          <div
+                            key={interaction.interaction_id}
+                            style={{
+                              padding: '12px',
+                              background: theme === 'dark' ? '#111827' : '#FFFFFF',
+                              borderRadius: '8px',
+                              border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                              <span style={{
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                textTransform: 'uppercase',
+                                background: interaction.interaction_type === 'email' ? '#3B82F6' :
+                                  interaction.interaction_type === 'whatsapp' ? '#22C55E' :
+                                  interaction.interaction_type === 'call' ? '#F59E0B' : '#6B7280',
+                                color: 'white'
+                              }}>
+                                {interaction.interaction_type}
+                              </span>
+                              <span style={{
+                                fontSize: '11px',
+                                color: theme === 'dark' ? '#9CA3AF' : '#6B7280'
+                              }}>
+                                {interaction.direction === 'sent' ? '→ Sent' : '← Received'}
+                              </span>
+                              <span style={{
+                                marginLeft: 'auto',
+                                fontSize: '11px',
+                                color: theme === 'dark' ? '#9CA3AF' : '#6B7280'
+                              }}>
+                                {new Date(interaction.interaction_date).toLocaleDateString('en-GB', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric'
+                                })}
+                              </span>
+                            </div>
+                            {interaction.summary && (
+                              <div style={{
+                                fontSize: '13px',
+                                color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap'
+                              }}>
+                                {interaction.summary}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '13px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', textAlign: 'center', padding: '12px' }}>
+                        No interactions recorded
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <EmptyState theme={theme}>Select a contact to view details</EmptyState>
+            )
           ) : selectedThread && selectedThread.length > 0 ? (
             <>
               {/* Thread subject */}
@@ -8447,7 +9167,37 @@ const CommandCenterPage = ({ theme }) => {
             )}
           </ActionsPanelTabs>
 
-          {!rightPanelCollapsed && ((selectedThread && selectedThread.length > 0) || selectedWhatsappChat || selectedCalendarEvent || selectedPipelineDeal) && (
+          {/* Keep in Touch - Coming Soon */}
+          {!rightPanelCollapsed && activeTab === 'keepintouch' && selectedKeepInTouchContact && (
+            <div style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '40px 20px',
+              textAlign: 'center'
+            }}>
+              <FaClock size={48} style={{ color: theme === 'dark' ? '#6B7280' : '#9CA3AF', marginBottom: '16px' }} />
+              <div style={{
+                fontSize: '18px',
+                fontWeight: 600,
+                color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                marginBottom: '8px'
+              }}>
+                Coming Soon
+              </div>
+              <div style={{
+                fontSize: '14px',
+                color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                maxWidth: '200px'
+              }}>
+                Actions panel for Keep in Touch contacts will be available soon
+              </div>
+            </div>
+          )}
+
+          {!rightPanelCollapsed && activeTab !== 'keepintouch' && ((selectedThread && selectedThread.length > 0) || selectedWhatsappChat || selectedCalendarEvent || selectedPipelineDeal) && (
             <>
               {activeActionTab === 'chat' && (
                 <ChatTab
