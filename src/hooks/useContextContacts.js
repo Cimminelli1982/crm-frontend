@@ -8,7 +8,7 @@ const MY_PHONE = '+393481541119'; // Adjust as needed
  * Custom hook for fetching contacts and companies based on the active context
  * Supports Email, WhatsApp, and Calendar sources
  */
-const useContextContacts = (activeTab, selectedThread, selectedWhatsappChat, selectedCalendarEvent) => {
+const useContextContacts = (activeTab, selectedThread, selectedWhatsappChat, selectedCalendarEvent, selectedPipelineDeal = null) => {
   const [contextContacts, setContextContacts] = useState([]);
   const [contextCompanies, setContextCompanies] = useState([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
@@ -25,13 +25,36 @@ const useContextContacts = (activeTab, selectedThread, selectedWhatsappChat, sel
     if (activeTab === 'calendar' && selectedCalendarEvent) {
       return extractCalendarParticipants(selectedCalendarEvent);
     }
+    if (activeTab === 'deals' && selectedPipelineDeal) {
+      return { emails: [], phones: [], type: 'deals', deal: selectedPipelineDeal };
+    }
     return { emails: [], phones: [], type: null };
-  }, [activeTab, selectedThread, selectedWhatsappChat, selectedCalendarEvent]);
+  }, [activeTab, selectedThread, selectedWhatsappChat, selectedCalendarEvent, selectedPipelineDeal]);
 
   // Fetch contacts when participants change
   useEffect(() => {
     const fetchContacts = async () => {
-      const { emails, phones, type, participantsMap, isGroupChat, chatId } = participants;
+      const { emails, phones, type, participantsMap, isGroupChat, chatId, deal } = participants;
+
+      // For deals, extract contacts directly from deal data
+      if (type === 'deals' && deal) {
+        const dealContacts = (deal.deals_contacts || []).map(dc => ({
+          contact: dc.contacts ? {
+            ...dc.contacts,
+            company_name: null,
+            completeness_score: 0
+          } : null,
+          hasContact: !!dc.contacts,
+          name: dc.contacts ? `${dc.contacts.first_name || ''} ${dc.contacts.last_name || ''}`.trim() : 'Unknown',
+          roles: [dc.relationship || 'linked'],
+          email: null,
+          phone: null
+        })).filter(c => c.contact);
+        
+        setContextContacts(dealContacts);
+        setLoadingContacts(false);
+        return;
+      }
 
       // For group chats, fetch contacts from contact_chats table
       if (type === 'whatsapp' && isGroupChat && chatId) {
@@ -339,6 +362,29 @@ const useContextContacts = (activeTab, selectedThread, selectedWhatsappChat, sel
   // Fetch companies when contacts change
   useEffect(() => {
     const fetchCompanies = async () => {
+      // For deals, extract companies directly from deal data
+      if (participants.type === 'deals' && participants.deal) {
+        const dealCompanies = (participants.deal.deal_companies || []).map(dco => ({
+          company: dco.companies ? {
+            company_id: dco.companies.company_id,
+            name: dco.companies.name,
+            website: dco.companies.website,
+            category: dco.companies.category
+          } : null,
+          hasCompany: !!dco.companies,
+          domain: null,
+          domains: [],
+          contacts: [],
+          completeness_score: 0,
+          logo_url: null,
+          relationship: dco.relationship
+        })).filter(c => c.company);
+        
+        setContextCompanies(dealCompanies);
+        setLoadingCompanies(false);
+        return;
+      }
+
       if (contextContacts.length === 0 && participants.emails.length === 0) {
         setContextCompanies([]);
         return;

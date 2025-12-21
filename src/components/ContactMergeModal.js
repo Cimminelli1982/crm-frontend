@@ -1610,10 +1610,7 @@ const ContactMergeModal = ({
 
   const canCombine = currentField?.type === 'array';
 
-  // Debug logging
-  console.log('ContactMergeModal render - isOpen:', isOpen);
-  console.log('ContactMergeModal render - primaryContact:', primaryContact);
-  console.log('ContactMergeModal render - duplicateContact:', duplicateContact);
+  // Debug logging removed for cleaner console
 
   return (
     <Modal

@@ -259,27 +259,33 @@ async function syncGoogleCalendar() {
     // Load dismissed events
     const dismissedUids = await loadDismissedCalendarEvents();
 
-    // Get events from Google Calendar
-    const { events, nextSyncToken } = await gcal.getEvents({
-      syncToken: googleCalendarSyncToken,
+    // Get events from Google Calendar (always full sync for reliability)
+    const { events } = await gcal.getEvents({
+      // No syncToken = full sync every time (more reliable, catches all events)
     });
-
-    if (events.length === 0 && googleCalendarSyncToken) {
-      // No changes since last sync
-      return;
-    }
 
     console.log(`[GoogleCalendar] Fetched ${events.length} events from Google Calendar`);
 
     // Transform and filter events
     const transformedEvents = [];
+    const EXCLUDED_COLOR_IDS = ['10']; // colorId 10 = Basil (fitness events)
+    let skippedFitness = 0, skippedCancelled = 0, skippedDismissed = 0;
+
     for (const event of events) {
+      // Skip fitness events (colorId 10)
+      if (event.colorId && EXCLUDED_COLOR_IDS.includes(event.colorId)) {
+        skippedFitness++;
+        continue;
+      }
+
       const transformed = gcal.transformEventForInbox(event);
-      if (!transformed) continue; // Skip cancelled events
-      if (dismissedUids.has(transformed.event_uid)) continue; // Skip dismissed
+      if (!transformed) { skippedCancelled++; continue; } // Skip cancelled events
+      if (dismissedUids.has(transformed.event_uid)) { skippedDismissed++; continue; } // Skip dismissed
 
       transformedEvents.push(transformed);
     }
+
+    console.log(`[GoogleCalendar] After filtering: ${transformedEvents.length} events (skipped: ${skippedFitness} fitness, ${skippedCancelled} cancelled, ${skippedDismissed} dismissed)`);
 
     if (transformedEvents.length > 0) {
       // Upsert to command_center_inbox
@@ -287,10 +293,7 @@ async function syncGoogleCalendar() {
       console.log(`[GoogleCalendar] Sync complete: ${results.synced} new, ${results.updated} updated, ${results.errors} errors`);
     }
 
-    // Save sync token for incremental sync
-    if (nextSyncToken) {
-      googleCalendarSyncToken = nextSyncToken;
-    }
+    // Full sync mode - no sync token needed
   } catch (error) {
     console.error('[GoogleCalendar] Sync error:', error.message);
     // Reset sync token on error to force full sync next time
@@ -374,12 +377,12 @@ function startPolling() {
 
   // Initial sync
   autoSync();
-  syncCalendar();
+  // syncCalendar(); // DISABLED - using Google Calendar instead of CalDAV
   syncGoogleCalendar();
 
   // Then every 60 seconds
   setInterval(autoSync, SYNC_INTERVAL);
-  setInterval(syncCalendar, SYNC_INTERVAL);
+  // setInterval(syncCalendar, SYNC_INTERVAL); // DISABLED - using Google Calendar instead of CalDAV
   setInterval(syncGoogleCalendar, SYNC_INTERVAL);
 }
 

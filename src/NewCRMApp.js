@@ -363,7 +363,6 @@ const CRMAppContent = () => {
 
 // Main App Component with Router
 const NewCRMApp = () => {
-  console.log('NewCRMApp component rendering...');
 
   try {
     return (

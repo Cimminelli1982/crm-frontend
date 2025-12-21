@@ -27,8 +27,7 @@ export const useContactsData = (dataSource, refreshTrigger, onDataLoad) => {
   };
 
   const fetchData = async () => {
-    console.log('[useContactsData] fetchData called');
-    console.log('[useContactsData] dataSource:', dataSource);
+    // Debug logs removed
 
     if (!dataSource) return;
 
@@ -75,7 +74,6 @@ export const useContactsData = (dataSource, refreshTrigger, onDataLoad) => {
 
   // Fetch interactions data
   const fetchInteractionsData = async (dataSource) => {
-    console.log('[INTERACTIONS] Starting fetch');
     let startDate = new Date();
     let endDate = null;
     const timeFilter = dataSource.timeFilter || 'Today';
@@ -200,7 +198,6 @@ export const useContactsData = (dataSource, refreshTrigger, onDataLoad) => {
       completeness_score: completenessScores[contact.contact_id] || null
     }));
 
-    console.log('[INTERACTIONS] After transform:', transformedData);
     return transformedData;
   };
 
@@ -823,7 +820,7 @@ export const useContactsData = (dataSource, refreshTrigger, onDataLoad) => {
 
     if (error) throw error;
 
-    console.log('[INBOX] Raw data from Supabase:', contactsData);
+    // console.log('[INBOX] Raw data from Supabase:', contactsData);
 
     return (contactsData || []).map(contact => ({
       ...contact,

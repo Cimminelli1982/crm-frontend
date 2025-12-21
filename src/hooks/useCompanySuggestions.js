@@ -233,16 +233,11 @@ export const useCompanySuggestions = (contacts, pageContext) => {
 
   // Load company suggestions for contacts without companies (batched)
   useEffect(() => {
-    console.log('[SUGGESTIONS] useEffect triggered, contacts length:', contacts.length);
-    console.log('[SUGGESTIONS] pageContext:', pageContext);
+    // Debug logs removed
 
     const loadSuggestions = async () => {
       const suggestions = {};
       const contactsWithoutCompanies = contacts.filter(contact => !contact.companies?.[0]);
-      console.log('[SUGGESTIONS] Contacts without companies:', contactsWithoutCompanies.length);
-      if (contactsWithoutCompanies.length > 0) {
-        console.log('[SUGGESTIONS] First contact without company:', contactsWithoutCompanies[0]);
-      }
 
       // Process suggestions for contacts without companies
       if (contactsWithoutCompanies.length > 0) {

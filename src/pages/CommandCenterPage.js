@@ -109,6 +109,11 @@ import CompanyDataIntegrityModal from '../components/modals/CompanyDataIntegrity
 import CreateCompanyFromDomainModal from '../components/modals/CreateCompanyFromDomainModal';
 import LinkToExistingModal from '../components/modals/LinkToExistingModal';
 import AddCompanyModal from '../components/modals/AddCompanyModal';
+import ManageContactEmailsModal from '../components/modals/ManageContactEmailsModal';
+import ManageContactMobilesModal from '../components/modals/ManageContactMobilesModal';
+import ManageContactTagsModal from '../components/modals/ManageContactTagsModal';
+import ManageContactCitiesModal from '../components/modals/ManageContactCitiesModal';
+import CompanyAssociationModal from '../components/modals/CompanyAssociationModal';
 import CreateDealAI from '../components/modals/CreateDealAI';
 import { findContactDuplicatesForThread, findCompanyDuplicatesForThread } from '../utils/duplicateDetection';
 import DataIntegrityTab from '../components/command-center/DataIntegrityTab';
@@ -619,6 +624,18 @@ const CommandCenterPage = ({ theme }) => {
   });
   const [keepInTouchContactDetails, setKeepInTouchContactDetails] = useState(null);
   const [keepInTouchInteractions, setKeepInTouchInteractions] = useState([]);
+  const [keepInTouchEmails, setKeepInTouchEmails] = useState([]);
+  const [keepInTouchMobiles, setKeepInTouchMobiles] = useState([]);
+  const [keepInTouchCompanies, setKeepInTouchCompanies] = useState([]);
+  const [keepInTouchTags, setKeepInTouchTags] = useState([]);
+  const [keepInTouchCities, setKeepInTouchCities] = useState([]);
+
+  // Keep in Touch modal states
+  const [kitManageEmailsOpen, setKitManageEmailsOpen] = useState(false);
+  const [kitManageMobilesOpen, setKitManageMobilesOpen] = useState(false);
+  const [kitTagsModalOpen, setKitTagsModalOpen] = useState(false);
+  const [kitCityModalOpen, setKitCityModalOpen] = useState(false);
+  const [kitCompanyModalContact, setKitCompanyModalContact] = useState(null);
 
   // Keep in Touch enum values
   const KEEP_IN_TOUCH_FREQUENCIES = ['Not Set', 'Weekly', 'Monthly', 'Quarterly', 'Twice per Year', 'Once per Year', 'Do not keep in touch'];
@@ -644,6 +661,23 @@ const CommandCenterPage = ({ theme }) => {
       ));
 
       toast.success(`${field.charAt(0).toUpperCase() + field.slice(1)} updated`);
+    } catch (err) {
+      console.error(`Error updating ${field}:`, err);
+      toast.error(`Failed to update ${field}`);
+    }
+  };
+
+  // Update contact field directly on contacts table
+  const handleUpdateContactField = async (field, value) => {
+    if (!selectedKeepInTouchContact) return;
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .update({ [field]: value, last_modified_at: new Date().toISOString() })
+        .eq('contact_id', selectedKeepInTouchContact.contact_id);
+      if (error) throw error;
+      setKeepInTouchContactDetails(prev => ({ ...prev, [field]: value }));
+      toast.success(`${field.replace(/_/g, ' ')} updated`);
     } catch (err) {
       console.error(`Error updating ${field}:`, err);
       toast.error(`Failed to update ${field}`);
@@ -1633,66 +1667,133 @@ const CommandCenterPage = ({ theme }) => {
       if (!selectedKeepInTouchContact) {
         setKeepInTouchContactDetails(null);
         setKeepInTouchInteractions([]);
+        setKeepInTouchEmails([]);
+        setKeepInTouchMobiles([]);
+        setKeepInTouchCompanies([]);
+        setKeepInTouchTags([]);
+        setKeepInTouchCities([]);
         return;
       }
 
-      // Fetch contact details with category, job role and profile image
+      const contactId = selectedKeepInTouchContact.contact_id;
+
+      // Fetch contact details with all editable fields
       const { data: contactData, error: contactError } = await supabase
         .from('contacts')
-        .select('contact_id, first_name, last_name, category, job_role, show_missing, profile_image_url, linkedin')
-        .eq('contact_id', selectedKeepInTouchContact.contact_id)
+        .select('contact_id, first_name, last_name, category, job_role, show_missing, profile_image_url, linkedin, score, birthday, description')
+        .eq('contact_id', contactId)
         .single();
 
-      let companyData = null;
       let completenessScore = 0;
       if (!contactError && contactData) {
         // Fetch completeness score from dedicated table
         const { data: completenessData } = await supabase
           .from('contact_completeness')
           .select('completeness_score')
-          .eq('contact_id', selectedKeepInTouchContact.contact_id)
+          .eq('contact_id', contactId)
           .maybeSingle();
 
         if (completenessData) {
           completenessScore = completenessData.completeness_score;
         }
 
-        // Fetch company separately to avoid FK conflict
-        const { data: ccData } = await supabase
-          .from('contact_companies')
-          .select('company_id, is_primary')
-          .eq('contact_id', selectedKeepInTouchContact.contact_id)
-          .order('is_primary', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (ccData?.company_id) {
-          const { data: company } = await supabase
-            .from('companies')
-            .select('company_id, name')
-            .eq('company_id', ccData.company_id)
-            .maybeSingle();
-          companyData = company;
-        }
-
         setKeepInTouchContactDetails({
           ...contactData,
-          company: companyData,
           completeness_score: completenessScore
         });
       }
 
+      // Fetch emails
+      const { data: emailsData } = await supabase
+        .from('contact_emails')
+        .select('email_id, email, is_primary')
+        .eq('contact_id', contactId)
+        .order('is_primary', { ascending: false });
+      setKeepInTouchEmails(emailsData || []);
+
+      // Fetch mobiles
+      const { data: mobilesData } = await supabase
+        .from('contact_mobiles')
+        .select('mobile_id, mobile, is_primary')
+        .eq('contact_id', contactId)
+        .order('is_primary', { ascending: false });
+      setKeepInTouchMobiles(mobilesData || []);
+
+      // Fetch companies with details
+      const { data: companiesData } = await supabase
+        .from('contact_companies')
+        .select('contact_companies_id, company_id, is_primary, relationship')
+        .eq('contact_id', contactId)
+        .order('is_primary', { ascending: false });
+
+      if (companiesData && companiesData.length > 0) {
+        const companyIds = companiesData.map(c => c.company_id);
+        const { data: companyDetails } = await supabase
+          .from('companies')
+          .select('company_id, name')
+          .in('company_id', companyIds);
+
+        const companiesWithDetails = companiesData.map(cc => ({
+          ...cc,
+          company: companyDetails?.find(c => c.company_id === cc.company_id)
+        }));
+        setKeepInTouchCompanies(companiesWithDetails);
+      } else {
+        setKeepInTouchCompanies([]);
+      }
+
+      // Fetch tags with tag details
+      const { data: tagsData } = await supabase
+        .from('contact_tags')
+        .select('entry_id, tag_id')
+        .eq('contact_id', contactId);
+
+      if (tagsData && tagsData.length > 0) {
+        const tagIds = tagsData.map(t => t.tag_id);
+        const { data: tagDetails } = await supabase
+          .from('tags')
+          .select('tag_id, name')
+          .in('tag_id', tagIds);
+
+        const tagsWithDetails = tagsData.map(ct => ({
+          ...ct,
+          tags: tagDetails?.find(t => t.tag_id === ct.tag_id)
+        }));
+        setKeepInTouchTags(tagsWithDetails);
+      } else {
+        setKeepInTouchTags([]);
+      }
+
+      // Fetch cities with city details
+      const { data: citiesData } = await supabase
+        .from('contact_cities')
+        .select('entry_id, city_id')
+        .eq('contact_id', contactId);
+
+      if (citiesData && citiesData.length > 0) {
+        const cityIds = citiesData.map(c => c.city_id);
+        const { data: cityDetails } = await supabase
+          .from('cities')
+          .select('city_id, name, country')
+          .in('city_id', cityIds);
+
+        const citiesWithDetails = citiesData.map(cc => ({
+          ...cc,
+          cities: cityDetails?.find(c => c.city_id === cc.city_id)
+        }));
+        setKeepInTouchCities(citiesWithDetails);
+      } else {
+        setKeepInTouchCities([]);
+      }
+
       // Fetch last 10 interactions
-      const { data: interactionsData, error: interactionsError } = await supabase
+      const { data: interactionsData } = await supabase
         .from('interactions')
         .select('interaction_id, interaction_type, direction, interaction_date, summary')
-        .eq('contact_id', selectedKeepInTouchContact.contact_id)
+        .eq('contact_id', contactId)
         .order('interaction_date', { ascending: false })
         .limit(10);
-
-      if (!interactionsError) {
-        setKeepInTouchInteractions(interactionsData || []);
-      }
+      setKeepInTouchInteractions(interactionsData || []);
     };
 
     fetchContactDetailsAndInteractions();
@@ -9167,32 +9268,358 @@ const CommandCenterPage = ({ theme }) => {
             )}
           </ActionsPanelTabs>
 
-          {/* Keep in Touch - Coming Soon */}
-          {!rightPanelCollapsed && activeTab === 'keepintouch' && selectedKeepInTouchContact && (
-            <div style={{
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '40px 20px',
-              textAlign: 'center'
-            }}>
-              <FaClock size={48} style={{ color: theme === 'dark' ? '#6B7280' : '#9CA3AF', marginBottom: '16px' }} />
+          {/* Keep in Touch - Contact Details Panel */}
+          {!rightPanelCollapsed && activeTab === 'keepintouch' && selectedKeepInTouchContact && keepInTouchContactDetails && (
+            <div style={{ flex: 1, overflow: 'auto', padding: '12px' }}>
+              {/* Section 1: Info Base */}
               <div style={{
-                fontSize: '18px',
-                fontWeight: 600,
-                color: theme === 'dark' ? '#F9FAFB' : '#111827',
-                marginBottom: '8px'
+                background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                borderRadius: '8px',
+                padding: '12px',
+                marginBottom: '12px',
+                border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
               }}>
-                Coming Soon
+                <div style={{ fontSize: '11px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Basic Info
+                </div>
+
+                {/* Name Row */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                  <div>
+                    <label style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '4px' }}>First Name</label>
+                    <input
+                      type="text"
+                      value={keepInTouchContactDetails.first_name || ''}
+                      onChange={(e) => handleUpdateContactField('first_name', e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '6px 8px',
+                        borderRadius: '4px',
+                        border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                        background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                        color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                        fontSize: '13px'
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '4px' }}>Last Name</label>
+                    <input
+                      type="text"
+                      value={keepInTouchContactDetails.last_name || ''}
+                      onChange={(e) => handleUpdateContactField('last_name', e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '6px 8px',
+                        borderRadius: '4px',
+                        border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                        background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                        color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                        fontSize: '13px'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Job Role */}
+                <div style={{ marginBottom: '8px' }}>
+                  <label style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '4px' }}>Job Role</label>
+                  <input
+                    type="text"
+                    value={keepInTouchContactDetails.job_role || ''}
+                    onChange={(e) => handleUpdateContactField('job_role', e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '6px 8px',
+                      borderRadius: '4px',
+                      border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                      background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                      color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                      fontSize: '13px'
+                    }}
+                  />
+                </div>
+
+                {/* Category & Score */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                  <div>
+                    <label style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '4px' }}>Category</label>
+                    <select
+                      value={keepInTouchContactDetails.category || 'Not Set'}
+                      onChange={(e) => handleUpdateContactField('category', e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '6px 8px',
+                        borderRadius: '4px',
+                        border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                        background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                        color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                        fontSize: '13px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {['Not Set', 'Inbox', 'Skip', 'Professional Investor', 'Team', 'Advisor', 'Supplier', 'Founder', 'Manager', 'Friend and Family', 'Other', 'Student', 'Media', 'Institution'].map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '4px' }}>Score</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={keepInTouchContactDetails.score || ''}
+                      onChange={(e) => handleUpdateContactField('score', parseInt(e.target.value) || null)}
+                      style={{
+                        width: '100%',
+                        padding: '6px 8px',
+                        borderRadius: '4px',
+                        border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                        background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                        color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                        fontSize: '13px'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Birthday & LinkedIn */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <div>
+                    <label style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '4px' }}>Birthday</label>
+                    <input
+                      type="date"
+                      value={keepInTouchContactDetails.birthday || ''}
+                      onChange={(e) => handleUpdateContactField('birthday', e.target.value || null)}
+                      style={{
+                        width: '100%',
+                        padding: '6px 8px',
+                        borderRadius: '4px',
+                        border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                        background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                        color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                        fontSize: '13px'
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '4px' }}>LinkedIn</label>
+                    <input
+                      type="text"
+                      value={keepInTouchContactDetails.linkedin || ''}
+                      onChange={(e) => handleUpdateContactField('linkedin', e.target.value)}
+                      placeholder="linkedin.com/in/..."
+                      style={{
+                        width: '100%',
+                        padding: '6px 8px',
+                        borderRadius: '4px',
+                        border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                        background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                        color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                        fontSize: '13px'
+                      }}
+                    />
+                  </div>
+                </div>
               </div>
+
+              {/* Section 2: Contact Details */}
               <div style={{
-                fontSize: '14px',
-                color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                maxWidth: '200px'
+                background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                borderRadius: '8px',
+                padding: '12px',
+                marginBottom: '12px',
+                border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
               }}>
-                Actions panel for Keep in Touch contacts will be available soon
+                <div style={{ fontSize: '11px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Contact Details
+                </div>
+
+                {/* Emails */}
+                <div style={{ marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                    <FaEnvelope size={12} style={{ color: '#3B82F6' }} />
+                    <span style={{ fontSize: '12px', fontWeight: 500, color: theme === 'dark' ? '#D1D5DB' : '#374151', flex: 1 }}>Emails</span>
+                    <FaEdit
+                      size={11}
+                      style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280', cursor: 'pointer' }}
+                      onClick={() => setKitManageEmailsOpen(true)}
+                      title="Manage emails"
+                    />
+                  </div>
+                  {keepInTouchEmails.length > 0 ? (
+                    keepInTouchEmails.map((e, idx) => (
+                      <div key={e.email_id || idx} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '4px 8px',
+                        background: theme === 'dark' ? '#374151' : '#E5E7EB',
+                        borderRadius: '4px',
+                        marginBottom: '4px',
+                        fontSize: '12px'
+                      }}>
+                        <span style={{ flex: 1, color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>{e.email}</span>
+                        {e.is_primary && <span style={{ fontSize: '10px', padding: '1px 4px', background: '#10B981', color: 'white', borderRadius: '3px' }}>Primary</span>}
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ fontSize: '12px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', fontStyle: 'italic' }}>No emails</div>
+                  )}
+                </div>
+
+                {/* Mobiles */}
+                <div style={{ marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                    <FaWhatsapp size={12} style={{ color: '#22C55E' }} />
+                    <span style={{ fontSize: '12px', fontWeight: 500, color: theme === 'dark' ? '#D1D5DB' : '#374151', flex: 1 }}>Phone Numbers</span>
+                    <FaEdit
+                      size={11}
+                      style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280', cursor: 'pointer' }}
+                      onClick={() => setKitManageMobilesOpen(true)}
+                      title="Manage phone numbers"
+                    />
+                  </div>
+                  {keepInTouchMobiles.length > 0 ? (
+                    keepInTouchMobiles.map((m, idx) => (
+                      <div key={m.mobile_id || idx} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '4px 8px',
+                        background: theme === 'dark' ? '#374151' : '#E5E7EB',
+                        borderRadius: '4px',
+                        marginBottom: '4px',
+                        fontSize: '12px'
+                      }}>
+                        <span style={{ flex: 1, color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>{m.mobile}</span>
+                        {m.is_primary && <span style={{ fontSize: '10px', padding: '1px 4px', background: '#10B981', color: 'white', borderRadius: '3px' }}>Primary</span>}
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ fontSize: '12px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', fontStyle: 'italic' }}>No phone numbers</div>
+                  )}
+                </div>
+
+                {/* Companies */}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                    <FaBuilding size={12} style={{ color: '#8B5CF6' }} />
+                    <span style={{ fontSize: '12px', fontWeight: 500, color: theme === 'dark' ? '#D1D5DB' : '#374151', flex: 1 }}>Companies</span>
+                    <FaEdit
+                      size={11}
+                      style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280', cursor: 'pointer' }}
+                      onClick={() => setKitCompanyModalContact(selectedKeepInTouchContact)}
+                      title="Add company"
+                    />
+                  </div>
+                  {keepInTouchCompanies.length > 0 ? (
+                    keepInTouchCompanies.map((cc, idx) => (
+                      <div
+                        key={cc.contact_companies_id || idx}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '4px 8px',
+                          background: theme === 'dark' ? '#374151' : '#E5E7EB',
+                          borderRadius: '4px',
+                          marginBottom: '4px',
+                          fontSize: '12px',
+                          cursor: cc.company?.company_id ? 'pointer' : 'default'
+                        }}
+                        onClick={() => cc.company?.company_id && navigate(`/companies/${cc.company.company_id}`)}
+                      >
+                        <span style={{ flex: 1, color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>{cc.company?.name || 'Unknown'}</span>
+                        {cc.is_primary && <span style={{ fontSize: '10px', padding: '1px 4px', background: '#8B5CF6', color: 'white', borderRadius: '3px' }}>Primary</span>}
+                        {cc.relationship && <span style={{ fontSize: '10px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }}>{cc.relationship}</span>}
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ fontSize: '12px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', fontStyle: 'italic' }}>No companies linked</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Section 3: Tags & Cities */}
+              <div style={{
+                background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                borderRadius: '8px',
+                padding: '12px',
+                border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
+              }}>
+                <div style={{ fontSize: '11px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Tags & Locations
+                </div>
+
+                {/* Tags */}
+                <div style={{ marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                    <FaTag size={11} style={{ color: '#F59E0B' }} />
+                    <span style={{ fontSize: '12px', fontWeight: 500, color: theme === 'dark' ? '#D1D5DB' : '#374151', flex: 1 }}>Tags</span>
+                    <FaEdit
+                      size={11}
+                      style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280', cursor: 'pointer' }}
+                      onClick={() => setKitTagsModalOpen(true)}
+                      title="Manage tags"
+                    />
+                  </div>
+                  {keepInTouchTags.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                      {keepInTouchTags.map((t, idx) => (
+                        <span
+                          key={t.entry_id || idx}
+                          style={{
+                            fontSize: '11px',
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            background: theme === 'dark' ? '#374151' : '#E5E7EB',
+                            color: theme === 'dark' ? '#F9FAFB' : '#111827'
+                          }}
+                        >
+                          {t.tags?.name || 'Unknown'}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '12px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', fontStyle: 'italic' }}>No tags</div>
+                  )}
+                </div>
+
+                {/* Cities */}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                    <FaBuilding size={11} style={{ color: '#EC4899' }} />
+                    <span style={{ fontSize: '12px', fontWeight: 500, color: theme === 'dark' ? '#D1D5DB' : '#374151', flex: 1 }}>Cities</span>
+                    <FaEdit
+                      size={11}
+                      style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280', cursor: 'pointer' }}
+                      onClick={() => setKitCityModalOpen(true)}
+                      title="Manage cities"
+                    />
+                  </div>
+                  {keepInTouchCities.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                      {keepInTouchCities.map((c, idx) => (
+                        <span
+                          key={c.entry_id || idx}
+                          style={{
+                            fontSize: '11px',
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            background: theme === 'dark' ? '#374151' : '#E5E7EB',
+                            color: theme === 'dark' ? '#F9FAFB' : '#111827'
+                          }}
+                        >
+                          {c.cities?.name}{c.cities?.country ? `, ${c.cities.country}` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '12px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', fontStyle: 'italic' }}>No cities</div>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -10795,6 +11222,140 @@ const CommandCenterPage = ({ theme }) => {
           fetchDeals();
         }}
       />
+
+      {/* Keep in Touch - Manage Emails Modal */}
+      <ManageContactEmailsModal
+        isOpen={kitManageEmailsOpen}
+        onClose={() => setKitManageEmailsOpen(false)}
+        contact={selectedKeepInTouchContact}
+        theme={theme}
+        onEmailsUpdated={() => {
+          // Refresh emails for the selected contact
+          if (selectedKeepInTouchContact?.contact_id) {
+            supabase
+              .from('contact_emails')
+              .select('email_id, email, is_primary')
+              .eq('contact_id', selectedKeepInTouchContact.contact_id)
+              .order('is_primary', { ascending: false })
+              .then(({ data }) => setKeepInTouchEmails(data || []));
+          }
+        }}
+      />
+
+      {/* Keep in Touch - Manage Mobiles Modal */}
+      <ManageContactMobilesModal
+        isOpen={kitManageMobilesOpen}
+        onClose={() => setKitManageMobilesOpen(false)}
+        contact={selectedKeepInTouchContact}
+        theme={theme}
+        onMobilesUpdated={() => {
+          // Refresh mobiles for the selected contact
+          if (selectedKeepInTouchContact?.contact_id) {
+            supabase
+              .from('contact_mobiles')
+              .select('mobile_id, mobile, is_primary')
+              .eq('contact_id', selectedKeepInTouchContact.contact_id)
+              .order('is_primary', { ascending: false })
+              .then(({ data }) => setKeepInTouchMobiles(data || []));
+          }
+        }}
+      />
+
+      {/* Keep in Touch - Tags Modal */}
+      <ManageContactTagsModal
+        isOpen={kitTagsModalOpen}
+        onClose={() => setKitTagsModalOpen(false)}
+        contact={selectedKeepInTouchContact}
+        theme={theme}
+        onTagsUpdated={async () => {
+          // Refresh tags for the selected contact
+          if (selectedKeepInTouchContact?.contact_id) {
+            const { data: tagsData } = await supabase
+              .from('contact_tags')
+              .select('entry_id, tag_id')
+              .eq('contact_id', selectedKeepInTouchContact.contact_id);
+            if (tagsData && tagsData.length > 0) {
+              const tagIds = tagsData.map(t => t.tag_id);
+              const { data: tagDetails } = await supabase
+                .from('tags')
+                .select('tag_id, name')
+                .in('tag_id', tagIds);
+              const tagsWithDetails = tagsData.map(ct => ({
+                ...ct,
+                tags: tagDetails?.find(t => t.tag_id === ct.tag_id)
+              }));
+              setKeepInTouchTags(tagsWithDetails);
+            } else {
+              setKeepInTouchTags([]);
+            }
+          }
+        }}
+      />
+
+      {/* Keep in Touch - City Modal */}
+      <ManageContactCitiesModal
+        isOpen={kitCityModalOpen}
+        onClose={() => setKitCityModalOpen(false)}
+        contact={selectedKeepInTouchContact}
+        theme={theme}
+        onCitiesUpdated={async () => {
+          // Refresh cities for the selected contact
+          if (selectedKeepInTouchContact?.contact_id) {
+            const { data: citiesData } = await supabase
+              .from('contact_cities')
+              .select('entry_id, city_id')
+              .eq('contact_id', selectedKeepInTouchContact.contact_id);
+            if (citiesData && citiesData.length > 0) {
+              const cityIds = citiesData.map(c => c.city_id);
+              const { data: cityDetails } = await supabase
+                .from('cities')
+                .select('city_id, name, country')
+                .in('city_id', cityIds);
+              const citiesWithDetails = citiesData.map(cc => ({
+                ...cc,
+                cities: cityDetails?.find(c => c.city_id === cc.city_id)
+              }));
+              setKeepInTouchCities(citiesWithDetails);
+            } else {
+              setKeepInTouchCities([]);
+            }
+          }
+        }}
+      />
+
+      {/* Keep in Touch - Company Association Modal */}
+      {kitCompanyModalContact && (
+        <CompanyAssociationModal
+          theme={theme}
+          contact={kitCompanyModalContact}
+          onClose={() => setKitCompanyModalContact(null)}
+          onCompanyAdded={async () => {
+            // Refresh companies for the selected contact
+            if (selectedKeepInTouchContact?.contact_id) {
+              const { data: companiesData } = await supabase
+                .from('contact_companies')
+                .select('contact_companies_id, company_id, is_primary, relationship')
+                .eq('contact_id', selectedKeepInTouchContact.contact_id)
+                .order('is_primary', { ascending: false });
+              if (companiesData && companiesData.length > 0) {
+                const companyIds = companiesData.map(c => c.company_id);
+                const { data: companyDetails } = await supabase
+                  .from('companies')
+                  .select('company_id, name')
+                  .in('company_id', companyIds);
+                const companiesWithDetails = companiesData.map(cc => ({
+                  ...cc,
+                  company: companyDetails?.find(c => c.company_id === cc.company_id)
+                }));
+                setKeepInTouchCompanies(companiesWithDetails);
+              } else {
+                setKeepInTouchCompanies([]);
+              }
+            }
+            setKitCompanyModalContact(null);
+          }}
+        />
+      )}
 
       {/* Baileys QR Code Modal */}
       {showBaileysQRModal && (

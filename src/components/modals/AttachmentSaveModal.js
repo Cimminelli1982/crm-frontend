@@ -461,7 +461,13 @@ const AttachmentSaveModal = ({
         // 2. Upload to Supabase Storage
         toast.loading(`Uploading ${att.name}...`, { id: 'att-save' });
 
-        const fileName = `${Date.now()}_${att.name}`;
+        // Sanitize filename for Supabase storage (remove special chars, spaces)
+        const sanitizedName = att.name
+          .replace(/[£€$¥]/g, '') // Remove currency symbols
+          .replace(/[^\w\s.-]/g, '_') // Replace special chars with underscore
+          .replace(/\s+/g, '_') // Replace spaces with underscore
+          .replace(/_+/g, '_'); // Collapse multiple underscores
+        const fileName = `${Date.now()}_${sanitizedName}`;
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('attachments')
           .upload(fileName, blob, {

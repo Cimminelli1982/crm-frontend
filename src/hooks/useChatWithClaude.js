@@ -9,7 +9,7 @@ const MY_EMAIL = 'simone@cimminelli.com';
  * Handles messages, images, sending, and quick actions
  * Supports both email and WhatsApp context
  */
-const useChatWithClaude = (selectedThread, emailContacts, activeTab, selectedWhatsappChat, contextContacts) => {
+const useChatWithClaude = (selectedThread, emailContacts, activeTab, selectedWhatsappChat, contextContacts, selectedPipelineDeal = null) => {
   // Chat state
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
@@ -27,11 +27,11 @@ const useChatWithClaude = (selectedThread, emailContacts, activeTab, selectedWha
     }
   }, [chatMessages]);
 
-  // Clear chat when thread/chat changes
+  // Clear chat when thread/chat/deal changes
   useEffect(() => {
     setChatMessages([]);
     setChatInput('');
-  }, [selectedThread, selectedWhatsappChat]);
+  }, [selectedThread, selectedWhatsappChat, selectedPipelineDeal]);
 
   // Build email context for Claude
   const buildEmailContext = useCallback(() => {
@@ -104,6 +104,50 @@ Messages (${sortedMessages.length} messages):
 ${messagesText}
 `;
   }, [selectedWhatsappChat, contextContacts]);
+
+  // Build Deal context for Claude
+  const buildDealContext = useCallback(() => {
+    if (!selectedPipelineDeal) return '';
+
+    const dealName = selectedPipelineDeal.deal_name || selectedPipelineDeal.opportunity || 'Unnamed Deal';
+    const stage = selectedPipelineDeal.stage || 'Unknown';
+    const category = selectedPipelineDeal.category || '';
+    const amount = selectedPipelineDeal.total_investment
+      ? `${selectedPipelineDeal.deal_currency || ''} ${Number(selectedPipelineDeal.total_investment).toLocaleString()}`
+      : 'Not specified';
+    const description = selectedPipelineDeal.description || 'No description';
+
+    const contacts = (selectedPipelineDeal.deals_contacts || []).map(dc => {
+      if (!dc.contacts) return null;
+      const name = `${dc.contacts.first_name || ''} ${dc.contacts.last_name || ''}`.trim();
+      const relationship = dc.relationship ? ` (${dc.relationship})` : '';
+      return `- ${name}${relationship}`;
+    }).filter(Boolean).join('\n') || 'No contacts linked';
+
+    const companies = (selectedPipelineDeal.deal_companies || []).map(dco => {
+      if (!dco.companies) return null;
+      const name = dco.companies.name;
+      const relationship = dco.relationship ? ` (${dco.relationship})` : '';
+      return `- ${name}${relationship}`;
+    }).filter(Boolean).join('\n') || 'No companies linked';
+
+    return `
+DEAL CONTEXT:
+Deal: ${dealName}
+Stage: ${stage}
+Category: ${category}
+Amount: ${amount}
+
+Description:
+${description}
+
+Linked Contacts:
+${contacts}
+
+Linked Companies:
+${companies}
+`;
+  }, [selectedPipelineDeal]);
 
   // Build instruction for duplicate processing
   const buildDuplicateMCPInstruction = useCallback(() => {
@@ -304,7 +348,7 @@ ${context}`;
     } finally {
       setChatLoading(false);
     }
-  }, [chatImages, chatMessages, buildEmailContext, buildWhatsAppContext, activeTab]);
+  }, [chatImages, chatMessages, buildEmailContext, buildWhatsAppContext, buildDealContext, activeTab]);
 
   // Handle quick action clicks - hide the prompt, show only the response
   const handleQuickAction = useCallback((action) => {
@@ -347,6 +391,7 @@ ${context}`;
 
     // Helpers
     buildEmailContext,
+    buildDealContext,
     buildDuplicateMCPInstruction,
   };
 };
