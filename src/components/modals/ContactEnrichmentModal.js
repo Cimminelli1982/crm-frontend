@@ -597,6 +597,11 @@ const ContactEnrichmentModal = ({
         updateData.job_role = enrichmentData.job_title;
       }
 
+      // Save profile photo URL
+      if (enrichmentData.photo_url && !contact.profile_picture) {
+        updateData.profile_picture = enrichmentData.photo_url;
+      }
+
       if (Object.keys(updateData).length > 0) {
         const { error } = await supabase
           .from('contacts')
@@ -984,6 +989,7 @@ const ContactEnrichmentModal = ({
                 }}>
                   <strong>Will save:</strong>{' '}
                   {[
+                    enrichmentData.photo_url && !contact.profile_picture && 'Profile Photo',
                     enrichmentData.job_title && !contact.job_role && 'Job Title',
                     enrichmentData.phones?.length > 0 && 'Phone Numbers',
                     enrichmentData.city && 'City',
