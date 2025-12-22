@@ -631,36 +631,38 @@ const ContactEnrichmentModal = ({
 
       // Handle city
       if (enrichmentData.city) {
-        // Search for existing city
-        const { data: existingCities } = await supabase
-          .from('cities')
-          .select('city_id')
-          .ilike('name', enrichmentData.city)
-          .limit(1);
+        // First check if contact already has this city linked (by name, case-insensitive)
+        const { data: existingContactCities } = await supabase
+          .from('contact_cities')
+          .select('entry_id, cities(city_id, name)')
+          .eq('contact_id', contact.contact_id);
 
-        let cityId;
-        if (existingCities && existingCities.length > 0) {
-          cityId = existingCities[0].city_id;
-        } else {
-          // Create new city
-          const { data: newCity } = await supabase
+        const alreadyHasCity = existingContactCities?.some(cc =>
+          cc.cities?.name?.toLowerCase() === enrichmentData.city.toLowerCase()
+        );
+
+        if (!alreadyHasCity) {
+          // Search for existing city in cities table
+          const { data: existingCities } = await supabase
             .from('cities')
-            .insert({ name: enrichmentData.city, country: enrichmentData.country || 'Unknown' })
-            .select()
-            .single();
-          cityId = newCity?.city_id;
-        }
+            .select('city_id')
+            .ilike('name', enrichmentData.city)
+            .limit(1);
 
-        if (cityId) {
-          // Check if already linked
-          const { data: existingLink } = await supabase
-            .from('contact_cities')
-            .select('id')
-            .eq('contact_id', contact.contact_id)
-            .eq('city_id', cityId)
-            .maybeSingle();
+          let cityId;
+          if (existingCities && existingCities.length > 0) {
+            cityId = existingCities[0].city_id;
+          } else {
+            // Create new city
+            const { data: newCity } = await supabase
+              .from('cities')
+              .insert({ name: enrichmentData.city, country: enrichmentData.country || 'Unknown' })
+              .select()
+              .single();
+            cityId = newCity?.city_id;
+          }
 
-          if (!existingLink) {
+          if (cityId) {
             await supabase.from('contact_cities').insert({
               contact_id: contact.contact_id,
               city_id: cityId
@@ -669,24 +671,70 @@ const ContactEnrichmentModal = ({
         }
       }
 
-      // Handle company if exists in DB
-      if (enrichmentData.company_match?.exists_in_db) {
-        const companyId = enrichmentData.company_match.company_id;
+      // Handle company - use domain to match/create
+      if (enrichmentData.organization?.name) {
+        let companyId = null;
 
-        // Check if already linked
-        const { data: existingCompanyLink } = await supabase
-          .from('contact_companies')
-          .select('id')
-          .eq('contact_id', contact.contact_id)
-          .eq('company_id', companyId)
-          .maybeSingle();
+        // Extract domain from organization data (Apollo provides primary_domain or website)
+        const companyDomain = enrichmentData.organization.primary_domain ||
+          enrichmentData.organization.website?.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
 
-        if (!existingCompanyLink) {
-          await supabase.from('contact_companies').insert({
-            contact_id: contact.contact_id,
-            company_id: companyId,
-            is_primary: true
-          });
+        if (companyDomain) {
+          // Check if domain exists in company_domains table
+          const { data: existingDomain } = await supabase
+            .from('company_domains')
+            .select('company_id')
+            .eq('domain', companyDomain)
+            .maybeSingle();
+
+          if (existingDomain) {
+            // Domain exists, use that company
+            companyId = existingDomain.company_id;
+          } else {
+            // Domain doesn't exist - create new company, then link domain
+            const { data: newCompany, error: companyError } = await supabase
+              .from('companies')
+              .insert({
+                name: enrichmentData.organization.name,
+                website: enrichmentData.organization.website || null,
+                linkedin: enrichmentData.organization.linkedin_url || null,
+                description: enrichmentData.organization.industry || null
+              })
+              .select()
+              .single();
+
+            if (!companyError && newCompany) {
+              companyId = newCompany.id;
+
+              // Create domain link
+              await supabase.from('company_domains').insert({
+                company_id: companyId,
+                domain: companyDomain,
+                is_primary: true
+              });
+            }
+          }
+        } else if (enrichmentData.company_match?.exists_in_db) {
+          // No domain but we have a match from Apollo
+          companyId = enrichmentData.company_match.company_id;
+        }
+
+        if (companyId) {
+          // Check if already linked to contact
+          const { data: existingCompanyLink } = await supabase
+            .from('contact_companies')
+            .select('id')
+            .eq('contact_id', contact.contact_id)
+            .eq('company_id', companyId)
+            .maybeSingle();
+
+          if (!existingCompanyLink) {
+            await supabase.from('contact_companies').insert({
+              contact_id: contact.contact_id,
+              company_id: companyId,
+              is_primary: true
+            });
+          }
         }
       }
 
@@ -932,11 +980,13 @@ const ContactEnrichmentModal = ({
                   fontSize: 12,
                   color: theme === 'light' ? '#166534' : '#86EFAC'
                 }}>
-                  <strong>Will save:</strong>
-                  {enrichmentData.job_title && !contact.job_role && ' Job Title,'}
-                  {enrichmentData.phones?.length > 0 && ' Phone Numbers,'}
-                  {enrichmentData.city && ' City,'}
-                  {enrichmentData.company_match?.exists_in_db && ' Company Link'}
+                  <strong>Will save:</strong>{' '}
+                  {[
+                    enrichmentData.job_title && !contact.job_role && 'Job Title',
+                    enrichmentData.phones?.length > 0 && 'Phone Numbers',
+                    enrichmentData.city && 'City',
+                    enrichmentData.organization?.name && 'Company Link'
+                  ].filter(Boolean).join(', ')}
                 </div>
               </>
             )}
