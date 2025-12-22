@@ -1612,6 +1612,23 @@ internet businesses.`;
           : p
       )
     );
+
+    // Update keepInTouchContactDetails if it's the same contact
+    setKeepInTouchContactDetails(prev => {
+      if (prev && prev.contact_id === contactId) {
+        return { ...prev, profile_image_url: newImageUrl };
+      }
+      return prev;
+    });
+
+    // Update keepInTouchContacts list
+    setKeepInTouchContacts(prevContacts =>
+      prevContacts.map(c =>
+        c.contact_id === contactId
+          ? { ...c, profile_image_url: newImageUrl }
+          : c
+      )
+    );
   };
 
   const profileImageModal = useProfileImageModal(handleProfileImageUpdate);
