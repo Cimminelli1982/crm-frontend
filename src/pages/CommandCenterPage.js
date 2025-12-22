@@ -2368,6 +2368,7 @@ internet businesses.`;
 
   // State for Search/Create Company Modal (CRM Tab)
   const [searchOrCreateCompanyModalOpen, setSearchOrCreateCompanyModalOpen] = useState(false);
+  const [kitContactToLinkCompany, setKitContactToLinkCompany] = useState(null); // For Keep in Touch Link Company
 
   // State for Data Integrity Modal (contacts)
   const [dataIntegrityModalOpen, setDataIntegrityModalOpen] = useState(false);
@@ -9696,7 +9697,25 @@ internet businesses.`;
                         {/* Link Company button when no company is linked */}
                         {!keepInTouchCompanies || keepInTouchCompanies.length === 0 ? (
                           <button
-                            onClick={() => setLinkCompanyModalContact(keepInTouchContactDetails)}
+                            onClick={() => {
+                              // Get domain from contact emails
+                              const primaryEmail = keepInTouchEmails?.find(e => e.is_primary)?.email || keepInTouchEmails?.[0]?.email;
+                              if (primaryEmail && primaryEmail.includes('@')) {
+                                const emailDomain = primaryEmail.split('@')[1]?.toLowerCase();
+                                if (emailDomain) {
+                                  setKitContactToLinkCompany(keepInTouchContactDetails);
+                                  setSelectedDomainForLink({
+                                    domain: emailDomain,
+                                    sampleEmails: keepInTouchEmails?.map(e => e.email) || []
+                                  });
+                                  setDomainLinkModalOpen(true);
+                                } else {
+                                  toast.error('No valid email domain found');
+                                }
+                              } else {
+                                toast.error('Contact has no email to extract domain from');
+                              }
+                            }}
                             style={{
                               display: 'flex',
                               alignItems: 'center',
@@ -9732,9 +9751,9 @@ internet businesses.`;
                             </span>
                           )}
                           {keepInTouchContactDetails?.job_role}
-                          {keepInTouchContactDetails?.job_role && keepInTouchContactDetails?.company && ' at '}
-                          {keepInTouchContactDetails?.company && (
-                            <span style={{ fontWeight: 500 }}>{keepInTouchContactDetails.company.name}</span>
+                          {keepInTouchContactDetails?.job_role && (keepInTouchContactDetails?.company || keepInTouchCompanies?.[0]?.company) && ' at '}
+                          {(keepInTouchContactDetails?.company || keepInTouchCompanies?.[0]?.company) && (
+                            <span style={{ fontWeight: 500 }}>{keepInTouchContactDetails?.company?.name || keepInTouchCompanies?.[0]?.company?.name}</span>
                           )}
                         </div>
                       )}
@@ -12885,20 +12904,57 @@ internet businesses.`;
         }}
       />
 
-      {/* Search/Create Company Modal (for CRM tab Add Company button) */}
+      {/* Search/Create Company Modal (for CRM tab Add Company button and Keep in Touch Link Company) */}
       <SearchOrCreateCompanyModal
         isOpen={searchOrCreateCompanyModalOpen}
-        onClose={() => setSearchOrCreateCompanyModalOpen(false)}
-        theme={theme}
-        contactToLink={emailContacts?.find(c => c.contact?.contact_id)?.contact}
-        onCompanySelected={(companyId) => {
-          // Close search modal and open Company Data Integrity Modal
+        onClose={() => {
           setSearchOrCreateCompanyModalOpen(false);
-          setCompanyDataIntegrityCompanyId(companyId);
-          setCompanyDataIntegrityModalOpen(true);
-          // Refresh context contacts to update company info
-          if (contextContactsHook?.refetchContacts) {
-            setTimeout(() => contextContactsHook.refetchContacts(), 500);
+          setKitContactToLinkCompany(null);
+        }}
+        theme={theme}
+        contactToLink={kitContactToLinkCompany || emailContacts?.find(c => c.contact?.contact_id)?.contact}
+        contactEmails={kitContactToLinkCompany ? keepInTouchEmails : []}
+        onCompanySelected={async (companyId) => {
+          // Close search modal
+          setSearchOrCreateCompanyModalOpen(false);
+
+          // If linking from Keep in Touch, refresh companies list
+          if (kitContactToLinkCompany) {
+            const { data: companiesData } = await supabase
+              .from('contact_companies')
+              .select('contact_companies_id, company_id, is_primary, relationship')
+              .eq('contact_id', kitContactToLinkCompany.contact_id)
+              .order('is_primary', { ascending: false });
+            if (companiesData && companiesData.length > 0) {
+              const companyIds = companiesData.map(c => c.company_id);
+              const { data: companyDetails } = await supabase
+                .from('companies')
+                .select('company_id, name')
+                .in('company_id', companyIds);
+              const companiesWithDetails = companiesData.map(cc => ({
+                ...cc,
+                company: companyDetails?.find(c => c.company_id === cc.company_id)
+              }));
+              setKeepInTouchCompanies(companiesWithDetails);
+              // Update keepInTouchContactDetails with the primary company
+              const primaryCompany = companiesWithDetails.find(c => c.is_primary) || companiesWithDetails[0];
+              if (primaryCompany?.company) {
+                setKeepInTouchContactDetails(prev => ({
+                  ...prev,
+                  company: primaryCompany.company
+                }));
+              }
+            }
+            toast.success(`Company linked to ${kitContactToLinkCompany.first_name || 'contact'}`);
+            setKitContactToLinkCompany(null);
+          } else {
+            // Open Company Data Integrity Modal for CRM tab
+            setCompanyDataIntegrityCompanyId(companyId);
+            setCompanyDataIntegrityModalOpen(true);
+            // Refresh context contacts to update company info
+            if (contextContactsHook?.refetchContacts) {
+              setTimeout(() => contextContactsHook.refetchContacts(), 500);
+            }
           }
         }}
       />
@@ -12909,11 +12965,80 @@ internet businesses.`;
         onRequestClose={() => {
           setDomainLinkModalOpen(false);
           setSelectedDomainForLink(null);
+          setKitContactToLinkCompany(null);
         }}
         domain={selectedDomainForLink?.domain || ''}
         sampleEmails={selectedDomainForLink?.sampleEmails || []}
         theme={theme}
         onDomainLinked={async ({ company, domain }) => {
+          // If from Keep in Touch, link company to contact and refresh
+          if (kitContactToLinkCompany) {
+            try {
+              // Check if link already exists
+              const { data: existingLink } = await supabase
+                .from('contact_companies')
+                .select('contact_companies_id')
+                .eq('contact_id', kitContactToLinkCompany.contact_id)
+                .eq('company_id', company.company_id)
+                .maybeSingle();
+
+              if (!existingLink) {
+                // Check if contact has any companies linked (for is_primary)
+                const { data: existingCompanies } = await supabase
+                  .from('contact_companies')
+                  .select('contact_companies_id')
+                  .eq('contact_id', kitContactToLinkCompany.contact_id)
+                  .limit(1);
+
+                const isPrimary = !existingCompanies || existingCompanies.length === 0;
+
+                // Create the link
+                await supabase
+                  .from('contact_companies')
+                  .insert({
+                    contact_id: kitContactToLinkCompany.contact_id,
+                    company_id: company.company_id,
+                    is_primary: isPrimary
+                  });
+              }
+
+              // Refresh keepInTouchCompanies
+              const { data: companiesData } = await supabase
+                .from('contact_companies')
+                .select('contact_companies_id, company_id, is_primary, relationship')
+                .eq('contact_id', kitContactToLinkCompany.contact_id)
+                .order('is_primary', { ascending: false });
+
+              if (companiesData && companiesData.length > 0) {
+                const companyIds = companiesData.map(c => c.company_id);
+                const { data: companyDetails } = await supabase
+                  .from('companies')
+                  .select('company_id, name')
+                  .in('company_id', companyIds);
+                const companiesWithDetails = companiesData.map(cc => ({
+                  ...cc,
+                  company: companyDetails?.find(c => c.company_id === cc.company_id)
+                }));
+                setKeepInTouchCompanies(companiesWithDetails);
+                // Update keepInTouchContactDetails with the primary company
+                const primaryCompany = companiesWithDetails.find(c => c.is_primary) || companiesWithDetails[0];
+                if (primaryCompany?.company) {
+                  setKeepInTouchContactDetails(prev => ({
+                    ...prev,
+                    company: primaryCompany.company
+                  }));
+                }
+              }
+
+              toast.success(`Company ${company.name} linked to ${kitContactToLinkCompany.first_name || 'contact'}`);
+            } catch (error) {
+              console.error('Error linking company to contact:', error);
+              toast.error('Failed to link company to contact');
+            }
+            setKitContactToLinkCompany(null);
+            return;
+          }
+
           // Remove from not in CRM list
           setNotInCrmDomains(prev => prev.filter(item => item.domain !== domain));
 
@@ -13001,14 +13126,62 @@ internet businesses.`;
       {/* Data Integrity Modal (Contacts) */}
       <DataIntegrityModal
         isOpen={dataIntegrityModalOpen}
-        onClose={() => { setDataIntegrityModalOpen(false); setDataIntegrityContactId(null); }}
+        onClose={async () => {
+          setDataIntegrityModalOpen(false);
+          setDataIntegrityContactId(null);
+          // Refresh Keep in Touch contact data on close
+          if (keepInTouchContactDetails?.contact_id) {
+            // Fetch updated contact data including christmas/easter wishes
+            const { data: contactData } = await supabase
+              .from('contacts')
+              .select('christmas, easter, job_role, first_name, last_name')
+              .eq('contact_id', keepInTouchContactDetails.contact_id)
+              .maybeSingle();
+            // Fetch completeness score
+            const { data: completenessData } = await supabase
+              .from('contact_completeness')
+              .select('completeness_score')
+              .eq('contact_id', keepInTouchContactDetails.contact_id)
+              .maybeSingle();
+            // Update keepInTouchContactDetails
+            if (contactData || completenessData) {
+              setKeepInTouchContactDetails(prev => ({
+                ...prev,
+                ...(contactData || {}),
+                completeness_score: completenessData ? Math.round(completenessData.completeness_score) : prev?.completeness_score
+              }));
+            }
+            // Also update selectedKeepInTouchContact for the dropdowns
+            if (contactData) {
+              setSelectedKeepInTouchContact(prev => ({
+                ...prev,
+                christmas: contactData.christmas,
+                easter: contactData.easter
+              }));
+            }
+          }
+        }}
         contactId={dataIntegrityContactId}
         theme={theme}
-        onRefresh={() => {
+        onRefresh={async () => {
           // Refresh emailContacts to update completeness scores
           if (selectedThread && selectedThread.length > 0) {
             // Trigger re-fetch by updating a dependency
             setSelectedThread([...selectedThread]);
+          }
+          // Refresh Keep in Touch contact completeness score
+          if (keepInTouchContactDetails?.contact_id) {
+            const { data: completenessData } = await supabase
+              .from('contact_completeness')
+              .select('completeness_score')
+              .eq('contact_id', keepInTouchContactDetails.contact_id)
+              .maybeSingle();
+            if (completenessData) {
+              setKeepInTouchContactDetails(prev => ({
+                ...prev,
+                completeness_score: Math.round(completenessData.completeness_score)
+              }));
+            }
           }
         }}
       />

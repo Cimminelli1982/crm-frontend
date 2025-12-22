@@ -267,7 +267,7 @@ const DomainLinkModal = ({
       const baseDomain = domain.replace(/\.(com|it|net|org|co|io|uk|de|fr|es|eu)$/i, '');
       const base = baseDomain.toLowerCase();
 
-      // 1. MATCH BY NAME - company name contains domain parts
+      // 1. MATCH BY NAME - company name contains domain parts OR domain contains company name
       const searchTerms = [baseDomain];
       const knownWords = ['torino', 'milano', 'roma', 'palestre', 'fitness', 'sport', 'tech', 'group', 'studio', 'lab', 'media', 'digital'];
       knownWords.forEach(word => {
@@ -277,6 +277,8 @@ const DomainLinkModal = ({
       });
 
       let nameResults = [];
+
+      // Search for companies where name contains domain parts
       for (const term of searchTerms) {
         const { data } = await supabase
           .from('companies')
@@ -284,18 +286,58 @@ const DomainLinkModal = ({
           .ilike('name', `%${term}%`)
           .not('category', 'eq', 'Skip')
           .not('name', 'ilike', '%[SPLIT]%')
-          .limit(3);
+          .limit(5);
         if (data) nameResults = [...nameResults, ...data];
       }
-      // Dedupe and sort by match count
+
+      // REVERSE SEARCH: Find companies whose name is contained IN the domain
+      // e.g., domain "gopillar" should match company "Pillar"
+      // Generate substrings of the domain (min 3 chars) and search for exact company names
+      if (base.length >= 4) {
+        const substrings = [];
+        for (let start = 0; start < base.length - 2; start++) {
+          for (let len = 3; len <= base.length - start; len++) {
+            const sub = base.substring(start, start + len);
+            if (sub.length >= 3 && sub.length <= 20) {
+              substrings.push(sub);
+            }
+          }
+        }
+        // Remove duplicates, prioritize longer substrings (more likely to be company names)
+        const uniqueSubstrings = [...new Set(substrings)]
+          .filter(s => s !== base && s.length >= 3)
+          .sort((a, b) => b.length - a.length) // Longer first
+          .slice(0, 15); // Limit to avoid too many queries
+
+        // Search for companies with exact name match on substrings
+        for (const sub of uniqueSubstrings) {
+          const { data: subMatches } = await supabase
+            .from('companies')
+            .select('company_id, name, website, category')
+            .ilike('name', sub)
+            .not('category', 'eq', 'Skip')
+            .limit(3);
+          if (subMatches) nameResults = [...nameResults, ...subMatches];
+        }
+      }
+
+      // Dedupe and sort by match quality
       const byName = nameResults
         .filter((c, i, self) => i === self.findIndex(x => x.company_id === c.company_id))
         .sort((a, b) => {
-          const aMatches = searchTerms.filter(t => a.name.toLowerCase().includes(t.toLowerCase())).length;
-          const bMatches = searchTerms.filter(t => b.name.toLowerCase().includes(t.toLowerCase())).length;
+          const aName = a.name.toLowerCase();
+          const bName = b.name.toLowerCase();
+          // Exact match in domain gets highest priority
+          const aInDomain = base.includes(aName.replace(/[^a-z0-9]/g, ''));
+          const bInDomain = base.includes(bName.replace(/[^a-z0-9]/g, ''));
+          if (aInDomain && !bInDomain) return -1;
+          if (bInDomain && !aInDomain) return 1;
+          // Then sort by match count
+          const aMatches = searchTerms.filter(t => aName.includes(t.toLowerCase())).length;
+          const bMatches = searchTerms.filter(t => bName.includes(t.toLowerCase())).length;
           return bMatches - aMatches;
         })
-        .slice(0, 2);
+        .slice(0, 5);
 
       // 2. MATCH BY DOMAIN - similar domains in company_domains table
       const { data: domainMatches } = await supabase

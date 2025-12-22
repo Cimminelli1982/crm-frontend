@@ -243,6 +243,7 @@ const SearchOrCreateCompanyModal = ({
   onClose,
   onCompanySelected,
   contactToLink = null, // Optional: contact to link the company to
+  contactEmails = [], // Optional: contact's emails for auto-suggestion
   theme = 'dark'
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -250,6 +251,7 @@ const SearchOrCreateCompanyModal = ({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [initialSearchDone, setInitialSearchDone] = useState(false);
 
   // Helper to link company to contact
   const linkCompanyToContact = async (companyId) => {
@@ -297,14 +299,29 @@ const SearchOrCreateCompanyModal = ({
     }
   };
 
-  // Reset state when modal opens
+  // Reset state when modal opens and auto-search based on email domain
   useEffect(() => {
     if (isOpen) {
-      setSearchTerm('');
+      setInitialSearchDone(false);
       setSuggestions([]);
       setShowSuggestions(false);
+
+      // Auto-populate with email domain if available
+      const primaryEmail = contactEmails?.find(e => e.is_primary)?.email || contactEmails?.[0]?.email;
+      if (primaryEmail && primaryEmail.includes('@')) {
+        const domain = primaryEmail.split('@')[1]?.toLowerCase();
+        if (domain && !domain.includes('gmail') && !domain.includes('yahoo') && !domain.includes('hotmail') && !domain.includes('outlook')) {
+          // Use the domain name part (before .com, .eu, etc)
+          const domainName = domain.split('.')[0];
+          setSearchTerm(domainName);
+        } else {
+          setSearchTerm('');
+        }
+      } else {
+        setSearchTerm('');
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, contactEmails]);
 
   // Helper to check if search term looks like a domain
   const isDomainLike = (term) => {
@@ -426,6 +443,28 @@ const SearchOrCreateCompanyModal = ({
         }
       }
 
+      // 5. Search LinkedIn URLs for partial matches (e.g., "gopillar" matches linkedin.com/company/gopillar)
+      if (!isLinkedInUrl(search) && search.length >= 3) {
+        const { data: linkedinPartialMatches } = await supabase
+          .from('companies')
+          .select('company_id, name, category, linkedin')
+          .ilike('linkedin', `%${search}%`)
+          .limit(5);
+
+        if (linkedinPartialMatches) {
+          linkedinPartialMatches.forEach(match => {
+            if (!addedCompanyIds.has(match.company_id)) {
+              addedCompanyIds.add(match.company_id);
+              results.push({
+                ...match,
+                matchType: 'linkedin',
+                matchValue: match.linkedin
+              });
+            }
+          });
+        }
+      }
+
       // Load domains for each company to show in results
       if (results.length > 0) {
         const companyIds = results.map(r => r.company_id);
@@ -449,6 +488,14 @@ const SearchOrCreateCompanyModal = ({
       setLoading(false);
     }
   }, []);
+
+  // Auto-search on initial load with email domain
+  useEffect(() => {
+    if (isOpen && searchTerm && !initialSearchDone) {
+      setInitialSearchDone(true);
+      fetchCompanySuggestions(searchTerm);
+    }
+  }, [isOpen, searchTerm, initialSearchDone, fetchCompanySuggestions]);
 
   // Debounced search
   useEffect(() => {

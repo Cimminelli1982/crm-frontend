@@ -29,6 +29,10 @@ const useContextContacts = (activeTab, selectedThread, selectedWhatsappChat, sel
       return extractWhatsAppParticipants(selectedWhatsappChat);
     }
     if (activeTab === 'calendar' && selectedCalendarEvent) {
+      // For processed meetings, extract from meeting_contacts
+      if (selectedCalendarEvent.source === 'meetings') {
+        return { emails: [], phones: [], type: 'processed_meeting', meeting: selectedCalendarEvent };
+      }
       return extractCalendarParticipants(selectedCalendarEvent);
     }
     if (activeTab === 'deals' && selectedPipelineDeal) {
@@ -81,6 +85,69 @@ const useContextContacts = (activeTab, selectedThread, selectedWhatsappChat, sel
           setContextContacts(dealContacts);
         } catch (error) {
           console.error('Error fetching deal contacts:', error);
+        } finally {
+          setLoadingContacts(false);
+        }
+        return;
+      }
+
+      // For processed meetings, extract contacts from meeting_contacts
+      if (type === 'processed_meeting' && participants.meeting) {
+        setLoadingContacts(true);
+        try {
+          const meetingContacts = participants.meeting.meeting_contacts || [];
+          const contactIds = meetingContacts
+            .filter(mc => mc.contacts?.contact_id)
+            .map(mc => mc.contacts.contact_id);
+
+          // Fetch completeness scores for meeting contacts
+          let completenessById = {};
+          if (contactIds.length > 0) {
+            const { data: completenessData } = await supabase
+              .from('contact_completeness')
+              .select('contact_id, completeness_score')
+              .in('contact_id', contactIds);
+
+            if (completenessData) {
+              completenessData.forEach(c => {
+                completenessById[c.contact_id] = c.completeness_score;
+              });
+            }
+          }
+
+          // Fetch companies for contacts
+          let contactToCompany = {};
+          if (contactIds.length > 0) {
+            const { data: contactCompanies } = await supabase
+              .from('contact_companies')
+              .select('contact_id, company_id, is_primary, companies(company_id, name)')
+              .in('contact_id', contactIds);
+
+            if (contactCompanies) {
+              contactCompanies.forEach(cc => {
+                if (!contactToCompany[cc.contact_id] || cc.is_primary) {
+                  contactToCompany[cc.contact_id] = { name: cc.companies?.name };
+                }
+              });
+            }
+          }
+
+          const processedContacts = meetingContacts.map(mc => ({
+            contact: mc.contacts ? {
+              ...mc.contacts,
+              company_name: contactToCompany[mc.contacts.contact_id]?.name || null,
+              completeness_score: completenessById[mc.contacts.contact_id] || 0
+            } : null,
+            hasContact: !!mc.contacts,
+            name: mc.contacts ? `${mc.contacts.first_name || ''} ${mc.contacts.last_name || ''}`.trim() : 'Unknown',
+            roles: ['attendee'],
+            email: null,
+            phone: null
+          })).filter(c => c.contact);
+
+          setContextContacts(processedContacts);
+        } catch (error) {
+          console.error('Error fetching processed meeting contacts:', error);
         } finally {
           setLoadingContacts(false);
         }
@@ -460,6 +527,93 @@ const useContextContacts = (activeTab, selectedThread, selectedWhatsappChat, sel
           setContextCompanies(dealCompanies);
         } catch (error) {
           console.error('Error fetching deal companies:', error);
+        } finally {
+          setLoadingCompanies(false);
+        }
+        return;
+      }
+
+      // For processed meetings, extract companies from linked contacts
+      if (participants.type === 'processed_meeting' && contextContacts.length > 0) {
+        setLoadingCompanies(true);
+        try {
+          const contactIds = contextContacts
+            .filter(c => c.contact?.contact_id)
+            .map(c => c.contact.contact_id);
+
+          if (contactIds.length === 0) {
+            setContextCompanies([]);
+            setLoadingCompanies(false);
+            return;
+          }
+
+          // Get contact_companies associations
+          const { data: contactCompaniesData } = await supabase
+            .from('contact_companies')
+            .select('contact_id, company_id, is_primary, companies(company_id, name, website, category, show_missing)')
+            .in('contact_id', contactIds);
+
+          const companyIds = [...new Set((contactCompaniesData || []).map(cc => cc.company_id).filter(Boolean))];
+
+          if (companyIds.length === 0) {
+            setContextCompanies([]);
+            setLoadingCompanies(false);
+            return;
+          }
+
+          // Fetch domains, completeness, logos
+          const [domainsRes, completenessRes, logosRes] = await Promise.all([
+            supabase.from('company_domains').select('company_id, domain').in('company_id', companyIds),
+            supabase.from('company_completeness').select('company_id, completeness_score').in('company_id', companyIds),
+            supabase.from('company_attachments')
+              .select('company_id, attachments(file_url, permanent_url)')
+              .in('company_id', companyIds)
+              .eq('is_logo', true)
+          ]);
+
+          const companyDomainsMap = {};
+          const companyCompletenessMap = {};
+          const companyLogosMap = {};
+
+          if (domainsRes.data) {
+            domainsRes.data.forEach(d => {
+              if (!companyDomainsMap[d.company_id]) companyDomainsMap[d.company_id] = [];
+              companyDomainsMap[d.company_id].push(d.domain);
+            });
+          }
+          if (completenessRes.data) {
+            completenessRes.data.forEach(c => {
+              companyCompletenessMap[c.company_id] = c.completeness_score;
+            });
+          }
+          if (logosRes.data) {
+            logosRes.data.forEach(l => {
+              if (l.attachments) companyLogosMap[l.company_id] = l.attachments.permanent_url || l.attachments.file_url;
+            });
+          }
+
+          // Build companies list
+          const seenCompanyIds = new Set();
+          const companiesResult = [];
+
+          (contactCompaniesData || []).forEach(cc => {
+            if (cc.companies && !seenCompanyIds.has(cc.companies.company_id)) {
+              seenCompanyIds.add(cc.companies.company_id);
+              companiesResult.push({
+                domain: companyDomainsMap[cc.company_id]?.[0] || null,
+                domains: companyDomainsMap[cc.company_id] || [],
+                company: cc.companies,
+                hasCompany: true,
+                contacts: [],
+                completeness_score: companyCompletenessMap[cc.company_id] || 0,
+                logo_url: companyLogosMap[cc.company_id] || null
+              });
+            }
+          });
+
+          setContextCompanies(companiesResult);
+        } catch (error) {
+          console.error('Error fetching processed meeting companies:', error);
         } finally {
           setLoadingCompanies(false);
         }

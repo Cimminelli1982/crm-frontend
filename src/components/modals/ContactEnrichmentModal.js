@@ -697,8 +697,17 @@ const ContactEnrichmentModal = ({
           if (existingDomain) {
             // Domain exists, use that company
             companyId = existingDomain.company_id;
+          } else if (enrichmentData.company_match?.exists_in_db) {
+            // Domain doesn't exist but company already exists in CRM - use existing company and add domain
+            companyId = enrichmentData.company_match.company_id;
+            // Add the domain to the existing company
+            await supabase.from('company_domains').insert({
+              company_id: companyId,
+              domain: companyDomain,
+              is_primary: false
+            });
           } else {
-            // Domain doesn't exist - create new company, then link domain
+            // Domain doesn't exist and no company match - create new company, then link domain
             const { data: newCompany, error: companyError } = await supabase
               .from('companies')
               .insert({
@@ -711,7 +720,7 @@ const ContactEnrichmentModal = ({
               .single();
 
             if (!companyError && newCompany) {
-              companyId = newCompany.id;
+              companyId = newCompany.company_id;
 
               // Create domain link
               await supabase.from('company_domains').insert({
