@@ -598,8 +598,8 @@ const ContactEnrichmentModal = ({
       }
 
       // Save profile photo URL
-      if (enrichmentData.photo_url && !contact.profile_picture) {
-        updateData.profile_picture = enrichmentData.photo_url;
+      if (enrichmentData.photo_url && !contact.profile_image_url) {
+        updateData.profile_image_url = enrichmentData.photo_url;
       }
 
       if (Object.keys(updateData).length > 0) {
@@ -989,7 +989,7 @@ const ContactEnrichmentModal = ({
                 }}>
                   <strong>Will save:</strong>{' '}
                   {[
-                    enrichmentData.photo_url && !contact.profile_picture && 'Profile Photo',
+                    enrichmentData.photo_url && !contact.profile_image_url && 'Profile Photo',
                     enrichmentData.job_title && !contact.job_role && 'Job Title',
                     enrichmentData.phones?.length > 0 && 'Phone Numbers',
                     enrichmentData.city && 'City',
