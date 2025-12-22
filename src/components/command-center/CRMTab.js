@@ -263,9 +263,10 @@ const CRMTab = ({
             <>
               {emailCompanies.map((item, idx) => {
                 const companyScore = item.completeness_score || 0;
+                const isCompanyMarkedComplete = item.company?.show_missing === false;
                 const companyCircumference = 2 * Math.PI * 16;
-                const companyStrokeDashoffset = companyCircumference - (companyScore / 100) * companyCircumference;
-                const companyScoreColor = companyScore >= 70 ? '#10B981' : companyScore >= 40 ? '#F59E0B' : '#EF4444';
+                const companyStrokeDashoffset = isCompanyMarkedComplete ? 0 : companyCircumference - (companyScore / 100) * companyCircumference;
+                const companyScoreColor = isCompanyMarkedComplete ? '#F59E0B' : (companyScore >= 70 ? '#10B981' : companyScore >= 40 ? '#F59E0B' : '#EF4444');
                 return (
               <ActionCard
                 key={item.domain + idx}
@@ -294,7 +295,7 @@ const CRMTab = ({
                   {item.hasCompany && (
                     <div
                       style={{ position: 'relative', width: 40, height: 40, cursor: 'pointer' }}
-                      title={`${companyScore}% complete - Click to edit`}
+                      title={isCompanyMarkedComplete ? 'Marked complete' : `${companyScore}% complete - Click to edit`}
                       onClick={(e) => {
                         e.stopPropagation();
                         setCompanyDataIntegrityCompanyId(item.company.company_id);
@@ -306,7 +307,7 @@ const CRMTab = ({
                         <circle cx="20" cy="20" r="16" fill="none" stroke={companyScoreColor} strokeWidth="4" strokeLinecap="round" strokeDasharray={companyCircumference} strokeDashoffset={companyStrokeDashoffset} />
                       </svg>
                       <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontSize: '10px', fontWeight: 600, color: theme === 'light' ? '#374151' : '#D1D5DB' }}>
-                        {companyScore === 100 ? <FaCrown size={14} color="#F59E0B" /> : `${companyScore}%`}
+                        {(isCompanyMarkedComplete || companyScore === 100) ? <FaCrown size={14} color="#F59E0B" /> : `${companyScore}%`}
                       </div>
                     </div>
                   )}

@@ -106,6 +106,7 @@ import EditCompanyModal from '../components/modals/EditCompanyModal';
 import AttachmentSaveModal from '../components/modals/AttachmentSaveModal';
 import DataIntegrityModal from '../components/modals/DataIntegrityModal';
 import CompanyDataIntegrityModal from '../components/modals/CompanyDataIntegrityModal';
+import SearchOrCreateCompanyModal from '../components/modals/SearchOrCreateCompanyModal';
 import CreateCompanyFromDomainModal from '../components/modals/CreateCompanyFromDomainModal';
 import LinkToExistingModal from '../components/modals/LinkToExistingModal';
 import AddCompanyModal from '../components/modals/AddCompanyModal';
@@ -192,31 +193,34 @@ const CommandCenterPage = ({ theme }) => {
     return items.filter(item => item.status === status);
   };
 
-  // Calendar sections state (thisWeek, upcoming, past)
+  // Calendar sections state (needReview, thisWeek, upcoming)
   const [calendarSections, setCalendarSections] = useState({
+    needReview: true,
     thisWeek: true,
-    upcoming: true,
-    past: false
+    upcoming: true
   });
 
   const toggleCalendarSection = (section) => {
     setCalendarSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
-  // Filter calendar events by thisWeek/upcoming/past
+  // Filter calendar events by needReview/thisWeek/upcoming (time-aware)
   const filterCalendarEvents = (events, type) => {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0); // Start of today
+    const now = new Date(); // Current time (not midnight)
+
+    // Get start of today for week calculation
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0);
 
     // Get end of this week (Sunday)
-    const endOfWeek = new Date(now);
-    const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    const endOfWeek = new Date(startOfToday);
+    const dayOfWeek = startOfToday.getDay(); // 0 = Sunday, 1 = Monday, etc.
     const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
-    endOfWeek.setDate(now.getDate() + daysUntilSunday);
+    endOfWeek.setDate(startOfToday.getDate() + daysUntilSunday);
     endOfWeek.setHours(23, 59, 59, 999);
 
     if (type === 'thisWeek') {
-      // Events from today until end of this week
+      // Events that haven't started yet and are within this week
       return events
         .filter(event => {
           const eventDate = new Date(event.date);
@@ -228,12 +232,13 @@ const CommandCenterPage = ({ theme }) => {
       return events
         .filter(event => new Date(event.date) > endOfWeek)
         .sort((a, b) => new Date(a.date) - new Date(b.date));
-    } else {
-      // Past events, sorted most recent first
+    } else if (type === 'needReview' || type === 'past') {
+      // Past events (start time has passed), sorted most recent first
       return events
         .filter(event => new Date(event.date) < now)
         .sort((a, b) => new Date(b.date) - new Date(a.date));
     }
+    return [];
   };
 
   // Get color for deal category
@@ -306,6 +311,13 @@ const CommandCenterPage = ({ theme }) => {
   const [spamMenuOpen, setSpamMenuOpen] = useState(false);
   const [activeActionTab, setActiveActionTab] = useState('crm');
   const [crmSubTab, setCrmSubTab] = useState('contacts'); // 'contacts' or 'companies' - sub-menu inside CRM tab
+
+  // When switching to deals tab, if dataIntegrity is selected, switch to chat
+  useEffect(() => {
+    if (activeTab === 'deals' && activeActionTab === 'dataIntegrity') {
+      setActiveActionTab('chat');
+    }
+  }, [activeTab]);
 
   // Context contacts hook - handles Email, WhatsApp, and Calendar sources
   // (emailContacts and emailCompanies are aliases for backwards compatibility)
@@ -392,6 +404,13 @@ const CommandCenterPage = ({ theme }) => {
   // Calendar events from DB (staging) - must be before useContextContacts
   const [calendarEvents, setCalendarEvents] = useState([]);
   const [selectedCalendarEvent, setSelectedCalendarEvent] = useState(null);
+  const [editingCalendarTitle, setEditingCalendarTitle] = useState(false);
+  const [calendarTitleInput, setCalendarTitleInput] = useState('');
+  const [calendarViewMode, setCalendarViewMode] = useState('toProcess'); // 'toProcess' | 'processed'
+  const [processedMeetings, setProcessedMeetings] = useState([]);
+  const [calendarEventScore, setCalendarEventScore] = useState(null);
+  const [calendarEventNotes, setCalendarEventNotes] = useState('');
+  const [selectedContactsForMeeting, setSelectedContactsForMeeting] = useState([]);
 
   // Deals Pipeline state - must be before useContextContacts
   const [pipelineDeals, setPipelineDeals] = useState([]);
@@ -405,7 +424,8 @@ const CommandCenterPage = ({ theme }) => {
     emailCompanies,
     setEmailCompanies,
     loadingContacts,
-    loadingCompanies
+    loadingCompanies,
+    refetchContacts
   } = contextContactsHook;
 
   // AI Chat hook - supports both Email and WhatsApp context
@@ -589,6 +609,10 @@ const CommandCenterPage = ({ theme }) => {
   const [contactSearchLoading, setContactSearchLoading] = useState(false);
   const [selectedContactRelationship, setSelectedContactRelationship] = useState('other');
   const DEAL_RELATIONSHIP_TYPES = ['proposer', 'introducer', 'co-investor', 'advisor', 'other'];
+  const [addMeetingContactModalOpen, setAddMeetingContactModalOpen] = useState(false);
+  const [meetingContactSearchQuery, setMeetingContactSearchQuery] = useState('');
+  const [meetingContactSearchResults, setMeetingContactSearchResults] = useState([]);
+  const [meetingContactSearchLoading, setMeetingContactSearchLoading] = useState(false);
   const [addDealCompanyModalOpen, setAddDealCompanyModalOpen] = useState(false);
   const [dealCompanySearchQuery, setDealCompanySearchQuery] = useState('');
   const [dealCompanySearchResults, setDealCompanySearchResults] = useState([]);
@@ -637,6 +661,8 @@ const CommandCenterPage = ({ theme }) => {
   const [kitTagsModalOpen, setKitTagsModalOpen] = useState(false);
   const [kitCityModalOpen, setKitCityModalOpen] = useState(false);
   const [kitCompanyModalContact, setKitCompanyModalContact] = useState(null);
+  // Data Integrity - Link Company modal state (for contacts without email)
+  const [linkCompanyModalContact, setLinkCompanyModalContact] = useState(null);
   const [kitWhatsappMessages, setKitWhatsappMessages] = useState([]);
   const [kitWhatsappLoading, setKitWhatsappLoading] = useState(false);
   const [kitWhatsappInput, setKitWhatsappInput] = useState('');
@@ -993,6 +1019,142 @@ internet businesses.`;
     } catch (err) {
       console.error('Error adding contact to deal:', err);
       toast.error('Failed to add contact');
+    }
+  };
+
+  // Search contacts for meeting
+  const handleSearchMeetingContacts = async (query) => {
+    setMeetingContactSearchQuery(query);
+    if (!query.trim()) {
+      setMeetingContactSearchResults([]);
+      return;
+    }
+    setMeetingContactSearchLoading(true);
+    try {
+      const searchTerms = query.trim().split(/\s+/);
+
+      // Build name search query
+      let nameSearchQuery = supabase
+        .from('contacts')
+        .select('contact_id, first_name, last_name, profile_image_url, contact_emails(email)');
+
+      searchTerms.forEach(term => {
+        nameSearchQuery = nameSearchQuery.or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%`);
+      });
+
+      const nameSearch = nameSearchQuery.limit(10);
+
+      // Search by email
+      const emailSearch = supabase
+        .from('contact_emails')
+        .select('contact_id, email, contacts(contact_id, first_name, last_name, profile_image_url)')
+        .ilike('email', `%${searchTerms[0]}%`)
+        .limit(10);
+
+      const [nameResult, emailResult] = await Promise.all([nameSearch, emailSearch]);
+
+      if (nameResult.error) throw nameResult.error;
+      if (emailResult.error) throw emailResult.error;
+
+      // Merge results
+      const contactMap = new Map();
+
+      (nameResult.data || []).forEach(c => {
+        contactMap.set(c.contact_id, {
+          ...c,
+          email: c.contact_emails?.[0]?.email || null
+        });
+      });
+
+      (emailResult.data || []).forEach(e => {
+        if (e.contacts && !contactMap.has(e.contact_id)) {
+          contactMap.set(e.contact_id, {
+            ...e.contacts,
+            email: e.email
+          });
+        }
+      });
+
+      // Filter out contacts already linked to this meeting
+      const linkedContactIds = selectedCalendarEvent?.meeting_id
+        ? (selectedCalendarEvent.meeting_contacts || []).map(mc => mc.contact_id)
+        : [...emailContacts.filter(c => c.contact?.contact_id).map(c => c.contact.contact_id), ...selectedContactsForMeeting.map(c => c.contact?.contact_id || c.contact_id)];
+
+      const filteredResults = Array.from(contactMap.values()).filter(c => !linkedContactIds.includes(c.contact_id));
+
+      setMeetingContactSearchResults(filteredResults.slice(0, 10));
+    } catch (err) {
+      console.error('Error searching contacts:', err);
+    } finally {
+      setMeetingContactSearchLoading(false);
+    }
+  };
+
+  // Add contact to meeting
+  const handleAddMeetingContact = async (contact) => {
+    if (!selectedCalendarEvent || !contact) return;
+
+    if (selectedCalendarEvent.meeting_id) {
+      try {
+        const { error } = await supabase
+          .from('meeting_contacts')
+          .insert({
+            meeting_id: selectedCalendarEvent.meeting_id,
+            contact_id: contact.contact_id
+          });
+        if (error) throw error;
+
+        const newContactLink = {
+          meeting_id: selectedCalendarEvent.meeting_id,
+          contact_id: contact.contact_id,
+          contacts: contact
+        };
+        const updatedContacts = [...(selectedCalendarEvent.meeting_contacts || []), newContactLink];
+        const updatedEvent = { ...selectedCalendarEvent, meeting_contacts: updatedContacts };
+        setSelectedCalendarEvent(updatedEvent);
+        setProcessedMeetings(prev => prev.map(m => m.meeting_id === selectedCalendarEvent.meeting_id ? updatedEvent : m));
+        toast.success('Contact added to meeting');
+      } catch (err) {
+        console.error('Error adding contact to meeting:', err);
+        toast.error('Failed to add contact');
+      }
+    } else {
+      const alreadyAdded = selectedContactsForMeeting.some(c => c.contact_id === contact.contact_id);
+      if (!alreadyAdded) {
+        setSelectedContactsForMeeting(prev => [...prev, { contact: contact, contact_id: contact.contact_id }]);
+        toast.success('Contact will be linked when processed');
+      }
+    }
+    setMeetingContactSearchQuery('');
+    setMeetingContactSearchResults([]);
+    setAddMeetingContactModalOpen(false);
+  };
+
+  // Remove contact from meeting
+  const handleRemoveMeetingContact = async (contactId) => {
+    if (!selectedCalendarEvent || !contactId) return;
+
+    if (selectedCalendarEvent.meeting_id) {
+      try {
+        const { error } = await supabase
+          .from('meeting_contacts')
+          .delete()
+          .eq('meeting_id', selectedCalendarEvent.meeting_id)
+          .eq('contact_id', contactId);
+        if (error) throw error;
+
+        const updatedContacts = selectedCalendarEvent.meeting_contacts.filter(mc => mc.contact_id !== contactId);
+        const updatedEvent = { ...selectedCalendarEvent, meeting_contacts: updatedContacts };
+        setSelectedCalendarEvent(updatedEvent);
+        setProcessedMeetings(prev => prev.map(m => m.meeting_id === selectedCalendarEvent.meeting_id ? updatedEvent : m));
+        toast.success('Contact removed from meeting');
+      } catch (err) {
+        console.error('Error removing contact from meeting:', err);
+        toast.error('Failed to remove contact');
+      }
+    } else {
+      setSelectedContactsForMeeting(prev => prev.filter(c => (c.contact?.contact_id || c.contact_id) !== contactId));
+      toast.success('Contact removed');
     }
   };
 
@@ -1583,17 +1745,51 @@ internet businesses.`;
         console.error('Error fetching calendar events:', error);
       } else {
         setCalendarEvents(data || []);
-        if (data && data.length > 0) {
-          setSelectedCalendarEvent(data[0]);
+        if (calendarViewMode === 'toProcess' && data && data.length > 0) {
+          setSelectedCalendarEvent({ ...data[0], source: 'inbox' });
+        }
+      }
+      setCalendarLoading(false);
+    };
+
+    const fetchProcessedMeetings = async () => {
+      setCalendarLoading(true);
+
+      const { data, error } = await supabase
+        .from('meetings')
+        .select(`
+          *,
+          meeting_contacts (
+            contact_id,
+            contacts:contact_id (
+              contact_id,
+              first_name,
+              last_name,
+              profile_image_url
+            )
+          )
+        `)
+        .order('meeting_date', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching processed meetings:', error);
+      } else {
+        setProcessedMeetings(data || []);
+        if (calendarViewMode === 'processed' && data && data.length > 0) {
+          setSelectedCalendarEvent({ ...data[0], source: 'meetings' });
         }
       }
       setCalendarLoading(false);
     };
 
     if (activeTab === 'calendar') {
-      fetchCalendarEvents();
+      if (calendarViewMode === 'toProcess') {
+        fetchCalendarEvents();
+      } else {
+        fetchProcessedMeetings();
+      }
     }
-  }, [activeTab]);
+  }, [activeTab, calendarViewMode]);
 
   // Fetch Deals from Supabase (all deals)
   useEffect(() => {
@@ -2146,6 +2342,9 @@ internet businesses.`;
 
   // State for Add Company Modal
   const [addCompanyModalOpen, setAddCompanyModalOpen] = useState(false);
+
+  // State for Search/Create Company Modal (CRM Tab)
+  const [searchOrCreateCompanyModalOpen, setSearchOrCreateCompanyModalOpen] = useState(false);
 
   // State for Data Integrity Modal (contacts)
   const [dataIntegrityModalOpen, setDataIntegrityModalOpen] = useState(false);
@@ -3644,15 +3843,18 @@ internet businesses.`;
   const handleLinkContactToCompanyByDomain = async (contact) => {
     try {
       const email = contact.emails?.[0];
+
+      // If no email, open the modal for manual company selection
       if (!email) {
-        toast.error('Contact has no email');
+        setLinkCompanyModalContact(contact);
         return;
       }
 
       // Extract domain from email
       const domain = email.split('@')[1]?.toLowerCase();
       if (!domain) {
-        toast.error('Invalid email format');
+        // Invalid email format, open modal for manual selection
+        setLinkCompanyModalContact(contact);
         return;
       }
 
@@ -3664,7 +3866,9 @@ internet businesses.`;
         .single();
 
       if (domainError || !domainData) {
-        toast.error(`No company found for domain ${domain}`);
+        // No company found for domain, open modal for manual selection
+        setLinkCompanyModalContact(contact);
+        toast.info(`No company found for domain ${domain}. Select one manually.`);
         return;
       }
 
@@ -4644,10 +4848,13 @@ internet businesses.`;
           whatsapp: {
             contact_name: selectedWhatsappChat.chat_name || selectedWhatsappChat.contact_number,
             contact_number: selectedWhatsappChat.contact_number,
+            is_group_chat: selectedWhatsappChat.is_group_chat || false,
             messages: selectedWhatsappChat.messages.map(m => ({
               content: m.body_text,
               is_from_me: m.direction === 'sent',
               timestamp: m.date,
+              sender_name: m.first_name || m.sender || null,
+              sender_number: m.contact_number || null,
             })),
           }
         };
@@ -4775,6 +4982,217 @@ internet businesses.`;
     }
   };
 
+  // Update calendar event title
+  const handleUpdateCalendarTitle = async (newTitle) => {
+    if (!selectedCalendarEvent || !newTitle.trim()) {
+      setEditingCalendarTitle(false);
+      return;
+    }
+
+    try {
+      if (selectedCalendarEvent.source === 'meetings') {
+        // Update processed meeting in meetings table
+        const { error } = await supabase
+          .from('meetings')
+          .update({ meeting_name: newTitle.trim() })
+          .eq('meeting_id', selectedCalendarEvent.meeting_id);
+
+        if (error) throw error;
+
+        // Update local state
+        setProcessedMeetings(prev => prev.map(m =>
+          m.meeting_id === selectedCalendarEvent.meeting_id ? { ...m, meeting_name: newTitle.trim() } : m
+        ));
+        setSelectedCalendarEvent(prev => ({ ...prev, meeting_name: newTitle.trim() }));
+      } else {
+        // Update inbox event in command_center_inbox table
+        const { error } = await supabase
+          .from('command_center_inbox')
+          .update({ subject: newTitle.trim() })
+          .eq('id', selectedCalendarEvent.id);
+
+        if (error) throw error;
+
+        // Update local state
+        setCalendarEvents(prev => prev.map(e =>
+          e.id === selectedCalendarEvent.id ? { ...e, subject: newTitle.trim() } : e
+        ));
+        setSelectedCalendarEvent(prev => ({ ...prev, subject: newTitle.trim() }));
+      }
+
+      setEditingCalendarTitle(false);
+      toast.success('Title updated');
+    } catch (error) {
+      console.error('Error updating calendar title:', error);
+      toast.error('Failed to update title');
+    }
+  };
+
+  // Process calendar event (Done button) - creates meeting record
+  const handleProcessCalendarEvent = async () => {
+    if (!selectedCalendarEvent) {
+      toast.error('No event selected');
+      return;
+    }
+
+    try {
+      // 1. Create meeting record
+      const scoreValue = calendarEventScore ? String(calendarEventScore) : null;
+      const { data: meetingData, error: meetingError } = await supabase
+        .from('meetings')
+        .insert({
+          meeting_name: selectedCalendarEvent.subject || 'Meeting',
+          meeting_date: selectedCalendarEvent.date,
+          meeting_status: 'Completed',
+          notes: calendarEventNotes || null,
+          score: scoreValue,
+          description: selectedCalendarEvent.body_text || null,
+          event_uid: selectedCalendarEvent.event_uid || null
+        })
+        .select()
+        .single();
+
+      if (meetingError) throw meetingError;
+
+      // 2. Link contacts - query directly from to_recipients emails (more reliable than state)
+      let contactIdsToLink = [];
+
+      // Get emails from to_recipients
+      let recipients = selectedCalendarEvent.to_recipients;
+      if (typeof recipients === 'string') {
+        try { recipients = JSON.parse(recipients); } catch (e) { recipients = []; }
+      }
+      if (recipients && Array.isArray(recipients)) {
+        const emails = recipients
+          .map(r => (typeof r === 'string' ? r : r.email || '').replace(/^MAILTO:/i, '').toLowerCase())
+          .filter(e => e && e !== 'simone@cimminelli.com' && !e.includes('@group.calendar.google.com'));
+
+        if (emails.length > 0) {
+          // Query contact_emails to find matching contact_ids
+          const { data: emailMatches } = await supabase
+            .from('contact_emails')
+            .select('contact_id')
+            .in('email', emails);
+
+          if (emailMatches) {
+            contactIdsToLink = [...new Set(emailMatches.map(m => m.contact_id))];
+          }
+        }
+      }
+
+      // Also add manually selected contacts
+      selectedContactsForMeeting.forEach(c => {
+        const cid = c.contact?.contact_id || c.contact_id;
+        if (cid && !contactIdsToLink.includes(cid)) {
+          contactIdsToLink.push(cid);
+        }
+      });
+
+      if (contactIdsToLink.length > 0) {
+        const meetingContactsData = contactIdsToLink.map(contact_id => ({
+          meeting_id: meetingData.meeting_id,
+          contact_id
+        }));
+
+        const { error: linkError } = await supabase
+          .from('meeting_contacts')
+          .insert(meetingContactsData);
+
+        if (linkError) console.error('Error linking contacts:', linkError);
+
+        // 3. Update last_interaction_at for linked contacts (use meeting datetime)
+        const meetingDateTime = selectedCalendarEvent.date || new Date().toISOString();
+        const { error: updateError } = await supabase
+          .from('contacts')
+          .update({ last_interaction_at: meetingDateTime })
+          .in('contact_id', contactIdsToLink);
+
+        if (updateError) console.error('Error updating last_interaction_at:', updateError);
+      }
+
+      // 4. Delete from command_center_inbox
+      const { error: deleteError } = await supabase
+        .from('command_center_inbox')
+        .delete()
+        .eq('id', selectedCalendarEvent.id);
+
+      if (deleteError) throw deleteError;
+
+      // 5. Update local state
+      setCalendarEvents(prev => prev.filter(e => e.id !== selectedCalendarEvent.id));
+
+      // Select next event or clear
+      const currentIndex = calendarEvents.findIndex(e => e.id === selectedCalendarEvent.id);
+      if (calendarEvents.length > 1) {
+        const nextIndex = currentIndex >= calendarEvents.length - 1 ? currentIndex - 1 : currentIndex;
+        const nextEvent = calendarEvents.filter(e => e.id !== selectedCalendarEvent.id)[nextIndex];
+        setSelectedCalendarEvent(nextEvent ? { ...nextEvent, source: 'inbox' } : null);
+      } else {
+        setSelectedCalendarEvent(null);
+      }
+
+      // Reset form state
+      setCalendarEventScore(null);
+      setCalendarEventNotes('');
+      setSelectedContactsForMeeting([]);
+
+      toast.success('Meeting salvato! ✅');
+    } catch (error) {
+      console.error('Error processing calendar event:', error);
+      toast.error('Errore nel salvare il meeting');
+    }
+  };
+
+  // Delete processed meeting
+  const handleDeleteProcessedMeeting = async (meetingId) => {
+    if (!meetingId) {
+      toast.error('No meeting selected');
+      return;
+    }
+
+    if (!window.confirm('Are you sure you want to delete this meeting? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      // 1. Delete from meeting_contacts junction table
+      const { error: deleteContactsError } = await supabase
+        .from('meeting_contacts')
+        .delete()
+        .eq('meeting_id', meetingId);
+
+      if (deleteContactsError) {
+        console.error('Error deleting meeting contacts:', deleteContactsError);
+      }
+
+      // 2. Delete the meeting record
+      const { error: deleteMeetingError } = await supabase
+        .from('meetings')
+        .delete()
+        .eq('meeting_id', meetingId);
+
+      if (deleteMeetingError) throw deleteMeetingError;
+
+      // 3. Update local state
+      setProcessedMeetings(prev => prev.filter(m => m.meeting_id !== meetingId));
+
+      // Select next meeting or clear
+      const currentIndex = processedMeetings.findIndex(m => m.meeting_id === meetingId);
+      if (processedMeetings.length > 1) {
+        const nextIndex = currentIndex >= processedMeetings.length - 1 ? currentIndex - 1 : currentIndex;
+        const nextMeeting = processedMeetings.filter(m => m.meeting_id !== meetingId)[nextIndex];
+        setSelectedCalendarEvent(nextMeeting ? { ...nextMeeting, source: 'meetings' } : null);
+      } else {
+        setSelectedCalendarEvent(null);
+      }
+
+      toast.success('Meeting deleted');
+    } catch (error) {
+      console.error('Error deleting meeting:', error);
+      toast.error('Failed to delete meeting');
+    }
+  };
+
   // Create calendar event
   const handleCreateCalendarEvent = async () => {
     if (!pendingCalendarEvent) {
@@ -4789,11 +5207,12 @@ internet businesses.`;
       const eventData = {
         title: calendarEventEdits.title || pendingCalendarEvent.title,
         description: calendarEventEdits.description || pendingCalendarEvent.description || '',
-        location: calendarEventEdits.location || pendingCalendarEvent.location || '',
+        location: calendarEventEdits.useGoogleMeet ? '' : (calendarEventEdits.location || pendingCalendarEvent.location || ''),
         startDate: calendarEventEdits.datetime || pendingCalendarEvent.datetime,
         attendees: calendarEventEdits.attendees || pendingCalendarEvent.attendees || [],
         timezone: calendarEventEdits.timezone || 'Europe/Rome',
         reminders: [15], // 15 min before
+        useGoogleMeet: calendarEventEdits.useGoogleMeet || false,
       };
 
       if (!eventData.startDate) {
@@ -4907,7 +5326,7 @@ internet businesses.`;
             first_name: firstName,
             last_name: lastName || null,
             category: 'Inbox',
-            last_interaction: interactionDate
+            last_interaction_at: interactionDate
           })
           .select()
           .single();
@@ -6236,7 +6655,7 @@ internet businesses.`;
   const tabs = [
     { id: 'email', label: 'Email', icon: FaEnvelope, count: filterByStatus(threads, 'inbox').length + filterByStatus(threads, 'need_actions').length, hasUnread: hasUnreadEmails },
     { id: 'whatsapp', label: 'WhatsApp', icon: FaWhatsapp, count: filterByStatus(whatsappChats, 'inbox').length + filterByStatus(whatsappChats, 'need_actions').length, hasUnread: hasUnreadWhatsapp },
-    { id: 'calendar', label: 'Calendar', icon: FaCalendar, count: filterCalendarEvents(calendarEvents, 'thisWeek').length, hasUnread: hasUnreadCalendar },
+    { id: 'calendar', label: 'Calendar', icon: FaCalendar, count: filterCalendarEvents(calendarEvents, 'needReview').length, hasUnread: hasUnreadCalendar },
     { id: 'deals', label: 'Deals', icon: FaDollarSign, count: filterDealsByStatus(pipelineDeals, 'open').length, hasUnread: false },
     { id: 'keepintouch', label: 'Keep in Touch', icon: FaUserCheck, count: filterKeepInTouchByStatus(keepInTouchContacts, 'due').length, hasUnread: filterKeepInTouchByStatus(keepInTouchContacts, 'due').length > 0 },
   ];
@@ -6368,6 +6787,7 @@ internet businesses.`;
                         selectedChat={selectedWhatsappChat}
                         onSelectChat={setSelectedWhatsappChat}
                         loading={false}
+                        contacts={emailContacts}
                       />
                     )
                   )}
@@ -6423,6 +6843,7 @@ internet businesses.`;
                         selectedChat={selectedWhatsappChat}
                         onSelectChat={setSelectedWhatsappChat}
                         loading={false}
+                        contacts={emailContacts}
                       />
                     )
                   )}
@@ -6478,6 +6899,7 @@ internet businesses.`;
                         selectedChat={selectedWhatsappChat}
                         onSelectChat={setSelectedWhatsappChat}
                         loading={false}
+                        contacts={emailContacts}
                       />
                     )
                   )}
@@ -6501,15 +6923,197 @@ internet businesses.`;
           {/* Calendar Events List */}
           {!listCollapsed && activeTab === 'calendar' && (
             <EmailList>
+              {/* Toggle: To Process / Processed */}
+              <div style={{
+                display: 'flex',
+                padding: '8px 12px',
+                gap: '4px',
+                borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`,
+                backgroundColor: theme === 'dark' ? '#111827' : '#fff'
+              }}>
+                <button
+                  onClick={() => setCalendarViewMode('toProcess')}
+                  style={{
+                    flex: 1,
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    backgroundColor: calendarViewMode === 'toProcess'
+                      ? (theme === 'dark' ? '#3B82F6' : '#3B82F6')
+                      : (theme === 'dark' ? '#374151' : '#E5E7EB'),
+                    color: calendarViewMode === 'toProcess' ? '#fff' : (theme === 'dark' ? '#9CA3AF' : '#6B7280')
+                  }}
+                >
+                  To Process
+                </button>
+                <button
+                  onClick={() => setCalendarViewMode('processed')}
+                  style={{
+                    flex: 1,
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    backgroundColor: calendarViewMode === 'processed'
+                      ? (theme === 'dark' ? '#10B981' : '#10B981')
+                      : (theme === 'dark' ? '#374151' : '#E5E7EB'),
+                    color: calendarViewMode === 'processed' ? '#fff' : (theme === 'dark' ? '#9CA3AF' : '#6B7280')
+                  }}
+                >
+                  Processed
+                </button>
+              </div>
               {calendarLoading ? (
                 <EmptyState theme={theme}>Loading...</EmptyState>
-              ) : calendarEvents.length === 0 ? (
+              ) : calendarViewMode === 'toProcess' && calendarEvents.length === 0 ? (
                 <EmptyState theme={theme}>
                   <img src="/inbox-zero.png" alt="Inbox Zero" style={{ width: '150px', marginBottom: '16px' }} />
                   <span style={{ color: '#10B981', fontWeight: 600 }}>Inbox Zero!</span>
                 </EmptyState>
+              ) : calendarViewMode === 'processed' && processedMeetings.length === 0 ? (
+                <EmptyState theme={theme}>
+                  <FaCalendar size={40} style={{ marginBottom: '16px', opacity: 0.5 }} />
+                  <span>Nessun meeting processato</span>
+                </EmptyState>
+              ) : calendarViewMode === 'processed' ? (
+                <>
+                  {/* Processed Meetings List */}
+                  {processedMeetings.map(meeting => {
+                    const meetingDate = new Date(meeting.meeting_date);
+                    const dayName = meetingDate.toLocaleDateString('en-GB', { weekday: 'short' });
+                    const dateStr = `${dayName} ${String(meetingDate.getDate()).padStart(2, '0')}-${String(meetingDate.getMonth() + 1).padStart(2, '0')}-${meetingDate.getFullYear()}`;
+                    const linkedContacts = meeting.meeting_contacts?.map(mc => mc.contacts).filter(Boolean) || [];
+
+                    return (
+                      <EmailItem
+                        key={meeting.meeting_id}
+                        theme={theme}
+                        $selected={selectedCalendarEvent?.meeting_id === meeting.meeting_id}
+                        onClick={() => {
+                          setSelectedCalendarEvent({ ...meeting, source: 'meetings' });
+                          setCalendarEventScore(meeting.score ? parseInt(meeting.score) : null);
+                          setCalendarEventNotes(meeting.notes || '');
+                        }}
+                      >
+                        <EmailSender theme={theme}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {meeting.meeting_name}
+                          </span>
+                          {meeting.score && (
+                            <span style={{
+                              marginLeft: '8px',
+                              fontSize: '12px',
+                              color: '#F59E0B'
+                            }}>
+                              {'★'.repeat(parseInt(meeting.score) || 0)}
+                            </span>
+                          )}
+                        </EmailSender>
+                        <EmailSubject theme={theme} style={{ fontWeight: 600 }}>
+                          {dateStr}
+                        </EmailSubject>
+                        <EmailSnippet theme={theme}>
+                          {linkedContacts.length > 0
+                            ? linkedContacts.map(c => c.full_name || `${c.first_name} ${c.last_name}`).join(', ')
+                            : 'No contacts linked'}
+                        </EmailSnippet>
+                      </EmailItem>
+                    );
+                  })}
+                </>
               ) : (
                 <>
+                  {/* Need Review Section (Past Events) */}
+                  <div
+                    onClick={() => toggleCalendarSection('needReview')}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      backgroundColor: theme === 'dark' ? '#1f2937' : '#f3f4f6',
+                      borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`,
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 1
+                    }}
+                  >
+                    <FaChevronDown style={{ transform: calendarSections.needReview ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', fontSize: '10px' }} />
+                    <span>Need Review</span>
+                    <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: '12px' }}>
+                      {filterCalendarEvents(calendarEvents, 'needReview').length}
+                    </span>
+                  </div>
+                  {calendarSections.needReview && (
+                    filterCalendarEvents(calendarEvents, 'needReview').map(event => {
+                      let cleanSubject = (event.subject || 'No title')
+                        .replace(/^\[(CONFIRMED|TENTATIVE|CANCELLED|CANCELED)\]\s*/i, '');
+                      // Extract person name from "Quick call - S. Cimminelli (Person Name)" format
+                      const quickCallMatch = cleanSubject.match(/^Quick call - S\. Cimminelli \(([^)]+)\)$/i);
+                      if (quickCallMatch) {
+                        cleanSubject = quickCallMatch[1];
+                      } else {
+                        cleanSubject = cleanSubject
+                          .replace(/Simone Cimminelli/gi, '')
+                          .replace(/<>/g, '')
+                          .replace(/\s+/g, ' ')
+                          .trim() || 'Meeting';
+                      }
+
+                      const location = (event.event_location || '').toLowerCase();
+                      const isRemote = location.includes('zoom') || location.includes('meet') ||
+                        location.includes('teams') || location.includes('webex') ||
+                        location.includes('http') || location.includes('skype');
+
+                      const eventDate = new Date(event.date);
+                      const dayName = eventDate.toLocaleDateString('en-GB', { weekday: 'short' });
+                      const dateStr = `${dayName} ${String(eventDate.getDate()).padStart(2, '0')}-${String(eventDate.getMonth() + 1).padStart(2, '0')}-${eventDate.getFullYear()}`;
+
+                      return (
+                        <EmailItem
+                          key={event.id}
+                          theme={theme}
+                          $selected={selectedCalendarEvent?.id === event.id}
+                          $unread={!event.is_read}
+                          onClick={() => setSelectedCalendarEvent(event)}
+                        >
+                          <EmailSender theme={theme}>
+                            {!event.is_read && <EmailUnreadDot />}
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {cleanSubject}
+                            </span>
+                            <span style={{
+                              marginLeft: '8px',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              fontSize: '10px',
+                              fontWeight: 600,
+                              flexShrink: 0,
+                              backgroundColor: isRemote ? '#3B82F6' : '#10B981',
+                              color: 'white'
+                            }}>
+                              {isRemote ? 'Remote' : 'In Person'}
+                            </span>
+                          </EmailSender>
+                          <EmailSubject theme={theme} style={{ fontWeight: 600 }}>
+                            {dateStr}
+                          </EmailSubject>
+                          <EmailSnippet theme={theme}>
+                            {event.event_location || 'No location'}
+                          </EmailSnippet>
+                        </EmailItem>
+                      );
+                    })
+                  )}
+
                   {/* This Week Events Section */}
                   <div
                     onClick={() => toggleCalendarSection('thisWeek')}
@@ -6529,19 +7133,26 @@ internet businesses.`;
                     }}
                   >
                     <FaChevronDown style={{ transform: calendarSections.thisWeek ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', fontSize: '10px' }} />
-                    <span>This week</span>
+                    <span>This Week</span>
                     <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: '12px' }}>
                       {filterCalendarEvents(calendarEvents, 'thisWeek').length}
                     </span>
                   </div>
                   {calendarSections.thisWeek && (
                     filterCalendarEvents(calendarEvents, 'thisWeek').map(event => {
-                      const cleanSubject = (event.subject || 'No title')
-                        .replace(/^\[(CONFIRMED|TENTATIVE|CANCELLED|CANCELED)\]\s*/i, '')
-                        .replace(/Simone Cimminelli/gi, '')
-                        .replace(/<>/g, '')
-                        .replace(/\s+/g, ' ')
-                        .trim() || 'Meeting';
+                      let cleanSubject = (event.subject || 'No title')
+                        .replace(/^\[(CONFIRMED|TENTATIVE|CANCELLED|CANCELED)\]\s*/i, '');
+                      // Extract person name from "Quick call - S. Cimminelli (Person Name)" format
+                      const quickCallMatch = cleanSubject.match(/^Quick call - S\. Cimminelli \(([^)]+)\)$/i);
+                      if (quickCallMatch) {
+                        cleanSubject = quickCallMatch[1];
+                      } else {
+                        cleanSubject = cleanSubject
+                          .replace(/Simone Cimminelli/gi, '')
+                          .replace(/<>/g, '')
+                          .replace(/\s+/g, ' ')
+                          .trim() || 'Meeting';
+                      }
 
                       const location = (event.event_location || '').toLowerCase();
                       const isRemote = location.includes('zoom') || location.includes('meet') ||
@@ -6615,91 +7226,19 @@ internet businesses.`;
                   </div>
                   {calendarSections.upcoming && (
                     filterCalendarEvents(calendarEvents, 'upcoming').map(event => {
-                      const cleanSubject = (event.subject || 'No title')
-                        .replace(/^\[(CONFIRMED|TENTATIVE|CANCELLED|CANCELED)\]\s*/i, '')
-                        .replace(/Simone Cimminelli/gi, '')
-                        .replace(/<>/g, '')
-                        .replace(/\s+/g, ' ')
-                        .trim() || 'Meeting';
-
-                      const location = (event.event_location || '').toLowerCase();
-                      const isRemote = location.includes('zoom') || location.includes('meet') ||
-                        location.includes('teams') || location.includes('webex') ||
-                        location.includes('http') || location.includes('skype');
-
-                      const eventDate = new Date(event.date);
-                      const dayName = eventDate.toLocaleDateString('en-GB', { weekday: 'short' });
-                      const dateStr = `${dayName} ${String(eventDate.getDate()).padStart(2, '0')}-${String(eventDate.getMonth() + 1).padStart(2, '0')}-${eventDate.getFullYear()}`;
-
-                      return (
-                        <EmailItem
-                          key={event.id}
-                          theme={theme}
-                          $selected={selectedCalendarEvent?.id === event.id}
-                          $unread={!event.is_read}
-                          onClick={() => setSelectedCalendarEvent(event)}
-                        >
-                          <EmailSender theme={theme}>
-                            {!event.is_read && <EmailUnreadDot />}
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {cleanSubject}
-                            </span>
-                            <span style={{
-                              marginLeft: '8px',
-                              padding: '2px 6px',
-                              borderRadius: '4px',
-                              fontSize: '10px',
-                              fontWeight: 600,
-                              flexShrink: 0,
-                              backgroundColor: isRemote ? '#3B82F6' : '#10B981',
-                              color: 'white'
-                            }}>
-                              {isRemote ? 'Remote' : 'In Person'}
-                            </span>
-                          </EmailSender>
-                          <EmailSubject theme={theme} style={{ fontWeight: 600 }}>
-                            {dateStr}
-                          </EmailSubject>
-                          <EmailSnippet theme={theme}>
-                            {event.event_location || 'No location'}
-                          </EmailSnippet>
-                        </EmailItem>
-                      );
-                    })
-                  )}
-
-                  {/* Past Events Section */}
-                  <div
-                    onClick={() => toggleCalendarSection('past')}
-                    style={{
-                      padding: '8px 12px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      fontWeight: 600,
-                      fontSize: '13px',
-                      backgroundColor: theme === 'dark' ? '#1f2937' : '#f3f4f6',
-                      borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`,
-                      position: 'sticky',
-                      top: 0,
-                      zIndex: 1
-                    }}
-                  >
-                    <FaChevronDown style={{ transform: calendarSections.past ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', fontSize: '10px' }} />
-                    <span>Past</span>
-                    <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: '12px' }}>
-                      {filterCalendarEvents(calendarEvents, 'past').length}
-                    </span>
-                  </div>
-                  {calendarSections.past && (
-                    filterCalendarEvents(calendarEvents, 'past').map(event => {
-                      const cleanSubject = (event.subject || 'No title')
-                        .replace(/^\[(CONFIRMED|TENTATIVE|CANCELLED|CANCELED)\]\s*/i, '')
-                        .replace(/Simone Cimminelli/gi, '')
-                        .replace(/<>/g, '')
-                        .replace(/\s+/g, ' ')
-                        .trim() || 'Meeting';
+                      let cleanSubject = (event.subject || 'No title')
+                        .replace(/^\[(CONFIRMED|TENTATIVE|CANCELLED|CANCELED)\]\s*/i, '');
+                      // Extract person name from "Quick call - S. Cimminelli (Person Name)" format
+                      const quickCallMatch = cleanSubject.match(/^Quick call - S\. Cimminelli \(([^)]+)\)$/i);
+                      if (quickCallMatch) {
+                        cleanSubject = quickCallMatch[1];
+                      } else {
+                        cleanSubject = cleanSubject
+                          .replace(/Simone Cimminelli/gi, '')
+                          .replace(/<>/g, '')
+                          .replace(/\s+/g, ' ')
+                          .trim() || 'Meeting';
+                      }
 
                       const location = (event.event_location || '').toLowerCase();
                       const isRemote = location.includes('zoom') || location.includes('meet') ||
@@ -6751,9 +7290,12 @@ internet businesses.`;
             </EmailList>
           )}
 
-          {!listCollapsed && activeTab === 'calendar' && calendarEvents.length > 0 && (
+          {!listCollapsed && activeTab === 'calendar' && (
             <PendingCount theme={theme}>
-              {filterCalendarEvents(calendarEvents, 'thisWeek').length} this week, {filterCalendarEvents(calendarEvents, 'upcoming').length} upcoming, {filterCalendarEvents(calendarEvents, 'past').length} past
+              {calendarViewMode === 'toProcess'
+                ? `${filterCalendarEvents(calendarEvents, 'needReview').length} need review, ${filterCalendarEvents(calendarEvents, 'thisWeek').length} this week, ${filterCalendarEvents(calendarEvents, 'upcoming').length} upcoming`
+                : `${processedMeetings.length} meetings processed`
+              }
             </PendingCount>
           )}
 
@@ -7184,6 +7726,7 @@ internet businesses.`;
               onDone={handleWhatsAppDone}
               onStatusChange={updateItemStatus}
               saving={saving}
+              contacts={emailContacts}
             />
           ) : activeTab === 'calendar' ? (
             selectedCalendarEvent ? (
@@ -7198,57 +7741,122 @@ internet businesses.`;
                   minHeight: '56px',
                   borderBottom: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
                 }}>
-                  <EmailSubjectFull theme={theme} style={{ margin: 0 }}>
-                    {(selectedCalendarEvent.subject || 'Meeting')
-                      .replace(/^\[(CONFIRMED|TENTATIVE|CANCELLED|CANCELED)\]\s*/i, '')
-                      .replace(/Simone Cimminelli/gi, '')
-                      .replace(/<>/g, '')
-                      .replace(/\s+/g, ' ')
-                      .trim() || 'Meeting'}
-                  </EmailSubjectFull>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <button
-                      onClick={() => handleDeleteCalendarEvent(selectedCalendarEvent.id)}
-                      title="Dismiss event (won't sync again)"
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '8px 16px',
-                        borderRadius: '8px',
-                        border: 'none',
-                        background: theme === 'light' ? '#EF4444' : '#DC2626',
-                        color: 'white',
-                        cursor: 'pointer',
-                        fontWeight: 500,
-                        fontSize: '14px',
+                  {editingCalendarTitle ? (
+                    <input
+                      type="text"
+                      value={calendarTitleInput}
+                      onChange={(e) => setCalendarTitleInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleUpdateCalendarTitle(calendarTitleInput);
+                        } else if (e.key === 'Escape') {
+                          setEditingCalendarTitle(false);
+                        }
                       }}
-                    >
-                      <FaTrash size={14} />
-                      Dismiss
-                    </button>
-                    <button
+                      onBlur={() => handleUpdateCalendarTitle(calendarTitleInput)}
+                      autoFocus
+                      style={{
+                        fontSize: '18px',
+                        fontWeight: 600,
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        background: 'transparent',
+                        border: 'none',
+                        borderBottom: `2px solid ${theme === 'light' ? '#3B82F6' : '#60A5FA'}`,
+                        outline: 'none',
+                        padding: '4px 0',
+                        width: '100%',
+                        maxWidth: '400px'
+                      }}
+                    />
+                  ) : (
+                    <EmailSubjectFull
+                      theme={theme}
+                      style={{ margin: 0, cursor: 'pointer' }}
                       onClick={() => {
-                        // TODO: Handle calendar done
-                        toast.success('Calendar event processed!');
+                        const title = selectedCalendarEvent?.source === 'meetings'
+                          ? (selectedCalendarEvent.meeting_name || 'Meeting')
+                          : (selectedCalendarEvent.subject || 'Meeting');
+                        setCalendarTitleInput(title);
+                        setEditingCalendarTitle(true);
                       }}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '8px 16px',
-                        borderRadius: '8px',
-                        border: 'none',
-                        background: theme === 'light' ? '#10B981' : '#059669',
-                        color: 'white',
-                        cursor: 'pointer',
-                        fontWeight: 500,
-                        fontSize: '14px',
-                      }}
+                      title="Click to edit title"
                     >
-                      <FaArchive size={14} />
-                      Done
-                    </button>
+                      {selectedCalendarEvent?.source === 'meetings'
+                        ? (selectedCalendarEvent.meeting_name || 'Meeting')
+                        : ((selectedCalendarEvent.subject || 'Meeting')
+                            .replace(/^\[(CONFIRMED|TENTATIVE|CANCELLED|CANCELED)\]\s*/i, '')
+                            .replace(/Simone Cimminelli/gi, '')
+                            .replace(/<>/g, '')
+                            .replace(/\s+/g, ' ')
+                            .trim() || 'Meeting')}
+                    </EmailSubjectFull>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {selectedCalendarEvent?.source !== 'meetings' && (
+                      <button
+                        onClick={() => handleDeleteCalendarEvent(selectedCalendarEvent.id)}
+                        title="Dismiss event (won't sync again)"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '8px 16px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: theme === 'light' ? '#EF4444' : '#DC2626',
+                          color: 'white',
+                          cursor: 'pointer',
+                          fontWeight: 500,
+                          fontSize: '14px',
+                        }}
+                      >
+                        <FaTrash size={14} />
+                        Dismiss
+                      </button>
+                    )}
+                    {selectedCalendarEvent?.source !== 'meetings' && (
+                      <button
+                        onClick={handleProcessCalendarEvent}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '8px 16px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: theme === 'light' ? '#10B981' : '#059669',
+                          color: 'white',
+                          cursor: 'pointer',
+                          fontWeight: 500,
+                          fontSize: '14px',
+                        }}
+                      >
+                        <FaArchive size={14} />
+                        Done
+                      </button>
+                    )}
+                    {selectedCalendarEvent?.source === 'meetings' && (
+                      <button
+                        onClick={() => handleDeleteProcessedMeeting(selectedCalendarEvent.meeting_id)}
+                        title="Delete this meeting"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '8px 16px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: theme === 'light' ? '#EF4444' : '#DC2626',
+                          color: 'white',
+                          cursor: 'pointer',
+                          fontWeight: 500,
+                          fontSize: '14px',
+                        }}
+                      >
+                        <FaTrash size={14} />
+                        Delete
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -7267,7 +7875,7 @@ internet businesses.`;
                     <FaCalendar size={24} style={{ color: '#10B981' }} />
                     <div>
                       <div style={{ fontWeight: 600, fontSize: '18px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
-                        {new Date(selectedCalendarEvent.date).toLocaleDateString('en-GB', {
+                        {new Date(selectedCalendarEvent.date || selectedCalendarEvent.meeting_date).toLocaleDateString('en-GB', {
                           weekday: 'long',
                           day: 'numeric',
                           month: 'long',
@@ -7275,7 +7883,7 @@ internet businesses.`;
                         })}
                       </div>
                       <div style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginTop: '4px' }}>
-                        {new Date(selectedCalendarEvent.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(selectedCalendarEvent.date || selectedCalendarEvent.meeting_date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                         {selectedCalendarEvent.event_end && ` - ${new Date(selectedCalendarEvent.event_end).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`}
                       </div>
                     </div>
@@ -7305,38 +7913,408 @@ internet businesses.`;
                     </div>
                   )}
 
-                  {/* Attendees */}
-                  {selectedCalendarEvent.to_recipients && (
-                    <div style={{
-                      marginBottom: '20px',
-                      padding: '16px',
-                      background: theme === 'light' ? '#F3F4F6' : '#374151',
-                      borderRadius: '12px'
-                    }}>
-                      <div style={{ fontWeight: 600, marginBottom: '12px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
+                  {/* Attendees - Editable */}
+                  <div style={{
+                    marginBottom: '20px',
+                    padding: '16px',
+                    background: theme === 'light' ? '#F3F4F6' : '#374151',
+                    borderRadius: '12px',
+                    position: 'relative'
+                  }}>
+                    <div style={{ fontWeight: 600, marginBottom: '12px', color: theme === 'light' ? '#111827' : '#F9FAFB', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
                         <FaUser size={14} style={{ marginRight: '8px' }} />
-                        Attendees
+                        Attendees {(() => {
+                          const count = selectedCalendarEvent.meeting_id
+                            ? (selectedCalendarEvent.meeting_contacts?.length || 0)
+                            : ([...emailContacts.filter(c => c.contact?.contact_id), ...selectedContactsForMeeting.filter(c => !emailContacts.some(ec => ec.contact?.contact_id === (c.contact?.contact_id || c.contact_id)))].length);
+                          return count > 0 ? `(${count})` : '';
+                        })()}
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {(Array.isArray(selectedCalendarEvent.to_recipients)
-                          ? selectedCalendarEvent.to_recipients
-                          : JSON.parse(selectedCalendarEvent.to_recipients || '[]')
-                        ).map((attendee, idx) => (
-                          <div key={idx} style={{
-                            color: theme === 'light' ? '#374151' : '#D1D5DB',
-                            padding: '8px 12px',
-                            background: theme === 'light' ? '#FFFFFF' : '#1F2937',
-                            borderRadius: '8px'
-                          }}>
-                            {(typeof attendee === 'string' ? attendee : attendee.email || attendee.name || JSON.stringify(attendee)).replace(/^MAILTO:/i, '')}
-                          </div>
-                        ))}
-                      </div>
+                      <button
+                        onClick={() => setAddMeetingContactModalOpen(true)}
+                        style={{
+                          background: theme === 'light' ? '#E5E7EB' : '#4B5563',
+                          border: 'none',
+                          borderRadius: '4px',
+                          padding: '4px 8px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          color: theme === 'light' ? '#374151' : '#D1D5DB',
+                          fontSize: '12px'
+                        }}
+                      >
+                        <FaPlus size={10} /> Add
+                      </button>
                     </div>
-                  )}
 
-                  {/* Description/Body */}
-                  {selectedCalendarEvent.body_text && (
+                    {/* Add Meeting Contact Modal */}
+                    {addMeetingContactModalOpen && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '50px',
+                        left: '16px',
+                        right: '16px',
+                        background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                        border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
+                        borderRadius: '8px',
+                        boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
+                        zIndex: 100,
+                        padding: '12px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                          <span style={{ fontWeight: 500, fontSize: '13px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>Add Contact to Meeting</span>
+                          <button
+                            onClick={() => {
+                              setAddMeetingContactModalOpen(false);
+                              setMeetingContactSearchQuery('');
+                              setMeetingContactSearchResults([]);
+                            }}
+                            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: theme === 'light' ? '#6B7280' : '#9CA3AF', padding: '4px' }}
+                          >
+                            <FaTimes size={12} />
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          value={meetingContactSearchQuery}
+                          onChange={(e) => handleSearchMeetingContacts(e.target.value)}
+                          placeholder="Search contacts by name or email..."
+                          autoFocus
+                          style={{
+                            width: '100%',
+                            padding: '8px 10px',
+                            background: theme === 'light' ? '#F9FAFB' : '#111827',
+                            border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                            borderRadius: '6px',
+                            color: theme === 'light' ? '#111827' : '#F9FAFB',
+                            fontSize: '13px',
+                            outline: 'none'
+                          }}
+                        />
+                        {meetingContactSearchLoading && (
+                          <div style={{ padding: '10px', textAlign: 'center', color: theme === 'light' ? '#6B7280' : '#9CA3AF', fontSize: '13px' }}>
+                            Searching...
+                          </div>
+                        )}
+                        {!meetingContactSearchLoading && meetingContactSearchResults.length > 0 && (
+                          <div style={{ marginTop: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+                            {meetingContactSearchResults.map((contact) => (
+                              <div
+                                key={contact.contact_id}
+                                onClick={() => handleAddMeetingContact(contact)}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '10px',
+                                  padding: '8px',
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  background: 'transparent'
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.background = theme === 'light' ? '#F3F4F6' : '#374151'}
+                                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                              >
+                                {contact.profile_image_url ? (
+                                  <img src={contact.profile_image_url} alt="" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }} />
+                                ) : (
+                                  <div style={{
+                                    width: 28,
+                                    height: 28,
+                                    borderRadius: '50%',
+                                    backgroundColor: theme === 'light' ? '#E5E7EB' : '#4B5563',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                  }}>
+                                    <FaUser size={12} style={{ color: '#9CA3AF' }} />
+                                  </div>
+                                )}
+                                <div>
+                                  <div style={{ fontWeight: 500, fontSize: '13px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
+                                    {contact.first_name} {contact.last_name}
+                                  </div>
+                                  {contact.email && (
+                                    <div style={{ fontSize: '11px', color: theme === 'light' ? '#6B7280' : '#9CA3AF' }}>
+                                      {contact.email}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {!meetingContactSearchLoading && meetingContactSearchQuery && meetingContactSearchResults.length === 0 && (
+                          <div style={{ padding: '10px', textAlign: 'center', color: theme === 'light' ? '#6B7280' : '#9CA3AF', fontSize: '13px' }}>
+                            No contacts found
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Contact List */}
+                    {(() => {
+                      // For processed meetings, show meeting_contacts
+                      if (selectedCalendarEvent.meeting_id) {
+                        return selectedCalendarEvent.meeting_contacts && selectedCalendarEvent.meeting_contacts.length > 0 ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {selectedCalendarEvent.meeting_contacts.map((mc, idx) => (
+                              <div key={idx} style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '12px',
+                                padding: '8px 12px',
+                                background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                                borderRadius: '8px'
+                              }}>
+                                <div
+                                  onClick={() => mc.contacts && navigate(`/contact/${mc.contacts.contact_id}`)}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '12px',
+                                    flex: 1,
+                                    cursor: mc.contacts ? 'pointer' : 'default'
+                                  }}
+                                >
+                                  {mc.contacts?.profile_image_url ? (
+                                    <img src={mc.contacts.profile_image_url} alt="" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }} />
+                                  ) : (
+                                    <div style={{
+                                      width: 32,
+                                      height: 32,
+                                      borderRadius: '50%',
+                                      backgroundColor: theme === 'light' ? '#E5E7EB' : '#4B5563',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center'
+                                    }}>
+                                      <FaUser size={14} style={{ color: '#9CA3AF' }} />
+                                    </div>
+                                  )}
+                                  <div style={{ fontWeight: 500, color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
+                                    {mc.contacts?.first_name} {mc.contacts?.last_name}
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRemoveMeetingContact(mc.contact_id);
+                                  }}
+                                  style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    padding: '6px',
+                                    borderRadius: '4px',
+                                    color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                  }}
+                                  onMouseEnter={(e) => e.target.style.color = '#EF4444'}
+                                  onMouseLeave={(e) => e.target.style.color = theme === 'light' ? '#9CA3AF' : '#6B7280'}
+                                  title="Remove contact from meeting"
+                                >
+                                  <FaTimes size={12} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ color: theme === 'light' ? '#9CA3AF' : '#6B7280', fontSize: '13px', fontStyle: 'italic' }}>
+                            No contacts linked yet
+                          </div>
+                        );
+                      }
+
+                      // For inbox items, show emailContacts + selectedContactsForMeeting
+                      const allContacts = [
+                        ...emailContacts.filter(c => c.contact?.contact_id).map(c => ({ ...c.contact, source: 'email' })),
+                        ...selectedContactsForMeeting.filter(c => !emailContacts.some(ec => ec.contact?.contact_id === (c.contact?.contact_id || c.contact_id))).map(c => ({ ...(c.contact || c), source: 'manual' }))
+                      ];
+
+                      return allContacts.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {allContacts.map((contact, idx) => (
+                            <div key={contact.contact_id || idx} style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '12px',
+                              padding: '8px 12px',
+                              background: theme === 'light' ? '#FFFFFF' : '#1F2937',
+                              borderRadius: '8px'
+                            }}>
+                              <div
+                                onClick={() => contact.contact_id && navigate(`/contact/${contact.contact_id}`)}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '12px',
+                                  flex: 1,
+                                  cursor: contact.contact_id ? 'pointer' : 'default'
+                                }}
+                              >
+                                {contact.profile_image_url ? (
+                                  <img src={contact.profile_image_url} alt="" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }} />
+                                ) : (
+                                  <div style={{
+                                    width: 32,
+                                    height: 32,
+                                    borderRadius: '50%',
+                                    backgroundColor: theme === 'light' ? '#E5E7EB' : '#4B5563',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                  }}>
+                                    <FaUser size={14} style={{ color: '#9CA3AF' }} />
+                                  </div>
+                                )}
+                                <div style={{ fontWeight: 500, color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
+                                  {contact.first_name} {contact.last_name}
+                                </div>
+                              </div>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveMeetingContact(contact.contact_id);
+                                }}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  padding: '6px',
+                                  borderRadius: '4px',
+                                  color: theme === 'light' ? '#9CA3AF' : '#6B7280',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center'
+                                }}
+                                onMouseEnter={(e) => e.target.style.color = '#EF4444'}
+                                onMouseLeave={(e) => e.target.style.color = theme === 'light' ? '#9CA3AF' : '#6B7280'}
+                                title="Remove contact"
+                              >
+                                <FaTimes size={12} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ color: theme === 'light' ? '#9CA3AF' : '#6B7280', fontSize: '13px', fontStyle: 'italic' }}>
+                          No contacts linked yet
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Score Selector */}
+                  <div style={{
+                    marginBottom: '20px',
+                    padding: '16px',
+                    background: theme === 'light' ? '#F3F4F6' : '#374151',
+                    borderRadius: '12px'
+                  }}>
+                    <div style={{ fontWeight: 600, marginBottom: '12px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
+                      ⭐ Score
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      {[1, 2, 3, 4, 5].map(score => (
+                        <button
+                          key={score}
+                          onClick={() => {
+                            setCalendarEventScore(score);
+                            // If processed meeting, save immediately
+                            if (selectedCalendarEvent?.source === 'meetings') {
+                              supabase
+                                .from('meetings')
+                                .update({ score: String(score) })
+                                .eq('meeting_id', selectedCalendarEvent.meeting_id)
+                                .then(({ error }) => {
+                                  if (error) console.error('Error updating score:', error);
+                                  else {
+                                    setProcessedMeetings(prev => prev.map(m =>
+                                      m.meeting_id === selectedCalendarEvent.meeting_id
+                                        ? { ...m, score: String(score) }
+                                        : m
+                                    ));
+                                  }
+                                });
+                            }
+                          }}
+                          style={{
+                            padding: '8px 16px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontSize: '16px',
+                            backgroundColor: calendarEventScore === score
+                              ? '#F59E0B'
+                              : (theme === 'light' ? '#E5E7EB' : '#1F2937'),
+                            color: calendarEventScore === score ? '#fff' : (theme === 'light' ? '#374151' : '#9CA3AF')
+                          }}
+                        >
+                          {'★'.repeat(score)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Notes */}
+                  <div style={{
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    marginBottom: '20px',
+                    padding: '16px',
+                    background: theme === 'light' ? '#F3F4F6' : '#374151',
+                    borderRadius: '12px',
+                    minHeight: '200px'
+                  }}>
+                    <div style={{ fontWeight: 600, marginBottom: '12px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
+                      📝 Notes
+                    </div>
+                    <textarea
+                      value={calendarEventNotes}
+                      onChange={(e) => setCalendarEventNotes(e.target.value)}
+                      onBlur={() => {
+                        // If processed meeting, save on blur
+                        if (selectedCalendarEvent?.source === 'meetings') {
+                          supabase
+                            .from('meetings')
+                            .update({ notes: calendarEventNotes || null })
+                            .eq('meeting_id', selectedCalendarEvent.meeting_id)
+                            .then(({ error }) => {
+                              if (error) console.error('Error updating notes:', error);
+                              else {
+                                setProcessedMeetings(prev => prev.map(m =>
+                                  m.meeting_id === selectedCalendarEvent.meeting_id
+                                    ? { ...m, notes: calendarEventNotes || null }
+                                    : m
+                                ));
+                              }
+                            });
+                        }
+                      }}
+                      placeholder="Aggiungi note sul meeting..."
+                      style={{
+                        width: '100%',
+                        flex: 1,
+                        minHeight: '150px',
+                        padding: '12px',
+                        borderRadius: '8px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        backgroundColor: theme === 'light' ? '#fff' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px',
+                        resize: 'vertical'
+                      }}
+                    />
+                  </div>
+
+                  {/* Description/Body - only show for inbox events (not processed meetings which use Notes) */}
+                  {selectedCalendarEvent?.source !== 'meetings' && (selectedCalendarEvent.body_text || selectedCalendarEvent.description) && (
                     <div style={{
                       padding: '16px',
                       background: theme === 'light' ? '#FFFFFF' : '#1F2937',
@@ -7351,7 +8329,7 @@ internet businesses.`;
                         whiteSpace: 'pre-wrap',
                         lineHeight: 1.6
                       }}>
-                        {selectedCalendarEvent.body_text}
+                        {selectedCalendarEvent.body_text || selectedCalendarEvent.description}
                       </div>
                     </div>
                   )}
@@ -9608,9 +10586,11 @@ internet businesses.`;
                 <ActionTabIcon theme={theme} $active={activeActionTab === 'chat'} onClick={() => setActiveActionTab('chat')} title="Chat with Claude">
                   <FaRobot />
                 </ActionTabIcon>
-                <ActionTabIcon theme={theme} $active={activeActionTab === 'dataIntegrity'} onClick={() => setActiveActionTab('dataIntegrity')} title="Data Integrity">
-                  <FaDatabase />
-                </ActionTabIcon>
+                {activeTab !== 'deals' && (
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'dataIntegrity'} onClick={() => setActiveActionTab('dataIntegrity')} title="Data Integrity">
+                    <FaDatabase />
+                  </ActionTabIcon>
+                )}
                 <ActionTabIcon theme={theme} $active={activeActionTab === 'crm'} onClick={() => setActiveActionTab('crm')} title="CRM">
                   <FaUser />
                 </ActionTabIcon>
@@ -10439,6 +11419,7 @@ internet businesses.`;
               {activeActionTab === 'chat' && (
                 <ChatTab
                   theme={theme}
+                  activeTab={activeTab}
                   chatMessagesRef={chatMessagesRef}
                   chatFileInputRef={chatFileInputRef}
                   chatMessages={chatMessages}
@@ -10566,7 +11547,7 @@ internet businesses.`;
                     setCreateContactEmail({ email: '', name: '', subject: '', body_text: '' });
                     setCreateContactModalOpen(true);
                   }}
-                  onAddNewCompany={() => setAddCompanyModalOpen(true)}
+                  onAddNewCompany={() => setSearchOrCreateCompanyModalOpen(true)}
                 />
               )}
               {activeActionTab === 'deals' && (
@@ -11799,14 +12780,14 @@ internet businesses.`;
         emailData={createContactEmail}
         theme={theme}
         onSuccess={async (newContact) => {
-          // Remove from not in CRM list
+          // Remove from not in CRM list and hold list
           if (createContactEmail?.email) {
             setNotInCrmEmails(prev => prev.filter(item =>
               item.email.toLowerCase() !== createContactEmail.email.toLowerCase()
             ));
-            // Also remove from hold list if present
+            // Also remove from hold list if present (by email)
             setHoldContacts(prev => prev.filter(c =>
-              c.email.toLowerCase() !== createContactEmail.email.toLowerCase()
+              c.email?.toLowerCase() !== createContactEmail.email.toLowerCase()
             ));
             // Remove from contacts_hold table if it was there
             await supabase
@@ -11823,8 +12804,23 @@ internet businesses.`;
               .eq('entity_type', 'contact')
               .eq('status', 'pending');
           }
-          // Refresh data integrity stats
+
+          // Handle WhatsApp contacts (by mobile)
+          if (createContactEmail?.mobile) {
+            // Remove from hold list by mobile
+            setHoldContacts(prev => prev.filter(c =>
+              c.mobile !== createContactEmail.mobile
+            ));
+            // Remove from contacts_hold table by mobile
+            await supabase
+              .from('contacts_hold')
+              .delete()
+              .eq('mobile', createContactEmail.mobile);
+          }
+
+          // Refresh data integrity stats and CRM contacts
           fetchDataIntegrity();
+          refetchContacts();
           toast.success(`Contact ${newContact.first_name} ${newContact.last_name} created successfully!`);
         }}
       />
@@ -11836,6 +12832,24 @@ internet businesses.`;
         onSuccess={(company) => {
           toast.success(`Company ${company.name} created successfully!`);
           fetchDataIntegrity();
+        }}
+      />
+
+      {/* Search/Create Company Modal (for CRM tab Add Company button) */}
+      <SearchOrCreateCompanyModal
+        isOpen={searchOrCreateCompanyModalOpen}
+        onClose={() => setSearchOrCreateCompanyModalOpen(false)}
+        theme={theme}
+        contactToLink={emailContacts?.find(c => c.contact?.contact_id)?.contact}
+        onCompanySelected={(companyId) => {
+          // Close search modal and open Company Data Integrity Modal
+          setSearchOrCreateCompanyModalOpen(false);
+          setCompanyDataIntegrityCompanyId(companyId);
+          setCompanyDataIntegrityModalOpen(true);
+          // Refresh context contacts to update company info
+          if (contextContactsHook?.refetchContacts) {
+            setTimeout(() => contextContactsHook.refetchContacts(), 500);
+          }
         }}
       />
 
@@ -12161,6 +13175,57 @@ internet businesses.`;
             } else {
               setKeepInTouchCompanies([]);
             }
+          }
+        }}
+      />
+
+      {/* Data Integrity - Link Company Modal (for contacts without email) */}
+      <ManageContactCompaniesModal
+        isOpen={!!linkCompanyModalContact}
+        onClose={async () => {
+          // When closing, check if contact now has a company linked and resolve the issue
+          if (linkCompanyModalContact?.contact_id) {
+            const { data: linkedCompanies } = await supabase
+              .from('contact_companies')
+              .select('company_id')
+              .eq('contact_id', linkCompanyModalContact.contact_id)
+              .limit(1);
+
+            if (linkedCompanies && linkedCompanies.length > 0) {
+              // Contact has a company linked - mark issues as resolved
+              const issueIds = linkCompanyModalContact.issue_ids || (linkCompanyModalContact.issue_id ? [linkCompanyModalContact.issue_id] : []);
+              if (issueIds.length > 0) {
+                await supabase
+                  .from('data_integrity_inbox')
+                  .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+                  .in('id', issueIds);
+              }
+              // Remove from the list
+              setContactsMissingCompany(prev =>
+                prev.filter(c => c.contact_id !== linkCompanyModalContact.contact_id)
+              );
+            }
+          }
+          setLinkCompanyModalContact(null);
+        }}
+        contact={linkCompanyModalContact}
+        theme={theme}
+        onCompaniesUpdated={async () => {
+          // Remove from contactsMissingCompany list and mark issue as resolved
+          if (linkCompanyModalContact?.contact_id) {
+            // Mark all data_integrity_inbox issues as resolved
+            const issueIds = linkCompanyModalContact.issue_ids || (linkCompanyModalContact.issue_id ? [linkCompanyModalContact.issue_id] : []);
+            if (issueIds.length > 0) {
+              await supabase
+                .from('data_integrity_inbox')
+                .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+                .in('id', issueIds);
+            }
+            // Remove from the list
+            setContactsMissingCompany(prev =>
+              prev.filter(c => c.contact_id !== linkCompanyModalContact.contact_id)
+            );
+            toast.success(`Company linked to ${linkCompanyModalContact.first_name || 'contact'}`);
           }
         }}
       />

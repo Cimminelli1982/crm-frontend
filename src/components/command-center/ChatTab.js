@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { FaRobot, FaTimes, FaImage, FaPaperPlane, FaCheck, FaPlus } from 'react-icons/fa';
 import {
   ChatContainer,
@@ -17,9 +17,11 @@ import {
   ChatAttachButton,
   AcceptDraftButton,
 } from '../../pages/CommandCenterPage.styles';
+import { supabase } from '../../lib/supabaseClient';
 
 const ChatTab = ({
   theme,
+  activeTab,
   chatMessagesRef,
   chatFileInputRef,
   chatMessages,
@@ -42,6 +44,120 @@ const ChatTab = ({
   openReplyWithDraft,
   extractDraftFromMessage,
 }) => {
+  // Context-aware placeholder and messages
+  const getContextLabel = () => {
+    switch (activeTab) {
+      case 'whatsapp': return 'message';
+      case 'deals': return 'deal';
+      case 'calendar': return 'event';
+      default: return 'email';
+    }
+  };
+  const contextLabel = getContextLabel();
+  // Attendee autocomplete state
+  const [attendeeSearch, setAttendeeSearch] = useState('');
+  const [attendeeSuggestions, setAttendeeSuggestions] = useState([]);
+  const [showAttendeeSuggestions, setShowAttendeeSuggestions] = useState(false);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const attendeeInputRef = useRef(null);
+  const suggestionsRef = useRef(null);
+
+  // Search contacts when typing in attendee input
+  useEffect(() => {
+    const searchContacts = async () => {
+      if (attendeeSearch.length < 2) {
+        setAttendeeSuggestions([]);
+        setShowAttendeeSuggestions(false);
+        return;
+      }
+
+      setLoadingSuggestions(true);
+      try {
+        // Search contacts by first_name or last_name, join with contact_emails
+        const { data, error } = await supabase
+          .from('contacts')
+          .select(`
+            contact_id,
+            first_name,
+            last_name,
+            contact_emails (
+              email,
+              is_primary
+            )
+          `)
+          .or(`first_name.ilike.%${attendeeSearch}%,last_name.ilike.%${attendeeSearch}%`)
+          .limit(10);
+
+        if (error) throw error;
+
+        // Flatten to show each email as a separate suggestion
+        const suggestions = [];
+        data?.forEach(contact => {
+          const fullName = `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+          if (contact.contact_emails && contact.contact_emails.length > 0) {
+            contact.contact_emails.forEach(emailObj => {
+              suggestions.push({
+                contact_id: contact.contact_id,
+                name: fullName,
+                email: emailObj.email,
+                is_primary: emailObj.is_primary
+              });
+            });
+          }
+        });
+
+        setAttendeeSuggestions(suggestions);
+        setShowAttendeeSuggestions(suggestions.length > 0);
+      } catch (err) {
+        console.error('Error searching contacts:', err);
+      } finally {
+        setLoadingSuggestions(false);
+      }
+    };
+
+    const timeoutId = setTimeout(searchContacts, 300);
+    return () => clearTimeout(timeoutId);
+  }, [attendeeSearch]);
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        suggestionsRef.current &&
+        !suggestionsRef.current.contains(event.target) &&
+        attendeeInputRef.current &&
+        !attendeeInputRef.current.contains(event.target)
+      ) {
+        setShowAttendeeSuggestions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Add attendee from suggestion
+  const addAttendeeFromSuggestion = (suggestion) => {
+    const currentAttendees = calendarEventEdits.attendees ?? pendingCalendarEvent?.attendees ?? [];
+    // Check if already exists
+    if (!currentAttendees.some(a => a.email === suggestion.email)) {
+      updateCalendarEventField('attendees', [...currentAttendees, { email: suggestion.email, name: suggestion.name }]);
+    }
+    setAttendeeSearch('');
+    setShowAttendeeSuggestions(false);
+  };
+
+  // Add attendee from manual email input
+  const addAttendeeFromEmail = (email) => {
+    if (!email.trim()) return;
+    const currentAttendees = calendarEventEdits.attendees ?? pendingCalendarEvent?.attendees ?? [];
+    if (!currentAttendees.some(a => a.email === email)) {
+      updateCalendarEventField('attendees', [...currentAttendees, { email, name: email.split('@')[0] }]);
+    }
+    setAttendeeSearch('');
+    setShowAttendeeSuggestions(false);
+  };
+
   return (
     <ChatContainer>
       {/* Quick Actions */}
@@ -171,11 +287,76 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
             <option value="Asia/Shanghai">Asia/Shanghai (CST)</option>
             <option value="UTC">UTC</option>
           </select>
+          {/* Location suggestions */}
+          <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => {
+                updateCalendarEventField('location', 'Fora Notting Hill, 9 Pembridge Rd, London W11 3JY');
+                updateCalendarEventField('useGoogleMeet', false);
+              }}
+              style={{
+                padding: '4px 10px',
+                borderRadius: '12px',
+                border: 'none',
+                background: (calendarEventEdits.location ?? '').includes('Fora') ? '#3B82F6' : (theme === 'light' ? '#E5E7EB' : '#4B5563'),
+                color: (calendarEventEdits.location ?? '').includes('Fora') ? 'white' : (theme === 'light' ? '#374151' : '#E5E7EB'),
+                fontSize: '11px',
+                cursor: 'pointer',
+                fontWeight: 500,
+              }}
+            >
+              🏢 Office
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                updateCalendarEventField('location', 'The Roof Gardens, 99 Kensington High St, London W8 5SA');
+                updateCalendarEventField('useGoogleMeet', false);
+              }}
+              style={{
+                padding: '4px 10px',
+                borderRadius: '12px',
+                border: 'none',
+                background: (calendarEventEdits.location ?? '').includes('Roof Gardens') ? '#3B82F6' : (theme === 'light' ? '#E5E7EB' : '#4B5563'),
+                color: (calendarEventEdits.location ?? '').includes('Roof Gardens') ? 'white' : (theme === 'light' ? '#374151' : '#E5E7EB'),
+                fontSize: '11px',
+                cursor: 'pointer',
+                fontWeight: 500,
+              }}
+            >
+              🍸 Club
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                updateCalendarEventField('location', 'Google Meet');
+                updateCalendarEventField('useGoogleMeet', true);
+              }}
+              style={{
+                padding: '4px 10px',
+                borderRadius: '12px',
+                border: 'none',
+                background: calendarEventEdits.useGoogleMeet ? '#3B82F6' : (theme === 'light' ? '#E5E7EB' : '#4B5563'),
+                color: calendarEventEdits.useGoogleMeet ? 'white' : (theme === 'light' ? '#374151' : '#E5E7EB'),
+                fontSize: '11px',
+                cursor: 'pointer',
+                fontWeight: 500,
+              }}
+            >
+              📹 Google Meet
+            </button>
+          </div>
           <input
             type="text"
             placeholder="Location"
             value={calendarEventEdits.location ?? pendingCalendarEvent.location ?? ''}
-            onChange={(e) => updateCalendarEventField('location', e.target.value)}
+            onChange={(e) => {
+              updateCalendarEventField('location', e.target.value);
+              if (!e.target.value.includes('Google Meet')) {
+                updateCalendarEventField('useGoogleMeet', false);
+              }
+            }}
             style={{
               width: '100%',
               padding: '8px',
@@ -209,7 +390,7 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                     fontSize: '11px',
                   }}
                 >
-                  <span>{attendee.name || attendee.email}</span>
+                  <span>{attendee.name && attendee.email ? `${attendee.name} (${attendee.email})` : (attendee.email || attendee.name)}</span>
                   <button
                     onClick={() => {
                       const currentAttendees = calendarEventEdits.attendees ?? pendingCalendarEvent.attendees ?? [];
@@ -231,59 +412,150 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
                 </div>
               ))}
             </div>
-            {/* Add new attendee input */}
-            <div style={{ display: 'flex', gap: '4px' }}>
-              <input
-                type="email"
-                placeholder="Add attendee email..."
-                id="new-attendee-input"
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter' && e.target.value.trim()) {
-                    const email = e.target.value.trim();
-                    const currentAttendees = calendarEventEdits.attendees ?? pendingCalendarEvent.attendees ?? [];
-                    // Check if already exists
-                    if (!currentAttendees.some(a => a.email === email)) {
-                      updateCalendarEventField('attendees', [...currentAttendees, { email, name: email.split('@')[0] }]);
+            {/* Add new attendee input with autocomplete */}
+            <div style={{ position: 'relative' }}>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                <input
+                  ref={attendeeInputRef}
+                  type="text"
+                  placeholder="Search contact name or enter email..."
+                  value={attendeeSearch}
+                  onChange={(e) => setAttendeeSearch(e.target.value)}
+                  onFocus={() => {
+                    if (attendeeSuggestions.length > 0) setShowAttendeeSuggestions(true);
+                  }}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      // If email-like, add directly
+                      if (attendeeSearch.includes('@')) {
+                        addAttendeeFromEmail(attendeeSearch);
+                      } else if (attendeeSuggestions.length > 0) {
+                        // Select first suggestion
+                        addAttendeeFromSuggestion(attendeeSuggestions[0]);
+                      }
                     }
-                    e.target.value = '';
-                  }
-                }}
-                style={{
-                  flex: 1,
-                  padding: '6px 8px',
-                  borderRadius: '4px',
-                  border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
-                  background: theme === 'light' ? '#FFFFFF' : '#374151',
-                  color: theme === 'light' ? '#111827' : '#F9FAFB',
-                  fontSize: '12px',
-                  boxSizing: 'border-box',
-                }}
-              />
-              <button
-                onClick={() => {
-                  const input = document.getElementById('new-attendee-input');
-                  if (input && input.value.trim()) {
-                    const email = input.value.trim();
-                    const currentAttendees = calendarEventEdits.attendees ?? pendingCalendarEvent.attendees ?? [];
-                    if (!currentAttendees.some(a => a.email === email)) {
-                      updateCalendarEventField('attendees', [...currentAttendees, { email, name: email.split('@')[0] }]);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '6px 8px',
+                    borderRadius: '4px',
+                    border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                    background: theme === 'light' ? '#FFFFFF' : '#374151',
+                    color: theme === 'light' ? '#111827' : '#F9FAFB',
+                    fontSize: '12px',
+                    boxSizing: 'border-box',
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    if (attendeeSearch.includes('@')) {
+                      addAttendeeFromEmail(attendeeSearch);
+                    } else if (attendeeSuggestions.length > 0) {
+                      addAttendeeFromSuggestion(attendeeSuggestions[0]);
                     }
-                    input.value = '';
-                  }
-                }}
-                style={{
-                  padding: '6px 10px',
-                  borderRadius: '4px',
-                  border: 'none',
-                  background: theme === 'light' ? '#E5E7EB' : '#4B5563',
-                  color: theme === 'light' ? '#374151' : '#E5E7EB',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
-              >
-                <FaPlus size={10} />
-              </button>
+                  }}
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: '4px',
+                    border: 'none',
+                    background: theme === 'light' ? '#E5E7EB' : '#4B5563',
+                    color: theme === 'light' ? '#374151' : '#E5E7EB',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <FaPlus size={10} />
+                </button>
+              </div>
+              {/* Suggestions dropdown */}
+              {showAttendeeSuggestions && (
+                <div
+                  ref={suggestionsRef}
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    marginTop: '4px',
+                    background: theme === 'light' ? '#FFFFFF' : '#374151',
+                    border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                    borderRadius: '6px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                    maxHeight: '200px',
+                    overflowY: 'auto',
+                    zIndex: 100,
+                  }}
+                >
+                  {loadingSuggestions ? (
+                    <div style={{
+                      padding: '12px',
+                      textAlign: 'center',
+                      color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                      fontSize: '12px',
+                    }}>
+                      Searching...
+                    </div>
+                  ) : attendeeSuggestions.length === 0 ? (
+                    <div style={{
+                      padding: '12px',
+                      textAlign: 'center',
+                      color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                      fontSize: '12px',
+                    }}>
+                      No contacts found
+                    </div>
+                  ) : (
+                    attendeeSuggestions.map((suggestion, idx) => (
+                      <div
+                        key={`${suggestion.contact_id}-${suggestion.email}`}
+                        onClick={() => addAttendeeFromSuggestion(suggestion)}
+                        style={{
+                          padding: '10px 12px',
+                          cursor: 'pointer',
+                          borderBottom: idx < attendeeSuggestions.length - 1
+                            ? `1px solid ${theme === 'light' ? '#E5E7EB' : '#4B5563'}`
+                            : 'none',
+                          background: theme === 'light' ? '#FFFFFF' : '#374151',
+                          transition: 'background 0.15s',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = theme === 'light' ? '#F3F4F6' : '#4B5563';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = theme === 'light' ? '#FFFFFF' : '#374151';
+                        }}
+                      >
+                        <div style={{
+                          fontWeight: 500,
+                          fontSize: '13px',
+                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                          marginBottom: '2px',
+                        }}>
+                          {suggestion.name}
+                          {suggestion.is_primary && (
+                            <span style={{
+                              marginLeft: '6px',
+                              fontSize: '10px',
+                              color: '#10B981',
+                              fontWeight: 400,
+                            }}>
+                              (primary)
+                            </span>
+                          )}
+                        </div>
+                        <div style={{
+                          fontSize: '11px',
+                          color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                        }}>
+                          {suggestion.email}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -334,7 +606,7 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
             fontSize: '14px'
           }}>
             <FaRobot size={32} style={{ marginBottom: '12px', opacity: 0.5 }} />
-            <div>Ask Claude about this email</div>
+            <div>Ask Claude about this {contextLabel}</div>
             <div style={{ fontSize: '12px', marginTop: '8px' }}>
               Try the quick actions above or type your question
             </div>
@@ -405,7 +677,7 @@ NEVER: Add explanations, say "maybe later", leave doors open, use corporate spea
           value={chatInput}
           onChange={(e) => setChatInput(e.target.value)}
           onKeyPress={(e) => e.key === 'Enter' && !chatLoading && sendMessageToClaude(chatInput)}
-          placeholder="Ask Claude about this email..."
+          placeholder={`Ask Claude about this ${contextLabel}...`}
           disabled={chatLoading}
         />
         <ChatSendButton

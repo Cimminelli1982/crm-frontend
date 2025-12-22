@@ -13,6 +13,12 @@ const useContextContacts = (activeTab, selectedThread, selectedWhatsappChat, sel
   const [contextCompanies, setContextCompanies] = useState([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
   const [loadingCompanies, setLoadingCompanies] = useState(false);
+  const [refreshCounter, setRefreshCounter] = useState(0);
+
+  // Function to trigger a refresh of contacts
+  const refetchContacts = useCallback(() => {
+    setRefreshCounter(prev => prev + 1);
+  }, []);
 
   // Extract participants based on source type
   const participants = useMemo(() => {
@@ -38,21 +44,46 @@ const useContextContacts = (activeTab, selectedThread, selectedWhatsappChat, sel
 
       // For deals, extract contacts directly from deal data
       if (type === 'deals' && deal) {
-        const dealContacts = (deal.deals_contacts || []).map(dc => ({
-          contact: dc.contacts ? {
-            ...dc.contacts,
-            company_name: null,
-            completeness_score: 0
-          } : null,
-          hasContact: !!dc.contacts,
-          name: dc.contacts ? `${dc.contacts.first_name || ''} ${dc.contacts.last_name || ''}`.trim() : 'Unknown',
-          roles: [dc.relationship || 'linked'],
-          email: null,
-          phone: null
-        })).filter(c => c.contact);
-        
-        setContextContacts(dealContacts);
-        setLoadingContacts(false);
+        setLoadingContacts(true);
+        try {
+          const contactIds = (deal.deals_contacts || [])
+            .filter(dc => dc.contacts?.contact_id)
+            .map(dc => dc.contacts.contact_id);
+
+          // Fetch completeness scores for deal contacts
+          let completenessById = {};
+          if (contactIds.length > 0) {
+            const { data: completenessData } = await supabase
+              .from('contact_completeness')
+              .select('contact_id, completeness_score')
+              .in('contact_id', contactIds);
+
+            if (completenessData) {
+              completenessData.forEach(c => {
+                completenessById[c.contact_id] = c.completeness_score;
+              });
+            }
+          }
+
+          const dealContacts = (deal.deals_contacts || []).map(dc => ({
+            contact: dc.contacts ? {
+              ...dc.contacts,
+              company_name: null,
+              completeness_score: completenessById[dc.contacts.contact_id] || 0
+            } : null,
+            hasContact: !!dc.contacts,
+            name: dc.contacts ? `${dc.contacts.first_name || ''} ${dc.contacts.last_name || ''}`.trim() : 'Unknown',
+            roles: [dc.relationship || 'linked'],
+            email: null,
+            phone: null
+          })).filter(c => c.contact);
+
+          setContextContacts(dealContacts);
+        } catch (error) {
+          console.error('Error fetching deal contacts:', error);
+        } finally {
+          setLoadingContacts(false);
+        }
         return;
       }
 
@@ -99,7 +130,7 @@ const useContextContacts = (activeTab, selectedThread, selectedWhatsappChat, sel
               // Fetch companies for contacts
               const { data: contactCompanies } = await supabase
                 .from('contact_companies')
-                .select('contact_id, company_id, is_primary, companies(company_id, name)')
+                .select('contact_id, company_id, is_primary, companies(company_id, name, show_missing)')
                 .in('contact_id', contactIds);
 
               // Map contact to primary company
@@ -223,7 +254,7 @@ const useContextContacts = (activeTab, selectedThread, selectedWhatsappChat, sel
           // Fetch companies for contacts
           const { data: contactCompanies } = await supabase
             .from('contact_companies')
-            .select('contact_id, company_id, is_primary, companies(company_id, name)')
+            .select('contact_id, company_id, is_primary, companies(company_id, name, show_missing)')
             .in('contact_id', contactIds);
 
           // Fetch company domains
@@ -357,31 +388,81 @@ const useContextContacts = (activeTab, selectedThread, selectedWhatsappChat, sel
     };
 
     fetchContacts();
-  }, [participants, selectedWhatsappChat]);
+  }, [participants, selectedWhatsappChat, refreshCounter]);
 
   // Fetch companies when contacts change
   useEffect(() => {
     const fetchCompanies = async () => {
       // For deals, extract companies directly from deal data
       if (participants.type === 'deals' && participants.deal) {
-        const dealCompanies = (participants.deal.deal_companies || []).map(dco => ({
-          company: dco.companies ? {
-            company_id: dco.companies.company_id,
-            name: dco.companies.name,
-            website: dco.companies.website,
-            category: dco.companies.category
-          } : null,
-          hasCompany: !!dco.companies,
-          domain: null,
-          domains: [],
-          contacts: [],
-          completeness_score: 0,
-          logo_url: null,
-          relationship: dco.relationship
-        })).filter(c => c.company);
-        
-        setContextCompanies(dealCompanies);
-        setLoadingCompanies(false);
+        setLoadingCompanies(true);
+        try {
+          const companyIds = (participants.deal.deal_companies || [])
+            .filter(dco => dco.companies?.company_id)
+            .map(dco => dco.companies.company_id);
+
+          // Fetch completeness scores, domains, and logos for deal companies
+          let completenessById = {};
+          let domainsById = {};
+          let logosById = {};
+
+          if (companyIds.length > 0) {
+            const [completenessRes, domainsRes, logosRes] = await Promise.all([
+              supabase.from('company_completeness').select('company_id, completeness_score').in('company_id', companyIds),
+              supabase.from('company_domains').select('company_id, domain').in('company_id', companyIds),
+              supabase.from('company_attachments')
+                .select('company_id, attachments(file_url, permanent_url)')
+                .in('company_id', companyIds)
+                .eq('is_logo', true)
+            ]);
+
+            if (completenessRes.data) {
+              completenessRes.data.forEach(c => {
+                completenessById[c.company_id] = c.completeness_score;
+              });
+            }
+
+            if (domainsRes.data) {
+              domainsRes.data.forEach(d => {
+                if (!domainsById[d.company_id]) {
+                  domainsById[d.company_id] = [];
+                }
+                domainsById[d.company_id].push(d.domain);
+              });
+            }
+
+            if (logosRes.data) {
+              logosRes.data.forEach(l => {
+                if (l.attachments) {
+                  logosById[l.company_id] = l.attachments.permanent_url || l.attachments.file_url;
+                }
+              });
+            }
+          }
+
+          const dealCompanies = (participants.deal.deal_companies || []).map(dco => ({
+            company: dco.companies ? {
+              company_id: dco.companies.company_id,
+              name: dco.companies.name,
+              website: dco.companies.website,
+              category: dco.companies.category,
+              show_missing: dco.companies.show_missing
+            } : null,
+            hasCompany: !!dco.companies,
+            domain: domainsById[dco.companies?.company_id]?.[0] || null,
+            domains: domainsById[dco.companies?.company_id] || [],
+            contacts: [],
+            completeness_score: completenessById[dco.companies?.company_id] || 0,
+            logo_url: logosById[dco.companies?.company_id] || null,
+            relationship: dco.relationship
+          })).filter(c => c.company);
+
+          setContextCompanies(dealCompanies);
+        } catch (error) {
+          console.error('Error fetching deal companies:', error);
+        } finally {
+          setLoadingCompanies(false);
+        }
         return;
       }
 
@@ -416,7 +497,7 @@ const useContextContacts = (activeTab, selectedThread, selectedWhatsappChat, sel
         if (allDomains.length > 0) {
           const { data: domainMatches } = await supabase
             .from('company_domains')
-            .select('domain, company_id, companies(company_id, name, website, category)')
+            .select('domain, company_id, companies(company_id, name, website, category, show_missing)')
             .in('domain', allDomains);
 
           if (domainMatches) {
@@ -439,7 +520,7 @@ const useContextContacts = (activeTab, selectedThread, selectedWhatsappChat, sel
         if (contactIds.length > 0) {
           const { data } = await supabase
             .from('contact_companies')
-            .select('contact_id, company_id, companies(company_id, name, website, category)')
+            .select('contact_id, company_id, companies(company_id, name, website, category, show_missing)')
             .in('contact_id', contactIds);
           contactCompaniesData = data || [];
 
@@ -556,6 +637,7 @@ const useContextContacts = (activeTab, selectedThread, selectedWhatsappChat, sel
     contextCompanies,
     loadingContacts,
     loadingCompanies,
+    refetchContacts,
     // Aliases for backwards compatibility
     emailContacts: contextContacts,
     emailCompanies: contextCompanies,
