@@ -317,6 +317,10 @@ const CommandCenterPage = ({ theme }) => {
     if (activeTab === 'deals' && activeActionTab === 'dataIntegrity') {
       setActiveActionTab('chat');
     }
+    // When switching to calendar tab, if chat or dataIntegrity is selected, switch to crm
+    if (activeTab === 'calendar' && (activeActionTab === 'chat' || activeActionTab === 'dataIntegrity')) {
+      setActiveActionTab('crm');
+    }
   }, [activeTab]);
 
   // Context contacts hook - handles Email, WhatsApp, and Calendar sources
@@ -9685,9 +9689,34 @@ internet businesses.`;
                     </div>
                     {/* Name and details */}
                     <div>
-                      <EmailSubjectFull theme={theme} style={{ margin: 0 }}>
-                        {selectedKeepInTouchContact.full_name}
-                      </EmailSubjectFull>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <EmailSubjectFull theme={theme} style={{ margin: 0 }}>
+                          {selectedKeepInTouchContact.full_name}
+                        </EmailSubjectFull>
+                        {/* Link Company button when no company is linked */}
+                        {!keepInTouchCompanies || keepInTouchCompanies.length === 0 ? (
+                          <button
+                            onClick={() => setLinkCompanyModalContact(keepInTouchContactDetails)}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '4px 8px',
+                              fontSize: '11px',
+                              fontWeight: 500,
+                              background: theme === 'dark' ? '#374151' : '#F3F4F6',
+                              border: `1px dashed ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                              borderRadius: '4px',
+                              color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                              cursor: 'pointer'
+                            }}
+                            title="Link a company to this contact"
+                          >
+                            <FaBuilding size={10} />
+                            Link Company
+                          </button>
+                        ) : null}
+                      </div>
                       {(keepInTouchContactDetails?.category || keepInTouchContactDetails?.job_role || keepInTouchContactDetails?.company) && (
                         <div style={{ fontSize: '13px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginTop: '4px' }}>
                           {keepInTouchContactDetails?.category && (
@@ -10602,10 +10631,12 @@ internet businesses.`;
             )}
             {!rightPanelCollapsed && activeTab !== 'keepintouch' && (
               <>
-                <ActionTabIcon theme={theme} $active={activeActionTab === 'chat'} onClick={() => setActiveActionTab('chat')} title="Chat with Claude">
-                  <FaRobot />
-                </ActionTabIcon>
-                {activeTab !== 'deals' && (
+                {activeTab !== 'calendar' && (
+                  <ActionTabIcon theme={theme} $active={activeActionTab === 'chat'} onClick={() => setActiveActionTab('chat')} title="Chat with Claude">
+                    <FaRobot />
+                  </ActionTabIcon>
+                )}
+                {activeTab !== 'deals' && activeTab !== 'calendar' && (
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'dataIntegrity'} onClick={() => setActiveActionTab('dataIntegrity')} title="Data Integrity">
                     <FaDatabase />
                   </ActionTabIcon>
@@ -13244,6 +13275,36 @@ internet businesses.`;
             setContactsMissingCompany(prev =>
               prev.filter(c => c.contact_id !== linkCompanyModalContact.contact_id)
             );
+
+            // If this is the selected Keep in Touch contact, refresh companies
+            if (selectedKeepInTouchContact?.contact_id === linkCompanyModalContact.contact_id) {
+              const { data: companiesData } = await supabase
+                .from('contact_companies')
+                .select('contact_companies_id, company_id, is_primary, relationship')
+                .eq('contact_id', linkCompanyModalContact.contact_id)
+                .order('is_primary', { ascending: false });
+              if (companiesData && companiesData.length > 0) {
+                const companyIds = companiesData.map(c => c.company_id);
+                const { data: companyDetails } = await supabase
+                  .from('companies')
+                  .select('company_id, name')
+                  .in('company_id', companyIds);
+                const companiesWithDetails = companiesData.map(cc => ({
+                  ...cc,
+                  company: companyDetails?.find(c => c.company_id === cc.company_id)
+                }));
+                setKeepInTouchCompanies(companiesWithDetails);
+                // Also update the company in keepInTouchContactDetails
+                const primaryCompany = companiesWithDetails.find(c => c.is_primary) || companiesWithDetails[0];
+                if (primaryCompany?.company) {
+                  setKeepInTouchContactDetails(prev => ({
+                    ...prev,
+                    company: primaryCompany.company
+                  }));
+                }
+              }
+            }
+
             toast.success(`Company linked to ${linkCompanyModalContact.first_name || 'contact'}`);
           }
         }}
