@@ -315,7 +315,7 @@ export function transformCalendarEvent(event) {
 
 // Upsert calendar events to command_center_inbox (with etag change detection)
 export async function upsertCalendarEvents(events, dismissedUids) {
-  const results = { synced: 0, updated: 0, skipped: 0, unchanged: 0, errors: 0 };
+  const results = { synced: 0, updated: 0, skipped: 0, unchanged: 0, errors: 0, alreadyProcessed: 0 };
 
   // Filter out dismissed events
   const validEvents = events.filter(e => {
@@ -333,9 +333,35 @@ export async function upsertCalendarEvents(events, dismissedUids) {
   // Get existing events with etags for change detection
   const existingEvents = await getExistingCalendarEvents();
 
+  // Get already processed meetings from meetings table to avoid re-ingesting
+  const { data: processedMeetings } = await supabase
+    .from('meetings')
+    .select('meeting_name, meeting_date');
+
+  // Create a Set of "name|date" for quick lookup
+  const processedMeetingsSet = new Set();
+  if (processedMeetings) {
+    for (const m of processedMeetings) {
+      // Normalize: lowercase name, date without time
+      const name = (m.meeting_name || '').toLowerCase().trim();
+      const date = m.meeting_date ? m.meeting_date.split('T')[0] : '';
+      if (name && date) {
+        processedMeetingsSet.add(`${name}|${date}`);
+      }
+    }
+  }
+
   for (const event of validEvents) {
     const transformed = transformCalendarEvent(event);
     const existing = existingEvents.get(event.uid);
+
+    // Check if this event has already been processed into meetings table
+    const eventName = (transformed.subject || '').toLowerCase().trim();
+    const eventDate = transformed.date ? transformed.date.split('T')[0] : '';
+    if (eventName && eventDate && processedMeetingsSet.has(`${eventName}|${eventDate}`)) {
+      results.alreadyProcessed++;
+      continue; // Skip - already processed as a meeting
+    }
 
     try {
       if (existing) {
