@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FaUsers, FaArchive, FaCheck, FaCheckDouble, FaPaperPlane, FaClock, FaPaperclip, FaTimes, FaFile, FaImage, FaBolt } from 'react-icons/fa';
+import { FaUsers, FaArchive, FaCheck, FaCheckDouble, FaPaperPlane, FaClock, FaPaperclip, FaTimes, FaFile, FaImage, FaBolt, FaMagic } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import styled from 'styled-components';
 import toast from 'react-hot-toast';
@@ -219,6 +219,35 @@ const ReplyContainer = styled.div`
 const ReplyInputWrapper = styled.div`
   flex: 1;
   position: relative;
+`;
+
+const ProofreadButton = styled.button`
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: none;
+  background: ${props => props.theme === 'light' ? '#8B5CF6' : '#7C3AED'};
+  color: white;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+  z-index: 1;
+
+  &:hover:not(:disabled) {
+    background: ${props => props.theme === 'light' ? '#7C3AED' : '#6D28D9'};
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 `;
 
 const ReplyInput = styled.textarea`
@@ -649,13 +678,48 @@ const UnreadBadge = styled.div`
   text-align: center;
 `;
 
+// Helper to normalize phone numbers for comparison
+const normalizePhoneForComparison = (phone) => {
+  if (!phone) return '';
+  // Remove all non-digit characters except leading +
+  return phone.replace(/[^\d+]/g, '').replace(/^00/, '+');
+};
+
+// Helper to find CRM contact name by phone number
+const getCrmContactName = (phoneNumber, contacts) => {
+  if (!phoneNumber || !contacts || contacts.length === 0) return null;
+
+  const normalizedPhone = normalizePhoneForComparison(phoneNumber);
+
+  // Find contact by phone number - check both phone and allPhones
+  const match = contacts.find(p => {
+    // Check main phone
+    if (p.phone && normalizePhoneForComparison(p.phone) === normalizedPhone) {
+      return true;
+    }
+    // Check allPhones array
+    if (p.allPhones && p.allPhones.length > 0) {
+      return p.allPhones.some(ph => normalizePhoneForComparison(ph) === normalizedPhone);
+    }
+    return false;
+  });
+
+  if (match?.contact) {
+    const firstName = match.contact.first_name || '';
+    const lastName = match.contact.last_name || '';
+    return `${firstName} ${lastName}`.trim() || null;
+  }
+  return null;
+};
+
 // Chat List Component (for left column)
 export const WhatsAppChatList = ({
   theme,
   chats,
   selectedChat,
   onSelectChat,
-  loading
+  loading,
+  contacts = [] // CRM contacts to look up names
 }) => {
   if (loading) {
     return <EmptyState theme={theme}>Loading...</EmptyState>;
@@ -693,6 +757,9 @@ export const WhatsAppChatList = ({
       {chats.map(chat => {
         const hasUnread = chat.messages?.some(m => m.is_read === false);
         const unreadCount = chat.messages?.filter(m => m.is_read === false).length || 0;
+        // Get CRM contact name if available
+        const crmName = getCrmContactName(chat.contact_number, contacts);
+        const displayName = crmName || chat.chat_name || chat.contact_number;
 
         return (
           <ChatListItem
@@ -703,9 +770,9 @@ export const WhatsAppChatList = ({
           >
             <ChatListAvatar theme={theme} $isGroup={chat.is_group_chat}>
               {chat.profile_image_url ? (
-                <AvatarImage src={chat.profile_image_url} alt={chat.chat_name || chat.contact_number} />
+                <AvatarImage src={chat.profile_image_url} alt={displayName} />
               ) : (
-                getInitials(chat.chat_name, chat.contact_number)
+                getInitials(displayName, chat.contact_number)
               )}
               {chat.is_group_chat && (
                 <GroupBadge theme={theme}>
@@ -716,7 +783,7 @@ export const WhatsAppChatList = ({
             <ChatListInfo>
               <ChatListHeader>
                 <ChatListName theme={theme}>
-                  {chat.chat_name || chat.contact_number}
+                  {displayName}
                 </ChatListName>
                 <ChatListTime theme={theme} $hasUnread={hasUnread}>
                   {formatTime(chat.latestMessage?.date)}
@@ -753,7 +820,8 @@ const WhatsAppTab = ({
   onDone,
   onStatusChange,
   saving,
-  onMessageSent
+  onMessageSent,
+  contacts = [] // CRM contacts to look up names
 }) => {
   const [archivedMessages, setArchivedMessages] = useState([]);
   const [loadingArchived, setLoadingArchived] = useState(false);
@@ -764,6 +832,7 @@ const WhatsAppTab = ({
   const [selectedFile, setSelectedFile] = useState(null); // File to attach
   const [filePreview, setFilePreview] = useState(null); // Preview URL for images
   const [uploading, setUploading] = useState(false); // File upload in progress
+  const [proofreading, setProofreading] = useState(false); // AI proofreading in progress
   const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -872,6 +941,53 @@ const WhatsAppTab = ({
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  // Proofread handler - uses AI to polish the message
+  const handleProofread = async () => {
+    const textToProofread = replyText.trim();
+    if (!textToProofread || proofreading) return;
+
+    setProofreading(true);
+    try {
+      const systemPrompt = `You are a proofreading assistant for WhatsApp messages.
+Your ONLY job is to fix grammar, spelling, and awkward phrasing.
+Keep the same tone, intent, and language (don't translate).
+Make it sound natural and casual - this is WhatsApp, not a formal email.
+Return ONLY the improved text, nothing else. No explanations, no quotes, no markers.`;
+
+      const userMessage = `Proofread this WhatsApp message:\n\n${textToProofread}`;
+
+      const response = await fetch(`${BAILEYS_API}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: userMessage }],
+          systemPrompt
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.response) {
+          // Clean up any potential wrapper markers
+          let proofreadText = result.response.trim();
+          // Remove --- markers if present
+          proofreadText = proofreadText.replace(/^---\n?/, '').replace(/\n?---$/, '').trim();
+          setReplyText(proofreadText);
+          toast.success('Message proofread!');
+        } else {
+          toast.error('Could not proofread message');
+        }
+      } else {
+        toast.error('Proofread service unavailable');
+      }
+    } catch (error) {
+      console.error('Error proofreading:', error);
+      toast.error('Error proofreading message');
+    } finally {
+      setProofreading(false);
+    }
   };
 
   // Send message handler - uses Baileys (Node.js) with fallback to TimelinesAI (Python)
@@ -1194,20 +1310,24 @@ const WhatsAppTab = ({
     messagesByDate[dateKey].push(msg);
   });
 
+  // Get CRM contact name if available
+  const crmName = getCrmContactName(selectedChat.contact_number, contacts);
+  const displayName = crmName || selectedChat.chat_name || selectedChat.contact_number;
+
   return (
     <WhatsAppContainer>
       <ChatHeader theme={theme}>
         <ChatHeaderInfo>
           <ChatAvatar theme={theme} $isGroup={selectedChat.is_group_chat}>
             {selectedChat.profile_image_url ? (
-              <AvatarImage src={selectedChat.profile_image_url} alt={selectedChat.chat_name || selectedChat.contact_number} />
+              <AvatarImage src={selectedChat.profile_image_url} alt={displayName} />
             ) : (
-              getInitials(selectedChat.chat_name, selectedChat.contact_number)
+              getInitials(displayName, selectedChat.contact_number)
             )}
           </ChatAvatar>
           <div>
             <ChatName theme={theme}>
-              {selectedChat.chat_name || selectedChat.contact_number}
+              {displayName}
               {selectedChat.is_group_chat && (
                 <FaUsers
                   size={12}
@@ -1496,9 +1616,20 @@ const WhatsAppTab = ({
             onChange={(e) => setReplyText(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={selectedFile ? "Add a message (optional)..." : "Type a message..."}
-            disabled={sending || uploading}
+            disabled={sending || uploading || proofreading}
             rows={1}
+            style={{ paddingRight: replyText.trim().length > 0 ? '90px' : '16px' }}
           />
+          {replyText.trim().length > 0 && (
+            <ProofreadButton
+              theme={theme}
+              onClick={handleProofread}
+              disabled={proofreading || sending || uploading}
+              title="Proofread with AI"
+            >
+              {proofreading ? '...' : <><FaMagic size={10} /> Proofread</>}
+            </ProofreadButton>
+          )}
         </ReplyInputWrapper>
         <SendButton
           theme={theme}

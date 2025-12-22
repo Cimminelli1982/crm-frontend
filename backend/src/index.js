@@ -290,7 +290,7 @@ async function syncGoogleCalendar() {
     if (transformedEvents.length > 0) {
       // Upsert to command_center_inbox
       const results = await upsertGoogleCalendarEvents(transformedEvents);
-      console.log(`[GoogleCalendar] Sync complete: ${results.synced} new, ${results.updated} updated, ${results.errors} errors`);
+      console.log(`[GoogleCalendar] Sync complete: ${results.synced} new, ${results.updated} updated, ${results.skippedProcessed} already processed, ${results.errors} errors`);
     }
 
     // Full sync mode - no sync token needed
@@ -305,17 +305,33 @@ async function syncGoogleCalendar() {
 
 // Helper function to upsert Google Calendar events to command_center_inbox
 async function upsertGoogleCalendarEvents(events) {
-  const results = { synced: 0, updated: 0, errors: 0 };
+  const results = { synced: 0, updated: 0, errors: 0, skippedProcessed: 0 };
 
   for (const event of events) {
     try {
-      // Check if event already exists
+      // Check if event already exists in command_center_inbox
       const { data: existing } = await supabase
         .from('command_center_inbox')
         .select('id, etag')
         .eq('type', 'calendar')
         .eq('event_uid', event.event_uid)
         .single();
+
+      // Check if event was already processed to meetings table (by event_uid)
+      if (event.event_uid) {
+        const { data: existingMeeting } = await supabase
+          .from('meetings')
+          .select('meeting_id')
+          .eq('event_uid', event.event_uid)
+          .single();
+
+        if (existingMeeting) {
+          // Event was already processed - skip
+          console.log(`  [SKIP] Already processed: ${event.event_uid} - ${event.subject}`);
+          results.skippedProcessed++;
+          continue;
+        }
+      }
 
       if (existing) {
         // Update if etag changed
@@ -332,7 +348,6 @@ async function upsertGoogleCalendarEvents(events) {
               from_email: event.from_email,
               to_recipients: event.to_recipients,
               etag: event.etag,
-              updated_at: new Date().toISOString(),
             })
             .eq('id', existing.id);
 
@@ -1594,6 +1609,101 @@ Rules:
     const extracted = JSON.parse(responseText);
     console.log('[Calendar] Extracted event:', extracted);
 
+    // For WhatsApp: look up contacts by phone number and get their emails
+    if (whatsapp && extracted.found_event) {
+      try {
+        // Collect all phone numbers from the chat
+        const phoneNumbers = new Set();
+
+        // Add main chat contact number (for 1:1 chats)
+        if (whatsapp.contact_number) {
+          phoneNumbers.add(whatsapp.contact_number.replace(/[^\d+]/g, ''));
+        }
+
+        // For group chats: also collect sender numbers from messages
+        if (whatsapp.is_group_chat && whatsapp.messages) {
+          whatsapp.messages.forEach(m => {
+            if (!m.is_from_me && m.sender_number) {
+              phoneNumbers.add(m.sender_number.replace(/[^\d+]/g, ''));
+            }
+          });
+        }
+
+        console.log('[Calendar] Looking up phone numbers:', Array.from(phoneNumbers));
+
+        if (phoneNumbers.size > 0) {
+          // Build phone variants for all numbers
+          const allPhoneVariants = [];
+          phoneNumbers.forEach(phone => {
+            if (phone) {
+              allPhoneVariants.push(
+                phone,
+                phone.replace(/^\+/, ''),
+                phone.replace(/^00/, ''),
+                phone.slice(-10),
+                phone.slice(-9)
+              );
+            }
+          });
+          const uniqueVariants = [...new Set(allPhoneVariants.filter(Boolean))];
+
+          // Search contact_mobiles for matching phone numbers
+          const { data: mobileMatches } = await supabase
+            .from('contact_mobiles')
+            .select('contact_id, mobile')
+            .or(uniqueVariants.map(p => `mobile.ilike.%${p}%`).join(','));
+
+          if (mobileMatches && mobileMatches.length > 0) {
+            const contactIds = [...new Set(mobileMatches.map(m => m.contact_id))];
+
+            // Fetch contacts with their emails
+            const { data: contacts } = await supabase
+              .from('contacts')
+              .select(`
+                contact_id,
+                first_name,
+                last_name,
+                contact_emails (
+                  email,
+                  is_primary
+                )
+              `)
+              .in('contact_id', contactIds);
+
+            if (contacts && contacts.length > 0) {
+              const matchedAttendees = [];
+              contacts.forEach(contact => {
+                const fullName = `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+
+                // Add ALL emails for this contact as separate attendees
+                if (contact.contact_emails && contact.contact_emails.length > 0) {
+                  contact.contact_emails.forEach(emailObj => {
+                    if (emailObj.email) {
+                      matchedAttendees.push({ name: fullName, email: emailObj.email });
+                    }
+                  });
+                }
+              });
+
+              // Merge with existing attendees (avoid duplicates)
+              const existingEmails = new Set((extracted.attendees || []).map(a => a.email?.toLowerCase()));
+              matchedAttendees.forEach(attendee => {
+                if (!existingEmails.has(attendee.email?.toLowerCase())) {
+                  extracted.attendees = extracted.attendees || [];
+                  extracted.attendees.push(attendee);
+                }
+              });
+
+              console.log('[Calendar] Added attendees from contact lookup:', matchedAttendees);
+            }
+          }
+        }
+      } catch (lookupError) {
+        console.error('[Calendar] Contact lookup error:', lookupError);
+        // Continue even if lookup fails
+      }
+    }
+
     res.json({
       success: true,
       event: extracted,
@@ -1812,6 +1922,8 @@ app.post('/google-calendar/create-event', async (req, res) => {
       endDate,
       allDay,
       attendees,
+      timezone,
+      useGoogleMeet,
       sendUpdates = 'all', // 'all' sends invite emails
     } = req.body;
 
@@ -1825,7 +1937,7 @@ app.post('/google-calendar/create-event', async (req, res) => {
 
     const gcal = getGoogleCalendarClient();
 
-    console.log('[GoogleCalendar] Creating event:', title, 'at', startDate);
+    console.log('[GoogleCalendar] Creating event:', title, 'at', startDate, 'timezone:', timezone, 'googleMeet:', useGoogleMeet);
 
     const result = await gcal.createEvent({
       title,
@@ -1836,6 +1948,8 @@ app.post('/google-calendar/create-event', async (req, res) => {
       allDay: allDay || false,
       attendees: attendees || [],
       sendUpdates,
+      timezone: timezone || 'Europe/Rome',
+      useGoogleMeet: useGoogleMeet || false,
     });
 
     console.log('[GoogleCalendar] Event created:', result.id);

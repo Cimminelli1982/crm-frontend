@@ -675,9 +675,11 @@ const ContactEnrichmentModal = ({
       if (enrichmentData.organization?.name) {
         let companyId = null;
 
-        // Extract domain from organization data (Apollo provides primary_domain or website)
-        const companyDomain = enrichmentData.organization.primary_domain ||
-          enrichmentData.organization.website?.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+        // Extract domain from organization data (Apollo provides website_url or website)
+        const websiteUrl = enrichmentData.organization.primary_domain ||
+          enrichmentData.organization.website_url ||
+          enrichmentData.organization.website;
+        const companyDomain = websiteUrl?.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
 
         if (companyDomain) {
           // Check if domain exists in company_domains table
@@ -696,7 +698,7 @@ const ContactEnrichmentModal = ({
               .from('companies')
               .insert({
                 name: enrichmentData.organization.name,
-                website: enrichmentData.organization.website || null,
+                website: websiteUrl || null,
                 linkedin: enrichmentData.organization.linkedin_url || null,
                 description: enrichmentData.organization.industry || null
               })

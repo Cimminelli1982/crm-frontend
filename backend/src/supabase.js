@@ -333,32 +333,39 @@ export async function upsertCalendarEvents(events, dismissedUids) {
   // Get existing events with etags for change detection
   const existingEvents = await getExistingCalendarEvents();
 
-  // Get already processed meetings from meetings table to avoid re-ingesting
-  const { data: processedMeetings } = await supabase
+  // Get already processed meetings from meetings table (by event_uid) to avoid re-ingesting
+  const { data: processedMeetings, error: meetingsQueryError } = await supabase
     .from('meetings')
-    .select('meeting_name, meeting_date');
+    .select('event_uid')
+    .not('event_uid', 'is', null);
 
-  // Create a Set of "name|date" for quick lookup
-  const processedMeetingsSet = new Set();
+  if (meetingsQueryError) {
+    console.error('  [ERROR] Failed to query meetings for event_uid:', meetingsQueryError);
+  }
+  console.log(`  [DEBUG] processedMeetings query returned:`, processedMeetings?.length || 0, 'rows');
+
+  // Create a Set of event_uids for quick lookup
+  const processedEventUids = new Set();
   if (processedMeetings) {
     for (const m of processedMeetings) {
-      // Normalize: lowercase name, date without time
-      const name = (m.meeting_name || '').toLowerCase().trim();
-      const date = m.meeting_date ? m.meeting_date.split('T')[0] : '';
-      if (name && date) {
-        processedMeetingsSet.add(`${name}|${date}`);
+      if (m.event_uid) {
+        processedEventUids.add(m.event_uid);
       }
     }
+  }
+
+  console.log(`  [DEBUG] Found ${processedEventUids.size} processed meetings with event_uid`);
+  if (processedEventUids.size > 0) {
+    console.log(`  [DEBUG] Processed event_uids:`, [...processedEventUids].slice(0, 5));
   }
 
   for (const event of validEvents) {
     const transformed = transformCalendarEvent(event);
     const existing = existingEvents.get(event.uid);
 
-    // Check if this event has already been processed into meetings table
-    const eventName = (transformed.subject || '').toLowerCase().trim();
-    const eventDate = transformed.date ? transformed.date.split('T')[0] : '';
-    if (eventName && eventDate && processedMeetingsSet.has(`${eventName}|${eventDate}`)) {
+    // Check if this event has already been processed into meetings table (by event_uid)
+    if (event.uid && processedEventUids.has(event.uid)) {
+      console.log(`  [SKIP] Already processed: ${event.uid} - ${transformed.subject}`);
       results.alreadyProcessed++;
       continue; // Skip - already processed as a meeting
     }

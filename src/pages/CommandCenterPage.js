@@ -1777,6 +1777,8 @@ internet businesses.`;
         setProcessedMeetings(data || []);
         if (calendarViewMode === 'processed' && data && data.length > 0) {
           setSelectedCalendarEvent({ ...data[0], source: 'meetings' });
+          setCalendarEventScore(data[0].score ? parseInt(data[0].score) : null);
+          setCalendarEventNotes(data[0].notes || '');
         }
       }
       setCalendarLoading(false);

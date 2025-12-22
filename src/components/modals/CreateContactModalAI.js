@@ -403,9 +403,9 @@ const CreateContactModalAI = ({
   // Fetch AI suggestions - now returns all fields
   // manualNames: optional { firstName, lastName } from form for re-analyze with manual input
   const fetchAiSuggestions = async (data, manualNames = null) => {
-    // Only require email address - Apollo can enrich even without email body
-    if (!data.email) {
-      toast.error('No email address to analyze');
+    // Email is optional - can still analyze without it if we have name or body
+    if (!data.email && !data.name && !data.body_text) {
+      toast.error('Need email, name, or message to analyze');
       return;
     }
 
@@ -1177,18 +1177,27 @@ const CreateContactModalAI = ({
       setDismissedDuplicates([]);
       setDuplicatesCollapsed(false);
 
-      // Set email
+      // Set email and mobile
       setEmail(emailData.email || '');
-      setFirstName('');
-      setLastName('');
+      setFirstName(emailData.first_name || '');
+      setLastName(emailData.last_name || '');
       setCategory('');
       setMarkComplete(false);
-      setJobRole('');
+      setJobRole(emailData.job_role || '');
       setLinkedin('');
       setDescription('');
       setPhotoUrl('');
       setCompanies([]);
-      setMobiles([]);
+      // Pre-populate mobile if provided (e.g., from WhatsApp)
+      if (emailData.mobile) {
+        setMobiles([{
+          id: `temp_${Date.now()}`,
+          number: emailData.mobile,
+          is_primary: true
+        }]);
+      } else {
+        setMobiles([]);
+      }
       setCities([]);
       setBirthday('');
       setKeepInTouchFrequency('Not Set');
@@ -1199,12 +1208,18 @@ const CreateContactModalAI = ({
       setHoldId(emailData.hold_id || null);
 
       // Auto-trigger duplicate check (runs in parallel with AI analysis)
+      // For WhatsApp contacts, search by name instead of email
       if (emailData.email) {
         searchForDuplicates(emailData.email, emailData.name);
+      } else if (emailData.first_name || emailData.name) {
+        // For WhatsApp contacts without email, search by name
+        const searchName = emailData.name || `${emailData.first_name} ${emailData.last_name || ''}`.trim();
+        setManualSearchQuery(searchName);
+        handleManualSearch();
       }
 
-      // Auto-trigger AI analysis
-      if (emailData.body_text || emailData.subject) {
+      // Auto-trigger AI analysis (only if we have email or content to analyze)
+      if ((emailData.email || emailData.name) && (emailData.body_text || emailData.subject)) {
         fetchAiSuggestions(emailData);
       }
     }
@@ -1395,8 +1410,9 @@ const CreateContactModalAI = ({
       toast.error('Last name is required');
       return;
     }
-    if (!email.trim()) {
-      toast.error('Email is required');
+    // Email is optional - but require at least email OR mobile
+    if (!email.trim() && mobiles.length === 0) {
+      toast.error('Either email or mobile is required');
       return;
     }
     if (!category) {
@@ -1427,14 +1443,16 @@ const CreateContactModalAI = ({
 
       if (contactError) throw contactError;
 
-      // Create contact_emails
-      await supabase
-        .from('contact_emails')
-        .insert({
-          contact_id: contact.contact_id,
-          email: email.toLowerCase().trim(),
-          is_primary: true
-        });
+      // Create contact_emails (only if email provided)
+      if (email.trim()) {
+        await supabase
+          .from('contact_emails')
+          .insert({
+            contact_id: contact.contact_id,
+            email: email.toLowerCase().trim(),
+            is_primary: true
+          });
+      }
 
       // Create contact_mobiles
       for (const mobileItem of mobiles) {
@@ -1647,18 +1665,94 @@ const CreateContactModalAI = ({
           background: isDark ? '#1F2937' : '#FFFFFF',
           flexShrink: 0
         }}>
-          {/* Email - read only */}
-          <div style={{ marginBottom: '12px' }}>
-            <label style={{ ...labelStyle, fontSize: '11px' }}>Email</label>
-            <div style={{
-              padding: '8px 12px',
-              background: isDark ? '#374151' : '#E5E7EB',
-              borderRadius: '6px',
-              fontSize: '14px',
-              color: textColor
-            }}>
-              {email}
+          {/* Email and Mobile row */}
+          <div style={{ display: 'flex', gap: '12px', marginBottom: '12px' }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ ...labelStyle, fontSize: '11px' }}>Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                style={{ ...inputStyle, padding: '8px 12px' }}
+                placeholder="email@example.com"
+              />
             </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ ...labelStyle, fontSize: '11px' }}>
+                Mobile {mobiles.length > 0 && <span style={{ color: '#10B981' }}>({mobiles.length})</span>}
+              </label>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <input
+                  type="tel"
+                  value={newMobile}
+                  onChange={(e) => setNewMobile(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter' && newMobile.trim()) {
+                      handleAddMobile(newMobile);
+                    }
+                  }}
+                  style={{ ...inputStyle, padding: '8px 12px', flex: 1 }}
+                  placeholder="+39 333 1234567"
+                />
+                <button
+                  onClick={() => {
+                    if (newMobile.trim()) {
+                      handleAddMobile(newMobile);
+                    }
+                  }}
+                  disabled={!newMobile.trim()}
+                  style={{
+                    padding: '8px 12px',
+                    border: 'none',
+                    borderRadius: '6px',
+                    background: newMobile.trim() ? '#10B981' : (isDark ? '#374151' : '#E5E7EB'),
+                    color: newMobile.trim() ? 'white' : mutedColor,
+                    cursor: newMobile.trim() ? 'pointer' : 'not-allowed',
+                    fontSize: '14px'
+                  }}
+                >
+                  <FaPlus size={12} />
+                </button>
+              </div>
+              {/* Show added mobiles */}
+              {mobiles.length > 0 && (
+                <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                  {mobiles.map((m) => (
+                    <span
+                      key={m.id}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '2px 8px',
+                        background: isDark ? '#374151' : '#E5E7EB',
+                        borderRadius: '12px',
+                        fontSize: '11px',
+                        color: textColor
+                      }}
+                    >
+                      <FaPhone size={8} /> {m.number}
+                      <button
+                        onClick={() => handleRemoveMobile(m.id)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: '0 2px',
+                          color: mutedColor,
+                          fontSize: '10px'
+                        }}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <div style={{ fontSize: '10px', color: mutedColor, marginBottom: '12px', marginTop: '-8px' }}>
+            At least email or mobile is required
           </div>
 
           {/* Name row */}

@@ -70,7 +70,15 @@ export class GoogleCalendarClient {
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[GoogleCalendar] API error ${response.status}:`, errorText);
-      throw new Error(`Google Calendar API error: ${response.status}`);
+      // Include actual error message from Google
+      let errorMessage = `Google Calendar API error: ${response.status}`;
+      try {
+        const errorJson = JSON.parse(errorText);
+        if (errorJson.error?.message) {
+          errorMessage = errorJson.error.message;
+        }
+      } catch (e) {}
+      throw new Error(errorMessage);
     }
 
     return response.json();
@@ -133,6 +141,8 @@ export class GoogleCalendarClient {
     attendees = [],
     reminders = { useDefault: false, overrides: [{ method: 'popup', minutes: 15 }] },
     sendUpdates = 'all', // 'all' sends invite emails, 'none' doesn't
+    timezone = 'Europe/Rome',
+    useGoogleMeet = false,
   }) {
     const event = {
       summary: title,
@@ -140,12 +150,22 @@ export class GoogleCalendarClient {
       location,
       start: allDay
         ? { date: startDate.split('T')[0] }
-        : { dateTime: startDate, timeZone: 'Europe/Rome' },
+        : { dateTime: startDate, timeZone: timezone },
       end: allDay
         ? { date: endDate ? endDate.split('T')[0] : startDate.split('T')[0] }
-        : { dateTime: endDate || new Date(new Date(startDate).getTime() + 3600000).toISOString(), timeZone: 'Europe/Rome' },
+        : { dateTime: endDate || new Date(new Date(startDate).getTime() + 3600000).toISOString(), timeZone: timezone },
       reminders,
     };
+
+    // Add Google Meet conference if requested
+    if (useGoogleMeet) {
+      event.conferenceData = {
+        createRequest: {
+          requestId: `meet-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          conferenceSolutionKey: { type: 'hangoutsMeet' },
+        },
+      };
+    }
 
     // Add attendees if provided
     if (attendees && attendees.length > 0) {
@@ -156,7 +176,9 @@ export class GoogleCalendarClient {
       }));
     }
 
-    const endpoint = `/calendars/${encodeURIComponent(this.calendarId)}/events?sendUpdates=${sendUpdates}`;
+    // Add conferenceDataVersion=1 if using Google Meet
+    const conferenceParam = useGoogleMeet ? '&conferenceDataVersion=1' : '';
+    const endpoint = `/calendars/${encodeURIComponent(this.calendarId)}/events?sendUpdates=${sendUpdates}${conferenceParam}`;
     const result = await this.request(endpoint, 'POST', event);
 
     console.log('[GoogleCalendar] Event created:', result.id);
