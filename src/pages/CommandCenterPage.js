@@ -85,7 +85,7 @@ import {
   SendButton,
   CancelButton
 } from './CommandCenterPage.styles';
-import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaCheckDouble, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt, FaUpload, FaFileAlt, FaLinkedin, FaSearch, FaRocket, FaGlobe, FaMapMarkerAlt, FaUsers } from 'react-icons/fa';
+import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaCheckDouble, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt, FaUpload, FaFileAlt, FaLinkedin, FaSearch, FaRocket, FaGlobe, FaMapMarkerAlt, FaUsers, FaVideo } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import QuickEditModal from '../components/QuickEditModalRefactored';
@@ -439,7 +439,7 @@ const CommandCenterPage = ({ theme }) => {
   } = contextContactsHook;
 
   // AI Chat hook - supports both Email and WhatsApp context
-  const chatHook = useChatWithClaude(selectedThread, emailContacts, activeTab, selectedWhatsappChat, emailContacts, selectedPipelineDeal);
+  const chatHook = useChatWithClaude(selectedThread, emailContacts, activeTab, selectedWhatsappChat, emailContacts, selectedPipelineDeal, selectedKeepInTouchContact, keepInTouchCompanies, keepInTouchEmails, keepInTouchMobiles, keepInTouchFullContext, keepInTouchTags, keepInTouchCities, keepInTouchInteractions);
   const {
     chatMessages,
     setChatMessages,
@@ -664,6 +664,8 @@ const CommandCenterPage = ({ theme }) => {
   const [keepInTouchCompanies, setKeepInTouchCompanies] = useState([]);
   const [keepInTouchTags, setKeepInTouchTags] = useState([]);
   const [keepInTouchCities, setKeepInTouchCities] = useState([]);
+  // Full context for Claude chat (notes, deals, tasks, introductions, recent interactions)
+  const [keepInTouchFullContext, setKeepInTouchFullContext] = useState(null);
 
   // Keep in Touch modal states
   const [kitManageEmailsOpen, setKitManageEmailsOpen] = useState(false);
@@ -2061,6 +2063,60 @@ internet businesses.`;
         .order('interaction_date', { ascending: false })
         .limit(10);
       setKeepInTouchInteractions(interactionsData || []);
+
+      // === FULL CONTEXT FOR CLAUDE CHAT ===
+      // Fetch notes linked to this contact
+      const { data: notesData } = await supabase
+        .from('notes_contacts')
+        .select('notes(note_id, title, content, created_at)')
+        .eq('contact_id', contactId)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      // Fetch deals linked to this contact
+      const { data: dealsData } = await supabase
+        .from('deals_contacts')
+        .select('relationship, deals(deal_id, deal_name, stage, category, total_investment, deal_currency, description)')
+        .eq('contact_id', contactId);
+
+      // Fetch open tasks linked to this contact
+      const { data: tasksData } = await supabase
+        .from('tasks')
+        .select('task_id, title, description, status, priority, due_date')
+        .eq('contact_id', contactId)
+        .neq('status', 'completed')
+        .order('due_date', { ascending: true })
+        .limit(10);
+
+      // Fetch introductions involving this contact
+      const { data: introductionsData } = await supabase
+        .from('introductions')
+        .select('introduction_id, status, notes, created_at, introducer_contact_id, introducee_1_contact_id, introducee_2_contact_id')
+        .or(`introducer_contact_id.eq.${contactId},introducee_1_contact_id.eq.${contactId},introducee_2_contact_id.eq.${contactId}`)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      // Fetch recent emails (from command_center_inbox)
+      const primaryEmail = emailsData?.find(e => e.is_primary)?.email || emailsData?.[0]?.email;
+      let recentEmails = [];
+      if (primaryEmail) {
+        const { data: emailThreads } = await supabase
+          .from('command_center_inbox')
+          .select('subject, from_name, from_email, date, snippet')
+          .or(`from_email.eq.${primaryEmail},to_recipients.cs.${JSON.stringify([{ email: primaryEmail }])}`)
+          .order('date', { ascending: false })
+          .limit(5);
+        recentEmails = emailThreads || [];
+      }
+
+      // Set full context for Claude
+      setKeepInTouchFullContext({
+        notes: (notesData || []).map(n => n.notes).filter(Boolean),
+        deals: (dealsData || []).map(d => ({ ...d.deals, relationship: d.relationship })).filter(d => d.deal_id),
+        tasks: tasksData || [],
+        introductions: introductionsData || [],
+        recentEmails
+      });
     };
 
     fetchContactDetailsAndInteractions();
@@ -7913,29 +7969,64 @@ internet businesses.`;
                     </div>
                   </div>
 
-                  {/* Location */}
-                  {selectedCalendarEvent.event_location && (
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: '12px',
-                      marginBottom: '20px',
-                      padding: '16px',
-                      background: theme === 'light' ? '#F3F4F6' : '#374151',
-                      borderRadius: '12px'
-                    }}>
-                      <FaBuilding size={20} style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginTop: '2px' }} />
-                      <div style={{ color: theme === 'light' ? '#374151' : '#D1D5DB', wordBreak: 'break-word' }}>
-                        {selectedCalendarEvent.event_location.startsWith('http') ? (
-                          <a href={selectedCalendarEvent.event_location} target="_blank" rel="noopener noreferrer" style={{ color: '#3B82F6' }}>
-                            {selectedCalendarEvent.event_location}
-                          </a>
+                  {/* Location / Meeting Link */}
+                  {(() => {
+                    const location = selectedCalendarEvent.event_location || '';
+                    const isLink = location.startsWith('http');
+                    const isRemote = location.toLowerCase().includes('zoom') ||
+                                     location.toLowerCase().includes('meet.google') ||
+                                     location.toLowerCase().includes('teams') ||
+                                     location.toLowerCase().includes('webex') ||
+                                     isLink;
+
+                    return (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '12px',
+                        marginBottom: '20px',
+                        padding: '16px',
+                        background: isRemote && location
+                          ? (theme === 'light' ? '#DBEAFE' : '#1E3A5F')
+                          : (theme === 'light' ? '#F3F4F6' : '#374151'),
+                        borderRadius: '12px'
+                      }}>
+                        {isRemote && location ? (
+                          <FaVideo size={20} style={{ color: theme === 'light' ? '#3B82F6' : '#60A5FA', marginTop: '2px' }} />
                         ) : (
-                          selectedCalendarEvent.event_location
+                          <FaMapMarkerAlt size={20} style={{ color: theme === 'light' ? '#6B7280' : '#9CA3AF', marginTop: '2px' }} />
                         )}
+                        <div style={{ color: theme === 'light' ? '#374151' : '#D1D5DB', wordBreak: 'break-word', flex: 1 }}>
+                          {location ? (
+                            isLink ? (
+                              <a
+                                href={location}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  color: '#3B82F6',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  fontWeight: 500
+                                }}
+                              >
+                                {location.includes('zoom') ? '🎥 Join Zoom Meeting' :
+                                 location.includes('meet.google') ? '🎥 Join Google Meet' :
+                                 location.includes('teams') ? '🎥 Join Teams Meeting' :
+                                 '🔗 Open Link'}
+                                <FaExternalLinkAlt size={12} />
+                              </a>
+                            ) : (
+                              location
+                            )
+                          ) : (
+                            <span style={{ opacity: 0.5, fontStyle: 'italic' }}>No location</span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   {/* Description - Editable */}
                   <div style={{
@@ -10693,6 +10784,9 @@ internet businesses.`;
                 <ActionTabIcon theme={theme} $active={activeActionTab === 'kitEmail'} onClick={() => setActiveActionTab('kitEmail')} title="Send Email" style={activeActionTab === 'kitEmail' ? { background: '#3B82F6', color: 'white' } : {}}>
                   <FaEnvelope />
                 </ActionTabIcon>
+                <ActionTabIcon theme={theme} $active={activeActionTab === 'kitChat'} onClick={() => setActiveActionTab('kitChat')} title="Chat with Claude" style={activeActionTab === 'kitChat' ? { background: '#8B5CF6', color: 'white' } : {}}>
+                  <FaRobot />
+                </ActionTabIcon>
               </>
             )}
             {!rightPanelCollapsed && activeTab !== 'keepintouch' && (
@@ -11700,6 +11794,71 @@ internet businesses.`;
                 }));
                 // Refresh the keep in touch list
                 setKeepInTouchRefreshTrigger(prev => prev + 1);
+              }}
+            />
+          )}
+
+          {/* Keep in Touch - Chat with Claude */}
+          {!rightPanelCollapsed && activeTab === 'keepintouch' && selectedKeepInTouchContact && activeActionTab === 'kitChat' && (
+            <ChatTab
+              theme={theme}
+              activeTab={activeTab}
+              chatMessagesRef={chatMessagesRef}
+              chatFileInputRef={chatFileInputRef}
+              chatMessages={chatMessages}
+              chatInput={chatInput}
+              setChatInput={setChatInput}
+              chatLoading={chatLoading}
+              chatImages={chatImages}
+              pendingCalendarEvent={pendingCalendarEvent}
+              setPendingCalendarEvent={setPendingCalendarEvent}
+              calendarEventEdits={calendarEventEdits}
+              setCalendarEventEdits={setCalendarEventEdits}
+              updateCalendarEventField={updateCalendarEventField}
+              calendarLoading={calendarLoading}
+              handleQuickAction={handleQuickAction}
+              handleCalendarExtract={handleCalendarExtract}
+              handleCreateCalendarEvent={handleCreateCalendarEvent}
+              sendMessageToClaude={sendMessageToClaude}
+              handleChatImageSelect={handleChatImageSelect}
+              removeChatImage={removeChatImage}
+              openReplyWithDraft={openReplyWithDraft}
+              extractDraftFromMessage={extractDraftFromMessage}
+              keepInTouchMode={true}
+              onKitQuickAction={(action) => {
+                // Handle Keep in Touch quick actions
+                switch (action) {
+                  case 'calendar':
+                    // TODO: Open calendar event creation for this contact
+                    toast.info('Calendar: Coming soon');
+                    break;
+                  case 'note':
+                    // TODO: Open note creation for this contact
+                    toast.info('Note: Coming soon');
+                    break;
+                  case 'task':
+                    // TODO: Open task creation for this contact
+                    toast.info('Task: Coming soon');
+                    break;
+                  case 'deal':
+                    // TODO: Open deal creation for this contact
+                    toast.info('Deal: Coming soon');
+                    break;
+                  case 'introduction':
+                    // TODO: Open introduction creation for this contact
+                    toast.info('Introduction: Coming soon');
+                    break;
+                  case 'whatsapp':
+                    // Switch to WhatsApp tab
+                    setActiveActionTab('kitWhatsapp');
+                    break;
+                  case 'email':
+                    // Switch to Email tab
+                    setActiveActionTab('kitEmail');
+                    break;
+                  default:
+                    break;
+                }
               }}
             />
           )}
