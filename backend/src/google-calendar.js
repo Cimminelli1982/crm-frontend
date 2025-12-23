@@ -144,16 +144,29 @@ export class GoogleCalendarClient {
     timezone = 'Europe/Rome',
     useGoogleMeet = false,
   }) {
+    // Normalize date format - ensure full ISO 8601 format with seconds
+    const normalizeDateTime = (dateStr) => {
+      if (!dateStr) return null;
+      // If missing seconds (e.g., 2026-01-22T16:00), add :00
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(dateStr)) {
+        return dateStr + ':00';
+      }
+      return dateStr;
+    };
+
+    const normalizedStart = normalizeDateTime(startDate);
+    const normalizedEnd = endDate ? normalizeDateTime(endDate) : null;
+
     const event = {
       summary: title,
       description,
       location,
       start: allDay
         ? { date: startDate.split('T')[0] }
-        : { dateTime: startDate, timeZone: timezone },
+        : { dateTime: normalizedStart, timeZone: timezone },
       end: allDay
         ? { date: endDate ? endDate.split('T')[0] : startDate.split('T')[0] }
-        : { dateTime: endDate || new Date(new Date(startDate).getTime() + 3600000).toISOString(), timeZone: timezone },
+        : { dateTime: normalizedEnd || new Date(new Date(normalizedStart).getTime() + 3600000).toISOString(), timeZone: timezone },
       reminders,
     };
 
