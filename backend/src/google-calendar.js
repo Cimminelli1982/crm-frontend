@@ -284,6 +284,21 @@ export class GoogleCalendarClient {
     // Get organizer
     const organizer = event.organizer || {};
 
+    // Extract conference URL (Google Meet, Zoom, etc.)
+    let conferenceUrl = null;
+    if (event.conferenceData?.entryPoints) {
+      const videoEntry = event.conferenceData.entryPoints.find(ep => ep.entryPointType === 'video');
+      if (videoEntry?.uri) {
+        conferenceUrl = videoEntry.uri;
+      }
+    }
+
+    // Use conferenceUrl if no physical location, or append it to location
+    let eventLocation = event.location || null;
+    if (conferenceUrl) {
+      eventLocation = conferenceUrl; // Prioritize meeting link over physical location
+    }
+
     return {
       type: 'calendar',
       event_uid: event.id,
@@ -292,7 +307,7 @@ export class GoogleCalendarClient {
       body_text: event.description || '',
       date: startDate,
       event_end: endDate,
-      event_location: event.location || null,
+      event_location: eventLocation,
       from_name: organizer.displayName || organizer.email || '',
       from_email: organizer.email || '',
       to_recipients: attendees,

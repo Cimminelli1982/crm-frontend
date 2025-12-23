@@ -437,6 +437,33 @@ export class CalDAVClient {
       });
     }
 
+    // Extract Google Meet / Conference URL
+    // Look for X-GOOGLE-CONFERENCE, CONFERENCE, or meet.google.com links in description
+    let conferenceUrl = null;
+    const googleConfMatch = veventData.match(/^X-GOOGLE-CONFERENCE:(.+)$/m);
+    if (googleConfMatch) {
+      conferenceUrl = googleConfMatch[1].trim();
+    }
+    // Also check for CONFERENCE;VALUE=URI
+    if (!conferenceUrl) {
+      const confMatch = veventData.match(/^CONFERENCE[^:]*:(.+)$/m);
+      if (confMatch) {
+        conferenceUrl = confMatch[1].trim();
+      }
+    }
+    // Fallback: look for meet.google.com or zoom links in description
+    if (!conferenceUrl && description) {
+      const meetMatch = description.match(/(https?:\/\/meet\.google\.com\/[a-z-]+)/i);
+      if (meetMatch) {
+        conferenceUrl = meetMatch[1];
+      } else {
+        const zoomMatch = description.match(/(https?:\/\/[a-z0-9]+\.zoom\.us\/[^\s]+)/i);
+        if (zoomMatch) {
+          conferenceUrl = zoomMatch[1];
+        }
+      }
+    }
+
     // Extract STATUS (CONFIRMED, TENTATIVE, CANCELLED)
     const statusMatch = veventData.match(/^STATUS:(.+)$/m);
     const status = statusMatch ? statusMatch[1].trim().toUpperCase() : 'CONFIRMED';
@@ -471,6 +498,7 @@ export class CalDAVClient {
       title,
       description,
       location,
+      conferenceUrl,
       startDate,
       endDate,
       allDay,
