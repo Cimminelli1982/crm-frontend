@@ -268,13 +268,13 @@ async function syncGoogleCalendar() {
 
     // Transform and filter events
     const transformedEvents = [];
-    const EXCLUDED_COLOR_IDS = ['10']; // colorId 10 = Basil (fitness events)
+    const EXCLUDED_COLOR_IDS = ['10', '11']; // colorId 10 = Basil (fitness), 11 = Tomato (family)
     let skippedFitness = 0, skippedCancelled = 0, skippedDismissed = 0;
 
     for (const event of events) {
-      // Skip fitness events (colorId 10)
+      // Skip personal events (fitness, family) by color
       if (event.colorId && EXCLUDED_COLOR_IDS.includes(event.colorId)) {
-        skippedFitness++;
+        skippedFitness++; // counter name kept for simplicity
         continue;
       }
 
