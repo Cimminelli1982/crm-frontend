@@ -294,11 +294,8 @@ export class GoogleCalendarClient {
       }
     }
 
-    // Use conferenceUrl if no physical location, or append it to location
-    let eventLocation = event.location || null;
-    if (conferenceUrl) {
-      eventLocation = conferenceUrl; // Prioritize meeting link over physical location
-    }
+    // Physical location wins over conference URL
+    let eventLocation = event.location || conferenceUrl || null;
 
     return {
       type: 'calendar',
