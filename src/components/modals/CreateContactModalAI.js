@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { FaBuilding, FaTimes, FaSearch, FaPlus, FaTrash, FaStar, FaMapMarkerAlt, FaTag, FaPhone, FaCheck, FaRobot, FaUser, FaEnvelope, FaExclamationTriangle } from 'react-icons/fa';
+import { FaBuilding, FaTimes, FaSearch, FaPlus, FaTrash, FaStar, FaMapMarkerAlt, FaTag, FaPhone, FaCheck, FaRobot, FaUser, FaEnvelope, FaExclamationTriangle, FaLinkedin } from 'react-icons/fa';
 import { FiGitMerge } from 'react-icons/fi';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
@@ -2463,13 +2463,52 @@ const CreateContactModalAI = ({
 
               <div style={{ marginBottom: '16px' }}>
                 <label style={labelStyle}>LinkedIn</label>
-                <input
-                  type="text"
-                  value={linkedin}
-                  onChange={(e) => setLinkedin(e.target.value)}
-                  style={inputStyle}
-                  placeholder="linkedin.com/in/username"
-                />
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <input
+                    type="text"
+                    value={linkedin}
+                    onChange={(e) => setLinkedin(e.target.value)}
+                    style={{ ...inputStyle, flex: 1 }}
+                    placeholder="linkedin.com/in/username"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (linkedin) {
+                        // Open LinkedIn profile
+                        const url = linkedin.startsWith('http') ? linkedin : `https://${linkedin}`;
+                        window.open(url, '_blank');
+                      } else {
+                        // Search LinkedIn for the contact
+                        const name = `${firstName || ''} ${lastName || ''}`.trim();
+                        if (name) {
+                          const searchUrl = `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(name)}`;
+                          window.open(searchUrl, '_blank');
+                        } else {
+                          toast.error('Enter a name first to search LinkedIn');
+                        }
+                      }
+                    }}
+                    title={linkedin ? 'Open LinkedIn profile' : 'Search on LinkedIn'}
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: '6px',
+                      border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                      background: linkedin
+                        ? '#0A66C2'
+                        : (theme === 'light' ? '#FFFFFF' : '#374151'),
+                      color: linkedin
+                        ? '#FFFFFF'
+                        : (theme === 'light' ? '#6B7280' : '#9CA3AF'),
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    {linkedin ? <FaLinkedin size={16} /> : <FaSearch size={14} />}
+                  </button>
+                </div>
               </div>
 
               <div style={{ marginBottom: '16px' }}>

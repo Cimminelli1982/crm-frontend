@@ -418,13 +418,22 @@ const DomainLinkModal = ({
       // Check if domain already exists
       const { data: existing } = await supabase
         .from('company_domains')
-        .select('id')
+        .select('id, company_id')
         .eq('domain', domain.toLowerCase())
         .maybeSingle();
 
       if (existing) {
-        toast.error('This domain is already linked to a company');
-        return;
+        // Domain already exists - check if it's for the same company
+        if (existing.company_id === selectedCompany.company_id) {
+          // Same company - just proceed with linking (useful for Keep in Touch contact linking)
+          onDomainLinked({ company: selectedCompany, domain });
+          onRequestClose();
+          return;
+        } else {
+          // Different company - show error
+          toast.error('This domain is already linked to a different company');
+          return;
+        }
       }
 
       // Insert domain

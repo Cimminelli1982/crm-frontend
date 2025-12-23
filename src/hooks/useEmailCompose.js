@@ -514,6 +514,12 @@ const useEmailCompose = (selectedThread, onSendSuccess) => {
     setComposeToInput,
     composeCcInput,
     setComposeCcInput,
+    // Swap To <-> CC
+    swapToCc: useCallback(() => {
+      const tempTo = composeTo;
+      setComposeTo(composeCc);
+      setComposeCc(tempTo);
+    }, [composeTo, composeCc]),
 
     // Content
     composeSubject,

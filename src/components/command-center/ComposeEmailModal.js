@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import styled from 'styled-components';
-import { FaTimes, FaPaperPlane, FaPaperclip, FaRobot, FaCheck, FaImage, FaFileAlt, FaPlus, FaSearch, FaTasks, FaDollarSign } from 'react-icons/fa';
+import { FaTimes, FaPaperPlane, FaPaperclip, FaRobot, FaCheck, FaImage, FaFileAlt, FaPlus, FaSearch, FaTasks, FaDollarSign, FaExchangeAlt } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import {
@@ -718,6 +718,8 @@ const ComposeEmailModal = ({
   // Send
   sending,
   handleSend,
+  // Swap To <-> CC
+  swapToCc,
   // Chat props for AI assistant
   chatMessages = [],
   chatInput = '',
@@ -742,7 +744,15 @@ const ComposeEmailModal = ({
   const [updatingDeals, setUpdatingDeals] = useState({});
 
   // Status checkbox state (mutually exclusive: null, 'need_actions', 'waiting_input')
+  // Using both state (for visual) and ref (for reliable access in callbacks)
   const [sendWithStatus, setSendWithStatus] = useState(null);
+  const sendWithStatusRef = useRef(null);
+
+  // Helper to update both state and ref synchronously
+  const updateSendWithStatus = useCallback((newValue) => {
+    sendWithStatusRef.current = newValue;
+    setSendWithStatus(newValue);
+  }, []);
 
   // Template state
   const [templateDropdownOpen, setTemplateDropdownOpen] = useState(false);
@@ -1062,6 +1072,33 @@ ${draftPart}`;
                 )}
               </EmailBubbleContainer>
             </FormField>
+
+            {/* Swap To <-> CC button */}
+            {swapToCc && (
+              <div style={{ display: 'flex', justifyContent: 'center', margin: '-8px 0' }}>
+                <button
+                  type="button"
+                  onClick={swapToCc}
+                  title="Swap To ↔ CC"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '4px 10px',
+                    background: theme === 'light' ? '#F3F4F6' : '#374151',
+                    border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                    borderRadius: '12px',
+                    color: theme === 'light' ? '#6B7280' : '#9CA3AF',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  <FaExchangeAlt size={10} style={{ transform: 'rotate(90deg)' }} />
+                  Swap
+                </button>
+              </div>
+            )}
 
             <FormField>
               <FormLabel theme={theme}>CC</FormLabel>
@@ -1539,7 +1576,7 @@ LANGUAGE RULE: Use same language as original message`)}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
             <button
               type="button"
-              onClick={() => setSendWithStatus(sendWithStatus === 'need_actions' ? null : 'need_actions')}
+              onClick={() => updateSendWithStatus(sendWithStatus === 'need_actions' ? null : 'need_actions')}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -1560,7 +1597,7 @@ LANGUAGE RULE: Use same language as original message`)}>
             </button>
             <button
               type="button"
-              onClick={() => setSendWithStatus(sendWithStatus === 'waiting_input' ? null : 'waiting_input')}
+              onClick={() => updateSendWithStatus(sendWithStatus === 'waiting_input' ? null : 'waiting_input')}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -1581,7 +1618,7 @@ LANGUAGE RULE: Use same language as original message`)}>
             </button>
           </div>
 
-          <SendButton onClick={() => handleSend(null, sendWithStatus)} disabled={sending}>
+          <SendButton onClick={() => handleSend(null, sendWithStatusRef.current)} disabled={sending}>
             <FaPaperPlane />
             {sending ? 'Sending...' : 'Send'}
           </SendButton>

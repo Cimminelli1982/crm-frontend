@@ -85,7 +85,7 @@ import {
   SendButton,
   CancelButton
 } from './CommandCenterPage.styles';
-import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaCheckDouble, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt, FaUpload, FaFileAlt } from 'react-icons/fa';
+import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaCheckDouble, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt, FaUpload, FaFileAlt, FaLinkedin, FaSearch } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import QuickEditModal from '../components/QuickEditModalRefactored';
@@ -292,6 +292,7 @@ const CommandCenterPage = ({ theme }) => {
     removeEmailFromField,
     handleEmailInputKeyDown,
     extractDraftFromMessage,
+    swapToCc,
     hasDraftReply,
     getLatestEmail,
     formatRecipients,
@@ -414,6 +415,7 @@ const CommandCenterPage = ({ theme }) => {
   const [processedMeetings, setProcessedMeetings] = useState([]);
   const [calendarEventScore, setCalendarEventScore] = useState(null);
   const [calendarEventNotes, setCalendarEventNotes] = useState('');
+  const [calendarEventDescription, setCalendarEventDescription] = useState('');
   const [selectedContactsForMeeting, setSelectedContactsForMeeting] = useState([]);
 
   // Deals Pipeline state - must be before useContextContacts
@@ -1800,6 +1802,7 @@ internet businesses.`;
           setSelectedCalendarEvent({ ...data[0], source: 'meetings' });
           setCalendarEventScore(data[0].score ? parseInt(data[0].score) : null);
           setCalendarEventNotes(data[0].notes || '');
+          setCalendarEventDescription(data[0].description || '');
         }
       }
       setCalendarLoading(false);
@@ -5070,7 +5073,7 @@ internet businesses.`;
           meeting_status: 'Completed',
           notes: calendarEventNotes || null,
           score: scoreValue,
-          description: selectedCalendarEvent.body_text || null,
+          description: calendarEventDescription || null,
           event_uid: selectedCalendarEvent.event_uid || null
         })
         .select()
@@ -7022,6 +7025,7 @@ internet businesses.`;
                           setSelectedCalendarEvent({ ...meeting, source: 'meetings' });
                           setCalendarEventScore(meeting.score ? parseInt(meeting.score) : null);
                           setCalendarEventNotes(meeting.notes || '');
+                          setCalendarEventDescription(meeting.description || '');
                         }}
                       >
                         <EmailSender theme={theme}>
@@ -7107,7 +7111,10 @@ internet businesses.`;
                           theme={theme}
                           $selected={selectedCalendarEvent?.id === event.id}
                           $unread={!event.is_read}
-                          onClick={() => setSelectedCalendarEvent(event)}
+                          onClick={() => {
+                            setSelectedCalendarEvent(event);
+                            setCalendarEventDescription(event.body_text || event.description || '');
+                          }}
                         >
                           <EmailSender theme={theme}>
                             {!event.is_read && <EmailUnreadDot />}
@@ -7193,7 +7200,10 @@ internet businesses.`;
                           theme={theme}
                           $selected={selectedCalendarEvent?.id === event.id}
                           $unread={!event.is_read}
-                          onClick={() => setSelectedCalendarEvent(event)}
+                          onClick={() => {
+                            setSelectedCalendarEvent(event);
+                            setCalendarEventDescription(event.body_text || event.description || '');
+                          }}
                         >
                           <EmailSender theme={theme}>
                             {!event.is_read && <EmailUnreadDot />}
@@ -7279,7 +7289,10 @@ internet businesses.`;
                           theme={theme}
                           $selected={selectedCalendarEvent?.id === event.id}
                           $unread={!event.is_read}
-                          onClick={() => setSelectedCalendarEvent(event)}
+                          onClick={() => {
+                            setSelectedCalendarEvent(event);
+                            setCalendarEventDescription(event.body_text || event.description || '');
+                          }}
                         >
                           <EmailSender theme={theme}>
                             {!event.is_read && <EmailUnreadDot />}
@@ -7937,6 +7950,59 @@ internet businesses.`;
                     </div>
                   )}
 
+                  {/* Description - Editable */}
+                  <div style={{
+                    marginBottom: '20px',
+                    padding: '16px',
+                    background: theme === 'light' ? '#F3F4F6' : '#374151',
+                    borderRadius: '12px'
+                  }}>
+                    <div style={{ fontWeight: 600, marginBottom: '12px', color: theme === 'light' ? '#111827' : '#F9FAFB', display: 'flex', alignItems: 'center' }}>
+                      <FaFileAlt size={14} style={{ marginRight: '8px' }} />
+                      Description
+                    </div>
+                    <textarea
+                      value={calendarEventDescription}
+                      onChange={(e) => setCalendarEventDescription(e.target.value)}
+                      onBlur={() => {
+                        // If processed meeting, save on blur
+                        if (selectedCalendarEvent?.source === 'meetings') {
+                          supabase
+                            .from('meetings')
+                            .update({ description: calendarEventDescription || null })
+                            .eq('meeting_id', selectedCalendarEvent.meeting_id)
+                            .then(({ error }) => {
+                              if (error) {
+                                console.error('Error updating description:', error);
+                                toast.error('Errore nel salvare la descrizione');
+                              } else {
+                                toast.success('Descrizione salvata');
+                                setProcessedMeetings(prev => prev.map(m =>
+                                  m.meeting_id === selectedCalendarEvent.meeting_id
+                                    ? { ...m, description: calendarEventDescription || null }
+                                    : m
+                                ));
+                              }
+                            });
+                        }
+                      }}
+                      placeholder="Add a description..."
+                      style={{
+                        width: '100%',
+                        minHeight: '80px',
+                        padding: '12px',
+                        borderRadius: '8px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        backgroundColor: theme === 'light' ? '#fff' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px',
+                        resize: 'vertical',
+                        outline: 'none',
+                        lineHeight: 1.6
+                      }}
+                    />
+                  </div>
+
                   {/* Attendees - Editable */}
                   <div style={{
                     marginBottom: '20px',
@@ -8336,27 +8402,6 @@ internet businesses.`;
                       }}
                     />
                   </div>
-
-                  {/* Description/Body - only show for inbox events (not processed meetings which use Notes) */}
-                  {selectedCalendarEvent?.source !== 'meetings' && (selectedCalendarEvent.body_text || selectedCalendarEvent.description) && (
-                    <div style={{
-                      padding: '16px',
-                      background: theme === 'light' ? '#FFFFFF' : '#1F2937',
-                      border: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`,
-                      borderRadius: '12px'
-                    }}>
-                      <div style={{ fontWeight: 600, marginBottom: '12px', color: theme === 'light' ? '#111827' : '#F9FAFB' }}>
-                        Description
-                      </div>
-                      <div style={{
-                        color: theme === 'light' ? '#374151' : '#D1D5DB',
-                        whiteSpace: 'pre-wrap',
-                        lineHeight: 1.6
-                      }}>
-                        {selectedCalendarEvent.body_text || selectedCalendarEvent.description}
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
             ) : (
@@ -10816,21 +10861,56 @@ internet businesses.`;
                   </div>
                   <div>
                     <label style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '4px' }}>LinkedIn</label>
-                    <input
-                      type="text"
-                      value={keepInTouchContactDetails.linkedin || ''}
-                      onChange={(e) => handleUpdateContactField('linkedin', e.target.value)}
-                      placeholder="linkedin.com/in/..."
-                      style={{
-                        width: '100%',
-                        padding: '6px 8px',
-                        borderRadius: '4px',
-                        border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
-                        background: theme === 'dark' ? '#374151' : '#FFFFFF',
-                        color: theme === 'dark' ? '#F9FAFB' : '#111827',
-                        fontSize: '13px'
-                      }}
-                    />
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <input
+                        type="text"
+                        value={keepInTouchContactDetails.linkedin || ''}
+                        onChange={(e) => handleUpdateContactField('linkedin', e.target.value)}
+                        placeholder="linkedin.com/in/..."
+                        style={{
+                          flex: 1,
+                          padding: '6px 8px',
+                          borderRadius: '4px',
+                          border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                          background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                          color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                          fontSize: '13px'
+                        }}
+                      />
+                      <button
+                        onClick={() => {
+                          const linkedin = keepInTouchContactDetails.linkedin;
+                          if (linkedin) {
+                            // Open LinkedIn profile
+                            const url = linkedin.startsWith('http') ? linkedin : `https://${linkedin}`;
+                            window.open(url, '_blank');
+                          } else {
+                            // Search LinkedIn for the contact
+                            const name = `${keepInTouchContactDetails.first_name || ''} ${keepInTouchContactDetails.last_name || ''}`.trim();
+                            const searchUrl = `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(name)}`;
+                            window.open(searchUrl, '_blank');
+                          }
+                        }}
+                        title={keepInTouchContactDetails.linkedin ? 'Open LinkedIn profile' : 'Search on LinkedIn'}
+                        style={{
+                          padding: '6px 8px',
+                          borderRadius: '4px',
+                          border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                          background: keepInTouchContactDetails.linkedin
+                            ? '#0A66C2'
+                            : (theme === 'dark' ? '#374151' : '#FFFFFF'),
+                          color: keepInTouchContactDetails.linkedin
+                            ? '#FFFFFF'
+                            : (theme === 'dark' ? '#9CA3AF' : '#6B7280'),
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                      >
+                        {keepInTouchContactDetails.linkedin ? <FaLinkedin size={14} /> : <FaSearch size={12} />}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -11706,6 +11786,7 @@ internet businesses.`;
         removeComposeAttachment={removeComposeAttachment}
         sending={sending}
         handleSend={handleSendWithAttachmentCheck}
+        swapToCc={swapToCc}
         // Chat props for AI assistant
         chatMessages={chatMessages}
         chatInput={chatInput}
