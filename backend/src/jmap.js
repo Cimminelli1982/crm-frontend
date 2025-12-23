@@ -474,7 +474,7 @@ export class JMAPClient {
     return result; // { accountId, blobId, type, size }
   }
 
-  async sendEmail({ to, cc, subject, textBody, htmlBody, inReplyTo, references, attachments }) {
+  async sendEmail({ to, cc, subject, textBody, htmlBody, inReplyTo, references, attachments, skipCrmDoneStamp = false }) {
     // Get identity (sender)
     const identityResponse = await this.request([
       ['Identity/get', { accountId: this.accountId }, 'identity'],
@@ -585,15 +585,17 @@ export class JMAPClient {
       throw new Error(`Failed to send email: ${JSON.stringify(submitResult.notCreated.send)}`);
     }
 
-    // Stamp the sent email with $crm_done to prevent re-sync
+    // Stamp the sent email with $crm_done to prevent re-sync (unless skipCrmDoneStamp is true)
     const sentEmailId = emailResult.created?.draft?.id;
-    if (sentEmailId) {
+    if (sentEmailId && !skipCrmDoneStamp) {
       try {
         await this.addKeyword(sentEmailId, '$crm_done');
         console.log(`Stamped sent email ${sentEmailId} with $crm_done`);
       } catch (stampError) {
         console.error(`Failed to stamp sent email:`, stampError.message);
       }
+    } else if (sentEmailId && skipCrmDoneStamp) {
+      console.log(`Skipping $crm_done stamp for email ${sentEmailId} (will appear in inbox via sync)`);
     }
 
     return {

@@ -493,7 +493,7 @@ app.get('/emails/:id', async (req, res) => {
 // Send email
 app.post('/send', async (req, res) => {
   try {
-    const { to, cc, subject, textBody, htmlBody, inReplyTo, references, attachments } = req.body;
+    const { to, cc, subject, textBody, htmlBody, inReplyTo, references, attachments, skipCrmDoneStamp } = req.body;
 
     if (!to || !Array.isArray(to) || to.length === 0) {
       return res.status(400).json({ success: false, error: 'Missing "to" recipients' });
@@ -511,6 +511,9 @@ app.post('/send', async (req, res) => {
     console.log(`Subject: ${subject}`);
     if (attachments?.length) {
       console.log(`Attachments: ${attachments.length} files`);
+    }
+    if (skipCrmDoneStamp) {
+      console.log(`Skip CRM Done stamp: true (email will appear in inbox via sync)`);
     }
 
     const jmap = new JMAPClient(
@@ -562,6 +565,7 @@ app.post('/send', async (req, res) => {
       inReplyTo: realMessageId,
       references: realReferences,
       attachments: uploadedAttachments.length > 0 ? uploadedAttachments : undefined,
+      skipCrmDoneStamp: !!skipCrmDoneStamp,
     });
 
     console.log('Email sent successfully:', result);

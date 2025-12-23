@@ -85,7 +85,7 @@ import {
   SendButton,
   CancelButton
 } from './CommandCenterPage.styles';
-import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaCheckDouble, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt, FaUpload, FaFileAlt, FaLinkedin, FaSearch } from 'react-icons/fa';
+import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaCheckDouble, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt, FaUpload, FaFileAlt, FaLinkedin, FaSearch, FaRocket, FaGlobe, FaMapMarkerAlt, FaUsers } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import QuickEditModal from '../components/QuickEditModalRefactored';
@@ -105,6 +105,8 @@ import DeleteSkipSpamModal from '../components/DeleteSkipSpamModal';
 import EditCompanyModal from '../components/modals/EditCompanyModal';
 import AttachmentSaveModal from '../components/modals/AttachmentSaveModal';
 import DataIntegrityModal from '../components/modals/DataIntegrityModal';
+import ContactEnrichmentModal from '../components/modals/ContactEnrichmentModal';
+import CompanyEnrichmentModal from '../components/modals/CompanyEnrichmentModal';
 import CompanyDataIntegrityModal from '../components/modals/CompanyDataIntegrityModal';
 import SearchOrCreateCompanyModal from '../components/modals/SearchOrCreateCompanyModal';
 import CreateCompanyFromDomainModal from '../components/modals/CreateCompanyFromDomainModal';
@@ -119,6 +121,8 @@ import CreateDealAI from '../components/modals/CreateDealAI';
 import { findContactDuplicatesForThread, findCompanyDuplicatesForThread } from '../utils/duplicateDetection';
 import DataIntegrityTab from '../components/command-center/DataIntegrityTab';
 import ChatTab from '../components/command-center/ChatTab';
+import SendEmailTab from '../components/command-center/SendEmailTab';
+import WhatsAppChatTab from '../components/command-center/WhatsAppChatTab';
 import AITab from '../components/command-center/AITab';
 import CRMTab from '../components/command-center/CRMTab';
 import DealsTab from '../components/command-center/DealsTab';
@@ -667,13 +671,18 @@ const CommandCenterPage = ({ theme }) => {
   const [kitTagsModalOpen, setKitTagsModalOpen] = useState(false);
   const [kitCityModalOpen, setKitCityModalOpen] = useState(false);
   const [kitCompanyModalContact, setKitCompanyModalContact] = useState(null);
+  const [kitEnrichmentModalOpen, setKitEnrichmentModalOpen] = useState(false);
+  // Keep in Touch - Company Details state
+  const [selectedKitCompanyId, setSelectedKitCompanyId] = useState(null);
+  const [kitCompanyDetails, setKitCompanyDetails] = useState(null);
+  const [kitCompanyDomains, setKitCompanyDomains] = useState([]);
+  const [kitCompanyTags, setKitCompanyTags] = useState([]);
+  const [kitCompanyCities, setKitCompanyCities] = useState([]);
+  const [kitCompanyContacts, setKitCompanyContacts] = useState([]); // Contacts working at this company
+  const [kitCompanyLogo, setKitCompanyLogo] = useState(null);
+  const [kitCompanyEnrichmentModalOpen, setKitCompanyEnrichmentModalOpen] = useState(false);
   // Data Integrity - Link Company modal state (for contacts without email)
   const [linkCompanyModalContact, setLinkCompanyModalContact] = useState(null);
-  const [kitWhatsappMessages, setKitWhatsappMessages] = useState([]);
-  const [kitWhatsappLoading, setKitWhatsappLoading] = useState(false);
-  const [kitWhatsappInput, setKitWhatsappInput] = useState('');
-  const [kitWhatsappSending, setKitWhatsappSending] = useState(false);
-  const [kitWhatsappBestPhone, setKitWhatsappBestPhone] = useState(null); // Phone number with most messages
   // Keep in Touch Email state
   const [kitEmailSubject, setKitEmailSubject] = useState('');
   const [kitEmailBody, setKitEmailBody] = useState('');
@@ -2057,194 +2066,172 @@ internet businesses.`;
     fetchContactDetailsAndInteractions();
   }, [selectedKeepInTouchContact?.contact_id]);
 
-  // Fetch WhatsApp messages for Keep in Touch contact
+  // Auto-select first company when keepInTouchCompanies changes
   useEffect(() => {
-    const fetchKitWhatsappMessages = async () => {
-      if (!selectedKeepInTouchContact || keepInTouchMobiles.length === 0) {
-        setKitWhatsappMessages([]);
+    if (keepInTouchCompanies.length > 0) {
+      setSelectedKitCompanyId(keepInTouchCompanies[0].company_id);
+    } else {
+      setSelectedKitCompanyId(null);
+      setKitCompanyDetails(null);
+      setKitCompanyDomains([]);
+      setKitCompanyTags([]);
+      setKitCompanyCities([]);
+    }
+  }, [keepInTouchCompanies]);
+
+  // Load company details when selectedKitCompanyId changes
+  useEffect(() => {
+    const fetchKitCompanyDetails = async () => {
+      if (!selectedKitCompanyId) {
+        setKitCompanyDetails(null);
+        setKitCompanyDomains([]);
+        setKitCompanyTags([]);
+        setKitCompanyCities([]);
+        setKitCompanyContacts([]);
+        setKitCompanyLogo(null);
         return;
       }
 
-      setKitWhatsappLoading(true);
-      try {
-        // Normalize phone numbers for matching
-        const normalizePhone = (p) => p ? p.replace(/[^\d+]/g, '').replace(/^00/, '+') : '';
-        const contactPhones = keepInTouchMobiles.map(m => normalizePhone(m.mobile));
+      // Fetch company details
+      const { data: companyData } = await supabase
+        .from('companies')
+        .select('*')
+        .eq('company_id', selectedKitCompanyId)
+        .single();
 
-        // Fetch messages from command_center_inbox matching any of the contact's phone numbers
-        const { data: inboxMessages, error: inboxError } = await supabase
-          .from('command_center_inbox')
-          .select('*')
-          .eq('type', 'whatsapp')
-          .order('date', { ascending: false });
+      if (companyData) {
+        // Get completeness score
+        const { data: completenessData } = await supabase
+          .from('company_completeness')
+          .select('completeness_score')
+          .eq('company_id', selectedKitCompanyId)
+          .maybeSingle();
 
-        if (inboxError) {
-          console.error('Error fetching inbox messages:', inboxError);
-        }
-
-        // Filter messages by matching phone numbers (compare last 9 digits for accuracy)
-        const getLast9Digits = (phone) => phone.replace(/\D/g, '').slice(-9);
-
-        // Count messages per phone number to find the best one
-        const phoneMessageCount = {};
-        keepInTouchMobiles.forEach(m => {
-          phoneMessageCount[m.mobile] = 0;
+        setKitCompanyDetails({
+          ...companyData,
+          completeness_score: completenessData?.completeness_score || 0
         });
-
-        const matchingMessages = (inboxMessages || []).filter(msg => {
-          const msgPhoneSuffix = getLast9Digits(msg.contact_number || '');
-          if (msgPhoneSuffix.length < 9) return false;
-
-          // Find which contact phone matches
-          const matchingMobile = keepInTouchMobiles.find(m =>
-            getLast9Digits(m.mobile) === msgPhoneSuffix
-          );
-
-          if (matchingMobile) {
-            // Only count RECEIVED messages to determine the best phone
-            // (you can send to any number, but only receive from real WhatsApp numbers)
-            if (msg.direction === 'received') {
-              phoneMessageCount[matchingMobile.mobile]++;
-            }
-            return true;
-          }
-          return false;
-        });
-
-        // Find phone with most RECEIVED messages (if any)
-        let bestPhone = null;
-        let maxMessages = 0;
-        Object.entries(phoneMessageCount).forEach(([phone, count]) => {
-          if (count > maxMessages) {
-            maxMessages = count;
-            bestPhone = phone;
-          }
-        });
-        setKitWhatsappBestPhone(bestPhone);
-
-        // Also fetch archived messages from interactions
-        const { data: archivedData } = await supabase
-          .from('interactions')
-          .select('interaction_id, interaction_type, direction, interaction_date, summary, external_interaction_id')
-          .eq('contact_id', selectedKeepInTouchContact.contact_id)
-          .eq('interaction_type', 'whatsapp')
-          .order('interaction_date', { ascending: false });
-
-        // Combine and format messages
-        const inboxFormatted = matchingMessages.map(m => ({
-          id: m.id || m.message_uid,
-          text: m.body_text || m.snippet || '',
-          direction: m.direction,
-          date: m.date,
-          source: 'inbox'
-        }));
-
-        const archivedFormatted = (archivedData || []).map(m => ({
-          id: m.interaction_id,
-          text: m.summary || '',
-          direction: m.direction,
-          date: m.interaction_date,
-          source: 'archived'
-        }));
-
-        // Combine, deduplicate by date proximity, and sort by date descending
-        const allMessages = [...inboxFormatted, ...archivedFormatted];
-        allMessages.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-        setKitWhatsappMessages(allMessages);
-      } catch (err) {
-        console.error('Error fetching KIT WhatsApp messages:', err);
-        setKitWhatsappMessages([]);
       }
-      setKitWhatsappLoading(false);
+
+      // Fetch domains
+      const { data: domainsData } = await supabase
+        .from('company_domains')
+        .select('*')
+        .eq('company_id', selectedKitCompanyId)
+        .order('is_primary', { ascending: false });
+      setKitCompanyDomains(domainsData || []);
+
+      // Fetch logo - first get attachment_id, then get the permanent_url
+      const { data: logoLinkData } = await supabase
+        .from('company_attachments')
+        .select('attachment_id')
+        .eq('company_id', selectedKitCompanyId)
+        .eq('is_logo', true)
+        .maybeSingle();
+
+      if (logoLinkData?.attachment_id) {
+        const { data: attachmentData } = await supabase
+          .from('attachments')
+          .select('permanent_url')
+          .eq('attachment_id', logoLinkData.attachment_id)
+          .single();
+        setKitCompanyLogo(attachmentData?.permanent_url || null);
+      } else {
+        setKitCompanyLogo(null);
+      }
+
+      // Fetch tags with tag details
+      const { data: tagsData } = await supabase
+        .from('company_tags')
+        .select('entry_id, tag_id')
+        .eq('company_id', selectedKitCompanyId);
+
+      if (tagsData && tagsData.length > 0) {
+        const tagIds = tagsData.map(t => t.tag_id);
+        const { data: tagDetails } = await supabase
+          .from('tags')
+          .select('tag_id, name')
+          .in('tag_id', tagIds);
+
+        const tagsWithDetails = tagsData.map(ct => ({
+          ...ct,
+          tags: tagDetails?.find(t => t.tag_id === ct.tag_id)
+        }));
+        setKitCompanyTags(tagsWithDetails);
+      } else {
+        setKitCompanyTags([]);
+      }
+
+      // Fetch cities with city details
+      const { data: citiesData } = await supabase
+        .from('company_cities')
+        .select('entry_id, city_id')
+        .eq('company_id', selectedKitCompanyId);
+
+      if (citiesData && citiesData.length > 0) {
+        const cityIds = citiesData.map(c => c.city_id);
+        const { data: cityDetails } = await supabase
+          .from('cities')
+          .select('city_id, name, country')
+          .in('city_id', cityIds);
+
+        const citiesWithDetails = citiesData.map(cc => ({
+          ...cc,
+          cities: cityDetails?.find(c => c.city_id === cc.city_id)
+        }));
+        setKitCompanyCities(citiesWithDetails);
+      } else {
+        setKitCompanyCities([]);
+      }
+
+      // Fetch contacts working at this company
+      const { data: companyContactsData } = await supabase
+        .from('contact_companies')
+        .select('contact_id, is_primary, relationship')
+        .eq('company_id', selectedKitCompanyId);
+
+      if (companyContactsData && companyContactsData.length > 0) {
+        const contactIds = companyContactsData.map(cc => cc.contact_id);
+        const { data: contactDetails } = await supabase
+          .from('contacts')
+          .select('contact_id, first_name, last_name, job_role, profile_image_url')
+          .in('contact_id', contactIds);
+
+        const contactsWithDetails = companyContactsData.map(cc => ({
+          ...cc,
+          contact: contactDetails?.find(c => c.contact_id === cc.contact_id)
+        }));
+        setKitCompanyContacts(contactsWithDetails);
+      } else {
+        setKitCompanyContacts([]);
+      }
     };
 
-    if (activeActionTab === 'kitWhatsapp') {
-      fetchKitWhatsappMessages();
-    }
-  }, [selectedKeepInTouchContact?.contact_id, keepInTouchMobiles, activeActionTab]);
+    fetchKitCompanyDetails();
+  }, [selectedKitCompanyId]);
 
-  // Send WhatsApp message for Keep in Touch contact
-  const handleKitSendWhatsapp = async () => {
-    if (!kitWhatsappInput.trim() || kitWhatsappSending) return;
-    if (keepInTouchMobiles.length === 0) {
-      toast.error('No phone number available for this contact');
-      return;
-    }
+  // Update company field handler
+  const handleUpdateKitCompanyField = async (field, value) => {
+    if (!selectedKitCompanyId) return;
 
-    // Use the phone with received messages if available
-    // Otherwise prefer mobile numbers (Italian mobiles start with +393)
-    // Fall back to first number as last resort
-    let phoneNumber = kitWhatsappBestPhone;
-    if (!phoneNumber) {
-      // Try to find a mobile number (not a landline)
-      const mobileNumber = keepInTouchMobiles.find(m =>
-        m.mobile.startsWith('+393') || // Italian mobile
-        m.mobile.startsWith('+44') ||  // UK
-        m.mobile.startsWith('+1') ||   // US/Canada
-        !m.mobile.match(/^\+39\s?0/)   // Not Italian landline (06, 02, etc.)
-      );
-      phoneNumber = mobileNumber?.mobile || keepInTouchMobiles[0].mobile;
-    }
-    const messageText = kitWhatsappInput.trim();
+    // Optimistic update
+    setKitCompanyDetails(prev => ({ ...prev, [field]: value }));
 
-    setKitWhatsappSending(true);
-    try {
-      // Try Baileys first
-      const baileysRes = await fetch(`${BACKEND_URL}/whatsapp/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone: phoneNumber,
-          message: messageText
-        })
-      });
+    // Save to database
+    const { error } = await supabase
+      .from('companies')
+      .update({ [field]: value })
+      .eq('company_id', selectedKitCompanyId);
 
-      const baileysData = await baileysRes.json();
-
-      if (!baileysRes.ok || !baileysData.success) {
-        throw new Error(baileysData.error || 'Failed to send via Baileys');
-      }
-
-      // Update last_interaction_at immediately when message is queued
-      // This way the contact moves out of overdue even before staging approval
-      const now = new Date();
-      const { error: updateError } = await supabase
-        .from('contacts')
-        .update({
-          last_interaction_at: now.toISOString(),
-          last_whatsapp_sent: now.toISOString().split('T')[0] // date only
-        })
-        .eq('contact_id', selectedKeepInTouchContact.contact_id);
-
-      if (updateError) {
-        console.error('Failed to update last_interaction_at:', updateError);
-      } else {
-        // Update local state to reflect the change
-        setSelectedKeepInTouchContact(prev => ({
-          ...prev,
-          last_interaction_at: now.toISOString()
-        }));
-        // Refresh the keep in touch list to show updated status
-        fetchKeepInTouchContacts();
-      }
-
-      // Add optimistic message
-      const newMessage = {
-        id: `sent_${Date.now()}`,
-        text: messageText,
-        direction: 'sent',
-        date: new Date().toISOString(),
-        source: 'local'
-      };
-      setKitWhatsappMessages(prev => [newMessage, ...prev]);
-      setKitWhatsappInput('');
-      toast.success('Message sent!');
-    } catch (error) {
-      console.error('Error sending WhatsApp:', error);
-      toast.error(error.message || 'Failed to send message');
-    } finally {
-      setKitWhatsappSending(false);
+    if (error) {
+      toast.error('Failed to update company');
+      // Revert on error - refetch
+      const { data } = await supabase
+        .from('companies')
+        .select('*')
+        .eq('company_id', selectedKitCompanyId)
+        .single();
+      if (data) setKitCompanyDetails(prev => ({ ...prev, ...data }));
     }
   };
 
@@ -2279,8 +2266,7 @@ internet businesses.`;
       const { error: updateError } = await supabase
         .from('contacts')
         .update({
-          last_interaction_at: now.toISOString(),
-          last_email_sent: now.toISOString().split('T')[0] // date only
+          last_interaction_at: now.toISOString()
         })
         .eq('contact_id', selectedKeepInTouchContact.contact_id);
 
@@ -2293,7 +2279,7 @@ internet businesses.`;
           last_interaction_at: now.toISOString()
         }));
         // Refresh the keep in touch list
-        fetchKeepInTouchContacts();
+        setKeepInTouchRefreshTrigger(prev => prev + 1);
       }
 
       // Clear the form
@@ -6674,15 +6660,15 @@ internet businesses.`;
     }
   };
 
-  // Check for unread emails
-  const hasUnreadEmails = emails.some(email => email.is_read === false);
-  const hasUnreadWhatsapp = whatsappMessages.some(msg => msg.is_read === false);
+  // Blue dot shows if inbox section has items (not based on is_read)
+  const hasInboxEmails = filterByStatus(threads, 'inbox').length > 0;
+  const hasInboxWhatsapp = filterByStatus(whatsappChats, 'inbox').length > 0;
+  const hasInboxCalendar = filterCalendarEvents(calendarEvents, 'needReview').length > 0;
 
-  const hasUnreadCalendar = calendarEvents.some(event => event.is_read === false);
   const tabs = [
-    { id: 'email', label: 'Email', icon: FaEnvelope, count: filterByStatus(threads, 'inbox').length + filterByStatus(threads, 'need_actions').length, hasUnread: hasUnreadEmails },
-    { id: 'whatsapp', label: 'WhatsApp', icon: FaWhatsapp, count: filterByStatus(whatsappChats, 'inbox').length + filterByStatus(whatsappChats, 'need_actions').length, hasUnread: hasUnreadWhatsapp },
-    { id: 'calendar', label: 'Calendar', icon: FaCalendar, count: filterCalendarEvents(calendarEvents, 'needReview').length, hasUnread: hasUnreadCalendar },
+    { id: 'email', label: 'Email', icon: FaEnvelope, count: filterByStatus(threads, 'inbox').length + filterByStatus(threads, 'need_actions').length, hasUnread: hasInboxEmails },
+    { id: 'whatsapp', label: 'WhatsApp', icon: FaWhatsapp, count: filterByStatus(whatsappChats, 'inbox').length + filterByStatus(whatsappChats, 'need_actions').length, hasUnread: hasInboxWhatsapp },
+    { id: 'calendar', label: 'Calendar', icon: FaCalendar, count: filterCalendarEvents(calendarEvents, 'needReview').length, hasUnread: hasInboxCalendar },
     { id: 'deals', label: 'Deals', icon: FaDollarSign, count: filterDealsByStatus(pipelineDeals, 'open').length, hasUnread: false },
     { id: 'keepintouch', label: 'Keep in Touch', icon: FaUserCheck, count: filterKeepInTouchByStatus(keepInTouchContacts, 'due').length, hasUnread: filterKeepInTouchByStatus(keepInTouchContacts, 'due').length > 0 },
   ];
@@ -7056,7 +7042,7 @@ internet businesses.`;
                 </>
               ) : (
                 <>
-                  {/* Need Review Section (Past Events) */}
+                  {/* Inbox Section (Past Events) */}
                   <div
                     onClick={() => toggleCalendarSection('needReview')}
                     style={{
@@ -7075,7 +7061,7 @@ internet businesses.`;
                     }}
                   >
                     <FaChevronDown style={{ transform: calendarSections.needReview ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', fontSize: '10px' }} />
-                    <span>Need Review</span>
+                    <span>Inbox</span>
                     <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: '12px' }}>
                       {filterCalendarEvents(calendarEvents, 'needReview').length}
                     </span>
@@ -7330,7 +7316,7 @@ internet businesses.`;
           {!listCollapsed && activeTab === 'calendar' && (
             <PendingCount theme={theme}>
               {calendarViewMode === 'toProcess'
-                ? `${filterCalendarEvents(calendarEvents, 'needReview').length} need review, ${filterCalendarEvents(calendarEvents, 'thisWeek').length} this week, ${filterCalendarEvents(calendarEvents, 'upcoming').length} upcoming`
+                ? `${filterCalendarEvents(calendarEvents, 'needReview').length} inbox, ${filterCalendarEvents(calendarEvents, 'thisWeek').length} this week, ${filterCalendarEvents(calendarEvents, 'upcoming').length} upcoming`
                 : `${processedMeetings.length} meetings processed`
               }
             </PendingCount>
@@ -7761,6 +7747,7 @@ internet businesses.`;
               theme={theme}
               selectedChat={selectedWhatsappChat}
               onDone={handleWhatsAppDone}
+              onSpam={handleWhatsAppSpam}
               onStatusChange={updateItemStatus}
               saving={saving}
               contacts={emailContacts}
@@ -10682,8 +10669,23 @@ internet businesses.`;
             </CollapseButton>
             {!rightPanelCollapsed && activeTab === 'keepintouch' && selectedKeepInTouchContact && (
               <>
-                <ActionTabIcon theme={theme} $active={activeActionTab === 'crm'} onClick={() => setActiveActionTab('crm')} title="Contact Details">
+                <ActionTabIcon theme={theme} $active={activeActionTab === 'crm'} onClick={() => setActiveActionTab('crm')} title="Contact Details" style={{ position: 'relative' }}>
                   <FaUser />
+                  {keepInTouchContactDetails?.completeness_score < 100 && (
+                    <span style={{
+                      position: 'absolute',
+                      top: '2px',
+                      right: '2px',
+                      width: '8px',
+                      height: '8px',
+                      borderRadius: '50%',
+                      background: '#3B82F6',
+                      border: `2px solid ${theme === 'dark' ? '#1F2937' : '#FFFFFF'}`
+                    }} />
+                  )}
+                </ActionTabIcon>
+                <ActionTabIcon theme={theme} $active={activeActionTab === 'kitCompany'} onClick={() => setActiveActionTab('kitCompany')} title="Company Details" style={activeActionTab === 'kitCompany' ? { background: '#8B5CF6', color: 'white' } : {}}>
+                  <FaBuilding />
                 </ActionTabIcon>
                 <ActionTabIcon theme={theme} $active={activeActionTab === 'kitWhatsapp'} onClick={() => setActiveActionTab('kitWhatsapp')} title="WhatsApp Chat" style={activeActionTab === 'kitWhatsapp' ? { background: '#22C55E', color: 'white' } : {}}>
                   <FaWhatsapp />
@@ -10727,6 +10729,32 @@ internet businesses.`;
           {/* Keep in Touch - Contact Details Panel */}
           {!rightPanelCollapsed && activeTab === 'keepintouch' && selectedKeepInTouchContact && keepInTouchContactDetails && activeActionTab === 'crm' && (
             <div style={{ flex: 1, overflow: 'auto', padding: '12px' }}>
+              {/* Enrich with Apollo Button */}
+              <button
+                onClick={() => setKitEnrichmentModalOpen(true)}
+                title="Enrich contact data with Apollo"
+                style={{
+                  width: '100%',
+                  padding: '10px 16px',
+                  marginBottom: '12px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+                  color: '#FFFFFF',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <FaRocket size={14} />
+                Enrich with Apollo
+              </button>
+
               {/* Section 1: Info Base */}
               <div style={{
                 background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
@@ -11165,402 +11193,515 @@ internet businesses.`;
             </div>
           )}
 
-          {/* Keep in Touch - WhatsApp Chat Panel */}
-          {!rightPanelCollapsed && activeTab === 'keepintouch' && selectedKeepInTouchContact && activeActionTab === 'kitWhatsapp' && (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              {/* Messages Container */}
-              <div style={{
-                flex: 1,
-                overflow: 'auto',
-                padding: '12px',
-                display: 'flex',
-                flexDirection: 'column-reverse',
-                gap: '8px',
-                background: theme === 'dark' ? '#111827' : '#F3F4F6'
-              }}>
-                {kitWhatsappLoading ? (
-                  <div style={{ textAlign: 'center', padding: '20px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }}>
-                    Loading messages...
-                  </div>
-                ) : kitWhatsappMessages.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '20px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }}>
-                    {keepInTouchMobiles.length === 0 ? (
-                      <div>
-                        <FaWhatsapp size={32} style={{ marginBottom: '8px', opacity: 0.5 }} />
-                        <div>No phone number available</div>
-                        <div style={{ fontSize: '12px', marginTop: '4px' }}>Add a phone number to view WhatsApp messages</div>
-                      </div>
-                    ) : (
-                      <div>
-                        <FaWhatsapp size={32} style={{ marginBottom: '8px', opacity: 0.5 }} />
-                        <div>No messages yet</div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  kitWhatsappMessages.map((msg, idx) => (
-                    <div
-                      key={msg.id || idx}
-                      style={{
-                        maxWidth: '85%',
-                        padding: '8px 12px',
-                        borderRadius: '12px',
-                        fontSize: '13px',
-                        lineHeight: '1.4',
-                        alignSelf: msg.direction === 'sent' ? 'flex-end' : 'flex-start',
-                        background: msg.direction === 'sent'
-                          ? (theme === 'dark' ? '#054640' : '#DCF8C6')
-                          : (theme === 'dark' ? '#1F2937' : '#FFFFFF'),
-                        color: theme === 'dark' ? '#F9FAFB' : '#111827',
-                        border: msg.direction === 'sent'
-                          ? 'none'
-                          : `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
-                      }}
-                    >
-                      <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{msg.text}</div>
-                      <div style={{
-                        fontSize: '10px',
-                        color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                        marginTop: '4px',
-                        textAlign: 'right',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'flex-end',
-                        gap: '4px'
-                      }}>
-                        {new Date(msg.date).toLocaleString('en-GB', {
-                          day: '2-digit',
-                          month: 'short',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                        {msg.direction === 'sent' && (
-                          <FaCheckDouble size={10} style={{ color: '#34D399' }} />
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {/* Input Area */}
-              {keepInTouchMobiles.length > 0 && (
+          {/* Keep in Touch - Company Details Panel */}
+          {!rightPanelCollapsed && activeTab === 'keepintouch' && selectedKeepInTouchContact && activeActionTab === 'kitCompany' && (
+            <div style={{ flex: 1, overflow: 'auto', padding: '12px' }}>
+              {keepInTouchCompanies.length === 0 ? (
                 <div style={{
-                  padding: '12px',
-                  borderTop: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
-                  background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
                   display: 'flex',
-                  gap: '8px',
-                  alignItems: 'flex-end'
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: '200px',
+                  color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
+                  textAlign: 'center',
+                  padding: '20px'
                 }}>
-                  <textarea
-                    value={kitWhatsappInput}
-                    onChange={(e) => setKitWhatsappInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleKitSendWhatsapp();
-                      }
-                    }}
-                    placeholder="Type a message..."
-                    style={{
-                      flex: 1,
-                      padding: '10px 12px',
-                      borderRadius: '20px',
-                      border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
-                      background: theme === 'dark' ? '#374151' : '#F9FAFB',
-                      color: theme === 'dark' ? '#F9FAFB' : '#111827',
-                      fontSize: '13px',
-                      resize: 'none',
-                      outline: 'none',
-                      maxHeight: '100px',
-                      minHeight: '40px',
-                      fontFamily: 'inherit'
-                    }}
-                    rows={1}
-                  />
+                  <FaBuilding size={40} style={{ marginBottom: '12px', opacity: 0.5 }} />
+                  <div style={{ fontSize: '14px', fontWeight: 500 }}>No company linked</div>
+                  <div style={{ fontSize: '12px', marginTop: '4px' }}>Link a company from the Contact tab</div>
+                </div>
+              ) : (
+                <>
+                  {/* Company Selector (if multiple companies) */}
+                  {keepInTouchCompanies.length > 1 && (
+                    <div style={{ marginBottom: '12px' }}>
+                      <select
+                        value={selectedKitCompanyId || ''}
+                        onChange={(e) => setSelectedKitCompanyId(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                          background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                          color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                          fontSize: '13px',
+                          fontWeight: 500,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {keepInTouchCompanies.map(cc => (
+                          <option key={cc.company_id} value={cc.company_id}>
+                            {cc.company?.name || 'Unknown Company'} {cc.is_primary ? '(Primary)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Enrich with Apollo Button */}
                   <button
-                    onClick={handleKitSendWhatsapp}
-                    disabled={!kitWhatsappInput.trim() || kitWhatsappSending}
+                    onClick={() => setKitCompanyEnrichmentModalOpen(true)}
+                    title="Enrich company data with Apollo"
                     style={{
-                      width: '40px',
-                      height: '40px',
-                      borderRadius: '50%',
+                      width: '100%',
+                      padding: '10px 16px',
+                      marginBottom: '12px',
+                      borderRadius: '8px',
                       border: 'none',
-                      background: kitWhatsappInput.trim() && !kitWhatsappSending ? '#22C55E' : (theme === 'dark' ? '#374151' : '#E5E7EB'),
-                      color: kitWhatsappInput.trim() && !kitWhatsappSending ? 'white' : (theme === 'dark' ? '#6B7280' : '#9CA3AF'),
-                      cursor: kitWhatsappInput.trim() && !kitWhatsappSending ? 'pointer' : 'not-allowed',
+                      background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+                      color: '#FFFFFF',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      flexShrink: 0
+                      gap: '8px',
+                      transition: 'all 0.2s ease'
                     }}
                   >
-                    {kitWhatsappSending ? (
-                      <FaClock size={16} />
-                    ) : (
-                      <FaPaperPlane size={16} />
-                    )}
+                    <FaRocket size={14} />
+                    Enrich with Apollo
                   </button>
-                </div>
+
+                  {kitCompanyDetails && (
+                    <>
+                      {/* Company Header with Logo */}
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        marginBottom: '12px',
+                        padding: '12px',
+                        background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                        borderRadius: '8px',
+                        border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
+                      }}>
+                        {kitCompanyLogo ? (
+                          <img
+                            src={kitCompanyLogo}
+                            alt={kitCompanyDetails.name}
+                            style={{
+                              width: '56px',
+                              height: '56px',
+                              borderRadius: '8px',
+                              objectFit: 'contain',
+                              background: '#FFFFFF',
+                              padding: '4px'
+                            }}
+                          />
+                        ) : (
+                          <div style={{
+                            width: '56px',
+                            height: '56px',
+                            borderRadius: '8px',
+                            background: theme === 'dark' ? '#374151' : '#E5E7EB',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}>
+                            <FaBuilding size={24} color={theme === 'dark' ? '#6B7280' : '#9CA3AF'} />
+                          </div>
+                        )}
+                        <div style={{ flex: 1 }}>
+                          <div style={{
+                            fontSize: '16px',
+                            fontWeight: 600,
+                            color: theme === 'dark' ? '#F9FAFB' : '#111827'
+                          }}>
+                            {kitCompanyDetails.name}
+                          </div>
+                          {kitCompanyDetails.category && kitCompanyDetails.category !== 'Not Set' && (
+                            <div style={{
+                              fontSize: '12px',
+                              color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                              marginTop: '2px'
+                            }}>
+                              {kitCompanyDetails.category}
+                            </div>
+                          )}
+                          {kitCompanyDomains.length > 0 && (
+                            <div style={{
+                              fontSize: '11px',
+                              color: '#3B82F6',
+                              marginTop: '2px'
+                            }}>
+                              {kitCompanyDomains[0].domain}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Basic Info */}
+                      <div style={{
+                        background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                        borderRadius: '8px',
+                        padding: '12px',
+                        marginBottom: '12px',
+                        border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
+                      }}>
+                        <div style={{ fontSize: '11px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          Basic Info
+                        </div>
+
+                        {/* Name */}
+                        <div style={{ marginBottom: '8px' }}>
+                          <label style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '4px' }}>Company Name</label>
+                          <input
+                            type="text"
+                            value={kitCompanyDetails.name || ''}
+                            onChange={(e) => handleUpdateKitCompanyField('name', e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '6px 8px',
+                              borderRadius: '4px',
+                              border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                              background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                              color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                              fontSize: '13px'
+                            }}
+                          />
+                        </div>
+
+                        {/* Category */}
+                        <div style={{ marginBottom: '8px' }}>
+                          <label style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '4px' }}>Category</label>
+                          <select
+                            value={kitCompanyDetails.category || 'Not Set'}
+                            onChange={(e) => handleUpdateKitCompanyField('category', e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '6px 8px',
+                              borderRadius: '4px',
+                              border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                              background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                              color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                              fontSize: '13px',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {['Not Set', 'Professional Investor', 'Competitor', 'Customer', 'Partner', 'Supplier', 'Media', 'Government', 'NGO', 'University', 'Startup', 'Corporate', 'Other'].map(cat => (
+                              <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* LinkedIn */}
+                        <div>
+                          <label style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '4px' }}>LinkedIn</label>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <input
+                              type="text"
+                              value={kitCompanyDetails.linkedin || ''}
+                              onChange={(e) => handleUpdateKitCompanyField('linkedin', e.target.value)}
+                              placeholder="https://linkedin.com/company/..."
+                              style={{
+                                flex: 1,
+                                padding: '6px 8px',
+                                borderRadius: '4px',
+                                border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                                background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                                color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                                fontSize: '13px'
+                              }}
+                            />
+                            {kitCompanyDetails.linkedin && (
+                              <a
+                                href={kitCompanyDetails.linkedin}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  padding: '6px 10px',
+                                  borderRadius: '4px',
+                                  background: '#0A66C2',
+                                  color: '#FFFFFF',
+                                  textDecoration: 'none',
+                                  display: 'flex',
+                                  alignItems: 'center'
+                                }}
+                              >
+                                <FaLinkedin size={14} />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Description */}
+                      <div style={{
+                        background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                        borderRadius: '8px',
+                        padding: '12px',
+                        marginBottom: '12px',
+                        border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
+                      }}>
+                        <div style={{ fontSize: '11px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          Description
+                        </div>
+                        <textarea
+                          value={kitCompanyDetails.description || ''}
+                          onChange={(e) => handleUpdateKitCompanyField('description', e.target.value)}
+                          placeholder="Company description..."
+                          rows={3}
+                          style={{
+                            width: '100%',
+                            padding: '8px',
+                            borderRadius: '4px',
+                            border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                            background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                            color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                            fontSize: '13px',
+                            resize: 'vertical',
+                            fontFamily: 'inherit'
+                          }}
+                        />
+                      </div>
+
+                      {/* Domains */}
+                      <div style={{
+                        background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                        borderRadius: '8px',
+                        padding: '12px',
+                        marginBottom: '12px',
+                        border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
+                      }}>
+                        <div style={{ fontSize: '11px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          <FaGlobe style={{ marginRight: '6px' }} />
+                          Domains ({kitCompanyDomains.length})
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          {kitCompanyDomains.length === 0 ? (
+                            <span style={{ fontSize: '12px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', fontStyle: 'italic' }}>No domains</span>
+                          ) : (
+                            kitCompanyDomains.map(d => (
+                              <span
+                                key={d.id}
+                                style={{
+                                  padding: '4px 10px',
+                                  borderRadius: '12px',
+                                  background: theme === 'dark' ? '#374151' : '#E5E7EB',
+                                  color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                                  fontSize: '12px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                              >
+                                <FaGlobe size={10} />
+                                {d.domain}
+                                {d.is_primary && <span style={{ fontSize: '10px', opacity: 0.7 }}>(primary)</span>}
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Tags */}
+                      <div style={{
+                        background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                        borderRadius: '8px',
+                        padding: '12px',
+                        marginBottom: '12px',
+                        border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
+                      }}>
+                        <div style={{ fontSize: '11px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          <FaTag style={{ marginRight: '6px' }} />
+                          Tags ({kitCompanyTags.length})
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          {kitCompanyTags.length === 0 ? (
+                            <span style={{ fontSize: '12px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', fontStyle: 'italic' }}>No tags</span>
+                          ) : (
+                            kitCompanyTags.map(t => (
+                              <span
+                                key={t.entry_id}
+                                style={{
+                                  padding: '4px 10px',
+                                  borderRadius: '12px',
+                                  background: theme === 'dark' ? '#4B5563' : '#DBEAFE',
+                                  color: theme === 'dark' ? '#93C5FD' : '#1D4ED8',
+                                  fontSize: '12px'
+                                }}
+                              >
+                                {t.tags?.name || 'Unknown'}
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Cities */}
+                      <div style={{
+                        background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                        borderRadius: '8px',
+                        padding: '12px',
+                        border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
+                      }}>
+                        <div style={{ fontSize: '11px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          <FaMapMarkerAlt style={{ marginRight: '6px' }} />
+                          Cities ({kitCompanyCities.length})
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          {kitCompanyCities.length === 0 ? (
+                            <span style={{ fontSize: '12px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', fontStyle: 'italic' }}>No cities</span>
+                          ) : (
+                            kitCompanyCities.map(c => (
+                              <span
+                                key={c.entry_id}
+                                style={{
+                                  padding: '4px 10px',
+                                  borderRadius: '12px',
+                                  background: theme === 'dark' ? '#374151' : '#FEF3C7',
+                                  color: theme === 'dark' ? '#FCD34D' : '#92400E',
+                                  fontSize: '12px'
+                                }}
+                              >
+                                {c.cities?.name || 'Unknown'}{c.cities?.country ? `, ${c.cities.country}` : ''}
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Working Here */}
+                      <div style={{
+                        background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                        borderRadius: '8px',
+                        padding: '12px',
+                        marginTop: '12px',
+                        border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
+                      }}>
+                        <div style={{ fontSize: '11px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          <FaUsers style={{ marginRight: '6px' }} />
+                          Working Here ({kitCompanyContacts.length})
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {kitCompanyContacts.length === 0 ? (
+                            <span style={{ fontSize: '12px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', fontStyle: 'italic' }}>No contacts linked</span>
+                          ) : (
+                            kitCompanyContacts.map(cc => (
+                              <div
+                                key={cc.contact_id}
+                                onClick={() => {
+                                  // Navigate to this contact in Keep in Touch
+                                  const contact = keepInTouchContacts.find(c => c.contact_id === cc.contact_id);
+                                  if (contact) {
+                                    setSelectedKeepInTouchContact(contact);
+                                    setActiveActionTab('crm');
+                                  }
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '10px',
+                                  padding: '8px',
+                                  borderRadius: '6px',
+                                  background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                                  cursor: 'pointer',
+                                  transition: 'background 0.15s ease',
+                                  border: cc.contact_id === selectedKeepInTouchContact?.contact_id
+                                    ? `2px solid ${theme === 'dark' ? '#6366F1' : '#4F46E5'}`
+                                    : `1px solid ${theme === 'dark' ? '#4B5563' : '#E5E7EB'}`
+                                }}
+                              >
+                                {cc.contact?.profile_image_url ? (
+                                  <img
+                                    src={cc.contact.profile_image_url}
+                                    alt=""
+                                    style={{
+                                      width: '32px',
+                                      height: '32px',
+                                      borderRadius: '50%',
+                                      objectFit: 'cover'
+                                    }}
+                                  />
+                                ) : (
+                                  <div style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '50%',
+                                    background: theme === 'dark' ? '#4B5563' : '#E5E7EB',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '12px',
+                                    fontWeight: 600,
+                                    color: theme === 'dark' ? '#9CA3AF' : '#6B7280'
+                                  }}>
+                                    {(cc.contact?.first_name?.[0] || '') + (cc.contact?.last_name?.[0] || '')}
+                                  </div>
+                                )}
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{
+                                    fontSize: '13px',
+                                    fontWeight: 500,
+                                    color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap'
+                                  }}>
+                                    {cc.contact?.first_name} {cc.contact?.last_name}
+                                  </div>
+                                  {cc.contact?.job_role && (
+                                    <div style={{
+                                      fontSize: '11px',
+                                      color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      whiteSpace: 'nowrap'
+                                    }}>
+                                      {cc.contact.job_role}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </>
               )}
             </div>
           )}
 
+          {/* Keep in Touch - WhatsApp Chat Panel */}
+          {!rightPanelCollapsed && activeTab === 'keepintouch' && selectedKeepInTouchContact && activeActionTab === 'kitWhatsapp' && (
+            <WhatsAppChatTab
+              theme={theme}
+              contact={selectedKeepInTouchContact}
+              mobiles={keepInTouchMobiles}
+              onMessageSent={(contactId) => {
+                // Update local state
+                setSelectedKeepInTouchContact(prev => ({
+                  ...prev,
+                  last_interaction_at: new Date().toISOString()
+                }));
+                // Refresh the keep in touch list
+                setKeepInTouchRefreshTrigger(prev => prev + 1);
+              }}
+            />
+          )}
+
           {/* Keep in Touch - Email Panel */}
           {!rightPanelCollapsed && activeTab === 'keepintouch' && selectedKeepInTouchContact && activeActionTab === 'kitEmail' && (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '12px' }}>
-              {/* To Field - dropdown if multiple emails */}
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '4px', fontWeight: 600 }}>To</label>
-                {keepInTouchEmails.length === 0 ? (
-                  <div style={{
-                    padding: '10px 12px',
-                    borderRadius: '8px',
-                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
-                    background: theme === 'dark' ? '#374151' : '#F9FAFB',
-                    color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
-                    fontSize: '13px',
-                    fontStyle: 'italic'
-                  }}>
-                    No email address
-                  </div>
-                ) : keepInTouchEmails.length === 1 ? (
-                  <div style={{
-                    padding: '10px 12px',
-                    borderRadius: '8px',
-                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
-                    background: theme === 'dark' ? '#374151' : '#F9FAFB',
-                    color: theme === 'dark' ? '#F9FAFB' : '#111827',
-                    fontSize: '13px'
-                  }}>
-                    {keepInTouchEmails[0].email}
-                  </div>
-                ) : (
-                  <select
-                    value={kitSelectedEmail || keepInTouchEmails[0].email}
-                    onChange={(e) => setKitSelectedEmail(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      borderRadius: '8px',
-                      border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
-                      background: theme === 'dark' ? '#374151' : '#FFFFFF',
-                      color: theme === 'dark' ? '#F9FAFB' : '#111827',
-                      fontSize: '13px',
-                      outline: 'none',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {keepInTouchEmails.map((e, idx) => (
-                      <option key={e.email_id || idx} value={e.email}>
-                        {e.email}{e.is_primary ? ' (primary)' : ''}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-
-              {/* Subject Field */}
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '4px', fontWeight: 600 }}>Subject</label>
-                <input
-                  type="text"
-                  value={kitEmailSubject}
-                  onChange={(e) => setKitEmailSubject(e.target.value)}
-                  placeholder="Enter subject..."
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: '8px',
-                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
-                    background: theme === 'dark' ? '#374151' : '#FFFFFF',
-                    color: theme === 'dark' ? '#F9FAFB' : '#111827',
-                    fontSize: '13px',
-                    outline: 'none'
-                  }}
-                />
-              </div>
-
-              {/* Template Button */}
-              <div style={{ marginBottom: '12px', position: 'relative' }} ref={kitTemplateDropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => setKitTemplateDropdownOpen(!kitTemplateDropdownOpen)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '8px 12px',
-                    background: theme === 'dark' ? '#374151' : '#F3F4F6',
-                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
-                    borderRadius: '6px',
-                    color: theme === 'dark' ? '#D1D5DB' : '#374151',
-                    cursor: 'pointer',
-                    fontSize: '13px'
-                  }}
-                >
-                  <FaFileAlt size={12} />
-                  Templates
-                </button>
-
-                {kitTemplateDropdownOpen && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '100%',
-                    left: 0,
-                    right: 0,
-                    marginTop: '4px',
-                    background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
-                    border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
-                    borderRadius: '8px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                    zIndex: 100,
-                    maxHeight: '300px',
-                    overflow: 'hidden',
-                    display: 'flex',
-                    flexDirection: 'column'
-                  }}>
-                    {/* Search Input */}
-                    <div style={{ padding: '8px', borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}` }}>
-                      <input
-                        type="text"
-                        placeholder="Search templates..."
-                        value={kitTemplateSearch}
-                        onChange={(e) => setKitTemplateSearch(e.target.value)}
-                        autoFocus
-                        style={{
-                          width: '100%',
-                          padding: '8px 10px',
-                          border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
-                          borderRadius: '6px',
-                          background: theme === 'dark' ? '#374151' : '#F9FAFB',
-                          color: theme === 'dark' ? '#F9FAFB' : '#111827',
-                          fontSize: '13px',
-                          outline: 'none'
-                        }}
-                      />
-                    </div>
-
-                    {/* Template List */}
-                    <div style={{ overflow: 'auto', maxHeight: '200px' }}>
-                      {kitTemplatesLoading ? (
-                        <div style={{ padding: '16px', textAlign: 'center', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', fontSize: '13px' }}>
-                          Loading...
-                        </div>
-                      ) : kitTemplates.length === 0 ? (
-                        <div style={{ padding: '16px', textAlign: 'center', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', fontSize: '13px' }}>
-                          {kitTemplateSearch ? 'No templates found' : 'No templates yet'}
-                        </div>
-                      ) : (
-                        kitTemplates.map((template) => (
-                          <div
-                            key={template.template_id}
-                            onClick={() => applyKitTemplate(template)}
-                            style={{
-                              padding: '10px 12px',
-                              cursor: 'pointer',
-                              borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#F3F4F6'}`,
-                              transition: 'background 0.15s'
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = theme === 'dark' ? '#374151' : '#F3F4F6'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                          >
-                            <div style={{ fontWeight: 500, fontSize: '13px', color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
-                              {template.name}
-                            </div>
-                            {template.short_description && (
-                              <div style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginTop: '2px' }}>
-                                {template.short_description}
-                              </div>
-                            )}
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Message Body */}
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', marginBottom: '12px', minHeight: 0 }}>
-                <label style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '4px', fontWeight: 600 }}>Message</label>
-                <textarea
-                  value={kitEmailBody}
-                  onChange={(e) => setKitEmailBody(e.target.value)}
-                  placeholder="Write your message..."
-                  style={{
-                    flex: 1,
-                    padding: '12px',
-                    borderRadius: '8px',
-                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
-                    background: theme === 'dark' ? '#374151' : '#FFFFFF',
-                    color: theme === 'dark' ? '#F9FAFB' : '#111827',
-                    fontSize: '13px',
-                    resize: 'none',
-                    outline: 'none',
-                    fontFamily: 'inherit',
-                    lineHeight: '1.5',
-                    minHeight: '150px'
-                  }}
-                />
-              </div>
-
-              {/* Signature Preview */}
-              <div style={{
-                padding: '10px 12px',
-                borderRadius: '8px',
-                background: theme === 'dark' ? '#1F2937' : '#F3F4F6',
-                border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
-                marginBottom: '12px',
-                fontSize: '11px',
-                color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                whiteSpace: 'pre-wrap',
-                lineHeight: '1.4'
-              }}>
-                <div style={{ fontWeight: 600, marginBottom: '4px' }}>Signature:</div>
-                --{'\n'}SIMONE CIMMINELLI{'\n'}Newsletter | Website | LinkedIn
-              </div>
-
-              {/* Send Button */}
-              <button
-                onClick={handleKitSendEmail}
-                disabled={!kitEmailSubject.trim() || !kitEmailBody.trim() || kitEmailSending || keepInTouchEmails.length === 0}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  background: (kitEmailSubject.trim() && kitEmailBody.trim() && !kitEmailSending && keepInTouchEmails.length > 0)
-                    ? '#3B82F6'
-                    : (theme === 'dark' ? '#374151' : '#E5E7EB'),
-                  color: (kitEmailSubject.trim() && kitEmailBody.trim() && !kitEmailSending && keepInTouchEmails.length > 0)
-                    ? 'white'
-                    : (theme === 'dark' ? '#6B7280' : '#9CA3AF'),
-                  cursor: (kitEmailSubject.trim() && kitEmailBody.trim() && !kitEmailSending && keepInTouchEmails.length > 0)
-                    ? 'pointer'
-                    : 'not-allowed',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px'
-                }}
-              >
-                {kitEmailSending ? (
-                  <>
-                    <FaClock size={14} />
-                    Sending...
-                  </>
-                ) : (
-                  <>
-                    <FaPaperPlane size={14} />
-                    Send Email
-                  </>
-                )}
-              </button>
-            </div>
+            <SendEmailTab
+              theme={theme}
+              contact={selectedKeepInTouchContact}
+              emails={keepInTouchEmails}
+              onEmailSent={(contactId) => {
+                // Update local state
+                setSelectedKeepInTouchContact(prev => ({
+                  ...prev,
+                  last_interaction_at: new Date().toISOString()
+                }));
+                // Refresh the keep in touch list
+                setKeepInTouchRefreshTrigger(prev => prev + 1);
+              }}
+            />
           )}
 
           {!rightPanelCollapsed && activeTab !== 'keepintouch' && ((selectedThread && selectedThread.length > 0) || selectedWhatsappChat || selectedCalendarEvent || selectedPipelineDeal) && (
@@ -13281,6 +13422,109 @@ internet businesses.`;
           // Also refresh data integrity lists
           fetchDataIntegrity();
         }}
+      />
+
+      {/* Keep in Touch - Contact Enrichment Modal */}
+      <ContactEnrichmentModal
+        isOpen={kitEnrichmentModalOpen}
+        onClose={() => setKitEnrichmentModalOpen(false)}
+        contact={keepInTouchContactDetails}
+        contactEmails={keepInTouchEmails}
+        onEnrichComplete={async () => {
+          setKitEnrichmentModalOpen(false);
+          // Refresh contact data
+          if (selectedKeepInTouchContact?.contact_id) {
+            const { data: contactData } = await supabase
+              .from('contacts')
+              .select('*')
+              .eq('contact_id', selectedKeepInTouchContact.contact_id)
+              .maybeSingle();
+            const { data: completenessData } = await supabase
+              .from('contact_completeness')
+              .select('completeness_score')
+              .eq('contact_id', selectedKeepInTouchContact.contact_id)
+              .maybeSingle();
+            if (contactData || completenessData) {
+              setKeepInTouchContactDetails(prev => ({
+                ...prev,
+                ...(contactData || {}),
+                completeness_score: completenessData ? Math.round(completenessData.completeness_score) : prev?.completeness_score
+              }));
+            }
+          }
+        }}
+        theme={theme}
+      />
+
+      {/* Keep in Touch - Company Enrichment Modal */}
+      <CompanyEnrichmentModal
+        isOpen={kitCompanyEnrichmentModalOpen}
+        onClose={() => setKitCompanyEnrichmentModalOpen(false)}
+        company={kitCompanyDetails ? { ...kitCompanyDetails, company_id: selectedKitCompanyId } : null}
+        companyDomains={kitCompanyDomains}
+        onEnrichComplete={async () => {
+          setKitCompanyEnrichmentModalOpen(false);
+          // Refresh company data
+          if (selectedKitCompanyId) {
+            const { data: companyData } = await supabase
+              .from('companies')
+              .select('*')
+              .eq('company_id', selectedKitCompanyId)
+              .maybeSingle();
+            const { data: completenessData } = await supabase
+              .from('company_completeness')
+              .select('completeness_score')
+              .eq('company_id', selectedKitCompanyId)
+              .maybeSingle();
+            if (companyData) {
+              setKitCompanyDetails({
+                ...companyData,
+                completeness_score: completenessData?.completeness_score || 0
+              });
+            }
+            // Refresh domains
+            const { data: domainsData } = await supabase
+              .from('company_domains')
+              .select('*')
+              .eq('company_id', selectedKitCompanyId)
+              .order('is_primary', { ascending: false });
+            setKitCompanyDomains(domainsData || []);
+            // Refresh tags
+            const { data: tagsData } = await supabase
+              .from('company_tags')
+              .select('entry_id, tag_id')
+              .eq('company_id', selectedKitCompanyId);
+            if (tagsData && tagsData.length > 0) {
+              const tagIds = tagsData.map(t => t.tag_id);
+              const { data: tagDetails } = await supabase
+                .from('tags')
+                .select('tag_id, name')
+                .in('tag_id', tagIds);
+              setKitCompanyTags(tagsData.map(ct => ({
+                ...ct,
+                tags: tagDetails?.find(t => t.tag_id === ct.tag_id)
+              })));
+            }
+            // Refresh logo
+            const { data: logoLinkData } = await supabase
+              .from('company_attachments')
+              .select('attachment_id')
+              .eq('company_id', selectedKitCompanyId)
+              .eq('is_logo', true)
+              .maybeSingle();
+            if (logoLinkData?.attachment_id) {
+              const { data: attachmentData } = await supabase
+                .from('attachments')
+                .select('permanent_url')
+                .eq('attachment_id', logoLinkData.attachment_id)
+                .single();
+              setKitCompanyLogo(attachmentData?.permanent_url || null);
+            } else {
+              setKitCompanyLogo(null);
+            }
+          }
+        }}
+        theme={theme}
       />
 
       {/* Create Company from Domain Modal */}

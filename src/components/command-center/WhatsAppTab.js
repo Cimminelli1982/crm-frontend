@@ -818,6 +818,7 @@ const WhatsAppTab = ({
   theme,
   selectedChat,
   onDone,
+  onSpam,
   onStatusChange,
   saving,
   onMessageSent,
@@ -1339,6 +1340,30 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
           </div>
         </ChatHeaderInfo>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Skip / Spam */}
+          <button
+            onClick={onSpam}
+            disabled={saving}
+            title="Skip chat (add to spam list)"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '36px',
+              height: '36px',
+              borderRadius: '8px',
+              border: 'none',
+              background: theme === 'light' ? '#FEE2E2' : '#7F1D1D',
+              color: theme === 'light' ? '#DC2626' : '#FCA5A5',
+              cursor: saving ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s ease',
+              opacity: saving ? 0.5 : 1,
+              fontSize: '16px',
+            }}
+          >
+            🚫
+          </button>
+
           {/* Need Actions */}
           <button
             onClick={() => onStatusChange?.('need_actions')}
