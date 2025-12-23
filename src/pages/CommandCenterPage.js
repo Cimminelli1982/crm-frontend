@@ -8011,7 +8011,29 @@ internet businesses.`;
                                 <FaExternalLinkAlt size={12} />
                               </a>
                             ) : (
-                              location
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span>{location}</span>
+                                <a
+                                  href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(location)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title="Open in Google Maps"
+                                  style={{
+                                    color: '#3B82F6',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    padding: '4px 8px',
+                                    background: theme === 'light' ? '#EFF6FF' : '#1E3A5F',
+                                    borderRadius: '6px',
+                                    fontSize: '12px',
+                                    fontWeight: 500,
+                                    textDecoration: 'none'
+                                  }}
+                                >
+                                  <FaMapMarkerAlt size={10} style={{ marginRight: '4px' }} />
+                                  Maps
+                                </a>
+                              </div>
                             )
                           ) : (
                             <span style={{ opacity: 0.5, fontStyle: 'italic' }}>No location</span>
