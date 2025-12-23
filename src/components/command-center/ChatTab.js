@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FaRobot, FaTimes, FaImage, FaPaperPlane, FaCheck, FaPlus } from 'react-icons/fa';
+import { FaRobot, FaTimes, FaImage, FaPaperPlane, FaCheck, FaPlus, FaCalendarAlt, FaStickyNote, FaTasks, FaDollarSign, FaHandshake, FaWhatsapp, FaEnvelope } from 'react-icons/fa';
 import {
   ChatContainer,
   QuickActionsContainer,
@@ -43,6 +43,9 @@ const ChatTab = ({
   removeChatImage,
   openReplyWithDraft,
   extractDraftFromMessage,
+  // Keep in Touch specific props
+  keepInTouchMode = false,
+  onKitQuickAction,
 }) => {
   // Context-aware placeholder and messages
   const getContextLabel = () => {
@@ -162,13 +165,39 @@ const ChatTab = ({
     <ChatContainer>
       {/* Quick Actions */}
       <QuickActionsContainer theme={theme}>
-        <QuickActionChip theme={theme} onClick={() => handleQuickAction('TL;DR. 2-3 bullet points. Zero filler.')}>
-          TL;DR
-        </QuickActionChip>
-        <QuickActionChip theme={theme} onClick={() => handleQuickAction('Sì breve. Diretto, caldo ma non sdolcinato. Mai "Certamente!" o "Con piacere!". Se scrivono in italiano, rispondi italiano. Se inglese, inglese. Tono informale sempre.')}>
-          👍 Yes
-        </QuickActionChip>
-        <QuickActionChip theme={theme} onClick={() => handleQuickAction(`SAYING NO - Use this exact structure:
+        {keepInTouchMode ? (
+          <>
+            <QuickActionChip theme={theme} onClick={() => onKitQuickAction?.('calendar')}>
+              <FaCalendarAlt size={12} style={{ color: '#3B82F6' }} /> Calendar
+            </QuickActionChip>
+            <QuickActionChip theme={theme} onClick={() => onKitQuickAction?.('note')}>
+              <FaStickyNote size={12} style={{ color: '#F59E0B' }} /> Note
+            </QuickActionChip>
+            <QuickActionChip theme={theme} onClick={() => onKitQuickAction?.('task')}>
+              <FaTasks size={12} style={{ color: '#8B5CF6' }} /> Task
+            </QuickActionChip>
+            <QuickActionChip theme={theme} onClick={() => onKitQuickAction?.('deal')}>
+              <FaDollarSign size={12} style={{ color: '#10B981' }} /> Deal
+            </QuickActionChip>
+            <QuickActionChip theme={theme} onClick={() => onKitQuickAction?.('introduction')}>
+              <FaHandshake size={12} style={{ color: '#EF4444' }} /> Intro
+            </QuickActionChip>
+            <QuickActionChip theme={theme} onClick={() => onKitQuickAction?.('whatsapp')}>
+              <FaWhatsapp size={12} style={{ color: '#25D366' }} /> WhatsApp
+            </QuickActionChip>
+            <QuickActionChip theme={theme} onClick={() => onKitQuickAction?.('email')}>
+              <FaEnvelope size={12} style={{ color: '#3B82F6' }} /> Email
+            </QuickActionChip>
+          </>
+        ) : (
+          <>
+            <QuickActionChip theme={theme} onClick={() => handleQuickAction('TL;DR. 2-3 bullet points. Zero filler.')}>
+              TL;DR
+            </QuickActionChip>
+            <QuickActionChip theme={theme} onClick={() => handleQuickAction('Sì breve. Diretto, caldo ma non sdolcinato. Mai "Certamente!" o "Con piacere!". Se scrivono in italiano, rispondi italiano. Se inglese, inglese. Tono informale sempre.')}>
+              👍 Yes
+            </QuickActionChip>
+            <QuickActionChip theme={theme} onClick={() => handleQuickAction(`SAYING NO - Use this exact structure:
 Ciao <nome>,
 
 <NO FIRST - pick one>
@@ -196,19 +225,21 @@ Italian: "Grazie di aver condiviso", "Apprezzo la condivisione", "In bocca al lu
 LANGUAGE RULE: Use same language as original message
 
 NEVER: Add explanations, say "maybe later", leave doors open, use corporate speak, apologize with "sorry" or "mi dispiace"`)}>
-          👎 No
-        </QuickActionChip>
-        <QuickActionChip theme={theme} onClick={() => handleQuickAction('Una riga. "Ricevuto, grazie" o "Got it, thanks". Basta.')}>
-          ✓ Ricevuto
-        </QuickActionChip>
-        <QuickActionChip
-          theme={theme}
-          onClick={handleCalendarExtract}
-          disabled={calendarLoading}
-          style={{ background: theme === 'light' ? '#EBF5FF' : '#1E3A5F', color: theme === 'light' ? '#3B82F6' : '#60A5FA' }}
-        >
-          {calendarLoading ? '...' : '📅 Calendar'}
-        </QuickActionChip>
+              👎 No
+            </QuickActionChip>
+            <QuickActionChip theme={theme} onClick={() => handleQuickAction('Una riga. "Ricevuto, grazie" o "Got it, thanks". Basta.')}>
+              ✓ Ricevuto
+            </QuickActionChip>
+            <QuickActionChip
+              theme={theme}
+              onClick={handleCalendarExtract}
+              disabled={calendarLoading}
+              style={{ background: theme === 'light' ? '#EBF5FF' : '#1E3A5F', color: theme === 'light' ? '#3B82F6' : '#60A5FA' }}
+            >
+              {calendarLoading ? '...' : '📅 Calendar'}
+            </QuickActionChip>
+          </>
+        )}
       </QuickActionsContainer>
 
       {/* Pending Calendar Event UI */}

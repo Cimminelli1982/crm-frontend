@@ -9,7 +9,7 @@ const MY_EMAIL = 'simone@cimminelli.com';
  * Handles messages, images, sending, and quick actions
  * Supports both email and WhatsApp context
  */
-const useChatWithClaude = (selectedThread, emailContacts, activeTab, selectedWhatsappChat, contextContacts, selectedPipelineDeal = null) => {
+const useChatWithClaude = (selectedThread, emailContacts, activeTab, selectedWhatsappChat, contextContacts, selectedPipelineDeal = null, keepInTouchContact = null, keepInTouchCompanies = [], keepInTouchEmails = [], keepInTouchMobiles = [], keepInTouchFullContext = null, keepInTouchTags = [], keepInTouchCities = [], keepInTouchInteractions = []) => {
   // Chat state
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
@@ -27,11 +27,11 @@ const useChatWithClaude = (selectedThread, emailContacts, activeTab, selectedWha
     }
   }, [chatMessages]);
 
-  // Clear chat when thread/chat/deal changes
+  // Clear chat when thread/chat/deal/keepInTouchContact changes
   useEffect(() => {
     setChatMessages([]);
     setChatInput('');
-  }, [selectedThread, selectedWhatsappChat, selectedPipelineDeal]);
+  }, [selectedThread, selectedWhatsappChat, selectedPipelineDeal, keepInTouchContact?.contact_id]);
 
   // Build email context for Claude
   const buildEmailContext = useCallback(() => {
@@ -149,6 +149,121 @@ ${companies}
 `;
   }, [selectedPipelineDeal]);
 
+  // Build Keep in Touch contact context for Claude - FULL CONTEXT
+  const buildKeepInTouchContext = useCallback(() => {
+    console.log('[KIT Chat] FULL CONTACT OBJECT:', JSON.stringify(keepInTouchContact, null, 2));
+    console.log('[KIT Chat] Full context:', keepInTouchFullContext);
+    if (!keepInTouchContact) return '';
+
+    const fullName = `${keepInTouchContact.first_name || ''} ${keepInTouchContact.last_name || ''}`.trim() || 'Unknown';
+    const jobRole = keepInTouchContact.job_role || '';
+    const linkedin = keepInTouchContact.linkedin_url || '';
+    const keepInTouchFrequency = keepInTouchContact.keep_in_touch_frequency || 'Not Set';
+    const lastInteraction = keepInTouchContact.last_interaction_at
+      ? new Date(keepInTouchContact.last_interaction_at).toLocaleDateString()
+      : 'Never';
+    const bio = keepInTouchContact.bio || '';
+    const description = keepInTouchContact.description || '';
+
+    // Format emails
+    const emailsList = keepInTouchEmails.length > 0
+      ? keepInTouchEmails.map(e => `- ${e.email}${e.is_primary ? ' (primary)' : ''}`).join('\n')
+      : 'None';
+
+    // Format mobiles
+    const mobilesList = keepInTouchMobiles.length > 0
+      ? keepInTouchMobiles.map(m => `- ${m.mobile}${m.is_primary ? ' (primary)' : ''}`).join('\n')
+      : 'None';
+
+    // Format companies
+    const companiesList = keepInTouchCompanies.length > 0
+      ? keepInTouchCompanies.map(c => `- ${c.company?.name || 'Unknown'}${c.relationship ? ` (${c.relationship})` : ''}`).join('\n')
+      : 'None';
+
+    // Format tags
+    const tagsList = keepInTouchTags.length > 0
+      ? keepInTouchTags.map(t => t.tags?.name).filter(Boolean).join(', ')
+      : 'None';
+
+    // Format cities
+    const citiesList = keepInTouchCities.length > 0
+      ? keepInTouchCities.map(c => `${c.cities?.name}${c.cities?.country ? `, ${c.cities.country}` : ''}`).filter(Boolean).join('; ')
+      : 'None';
+
+    // Format recent interactions
+    const interactionsList = keepInTouchInteractions.length > 0
+      ? keepInTouchInteractions.map(i => `- ${new Date(i.interaction_date).toLocaleDateString()}: ${i.interaction_type} (${i.direction}) - ${i.summary || 'No summary'}`).join('\n')
+      : 'None';
+
+    // Format deals from full context
+    const dealsList = keepInTouchFullContext?.deals?.length > 0
+      ? keepInTouchFullContext.deals.map(d => `- ${d.opportunity} [${d.stage}] ${d.category ? `(${d.category})` : ''} ${d.total_investment ? `- ${d.deal_currency || ''}${d.total_investment}` : ''}`).join('\n')
+      : 'None';
+
+    // Format notes from full context
+    const notesList = keepInTouchFullContext?.notes?.length > 0
+      ? keepInTouchFullContext.notes.map(n => `- ${n.title || 'Untitled'} (${new Date(n.created_at).toLocaleDateString()}): ${(n.text || '').substring(0, 100)}${n.text?.length > 100 ? '...' : ''}`).join('\n')
+      : 'None';
+
+    // Format introductions from full context
+    const introductionsList = keepInTouchFullContext?.introductions?.length > 0
+      ? keepInTouchFullContext.introductions.map(i => `- [${i.role}] ${i.category || 'Introduction'} (${new Date(i.introduction_date || i.created_at).toLocaleDateString()}): ${i.text?.substring(0, 100) || 'No details'}${i.text?.length > 100 ? '...' : ''}`).join('\n')
+      : 'None';
+
+    // Format recent emails from full context
+    const recentEmailsList = keepInTouchFullContext?.recentEmails?.length > 0
+      ? keepInTouchFullContext.recentEmails.map(e => `- ${new Date(e.date).toLocaleDateString()}: "${e.subject}" from ${e.from_name || e.from_email}`).join('\n')
+      : 'None';
+
+    return `
+═══════════════════════════════════════════════════
+CONTACT: ${fullName}
+Contact ID: ${keepInTouchContact.contact_id}
+═══════════════════════════════════════════════════
+
+BASIC INFO:
+• Job Role: ${jobRole || 'Not set'}
+• LinkedIn: ${linkedin || 'Not set'}
+• Tags: ${tagsList}
+• Cities: ${citiesList}
+
+KEEP IN TOUCH STATUS:
+• Frequency: ${keepInTouchFrequency}
+• Last Interaction: ${lastInteraction}
+• Days Until Next: ${keepInTouchContact.days_until_next || 'N/A'}
+
+CONTACT DETAILS:
+Emails:
+${emailsList}
+
+Mobile Numbers:
+${mobilesList}
+
+COMPANIES:
+${companiesList}
+
+${description ? `PERSONAL NOTES/DESCRIPTION:\n${description}\n` : ''}
+${bio ? `BIO:\n${bio}\n` : ''}
+
+LINKED DEALS:
+${dealsList}
+
+INTRODUCTIONS:
+${introductionsList}
+
+RECENT NOTES:
+${notesList}
+
+RECENT INTERACTIONS:
+${interactionsList}
+
+RECENT EMAILS:
+${recentEmailsList}
+
+═══════════════════════════════════════════════════
+`;
+  }, [keepInTouchContact, keepInTouchEmails, keepInTouchMobiles, keepInTouchCompanies, keepInTouchTags, keepInTouchCities, keepInTouchInteractions, keepInTouchFullContext]);
+
   // Build instruction for duplicate processing
   const buildDuplicateMCPInstruction = useCallback(() => {
     const instruction = `Help me clean up duplicate contacts using your CRM tools.
@@ -258,10 +373,34 @@ Let's start - show me the pending duplicates queue.`;
       // Build context based on active tab
       const isWhatsApp = activeTab === 'whatsapp';
       const isDeals = activeTab === 'deals';
-      const context = isDeals ? buildDealContext() : (isWhatsApp ? buildWhatsAppContext() : buildEmailContext());
+      const isKeepInTouch = activeTab === 'keepintouch';
+      console.log('[Chat] activeTab:', activeTab, 'isKeepInTouch:', isKeepInTouch);
+      const context = isKeepInTouch ? buildKeepInTouchContext() : (isDeals ? buildDealContext() : (isWhatsApp ? buildWhatsAppContext() : buildEmailContext()));
+      console.log('[Chat] Context length:', context?.length, 'Context preview:', context?.substring(0, 200));
 
-      // Different system prompt for deals
-      const systemPrompt = isDeals ? `You are Simone Cimminelli's AI assistant for deal and investment management.
+      // Different system prompt based on context
+      const systemPrompt = isKeepInTouch ? `You are Simone Cimminelli's AI assistant for relationship management (Keep in Touch).
+
+TONE & STYLE:
+- Be direct and concise. No fluff, no corporate speak.
+- Friendly but professional. Like talking to a smart colleague.
+- Use short sentences. Get to the point fast.
+- Helpful for managing relationships and staying in touch with contacts.
+
+YOUR ROLE:
+- Help manage and maintain relationships with this contact
+- Suggest actions: schedule calls, send messages, create notes, set up meetings
+- Provide insights about the contact based on available information
+- Help draft messages (WhatsApp, Email) that are warm and personal
+- Remember context about the contact to provide relevant suggestions
+
+RESPONSE FORMAT:
+- Summaries: Max 2-3 bullet points. Just the essentials.
+- Actions: One clear recommendation. Maybe a second option.
+- Drafts: Keep them short. Real humans don't write essays.
+- Key points: List format, 3-5 items max.
+
+${context}` : isDeals ? `You are Simone Cimminelli's AI assistant for deal and investment management.
 
 TONE & STYLE:
 - Be direct and concise. No fluff, no corporate speak.

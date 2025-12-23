@@ -100,6 +100,7 @@ export class GoogleCalendarClient {
     const params = new URLSearchParams({
       maxResults: maxResults.toString(),
       singleEvents: singleEvents.toString(),
+      conferenceDataVersion: '1', // Include Google Meet data
     });
 
     if (syncToken) {

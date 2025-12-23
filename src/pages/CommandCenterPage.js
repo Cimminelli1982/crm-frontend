@@ -426,6 +426,25 @@ const CommandCenterPage = ({ theme }) => {
   const [pipelineDeals, setPipelineDeals] = useState([]);
   const [selectedPipelineDeal, setSelectedPipelineDeal] = useState(null);
 
+  // Keep in Touch state - must be before useChatWithClaude hook
+  const [keepInTouchContacts, setKeepInTouchContacts] = useState([]);
+  const [keepInTouchLoading, setKeepInTouchLoading] = useState(false);
+  const [keepInTouchRefreshTrigger, setKeepInTouchRefreshTrigger] = useState(0);
+  const [selectedKeepInTouchContact, setSelectedKeepInTouchContact] = useState(null);
+  const [keepInTouchSections, setKeepInTouchSections] = useState({
+    due: true,
+    dueSoon: true,
+    notDue: false
+  });
+  const [keepInTouchContactDetails, setKeepInTouchContactDetails] = useState(null);
+  const [keepInTouchInteractions, setKeepInTouchInteractions] = useState([]);
+  const [keepInTouchEmails, setKeepInTouchEmails] = useState([]);
+  const [keepInTouchMobiles, setKeepInTouchMobiles] = useState([]);
+  const [keepInTouchCompanies, setKeepInTouchCompanies] = useState([]);
+  const [keepInTouchTags, setKeepInTouchTags] = useState([]);
+  const [keepInTouchCities, setKeepInTouchCities] = useState([]);
+  const [keepInTouchFullContext, setKeepInTouchFullContext] = useState(null);
+
   // Context Contacts hook - handles Email, WhatsApp, Calendar, Deals sources
   const contextContactsHook = useContextContacts(activeTab, selectedThread, selectedWhatsappChat, selectedCalendarEvent, selectedPipelineDeal);
   const {
@@ -439,6 +458,7 @@ const CommandCenterPage = ({ theme }) => {
   } = contextContactsHook;
 
   // AI Chat hook - supports both Email and WhatsApp context
+  console.log('[CmdCenter] Passing to chat hook - selectedKeepInTouchContact:', selectedKeepInTouchContact?.contact_id, selectedKeepInTouchContact?.first_name);
   const chatHook = useChatWithClaude(selectedThread, emailContacts, activeTab, selectedWhatsappChat, emailContacts, selectedPipelineDeal, selectedKeepInTouchContact, keepInTouchCompanies, keepInTouchEmails, keepInTouchMobiles, keepInTouchFullContext, keepInTouchTags, keepInTouchCities, keepInTouchInteractions);
   const {
     chatMessages,
@@ -646,26 +666,6 @@ const CommandCenterPage = ({ theme }) => {
   const DEAL_CATEGORIES = ['Inbox', 'Startup', 'Fund', 'Real Estate', 'Private Debt', 'Private Equity', 'Other'];
   const DEAL_CURRENCIES = ['EUR', 'USD', 'GBP', 'CHF'];
   const DEAL_SOURCES = ['Not Set', 'Cold Contacting', 'Introduction'];
-
-  // Keep in Touch state
-  const [keepInTouchContacts, setKeepInTouchContacts] = useState([]);
-  const [keepInTouchLoading, setKeepInTouchLoading] = useState(false);
-  const [keepInTouchRefreshTrigger, setKeepInTouchRefreshTrigger] = useState(0);
-  const [selectedKeepInTouchContact, setSelectedKeepInTouchContact] = useState(null);
-  const [keepInTouchSections, setKeepInTouchSections] = useState({
-    due: true,
-    dueSoon: true,
-    notDue: false
-  });
-  const [keepInTouchContactDetails, setKeepInTouchContactDetails] = useState(null);
-  const [keepInTouchInteractions, setKeepInTouchInteractions] = useState([]);
-  const [keepInTouchEmails, setKeepInTouchEmails] = useState([]);
-  const [keepInTouchMobiles, setKeepInTouchMobiles] = useState([]);
-  const [keepInTouchCompanies, setKeepInTouchCompanies] = useState([]);
-  const [keepInTouchTags, setKeepInTouchTags] = useState([]);
-  const [keepInTouchCities, setKeepInTouchCities] = useState([]);
-  // Full context for Claude chat (notes, deals, tasks, introductions, recent interactions)
-  const [keepInTouchFullContext, setKeepInTouchFullContext] = useState(null);
 
   // Keep in Touch modal states
   const [kitManageEmailsOpen, setKitManageEmailsOpen] = useState(false);
@@ -1907,7 +1907,9 @@ internet businesses.`;
         // Only auto-select on initial load, not on refresh
         if (data && data.length > 0 && !selectedKeepInTouchContact) {
           const dueContacts = data.filter(c => parseInt(c.days_until_next) <= 0);
-          setSelectedKeepInTouchContact(dueContacts.length > 0 ? dueContacts[0] : data[0]);
+          const contactToSelect = dueContacts.length > 0 ? dueContacts[0] : data[0];
+          console.log('[KIT] Auto-selecting contact:', contactToSelect?.contact_id, contactToSelect?.first_name);
+          setSelectedKeepInTouchContact(contactToSelect);
         }
       }
       setKeepInTouchLoading(false);
@@ -1931,6 +1933,7 @@ internet businesses.`;
 
   // Fetch contact details and interactions for Keep in Touch
   useEffect(() => {
+    console.log('[KIT useEffect] Running with selectedKeepInTouchContact:', selectedKeepInTouchContact?.contact_id, selectedKeepInTouchContact?.first_name);
     const fetchContactDetailsAndInteractions = async () => {
       if (!selectedKeepInTouchContact) {
         setKeepInTouchContactDetails(null);
@@ -2068,7 +2071,7 @@ internet businesses.`;
       // Fetch notes linked to this contact
       const { data: notesData } = await supabase
         .from('notes_contacts')
-        .select('notes(note_id, title, content, created_at)')
+        .select('notes(note_id, title, text, created_at)')
         .eq('contact_id', contactId)
         .order('created_at', { ascending: false })
         .limit(10);
@@ -2076,23 +2079,14 @@ internet businesses.`;
       // Fetch deals linked to this contact
       const { data: dealsData } = await supabase
         .from('deals_contacts')
-        .select('relationship, deals(deal_id, deal_name, stage, category, total_investment, deal_currency, description)')
+        .select('relationship, deals(deal_id, opportunity, stage, category, total_investment, deal_currency, description)')
         .eq('contact_id', contactId);
 
-      // Fetch open tasks linked to this contact
-      const { data: tasksData } = await supabase
-        .from('tasks')
-        .select('task_id, title, description, status, priority, due_date')
-        .eq('contact_id', contactId)
-        .neq('status', 'completed')
-        .order('due_date', { ascending: true })
-        .limit(10);
-
-      // Fetch introductions involving this contact
+      // Fetch introductions involving this contact (via join table)
       const { data: introductionsData } = await supabase
-        .from('introductions')
-        .select('introduction_id, status, notes, created_at, introducer_contact_id, introducee_1_contact_id, introducee_2_contact_id')
-        .or(`introducer_contact_id.eq.${contactId},introducee_1_contact_id.eq.${contactId},introducee_2_contact_id.eq.${contactId}`)
+        .from('introduction_contacts')
+        .select('role, introductions(introduction_id, status, text, category, introduction_date, created_at)')
+        .eq('contact_id', contactId)
         .order('created_at', { ascending: false })
         .limit(10);
 
@@ -2113,8 +2107,7 @@ internet businesses.`;
       setKeepInTouchFullContext({
         notes: (notesData || []).map(n => n.notes).filter(Boolean),
         deals: (dealsData || []).map(d => ({ ...d.deals, relationship: d.relationship })).filter(d => d.deal_id),
-        tasks: tasksData || [],
-        introductions: introductionsData || [],
+        introductions: (introductionsData || []).map(i => ({ ...i.introductions, role: i.role })).filter(i => i.introduction_id),
         recentEmails
       });
     };
