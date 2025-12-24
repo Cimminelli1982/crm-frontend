@@ -366,11 +366,8 @@ Let's start - show me the pending duplicates queue.`;
       const isWhatsApp = activeTab === 'whatsapp';
       const isDeals = activeTab === 'deals';
       const isKeepInTouch = activeTab === 'keepintouch';
-      console.log('[Chat] activeTab:', activeTab, 'isKeepInTouch:', isKeepInTouch);
-
       // === KEEP IN TOUCH: Use dedicated backend endpoint ===
       if (isKeepInTouch && keepInTouchContact?.contact_id) {
-        console.log('[Chat] Using Keep in Touch backend endpoint');
 
         // Build conversation history (without images for now)
         const conversationHistory = chatMessages.map(m => ({
@@ -400,7 +397,6 @@ Let's start - show me the pending duplicates queue.`;
 
       // === OTHER TABS: Use generic /chat endpoint with frontend context ===
       const context = isDeals ? buildDealContext() : (isWhatsApp ? buildWhatsAppContext() : buildEmailContext());
-      console.log('[Chat] Context length:', context?.length, 'Context preview:', context?.substring(0, 200));
 
       // Different system prompt based on context
       const systemPrompt = isDeals ? `You are Simone Cimminelli's AI assistant for deal and investment management.

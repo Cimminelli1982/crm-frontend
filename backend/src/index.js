@@ -2720,7 +2720,7 @@ app.post('/whatsapp/verify-numbers', async (req, res) => {
 // Create a new WhatsApp group for introductions
 app.post('/whatsapp/create-group', async (req, res) => {
   try {
-    const { name, phones, message } = req.body;
+    const { name, phones, contactIds } = req.body;
 
     if (!name || name.trim().length === 0) {
       return res.status(400).json({ success: false, error: 'Group name required' });
@@ -2754,19 +2754,60 @@ app.post('/whatsapp/create-group', async (req, res) => {
       console.log(`[WhatsApp] Warning: ${invalidPhones.length} numbers not on WhatsApp:`, invalidPhones);
     }
 
-    // Create the group
+    // Create the group in WhatsApp
     const groupResult = await createGroup(name, validJids);
+    console.log(`[WhatsApp] Group created with JID: ${groupResult.groupJid}`);
 
-    // Send intro message if provided
-    if (message && message.trim().length > 0) {
-      await sendMessageToChat(groupResult.groupJid, message.trim());
-      console.log(`[WhatsApp] Intro message sent to group`);
+    // Create chat record in Supabase for robust linking
+    let chatId = null;
+    try {
+      const { data: newChat, error: chatError } = await supabase
+        .from('chats')
+        .insert({
+          chat_name: name.trim(),
+          is_group_chat: true,
+          chat_type: 'whatsapp',
+          category: 'group',
+          baileys_jid: groupResult.groupJid,
+          created_by: 'Baileys'
+        })
+        .select('id')
+        .single();
+
+      if (chatError) {
+        console.error('[WhatsApp] Error creating chat record:', chatError);
+      } else {
+        chatId = newChat.id;
+        console.log(`[WhatsApp] Chat record created with ID: ${chatId}`);
+
+        // Create contact_chats records for each introducee
+        if (contactIds && Array.isArray(contactIds) && contactIds.length > 0) {
+          const contactChatsRecords = contactIds.map(contactId => ({
+            contact_id: contactId,
+            chat_id: chatId
+          }));
+
+          const { error: linkError } = await supabase
+            .from('contact_chats')
+            .upsert(contactChatsRecords, { onConflict: 'contact_id,chat_id' });
+
+          if (linkError) {
+            console.error('[WhatsApp] Error linking contacts to chat:', linkError);
+          } else {
+            console.log(`[WhatsApp] Linked ${contactIds.length} contacts to chat`);
+          }
+        }
+      }
+    } catch (dbError) {
+      console.error('[WhatsApp] Database error:', dbError);
+      // Don't fail the whole request - group was created successfully
     }
 
     res.json({
       success: true,
       groupJid: groupResult.groupJid,
       groupName: groupResult.groupName,
+      chatId: chatId, // New: return the chat UUID for linking to introduction
       participants: validJids.length,
       invalidPhones: invalidPhones.length > 0 ? invalidPhones : undefined,
     });

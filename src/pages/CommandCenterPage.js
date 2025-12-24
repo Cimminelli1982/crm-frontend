@@ -1929,7 +1929,6 @@ internet businesses.`;
         if (data && data.length > 0 && !selectedKeepInTouchContact) {
           const dueContacts = data.filter(c => parseInt(c.days_until_next) <= 0);
           const contactToSelect = dueContacts.length > 0 ? dueContacts[0] : data[0];
-          console.log('[KIT] Auto-selecting contact:', contactToSelect?.contact_id, contactToSelect?.first_name);
           setSelectedKeepInTouchContact(contactToSelect);
         }
       }
@@ -2097,28 +2096,96 @@ internet businesses.`;
   // Fetch WhatsApp group messages when introduction has a group JID
   useEffect(() => {
     const fetchIntroGroupMessages = async () => {
-      if (!selectedIntroductionItem?.whatsapp_group_jid) {
+      // Need either chat_id (robust) or whatsapp_group_jid/name (fallback)
+      if (!selectedIntroductionItem?.chat_id && !selectedIntroductionItem?.whatsapp_group_jid) {
         setIntroGroupMessages([]);
         return;
       }
 
       setIntroGroupLoading(true);
       try {
-        // Fetch messages from command_center_inbox that match this group's JID or name
-        const { data: messages, error } = await supabase
+        let externalChatId = null;
+        let chatName = selectedIntroductionItem.whatsapp_group_name;
+        const crmChatId = selectedIntroductionItem.chat_id;
+
+        // If we have chat_id FK, get the external_chat_id from chats table
+        if (crmChatId) {
+          const { data: chatData, error: chatError } = await supabase
+            .from('chats')
+            .select('external_chat_id, chat_name')
+            .eq('id', crmChatId)
+            .maybeSingle();
+
+          if (chatError) {
+            console.error('Error fetching chat:', chatError);
+          } else if (chatData) {
+            externalChatId = chatData.external_chat_id;
+            chatName = chatData.chat_name || chatName;
+          }
+        }
+
+        // 1. Fetch staging messages from command_center_inbox
+        let stagingQuery = supabase
           .from('command_center_inbox')
           .select('*')
           .eq('type', 'whatsapp')
-          .eq('is_group_chat', true)
-          .or(`chat_jid.eq.${selectedIntroductionItem.whatsapp_group_jid},chat_name.eq.${selectedIntroductionItem.whatsapp_group_name}`)
-          .order('date', { ascending: true });
+          .eq('is_group_chat', true);
 
-        if (error) {
-          console.error('Error fetching group messages:', error);
-          return;
+        // Match by external_chat_id if available, otherwise by chat_name
+        if (externalChatId) {
+          stagingQuery = stagingQuery.eq('chat_id', externalChatId);
+        } else if (chatName) {
+          stagingQuery = stagingQuery.eq('chat_name', chatName);
         }
 
-        setIntroGroupMessages(messages || []);
+        const { data: stagingMessages, error: stagingError } = await stagingQuery.order('date', { ascending: true });
+
+        if (stagingError) {
+          console.error('Error fetching staging messages:', stagingError);
+        }
+
+        // 2. Fetch archived messages from interactions (if we have chat_id)
+        let archivedMessages = [];
+        if (crmChatId) {
+          const { data: interactions, error: interactionsError } = await supabase
+            .from('interactions')
+            .select('interaction_id, interaction_type, direction, interaction_date, summary, external_interaction_id')
+            .eq('chat_id', crmChatId)
+            .eq('interaction_type', 'whatsapp')
+            .order('interaction_date', { ascending: true });
+
+          if (interactionsError) {
+            console.error('Error fetching archived messages:', interactionsError);
+          } else {
+            archivedMessages = interactions || [];
+          }
+        }
+
+        // 3. Combine staging and archived messages
+        const stagingFormatted = (stagingMessages || []).map(m => ({
+          id: m.id || m.message_uid,
+          body_text: m.body_text || m.snippet,
+          direction: m.direction,
+          date: m.date,
+          from_name: m.from_name || m.first_name,
+          isArchived: false,
+        }));
+
+        const archivedFormatted = archivedMessages.map(m => ({
+          id: m.interaction_id,
+          body_text: m.summary,
+          direction: m.direction,
+          date: m.interaction_date,
+          from_name: null,
+          isArchived: true,
+        }));
+
+        // Combine and sort by date
+        const allMessages = [...stagingFormatted, ...archivedFormatted].sort(
+          (a, b) => new Date(a.date) - new Date(b.date)
+        );
+
+        setIntroGroupMessages(allMessages);
       } catch (err) {
         console.error('Error fetching intro group messages:', err);
       } finally {
@@ -2131,10 +2198,11 @@ internet businesses.`;
     // Set up polling for new messages
     const interval = setInterval(fetchIntroGroupMessages, 10000);
     return () => clearInterval(interval);
-  }, [selectedIntroductionItem?.whatsapp_group_jid, selectedIntroductionItem?.whatsapp_group_name]);
+  }, [selectedIntroductionItem?.chat_id, selectedIntroductionItem?.whatsapp_group_jid, selectedIntroductionItem?.whatsapp_group_name]);
 
   // Send message to introduction WhatsApp group
   const sendIntroGroupMessage = async () => {
+    // Need baileys JID to send via Baileys
     if (!introGroupInput.trim() || !selectedIntroductionItem?.whatsapp_group_jid || introGroupSending) return;
 
     setIntroGroupSending(true);
@@ -2143,7 +2211,7 @@ internet businesses.`;
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          chat_id: selectedIntroductionItem.whatsapp_group_jid,
+          chat_id: selectedIntroductionItem.whatsapp_group_jid, // Baileys JID for sending
           message: introGroupInput.trim(),
         }),
       });
@@ -2160,6 +2228,7 @@ internet businesses.`;
         direction: 'sent',
         date: new Date().toISOString(),
         from_name: 'You',
+        isArchived: false,
       }]);
 
       setIntroGroupInput('');
@@ -2174,7 +2243,6 @@ internet businesses.`;
 
   // Fetch contact details and interactions for Keep in Touch
   useEffect(() => {
-    console.log('[KIT useEffect] Running with selectedKeepInTouchContact:', selectedKeepInTouchContact?.contact_id, selectedKeepInTouchContact?.first_name);
     const fetchContactDetailsAndInteractions = async () => {
       if (!selectedKeepInTouchContact) {
         setKeepInTouchContactDetails(null);
@@ -2664,8 +2732,6 @@ internet businesses.`;
       // data_integrity_inbox has separate columns: email (for email) and mobile (for WhatsApp)
       const isWhatsApp = Boolean(item?.mobile);
       const isEmailContact = Boolean(item?.email) && !item?.mobile;
-
-      console.log('handleAddToSpam:', { emailOrMobile, item, isWhatsApp, isEmailContact });
 
       // Guard: must have either mobile or email
       if (!item?.mobile && !item?.email && !emailOrMobile) {
@@ -4928,6 +4994,7 @@ internet businesses.`;
     // Get best phone number for each introducee (prefer is_primary, exclude WhatsApp Group type)
     const phonesForGroup = [];
     const firstNames = [];
+    const contactIds = []; // Collect contact IDs for linking to chat
 
     for (const introducee of introducees) {
       // Find mobiles for this contact
@@ -4940,6 +5007,7 @@ internet businesses.`;
       const bestMobile = contactMobiles.find(m => m.isPrimary) || contactMobiles[0];
       phonesForGroup.push(bestMobile.mobile);
       firstNames.push(bestMobile.firstName || introducee.first_name || 'Unknown');
+      contactIds.push(introducee.contact_id);
     }
 
     // Group name: "FirstName <> FirstName"
@@ -4956,7 +5024,7 @@ internet businesses.`;
         body: JSON.stringify({
           name: groupName,
           phones: phonesForGroup,
-          // Don't send message automatically - put in draft instead
+          contactIds: contactIds, // Send contact IDs for linking
         }),
       });
 
@@ -4966,7 +5034,7 @@ internet businesses.`;
         throw new Error(data.error || 'Failed to create group');
       }
 
-      // Update introduction with status, tool, and group info
+      // Update introduction with status, tool, group info AND chat_id FK
       await supabase
         .from('introductions')
         .update({
@@ -4974,6 +5042,7 @@ internet businesses.`;
           introduction_tool: 'whatsapp',
           whatsapp_group_jid: data.groupJid,
           whatsapp_group_name: groupName,
+          chat_id: data.chatId, // New: FK to chats table for robust linking
         })
         .eq('introduction_id', selectedIntroductionItem.introduction_id);
 
@@ -4984,6 +5053,7 @@ internet businesses.`;
         introduction_tool: 'whatsapp',
         whatsapp_group_jid: data.groupJid,
         whatsapp_group_name: groupName,
+        chat_id: data.chatId,
       };
       setIntroductionsList(prev => prev.map(intro =>
         intro.introduction_id === selectedIntroductionItem.introduction_id
@@ -6478,6 +6548,8 @@ internet businesses.`;
 
       // 1. Find or create the chat in chats table
       let crmChatId = null;
+
+      // First try to find by external_chat_id (TimelinesAI ID)
       const { data: existingChat, error: chatFindError } = await supabase
         .from('chats')
         .select('id')
@@ -6485,13 +6557,43 @@ internet businesses.`;
         .maybeSingle();
 
       if (chatFindError) {
-        console.error('Error finding chat:', chatFindError);
+        console.error('Error finding chat by external_chat_id:', chatFindError);
       }
 
       if (existingChat) {
         crmChatId = existingChat.id;
-      } else {
-        // Create new chat
+      } else if (selectedWhatsappChat.is_group_chat && selectedWhatsappChat.chat_name) {
+        // For groups: also try to match by chat_name (for groups created via Baileys that don't have external_chat_id yet)
+        const { data: chatByName, error: nameError } = await supabase
+          .from('chats')
+          .select('id, external_chat_id')
+          .eq('chat_name', selectedWhatsappChat.chat_name)
+          .eq('is_group_chat', true)
+          .is('external_chat_id', null) // Only match if external_chat_id is not set yet
+          .maybeSingle();
+
+        if (nameError) {
+          console.error('Error finding chat by name:', nameError);
+        }
+
+        if (chatByName) {
+          crmChatId = chatByName.id;
+          // Update external_chat_id on the existing chat (linking Baileys JID → TimelinesAI ID)
+          const { error: updateError } = await supabase
+            .from('chats')
+            .update({ external_chat_id: chatId })
+            .eq('id', chatByName.id);
+
+          if (updateError) {
+            console.error('Error updating external_chat_id:', updateError);
+          } else {
+            console.log(`Linked TimelinesAI chat_id ${chatId} to existing chat ${chatByName.id}`);
+          }
+        }
+      }
+
+      // If still no match, create new chat
+      if (!crmChatId) {
         const { data: newChat, error: chatCreateError } = await supabase
           .from('chats')
           .insert({
@@ -12831,8 +12933,8 @@ internet businesses.`;
           {/* Introductions - WhatsApp Panel */}
           {!rightPanelCollapsed && activeTab === 'introductions' && selectedIntroductionItem && introductionsActionTab === 'whatsapp' && (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '12px' }}>
-              {/* Show group chat if group exists */}
-              {selectedIntroductionItem.whatsapp_group_jid ? (
+              {/* Show group chat if group exists (check chat_id FK or fallback to whatsapp_group_jid) */}
+              {(selectedIntroductionItem.chat_id || selectedIntroductionItem.whatsapp_group_jid) ? (
                 <>
                   {/* Group header */}
                   <div style={{

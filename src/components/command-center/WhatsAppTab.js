@@ -993,12 +993,6 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
 
   // Send message handler - uses Baileys only (Node.js)
   const handleSendMessage = async () => {
-    console.log('[WhatsApp Send] Button clicked');
-    console.log('[WhatsApp Send] replyText:', replyText);
-    console.log('[WhatsApp Send] selectedFile:', selectedFile);
-    console.log('[WhatsApp Send] selectedChat:', selectedChat);
-    console.log('[WhatsApp Send] sending:', sending, 'uploading:', uploading);
-
     const hasText = replyText.trim().length > 0;
     const hasFile = !!selectedFile;
 
@@ -1008,7 +1002,6 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
       : !!selectedChat?.contact_number;
 
     if ((!hasText && !hasFile) || !hasTarget || sending || uploading) {
-      console.log('[WhatsApp Send] Early return - hasText:', hasText, 'hasFile:', hasFile, 'hasTarget:', hasTarget);
       return;
     }
 
@@ -1028,8 +1021,6 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
       // For groups: lookup the real JID first
       let targetJid = null;
       if (selectedChat.is_group_chat) {
-        console.log('[WhatsApp] Group chat - looking up JID for:', selectedChat.chat_name);
-
         const findGroupRes = await fetch(
           `${BAILEYS_API}/whatsapp/find-group?name=${encodeURIComponent(selectedChat.chat_name)}`
         );
@@ -1040,11 +1031,7 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
         }
 
         targetJid = findGroupData.jid;
-        console.log('[WhatsApp] Found group JID:', targetJid);
       }
-
-      // === BAILEYS ONLY ===
-      console.log('[WhatsApp] Sending via Baileys...');
 
       if (fileToSend) {
         // Send media via Baileys
