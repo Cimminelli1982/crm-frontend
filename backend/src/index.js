@@ -27,6 +27,8 @@ import {
   sendMedia,
   fetchAllGroups,
   findGroupByName,
+  verifyWhatsAppNumbers,
+  createGroup,
 } from './baileys.js';
 
 // Initialize Anthropic client
@@ -1252,6 +1254,302 @@ app.post('/chat', async (req, res) => {
   }
 });
 
+// ==================== KEEP IN TOUCH CHAT ENDPOINT ====================
+// Server-side context building for Keep in Touch chat with Claude
+
+app.post('/chat/keep-in-touch', async (req, res) => {
+  try {
+    const { contact_id, message, messages = [] } = req.body;
+
+    if (!contact_id) {
+      return res.status(400).json({ success: false, error: 'Missing contact_id' });
+    }
+    if (!message && messages.length === 0) {
+      return res.status(400).json({ success: false, error: 'Missing message' });
+    }
+
+    console.log(`[KIT Chat] Request for contact ${contact_id}`);
+
+    // === FETCH ALL CONTACT DATA FROM SUPABASE ===
+
+    // 1. Contact details
+    const { data: contactData, error: contactError } = await supabase
+      .from('contacts')
+      .select('contact_id, first_name, last_name, category, job_role, linkedin, score, birthday, description')
+      .eq('contact_id', contact_id)
+      .single();
+
+    if (contactError || !contactData) {
+      return res.status(404).json({ success: false, error: 'Contact not found' });
+    }
+
+    // 2. Completeness score
+    const { data: completenessData } = await supabase
+      .from('contact_completeness')
+      .select('completeness_score')
+      .eq('contact_id', contact_id)
+      .maybeSingle();
+
+    // 3. Emails
+    const { data: emailsData } = await supabase
+      .from('contact_emails')
+      .select('email, is_primary')
+      .eq('contact_id', contact_id)
+      .order('is_primary', { ascending: false });
+
+    // 4. Mobiles
+    const { data: mobilesData } = await supabase
+      .from('contact_mobiles')
+      .select('mobile, is_primary')
+      .eq('contact_id', contact_id)
+      .order('is_primary', { ascending: false });
+
+    // 5. Companies with details
+    const { data: companiesData } = await supabase
+      .from('contact_companies')
+      .select('company_id, is_primary, relationship')
+      .eq('contact_id', contact_id)
+      .order('is_primary', { ascending: false });
+
+    let companiesWithDetails = [];
+    if (companiesData?.length > 0) {
+      const companyIds = companiesData.map(c => c.company_id);
+      const { data: companyDetails } = await supabase
+        .from('companies')
+        .select('company_id, name')
+        .in('company_id', companyIds);
+
+      companiesWithDetails = companiesData.map(cc => ({
+        ...cc,
+        name: companyDetails?.find(c => c.company_id === cc.company_id)?.name
+      }));
+    }
+
+    // 6. Tags with details
+    const { data: tagsData } = await supabase
+      .from('contact_tags')
+      .select('tag_id')
+      .eq('contact_id', contact_id);
+
+    let tagsWithDetails = [];
+    if (tagsData?.length > 0) {
+      const tagIds = tagsData.map(t => t.tag_id);
+      const { data: tagDetails } = await supabase
+        .from('tags')
+        .select('tag_id, name')
+        .in('tag_id', tagIds);
+      tagsWithDetails = tagDetails || [];
+    }
+
+    // 7. Cities with details
+    const { data: citiesData } = await supabase
+      .from('contact_cities')
+      .select('city_id')
+      .eq('contact_id', contact_id);
+
+    let citiesWithDetails = [];
+    if (citiesData?.length > 0) {
+      const cityIds = citiesData.map(c => c.city_id);
+      const { data: cityDetails } = await supabase
+        .from('cities')
+        .select('city_id, name, country')
+        .in('city_id', cityIds);
+      citiesWithDetails = cityDetails || [];
+    }
+
+    // 8. Last 10 interactions
+    const { data: interactionsData } = await supabase
+      .from('interactions')
+      .select('interaction_type, direction, interaction_date, summary')
+      .eq('contact_id', contact_id)
+      .order('interaction_date', { ascending: false })
+      .limit(10);
+
+    // 9. Notes linked to contact
+    const { data: notesData } = await supabase
+      .from('notes_contacts')
+      .select('notes(note_id, title, text, created_at)')
+      .eq('contact_id', contact_id)
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    // 10. Deals linked to contact
+    const { data: dealsData } = await supabase
+      .from('deals_contacts')
+      .select('relationship, deals(deal_id, opportunity, stage, category, total_investment, deal_currency, description)')
+      .eq('contact_id', contact_id);
+
+    // 11. Introductions involving this contact
+    const { data: introductionsData } = await supabase
+      .from('introduction_contacts')
+      .select('role, introductions(introduction_id, status, text, category, introduction_date, created_at)')
+      .eq('contact_id', contact_id)
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    // 12. Recent emails
+    const primaryEmail = emailsData?.find(e => e.is_primary)?.email || emailsData?.[0]?.email;
+    let recentEmails = [];
+    if (primaryEmail) {
+      const { data: emailThreads } = await supabase
+        .from('command_center_inbox')
+        .select('subject, from_name, from_email, date, snippet')
+        .or(`from_email.eq.${primaryEmail},to_recipients.cs.${JSON.stringify([{ email: primaryEmail }])}`)
+        .order('date', { ascending: false })
+        .limit(5);
+      recentEmails = emailThreads || [];
+    }
+
+    // === BUILD CONTEXT STRING ===
+    const fullName = `${contactData.first_name || ''} ${contactData.last_name || ''}`.trim() || 'Unknown';
+
+    const emailsList = emailsData?.length > 0
+      ? emailsData.map(e => `- ${e.email}${e.is_primary ? ' (primary)' : ''}`).join('\n')
+      : 'None';
+
+    const mobilesList = mobilesData?.length > 0
+      ? mobilesData.map(m => `- ${m.mobile}${m.is_primary ? ' (primary)' : ''}`).join('\n')
+      : 'None';
+
+    const companiesList = companiesWithDetails.length > 0
+      ? companiesWithDetails.map(c => `- ${c.name || 'Unknown'}${c.relationship ? ` (${c.relationship})` : ''}`).join('\n')
+      : 'None';
+
+    const tagsList = tagsWithDetails.length > 0
+      ? tagsWithDetails.map(t => t.name).filter(Boolean).join(', ')
+      : 'None';
+
+    const citiesList = citiesWithDetails.length > 0
+      ? citiesWithDetails.map(c => `${c.name}${c.country ? `, ${c.country}` : ''}`).filter(Boolean).join('; ')
+      : 'None';
+
+    const interactionsList = interactionsData?.length > 0
+      ? interactionsData.map(i => `- ${new Date(i.interaction_date).toLocaleDateString()}: ${i.interaction_type} (${i.direction}) - ${i.summary || 'No summary'}`).join('\n')
+      : 'None';
+
+    const notes = (notesData || []).map(n => n.notes).filter(Boolean);
+    const notesList = notes.length > 0
+      ? notes.map(n => `- ${n.title || 'Untitled'} (${new Date(n.created_at).toLocaleDateString()}): ${(n.text || '').substring(0, 100)}${n.text?.length > 100 ? '...' : ''}`).join('\n')
+      : 'None';
+
+    const deals = (dealsData || []).map(d => ({ ...d.deals, relationship: d.relationship })).filter(d => d.deal_id);
+    const dealsList = deals.length > 0
+      ? deals.map(d => `- ${d.opportunity} [${d.stage}] ${d.category ? `(${d.category})` : ''} ${d.total_investment ? `- ${d.deal_currency || ''}${d.total_investment}` : ''}`).join('\n')
+      : 'None';
+
+    const introductions = (introductionsData || []).map(i => ({ ...i.introductions, role: i.role })).filter(i => i.introduction_id);
+    const introductionsList = introductions.length > 0
+      ? introductions.map(i => `- [${i.role}] ${i.category || 'Introduction'} (${new Date(i.introduction_date || i.created_at).toLocaleDateString()}): ${i.text?.substring(0, 100) || 'No details'}${i.text?.length > 100 ? '...' : ''}`).join('\n')
+      : 'None';
+
+    const recentEmailsList = recentEmails.length > 0
+      ? recentEmails.map(e => `- ${new Date(e.date).toLocaleDateString()}: "${e.subject}" from ${e.from_name || e.from_email}`).join('\n')
+      : 'None';
+
+    const context = `
+═══════════════════════════════════════════════════
+CONTACT: ${fullName}
+Contact ID: ${contactData.contact_id}
+═══════════════════════════════════════════════════
+
+BASIC INFO:
+• Job Role: ${contactData.job_role || 'Not set'}
+• Category: ${contactData.category || 'Not set'}
+• LinkedIn: ${contactData.linkedin || 'Not set'}
+• Birthday: ${contactData.birthday || 'Not set'}
+• Score: ${contactData.score || 'Not set'}
+• Profile Completeness: ${completenessData?.completeness_score || 0}%
+• Tags: ${tagsList}
+• Cities: ${citiesList}
+
+CONTACT DETAILS:
+Emails:
+${emailsList}
+
+Mobile Numbers:
+${mobilesList}
+
+COMPANIES:
+${companiesList}
+
+${contactData.description ? `PERSONAL NOTES/DESCRIPTION:\n${contactData.description}\n` : ''}
+
+LINKED DEALS:
+${dealsList}
+
+INTRODUCTIONS:
+${introductionsList}
+
+RECENT NOTES:
+${notesList}
+
+RECENT INTERACTIONS:
+${interactionsList}
+
+RECENT EMAILS:
+${recentEmailsList}
+
+═══════════════════════════════════════════════════
+`;
+
+    // === BUILD SYSTEM PROMPT ===
+    const systemPrompt = `You are Simone Cimminelli's AI assistant for relationship management (Keep in Touch).
+
+TONE & STYLE:
+- Be direct and concise. No fluff, no corporate speak.
+- Friendly but professional. Like talking to a smart colleague.
+- Use short sentences. Get to the point fast.
+- Helpful for managing relationships and staying in touch with contacts.
+
+YOUR ROLE:
+- Help manage and maintain relationships with this contact
+- Suggest actions: schedule calls, send messages, create notes, set up meetings
+- Provide insights about the contact based on available information
+- Help draft messages (WhatsApp, Email) that are warm and personal
+- Remember context about the contact to provide relevant suggestions
+
+RESPONSE FORMAT:
+- Summaries: Max 2-3 bullet points. Just the essentials.
+- Actions: One clear recommendation. Maybe a second option.
+- Drafts: Keep them short. Real humans don't write essays.
+- Key points: List format, 3-5 items max.
+- IMPORTANT: When writing draft messages or emails, ALWAYS wrap the draft text between --- markers like this:
+---
+Your draft message/email text here
+---
+This format is required so the user can click "Accept & Edit" to use the draft.
+
+${context}`;
+
+    // === CALL CLAUDE ===
+    const apiMessages = messages.length > 0
+      ? [...messages, { role: 'user', content: message }]
+      : [{ role: 'user', content: message }];
+
+    console.log(`[KIT Chat] Calling Claude with ${apiMessages.length} messages`);
+
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2048,
+      system: systemPrompt,
+      messages: apiMessages,
+    });
+
+    const textBlocks = response.content.filter(block => block.type === 'text');
+    const assistantResponse = textBlocks.map(b => b.text).join('\n') || '';
+
+    console.log(`[KIT Chat] Response: ${assistantResponse.substring(0, 100)}...`);
+
+    res.json({
+      success: true,
+      response: assistantResponse,
+    });
+  } catch (error) {
+    console.error('[KIT Chat] Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ==================== OBSIDIAN (GitHub) ENDPOINTS ====================
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
@@ -2398,6 +2696,82 @@ app.get('/whatsapp/find-group', async (req, res) => {
     res.status(404).json({ success: false, error: 'Group not found' });
   } catch (error) {
     console.error('[WhatsApp] Find group error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Verify which phone numbers are registered on WhatsApp
+app.post('/whatsapp/verify-numbers', async (req, res) => {
+  try {
+    const { phones } = req.body;
+
+    if (!phones || !Array.isArray(phones) || phones.length === 0) {
+      return res.status(400).json({ success: false, error: 'Array of phone numbers required' });
+    }
+
+    const results = await verifyWhatsAppNumbers(phones);
+    res.json({ success: true, results });
+  } catch (error) {
+    console.error('[WhatsApp] Verify numbers error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Create a new WhatsApp group for introductions
+app.post('/whatsapp/create-group', async (req, res) => {
+  try {
+    const { name, phones, message } = req.body;
+
+    if (!name || name.trim().length === 0) {
+      return res.status(400).json({ success: false, error: 'Group name required' });
+    }
+
+    if (!phones || !Array.isArray(phones) || phones.length === 0) {
+      return res.status(400).json({ success: false, error: 'Array of phone numbers required' });
+    }
+
+    console.log(`[WhatsApp] Creating intro group "${name}" with phones:`, phones);
+
+    // First verify all numbers are on WhatsApp
+    const verifyResults = await verifyWhatsAppNumbers(phones);
+    const validJids = verifyResults
+      .filter(r => r.registered && r.jid)
+      .map(r => r.jid);
+
+    const invalidPhones = verifyResults
+      .filter(r => !r.registered)
+      .map(r => r.phone);
+
+    if (validJids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'None of the provided phone numbers are registered on WhatsApp',
+        invalidPhones,
+      });
+    }
+
+    if (invalidPhones.length > 0) {
+      console.log(`[WhatsApp] Warning: ${invalidPhones.length} numbers not on WhatsApp:`, invalidPhones);
+    }
+
+    // Create the group
+    const groupResult = await createGroup(name, validJids);
+
+    // Send intro message if provided
+    if (message && message.trim().length > 0) {
+      await sendMessageToChat(groupResult.groupJid, message.trim());
+      console.log(`[WhatsApp] Intro message sent to group`);
+    }
+
+    res.json({
+      success: true,
+      groupJid: groupResult.groupJid,
+      groupName: groupResult.groupName,
+      participants: validJids.length,
+      invalidPhones: invalidPhones.length > 0 ? invalidPhones : undefined,
+    });
+  } catch (error) {
+    console.error('[WhatsApp] Create group error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

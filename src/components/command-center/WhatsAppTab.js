@@ -993,10 +993,24 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
 
   // Send message handler - uses Baileys only (Node.js)
   const handleSendMessage = async () => {
+    console.log('[WhatsApp Send] Button clicked');
+    console.log('[WhatsApp Send] replyText:', replyText);
+    console.log('[WhatsApp Send] selectedFile:', selectedFile);
+    console.log('[WhatsApp Send] selectedChat:', selectedChat);
+    console.log('[WhatsApp Send] sending:', sending, 'uploading:', uploading);
+
     const hasText = replyText.trim().length > 0;
     const hasFile = !!selectedFile;
 
-    if ((!hasText && !hasFile) || !selectedChat?.contact_number || sending || uploading) return;
+    // For 1-to-1: require contact_number. For groups: require chat_name (we'll lookup JID)
+    const hasTarget = selectedChat?.is_group_chat
+      ? !!selectedChat?.chat_name
+      : !!selectedChat?.contact_number;
+
+    if ((!hasText && !hasFile) || !hasTarget || sending || uploading) {
+      console.log('[WhatsApp Send] Early return - hasText:', hasText, 'hasFile:', hasFile, 'hasTarget:', hasTarget);
+      return;
+    }
 
     setSending(true);
     const messageToSend = replyText.trim();

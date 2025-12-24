@@ -604,10 +604,12 @@ const CreateCompanyFromDomainModal = ({
         .from('company_domains')
         .select('id')
         .eq('domain', domainData.domain)
-        .single();
+        .maybeSingle();
 
       if (data && !error) {
         setDomainExists(true);
+      } else {
+        setDomainExists(false);
       }
     } catch (error) {
       // Domain doesn't exist, which is expected
@@ -680,7 +682,7 @@ const CreateCompanyFromDomainModal = ({
         .from('company_domains')
         .select('id, company_id')
         .eq('domain', domainData.domain)
-        .single();
+        .maybeSingle();
 
       if (existingDomain) {
         toast.error('This domain was already added to a company');
@@ -730,7 +732,7 @@ const CreateCompanyFromDomainModal = ({
           .select('entry_id')
           .eq('contact_id', contact.contact_id)
           .eq('company_id', newCompany.company_id)
-          .single();
+          .maybeSingle();
 
         if (!existingLink) {
           // Check if contact has a primary company
@@ -739,7 +741,7 @@ const CreateCompanyFromDomainModal = ({
             .select('entry_id')
             .eq('contact_id', contact.contact_id)
             .eq('is_primary', true)
-            .single();
+            .maybeSingle();
 
           await supabase
             .from('contact_companies')
@@ -759,7 +761,7 @@ const CreateCompanyFromDomainModal = ({
           .select('entry_id')
           .eq('company_id', newCompany.company_id)
           .eq('tag_id', tag.tag_id)
-          .single();
+          .maybeSingle();
 
         if (!existingTag) {
           await supabase

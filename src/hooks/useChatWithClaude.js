@@ -367,32 +367,43 @@ Let's start - show me the pending duplicates queue.`;
       const isDeals = activeTab === 'deals';
       const isKeepInTouch = activeTab === 'keepintouch';
       console.log('[Chat] activeTab:', activeTab, 'isKeepInTouch:', isKeepInTouch);
-      const context = isKeepInTouch ? buildKeepInTouchContext() : (isDeals ? buildDealContext() : (isWhatsApp ? buildWhatsAppContext() : buildEmailContext()));
+
+      // === KEEP IN TOUCH: Use dedicated backend endpoint ===
+      if (isKeepInTouch && keepInTouchContact?.contact_id) {
+        console.log('[Chat] Using Keep in Touch backend endpoint');
+
+        // Build conversation history (without images for now)
+        const conversationHistory = chatMessages.map(m => ({
+          role: m.role,
+          content: m.content
+        }));
+
+        const response = await fetch(`${BACKEND_URL}/chat/keep-in-touch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contact_id: keepInTouchContact.contact_id,
+            message: message,
+            messages: conversationHistory,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to get response from Claude');
+        }
+
+        const data = await response.json();
+        const assistantMessage = { role: 'assistant', content: data.response };
+        setChatMessages(prev => [...prev, assistantMessage]);
+        return;
+      }
+
+      // === OTHER TABS: Use generic /chat endpoint with frontend context ===
+      const context = isDeals ? buildDealContext() : (isWhatsApp ? buildWhatsAppContext() : buildEmailContext());
       console.log('[Chat] Context length:', context?.length, 'Context preview:', context?.substring(0, 200));
 
       // Different system prompt based on context
-      const systemPrompt = isKeepInTouch ? `You are Simone Cimminelli's AI assistant for relationship management (Keep in Touch).
-
-TONE & STYLE:
-- Be direct and concise. No fluff, no corporate speak.
-- Friendly but professional. Like talking to a smart colleague.
-- Use short sentences. Get to the point fast.
-- Helpful for managing relationships and staying in touch with contacts.
-
-YOUR ROLE:
-- Help manage and maintain relationships with this contact
-- Suggest actions: schedule calls, send messages, create notes, set up meetings
-- Provide insights about the contact based on available information
-- Help draft messages (WhatsApp, Email) that are warm and personal
-- Remember context about the contact to provide relevant suggestions
-
-RESPONSE FORMAT:
-- Summaries: Max 2-3 bullet points. Just the essentials.
-- Actions: One clear recommendation. Maybe a second option.
-- Drafts: Keep them short. Real humans don't write essays.
-- Key points: List format, 3-5 items max.
-
-${context}` : isDeals ? `You are Simone Cimminelli's AI assistant for deal and investment management.
+      const systemPrompt = isDeals ? `You are Simone Cimminelli's AI assistant for deal and investment management.
 
 TONE & STYLE:
 - Be direct and concise. No fluff, no corporate speak.
@@ -501,7 +512,7 @@ ${context}`;
     } finally {
       setChatLoading(false);
     }
-  }, [chatImages, chatMessages, buildEmailContext, buildWhatsAppContext, buildDealContext, activeTab]);
+  }, [chatImages, chatMessages, buildEmailContext, buildWhatsAppContext, buildDealContext, activeTab, keepInTouchContact]);
 
   // Handle quick action clicks - hide the prompt, show only the response
   const handleQuickAction = useCallback((action) => {

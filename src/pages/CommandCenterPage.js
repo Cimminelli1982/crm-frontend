@@ -459,6 +459,11 @@ const CommandCenterPage = ({ theme }) => {
   const [introContactMobiles, setIntroContactMobiles] = useState([]);
   const [selectedIntroEmails, setSelectedIntroEmails] = useState([]); // Array of selected emails
   const [selectedIntroMobile, setSelectedIntroMobile] = useState('');
+  const [creatingIntroGroup, setCreatingIntroGroup] = useState(false); // WhatsApp group creation in progress
+  const [introGroupMessages, setIntroGroupMessages] = useState([]); // Messages from the intro WhatsApp group
+  const [introGroupLoading, setIntroGroupLoading] = useState(false);
+  const [introGroupInput, setIntroGroupInput] = useState('');
+  const [introGroupSending, setIntroGroupSending] = useState(false);
   const [introContactCompanies, setIntroContactCompanies] = useState({}); // { contact_id: [companies] }
   const [introContactTags, setIntroContactTags] = useState({}); // { contact_id: [tags] }
 
@@ -2035,14 +2040,25 @@ internet businesses.`;
           allEmails.push({ email: e.email, contactName, contactId: contact.contact_id });
         });
 
-        // Fetch mobiles
+        // Fetch mobiles with type and is_primary for smart selection
         const { data: mobilesData } = await supabase
           .from('contact_mobiles')
-          .select('mobile')
-          .eq('contact_id', contact.contact_id);
+          .select('mobile, type, is_primary')
+          .eq('contact_id', contact.contact_id)
+          .order('is_primary', { ascending: false });
 
         (mobilesData || []).forEach(m => {
-          allMobiles.push({ mobile: m.mobile, contactName, contactId: contact.contact_id });
+          // Skip WhatsApp Group type numbers (they're fake)
+          if (m.type === 'WhatsApp Group') return;
+          allMobiles.push({
+            mobile: m.mobile,
+            contactName,
+            contactId: contact.contact_id,
+            firstName: contact.first_name || contactName.split(' ')[0],
+            role: contact.role,
+            type: m.type,
+            isPrimary: m.is_primary,
+          });
         });
 
         // Fetch companies
@@ -2077,6 +2093,84 @@ internet businesses.`;
 
     fetchAllIntroContactDetails();
   }, [selectedIntroductionItem]);
+
+  // Fetch WhatsApp group messages when introduction has a group JID
+  useEffect(() => {
+    const fetchIntroGroupMessages = async () => {
+      if (!selectedIntroductionItem?.whatsapp_group_jid) {
+        setIntroGroupMessages([]);
+        return;
+      }
+
+      setIntroGroupLoading(true);
+      try {
+        // Fetch messages from command_center_inbox that match this group's JID or name
+        const { data: messages, error } = await supabase
+          .from('command_center_inbox')
+          .select('*')
+          .eq('type', 'whatsapp')
+          .eq('is_group_chat', true)
+          .or(`chat_jid.eq.${selectedIntroductionItem.whatsapp_group_jid},chat_name.eq.${selectedIntroductionItem.whatsapp_group_name}`)
+          .order('date', { ascending: true });
+
+        if (error) {
+          console.error('Error fetching group messages:', error);
+          return;
+        }
+
+        setIntroGroupMessages(messages || []);
+      } catch (err) {
+        console.error('Error fetching intro group messages:', err);
+      } finally {
+        setIntroGroupLoading(false);
+      }
+    };
+
+    fetchIntroGroupMessages();
+
+    // Set up polling for new messages
+    const interval = setInterval(fetchIntroGroupMessages, 10000);
+    return () => clearInterval(interval);
+  }, [selectedIntroductionItem?.whatsapp_group_jid, selectedIntroductionItem?.whatsapp_group_name]);
+
+  // Send message to introduction WhatsApp group
+  const sendIntroGroupMessage = async () => {
+    if (!introGroupInput.trim() || !selectedIntroductionItem?.whatsapp_group_jid || introGroupSending) return;
+
+    setIntroGroupSending(true);
+    try {
+      const response = await fetch('https://command-center-backend-production.up.railway.app/whatsapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: selectedIntroductionItem.whatsapp_group_jid,
+          message: introGroupInput.trim(),
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to send message');
+      }
+
+      // Add optimistic message
+      setIntroGroupMessages(prev => [...prev, {
+        id: `temp-${Date.now()}`,
+        body_text: introGroupInput.trim(),
+        direction: 'sent',
+        date: new Date().toISOString(),
+        from_name: 'You',
+      }]);
+
+      setIntroGroupInput('');
+      toast.success('Message sent!');
+    } catch (error) {
+      console.error('Error sending group message:', error);
+      toast.error(error.message || 'Failed to send message');
+    } finally {
+      setIntroGroupSending(false);
+    }
+  };
 
   // Fetch contact details and interactions for Keep in Touch
   useEffect(() => {
@@ -4814,6 +4908,103 @@ internet businesses.`;
       .eq('introduction_id', introductionId);
     if (!error) {
       setContactIntroductions(prev => prev.filter(i => i.introduction_id !== introductionId));
+    }
+  };
+
+  // Handler for creating WhatsApp group for introduction
+  const handleCreateIntroWhatsAppGroup = async () => {
+    if (!selectedIntroductionItem || introContactMobiles.length === 0) {
+      toast.error('No phone numbers available');
+      return;
+    }
+
+    // Get introducees (the people being introduced to each other)
+    const introducees = selectedIntroductionItem.contacts?.filter(c => c.role === 'introducee') || [];
+    if (introducees.length < 2) {
+      toast.error('Need at least 2 introducees to create a group');
+      return;
+    }
+
+    // Get best phone number for each introducee (prefer is_primary, exclude WhatsApp Group type)
+    const phonesForGroup = [];
+    const firstNames = [];
+
+    for (const introducee of introducees) {
+      // Find mobiles for this contact
+      const contactMobiles = introContactMobiles.filter(m => m.contactId === introducee.contact_id);
+      if (contactMobiles.length === 0) {
+        toast.error(`No phone number for ${introducee.first_name || introducee.name}`);
+        return;
+      }
+      // Prefer primary, then first available
+      const bestMobile = contactMobiles.find(m => m.isPrimary) || contactMobiles[0];
+      phonesForGroup.push(bestMobile.mobile);
+      firstNames.push(bestMobile.firstName || introducee.first_name || 'Unknown');
+    }
+
+    // Group name: "FirstName <> FirstName"
+    const groupName = firstNames.join(' <> ');
+
+    // Prepare draft message for after group creation
+    const draftMessage = selectedIntroductionItem.text || `Ciao! Vi presento: ${firstNames.join(' e ')}.`;
+
+    setCreatingIntroGroup(true);
+    try {
+      const response = await fetch('https://command-center-backend-production.up.railway.app/whatsapp/create-group', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: groupName,
+          phones: phonesForGroup,
+          // Don't send message automatically - put in draft instead
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to create group');
+      }
+
+      // Update introduction with status, tool, and group info
+      await supabase
+        .from('introductions')
+        .update({
+          status: 'Done, but need to monitor',
+          introduction_tool: 'whatsapp',
+          whatsapp_group_jid: data.groupJid,
+          whatsapp_group_name: groupName,
+        })
+        .eq('introduction_id', selectedIntroductionItem.introduction_id);
+
+      // Refresh introductions list with new group info
+      const updatedIntro = {
+        ...selectedIntroductionItem,
+        status: 'Done, but need to monitor',
+        introduction_tool: 'whatsapp',
+        whatsapp_group_jid: data.groupJid,
+        whatsapp_group_name: groupName,
+      };
+      setIntroductionsList(prev => prev.map(intro =>
+        intro.introduction_id === selectedIntroductionItem.introduction_id
+          ? updatedIntro
+          : intro
+      ));
+      setSelectedIntroductionItem(updatedIntro);
+
+      // Put draft message in input for user to edit and send
+      setIntroGroupInput(draftMessage);
+
+      toast.success(`Group "${groupName}" created! Edit the message and press send.`);
+
+      if (data.invalidPhones?.length > 0) {
+        toast.warning(`${data.invalidPhones.length} number(s) not on WhatsApp`);
+      }
+    } catch (error) {
+      console.error('Error creating WhatsApp group:', error);
+      toast.error(error.message || 'Failed to create WhatsApp group');
+    } finally {
+      setCreatingIntroGroup(false);
     }
   };
 
@@ -12640,56 +12831,246 @@ internet businesses.`;
           {/* Introductions - WhatsApp Panel */}
           {!rightPanelCollapsed && activeTab === 'introductions' && selectedIntroductionItem && introductionsActionTab === 'whatsapp' && (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '12px' }}>
-              {/* To Field - Dropdown with all mobiles */}
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '4px', fontWeight: 600 }}>To</label>
-                {introContactMobiles.length === 0 ? (
+              {/* Show group chat if group exists */}
+              {selectedIntroductionItem.whatsapp_group_jid ? (
+                <>
+                  {/* Group header */}
                   <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
                     padding: '10px 12px',
-                    borderRadius: '8px',
-                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
-                    background: theme === 'dark' ? '#374151' : '#F9FAFB',
-                    color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
-                    fontSize: '13px',
-                    fontStyle: 'italic'
+                    marginBottom: '12px',
+                    borderRadius: '10px',
+                    background: theme === 'dark' ? '#064E3B' : '#D1FAE5',
                   }}>
-                    No phone numbers found
+                    <div style={{
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '50%',
+                      background: '#25D366',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                      <FaUsers size={16} color="white" />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{
+                        fontWeight: 600,
+                        fontSize: '14px',
+                        color: theme === 'dark' ? '#34D399' : '#065F46',
+                      }}>
+                        {selectedIntroductionItem.whatsapp_group_name || 'Introduction Group'}
+                      </div>
+                      <div style={{
+                        fontSize: '11px',
+                        color: theme === 'dark' ? '#6EE7B7' : '#059669',
+                      }}>
+                        Group created
+                      </div>
+                    </div>
                   </div>
-                ) : (
-                  <select
-                    value={selectedIntroMobile}
-                    onChange={(e) => setSelectedIntroMobile(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      borderRadius: '8px',
-                      border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
-                      background: theme === 'dark' ? '#374151' : '#FFFFFF',
-                      color: theme === 'dark' ? '#F9FAFB' : '#111827',
+
+                  {/* Messages area */}
+                  <div style={{
+                    flex: 1,
+                    overflowY: 'auto',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                    marginBottom: '12px',
+                    padding: '8px',
+                    borderRadius: '8px',
+                    background: theme === 'dark' ? '#111827' : '#F3F4F6',
+                  }}>
+                    {introGroupLoading ? (
+                      <div style={{ textAlign: 'center', padding: '20px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }}>
+                        Loading messages...
+                      </div>
+                    ) : introGroupMessages.length === 0 ? (
+                      <div style={{
+                        textAlign: 'center',
+                        padding: '20px',
+                        color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
+                        fontSize: '13px',
+                      }}>
+                        <FaWhatsapp size={24} style={{ marginBottom: '8px', opacity: 0.5 }} />
+                        <div>No messages yet in this group</div>
+                        <div style={{ fontSize: '11px', marginTop: '4px' }}>Messages will appear here once someone writes</div>
+                      </div>
+                    ) : (
+                      introGroupMessages.map((msg, idx) => (
+                        <div
+                          key={msg.id || idx}
+                          style={{
+                            alignSelf: msg.direction === 'sent' ? 'flex-end' : 'flex-start',
+                            maxWidth: '85%',
+                            padding: '8px 12px',
+                            borderRadius: msg.direction === 'sent' ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
+                            background: msg.direction === 'sent'
+                              ? '#25D366'
+                              : theme === 'dark' ? '#374151' : '#FFFFFF',
+                            color: msg.direction === 'sent' ? 'white' : theme === 'dark' ? '#F9FAFB' : '#111827',
+                          }}
+                        >
+                          {msg.direction !== 'sent' && msg.from_name && (
+                            <div style={{
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              marginBottom: '2px',
+                              color: msg.direction === 'sent' ? 'rgba(255,255,255,0.8)' : '#25D366',
+                            }}>
+                              {msg.from_name}
+                            </div>
+                          )}
+                          <div style={{ fontSize: '13px', whiteSpace: 'pre-wrap' }}>
+                            {msg.body_text || msg.snippet || ''}
+                          </div>
+                          <div style={{
+                            fontSize: '10px',
+                            textAlign: 'right',
+                            marginTop: '4px',
+                            opacity: 0.7,
+                          }}>
+                            {msg.date ? new Date(msg.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Input area */}
+                  <div style={{
+                    display: 'flex',
+                    gap: '8px',
+                    alignItems: 'flex-end',
+                  }}>
+                    <textarea
+                      value={introGroupInput}
+                      onChange={(e) => setIntroGroupInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          sendIntroGroupMessage();
+                        }
+                      }}
+                      placeholder="Type a message..."
+                      style={{
+                        flex: 1,
+                        padding: '10px 12px',
+                        borderRadius: '20px',
+                        border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                        background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                        color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                        fontSize: '13px',
+                        resize: 'none',
+                        minHeight: '40px',
+                        maxHeight: '100px',
+                        outline: 'none',
+                      }}
+                      rows={1}
+                    />
+                    <button
+                      onClick={sendIntroGroupMessage}
+                      disabled={!introGroupInput.trim() || introGroupSending}
+                      style={{
+                        width: '40px',
+                        height: '40px',
+                        borderRadius: '50%',
+                        border: 'none',
+                        background: introGroupInput.trim() && !introGroupSending ? '#25D366' : theme === 'dark' ? '#374151' : '#E5E7EB',
+                        color: introGroupInput.trim() && !introGroupSending ? 'white' : theme === 'dark' ? '#6B7280' : '#9CA3AF',
+                        cursor: introGroupInput.trim() && !introGroupSending ? 'pointer' : 'not-allowed',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <FaPaperPlane size={14} />
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Create WhatsApp Group Button - Only show if no group yet */}
+                  <div style={{ marginBottom: '16px' }}>
+                    <button
+                      onClick={handleCreateIntroWhatsAppGroup}
+                      disabled={creatingIntroGroup || introContactMobiles.length < 2}
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        borderRadius: '10px',
+                        border: 'none',
+                        background: creatingIntroGroup
+                          ? (theme === 'dark' ? '#374151' : '#E5E7EB')
+                          : 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
+                        color: creatingIntroGroup ? (theme === 'dark' ? '#9CA3AF' : '#6B7280') : 'white',
+                        fontSize: '14px',
+                        fontWeight: 600,
+                        cursor: creatingIntroGroup || introContactMobiles.length < 2 ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        boxShadow: creatingIntroGroup ? 'none' : '0 2px 8px rgba(37, 211, 102, 0.3)',
+                        transition: 'all 0.2s ease',
+                      }}
+                    >
+                      {creatingIntroGroup ? (
+                        <>
+                          <span style={{
+                            width: '16px',
+                            height: '16px',
+                            border: '2px solid currentColor',
+                            borderTopColor: 'transparent',
+                            borderRadius: '50%',
+                            animation: 'spin 1s linear infinite'
+                          }} />
+                          Creating Group...
+                        </>
+                      ) : (
+                        <>
+                          <FaUsers size={16} />
+                          Create WhatsApp Group
+                        </>
+                      )}
+                    </button>
+                    {introContactMobiles.length >= 2 && (
+                      <div style={{
+                        marginTop: '8px',
+                        fontSize: '11px',
+                        color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                        textAlign: 'center',
+                      }}>
+                        Group: {(() => {
+                          const introducees = selectedIntroductionItem.contacts?.filter(c => c.role === 'introducee') || [];
+                          return introducees.map(c => c.first_name || c.name?.split(' ')[0] || 'Unknown').join(' <> ');
+                        })()}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Empty state when no group can be created */}
+                  {introContactMobiles.length < 2 && (
+                    <div style={{
+                      flex: 1,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
                       fontSize: '13px',
-                      outline: 'none',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {introContactMobiles.map((m, idx) => (
-                      <option key={idx} value={m.mobile}>
-                        {m.contactName} - {m.mobile}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-              {/* WhatsApp Component */}
-              {introContactMobiles.length > 0 && (
-                <WhatsAppChatTab
-                  theme={theme}
-                  contact={introContactMobiles.find(m => m.mobile === selectedIntroMobile) || {}}
-                  mobiles={[selectedIntroMobile]}
-                  onMessageSent={() => {
-                    toast.success('Message sent!');
-                  }}
-                  hidePhoneSelector={true}
-                />
+                      textAlign: 'center',
+                      padding: '20px',
+                    }}>
+                      <FaWhatsapp size={32} style={{ marginBottom: '12px', opacity: 0.5 }} />
+                      <div>Need phone numbers for both contacts to create a WhatsApp group</div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}

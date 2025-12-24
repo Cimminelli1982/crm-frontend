@@ -345,8 +345,8 @@ const NewEditCompanyModal = ({
           .select('relationship')
           .eq('contact_id', contactId)
           .eq('company_id', company.company_id)
-          .single();
-          
+          .maybeSingle();
+
         if (!relError && contactCompany) {
           relationship = contactCompany.relationship;
         }

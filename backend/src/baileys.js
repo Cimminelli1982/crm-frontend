@@ -348,6 +348,81 @@ export async function findGroupByName(groupName) {
   return match || null;
 }
 
+/**
+ * Verify which phone numbers are registered on WhatsApp
+ * @param {string[]} phones - Array of phone numbers
+ * @returns {Promise<Array<{phone: string, registered: boolean, jid: string|null}>>}
+ */
+export async function verifyWhatsAppNumbers(phones) {
+  if (!sock || connectionStatus !== 'connected') {
+    throw new Error('WhatsApp not connected');
+  }
+
+  console.log(`[Baileys] Verifying ${phones.length} phone numbers...`);
+
+  const results = [];
+  for (const phone of phones) {
+    try {
+      const cleanPhone = phone.replace(/[^0-9]/g, '').replace(/^0+/, '');
+      const [result] = await sock.onWhatsApp(cleanPhone);
+      results.push({
+        phone,
+        registered: !!result?.exists,
+        jid: result?.jid || null,
+      });
+    } catch (err) {
+      console.error(`[Baileys] Error verifying ${phone}:`, err.message);
+      results.push({
+        phone,
+        registered: false,
+        jid: null,
+      });
+    }
+  }
+
+  console.log(`[Baileys] Verified: ${results.filter(r => r.registered).length}/${phones.length} registered`);
+  return results;
+}
+
+/**
+ * Create a new WhatsApp group
+ * @param {string} name - Group name/subject
+ * @param {string[]} participantJids - Array of participant JIDs (e.g., ['393201234567@s.whatsapp.net'])
+ * @returns {Promise<{success: boolean, groupId: string, groupJid: string}>}
+ */
+export async function createGroup(name, participantJids) {
+  if (!sock || connectionStatus !== 'connected') {
+    throw new Error('WhatsApp not connected');
+  }
+
+  if (!name || name.trim().length === 0) {
+    throw new Error('Group name is required');
+  }
+
+  if (!participantJids || participantJids.length === 0) {
+    throw new Error('At least one participant is required');
+  }
+
+  console.log(`[Baileys] Creating group "${name}" with ${participantJids.length} participants...`);
+  console.log(`[Baileys] Participants:`, participantJids);
+
+  try {
+    const result = await sock.groupCreate(name.trim(), participantJids);
+
+    console.log(`[Baileys] Group created:`, result.id);
+
+    return {
+      success: true,
+      groupId: result.id,
+      groupJid: result.id,
+      groupName: name.trim(),
+    };
+  } catch (error) {
+    console.error(`[Baileys] Error creating group:`, error);
+    throw new Error(`Failed to create group: ${error.message}`);
+  }
+}
+
 // Export socket for advanced usage
 export function getSocket() {
   return sock;
