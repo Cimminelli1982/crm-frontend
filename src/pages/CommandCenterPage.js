@@ -85,7 +85,7 @@ import {
   SendButton,
   CancelButton
 } from './CommandCenterPage.styles';
-import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaCheckDouble, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt, FaUpload, FaFileAlt, FaLinkedin, FaSearch, FaRocket, FaGlobe, FaMapMarkerAlt, FaUsers, FaVideo, FaLink } from 'react-icons/fa';
+import { FaEnvelope, FaWhatsapp, FaCalendar, FaCalendarPlus, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaCheckDouble, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt, FaUpload, FaFileAlt, FaLinkedin, FaSearch, FaRocket, FaGlobe, FaMapMarkerAlt, FaUsers, FaVideo, FaLink } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import QuickEditModal from '../components/QuickEditModalRefactored';
@@ -303,6 +303,7 @@ const CommandCenterPage = ({ theme }) => {
   } = emailCompose;
 
   const [saving, setSaving] = useState(false);
+  const [importingCalendar, setImportingCalendar] = useState(false);
 
   // Pending status for keeping email in inbox after send (used by handleSendWithAttachmentCheck -> saveAndArchive)
   const pendingInboxStatusRef = useRef(null);
@@ -6185,6 +6186,81 @@ internet businesses.`;
     saveAndArchive();
   };
 
+  // Import calendar invitation from email to "Living with Intention" calendar
+  const handleImportCalendarInvitation = async () => {
+    if (!selectedThread || selectedThread.length === 0) return;
+
+    // Find the email with the ICS attachment (usually the first one for invitations)
+    const emailWithIcs = selectedThread.find(email => {
+      const attachments = email.attachments || [];
+      return attachments.some(a =>
+        a.type === 'text/calendar' ||
+        a.type === 'application/ics' ||
+        (a.name && a.name.endsWith('.ics'))
+      );
+    });
+
+    if (!emailWithIcs) {
+      toast.error('No calendar invitation found in this email');
+      return;
+    }
+
+    // Get the inbox_id from the email
+    const inboxId = emailWithIcs.id;
+    if (!inboxId) {
+      toast.error('Could not find inbox ID for this email');
+      return;
+    }
+
+    setImportingCalendar(true);
+    try {
+      const response = await fetch(`${BACKEND_URL}/calendar/import-invitation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inbox_id: inboxId })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to import invitation');
+      }
+
+      toast.success(`Added "${data.event.title}" to Living with Intention calendar`);
+
+      // Optionally refresh inbox to show the new calendar event
+      if (typeof refreshInbox === 'function') {
+        refreshInbox();
+      }
+    } catch (error) {
+      console.error('Import calendar invitation error:', error);
+      toast.error(error.message || 'Failed to import calendar invitation');
+    } finally {
+      setImportingCalendar(false);
+    }
+  };
+
+  // Check if selected email is a calendar invitation
+  const isCalendarInvitation = () => {
+    if (!selectedThread || selectedThread.length === 0) return false;
+
+    // Check subject starts with "Invitation:"
+    const subject = selectedThread[0]?.subject || '';
+    if (subject.startsWith('Invitation:') || subject.startsWith('Updated invitation:')) {
+      return true;
+    }
+
+    // Check for ICS attachment
+    return selectedThread.some(email => {
+      const attachments = email.attachments || [];
+      return attachments.some(a =>
+        a.type === 'text/calendar' ||
+        a.type === 'application/ics' ||
+        (a.name && a.name.endsWith('.ics'))
+      );
+    });
+  };
+
   // Wrapper for handleSend that checks attachments after sending
   const handleSendWithAttachmentCheck = async (bodyOverride = null, keepInInboxWithStatus = null) => {
     // Store the status for later use in saveAndArchive
@@ -11558,6 +11634,46 @@ internet businesses.`;
                     <FaEnvelope size={12} />
                     New
                   </button>
+
+                  {/* Add to Calendar - only for invitation emails */}
+                  {isCalendarInvitation() && (
+                    <button
+                      onClick={handleImportCalendarInvitation}
+                      disabled={importingCalendar}
+                      title="Add to Living with Intention calendar"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        padding: '0 12px',
+                        height: '36px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: theme === 'light' ? '#8B5CF6' : '#7C3AED',
+                        color: 'white',
+                        cursor: importingCalendar ? 'wait' : 'pointer',
+                        transition: 'all 0.2s ease',
+                        fontWeight: 600,
+                        fontSize: '13px',
+                        opacity: importingCalendar ? 0.7 : 1,
+                      }}
+                    >
+                      {importingCalendar ? (
+                        <span style={{
+                          width: '12px',
+                          height: '12px',
+                          border: '2px solid currentColor',
+                          borderTopColor: 'transparent',
+                          borderRadius: '50%',
+                          animation: 'spin 1s linear infinite'
+                        }} />
+                      ) : (
+                        <FaCalendarPlus size={12} />
+                      )}
+                      {importingCalendar ? 'Adding...' : 'Add to Cal'}
+                    </button>
+                  )}
 
                   {/* Need Actions */}
                   <button
