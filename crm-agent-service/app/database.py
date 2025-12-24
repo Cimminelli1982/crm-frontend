@@ -224,22 +224,42 @@ class Database:
         ).execute()
         return len(result.data or []) > 0
 
-    async def is_whatsapp_spam(self, phone_number: str) -> dict | None:
-        """Check if phone number is in WhatsApp spam list. Returns the record if found."""
-        result = self.client.table("whatsapp_spam").select("*").eq(
-            "mobile_number", phone_number
-        ).execute()
-        return result.data[0] if result.data else None
+    async def is_whatsapp_spam(self, phone_number: str = None, chat_id: str = None) -> dict | None:
+        """Check if phone number or chat_id is in WhatsApp spam list. Returns the record if found."""
+        # Check by chat_id first (for groups)
+        if chat_id:
+            result = self.client.table("whatsapp_spam").select("*").eq(
+                "chat_id", chat_id
+            ).execute()
+            if result.data:
+                return result.data[0]
 
-    async def increment_whatsapp_spam_counter(self, phone_number: str) -> None:
-        """Increment the counter for a WhatsApp spam number."""
+        # Check by phone number (for 1-to-1 chats)
+        if phone_number:
+            result = self.client.table("whatsapp_spam").select("*").eq(
+                "mobile_number", phone_number
+            ).execute()
+            if result.data:
+                return result.data[0]
+
+        return None
+
+    async def increment_whatsapp_spam_counter(self, phone_number: str = None, chat_id: str = None) -> None:
+        """Increment the counter for a WhatsApp spam number or group."""
         from datetime import datetime
-        current = await self.is_whatsapp_spam(phone_number)
+        current = await self.is_whatsapp_spam(phone_number, chat_id)
         if current:
-            self.client.table("whatsapp_spam").update({
-                "counter": current.get("counter", 0) + 1,
-                "last_modified_at": datetime.utcnow().isoformat()
-            }).eq("mobile_number", phone_number).execute()
+            # Determine which field to use for the update
+            if current.get("chat_id") and chat_id:
+                self.client.table("whatsapp_spam").update({
+                    "counter": current.get("counter", 0) + 1,
+                    "last_modified_at": datetime.utcnow().isoformat()
+                }).eq("chat_id", chat_id).execute()
+            elif phone_number:
+                self.client.table("whatsapp_spam").update({
+                    "counter": current.get("counter", 0) + 1,
+                    "last_modified_at": datetime.utcnow().isoformat()
+                }).eq("mobile_number", phone_number).execute()
 
 
     # ==================== ACTION EXECUTION ====================

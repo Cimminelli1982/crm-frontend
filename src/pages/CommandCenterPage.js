@@ -445,6 +445,23 @@ const CommandCenterPage = ({ theme }) => {
   const [keepInTouchCities, setKeepInTouchCities] = useState([]);
   const [keepInTouchFullContext, setKeepInTouchFullContext] = useState(null);
 
+  // Introductions tab state
+  const [introductionsList, setIntroductionsList] = useState([]);
+  const [introductionsLoading, setIntroductionsLoading] = useState(false);
+  const [selectedIntroductionItem, setSelectedIntroductionItem] = useState(null);
+  const [introductionsSections, setIntroductionsSections] = useState({
+    inbox: true,
+    monitoring: true,
+    closed: false
+  });
+  const [introductionsActionTab, setIntroductionsActionTab] = useState('email'); // 'email' or 'whatsapp'
+  const [introContactEmails, setIntroContactEmails] = useState([]);
+  const [introContactMobiles, setIntroContactMobiles] = useState([]);
+  const [selectedIntroEmails, setSelectedIntroEmails] = useState([]); // Array of selected emails
+  const [selectedIntroMobile, setSelectedIntroMobile] = useState('');
+  const [introContactCompanies, setIntroContactCompanies] = useState({}); // { contact_id: [companies] }
+  const [introContactTags, setIntroContactTags] = useState({}); // { contact_id: [tags] }
+
   // Context Contacts hook - handles Email, WhatsApp, Calendar, Deals sources
   const contextContactsHook = useContextContacts(activeTab, selectedThread, selectedWhatsappChat, selectedCalendarEvent, selectedPipelineDeal);
   const {
@@ -457,9 +474,8 @@ const CommandCenterPage = ({ theme }) => {
     refetchContacts
   } = contextContactsHook;
 
-  // AI Chat hook - supports both Email and WhatsApp context
-  console.log('[CmdCenter] Passing to chat hook - selectedKeepInTouchContact:', selectedKeepInTouchContact?.contact_id, selectedKeepInTouchContact?.first_name);
-  const chatHook = useChatWithClaude(selectedThread, emailContacts, activeTab, selectedWhatsappChat, emailContacts, selectedPipelineDeal, selectedKeepInTouchContact, keepInTouchCompanies, keepInTouchEmails, keepInTouchMobiles, keepInTouchFullContext, keepInTouchTags, keepInTouchCities, keepInTouchInteractions);
+  // AI Chat hook - uses keepInTouchContactDetails (from contacts table) for Claude context
+  const chatHook = useChatWithClaude(selectedThread, emailContacts, activeTab, selectedWhatsappChat, emailContacts, selectedPipelineDeal, keepInTouchContactDetails, keepInTouchCompanies, keepInTouchEmails, keepInTouchMobiles, keepInTouchFullContext, keepInTouchTags, keepInTouchCities, keepInTouchInteractions);
   const {
     chatMessages,
     setChatMessages,
@@ -1930,6 +1946,137 @@ internet businesses.`;
       return true;
     });
   };
+
+  // Filter introductions by section
+  const filterIntroductionsBySection = (intros, section) => {
+    return intros.filter(intro => {
+      if (section === 'inbox') return ['Requested', 'Promised'].includes(intro.status);
+      if (section === 'monitoring') return intro.status === 'Done, but need to monitor';
+      if (section === 'closed') return ['Done & Dust', 'Aborted'].includes(intro.status);
+      return true;
+    });
+  };
+
+  // Fetch introductions for Introductions tab
+  useEffect(() => {
+    const fetchIntroductions = async () => {
+      if (activeTab !== 'introductions') return;
+
+      setIntroductionsLoading(true);
+      try {
+        // Fetch introductions with their contacts
+        const { data: intros, error } = await supabase
+          .from('introductions')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        // Fetch contacts for each introduction
+        const introsWithContacts = await Promise.all(
+          (intros || []).map(async (intro) => {
+            const { data: introContacts } = await supabase
+              .from('introduction_contacts')
+              .select(`
+                role,
+                contact:contacts(contact_id, first_name, last_name, description, profile_image_url)
+              `)
+              .eq('introduction_id', intro.introduction_id);
+
+            const contacts = (introContacts || []).map(ic => ({
+              ...ic.contact,
+              role: ic.role,
+              name: `${ic.contact?.first_name || ''} ${ic.contact?.last_name || ''}`.trim(),
+              description: ic.contact?.description || '',
+              profile_image_url: ic.contact?.profile_image_url || null
+            }));
+
+            return { ...intro, contacts };
+          })
+        );
+
+        setIntroductionsList(introsWithContacts);
+      } catch (error) {
+        console.error('Error fetching introductions:', error);
+      } finally {
+        setIntroductionsLoading(false);
+      }
+    };
+
+    fetchIntroductions();
+  }, [activeTab]);
+
+  // Fetch emails, mobiles, companies, and tags for ALL introduction contacts
+  useEffect(() => {
+    const fetchAllIntroContactDetails = async () => {
+      if (!selectedIntroductionItem?.contacts?.length) {
+        setIntroContactEmails([]);
+        setIntroContactMobiles([]);
+        setIntroContactCompanies({});
+        setIntroContactTags({});
+        return;
+      }
+
+      const allEmails = [];
+      const allMobiles = [];
+      const companiesMap = {};
+      const tagsMap = {};
+
+      for (const contact of selectedIntroductionItem.contacts) {
+        const contactName = contact.name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+
+        // Fetch emails
+        const { data: emailsData } = await supabase
+          .from('contact_emails')
+          .select('email')
+          .eq('contact_id', contact.contact_id);
+
+        (emailsData || []).forEach(e => {
+          allEmails.push({ email: e.email, contactName, contactId: contact.contact_id });
+        });
+
+        // Fetch mobiles
+        const { data: mobilesData } = await supabase
+          .from('contact_mobiles')
+          .select('mobile')
+          .eq('contact_id', contact.contact_id);
+
+        (mobilesData || []).forEach(m => {
+          allMobiles.push({ mobile: m.mobile, contactName, contactId: contact.contact_id });
+        });
+
+        // Fetch companies
+        const { data: companiesData } = await supabase
+          .from('contact_companies')
+          .select('company:companies(company_id, name)')
+          .eq('contact_id', contact.contact_id);
+
+        companiesMap[contact.contact_id] = (companiesData || [])
+          .map(cc => cc.company)
+          .filter(c => c);
+
+        // Fetch tags
+        const { data: tagsData } = await supabase
+          .from('contact_tags')
+          .select('tag_id, tags(tag_id, name)')
+          .eq('contact_id', contact.contact_id);
+
+        tagsMap[contact.contact_id] = (tagsData || [])
+          .map(ct => ct.tags)
+          .filter(t => t);
+      }
+
+      setIntroContactEmails(allEmails);
+      setIntroContactMobiles(allMobiles);
+      setIntroContactCompanies(companiesMap);
+      setIntroContactTags(tagsMap);
+      // Auto-select all emails, first mobile
+      setSelectedIntroEmails(allEmails.map(e => e.email));
+      if (allMobiles.length > 0) setSelectedIntroMobile(allMobiles[0].mobile);
+    };
+
+    fetchAllIntroContactDetails();
+  }, [selectedIntroductionItem]);
 
   // Fetch contact details and interactions for Keep in Touch
   useEffect(() => {
@@ -6339,25 +6486,48 @@ internet businesses.`;
     try {
       const phone = selectedWhatsappChat.contact_number;
       const chatId = selectedWhatsappChat.chat_id;
+      const isGroup = selectedWhatsappChat.is_group_chat;
       const messages = selectedWhatsappChat.messages || [];
       const messageUids = messages.map(m => m.message_uid || m.id).filter(Boolean);
 
       // 1. Add to whatsapp_spam list
-      const { data: existing } = await supabase
-        .from('whatsapp_spam')
-        .select('counter')
-        .eq('mobile_number', phone)
-        .maybeSingle();
+      // For groups: use chat_id, for 1-to-1: use phone number
+      if (isGroup) {
+        // Check if group chat_id already in spam
+        const { data: existingGroup } = await supabase
+          .from('whatsapp_spam')
+          .select('counter')
+          .eq('chat_id', chatId)
+          .maybeSingle();
 
-      if (existing) {
-        await supabase
-          .from('whatsapp_spam')
-          .update({ counter: existing.counter + 1 })
-          .eq('mobile_number', phone);
+        if (existingGroup) {
+          await supabase
+            .from('whatsapp_spam')
+            .update({ counter: existingGroup.counter + 1 })
+            .eq('chat_id', chatId);
+        } else {
+          await supabase
+            .from('whatsapp_spam')
+            .insert({ mobile_number: `group:${chatId}`, chat_id: chatId, counter: 1 });
+        }
       } else {
-        await supabase
+        // 1-to-1 chat: use phone number
+        const { data: existing } = await supabase
           .from('whatsapp_spam')
-          .insert({ mobile_number: phone, counter: 1 });
+          .select('counter')
+          .eq('mobile_number', phone)
+          .maybeSingle();
+
+        if (existing) {
+          await supabase
+            .from('whatsapp_spam')
+            .update({ counter: existing.counter + 1 })
+            .eq('mobile_number', phone);
+        } else {
+          await supabase
+            .from('whatsapp_spam')
+            .insert({ mobile_number: phone, counter: 1 });
+        }
       }
 
       // 2. Get attachments to delete
@@ -6412,7 +6582,7 @@ internet businesses.`;
         setSelectedWhatsappChat(null);
       }
 
-      toast.success(`${phone} marked as spam`);
+      toast.success(`${isGroup ? selectedWhatsappChat.chat_name || 'Group' : phone} marked as spam`);
     } catch (error) {
       console.error('Error marking WhatsApp as spam:', error);
       toast.error('Failed to mark as spam');
@@ -6720,6 +6890,7 @@ internet businesses.`;
     { id: 'calendar', label: 'Calendar', icon: FaCalendar, count: filterCalendarEvents(calendarEvents, 'needReview').length, hasUnread: hasInboxCalendar },
     { id: 'deals', label: 'Deals', icon: FaDollarSign, count: filterDealsByStatus(pipelineDeals, 'open').length, hasUnread: false },
     { id: 'keepintouch', label: 'Keep in Touch', icon: FaUserCheck, count: filterKeepInTouchByStatus(keepInTouchContacts, 'due').length, hasUnread: filterKeepInTouchByStatus(keepInTouchContacts, 'due').length > 0 },
+    { id: 'introductions', label: 'Introductions', icon: FaHandshake, count: filterIntroductionsBySection(introductionsList, 'inbox').length, hasUnread: filterIntroductionsBySection(introductionsList, 'inbox').length > 0 },
   ];
 
   return (
@@ -7785,6 +7956,210 @@ internet businesses.`;
           {!listCollapsed && activeTab === 'keepintouch' && keepInTouchContacts.length > 0 && (
             <PendingCount theme={theme}>
               {filterKeepInTouchByStatus(keepInTouchContacts, 'due').length} due, {filterKeepInTouchByStatus(keepInTouchContacts, 'dueSoon').length} due soon
+            </PendingCount>
+          )}
+
+          {/* Introductions List */}
+          {!listCollapsed && activeTab === 'introductions' && (
+            <EmailList>
+              {introductionsLoading ? (
+                <EmptyState theme={theme}>Loading...</EmptyState>
+              ) : introductionsList.length === 0 ? (
+                <EmptyState theme={theme}>
+                  <FaHandshake size={40} style={{ marginBottom: '16px', opacity: 0.5 }} />
+                  <span>No introductions yet</span>
+                </EmptyState>
+              ) : (
+                <>
+                  {/* Inbox Section - Requested & Promised */}
+                  <div
+                    onClick={() => setIntroductionsSections(prev => ({ ...prev, inbox: !prev.inbox }))}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      backgroundColor: theme === 'dark' ? '#7f1d1d' : '#fef2f2',
+                      borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`,
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 1,
+                      color: theme === 'dark' ? '#fca5a5' : '#b91c1c'
+                    }}
+                  >
+                    <FaChevronDown style={{ transform: introductionsSections.inbox ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', fontSize: '10px' }} />
+                    <span>Inbox</span>
+                    <span style={{ marginLeft: 'auto', opacity: 0.8, fontSize: '12px' }}>
+                      {filterIntroductionsBySection(introductionsList, 'inbox').length}
+                    </span>
+                  </div>
+                  {introductionsSections.inbox && filterIntroductionsBySection(introductionsList, 'inbox').map(intro => {
+                    const introducees = intro.contacts?.filter(c => c.role === 'introducee') || [];
+                    const person1 = introducees[0]?.name || 'Unknown';
+                    const person2 = introducees[1]?.name || 'Unknown';
+                    return (
+                      <EmailItem
+                        key={intro.introduction_id}
+                        theme={theme}
+                        $selected={selectedIntroductionItem?.introduction_id === intro.introduction_id}
+                        onClick={() => setSelectedIntroductionItem(intro)}
+                      >
+                        <EmailSender theme={theme}>
+                          <FaHandshake style={{ color: '#F59E0B', marginRight: '6px' }} size={12} />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {person1} ↔ {person2}
+                          </span>
+                        </EmailSender>
+                        <EmailSubject theme={theme}>
+                          <span style={{
+                            padding: '2px 6px',
+                            borderRadius: '10px',
+                            fontSize: '10px',
+                            fontWeight: 500,
+                            background: '#FEE2E2',
+                            color: '#DC2626'
+                          }}>
+                            {intro.status}
+                          </span>
+                        </EmailSubject>
+                        <EmailSnippet theme={theme}>
+                          {intro.introduction_tool} • {intro.created_at ? new Date(intro.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : ''}
+                        </EmailSnippet>
+                      </EmailItem>
+                    );
+                  })}
+
+                  {/* Monitoring Section */}
+                  <div
+                    onClick={() => setIntroductionsSections(prev => ({ ...prev, monitoring: !prev.monitoring }))}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      backgroundColor: theme === 'dark' ? '#78350f' : '#fffbeb',
+                      borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`,
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 1,
+                      color: theme === 'dark' ? '#fcd34d' : '#b45309'
+                    }}
+                  >
+                    <FaChevronDown style={{ transform: introductionsSections.monitoring ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', fontSize: '10px' }} />
+                    <span>Monitoring</span>
+                    <span style={{ marginLeft: 'auto', opacity: 0.8, fontSize: '12px' }}>
+                      {filterIntroductionsBySection(introductionsList, 'monitoring').length}
+                    </span>
+                  </div>
+                  {introductionsSections.monitoring && filterIntroductionsBySection(introductionsList, 'monitoring').map(intro => {
+                    const introducees = intro.contacts?.filter(c => c.role === 'introducee') || [];
+                    const person1 = introducees[0]?.name || 'Unknown';
+                    const person2 = introducees[1]?.name || 'Unknown';
+                    return (
+                      <EmailItem
+                        key={intro.introduction_id}
+                        theme={theme}
+                        $selected={selectedIntroductionItem?.introduction_id === intro.introduction_id}
+                        onClick={() => setSelectedIntroductionItem(intro)}
+                      >
+                        <EmailSender theme={theme}>
+                          <FaHandshake style={{ color: '#F59E0B', marginRight: '6px' }} size={12} />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {person1} ↔ {person2}
+                          </span>
+                        </EmailSender>
+                        <EmailSubject theme={theme}>
+                          <span style={{
+                            padding: '2px 6px',
+                            borderRadius: '10px',
+                            fontSize: '10px',
+                            fontWeight: 500,
+                            background: '#FEF3C7',
+                            color: '#92400E'
+                          }}>
+                            {intro.status}
+                          </span>
+                        </EmailSubject>
+                        <EmailSnippet theme={theme}>
+                          {intro.introduction_tool} • {intro.created_at ? new Date(intro.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : ''}
+                        </EmailSnippet>
+                      </EmailItem>
+                    );
+                  })}
+
+                  {/* Closed Section */}
+                  <div
+                    onClick={() => setIntroductionsSections(prev => ({ ...prev, closed: !prev.closed }))}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      backgroundColor: theme === 'dark' ? '#1f2937' : '#f3f4f6',
+                      borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`,
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 1
+                    }}
+                  >
+                    <FaChevronDown style={{ transform: introductionsSections.closed ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', fontSize: '10px' }} />
+                    <span>Closed</span>
+                    <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: '12px' }}>
+                      {filterIntroductionsBySection(introductionsList, 'closed').length}
+                    </span>
+                  </div>
+                  {introductionsSections.closed && filterIntroductionsBySection(introductionsList, 'closed').map(intro => {
+                    const introducees = intro.contacts?.filter(c => c.role === 'introducee') || [];
+                    const person1 = introducees[0]?.name || 'Unknown';
+                    const person2 = introducees[1]?.name || 'Unknown';
+                    return (
+                      <EmailItem
+                        key={intro.introduction_id}
+                        theme={theme}
+                        $selected={selectedIntroductionItem?.introduction_id === intro.introduction_id}
+                        onClick={() => setSelectedIntroductionItem(intro)}
+                      >
+                        <EmailSender theme={theme}>
+                          <FaHandshake style={{ color: '#F59E0B', marginRight: '6px' }} size={12} />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {person1} ↔ {person2}
+                          </span>
+                        </EmailSender>
+                        <EmailSubject theme={theme}>
+                          <span style={{
+                            padding: '2px 6px',
+                            borderRadius: '10px',
+                            fontSize: '10px',
+                            fontWeight: 500,
+                            background: intro.status === 'Done & Dust' ? '#D1FAE5' : '#7F1D1D',
+                            color: intro.status === 'Done & Dust' ? '#065F46' : '#FCA5A5'
+                          }}>
+                            {intro.status}
+                          </span>
+                        </EmailSubject>
+                        <EmailSnippet theme={theme}>
+                          {intro.introduction_tool} • {intro.created_at ? new Date(intro.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : ''}
+                        </EmailSnippet>
+                      </EmailItem>
+                    );
+                  })}
+                </>
+              )}
+            </EmailList>
+          )}
+
+          {!listCollapsed && activeTab === 'introductions' && introductionsList.length > 0 && (
+            <PendingCount theme={theme}>
+              {filterIntroductionsBySection(introductionsList, 'inbox').length} pending, {filterIntroductionsBySection(introductionsList, 'monitoring').length} monitoring
             </PendingCount>
           )}
         </EmailListPanel>
@@ -10243,6 +10618,343 @@ internet businesses.`;
             ) : (
               <EmptyState theme={theme}>Select a contact to view details</EmptyState>
             )
+          ) : activeTab === 'introductions' ? (
+            selectedIntroductionItem ? (
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                {/* Introduction Header */}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '12px 24px',
+                  minHeight: '70px',
+                  borderBottom: `1px solid ${theme === 'light' ? '#E5E7EB' : '#374151'}`
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: '50%',
+                      background: '#FEF3C7',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      <FaHandshake size={24} style={{ color: '#F59E0B' }} />
+                    </div>
+                    <div>
+                      <EmailSubjectFull theme={theme} style={{ margin: 0 }}>
+                        {(() => {
+                          const introducees = selectedIntroductionItem.contacts?.filter(c => c.role === 'introducee') || [];
+                          return `${introducees[0]?.name || 'Unknown'} ↔ ${introducees[1]?.name || 'Unknown'}`;
+                        })()}
+                      </EmailSubjectFull>
+                      <div style={{ fontSize: '13px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginTop: '4px' }}>
+                        {selectedIntroductionItem.category} • {selectedIntroductionItem.introduction_date ? new Date(selectedIntroductionItem.introduction_date).toLocaleDateString() : 'No date'}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      if (window.confirm('Are you sure you want to delete this introduction?')) {
+                        await supabase.from('introduction_contacts').delete().eq('introduction_id', selectedIntroductionItem.introduction_id);
+                        await supabase.from('introductions').delete().eq('introduction_id', selectedIntroductionItem.introduction_id);
+                        setIntroductionsList(prev => prev.filter(i => i.introduction_id !== selectedIntroductionItem.introduction_id));
+                        setSelectedIntroductionItem(null);
+                      }
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 12px',
+                      background: theme === 'dark' ? '#7F1D1D' : '#FEE2E2',
+                      color: theme === 'dark' ? '#FCA5A5' : '#DC2626',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      fontWeight: 500
+                    }}
+                  >
+                    <FaTrash size={12} /> Delete
+                  </button>
+                </div>
+
+                {/* Introduction Details - Editable */}
+                <div style={{ flex: 1, overflow: 'auto', padding: '24px' }}>
+                  {/* Status */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '6px', textTransform: 'uppercase' }}>
+                      Status
+                    </label>
+                    <select
+                      value={selectedIntroductionItem.status || ''}
+                      onChange={async (e) => {
+                        const newStatus = e.target.value;
+                        await supabase.from('introductions').update({ status: newStatus }).eq('introduction_id', selectedIntroductionItem.introduction_id);
+                        setSelectedIntroductionItem(prev => ({ ...prev, status: newStatus }));
+                        setIntroductionsList(prev => prev.map(i => i.introduction_id === selectedIntroductionItem.introduction_id ? { ...i, status: newStatus } : i));
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        background: theme === 'light' ? '#fff' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px'
+                      }}
+                    >
+                      <option value="Requested">Requested</option>
+                      <option value="Promised">Promised</option>
+                      <option value="Done & Dust">Done & Dust</option>
+                      <option value="Done, but need to monitor">Done, but need to monitor</option>
+                      <option value="Aborted">Aborted</option>
+                    </select>
+                  </div>
+
+                  {/* Tool & Category Row */}
+                  <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '6px', textTransform: 'uppercase' }}>
+                        Tool
+                      </label>
+                      <select
+                        value={selectedIntroductionItem.introduction_tool || ''}
+                        onChange={async (e) => {
+                          const newTool = e.target.value;
+                          await supabase.from('introductions').update({ introduction_tool: newTool }).eq('introduction_id', selectedIntroductionItem.introduction_id);
+                          setSelectedIntroductionItem(prev => ({ ...prev, introduction_tool: newTool }));
+                          setIntroductionsList(prev => prev.map(i => i.introduction_id === selectedIntroductionItem.introduction_id ? { ...i, introduction_tool: newTool } : i));
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                          background: theme === 'light' ? '#fff' : '#1F2937',
+                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                          fontSize: '14px'
+                        }}
+                      >
+                        <option value="email">Email</option>
+                        <option value="whatsapp">WhatsApp</option>
+                        <option value="in person">In Person</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '6px', textTransform: 'uppercase' }}>
+                        Category
+                      </label>
+                      <select
+                        value={selectedIntroductionItem.category || ''}
+                        onChange={async (e) => {
+                          const newCategory = e.target.value;
+                          await supabase.from('introductions').update({ category: newCategory }).eq('introduction_id', selectedIntroductionItem.introduction_id);
+                          setSelectedIntroductionItem(prev => ({ ...prev, category: newCategory }));
+                          setIntroductionsList(prev => prev.map(i => i.introduction_id === selectedIntroductionItem.introduction_id ? { ...i, category: newCategory } : i));
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                          background: theme === 'light' ? '#fff' : '#1F2937',
+                          color: theme === 'light' ? '#111827' : '#F9FAFB',
+                          fontSize: '14px'
+                        }}
+                      >
+                        <option value="Karma Points">Karma Points</option>
+                        <option value="Dealflow">Dealflow</option>
+                        <option value="Portfolio Company">Portfolio Company</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Date */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '6px', textTransform: 'uppercase' }}>
+                      Date
+                    </label>
+                    <input
+                      type="date"
+                      value={selectedIntroductionItem.introduction_date || ''}
+                      onChange={async (e) => {
+                        const newDate = e.target.value;
+                        await supabase.from('introductions').update({ introduction_date: newDate }).eq('introduction_id', selectedIntroductionItem.introduction_id);
+                        setSelectedIntroductionItem(prev => ({ ...prev, introduction_date: newDate }));
+                        setIntroductionsList(prev => prev.map(i => i.introduction_id === selectedIntroductionItem.introduction_id ? { ...i, introduction_date: newDate } : i));
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        background: theme === 'light' ? '#fff' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px'
+                      }}
+                    />
+                  </div>
+
+                  {/* Notes */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '6px', textTransform: 'uppercase' }}>
+                      Notes
+                    </label>
+                    <textarea
+                      value={selectedIntroductionItem.text || ''}
+                      onChange={(e) => setSelectedIntroductionItem(prev => ({ ...prev, text: e.target.value }))}
+                      onBlur={async (e) => {
+                        await supabase.from('introductions').update({ text: e.target.value }).eq('introduction_id', selectedIntroductionItem.introduction_id);
+                        setIntroductionsList(prev => prev.map(i => i.introduction_id === selectedIntroductionItem.introduction_id ? { ...i, text: e.target.value } : i));
+                      }}
+                      placeholder="Add notes about this introduction..."
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        border: `1px solid ${theme === 'light' ? '#D1D5DB' : '#4B5563'}`,
+                        background: theme === 'light' ? '#fff' : '#1F2937',
+                        color: theme === 'light' ? '#111827' : '#F9FAFB',
+                        fontSize: '14px',
+                        minHeight: '100px',
+                        resize: 'vertical'
+                      }}
+                    />
+                  </div>
+
+                  {/* Contacts Involved */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '12px', textTransform: 'uppercase' }}>
+                      People Involved
+                    </label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {selectedIntroductionItem.contacts?.map(contact => {
+                        const companies = introContactCompanies[contact.contact_id] || [];
+                        const tags = introContactTags[contact.contact_id] || [];
+                        return (
+                          <div
+                            key={contact.contact_id}
+                            style={{
+                              padding: '12px',
+                              borderRadius: '8px',
+                              background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                              border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
+                            }}
+                          >
+                            {/* Header row with avatar, name, role */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: contact.description || companies.length > 0 || tags.length > 0 ? '10px' : '0' }}>
+                              {contact.profile_image_url ? (
+                                <img
+                                  src={contact.profile_image_url}
+                                  alt=""
+                                  style={{
+                                    width: 36,
+                                    height: 36,
+                                    borderRadius: '50%',
+                                    objectFit: 'cover',
+                                    flexShrink: 0
+                                  }}
+                                />
+                              ) : (
+                                <div style={{
+                                  width: 36,
+                                  height: 36,
+                                  borderRadius: '50%',
+                                  background: theme === 'light' ? '#E5E7EB' : '#374151',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '12px',
+                                  fontWeight: 600,
+                                  flexShrink: 0
+                                }}>
+                                  {contact.name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || '?'}
+                                </div>
+                              )}
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: 500, fontSize: '14px' }}>{contact.name}</div>
+                                <div style={{ fontSize: '12px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }}>
+                                  {contact.role}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Description */}
+                            {contact.description && (
+                              <div style={{
+                                fontSize: '12px',
+                                color: theme === 'dark' ? '#D1D5DB' : '#4B5563',
+                                marginBottom: companies.length > 0 || tags.length > 0 ? '10px' : '0',
+                                lineHeight: '1.4',
+                                paddingLeft: '48px'
+                              }}>
+                                {contact.description}
+                              </div>
+                            )}
+
+                            {/* Companies */}
+                            {companies.length > 0 && (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: tags.length > 0 ? '8px' : '0', paddingLeft: '48px' }}>
+                                {companies.map(company => (
+                                  <span
+                                    key={company.company_id}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      padding: '3px 8px',
+                                      borderRadius: '4px',
+                                      fontSize: '11px',
+                                      fontWeight: 500,
+                                      background: theme === 'dark' ? '#1E3A5F' : '#DBEAFE',
+                                      color: theme === 'dark' ? '#93C5FD' : '#1E40AF'
+                                    }}
+                                  >
+                                    <FaBuilding size={9} />
+                                    {company.name}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Tags */}
+                            {tags.length > 0 && (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', paddingLeft: '48px' }}>
+                                {tags.map(tag => (
+                                  <span
+                                    key={tag.tag_id}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      padding: '3px 8px',
+                                      borderRadius: '4px',
+                                      fontSize: '11px',
+                                      fontWeight: 500,
+                                      background: theme === 'dark' ? '#374151' : '#F3F4F6',
+                                      color: theme === 'dark' ? '#D1D5DB' : '#4B5563'
+                                    }}
+                                  >
+                                    <FaTag size={9} />
+                                    {tag.name}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <EmptyState theme={theme}>Select an introduction to view details</EmptyState>
+            )
           ) : selectedThread && selectedThread.length > 0 ? (
             <>
               {/* Thread subject */}
@@ -10804,7 +11516,17 @@ internet businesses.`;
                 </ActionTabIcon>
               </>
             )}
-            {!rightPanelCollapsed && activeTab !== 'keepintouch' && (
+            {!rightPanelCollapsed && activeTab === 'introductions' && selectedIntroductionItem && (
+              <>
+                <ActionTabIcon theme={theme} $active={introductionsActionTab === 'email'} onClick={() => setIntroductionsActionTab('email')} title="Email" style={introductionsActionTab === 'email' ? { background: '#3B82F6', color: 'white' } : {}}>
+                  <FaEnvelope />
+                </ActionTabIcon>
+                <ActionTabIcon theme={theme} $active={introductionsActionTab === 'whatsapp'} onClick={() => setIntroductionsActionTab('whatsapp')} title="WhatsApp" style={introductionsActionTab === 'whatsapp' ? { background: '#22C55E', color: 'white' } : {}}>
+                  <FaWhatsapp />
+                </ActionTabIcon>
+              </>
+            )}
+            {!rightPanelCollapsed && activeTab !== 'keepintouch' && activeTab !== 'introductions' && (
               <>
                 {activeTab !== 'calendar' && (
                   <ActionTabIcon theme={theme} $active={activeActionTab === 'chat'} onClick={() => setActiveActionTab('chat')} title="Chat with Claude">
@@ -11813,6 +12535,165 @@ internet businesses.`;
             />
           )}
 
+          {/* Introductions - Email Panel */}
+          {!rightPanelCollapsed && activeTab === 'introductions' && selectedIntroductionItem && introductionsActionTab === 'email' && (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '12px' }}>
+              {/* To Field - Selectable chips grouped by contact */}
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '8px', fontWeight: 600 }}>To (click to select/deselect)</label>
+                {introContactEmails.length === 0 ? (
+                  <div style={{
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                    background: theme === 'dark' ? '#374151' : '#F9FAFB',
+                    color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
+                    fontSize: '13px',
+                    fontStyle: 'italic'
+                  }}>
+                    No email addresses found
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {/* Group emails by contact */}
+                    {[...new Set(introContactEmails.map(e => e.contactName))].map(contactName => (
+                      <div key={contactName}>
+                        <div style={{ fontSize: '10px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', marginBottom: '4px', fontWeight: 500 }}>
+                          {contactName}
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          {introContactEmails.filter(e => e.contactName === contactName).map((e, idx) => {
+                            const isSelected = selectedIntroEmails.includes(e.email);
+                            return (
+                              <button
+                                key={idx}
+                                onClick={() => {
+                                  if (isSelected) {
+                                    setSelectedIntroEmails(prev => prev.filter(email => email !== e.email));
+                                  } else {
+                                    setSelectedIntroEmails(prev => [...prev, e.email]);
+                                  }
+                                }}
+                                style={{
+                                  padding: '6px 12px',
+                                  borderRadius: '16px',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  fontSize: '12px',
+                                  fontWeight: 500,
+                                  background: isSelected ? '#3B82F6' : theme === 'light' ? '#E5E7EB' : '#374151',
+                                  color: isSelected ? '#FFFFFF' : theme === 'light' ? '#374151' : '#D1D5DB',
+                                  transition: 'all 0.15s ease'
+                                }}
+                              >
+                                {e.email}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Email Component - pass selected emails */}
+              {selectedIntroEmails.length > 0 && (
+                <SendEmailTab
+                  theme={theme}
+                  contact={{}}
+                  emails={selectedIntroEmails.map(email => ({ email }))}
+                  onEmailSent={() => {
+                    toast.success('Email sent!');
+                  }}
+                  hideToField={true}
+                  multipleRecipients={selectedIntroEmails}
+                  defaultSubject={(() => {
+                    const contacts = selectedIntroductionItem?.contacts || [];
+                    const names = contacts.map(c => c.name || `${c.first_name || ''} ${c.last_name || ''}`.trim()).filter(n => n);
+                    return names.length >= 2 ? `${names[0]} <> ${names[1]}` : names[0] || '';
+                  })()}
+                  introductionMode={true}
+                  introContacts={(selectedIntroductionItem?.contacts || []).map(c => ({
+                    firstName: c.first_name || '',
+                    fullName: c.name || `${c.first_name || ''} ${c.last_name || ''}`.trim()
+                  }))}
+                  introNotes={selectedIntroductionItem?.text || ''}
+                  introductionId={selectedIntroductionItem?.introduction_id}
+                  onIntroductionStatusUpdate={(introId, newStatus) => {
+                    // Update local state
+                    setSelectedIntroductionItem(prev => prev ? { ...prev, status: newStatus } : prev);
+                    setIntroductionsList(prev => prev.map(i =>
+                      i.introduction_id === introId ? { ...i, status: newStatus } : i
+                    ));
+                    toast.success(`Introduction marked as "${newStatus}"`);
+                  }}
+                />
+              )}
+              {selectedIntroEmails.length === 0 && introContactEmails.length > 0 && (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme === 'light' ? '#9CA3AF' : '#6B7280', fontSize: '13px' }}>
+                  Select at least one email address
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Introductions - WhatsApp Panel */}
+          {!rightPanelCollapsed && activeTab === 'introductions' && selectedIntroductionItem && introductionsActionTab === 'whatsapp' && (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '12px' }}>
+              {/* To Field - Dropdown with all mobiles */}
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', display: 'block', marginBottom: '4px', fontWeight: 600 }}>To</label>
+                {introContactMobiles.length === 0 ? (
+                  <div style={{
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                    background: theme === 'dark' ? '#374151' : '#F9FAFB',
+                    color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
+                    fontSize: '13px',
+                    fontStyle: 'italic'
+                  }}>
+                    No phone numbers found
+                  </div>
+                ) : (
+                  <select
+                    value={selectedIntroMobile}
+                    onChange={(e) => setSelectedIntroMobile(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                      background: theme === 'dark' ? '#374151' : '#FFFFFF',
+                      color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                      fontSize: '13px',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {introContactMobiles.map((m, idx) => (
+                      <option key={idx} value={m.mobile}>
+                        {m.contactName} - {m.mobile}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              {/* WhatsApp Component */}
+              {introContactMobiles.length > 0 && (
+                <WhatsAppChatTab
+                  theme={theme}
+                  contact={introContactMobiles.find(m => m.mobile === selectedIntroMobile) || {}}
+                  mobiles={[selectedIntroMobile]}
+                  onMessageSent={() => {
+                    toast.success('Message sent!');
+                  }}
+                  hidePhoneSelector={true}
+                />
+              )}
+            </div>
+          )}
+
           {/* Keep in Touch - Chat with Claude */}
           {!rightPanelCollapsed && activeTab === 'keepintouch' && selectedKeepInTouchContact && activeActionTab === 'kitChat' && (
             <ChatTab
@@ -11878,7 +12759,7 @@ internet businesses.`;
             />
           )}
 
-          {!rightPanelCollapsed && activeTab !== 'keepintouch' && ((selectedThread && selectedThread.length > 0) || selectedWhatsappChat || selectedCalendarEvent || selectedPipelineDeal) && (
+          {!rightPanelCollapsed && activeTab !== 'keepintouch' && activeTab !== 'introductions' && ((selectedThread && selectedThread.length > 0) || selectedWhatsappChat || selectedCalendarEvent || selectedPipelineDeal) && (
             <>
               {activeActionTab === 'chat' && (
                 <ChatTab
@@ -12553,11 +13434,24 @@ internet businesses.`;
                           setIntroduceeSearchQuery(query);
                           if (query.length >= 2) {
                             setSearchingIntroducee(true);
-                            const { data } = await supabase
+                            const parts = query.trim().split(/\s+/).filter(p => p.length > 0);
+                            let supabaseQuery = supabase
                               .from('contacts')
-                              .select('contact_id, first_name, last_name')
-                              .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%`)
-                              .limit(8);
+                              .select('contact_id, first_name, last_name');
+
+                            if (parts.length >= 2) {
+                              // Multi-word search: match first + last name in either order
+                              const [first, ...rest] = parts;
+                              const last = rest.join(' ');
+                              supabaseQuery = supabaseQuery.or(
+                                `and(first_name.ilike.%${first}%,last_name.ilike.%${last}%),and(first_name.ilike.%${last}%,last_name.ilike.%${first}%)`
+                              );
+                            } else {
+                              // Single word: search in either field
+                              supabaseQuery = supabaseQuery.or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%`);
+                            }
+
+                            const { data } = await supabaseQuery.limit(8);
                             setIntroduceeSearchResults(data || []);
                             setSearchingIntroducee(false);
                           } else {
@@ -12675,11 +13569,24 @@ internet businesses.`;
                         setIntroducee2SearchQuery(query);
                         if (query.length >= 2) {
                           setSearchingIntroducee2(true);
-                          const { data } = await supabase
+                          const parts = query.trim().split(/\s+/).filter(p => p.length > 0);
+                          let supabaseQuery = supabase
                             .from('contacts')
-                            .select('contact_id, first_name, last_name')
-                            .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%`)
-                            .limit(8);
+                            .select('contact_id, first_name, last_name');
+
+                          if (parts.length >= 2) {
+                            // Multi-word search: match first + last name in either order
+                            const [first, ...rest] = parts;
+                            const last = rest.join(' ');
+                            supabaseQuery = supabaseQuery.or(
+                              `and(first_name.ilike.%${first}%,last_name.ilike.%${last}%),and(first_name.ilike.%${last}%,last_name.ilike.%${first}%)`
+                            );
+                          } else {
+                            // Single word: search in either field
+                            supabaseQuery = supabaseQuery.or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%`);
+                          }
+
+                          const { data } = await supabaseQuery.limit(8);
                           setIntroducee2SearchResults(data || []);
                           setSearchingIntroducee2(false);
                         } else {

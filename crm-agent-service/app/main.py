@@ -1398,12 +1398,22 @@ async def whatsapp_webhook(request: Request):
         first_name = name_parts[0] if name_parts else None
         last_name = name_parts[1] if len(name_parts) > 1 else None
 
-        # Check spam
-        if contact_phone:
-            spam_record = await db.is_whatsapp_spam(contact_phone)
+        # Check spam - for groups check chat_id, for 1-to-1 check phone number
+        is_group = chat.get('is_group', False)
+        chat_id_str = str(chat.get('chat_id')) if chat.get('chat_id') else None
+
+        if is_group and chat_id_str:
+            # For groups: check by chat_id
+            spam_record = await db.is_whatsapp_spam(chat_id=chat_id_str)
             if spam_record:
-                # Increment spam counter
-                await db.increment_whatsapp_spam_counter(contact_phone)
+                await db.increment_whatsapp_spam_counter(chat_id=chat_id_str)
+                logger.info("whatsapp_spam_blocked_group", chat_id=chat_id_str)
+                return {"success": True, "skipped": "spam group"}
+        elif contact_phone:
+            # For 1-to-1: check by phone number
+            spam_record = await db.is_whatsapp_spam(phone_number=contact_phone)
+            if spam_record:
+                await db.increment_whatsapp_spam_counter(phone_number=contact_phone)
                 logger.info("whatsapp_spam_blocked", phone=contact_phone)
                 return {"success": True, "skipped": "spam number"}
 
