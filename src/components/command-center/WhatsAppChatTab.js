@@ -217,19 +217,7 @@ ${input.trim()}`
         throw new Error(data.error || 'Failed to send message');
       }
 
-      // Update last_interaction_at
-      const now = new Date();
-      const { error: updateError } = await supabase
-        .from('contacts')
-        .update({
-          last_interaction_at: now.toISOString(),
-          last_whatsapp_sent: now.toISOString().split('T')[0] // date only
-        })
-        .eq('contact_id', contact.contact_id);
-
-      if (updateError) {
-        console.error('Failed to update last_interaction_at:', updateError);
-      }
+      // Note: last_interaction_at is updated when user presses "Done" in handleWhatsAppDone
 
       // Add optimistic message
       const newMessage = {

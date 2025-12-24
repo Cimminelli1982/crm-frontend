@@ -85,7 +85,7 @@ import {
   SendButton,
   CancelButton
 } from './CommandCenterPage.styles';
-import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaCheckDouble, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt, FaUpload, FaFileAlt, FaLinkedin, FaSearch, FaRocket, FaGlobe, FaMapMarkerAlt, FaUsers, FaVideo } from 'react-icons/fa';
+import { FaEnvelope, FaWhatsapp, FaCalendar, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaCheckDouble, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt, FaUpload, FaFileAlt, FaLinkedin, FaSearch, FaRocket, FaGlobe, FaMapMarkerAlt, FaUsers, FaVideo, FaLink } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import QuickEditModal from '../components/QuickEditModalRefactored';
@@ -460,6 +460,14 @@ const CommandCenterPage = ({ theme }) => {
   const [selectedIntroEmails, setSelectedIntroEmails] = useState([]); // Array of selected emails
   const [selectedIntroMobile, setSelectedIntroMobile] = useState('');
   const [creatingIntroGroup, setCreatingIntroGroup] = useState(false); // WhatsApp group creation in progress
+  const [linkChatModalOpen, setLinkChatModalOpen] = useState(false); // Modal to link existing chat
+  const [availableChatsToLink, setAvailableChatsToLink] = useState([]); // Group chats available to link
+  const [linkingChat, setLinkingChat] = useState(false); // Linking in progress
+  const [linkEmailModalOpen, setLinkEmailModalOpen] = useState(false); // Modal to link existing email thread
+  const [availableEmailThreadsToLink, setAvailableEmailThreadsToLink] = useState([]); // Email threads available to link
+  const [introEmailThread, setIntroEmailThread] = useState(null); // Linked email thread data
+  const [introEmailMessages, setIntroEmailMessages] = useState([]); // Emails from the linked thread
+  const [introEmailLoading, setIntroEmailLoading] = useState(false);
   const [introGroupMessages, setIntroGroupMessages] = useState([]); // Messages from the intro WhatsApp group
   const [introGroupLoading, setIntroGroupLoading] = useState(false);
   const [introGroupInput, setIntroGroupInput] = useState('');
@@ -2092,6 +2100,48 @@ internet businesses.`;
 
     fetchAllIntroContactDetails();
   }, [selectedIntroductionItem]);
+
+  // Fetch linked email thread messages when introduction has email_thread_id
+  useEffect(() => {
+    const fetchIntroEmailThread = async () => {
+      if (!selectedIntroductionItem?.email_thread_id) {
+        setIntroEmailThread(null);
+        setIntroEmailMessages([]);
+        return;
+      }
+
+      setIntroEmailLoading(true);
+      try {
+        // Fetch thread info
+        const { data: threadData, error: threadError } = await supabase
+          .from('email_threads')
+          .select('email_thread_id, subject, last_message_timestamp')
+          .eq('email_thread_id', selectedIntroductionItem.email_thread_id)
+          .maybeSingle();
+
+        if (threadError) throw threadError;
+        setIntroEmailThread(threadData);
+
+        // Fetch emails in this thread with sender info
+        const { data: emailsData, error: emailsError } = await supabase
+          .from('emails')
+          .select('email_id, subject, body_plain, body_html, direction, message_timestamp, sender:contacts!fk_emails_sender_contact(first_name, last_name)')
+          .eq('email_thread_id', selectedIntroductionItem.email_thread_id)
+          .order('message_timestamp', { ascending: true });
+
+        if (emailsError) throw emailsError;
+        setIntroEmailMessages(emailsData || []);
+      } catch (err) {
+        console.error('Error fetching intro email thread:', err);
+        setIntroEmailThread(null);
+        setIntroEmailMessages([]);
+      } finally {
+        setIntroEmailLoading(false);
+      }
+    };
+
+    fetchIntroEmailThread();
+  }, [selectedIntroductionItem?.email_thread_id]);
 
   // Fetch WhatsApp group messages when introduction has a group JID
   useEffect(() => {
@@ -5075,6 +5125,169 @@ internet businesses.`;
       toast.error(error.message || 'Failed to create WhatsApp group');
     } finally {
       setCreatingIntroGroup(false);
+    }
+  };
+
+  // Open modal to link existing chat to introduction
+  const handleOpenLinkChatModal = async () => {
+    try {
+      // Fetch available group chats that aren't already linked to this introduction
+      const { data: groupChats, error } = await supabase
+        .from('chats')
+        .select('id, chat_name, external_chat_id, baileys_jid')
+        .eq('is_group_chat', true)
+        .order('chat_name');
+
+      if (error) {
+        console.error('Error fetching group chats:', error);
+        toast.error('Failed to load available chats');
+        return;
+      }
+
+      setAvailableChatsToLink(groupChats || []);
+      setLinkChatModalOpen(true);
+    } catch (err) {
+      console.error('Error:', err);
+      toast.error('Failed to load chats');
+    }
+  };
+
+  // Link selected chat to introduction
+  const handleLinkChatToIntro = async (chat) => {
+    if (!selectedIntroductionItem || !chat) return;
+
+    setLinkingChat(true);
+    try {
+      // Update introduction with chat_id and group info
+      const { error } = await supabase
+        .from('introductions')
+        .update({
+          chat_id: chat.id,
+          whatsapp_group_jid: chat.baileys_jid || null,
+          whatsapp_group_name: chat.chat_name,
+        })
+        .eq('introduction_id', selectedIntroductionItem.introduction_id);
+
+      if (error) {
+        throw error;
+      }
+
+      // Update local state
+      const updatedIntro = {
+        ...selectedIntroductionItem,
+        chat_id: chat.id,
+        whatsapp_group_jid: chat.baileys_jid || null,
+        whatsapp_group_name: chat.chat_name,
+      };
+      setIntroductionsList(prev => prev.map(intro =>
+        intro.introduction_id === selectedIntroductionItem.introduction_id
+          ? updatedIntro
+          : intro
+      ));
+      setSelectedIntroductionItem(updatedIntro);
+
+      toast.success(`Linked to "${chat.chat_name}"`);
+      setLinkChatModalOpen(false);
+    } catch (error) {
+      console.error('Error linking chat:', error);
+      toast.error('Failed to link chat');
+    } finally {
+      setLinkingChat(false);
+    }
+  };
+
+  // Open modal to link existing email thread to introduction
+  const handleOpenLinkEmailModal = async () => {
+    if (!selectedIntroductionItem) return;
+
+    try {
+      // Get contact IDs from the introduction
+      const contactIds = selectedIntroductionItem.contacts?.map(c => c.contact_id) || [];
+
+      if (contactIds.length === 0) {
+        toast.error('No contacts in this introduction');
+        return;
+      }
+
+      // Fetch email threads where these contacts are participants
+      const { data: participantData, error: partError } = await supabase
+        .from('email_participants')
+        .select('email_id, contact_id')
+        .in('contact_id', contactIds);
+
+      if (partError) throw partError;
+
+      if (!participantData || participantData.length === 0) {
+        toast.error('No email threads found for these contacts');
+        return;
+      }
+
+      // Get unique email IDs
+      const emailIds = [...new Set(participantData.map(p => p.email_id))];
+
+      // Fetch emails to get thread IDs
+      const { data: emailsData, error: emailsError } = await supabase
+        .from('emails')
+        .select('email_id, email_thread_id')
+        .in('email_id', emailIds);
+
+      if (emailsError) throw emailsError;
+
+      // Get unique thread IDs
+      const threadIds = [...new Set(emailsData?.map(e => e.email_thread_id).filter(Boolean) || [])];
+
+      if (threadIds.length === 0) {
+        toast.error('No email threads found');
+        return;
+      }
+
+      // Fetch thread details
+      const { data: threads, error: threadsError } = await supabase
+        .from('email_threads')
+        .select('email_thread_id, subject, last_message_timestamp')
+        .in('email_thread_id', threadIds)
+        .order('last_message_timestamp', { ascending: false });
+
+      if (threadsError) throw threadsError;
+
+      setAvailableEmailThreadsToLink(threads || []);
+      setLinkEmailModalOpen(true);
+    } catch (err) {
+      console.error('Error fetching email threads:', err);
+      toast.error('Failed to load email threads');
+    }
+  };
+
+  // Link selected email thread to introduction
+  const handleLinkEmailToIntro = async (thread) => {
+    if (!selectedIntroductionItem || !thread) return;
+
+    try {
+      const { error } = await supabase
+        .from('introductions')
+        .update({ email_thread_id: thread.email_thread_id })
+        .eq('introduction_id', selectedIntroductionItem.introduction_id);
+
+      if (error) throw error;
+
+      // Update local state
+      const updatedIntro = {
+        ...selectedIntroductionItem,
+        email_thread_id: thread.email_thread_id,
+        email_thread: thread,
+      };
+      setIntroductionsList(prev => prev.map(intro =>
+        intro.introduction_id === selectedIntroductionItem.introduction_id
+          ? updatedIntro
+          : intro
+      ));
+      setSelectedIntroductionItem(updatedIntro);
+
+      toast.success(`Linked to "${thread.subject || 'Email thread'}"`);
+      setLinkEmailModalOpen(false);
+    } catch (error) {
+      console.error('Error linking email thread:', error);
+      toast.error('Failed to link email thread');
     }
   };
 
@@ -11243,6 +11456,62 @@ internet businesses.`;
                       })}
                     </div>
                   </div>
+
+                  {/* Linked Email Thread */}
+                  {selectedIntroductionItem?.email_thread_id && (
+                    <div style={{ marginTop: '24px' }}>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '12px', textTransform: 'uppercase' }}>
+                        Linked Email Thread
+                      </label>
+                      {introEmailLoading ? (
+                        <div style={{ textAlign: 'center', padding: '20px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }}>
+                          Loading...
+                        </div>
+                      ) : introEmailMessages.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '20px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', fontSize: '13px' }}>
+                          No emails found in this thread
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          {introEmailMessages.map((email, idx) => (
+                            <div
+                              key={email.email_id || idx}
+                              style={{
+                                padding: '12px',
+                                borderRadius: '8px',
+                                background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                                border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`
+                              }}
+                            >
+                              {/* Email header */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                                <FaEnvelope size={12} style={{ color: email.direction === 'sent' ? '#10B981' : '#3B82F6' }} />
+                                <span style={{ fontWeight: 500, fontSize: '13px', color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
+                                  {email.sender ? `${email.sender.first_name || ''} ${email.sender.last_name || ''}`.trim() : (email.direction === 'sent' ? 'Me' : 'Unknown')}
+                                </span>
+                                <span style={{ fontSize: '11px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', marginLeft: 'auto' }}>
+                                  {email.message_timestamp ? new Date(email.message_timestamp).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
+                                </span>
+                              </div>
+                              {/* Email body */}
+                              <div
+                                style={{
+                                  fontSize: '13px',
+                                  color: theme === 'dark' ? '#D1D5DB' : '#4B5563',
+                                  lineHeight: '1.5',
+                                  whiteSpace: 'pre-wrap',
+                                  maxHeight: '200px',
+                                  overflow: 'auto'
+                                }}
+                              >
+                                {email.body_plain || (email.body_html ? email.body_html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500) : '(No content)')}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -12889,6 +13158,76 @@ internet businesses.`;
                   </div>
                 )}
               </div>
+
+              {/* Link to existing email thread button */}
+              <button
+                onClick={handleOpenLinkEmailModal}
+                style={{
+                  width: '100%',
+                  padding: '10px 16px',
+                  marginBottom: '12px',
+                  borderRadius: '8px',
+                  border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                  background: 'transparent',
+                  color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                }}
+              >
+                <FaLink size={12} />
+                Link to Existing Email Thread
+              </button>
+
+              {/* Show linked email thread if exists */}
+              {selectedIntroductionItem?.email_thread_id && (
+                <div style={{
+                  padding: '10px 12px',
+                  marginBottom: '12px',
+                  borderRadius: '8px',
+                  background: theme === 'dark' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.05)',
+                  border: `1px solid ${theme === 'dark' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(59, 130, 246, 0.2)'}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}>
+                  <FaEnvelope size={14} style={{ color: '#3B82F6' }} />
+                  <span style={{
+                    flex: 1,
+                    fontSize: '12px',
+                    color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {selectedIntroductionItem.email_thread?.subject || 'Email thread linked'}
+                  </span>
+                  <button
+                    onClick={async () => {
+                      // Unlink email thread
+                      await supabase.from('introductions').update({ email_thread_id: null }).eq('introduction_id', selectedIntroductionItem.introduction_id);
+                      const updated = { ...selectedIntroductionItem, email_thread_id: null, email_thread: null };
+                      setSelectedIntroductionItem(updated);
+                      setIntroductionsList(prev => prev.map(i => i.introduction_id === updated.introduction_id ? updated : i));
+                      toast.success('Email thread unlinked');
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                      padding: '4px',
+                    }}
+                  >
+                    <FaTimes size={12} />
+                  </button>
+                </div>
+              )}
+
               {/* Email Component - pass selected emails */}
               {selectedIntroEmails.length > 0 && (
                 <SendEmailTab
@@ -13154,6 +13493,30 @@ internet businesses.`;
                       </div>
                     )}
                   </div>
+
+                  {/* Link to existing chat button */}
+                  <button
+                    onClick={handleOpenLinkChatModal}
+                    style={{
+                      width: '100%',
+                      padding: '10px 16px',
+                      marginBottom: '16px',
+                      borderRadius: '8px',
+                      border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                      background: 'transparent',
+                      color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                    }}
+                  >
+                    <FaLink size={12} />
+                    Link to Existing Chat
+                  </button>
 
                   {/* Empty state when no group can be created */}
                   {introContactMobiles.length < 2 && (
@@ -15116,6 +15479,270 @@ internet businesses.`;
         onLink={handleLinkSuccess}
         onCreateNew={handleCreateNewFromLinkModal}
       />
+
+      {/* Link Chat to Introduction Modal */}
+      {linkChatModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000,
+        }}>
+          <div style={{
+            backgroundColor: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+            borderRadius: '12px',
+            padding: '24px',
+            width: '400px',
+            maxHeight: '500px',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '16px',
+            }}>
+              <h3 style={{
+                margin: 0,
+                fontSize: '16px',
+                fontWeight: 600,
+                color: theme === 'dark' ? '#F9FAFB' : '#111827',
+              }}>
+                Link to Existing Chat
+              </h3>
+              <button
+                onClick={() => setLinkChatModalOpen(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                  padding: '4px',
+                }}
+              >
+                <FaTimes size={16} />
+              </button>
+            </div>
+
+            <div style={{
+              flex: 1,
+              overflowY: 'auto',
+              marginBottom: '16px',
+            }}>
+              {availableChatsToLink.length === 0 ? (
+                <div style={{
+                  textAlign: 'center',
+                  padding: '32px 16px',
+                  color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                }}>
+                  <FaWhatsapp size={32} style={{ marginBottom: '12px', opacity: 0.5 }} />
+                  <div>No group chats available</div>
+                </div>
+              ) : (
+                availableChatsToLink.map(chat => (
+                  <button
+                    key={chat.id}
+                    onClick={() => handleLinkChatToIntro(chat)}
+                    disabled={linkingChat}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      marginBottom: '8px',
+                      borderRadius: '8px',
+                      border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                      backgroundColor: theme === 'dark' ? '#374151' : '#F9FAFB',
+                      color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                      cursor: linkingChat ? 'not-allowed' : 'pointer',
+                      opacity: linkingChat ? 0.6 : 1,
+                      textAlign: 'left',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                    }}
+                  >
+                    <FaWhatsapp size={18} style={{ color: '#25D366', flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        fontWeight: 500,
+                        fontSize: '14px',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {chat.chat_name}
+                      </div>
+                      {chat.external_chat_id && (
+                        <div style={{
+                          fontSize: '11px',
+                          color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                          marginTop: '2px',
+                        }}>
+                          TimelinesAI linked
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+
+            <button
+              onClick={() => setLinkChatModalOpen(false)}
+              style={{
+                width: '100%',
+                padding: '10px 16px',
+                borderRadius: '8px',
+                border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                backgroundColor: 'transparent',
+                color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                cursor: 'pointer',
+                fontWeight: 500,
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Link Email Thread to Introduction Modal */}
+      {linkEmailModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000,
+        }}>
+          <div style={{
+            backgroundColor: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+            borderRadius: '12px',
+            padding: '24px',
+            width: '500px',
+            maxHeight: '500px',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '16px',
+            }}>
+              <h3 style={{
+                margin: 0,
+                fontSize: '16px',
+                fontWeight: 600,
+                color: theme === 'dark' ? '#F9FAFB' : '#111827',
+              }}>
+                Link to Email Thread
+              </h3>
+              <button
+                onClick={() => setLinkEmailModalOpen(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                  padding: '4px',
+                }}
+              >
+                <FaTimes size={16} />
+              </button>
+            </div>
+
+            <div style={{
+              flex: 1,
+              overflowY: 'auto',
+              marginBottom: '16px',
+            }}>
+              {availableEmailThreadsToLink.length === 0 ? (
+                <div style={{
+                  textAlign: 'center',
+                  padding: '32px 16px',
+                  color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                }}>
+                  <FaEnvelope size={32} style={{ marginBottom: '12px', opacity: 0.5 }} />
+                  <div>No email threads found</div>
+                </div>
+              ) : (
+                availableEmailThreadsToLink.map(thread => (
+                  <button
+                    key={thread.email_thread_id}
+                    onClick={() => handleLinkEmailToIntro(thread)}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      marginBottom: '8px',
+                      borderRadius: '8px',
+                      border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                      backgroundColor: theme === 'dark' ? '#374151' : '#F9FAFB',
+                      color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                    }}
+                  >
+                    <FaEnvelope size={16} style={{ color: '#3B82F6', flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        fontWeight: 500,
+                        fontSize: '13px',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {thread.subject || '(No subject)'}
+                      </div>
+                      {thread.last_message_timestamp && (
+                        <div style={{
+                          fontSize: '11px',
+                          color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                          marginTop: '2px',
+                        }}>
+                          {new Date(thread.last_message_timestamp).toLocaleDateString()}
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+
+            <button
+              onClick={() => setLinkEmailModalOpen(false)}
+              style={{
+                width: '100%',
+                padding: '10px 16px',
+                borderRadius: '8px',
+                border: `1px solid ${theme === 'dark' ? '#4B5563' : '#D1D5DB'}`,
+                backgroundColor: 'transparent',
+                color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                cursor: 'pointer',
+                fontWeight: 500,
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Create Deal AI Modal */}
       <CreateDealAI
