@@ -991,7 +991,7 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
     }
   };
 
-  // Send message handler - uses Baileys (Node.js) with fallback to TimelinesAI (Python)
+  // Send message handler - uses Baileys only (Node.js)
   const handleSendMessage = async () => {
     const hasText = replyText.trim().length > 0;
     const hasFile = !!selectedFile;
@@ -1004,63 +1004,57 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
 
     try {
       // Check Baileys connection status first
-      let useBaileys = false;
-      try {
-        const statusRes = await fetch(`${BAILEYS_API}/whatsapp/status`);
-        const statusData = await statusRes.json();
-        useBaileys = statusData.status === 'connected';
-      } catch (e) {
-        console.log('[WhatsApp] Baileys not available, using TimelinesAI');
+      const statusRes = await fetch(`${BAILEYS_API}/whatsapp/status`);
+      const statusData = await statusRes.json();
+
+      if (statusData.status !== 'connected') {
+        throw new Error('WhatsApp not connected. Please scan QR code first.');
       }
 
-      if (useBaileys) {
-        // === BAILEYS PATH (free) ===
-        console.log('[WhatsApp] Sending via Baileys...');
+      // For groups: lookup the real JID first
+      let targetJid = null;
+      if (selectedChat.is_group_chat) {
+        console.log('[WhatsApp] Group chat - looking up JID for:', selectedChat.chat_name);
 
-        if (fileToSend) {
-          // Send media via Baileys
-          setUploading(true);
-          try {
-            const reader = new FileReader();
-            const fileData = await new Promise((resolve, reject) => {
-              reader.onload = () => resolve(reader.result.split(',')[1]); // base64
-              reader.onerror = reject;
-              reader.readAsDataURL(fileToSend);
-            });
+        const findGroupRes = await fetch(
+          `${BAILEYS_API}/whatsapp/find-group?name=${encodeURIComponent(selectedChat.chat_name)}`
+        );
+        const findGroupData = await findGroupRes.json();
 
-            const payload = {
-              phone: selectedChat.is_group_chat ? undefined : selectedChat.contact_number,
-              chat_id: selectedChat.is_group_chat ? selectedChat.chat_jid || selectedChat.chat_id : undefined,
-              caption: messageToSend || '',
-              file: {
-                data: fileData,
-                mimetype: fileToSend.type,
-                filename: fileToSend.name
-              }
-            };
+        if (!findGroupRes.ok || !findGroupData.success) {
+          throw new Error(`Group not found: ${selectedChat.chat_name}. Try syncing groups first.`);
+        }
 
-            const response = await fetch(`${BAILEYS_API}/whatsapp/send-media`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
-            });
+        targetJid = findGroupData.jid;
+        console.log('[WhatsApp] Found group JID:', targetJid);
+      }
 
-            const data = await response.json();
-            if (!response.ok || !data.success) {
-              throw new Error(data.error || 'Failed to send media');
-            }
-          } finally {
-            setUploading(false);
-          }
-        } else {
-          // Send text via Baileys
+      // === BAILEYS ONLY ===
+      console.log('[WhatsApp] Sending via Baileys...');
+
+      if (fileToSend) {
+        // Send media via Baileys
+        setUploading(true);
+        try {
+          const reader = new FileReader();
+          const fileData = await new Promise((resolve, reject) => {
+            reader.onload = () => resolve(reader.result.split(',')[1]); // base64
+            reader.onerror = reject;
+            reader.readAsDataURL(fileToSend);
+          });
+
           const payload = {
             phone: selectedChat.is_group_chat ? undefined : selectedChat.contact_number,
-            chat_id: selectedChat.is_group_chat ? selectedChat.chat_jid || selectedChat.chat_id : undefined,
-            message: messageToSend
+            chat_id: selectedChat.is_group_chat ? targetJid : undefined,
+            caption: messageToSend || '',
+            file: {
+              data: fileData,
+              mimetype: fileToSend.type,
+              filename: fileToSend.name
+            }
           };
 
-          const response = await fetch(`${BAILEYS_API}/whatsapp/send`, {
+          const response = await fetch(`${BAILEYS_API}/whatsapp/send-media`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -1068,62 +1062,28 @@ Return ONLY the improved text, nothing else. No explanations, no quotes, no mark
 
           const data = await response.json();
           if (!response.ok || !data.success) {
-            throw new Error(data.error || 'Failed to send message');
+            throw new Error(data.error || 'Failed to send media');
           }
+        } finally {
+          setUploading(false);
         }
       } else {
-        // === TIMELINESAI PATH (fallback - paid) ===
-        console.log('[WhatsApp] Sending via TimelinesAI (fallback)...');
+        // Send text via Baileys
+        const payload = {
+          phone: selectedChat.is_group_chat ? undefined : selectedChat.contact_number,
+          chat_id: selectedChat.is_group_chat ? targetJid : undefined,
+          message: messageToSend
+        };
 
-        let fileUid = null;
-
-        // Upload file first if we have one
-        if (fileToSend) {
-          setUploading(true);
-          try {
-            const formData = new FormData();
-            formData.append('file', fileToSend);
-
-            const uploadResponse = await fetch(`${CRM_AGENT_API}/whatsapp-upload-file`, {
-              method: 'POST',
-              body: formData
-            });
-
-            const uploadData = await uploadResponse.json();
-
-            if (!uploadResponse.ok || !uploadData.success) {
-              throw new Error(uploadData.detail || uploadData.error || 'Failed to upload file');
-            }
-
-            fileUid = uploadData.file_uid;
-          } finally {
-            setUploading(false);
-          }
-        }
-
-        // Send message with optional file_uid
-        const payload = selectedChat.is_group_chat
-          ? { chat_id: selectedChat.chat_id }
-          : { phone: selectedChat.contact_number };
-
-        if (messageToSend) {
-          payload.message = messageToSend;
-        }
-
-        if (fileUid) {
-          payload.file_uid = fileUid;
-        }
-
-        const response = await fetch(`${CRM_AGENT_API}/whatsapp-send`, {
+        const response = await fetch(`${BAILEYS_API}/whatsapp/send`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
 
         const data = await response.json();
-
         if (!response.ok || !data.success) {
-          throw new Error(data.detail || data.error || 'Failed to send message');
+          throw new Error(data.error || 'Failed to send message');
         }
       }
 

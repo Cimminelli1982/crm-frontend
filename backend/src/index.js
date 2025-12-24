@@ -25,6 +25,8 @@ import {
   sendMessage as baileysSendMessage,
   sendMessageToChat,
   sendMedia,
+  fetchAllGroups,
+  findGroupByName,
 } from './baileys.js';
 
 // Initialize Anthropic client
@@ -2277,6 +2279,125 @@ app.post('/whatsapp/send-media', async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('[WhatsApp] Send media error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Sync WhatsApp groups - fetch from Baileys and update chats table with baileys_jid
+app.post('/whatsapp/sync-groups', async (req, res) => {
+  try {
+    console.log('[WhatsApp] Syncing groups...');
+
+    // Fetch all groups from Baileys
+    const baileysGroups = await fetchAllGroups();
+
+    if (!baileysGroups || baileysGroups.length === 0) {
+      return res.json({ success: true, synced: 0, message: 'No groups found in Baileys' });
+    }
+
+    // Get all group chats from Supabase
+    const { data: dbChats, error: fetchError } = await supabase
+      .from('chats')
+      .select('id, chat_name, baileys_jid')
+      .eq('is_group_chat', true);
+
+    if (fetchError) {
+      throw new Error(`Failed to fetch chats: ${fetchError.message}`);
+    }
+
+    let syncedCount = 0;
+    const results = [];
+
+    // Match by name and update baileys_jid
+    for (const dbChat of (dbChats || [])) {
+      const chatName = dbChat.chat_name?.toLowerCase().trim();
+      if (!chatName) continue;
+
+      // Find matching Baileys group
+      const match = baileysGroups.find(g => {
+        const baileysName = g.name?.toLowerCase().trim();
+        return baileysName === chatName ||
+               baileysName?.includes(chatName) ||
+               chatName?.includes(baileysName);
+      });
+
+      if (match && match.jid !== dbChat.baileys_jid) {
+        // Update baileys_jid
+        const { error: updateError } = await supabase
+          .from('chats')
+          .update({ baileys_jid: match.jid })
+          .eq('id', dbChat.id);
+
+        if (!updateError) {
+          syncedCount++;
+          results.push({ chat_name: dbChat.chat_name, baileys_jid: match.jid });
+          console.log(`[WhatsApp] Synced: ${dbChat.chat_name} -> ${match.jid}`);
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      synced: syncedCount,
+      total_baileys_groups: baileysGroups.length,
+      total_db_groups: dbChats?.length || 0,
+      results
+    });
+  } catch (error) {
+    console.error('[WhatsApp] Sync groups error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Find group JID by name (for on-demand lookup)
+app.get('/whatsapp/find-group', async (req, res) => {
+  try {
+    const { name } = req.query;
+
+    if (!name) {
+      return res.status(400).json({ success: false, error: 'Group name required' });
+    }
+
+    // First check if we have it in DB
+    const { data: dbChat } = await supabase
+      .from('chats')
+      .select('id, chat_name, baileys_jid')
+      .eq('is_group_chat', true)
+      .ilike('chat_name', `%${name}%`)
+      .not('baileys_jid', 'is', null)
+      .limit(1)
+      .single();
+
+    if (dbChat?.baileys_jid) {
+      return res.json({ success: true, source: 'db', jid: dbChat.baileys_jid, chat_name: dbChat.chat_name });
+    }
+
+    // If not in DB, search Baileys directly
+    const match = await findGroupByName(name);
+
+    if (match) {
+      // Save to DB for future use
+      const { data: chatToUpdate } = await supabase
+        .from('chats')
+        .select('id')
+        .eq('is_group_chat', true)
+        .ilike('chat_name', `%${name}%`)
+        .limit(1)
+        .single();
+
+      if (chatToUpdate) {
+        await supabase
+          .from('chats')
+          .update({ baileys_jid: match.jid })
+          .eq('id', chatToUpdate.id);
+      }
+
+      return res.json({ success: true, source: 'baileys', jid: match.jid, chat_name: match.name });
+    }
+
+    res.status(404).json({ success: false, error: 'Group not found' });
+  } catch (error) {
+    console.error('[WhatsApp] Find group error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

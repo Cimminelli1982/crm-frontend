@@ -150,20 +150,16 @@ ${companies}
   }, [selectedPipelineDeal]);
 
   // Build Keep in Touch contact context for Claude - FULL CONTEXT
+  // keepInTouchContact now comes from contacts table (keepInTouchContactDetails)
   const buildKeepInTouchContext = useCallback(() => {
-    console.log('[KIT Chat] FULL CONTACT OBJECT:', JSON.stringify(keepInTouchContact, null, 2));
-    console.log('[KIT Chat] Full context:', keepInTouchFullContext);
     if (!keepInTouchContact) return '';
 
     const fullName = `${keepInTouchContact.first_name || ''} ${keepInTouchContact.last_name || ''}`.trim() || 'Unknown';
     const jobRole = keepInTouchContact.job_role || '';
-    const linkedin = keepInTouchContact.linkedin_url || '';
-    const keepInTouchFrequency = keepInTouchContact.keep_in_touch_frequency || 'Not Set';
-    const lastInteraction = keepInTouchContact.last_interaction_at
-      ? new Date(keepInTouchContact.last_interaction_at).toLocaleDateString()
-      : 'Never';
-    const bio = keepInTouchContact.bio || '';
+    const linkedin = keepInTouchContact.linkedin || '';
     const description = keepInTouchContact.description || '';
+    const category = keepInTouchContact.category || '';
+    const birthday = keepInTouchContact.birthday || '';
 
     // Format emails
     const emailsList = keepInTouchEmails.length > 0
@@ -223,14 +219,11 @@ Contact ID: ${keepInTouchContact.contact_id}
 
 BASIC INFO:
 • Job Role: ${jobRole || 'Not set'}
+• Category: ${category || 'Not set'}
 • LinkedIn: ${linkedin || 'Not set'}
+• Birthday: ${birthday || 'Not set'}
 • Tags: ${tagsList}
 • Cities: ${citiesList}
-
-KEEP IN TOUCH STATUS:
-• Frequency: ${keepInTouchFrequency}
-• Last Interaction: ${lastInteraction}
-• Days Until Next: ${keepInTouchContact.days_until_next || 'N/A'}
 
 CONTACT DETAILS:
 Emails:
@@ -243,7 +236,6 @@ COMPANIES:
 ${companiesList}
 
 ${description ? `PERSONAL NOTES/DESCRIPTION:\n${description}\n` : ''}
-${bio ? `BIO:\n${bio}\n` : ''}
 
 LINKED DEALS:
 ${dealsList}

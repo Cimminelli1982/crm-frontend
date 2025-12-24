@@ -302,6 +302,52 @@ export async function isRegistered(phone) {
   };
 }
 
+/**
+ * Fetch all groups the user is participating in
+ * Returns array of { jid, name }
+ */
+export async function fetchAllGroups() {
+  if (!sock || connectionStatus !== 'connected') {
+    throw new Error('WhatsApp not connected');
+  }
+
+  console.log('[Baileys] Fetching all groups...');
+
+  const groups = await sock.groupFetchAllParticipating();
+
+  const result = Object.entries(groups).map(([jid, metadata]) => ({
+    jid,
+    name: metadata.subject,
+    participantsCount: metadata.participants?.length || 0,
+  }));
+
+  console.log(`[Baileys] Found ${result.length} groups`);
+
+  return result;
+}
+
+/**
+ * Find group JID by name (case-insensitive partial match)
+ */
+export async function findGroupByName(groupName) {
+  if (!sock || connectionStatus !== 'connected') {
+    throw new Error('WhatsApp not connected');
+  }
+
+  const groups = await fetchAllGroups();
+  const searchName = groupName.toLowerCase().trim();
+
+  // Try exact match first
+  let match = groups.find(g => g.name.toLowerCase().trim() === searchName);
+
+  // If no exact match, try partial match
+  if (!match) {
+    match = groups.find(g => g.name.toLowerCase().includes(searchName) || searchName.includes(g.name.toLowerCase()));
+  }
+
+  return match || null;
+}
+
 // Export socket for advanced usage
 export function getSocket() {
   return sock;

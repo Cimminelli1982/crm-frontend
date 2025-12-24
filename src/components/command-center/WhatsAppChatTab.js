@@ -10,6 +10,7 @@ const WhatsAppChatTab = ({
   contact,
   mobiles = [],
   onMessageSent,
+  hidePhoneSelector = false,
 }) => {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
