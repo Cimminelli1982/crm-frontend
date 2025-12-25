@@ -5,28 +5,41 @@ This document explains how data flows into the CRM system through three channels
 ## Architecture Overview
 
 ```
-                    EXTERNAL SOURCES
-                          │
-        ┌─────────────────┼─────────────────┐
-        │                 │                 │
-        ▼                 ▼                 ▼
-   ┌─────────┐      ┌───────────┐     ┌──────────┐
-   │ Fastmail│      │TimelinesAI│     │ Fastmail │
-   │  (JMAP) │      │ (Webhook) │     │ (CalDAV) │
-   └────┬────┘      └─────┬─────┘     └────┬─────┘
-        │                 │                 │
-        ▼                 ▼                 ▼
-   ┌─────────┐      ┌───────────┐     ┌──────────┐
-   │ Node.js │      │  Python   │     │  Node.js │
-   │ Backend │      │  Backend  │     │  Backend │
-   └────┬────┘      └─────┬─────┘     └────┬─────┘
-        │                 │                 │
-        │    SPAM FILTER  │                 │
-        ▼                 ▼                 ▼
-   ┌──────────────────────────────────────────────┐
-   │           command_center_inbox               │
-   │         (Unified Staging Table)              │
-   └──────────────────────────────────────────────┘
+                         EXTERNAL SOURCES
+                               │
+        ┌──────────────────────┼──────────────────────┐
+        │                      │                      │
+        ▼                      ▼                      ▼
+   ┌─────────┐           ┌───────────┐          ┌──────────────┐
+   │ Fastmail│           │TimelinesAI│          │Google Calendar│
+   │  (JMAP) │           │ (Webhook) │          │   (API v3)   │
+   └────┬────┘           └─────┬─────┘          └──────┬───────┘
+        │                      │                       │
+        │  ┌───────────────────┤                       │
+        │  │                   │                       │
+        ▼  ▼                   ▼                       ▼
+   ┌─────────┐           ┌───────────┐          ┌──────────────┐
+   │ Node.js │           │  Python   │          │   Node.js    │
+   │ Backend │           │  Backend  │          │   Backend    │
+   │         │           └─────┬─────┘          └──────┬───────┘
+   │  JMAP   │                 │                       │
+   │  Blob   │                 │                       │
+   │Download │                 │                       │
+   └────┬────┘                 │                       │
+        │                      │                       │
+        │    SPAM FILTER       │                       │
+        ▼                      ▼                       ▼
+   ┌───────────────────────────────────────────────────────────┐
+   │                  command_center_inbox                      │
+   │                (Unified Staging Table)                     │
+   └───────────────────────────────────────────────────────────┘
+
+   Special Flow: Email Invitation Import
+   ┌─────────────────────────────────────────────────────────┐
+   │  Email with .ics → "Add to Cal" button → JMAP download  │
+   │  → parseICS() → Google Calendar API → Living with       │
+   │  Intention calendar → command_center_inbox (calendar)   │
+   └─────────────────────────────────────────────────────────┘
 ```
 
 ## Summary Table
@@ -35,7 +48,8 @@ This document explains how data flows into the CRM system through three channels
 |---------|--------|--------|---------|-------------|-----------|
 | Email | Fastmail | PULL (60s poll) | `command-center-backend` (Node.js) | `emails_spam` + `domains_spam` | `fastmail_id` |
 | WhatsApp | TimelinesAI | PUSH (webhook) | `crm-agent-service` (Python) | `whatsapp_spam` | N/A (webhook = no dupes) |
-| Calendar | Fastmail CalDAV | PULL (60s poll) | `command-center-backend` (Node.js) | `calendar_dismissed` | `event_uid` + `etag` |
+| Calendar | Google Calendar | PULL (60s poll) | `command-center-backend` (Node.js) | N/A | `event_uid` + `etag` |
+| Calendar (Invite) | Email + ICS | Manual (user click) | `/calendar/import-invitation` | N/A | Creates new event |
 
 ---
 
@@ -244,22 +258,163 @@ TimelinesAI format → Supabase format:
 
 ## 3. Calendar Ingestion
 
-### Source
-- **Provider:** Fastmail
-- **Protocol:** CalDAV (with ctag/etag change detection)
-- **Handler:** `backend/src/index.js` + `backend/src/caldav.js`
-- **Calendar:** RockAndRoll (configurable in caldav.js)
+### Overview
 
-### Sync Method
+Calendar events come from **two sources** with different sync methods:
+
+| Source | Calendar | Method | Handler | Use Case |
+|--------|----------|--------|---------|----------|
+| Google Calendar | "Living with Intention" | PULL (60s poll) | `google-calendar.js` | Events you create/manage |
+| Email Invitations | Any (via .ics attachment) | Manual import | `/calendar/import-invitation` | Invitations received via email |
+
+**Why two sources?**
+- Google sends calendar invitations to "Agenda Management" (primary calendar) - this is not configurable
+- CRM syncs from "Living with Intention" (your preferred calendar)
+- Solution: Import button on invitation emails → creates event on "Living with Intention"
+
+### 3.1 Google Calendar Sync (Primary)
+
+#### Source
+- **Provider:** Google Calendar
+- **Protocol:** Google Calendar API v3
+- **Handler:** `backend/src/index.js` + `backend/src/google-calendar.js`
+- **Calendar:** "Living with Intention" (set via `GOOGLE_CALENDAR_ID`)
+
+#### Sync Method
 - **Type:** PULL (polling)
 - **Frequency:** Every 60 seconds
-- **Optimization:** ctag change detection (only syncs when calendar changes)
+- **Optimization:** syncToken for incremental sync
 
-### Flow
+#### Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  syncCalendar() runs every 60 seconds                           │
+│  syncGoogleCalendar() runs every 60 seconds                     │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  1. GET ACCESS TOKEN                                            │
+│     Refresh OAuth token if expired                              │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  2. FETCH events from Google Calendar API                       │
+│     Using: syncToken for incremental sync                       │
+│     Time range: 3 months back → 12 months forward               │
+│     Includes: conferenceData (Google Meet links)                │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  3. TRANSFORM to inbox format                                   │
+│     Extract: id, summary, description, start, end               │
+│     Extract: location, conferenceUrl (Meet/Zoom)                │
+│     Extract: organizer, attendees with responseStatus           │
+│     Skip: CANCELLED events                                      │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  4. UPSERT to command_center_inbox                              │
+│     Conflict key: event_uid                                     │
+│     Compare: etag to detect changes                             │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  5. SAVE syncToken for next incremental sync                    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 3.2 Email Invitation Import (Manual)
+
+#### Problem Solved
+- Calendar invitations via email land in "Agenda Management" (Google's default)
+- User wants events on "Living with Intention"
+- Invitations appear as emails with `.ics` attachments
+
+#### Source
+- **Provider:** Email with ICS attachment
+- **Protocol:** JMAP (blob download) + ICS parsing
+- **Handler:** `backend/src/index.js` → `/calendar/import-invitation`
+- **Trigger:** User clicks "Add to Cal" button on invitation emails
+
+#### Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  User clicks "Add to Cal" on invitation email                   │
+│  POST /calendar/import-invitation { inbox_id }                  │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  1. FETCH inbox record from command_center_inbox                │
+│     Get: attachments array with blobId                          │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  2. FIND ICS attachment                                         │
+│     Match: type="text/calendar" OR type="application/ics"       │
+│     OR name ends with ".ics"                                    │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  3. DOWNLOAD blob from Fastmail via JMAP                        │
+│     Using: blobId from attachment                               │
+│     Returns: ICS file content                                   │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  4. PARSE ICS with caldav.parseICS()                            │
+│     Extract: title, description, dtstart, dtend                 │
+│     Extract: location, conferenceUrl (Meet/Zoom)                │
+│     Extract: organizer (email, name)                            │
+│     Extract: attendees (email, name, PARTSTAT)                  │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  5. CREATE event on Google Calendar                             │
+│     Calendar: "Living with Intention"                           │
+│     sendUpdates: 'none' (don't notify attendees)                │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  6. UPSERT to command_center_inbox                              │
+│     type: 'calendar'                                            │
+│     Event appears in Calendar tab                               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### Detection in Frontend
+
+Invitation emails are detected by:
+1. Subject starts with `Invitation:` or `Updated invitation:`
+2. OR has attachment with `type="text/calendar"` or `name="*.ics"`
+
+When detected, a purple **"Add to Cal"** button appears in the email header.
+
+### 3.3 CalDAV Sync (Legacy/Fastmail)
+
+> **Note:** This is for Fastmail CalDAV sync. Currently the primary sync is Google Calendar (section 3.1).
+
+#### Source
+- **Provider:** Fastmail
+- **Protocol:** CalDAV (with ctag/etag change detection)
+- **Handler:** `backend/src/caldav.js`
+
+#### Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  syncCalendar() (if enabled)                                    │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -271,47 +426,24 @@ TimelinesAI format → Supabase format:
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  2. LOAD dismissed event_uids from calendar_dismissed           │
-│     These events won't be synced (user dismissed them)          │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  3. FETCH events via CalDAV REPORT                              │
+│  2. FETCH events via CalDAV REPORT                              │
 │     Time range: 3 months back → 12 months forward               │
 │     Returns: ICS data + etag per event                          │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  4. PARSE iCalendar (VEVENT section only)                       │
-│     Extract: uid, summary, description, dtstart, dtend/duration │
-│     Extract: location (strip LANGUAGE= prefix)                  │
+│  3. PARSE iCalendar with parseICS()                             │
+│     Extract: uid, summary, description, dtstart, dtend          │
+│     Extract: location, conferenceUrl                            │
 │     Extract: organizer, attendees (with PARTSTAT)               │
 │     Skip: CANCELLED events                                      │
-│     Skip: DISMISSED events (uid in calendar_dismissed)          │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  5. UPSERT to command_center_inbox                              │
-│     Compare: etag to detect changes                             │
-│     If etag unchanged: SKIP                                     │
-│     If new/changed: INSERT/UPDATE                               │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  6. DELETE removed FUTURE events                                │
-│     Compare: current CalDAV uids vs DB uids                     │
-│     Delete: future events no longer in CalDAV                   │
-│     Keep: past events (for history)                             │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  7. UPDATE sync_state                                           │
-│     Save: current ctag for next comparison                      │
+│  4. UPSERT to command_center_inbox                              │
+│     Conflict key: event_uid                                     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -462,8 +594,13 @@ SUPABASE_SERVICE_KEY=xxx
 |----------|------|
 | Email sync | `backend/src/index.js` (autoSync function) |
 | JMAP client | `backend/src/jmap.js` |
-| Calendar sync | `backend/src/index.js` (syncCalendar function) |
-| CalDAV client | `backend/src/caldav.js` |
+| JMAP blob download | `backend/src/jmap.js` (downloadBlob method) |
+| Google Calendar sync | `backend/src/index.js` (syncGoogleCalendar function) |
+| Google Calendar client | `backend/src/google-calendar.js` |
+| Calendar invite import | `backend/src/index.js` (`/calendar/import-invitation` endpoint) |
+| ICS parser | `backend/src/caldav.js` (parseICS method) |
+| CalDAV client (legacy) | `backend/src/caldav.js` |
 | Spam filter | `backend/src/supabase.js` |
 | WhatsApp webhook | `crm-agent-service/app/main.py` (whatsapp_webhook) |
 | Database ops | `crm-agent-service/app/database.py` |
+| Frontend "Add to Cal" | `src/pages/CommandCenterPage.js` (handleImportCalendarInvitation) |
