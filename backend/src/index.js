@@ -2213,6 +2213,152 @@ app.get('/calendar/status', async (req, res) => {
   }
 });
 
+// ==================== IMPORT CALENDAR INVITATION ====================
+
+// Import a calendar invitation from email to "Living with Intention" calendar
+// Parses the ICS attachment and creates the event on Google Calendar
+app.post('/calendar/import-invitation', async (req, res) => {
+  try {
+    const { inbox_id } = req.body;
+
+    if (!inbox_id) {
+      return res.status(400).json({ success: false, error: 'inbox_id is required' });
+    }
+
+    // Check Google Calendar credentials
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_REFRESH_TOKEN) {
+      return res.status(500).json({ success: false, error: 'Google Calendar credentials not configured' });
+    }
+
+    // Check JMAP credentials
+    if (!process.env.FASTMAIL_USERNAME || !process.env.FASTMAIL_API_TOKEN) {
+      return res.status(500).json({ success: false, error: 'Fastmail JMAP credentials not configured' });
+    }
+
+    // Fetch the inbox record
+    const { data: inboxRecord, error: fetchError } = await supabase
+      .from('command_center_inbox')
+      .select('id, subject, attachments, fastmail_id')
+      .eq('id', inbox_id)
+      .single();
+
+    if (fetchError || !inboxRecord) {
+      return res.status(404).json({ success: false, error: 'Inbox record not found' });
+    }
+
+    // Find the ICS attachment
+    const attachments = inboxRecord.attachments || [];
+    const icsAttachment = attachments.find(a =>
+      a.type === 'text/calendar' ||
+      a.type === 'application/ics' ||
+      (a.name && a.name.endsWith('.ics'))
+    );
+
+    if (!icsAttachment || !icsAttachment.blobId) {
+      return res.status(400).json({ success: false, error: 'No ICS attachment found in this email' });
+    }
+
+    console.log('[Calendar Import] Found ICS attachment:', icsAttachment.blobId);
+
+    // Initialize JMAP client and download the blob
+    const jmap = new JMAPClient(process.env.FASTMAIL_USERNAME, process.env.FASTMAIL_API_TOKEN);
+    await jmap.init();
+
+    const blobResult = await jmap.downloadBlob(
+      icsAttachment.blobId,
+      icsAttachment.name || 'invite.ics',
+      icsAttachment.type || 'text/calendar'
+    );
+
+    // Convert buffer to string
+    const icsContent = new TextDecoder().decode(blobResult.buffer);
+    console.log('[Calendar Import] Downloaded ICS, size:', icsContent.length);
+
+    // Parse ICS using CalDAV client's parseICS method
+    const caldavUsername = process.env.FASTMAIL_USERNAME;
+    const caldavPassword = process.env.FASTMAIL_CALDAV_PASSWORD || process.env.FASTMAIL_API_TOKEN;
+    const caldav = new CalDAVClient(caldavUsername, caldavPassword);
+
+    const parsedEvent = caldav.parseICS(icsContent);
+
+    if (!parsedEvent) {
+      return res.status(400).json({ success: false, error: 'Failed to parse ICS content' });
+    }
+
+    console.log('[Calendar Import] Parsed event:', parsedEvent.title, 'at', parsedEvent.startDate);
+    console.log('[Calendar Import] Attendees:', parsedEvent.attendees?.length || 0);
+    console.log('[Calendar Import] Conference URL:', parsedEvent.conferenceUrl);
+
+    // Create event on Google Calendar (Living with Intention)
+    const gcal = getGoogleCalendarClient();
+
+    // Build attendees list from parsed ICS
+    const gcalAttendees = (parsedEvent.attendees || []).map(att => ({
+      email: att.email,
+      name: att.name || '',
+    }));
+
+    // Determine location - prefer conference URL if no physical location
+    const eventLocation = parsedEvent.location || parsedEvent.conferenceUrl || '';
+
+    const result = await gcal.createEvent({
+      title: parsedEvent.title,
+      description: parsedEvent.description || '',
+      location: eventLocation,
+      startDate: parsedEvent.startDate,
+      endDate: parsedEvent.endDate,
+      allDay: parsedEvent.allDay || false,
+      attendees: gcalAttendees,
+      sendUpdates: 'none', // Don't send invites - we're just adding to our calendar
+      timezone: 'Europe/Rome',
+      useGoogleMeet: false, // The event may already have a conference URL
+    });
+
+    console.log('[Calendar Import] Event created on Google Calendar:', result.id);
+
+    // Add to command_center_inbox as type='calendar' so it appears in Calendar tab
+    const transformed = gcal.transformEventForInbox(result);
+    if (transformed) {
+      await supabase
+        .from('command_center_inbox')
+        .upsert({
+          type: 'calendar',
+          event_uid: transformed.event_uid,
+          subject: transformed.subject,
+          body_text: transformed.body_text,
+          date: transformed.date,
+          event_end: transformed.event_end,
+          event_location: transformed.event_location,
+          from_name: parsedEvent.organizerName || transformed.from_name,
+          from_email: parsedEvent.organizerEmail || transformed.from_email,
+          to_recipients: transformed.to_recipients,
+          etag: transformed.etag,
+          is_read: false,
+          created_at: new Date().toISOString(),
+        }, { onConflict: 'event_uid' });
+    }
+
+    res.json({
+      success: true,
+      event: {
+        id: result.id,
+        htmlLink: result.htmlLink,
+        title: parsedEvent.title,
+        startDate: parsedEvent.startDate,
+        endDate: parsedEvent.endDate,
+        location: eventLocation,
+        attendeesCount: gcalAttendees.length,
+        organizer: parsedEvent.organizerEmail,
+        conferenceUrl: parsedEvent.conferenceUrl,
+      },
+      message: 'Event imported to Living with Intention calendar',
+    });
+  } catch (error) {
+    console.error('[Calendar Import] Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ==================== GOOGLE CALENDAR API ====================
 
 // Create event in Google Calendar (with invites)

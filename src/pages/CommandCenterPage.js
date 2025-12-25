@@ -85,7 +85,7 @@ import {
   SendButton,
   CancelButton
 } from './CommandCenterPage.styles';
-import { FaEnvelope, FaWhatsapp, FaCalendar, FaCalendarPlus, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaCheckDouble, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt, FaUpload, FaFileAlt, FaLinkedin, FaSearch, FaRocket, FaGlobe, FaMapMarkerAlt, FaUsers, FaVideo, FaLink } from 'react-icons/fa';
+import { FaEnvelope, FaWhatsapp, FaCalendar, FaCalendarPlus, FaChevronLeft, FaChevronRight, FaChevronDown, FaUser, FaBuilding, FaDollarSign, FaStickyNote, FaTimes, FaPaperPlane, FaTrash, FaLightbulb, FaHandshake, FaTasks, FaSave, FaArchive, FaCrown, FaPaperclip, FaRobot, FaCheck, FaCheckCircle, FaCheckDouble, FaImage, FaEdit, FaPlus, FaExternalLinkAlt, FaDownload, FaCopy, FaDatabase, FaExclamationTriangle, FaUserSlash, FaClone, FaUserCheck, FaTag, FaClock, FaBolt, FaUpload, FaFileAlt, FaLinkedin, FaSearch, FaRocket, FaGlobe, FaMapMarkerAlt, FaUsers, FaVideo, FaLink, FaList } from 'react-icons/fa';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import QuickEditModal from '../components/QuickEditModalRefactored';
@@ -129,6 +129,8 @@ import DealsTab from '../components/command-center/DealsTab';
 import IntroductionsTab from '../components/command-center/IntroductionsTab';
 import TasksTab from '../components/command-center/TasksTab';
 import NotesTab from '../components/command-center/NotesTab';
+import NotesFullTab from '../components/command-center/NotesFullTab';
+import ListsTab from '../components/command-center/ListsTab';
 import ComposeEmailModal from '../components/command-center/ComposeEmailModal';
 import WhatsAppTab, { WhatsAppChatList } from '../components/command-center/WhatsAppTab';
 
@@ -7473,6 +7475,8 @@ internet businesses.`;
     { id: 'deals', label: 'Deals', icon: FaDollarSign, count: filterDealsByStatus(pipelineDeals, 'open').length, hasUnread: false },
     { id: 'keepintouch', label: 'Keep in Touch', icon: FaUserCheck, count: filterKeepInTouchByStatus(keepInTouchContacts, 'due').length, hasUnread: filterKeepInTouchByStatus(keepInTouchContacts, 'due').length > 0 },
     { id: 'introductions', label: 'Introductions', icon: FaHandshake, count: filterIntroductionsBySection(introductionsList, 'inbox').length, hasUnread: filterIntroductionsBySection(introductionsList, 'inbox').length > 0 },
+    { id: 'notes', label: 'Notes', icon: FaStickyNote, count: 0, hasUnread: false },
+    { id: 'lists', label: 'Lists', icon: FaList, count: 0, hasUnread: false },
   ];
 
   return (
@@ -7503,7 +7507,8 @@ internet businesses.`;
 
       {/* Main 3-panel layout */}
       <MainContent>
-        {/* Left: Email List */}
+        {/* Left: Email List - Hidden for Notes and Lists tabs */}
+        {activeTab !== 'notes' && activeTab !== 'lists' && (
         <EmailListPanel theme={theme} $collapsed={listCollapsed}>
           <ListHeader theme={theme}>
             {!listCollapsed && (
@@ -8745,6 +8750,7 @@ internet businesses.`;
             </PendingCount>
           )}
         </EmailListPanel>
+        )}
 
         {/* Center: Content Panel - Email or WhatsApp */}
         <EmailContentPanel theme={theme}>
@@ -11593,6 +11599,10 @@ internet businesses.`;
             ) : (
               <EmptyState theme={theme}>Select an introduction to view details</EmptyState>
             )
+          ) : activeTab === 'notes' ? (
+            <NotesFullTab theme={theme} />
+          ) : activeTab === 'lists' ? (
+            <ListsTab theme={theme} profileImageModal={profileImageModal} />
           ) : selectedThread && selectedThread.length > 0 ? (
             <>
               {/* Thread subject */}
@@ -11645,8 +11655,7 @@ internet businesses.`;
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        gap: '6px',
-                        padding: '0 12px',
+                        width: '36px',
                         height: '36px',
                         borderRadius: '8px',
                         border: 'none',
@@ -11654,24 +11663,21 @@ internet businesses.`;
                         color: 'white',
                         cursor: importingCalendar ? 'wait' : 'pointer',
                         transition: 'all 0.2s ease',
-                        fontWeight: 600,
-                        fontSize: '13px',
                         opacity: importingCalendar ? 0.7 : 1,
                       }}
                     >
                       {importingCalendar ? (
                         <span style={{
-                          width: '12px',
-                          height: '12px',
+                          width: '14px',
+                          height: '14px',
                           border: '2px solid currentColor',
                           borderTopColor: 'transparent',
                           borderRadius: '50%',
                           animation: 'spin 1s linear infinite'
                         }} />
                       ) : (
-                        <FaCalendarPlus size={12} />
+                        <FaCalendarPlus size={16} />
                       )}
-                      {importingCalendar ? 'Adding...' : 'Add to Cal'}
                     </button>
                   )}
 
@@ -12157,7 +12163,8 @@ internet businesses.`;
           )}
         </EmailContentPanel>
 
-        {/* Right: Actions Panel */}
+        {/* Right: Actions Panel - Hidden for Notes and Lists tabs */}
+        {activeTab !== 'notes' && activeTab !== 'lists' && (
         <ActionsPanel theme={theme} $collapsed={rightPanelCollapsed}>
           <ActionsPanelTabs theme={theme} style={{ justifyContent: rightPanelCollapsed ? 'center' : 'center' }}>
             <CollapseButton theme={theme} onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)} style={{ marginRight: rightPanelCollapsed ? 0 : '8px' }}>
@@ -13914,6 +13921,7 @@ internet businesses.`;
             </>
           )}
         </ActionsPanel>
+        )}
       </MainContent>
 
       {/* Compose Modal */}
