@@ -2,10 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   FaList, FaPlus, FaSearch, FaUsers, FaTrash, FaMagic,
   FaChevronRight, FaChevronDown, FaTimes, FaEnvelope,
-  FaRocket, FaCog, FaSync
+  FaRocket, FaCog, FaSync, FaUser, FaBuilding, FaWhatsapp,
+  FaRobot, FaDatabase, FaEdit, FaLinkedin, FaGlobe, FaTag
 } from 'react-icons/fa';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
+import WhatsAppChatTab from './WhatsAppChatTab';
+import SendEmailTab from './SendEmailTab';
 
 const ListsTab = ({ theme, profileImageModal }) => {
   // Lists state
@@ -18,6 +21,16 @@ const ListsTab = ({ theme, profileImageModal }) => {
   const [selectedList, setSelectedList] = useState(null);
   const [members, setMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
+
+  // Selected member state (for right panel)
+  const [selectedMember, setSelectedMember] = useState(null);
+  const [activeRightTab, setActiveRightTab] = useState('contact'); // contact, company, whatsapp, email, chat
+  const [memberDetails, setMemberDetails] = useState(null);
+  const [memberEmails, setMemberEmails] = useState([]);
+  const [memberMobiles, setMemberMobiles] = useState([]);
+  const [memberCompanies, setMemberCompanies] = useState([]);
+  const [memberTags, setMemberTags] = useState([]);
+  const [loadingMemberDetails, setLoadingMemberDetails] = useState(false);
 
   // Create list modal
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -146,6 +159,40 @@ const ListsTab = ({ theme, profileImageModal }) => {
     }
   }, []);
 
+  // Fetch member details for right panel
+  const fetchMemberDetails = useCallback(async (contactId) => {
+    if (!contactId) {
+      setMemberDetails(null);
+      setMemberEmails([]);
+      setMemberMobiles([]);
+      setMemberCompanies([]);
+      setMemberTags([]);
+      return;
+    }
+
+    setLoadingMemberDetails(true);
+    try {
+      // Fetch all data in parallel
+      const [contactRes, emailsRes, mobilesRes, companiesRes, tagsRes] = await Promise.all([
+        supabase.from('contacts').select('*').eq('contact_id', contactId).single(),
+        supabase.from('contact_emails').select('*').eq('contact_id', contactId).order('is_primary', { ascending: false }),
+        supabase.from('contact_mobiles').select('*').eq('contact_id', contactId).order('is_primary', { ascending: false }),
+        supabase.from('contact_companies').select('*, companies(*)').eq('contact_id', contactId),
+        supabase.from('contact_tags').select('*, tags(*)').eq('contact_id', contactId),
+      ]);
+
+      setMemberDetails(contactRes.data);
+      setMemberEmails(emailsRes.data || []);
+      setMemberMobiles(mobilesRes.data || []);
+      setMemberCompanies(companiesRes.data || []);
+      setMemberTags(tagsRes.data || []);
+    } catch (error) {
+      console.error('Error fetching member details:', error);
+    } finally {
+      setLoadingMemberDetails(false);
+    }
+  }, []);
+
   // Initial load
   useEffect(() => {
     fetchLists();
@@ -155,6 +202,7 @@ const ListsTab = ({ theme, profileImageModal }) => {
   useEffect(() => {
     if (selectedList) {
       fetchMembers(selectedList.list_id);
+      setSelectedMember(null); // Clear selected member when changing list
       // Fetch filters for dynamic lists
       if (selectedList.list_type === 'dynamic') {
         fetchFilters(selectedList.list_id);
@@ -163,6 +211,20 @@ const ListsTab = ({ theme, profileImageModal }) => {
       }
     }
   }, [selectedList, fetchMembers, fetchFilters]);
+
+  // Fetch member details when member is selected
+  useEffect(() => {
+    if (selectedMember?.contact_id) {
+      fetchMemberDetails(selectedMember.contact_id);
+      setActiveRightTab('contact'); // Reset to contact tab
+    } else {
+      setMemberDetails(null);
+      setMemberEmails([]);
+      setMemberMobiles([]);
+      setMemberCompanies([]);
+      setMemberTags([]);
+    }
+  }, [selectedMember, fetchMemberDetails]);
 
   // Filter lists by search
   const filteredLists = lists.filter(list =>
@@ -952,10 +1014,23 @@ const ListsTab = ({ theme, profileImageModal }) => {
                 </div>
               ) : (
                 members.map(member => (
-                  <div key={member.list_member_id} style={memberCardStyle}>
+                  <div
+                    key={member.list_member_id}
+                    style={{
+                      ...memberCardStyle,
+                      cursor: 'pointer',
+                      background: selectedMember?.list_member_id === member.list_member_id
+                        ? (theme === 'dark' ? '#374151' : '#EEF2FF')
+                        : 'transparent',
+                    }}
+                    onClick={() => setSelectedMember(member)}
+                  >
                     <div
                       style={{ cursor: member.contacts ? 'pointer' : 'default' }}
-                      onClick={() => member.contacts && profileImageModal?.openModal(member.contacts)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        member.contacts && profileImageModal?.openModal(member.contacts);
+                      }}
                       title={member.contacts ? 'Edit profile image' : ''}
                     >
                       {member.contacts?.profile_image_url ? (
@@ -1006,7 +1081,10 @@ const ListsTab = ({ theme, profileImageModal }) => {
                     {/* Remove button for manual members in static lists */}
                     {selectedList.list_type === 'static' && member.membership_type === 'manual' && (
                       <button
-                        onClick={() => handleRemoveMember(member.list_member_id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveMember(member.list_member_id);
+                        }}
                         style={{
                           padding: '6px',
                           borderRadius: '4px',
@@ -1044,7 +1122,7 @@ const ListsTab = ({ theme, profileImageModal }) => {
         )}
       </div>
 
-      {/* RIGHT PANEL - Action Center */}
+      {/* RIGHT PANEL - Member Details / Filters */}
       <div style={{
         ...panelStyle,
         width: '25%',
@@ -1052,21 +1130,371 @@ const ListsTab = ({ theme, profileImageModal }) => {
         borderRight: 'none',
         borderLeft: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
       }}>
-        <div style={headerStyle}>
-          <span style={{
-            fontWeight: 600,
-            color: theme === 'dark' ? '#F9FAFB' : '#111827',
+        {/* Header with tabs when member is selected */}
+        <div style={{
+          ...headerStyle,
+          flexDirection: 'column',
+          alignItems: 'stretch',
+          gap: '8px',
+        }}>
+          <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
+            justifyContent: 'space-between',
           }}>
-            <FaCog size={12} />
-            {selectedList?.list_type === 'dynamic' ? 'Filters' : 'Action Center'}
-          </span>
+            <span style={{
+              fontWeight: 600,
+              color: theme === 'dark' ? '#F9FAFB' : '#111827',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}>
+              {selectedMember ? (
+                <>
+                  <FaUser size={12} />
+                  {memberDetails?.first_name} {memberDetails?.last_name}
+                </>
+              ) : (
+                <>
+                  <FaCog size={12} />
+                  {selectedList?.list_type === 'dynamic' ? 'Filters' : 'Action Center'}
+                </>
+              )}
+            </span>
+            {selectedMember && (
+              <button
+                onClick={() => setSelectedMember(null)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+                  cursor: 'pointer',
+                  padding: '4px',
+                }}
+                title="Close"
+              >
+                <FaTimes size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* Tab icons when member is selected */}
+          {selectedMember && (
+            <div style={{
+              display: 'flex',
+              gap: '4px',
+              paddingTop: '4px',
+            }}>
+              {[
+                { id: 'contact', icon: FaUser, color: '#6366F1', title: 'Contact Details' },
+                { id: 'company', icon: FaBuilding, color: '#8B5CF6', title: 'Company Details' },
+                { id: 'whatsapp', icon: FaWhatsapp, color: '#22C55E', title: 'WhatsApp' },
+                { id: 'email', icon: FaEnvelope, color: '#3B82F6', title: 'Send Email' },
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveRightTab(tab.id)}
+                  title={tab.title}
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: activeRightTab === tab.id ? tab.color : (theme === 'dark' ? '#374151' : '#E5E7EB'),
+                    color: activeRightTab === tab.id ? 'white' : (theme === 'dark' ? '#9CA3AF' : '#6B7280'),
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <tab.icon size={14} />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Show filters for dynamic lists */}
-        {selectedList?.list_type === 'dynamic' ? (
+        {/* Content area */}
+        {selectedMember ? (
+          <>
+            {/* Contact Details Tab */}
+            {activeRightTab === 'contact' && (
+              <div style={{ flex: 1, overflow: 'auto', padding: '12px' }}>
+                {loadingMemberDetails ? (
+                  <div style={{ textAlign: 'center', padding: '20px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }}>
+                    Loading...
+                  </div>
+                ) : memberDetails ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {/* Category & Score */}
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <span style={{
+                        padding: '4px 10px',
+                        borderRadius: '12px',
+                        fontSize: '11px',
+                        background: theme === 'dark' ? '#374151' : '#F3F4F6',
+                        color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                      }}>
+                        {memberDetails.category || 'No category'}
+                      </span>
+                      {memberDetails.score && (
+                        <span style={{
+                          padding: '4px 10px',
+                          borderRadius: '12px',
+                          fontSize: '11px',
+                          background: theme === 'dark' ? '#7C3AED' : '#EDE9FE',
+                          color: theme === 'dark' ? '#F3E8FF' : '#6D28D9',
+                        }}>
+                          ⭐ {memberDetails.score}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Job Role */}
+                    {memberDetails.job_role && (
+                      <div>
+                        <div style={{ fontSize: '11px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '4px' }}>
+                          Role
+                        </div>
+                        <div style={{ fontSize: '13px', color: theme === 'dark' ? '#F9FAFB' : '#111827' }}>
+                          {memberDetails.job_role}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* LinkedIn */}
+                    {memberDetails.linkedin && (
+                      <div>
+                        <div style={{ fontSize: '11px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '4px' }}>
+                          LinkedIn
+                        </div>
+                        <a
+                          href={memberDetails.linkedin}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            fontSize: '12px',
+                            color: '#3B82F6',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <FaLinkedin size={12} />
+                          View Profile
+                        </a>
+                      </div>
+                    )}
+
+                    {/* Emails */}
+                    {memberEmails.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: '11px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '6px' }}>
+                          Emails
+                        </div>
+                        {memberEmails.map(e => (
+                          <div key={e.email_id} style={{
+                            fontSize: '12px',
+                            color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                            marginBottom: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                          }}>
+                            <FaEnvelope size={10} style={{ opacity: 0.5 }} />
+                            {e.email}
+                            {e.is_primary && (
+                              <span style={{ fontSize: '9px', color: '#10B981' }}>Primary</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Mobiles */}
+                    {memberMobiles.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: '11px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '6px' }}>
+                          Phone Numbers
+                        </div>
+                        {memberMobiles.map(m => (
+                          <div key={m.mobile_id} style={{
+                            fontSize: '12px',
+                            color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                            marginBottom: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                          }}>
+                            <FaWhatsapp size={10} style={{ opacity: 0.5, color: '#22C55E' }} />
+                            {m.mobile}
+                            {m.is_primary && (
+                              <span style={{ fontSize: '9px', color: '#10B981' }}>Primary</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Tags */}
+                    {memberTags.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: '11px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '6px' }}>
+                          Tags
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                          {memberTags.map(t => (
+                            <span
+                              key={t.entry_id}
+                              style={{
+                                fontSize: '11px',
+                                padding: '2px 8px',
+                                borderRadius: '12px',
+                                background: theme === 'dark' ? '#374151' : '#E5E7EB',
+                                color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                              }}
+                            >
+                              {t.tags?.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Description */}
+                    {memberDetails.description && (
+                      <div>
+                        <div style={{ fontSize: '11px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '6px' }}>
+                          Description
+                        </div>
+                        <div style={{
+                          fontSize: '12px',
+                          color: theme === 'dark' ? '#D1D5DB' : '#374151',
+                          lineHeight: 1.5,
+                          whiteSpace: 'pre-wrap',
+                        }}>
+                          {memberDetails.description}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '20px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }}>
+                    No details available
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Company Details Tab */}
+            {activeRightTab === 'company' && (
+              <div style={{ flex: 1, overflow: 'auto', padding: '12px' }}>
+                {memberCompanies.length === 0 ? (
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: '200px',
+                    color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
+                    textAlign: 'center',
+                  }}>
+                    <FaBuilding size={40} style={{ marginBottom: '12px', opacity: 0.5 }} />
+                    <div style={{ fontSize: '14px', fontWeight: 500 }}>No company linked</div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {memberCompanies.map(cc => (
+                      <div
+                        key={cc.contact_companies_id}
+                        style={{
+                          padding: '12px',
+                          borderRadius: '8px',
+                          background: theme === 'dark' ? '#1F2937' : '#F9FAFB',
+                          border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+                        }}
+                      >
+                        <div style={{
+                          fontSize: '14px',
+                          fontWeight: 600,
+                          color: theme === 'dark' ? '#F9FAFB' : '#111827',
+                          marginBottom: '8px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                        }}>
+                          <FaBuilding size={12} style={{ color: '#8B5CF6' }} />
+                          {cc.companies?.name}
+                          {cc.is_primary && (
+                            <span style={{
+                              fontSize: '9px',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              background: theme === 'dark' ? '#1E3A5F' : '#DBEAFE',
+                              color: theme === 'dark' ? '#93C5FD' : '#2563EB',
+                            }}>
+                              Primary
+                            </span>
+                          )}
+                        </div>
+                        {cc.relationship && cc.relationship !== 'not_set' && (
+                          <div style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '4px' }}>
+                            Role: {cc.relationship}
+                          </div>
+                        )}
+                        {cc.companies?.category && (
+                          <div style={{ fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '4px' }}>
+                            Category: {cc.companies.category}
+                          </div>
+                        )}
+                        {cc.companies?.website && (
+                          <a
+                            href={cc.companies.website.startsWith('http') ? cc.companies.website : `https://${cc.companies.website}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              fontSize: '11px',
+                              color: '#3B82F6',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <FaGlobe size={10} />
+                            {cc.companies.website}
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* WhatsApp Tab */}
+            {activeRightTab === 'whatsapp' && (
+              <WhatsAppChatTab
+                theme={theme}
+                contact={memberDetails}
+                mobiles={memberMobiles}
+                onMessageSent={() => {}}
+                hidePhoneSelector={true}
+              />
+            )}
+
+            {/* Email Tab */}
+            {activeRightTab === 'email' && (
+              <SendEmailTab
+                theme={theme}
+                contact={memberDetails}
+                emails={memberEmails}
+                onEmailSent={() => {}}
+              />
+            )}
+          </>
+        ) : selectedList?.list_type === 'dynamic' ? (
+          /* Show filters for dynamic lists when no member selected */
           <div style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
             {loadingFilters ? (
               <div style={{ textAlign: 'center', color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }}>
@@ -1077,244 +1505,101 @@ const ListsTab = ({ theme, profileImageModal }) => {
                 {/* Scores */}
                 {filters.scores.length > 0 && (
                   <div>
-                    <div style={{
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                      marginBottom: '8px',
-                      textTransform: 'uppercase',
-                    }}>
-                      Score
-                    </div>
+                    <div style={{ fontSize: '11px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '8px', textTransform: 'uppercase' }}>Score</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                       {filters.scores.map(score => (
-                        <span key={score} style={{
-                          padding: '4px 10px',
-                          borderRadius: '12px',
-                          fontSize: '12px',
-                          background: theme === 'dark' ? '#7C3AED' : '#EDE9FE',
-                          color: theme === 'dark' ? '#F3E8FF' : '#6D28D9',
-                          fontWeight: 500,
-                        }}>
+                        <span key={score} style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '12px', background: theme === 'dark' ? '#7C3AED' : '#EDE9FE', color: theme === 'dark' ? '#F3E8FF' : '#6D28D9', fontWeight: 500 }}>
                           ⭐ {score}
                         </span>
                       ))}
                     </div>
                   </div>
                 )}
-
                 {/* Categories */}
                 {filters.categories.length > 0 && (
                   <div>
-                    <div style={{
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                      marginBottom: '8px',
-                      textTransform: 'uppercase',
-                    }}>
-                      Category
-                    </div>
+                    <div style={{ fontSize: '11px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '8px', textTransform: 'uppercase' }}>Category</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                       {filters.categories.map(cat => (
-                        <span key={cat} style={{
-                          padding: '4px 10px',
-                          borderRadius: '12px',
-                          fontSize: '12px',
-                          background: theme === 'dark' ? '#1E40AF' : '#DBEAFE',
-                          color: theme === 'dark' ? '#BFDBFE' : '#1E40AF',
-                          fontWeight: 500,
-                        }}>
-                          {cat}
-                        </span>
+                        <span key={cat} style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '12px', background: theme === 'dark' ? '#1E40AF' : '#DBEAFE', color: theme === 'dark' ? '#BFDBFE' : '#1E40AF', fontWeight: 500 }}>{cat}</span>
                       ))}
                     </div>
                   </div>
                 )}
-
                 {/* Tags */}
                 {filters.tags.length > 0 && (
                   <div>
-                    <div style={{
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                      marginBottom: '8px',
-                      textTransform: 'uppercase',
-                    }}>
-                      Tags
-                    </div>
+                    <div style={{ fontSize: '11px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '8px', textTransform: 'uppercase' }}>Tags</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                       {filters.tags.map(tag => (
-                        <span key={tag} style={{
-                          padding: '4px 10px',
-                          borderRadius: '12px',
-                          fontSize: '12px',
-                          background: theme === 'dark' ? '#065F46' : '#D1FAE5',
-                          color: theme === 'dark' ? '#A7F3D0' : '#065F46',
-                          fontWeight: 500,
-                        }}>
-                          #{tag}
-                        </span>
+                        <span key={tag} style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '12px', background: theme === 'dark' ? '#065F46' : '#D1FAE5', color: theme === 'dark' ? '#A7F3D0' : '#065F46', fontWeight: 500 }}>#{tag}</span>
                       ))}
                     </div>
                   </div>
                 )}
-
                 {/* Cities */}
                 {filters.cities.length > 0 && (
                   <div>
-                    <div style={{
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                      marginBottom: '8px',
-                      textTransform: 'uppercase',
-                    }}>
-                      Cities
-                    </div>
+                    <div style={{ fontSize: '11px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '8px', textTransform: 'uppercase' }}>Cities</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                       {filters.cities.map(city => (
-                        <span key={city} style={{
-                          padding: '4px 10px',
-                          borderRadius: '12px',
-                          fontSize: '12px',
-                          background: theme === 'dark' ? '#92400E' : '#FEF3C7',
-                          color: theme === 'dark' ? '#FDE68A' : '#92400E',
-                          fontWeight: 500,
-                        }}>
-                          📍 {city}
-                        </span>
+                        <span key={city} style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '12px', background: theme === 'dark' ? '#92400E' : '#FEF3C7', color: theme === 'dark' ? '#FDE68A' : '#92400E', fontWeight: 500 }}>📍 {city}</span>
                       ))}
                     </div>
                   </div>
                 )}
-
                 {/* Keep in Touch */}
                 {filters.keepInTouch.length > 0 && (
                   <div>
-                    <div style={{
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                      marginBottom: '8px',
-                      textTransform: 'uppercase',
-                    }}>
-                      Keep in Touch
-                    </div>
+                    <div style={{ fontSize: '11px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '8px', textTransform: 'uppercase' }}>Keep in Touch</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                       {filters.keepInTouch.map(freq => (
-                        <span key={freq} style={{
-                          padding: '4px 10px',
-                          borderRadius: '12px',
-                          fontSize: '12px',
-                          background: theme === 'dark' ? '#BE185D' : '#FCE7F3',
-                          color: theme === 'dark' ? '#FBCFE8' : '#BE185D',
-                          fontWeight: 500,
-                        }}>
-                          🔄 {freq}
-                        </span>
+                        <span key={freq} style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '12px', background: theme === 'dark' ? '#BE185D' : '#FCE7F3', color: theme === 'dark' ? '#FBCFE8' : '#BE185D', fontWeight: 500 }}>🔄 {freq}</span>
                       ))}
                     </div>
                   </div>
                 )}
-
                 {/* Completeness */}
                 {filters.completeness && (
                   <div>
-                    <div style={{
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                      marginBottom: '8px',
-                      textTransform: 'uppercase',
-                    }}>
-                      Completeness
-                    </div>
+                    <div style={{ fontSize: '11px', fontWeight: 600, color: theme === 'dark' ? '#9CA3AF' : '#6B7280', marginBottom: '8px', textTransform: 'uppercase' }}>Completeness</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                      <span style={{
-                        padding: '4px 10px',
-                        borderRadius: '12px',
-                        fontSize: '12px',
-                        background: theme === 'dark' ? '#DC2626' : '#FEE2E2',
-                        color: theme === 'dark' ? '#FECACA' : '#DC2626',
-                        fontWeight: 500,
-                      }}>
-                        📊 ≤ {filters.completeness.max_score}%
-                      </span>
+                      <span style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '12px', background: theme === 'dark' ? '#DC2626' : '#FEE2E2', color: theme === 'dark' ? '#FECACA' : '#DC2626', fontWeight: 500 }}>📊 ≤ {filters.completeness.max_score}%</span>
                       {filters.completeness.exclude_marked_complete && (
-                        <span style={{
-                          padding: '4px 10px',
-                          borderRadius: '12px',
-                          fontSize: '12px',
-                          background: theme === 'dark' ? '#7C2D12' : '#FFEDD5',
-                          color: theme === 'dark' ? '#FDBA74' : '#9A3412',
-                          fontWeight: 500,
-                        }}>
-                          Not marked complete
-                        </span>
+                        <span style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '12px', background: theme === 'dark' ? '#7C2D12' : '#FFEDD5', color: theme === 'dark' ? '#FDBA74' : '#9A3412', fontWeight: 500 }}>Not marked complete</span>
                       )}
                     </div>
                   </div>
                 )}
-
-                {/* Filter logic explanation */}
-                <div style={{
-                  marginTop: '8px',
-                  padding: '12px',
-                  borderRadius: '8px',
-                  background: theme === 'dark' ? '#1F2937' : '#F3F4F6',
-                  fontSize: '11px',
-                  color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-                  lineHeight: 1.5,
-                }}>
+                <div style={{ marginTop: '8px', padding: '12px', borderRadius: '8px', background: theme === 'dark' ? '#1F2937' : '#F3F4F6', fontSize: '11px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280', lineHeight: 1.5 }}>
                   <strong>Logic:</strong> AND between filter types, OR within same type
                 </div>
               </div>
             ) : (
-              <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                height: '100%',
-                color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
-                textAlign: 'center',
-              }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: theme === 'dark' ? '#6B7280' : '#9CA3AF', textAlign: 'center' }}>
                 <FaMagic size={32} style={{ marginBottom: '12px', opacity: 0.5 }} />
                 <div style={{ fontSize: '14px', marginBottom: '8px' }}>No filters configured</div>
-                <div style={{ fontSize: '11px', lineHeight: 1.5 }}>
-                  This dynamic list has no filter criteria yet
-                </div>
+                <div style={{ fontSize: '11px', lineHeight: 1.5 }}>This dynamic list has no filter criteria yet</div>
               </div>
             )}
           </div>
         ) : (
-          <div style={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '24px',
-            color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
-          }}>
-            <FaRocket size={48} style={{ marginBottom: '16px', opacity: 0.5 }} />
-            <div style={{
-              fontSize: '16px',
-              fontWeight: 600,
-              marginBottom: '8px',
-              color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
-            }}>
-              Coming Soon
-            </div>
-            <div style={{
-              fontSize: '12px',
-              textAlign: 'center',
-              lineHeight: 1.5,
-            }}>
-              Send campaigns, manage filters, and track analytics
-            </div>
+          /* Static list - show select member prompt or coming soon */
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', color: theme === 'dark' ? '#6B7280' : '#9CA3AF' }}>
+            {selectedList ? (
+              <>
+                <FaUser size={48} style={{ marginBottom: '16px', opacity: 0.5 }} />
+                <div style={{ fontSize: '14px', textAlign: 'center', lineHeight: 1.5 }}>
+                  Click on a member to view details
+                </div>
+              </>
+            ) : (
+              <>
+                <FaRocket size={48} style={{ marginBottom: '16px', opacity: 0.5 }} />
+                <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '8px', color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }}>Coming Soon</div>
+                <div style={{ fontSize: '12px', textAlign: 'center', lineHeight: 1.5 }}>Send campaigns, manage filters, and track analytics</div>
+              </>
+            )}
           </div>
         )}
       </div>

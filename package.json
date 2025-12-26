@@ -55,7 +55,8 @@
     "trigger-hubspot-migration": "curl -X POST -H 'Authorization: Bearer YOUR_MIGRATION_SECRET_KEY' -H 'Content-Type: application/json' -d '{\"limit\": 25}' http://localhost:8888/.netlify/functions/companies-hubspot-supabase-migration",
     "new-crm:start": "webpack serve --config webpack.new-crm.js",
     "new-crm:build": "NODE_ENV=production webpack --config webpack.new-crm.js",
-    "new-crm:dev": "NODE_ENV=development webpack serve --config webpack.new-crm.js --open"
+    "new-crm:dev": "NODE_ENV=development webpack serve --config webpack.new-crm.js --open",
+    "obsidian-sync": "cd obsidian-sync-server && npm start"
   },
   "eslintConfig": {
     "extends": [

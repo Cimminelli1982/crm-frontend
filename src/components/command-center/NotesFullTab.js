@@ -1,13 +1,17 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  FaStickyNote, FaPlus, FaSearch, FaFolder, FaFolderOpen,
-  FaSave, FaTrash, FaLink, FaUser, FaBuilding, FaHandshake,
-  FaDollarSign, FaChevronRight, FaChevronDown, FaMarkdown,
-  FaEye, FaEdit, FaTimes, FaCheck
+  FaStickyNote, FaPlus, FaSearch, FaFolder, FaSave, FaTrash,
+  FaLink, FaUser, FaBuilding, FaHandshake, FaDollarSign,
+  FaChevronRight, FaChevronDown, FaEdit, FaTimes, FaSync,
+  FaBold, FaItalic, FaListUl, FaListOl, FaQuoteRight, FaCode,
+  FaUndo, FaRedo
 } from 'react-icons/fa';
+import { SiObsidian } from 'react-icons/si';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
-import ReactMarkdown from 'react-markdown';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Link from '@tiptap/extension-link';
 
 // Note types for categorization
 const NOTE_TYPES = [
@@ -16,6 +20,265 @@ const NOTE_TYPES = [
   { id: 'idea', label: 'Idea', icon: FaStickyNote, color: '#F59E0B' },
   { id: 'project', label: 'Project', icon: FaFolder, color: '#10B981' },
 ];
+
+// TipTap Toolbar component
+const EditorToolbar = ({ editor, theme }) => {
+  if (!editor) return null;
+
+  const buttonStyle = {
+    padding: '6px 8px',
+    borderRadius: '4px',
+    border: 'none',
+    background: 'transparent',
+    color: theme === 'dark' ? '#9CA3AF' : '#6B7280',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  };
+
+  const activeStyle = {
+    ...buttonStyle,
+    background: theme === 'dark' ? '#374151' : '#E5E7EB',
+    color: theme === 'dark' ? '#F9FAFB' : '#111827',
+  };
+
+  return (
+    <div style={{
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: '2px',
+      padding: '8px',
+      borderBottom: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+      background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+    }}>
+      <button
+        onClick={() => editor.chain().focus().toggleBold().run()}
+        style={editor.isActive('bold') ? activeStyle : buttonStyle}
+        title="Bold (Cmd+B)"
+      >
+        <FaBold size={12} />
+      </button>
+      <button
+        onClick={() => editor.chain().focus().toggleItalic().run()}
+        style={editor.isActive('italic') ? activeStyle : buttonStyle}
+        title="Italic (Cmd+I)"
+      >
+        <FaItalic size={12} />
+      </button>
+
+      <div style={{ width: '1px', background: theme === 'dark' ? '#374151' : '#E5E7EB', margin: '0 6px' }} />
+
+      <button
+        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+        style={editor.isActive('heading', { level: 1 }) ? activeStyle : buttonStyle}
+        title="Heading 1"
+      >
+        <span style={{ fontWeight: 700, fontSize: '12px' }}>H1</span>
+      </button>
+      <button
+        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+        style={editor.isActive('heading', { level: 2 }) ? activeStyle : buttonStyle}
+        title="Heading 2"
+      >
+        <span style={{ fontWeight: 700, fontSize: '12px' }}>H2</span>
+      </button>
+      <button
+        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+        style={editor.isActive('heading', { level: 3 }) ? activeStyle : buttonStyle}
+        title="Heading 3"
+      >
+        <span style={{ fontWeight: 700, fontSize: '12px' }}>H3</span>
+      </button>
+
+      <div style={{ width: '1px', background: theme === 'dark' ? '#374151' : '#E5E7EB', margin: '0 6px' }} />
+
+      <button
+        onClick={() => editor.chain().focus().toggleBulletList().run()}
+        style={editor.isActive('bulletList') ? activeStyle : buttonStyle}
+        title="Bullet List"
+      >
+        <FaListUl size={12} />
+      </button>
+      <button
+        onClick={() => editor.chain().focus().toggleOrderedList().run()}
+        style={editor.isActive('orderedList') ? activeStyle : buttonStyle}
+        title="Numbered List"
+      >
+        <FaListOl size={12} />
+      </button>
+
+      <div style={{ width: '1px', background: theme === 'dark' ? '#374151' : '#E5E7EB', margin: '0 6px' }} />
+
+      <button
+        onClick={() => editor.chain().focus().toggleBlockquote().run()}
+        style={editor.isActive('blockquote') ? activeStyle : buttonStyle}
+        title="Quote"
+      >
+        <FaQuoteRight size={12} />
+      </button>
+      <button
+        onClick={() => editor.chain().focus().toggleCodeBlock().run()}
+        style={editor.isActive('codeBlock') ? activeStyle : buttonStyle}
+        title="Code Block"
+      >
+        <FaCode size={12} />
+      </button>
+
+      <div style={{ width: '1px', background: theme === 'dark' ? '#374151' : '#E5E7EB', margin: '0 6px' }} />
+
+      <button
+        onClick={() => editor.chain().focus().undo().run()}
+        disabled={!editor.can().undo()}
+        style={{ ...buttonStyle, opacity: editor.can().undo() ? 1 : 0.4 }}
+        title="Undo (Cmd+Z)"
+      >
+        <FaUndo size={12} />
+      </button>
+      <button
+        onClick={() => editor.chain().focus().redo().run()}
+        disabled={!editor.can().redo()}
+        style={{ ...buttonStyle, opacity: editor.can().redo() ? 1 : 0.4 }}
+        title="Redo (Cmd+Shift+Z)"
+      >
+        <FaRedo size={12} />
+      </button>
+    </div>
+  );
+};
+
+// TipTap Rich Text Editor component
+const RichTextEditor = ({ content, onChange, theme, editable = true }) => {
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({
+        heading: {
+          levels: [1, 2, 3],
+        },
+      }),
+      Link.configure({
+        openOnClick: false,
+        HTMLAttributes: {
+          class: 'editor-link',
+        },
+      }),
+    ],
+    content: content || '',
+    editable,
+    onUpdate: ({ editor }) => {
+      onChange(editor.getHTML());
+    },
+  });
+
+  // Update content when it changes externally
+  useEffect(() => {
+    if (editor && content !== editor.getHTML()) {
+      editor.commands.setContent(content || '');
+    }
+  }, [content, editor]);
+
+  // Update editable state
+  useEffect(() => {
+    if (editor) {
+      editor.setEditable(editable);
+    }
+  }, [editable, editor]);
+
+  const editorContainerStyle = {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    borderRadius: '8px',
+    border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
+    background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+    overflow: 'hidden',
+  };
+
+  return (
+    <div style={editorContainerStyle}>
+      {editable && <EditorToolbar editor={editor} theme={theme} />}
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        <EditorContent
+          editor={editor}
+          style={{
+            height: '100%',
+            padding: '16px',
+            color: theme === 'dark' ? '#F9FAFB' : '#111827',
+            fontSize: '14px',
+            lineHeight: '1.6',
+          }}
+        />
+      </div>
+      <style>{`
+        .ProseMirror {
+          outline: none;
+          min-height: 200px;
+        }
+        .ProseMirror p {
+          margin: 0 0 0.75em 0;
+        }
+        .ProseMirror h1 {
+          font-size: 1.5em;
+          font-weight: 700;
+          margin: 1em 0 0.5em 0;
+        }
+        .ProseMirror h2 {
+          font-size: 1.25em;
+          font-weight: 600;
+          margin: 1em 0 0.5em 0;
+        }
+        .ProseMirror h3 {
+          font-size: 1.1em;
+          font-weight: 600;
+          margin: 1em 0 0.5em 0;
+        }
+        .ProseMirror ul, .ProseMirror ol {
+          padding-left: 1.5em;
+          margin: 0.5em 0;
+        }
+        .ProseMirror li {
+          margin: 0.25em 0;
+        }
+        .ProseMirror blockquote {
+          border-left: 3px solid ${theme === 'dark' ? '#6B7280' : '#D1D5DB'};
+          padding-left: 1em;
+          margin: 0.5em 0;
+          color: ${theme === 'dark' ? '#9CA3AF' : '#6B7280'};
+        }
+        .ProseMirror pre {
+          background: ${theme === 'dark' ? '#111827' : '#F3F4F6'};
+          border-radius: 6px;
+          padding: 0.75em 1em;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          font-size: 0.9em;
+          overflow-x: auto;
+        }
+        .ProseMirror code {
+          background: ${theme === 'dark' ? '#374151' : '#E5E7EB'};
+          padding: 0.2em 0.4em;
+          border-radius: 3px;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          font-size: 0.9em;
+        }
+        .ProseMirror pre code {
+          background: none;
+          padding: 0;
+        }
+        .editor-link {
+          color: #3B82F6;
+          text-decoration: underline;
+        }
+        .ProseMirror p.is-editor-empty:first-child::before {
+          color: ${theme === 'dark' ? '#6B7280' : '#9CA3AF'};
+          content: attr(data-placeholder);
+          float: left;
+          height: 0;
+          pointer-events: none;
+        }
+      `}</style>
+    </div>
+  );
+};
 
 const NotesFullTab = ({ theme }) => {
   // Notes list state
@@ -49,7 +312,70 @@ const NotesFullTab = ({ theme }) => {
   const [linkSearchResults, setLinkSearchResults] = useState([]);
   const [linkSearching, setLinkSearching] = useState(false);
 
-  const textareaRef = useRef(null);
+  // Obsidian sync state
+  const [syncing, setSyncing] = useState(false);
+  const OBSIDIAN_SYNC_URL = 'http://localhost:3003';
+
+  // Sync from Obsidian inbox
+  const handleObsidianSync = async () => {
+    setSyncing(true);
+    try {
+      // Fetch inbox content from local server
+      const response = await fetch(`${OBSIDIAN_SYNC_URL}/inbox`);
+      if (!response.ok) throw new Error('Failed to connect to Obsidian sync server');
+
+      const { content } = await response.json();
+
+      // Check if there's content to sync
+      const trimmedContent = content?.replace(/^#\s*Inbox\s*\n*/i, '').trim();
+      if (!trimmedContent) {
+        toast('Inbox is empty', { icon: '📭' });
+        return;
+      }
+
+      // Create new note in Supabase
+      const { data, error } = await supabase
+        .from('notes')
+        .insert({
+          title: `Obsidian Inbox - ${new Date().toLocaleDateString()}`,
+          text: trimmedContent,
+          note_type: 'general',
+          obsidian_path: 'Inbox.md',
+          created_by: 'User',
+          last_modified_by: 'User',
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Archive and clear inbox on local server
+      const archiveResponse = await fetch(`${OBSIDIAN_SYNC_URL}/archive`, { method: 'POST' });
+      if (!archiveResponse.ok) {
+        toast.error('Note saved but failed to archive inbox');
+      }
+
+      // Refresh notes list and select the new note
+      setNotes(prev => [data, ...prev]);
+      setSelectedNote(data);
+      setEditTitle(data.title);
+      setEditText(data.text);
+      setEditNoteType(data.note_type);
+      setIsEditing(false);
+      setIsCreating(false);
+
+      toast.success('Synced from Obsidian!');
+    } catch (error) {
+      console.error('Obsidian sync error:', error);
+      if (error.message.includes('Failed to fetch')) {
+        toast.error('Obsidian sync server not running. Start it with: cd obsidian-sync-server && npm start');
+      } else {
+        toast.error(error.message || 'Failed to sync');
+      }
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   // Fetch all notes
   const fetchNotes = useCallback(async () => {
@@ -432,10 +758,30 @@ const NotesFullTab = ({ theme }) => {
               style={searchInputStyle}
             />
           </div>
+          <button
+            onClick={handleObsidianSync}
+            disabled={syncing}
+            style={{
+              ...buttonStyle,
+              background: '#7C3AED',
+              opacity: syncing ? 0.7 : 1,
+            }}
+            title="Sync from Obsidian Inbox"
+          >
+            {syncing ? <FaSync size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <SiObsidian size={12} />}
+          </button>
           <button onClick={handleCreateNew} style={buttonStyle}>
             <FaPlus size={12} />
           </button>
         </div>
+
+        {/* CSS for spin animation */}
+        <style>{`
+          @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
 
         {/* Notes list grouped by type */}
         <div style={{ flex: 1, overflow: 'auto' }}>
@@ -623,46 +969,34 @@ const NotesFullTab = ({ theme }) => {
             </div>
 
             {/* Editor content */}
-            <div style={{ flex: 1, padding: '16px', overflow: 'auto' }}>
+            <div style={{ flex: 1, padding: '16px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
               {isEditing ? (
-                <textarea
-                  ref={textareaRef}
-                  value={editText}
-                  onChange={(e) => setEditText(e.target.value)}
-                  placeholder="Write your note in Markdown..."
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    padding: '16px',
-                    borderRadius: '8px',
-                    border: `1px solid ${theme === 'dark' ? '#374151' : '#E5E7EB'}`,
-                    background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
-                    color: theme === 'dark' ? '#F9FAFB' : '#111827',
-                    fontSize: '14px',
-                    lineHeight: '1.6',
-                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                    resize: 'none',
-                    outline: 'none',
-                  }}
+                <RichTextEditor
+                  content={editText}
+                  onChange={setEditText}
+                  theme={theme}
+                  editable={true}
                 />
               ) : (
-                <div style={{
-                  padding: '16px',
-                  borderRadius: '8px',
-                  background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
-                  color: theme === 'dark' ? '#F9FAFB' : '#111827',
-                  fontSize: '14px',
-                  lineHeight: '1.6',
-                  minHeight: '200px',
-                }}>
-                  {selectedNote?.text ? (
-                    <ReactMarkdown>{selectedNote.text}</ReactMarkdown>
-                  ) : (
-                    <div style={{ color: theme === 'dark' ? '#6B7280' : '#9CA3AF', fontStyle: 'italic' }}>
-                      No content yet. Click Edit to add content.
-                    </div>
-                  )}
-                </div>
+                selectedNote?.text ? (
+                  <RichTextEditor
+                    content={selectedNote.text}
+                    onChange={() => {}}
+                    theme={theme}
+                    editable={false}
+                  />
+                ) : (
+                  <div style={{
+                    padding: '16px',
+                    borderRadius: '8px',
+                    background: theme === 'dark' ? '#1F2937' : '#FFFFFF',
+                    color: theme === 'dark' ? '#6B7280' : '#9CA3AF',
+                    fontStyle: 'italic',
+                    minHeight: '200px',
+                  }}>
+                    No content yet. Click Edit to add content.
+                  </div>
+                )
               )}
             </div>
           </>
